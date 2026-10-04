@@ -1,0 +1,76 @@
+<svg viewBox="0 0 940 368" role="img" aria-label="Two panels over a line of main commits. Today: FIX-1621 checked on kitchen-sink's cut kind, FIX-1718 on seeded project rows over HTTP and a browser, FIX-1719 through the chief of staff over routes, each on its own commit, none asking the chief of staff for a project in a browser. After: one main commit, picked after every child merges, carries four stacked parts: legs a to c in a browser on the DevTeam Lab with a real model; the next Lab set up on the pentest Lab from the docs alone; every child check re-run; the seam sweep. A finding is filed under FIX-1650 and sends the whole stack round again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-alone { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-part { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-find { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .line  { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .tick  { fill:var(--ink-3); }
+    .pin   { fill:var(--accent); }
+    .loop  { stroke:var(--prose); stroke-width:1.3; fill:none; stroke-dasharray:5 3; }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-pr  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="368"/>
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · EACH CHECK ON ITS OWN COMMIT AND FIXTURE</text>
+    <rect class="n-alone" x="16" y="44" width="132" height="54" rx="5"/>
+    <text class="t-b" x="28" y="66">FIX-1621</text>
+    <text class="t-s" x="28" y="84">kitchen-sink kind</text>
+    <rect class="n-alone" x="162" y="44" width="148" height="54" rx="5"/>
+    <text class="t-b" x="174" y="66">FIX-1718</text>
+    <text class="t-s" x="174" y="84">seeded rows, HTTP</text>
+    <rect class="n-alone" x="324" y="44" width="132" height="54" rx="5"/>
+    <text class="t-b" x="336" y="66">FIX-1719</text>
+    <text class="t-s" x="336" y="84">CoS over routes</text>
+    <path class="rule" d="M82 98 V300 M236 98 V300 M390 98 V300"/>
+    <text class="t-s" x="16" y="350">never run together · no CoS project in a browser</text>
+  </g>
+  <g id="divider">
+    <path class="rule" d="M470 16 V356"/>
+  </g>
+  <g id="after">
+    <text class="t-lbl" x="492" y="24">AFTER · ONE COMMIT, FOUR PARTS</text>
+    <rect class="n-part" x="600" y="44" width="324" height="44" rx="5"/>
+    <text class="t-b" x="612" y="64">1 · legs a to c, then the controls</text>
+    <text class="t-s" x="612" y="80">DevTeam Lab · browser · real model</text>
+    <rect class="n-part" x="600" y="96" width="324" height="44" rx="5"/>
+    <text class="t-b" x="612" y="116">2 · the next Lab, from the docs</text>
+    <text class="t-s" x="612" y="132">pentest Lab · a docs-only writer</text>
+    <rect class="n-part" x="600" y="148" width="324" height="44" rx="5"/>
+    <text class="t-b" x="612" y="168">3 · every child's check, re-run</text>
+    <text class="t-s" x="612" y="184">1621 · 1718 · 1719 · DevTeam checks</text>
+    <rect class="n-part" x="600" y="200" width="324" height="44" rx="5"/>
+    <text class="t-b" x="612" y="220">4 · the seam sweep</text>
+    <text class="t-s" x="612" y="236">one remove path · gap copy · fences</text>
+    <path class="rule" d="M560 244 V300"/>
+    <path class="rule" d="M560 66 H600 M560 118 H600 M560 170 H600 M560 222 H600 M560 66 V244"/>
+    <circle class="pin" cx="560" cy="300" r="6"/>
+    <text class="t-acc" x="492" y="330">after the last child merges</text>
+    <rect class="n-find" x="712" y="264" width="212" height="40" rx="5"/>
+    <text class="t-pr" x="724" y="282">a finding · a child of FIX-1650</text>
+    <text class="t-pr" x="724" y="296">blocks FIX-1720 until fixed</text>
+    <path class="loop" d="M712 284 H640 Q620 284 620 300 H566"/>
+    <text class="t-pr" x="582" y="264">the whole stack, again</text>
+  </g>
+  <g id="commit-line">
+    <path class="line" d="M16 300 H454"/>
+    <circle class="tick" cx="82" cy="300" r="4"/>
+    <circle class="tick" cx="236" cy="300" r="4"/>
+    <circle class="tick" cx="390" cy="300" r="4"/>
+    <text class="t-lbl" x="16" y="330">MAIN, OLDER TO NEWER</text>
+    <path class="line" d="M492 300 H554"/>
+  </g>
+</svg>

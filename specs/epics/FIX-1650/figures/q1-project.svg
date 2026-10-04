@@ -1,0 +1,113 @@
+<svg viewBox="0 0 940 422" role="img" aria-label="Q1, decided by Jake on 1 October 2026 and shaped by the FIX-1728 and FIX-1729 spikes: what is a project, and where does its conversation live? Chosen: an org row that CoS creates, with one room stored beside it on the org side, which each member reads and posts through their own talk session; building the room now and members-only reads are pending Jake on the recommended answers. Beside it: a project as a channel of its own, the recommendation this epic merged with, which Jake held; and a shared engine session several users own, option A, rejected. It comes down to the first row, where the conversation lives: in room rows on the org side, where a project channel keeps it in one owner&#x27;s session and a shared session needs every user in one session. Second row, who may read and post: members, checked against the engine-recorded session owner, where a project channel has one owner and a shared session depends on a hook each app writes. The price, third row: the room is Layer 2 only, about three PRs; a project channel needs one key; a shared session is size L, four to six PRs, all on the auth surface. Locks in: FIX-1718 shows each project&#x27;s room to its members. Flips if people need other members&#x27; lines live; then a member-list row fence in Layer 1."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="422"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">Q1 &#183; DECIDED &#183; JAKE, 2026-10-01 &#183; SHAPED BY THE FIX-1728 AND FIX-1729 SPIKES</text>
+    <text class="t-q" x="32" y="52">What is a project, and where does its conversation live?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">An org row and its room</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="468" y="93">INSTEAD OF &#183; HELD</text>
+    <text class="t-h c-lost" x="468" y="112">Its own channel</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="708" y="93">REJECTED &#183; OPTION A</text>
+    <text class="t-h c-lost" x="708" y="112">A session users share</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHERE THE</text>
+    <text class="t-lbl" x="32" y="169">TALK LIVES</text>
+    <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Room rows, org side</text>
+    <text class="t-s" x="248" y="179">beside the project row</text>
+    <text class="mark minus" x="468" y="162">&#8722;</text>
+    <text class="t-b" x="488" y="161">One owner's session</text>
+    <text class="t-s" x="488" y="179">the channel is the project</text>
+    <text class="mark minus" x="708" y="162">&#8722;</text>
+    <text class="t-b" x="728" y="161">One shared session</text>
+    <text class="t-s" x="728" y="179">breaks one owner per session</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">WHO READS</text>
+    <text class="t-lbl" x="32" y="231">AND POSTS</text>
+    <text class="mark plus" x="228" y="224">+</text>
+    <text class="t-b" x="248" y="223">Members only</text>
+    <text class="t-s" x="248" y="241">checked on the engine's owner</text>
+    <text class="mark minus" x="468" y="224">&#8722;</text>
+    <text class="t-b" x="488" y="223">Its one owner</text>
+    <text class="t-s" x="488" y="241">nobody else gets in</text>
+    <text class="mark minus" x="708" y="224">&#8722;</text>
+    <text class="t-b" x="728" y="223">Whatever a hook says</text>
+    <text class="t-s" x="728" y="241">each app writes its own</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">WHAT IS</text>
+    <text class="t-lbl" x="32" y="289">NEW</text>
+    <text class="mark minus" x="228" y="282">&#8722;</text>
+    <text class="t-b" x="248" y="281">Layer 2, about 3 PRs</text>
+    <text class="t-s" x="248" y="299">members, room-lines, bind, join</text>
+    <text class="mark plus" x="468" y="282">+</text>
+    <text class="t-b" x="488" y="281">One channel key</text>
+    <text class="t-s" x="488" y="299">naming the project</text>
+    <text class="mark minus" x="708" y="282">&#8722;</text>
+    <text class="t-b" x="728" y="281">Size L, 4 to 6 PRs</text>
+    <text class="t-s" x="728" y="299">all on the auth surface</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="353">LOCKS IN</text>
+    <text class="t-b" x="32" y="373">FIX-1718 shows each project's room</text>
+    <text class="t-s" x="32" y="391">to its members; room now and members only pend Jake</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="353">FLIPS IF</text>
+    <text class="t-b" x="494" y="373">Members need each other's lines live</text>
+    <text class="t-s" x="494" y="391">then a member-list row fence in Layer 1</text>
+  </g>
+</svg>

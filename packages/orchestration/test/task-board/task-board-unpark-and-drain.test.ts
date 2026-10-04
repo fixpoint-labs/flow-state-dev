@@ -263,7 +263,7 @@ describe("board.unparkAndDrain — refuses unsupported boards when the step runs
     [
       "factory",
       (ctx: BlockContext) =>
-        getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "unpark-factory" }),
+        getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "unpark-factory" }),
     ],
   ];
 

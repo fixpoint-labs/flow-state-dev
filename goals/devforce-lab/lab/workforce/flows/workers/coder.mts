@@ -14,8 +14,8 @@
  *
  * ## The board declaration below is the framework's tax, not a convention
  *
- * The board belongs to the feature channel: its `CHANNEL.md` names it, and the
- * host hands this kind the channel's ledger. The manager runs each row as a
+ * The board belongs to the feature mailbox: its `MAILBOX.md` names it, and the
+ * host hands this kind the mailbox's ledger. The manager runs each row as a
  * coding run whose checkout and branch are derived from that ledger's id.
  *
  * This kind also declares the feature board a second time — same `boardId`,
@@ -33,7 +33,7 @@
  * documents the same constraint in its header.
  *
  * **Do not read it as how DevForce declares boards.** Board authoring is
- * settled — a channel-attached `TaskCollection` (FIX-1385), which is where this
+ * settled — a mailbox-attached `TaskCollection` (FIX-1385), which is where this
  * lab's board now lives. The cross-flow claim-gate cost is the framework's to
  * remove; FIX-1408 closed with it in place, and nothing owns it now. A kind that
  * needs a task entry pays it today, labelled interim. A Lab that taught it as
@@ -44,7 +44,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import type { DeclaredResources } from "@flow-state-dev/core";
 import { harnessManager, type PhaseSpec, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { recipientBoard, WORK_ENTRY, type FeatureLedger } from "../../../board.mts";
+import { recipientBoard, RESUME_ENTRY, WORK_ENTRY, type FeatureLedger } from "../../../board.mts";
 import {
   INSPECT_ENTRY,
   readOwnFacts,
@@ -82,10 +82,16 @@ export interface CoderWorkerFlowOptions {
   /** The file-declared documents, as `resourcesFromDocs` built them. */
   resources: DeclaredResources;
   /**
-   * The ledger the manager runs rows off — the feature channel's. Its id is
+   * The ledger the manager runs rows off — the feature mailbox's. Its id is
    * what every run's checkout folder and branch are derived from.
    */
   ledger: FeatureLedger;
+  /**
+   * The hired EM seat's instance id: the coordinator whose board hands this
+   * seat its rows. The message door re-runs that board there after a stop.
+   * Absent, the kind declares no message door: nothing would re-run its board.
+   */
+  coordinatorSeatId?: string;
 }
 
 /**
@@ -127,6 +133,11 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
         block: readOwnFacts,
         description: "Read what this seat can see of its own configuration. Writes nothing.",
       },
+      // The seat's door: a person's message into one of its running coding
+      // runs, which stops and continues the same coding session with it.
+      ...(options.coordinatorSeatId === undefined
+        ? {}
+        : { message: manager.messageDoor({ drain: RESUME_ENTRY, flowKind: options.coordinatorSeatId }) }),
     },
     // Reachable only through the board's claim gate, by a hand-off that named
     // this instance.

@@ -216,6 +216,12 @@ export interface CreateFlowStateOptions<
   resolvePrincipal?: CreateFlowApiRouterOptions["resolvePrincipal"];
 
   debugEndpointsEnabled?: boolean;
+  /**
+   * Forwarded to `createFlowApiRouter`. Admit Origin-less requests to the
+   * debug endpoints. Default `false` (falls back to
+   * `FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL=1`); only for a loopback-bound server.
+   */
+  debugAllowAnonymousLocal?: boolean;
   defaultSseHeartbeatMs?: number;
 
   /** Stale-request sweeper cadence (ms). 0 disables. Default 30000. */

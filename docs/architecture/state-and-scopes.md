@@ -64,7 +64,10 @@ separates them is whether the hint carries a *delta* or an *absolute* value.
   `incState` given a **single** field. The hint carries the delta itself — `hint.delta` for
   `incField`, `hint.values` for `pushToArray` — so the store adds to, or appends to, whatever it
   finds. Two concurrent writers to the same field both survive; for an append, order affects
-  position only.
+  position only. A field holding the wrong kind of value is refused, not coerced: `incField` throws
+  unless the field is a number, absent or `null` (the last two start from `0`), `pushToArray`
+  unless it is an array or absent, and the record is left untouched. The container's own mutator
+  applies the same `incState` refusal, so a multi-field call or a scope with no store refuses too.
 - **Unchecked but *not* commutative** (same adapter condition): `setStateRecord` and
   `deleteStateRecord` always, and `patchState` given exactly one **literal** field. The hint carries
   no delta — `createScopePersist` reads an *absolute* value out of the mutator's `nextState` to send
@@ -240,7 +243,9 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
   first-touch memoize rather than an updater — it patches a single key only when that key is absent
   — so it follows `patchState`, not `updateState`; concurrent callers for one key inside a request
   are single-flighted. `writeContent` carries no version predicate at all — `ContentStore.set`
-  creates or overwrites — so it is last-writer-wins outright.
+  creates or overwrites — so it is last-writer-wins outright. It also has no no-op skip: every call
+  writes, even when the body equals what this request last read or wrote, because that copy may
+  already be stale. A `writeContent` that resolves means the store held that body at commit.
 
 ### Delta verb routing (FIX-405)
 
@@ -734,7 +739,7 @@ could occupy by picking the right session id — unguessable is a weaker propert
 than unaddressable. Adapters treat the value as opaque (a plain `TEXT` column,
 no constraint), so this needed no schema change and no migration.
 
-**Where resolution happens.** On the execution path, `resolveConfigScopeId` and `resolveResourceStorageScopeId` in `packages/engine/src/context/createExecutionContext.ts`. Both route the session scope on a `sharedToLineage` bucket map built the same way user/org build their `flowIsolation` buckets: singles by canonical storage key, collection instances by longest-matching prefix. Collections sharing a storage prefix must agree on the flag, refused at context construction like the `flowIsolation` case.
+**Where resolution happens.** One session routing index (`sessionRoutingIndex`) in `packages/engine/src/resources/lineage-scope.ts` walks a flow's session-scoped declarations once: singles by canonical storage key, collection instances by pattern prefix, each carrying its `sharedToLineage` flag. Both paths read it. On the execution path, `createExecutionContext` builds its session buckets from the index and refuses, at context construction, collections that share a storage prefix but disagree on the flag, like the `flowIsolation` case. User and org buckets are still built in `createExecutionContext`.
 
 The HTTP read/write routes need the same answer and derive it from `packages/engine/src/resources/lineage-scope.ts`. **Which helper depends on what the route holds, and getting that wrong is a cross-session read:**
 
@@ -751,7 +756,7 @@ distinction the first bullet exists for — so reach for it only if a caller
 genuinely arrives holding the declaration and nothing else, and read
 `sessionKeyScopeId`'s contract first to be sure that is what you have.
 
-**Ownership is one rule, in one place.** `resolveOwnershipFlag` (`resources/lineage-scope.ts`) decides which declaration owns a storage key: **an exact single wins outright, then the longest matching collection prefix.** Both `createExecutionContext`'s bucket resolution and the whole-scope reads call it, because two implementations of "longest prefix wins" is how the execution view and the HTTP view drift into disagreeing about which session holds a key.
+**Ownership is one rule, in one place.** `resolveOwnershipFlag` (`resources/lineage-scope.ts`), fed by the session routing index, decides which declaration owns a storage key: **an exact single wins outright, then the longest matching collection prefix.** Both `createExecutionContext`'s bucket resolution and the whole-scope reads call it, because two implementations of "longest prefix wins" is how the execution view and the HTTP view drift into disagreeing about which session holds a key.
 
 Two shapes make that precedence load-bearing rather than cosmetic:
 
@@ -767,7 +772,7 @@ Two shapes make that precedence load-bearing rather than cosmetic:
 State and resource mutations emit streaming events:
 
 - `state_change` items track each scope operation
-- `resource_change` items track resource mutations. Content writes (`writeContent`) emit on both single resources and collection instances (FIX-756 parity) — always without a delta, since content carries no state projection; clients take the batched-refetch path for content
+- `resource_change` items track resource mutations. Content writes (`writeContent`) emit on both single resources and collection instances (FIX-756 parity) — always without a delta, since content carries no state projection; clients take the batched-refetch path for content. A content `resource_change` signals that a write was made, not that the stored body differs from before — rewriting the same body still emits one
 - `state_snapshot` items capture the full sequencer state at each step boundary (initial + after every step)
 - `state_change` and `resource_change` items are **invalidation signals** — clients should refetch snapshots for source-of-truth reads
 - In production mode, these items are transient (stream-only, not persisted)

@@ -60,6 +60,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
   const flowKind = options.flowKind ?? context.flowKind;
   const userId = options.userId ?? context.userId ?? "devuser";
   const baseUrl = options.baseUrl ?? context.baseUrl;
+  const apiPath = context.apiPath;
 
   const [flows, setFlows] = useState<FlowListEntry[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -69,8 +70,8 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
   const [isLoading, setIsLoading] = useState(false);
 
   const sessionClient = useMemo(
-    () => createSessionClient({ baseUrl }),
-    [baseUrl]
+    () => createSessionClient({ baseUrl, apiPath }),
+    [baseUrl, apiPath]
   );
 
   const client = useMemo(
@@ -78,9 +79,10 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
       createClient({
         flowKind: flowKind ?? "unknown-flow",
         userId,
-        baseUrl
+        baseUrl,
+        apiPath
       }),
-    [flowKind, userId, baseUrl]
+    [flowKind, userId, baseUrl, apiPath]
   );
 
   const createSession = useCallback(

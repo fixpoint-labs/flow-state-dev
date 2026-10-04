@@ -52,7 +52,7 @@ interface SlackEnvelope {
 }
 
 export const flowstate = createFlowState({
-  flows: { slackFlow },
+  flows: { slack: slackFlow() },
   stores: { default: { primary: inMemoryStores() } },
   adapters: [
     createWebhookTransportAdapter({
@@ -109,6 +109,7 @@ interface SlackEventCallback {
 
 export const slackFlow = defineFlow({
   kind: "slack",
+  actions: {}, // no caller-facing actions: webhooks are the only way in
   authentication: { defaultUserId: "slack-bot", requireUser: false },
   webhooks: {
     slack: {

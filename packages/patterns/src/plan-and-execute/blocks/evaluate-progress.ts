@@ -125,7 +125,7 @@ export function createTaskEvaluator(options: DefaultEvaluatorOptions) {
 
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId,
       });
       const tasks = collection.list();
@@ -167,7 +167,7 @@ export function createLLMEvaluator(options: {
     user: async (_input: unknown, ctx) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId,
       });
       const tasks = collection.list();

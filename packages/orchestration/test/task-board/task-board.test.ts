@@ -201,7 +201,7 @@ describe("taskBoard - backing + seed descriptor", () => {
     const board = taskBoard({
       name: "fac",
       collection: (ctx) =>
-        getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "fac" }),
+        getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "fac" }),
       workers: noop(),
     });
     expect(board.backing).toBe("factory");
@@ -739,12 +739,12 @@ describe("taskBoard - mid-drain enqueue", () => {
         processed.push(input.goal);
         const collection = await getOrCreateTaskCollection({
           ctx,
-          backing: "sequencer",
+          backing: "state",
           collectionId: "fanout",
           // Workers spawned under `forEach` see their own nested
           // `ctx.sequencer`. Reach for the board's StateRef via
           // `ctx.getTarget(boardName)` to mutate the shared collection.
-          sequencer: ctx.getTarget("fanout")!,
+          state: ctx.getTarget("fanout")!,
         });
         if (input.goal === "seed") {
           await collection.addTask({ id: "child-a", goal: "child-a" });
@@ -855,9 +855,9 @@ describe("taskBoard - failure handling", () => {
           scheduled = true;
           const collection = await getOrCreateTaskCollection({
             ctx,
-            backing: "sequencer",
+            backing: "state",
             collectionId: "df",
-            sequencer: ctx.getTarget("deps-fail")!,
+            state: ctx.getTarget("deps-fail")!,
           });
           setTimeout(() => {
             collection.cancel("d", "dep errored").catch(() => undefined);
@@ -913,9 +913,9 @@ describe("taskBoard - parked", () => {
           scheduled = true;
           const collection = await getOrCreateTaskCollection({
             ctx,
-            backing: "sequencer",
+            backing: "state",
             collectionId: "review",
-            sequencer: ctx.getTarget("hitl")!,
+            state: ctx.getTarget("hitl")!,
           });
           setTimeout(() => {
             collection.unpark("park").catch(() => undefined);
@@ -1089,9 +1089,9 @@ describe("taskBoard - onIdle modes", () => {
           added = true;
           const collection = await getOrCreateTaskCollection({
             ctx,
-            backing: "sequencer",
+            backing: "state",
             collectionId: "wm",
-            sequencer: ctx.getTarget("wait-mode")!,
+            state: ctx.getTarget("wait-mode")!,
           });
           setTimeout(() => {
             collection
@@ -1145,9 +1145,9 @@ describe("taskBoard - remix blocks", () => {
       );
       return getOrCreateTaskCollection({
         ctx,
-        backing: "sequencer",
+        backing: "state",
         collectionId: "remix",
-        sequencer: (outer ?? ctx.sequencer!) as never,
+        state: (outer ?? ctx.sequencer!) as never,
       });
     };
 
@@ -1602,7 +1602,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
       execute: async (_input, ctx) => {
         const collection = await getOrCreateTaskCollection({
           ctx,
-          backing: "request",
+          backing: "state",
           collectionId: "reentry-basic",
         });
         await collection.addTask({
@@ -1660,7 +1660,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
         execute: async (_input, ctx) => {
           const collection = await getOrCreateTaskCollection({
             ctx,
-            backing: "request",
+            backing: "state",
             collectionId: "reentry-three-rounds",
           });
           for (const id of ids) {
@@ -1717,7 +1717,7 @@ describe("taskBoard - re-entry (request-scoped collection)", () => {
       execute: async (_input, ctx) => {
         const collection = await getOrCreateTaskCollection({
           ctx,
-          backing: "request",
+          backing: "state",
           collectionId: "reentry-concurrent",
         });
         for (let i = 0; i < 8; i += 1) {
@@ -1919,9 +1919,9 @@ describe("taskBoard - seed idempotency", () => {
       collection: (ctx) =>
         getOrCreateTaskCollection({
           ctx,
-          backing: "sequencer",
+          backing: "state",
           collectionId: "seed-twice",
-          sequencer: ctx.sequencer!,
+          state: ctx.sequencer!,
         }),
       initialTasks: [
         { id: "a", goal: "alpha", input: { topic: "alpha" } },
@@ -2005,9 +2005,9 @@ describe("taskBoard - item attribution (FIX-658)", () => {
           ctx.emit.message("discoverer step 1");
           const collection = await getOrCreateTaskCollection({
             ctx,
-            backing: "sequencer",
+            backing: "state",
             collectionId: "fanout",
-            sequencer: ctx.getTarget("fanout")!,
+            state: ctx.getTarget("fanout")!,
           });
           await collection.addTask({ id: "analyzer", goal: "analyzer" });
           await analyzerEmitted.promise;

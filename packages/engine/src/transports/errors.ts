@@ -93,6 +93,25 @@ export class ConcurrencyQueueTimeoutError extends Error {
 }
 
 /**
+ * The reason a run is stopped when the place it held on a shared lease backend
+ * is lost: a renewal found the place gone, or no renewal landed for half the
+ * backend's lease. Past that point another process may take the key, so the
+ * run is stopped rather than left to overlap the next holder.
+ */
+export class ConcurrencyLeaseLostError extends Error {
+  readonly key: string;
+
+  constructor(key: string) {
+    super(
+      `Lost the place on concurrency key "${key}": it could not be kept, so the run was stopped ` +
+        `rather than left running beside the next one.`
+    );
+    this.name = "ConcurrencyLeaseLostError";
+    this.key = key;
+  }
+}
+
+/**
  * Thrown at host construction when two adapters declare the same
  * `(method, path)` pair. The message names both adapter sources and the
  * colliding path so the failure is actionable.

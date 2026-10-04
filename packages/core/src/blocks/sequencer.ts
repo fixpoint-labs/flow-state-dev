@@ -2441,9 +2441,7 @@ function createSequencer<
         lastOutputSchema,
         undefined,
         accumulatedResources,
-        // Preserve the prior implicit positional default for capabilityRefs;
-        // forward only the constant own-resources set.
-        undefined,
+        capabilityRefs,
         ownDeclaredResources,
         childBlocks
       );

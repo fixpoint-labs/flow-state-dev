@@ -24,7 +24,7 @@ import {
 } from "../../src/task-board/blocks/record-result";
 import { TaskBoardRecorderFailureError } from "../../src/task-board/blocks/recorder-failure";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   ticketForClaim,
   type TaskCollectionRef,
 } from "../../src/tasks";
@@ -50,9 +50,9 @@ async function claimedWithFailingAnnouncement(
   const state = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
     tasks: {},
   });
-  const inner = createSequencerBackedTaskCollection({
+  const inner = createStateBackedTaskCollection({
     collectionId: "tasks",
-    sequencer: state,
+    state: state,
   });
   await inner.addTask({ id: "t", goal: "work" });
   const task = (await inner.claim("w"))!;

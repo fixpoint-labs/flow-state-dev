@@ -149,8 +149,8 @@ export interface ResumeContext {
    * resolved. `ctx.suspend()` matches on it so only the resolving gate returns
    * the resume payload (or throws on reject); every other gate reached during
    * the same replay re-suspends normally. Set by the server at re-entry from
-   * the ReplayLog's `pendingSuspension()`. Absent on the legacy two-request
-   * path, where `ctx.suspend()` falls back to first-gate matching (FIX-811).
+   * the ReplayLog's `pendingSuspension()`, overwriting any supplied value; a
+   * resolution without it matches no gate.
    */
   pendingBlockLogicalId?: string;
 }

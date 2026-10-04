@@ -7,7 +7,7 @@
  * An `agent` seat answers through `agent-answer` (or
  * `agent-answer-with-activate-tool`, when the seat turns that tool on); both
  * share `agentSeatMock`, keyed on its own scenario markers: one answers in a
- * channel through `post-to-channel`, one files a case through `escalate` and
+ * mailbox through `post-to-mailbox`, one files a case through `escalate` and
  * then says so, and one names the tokens the seat could see from before the
  * turn. Under the goal checks' `no-history` control the scripted model is
  * handed only the system messages and the latest turn.
@@ -16,9 +16,9 @@
  * `policy: "allow"` (set in `test/mock-flowstate.ts`) catches anything else
  * with a no-op model.
  *
- * A routed channel's one evaluation, block name `channel-route`, is scripted
- * by `channelRouteMock`: `[route:<member>]` in a post picks that member, and
- * a post that names none fails the call, so the channel's fallback takes it.
+ * A routed mailbox's one evaluation, block name `mailbox-route`, is scripted
+ * by `mailboxRouteMock`: `[route:<member>]` in a post picks that member, and
+ * a post that names none fails the call, so the mailbox's fallback takes it.
  *
  * `assistantMock` uses a hand-rolled scenario dispatcher because the
  * built-in `mockGenerator` only supports either plain sequential steps
@@ -98,37 +98,37 @@ const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
     steps: [{ text: "[reply:talk-to-seat] Noted, I have your message." }],
   },
   {
-    // A post to a channel the seat is a member of (FIX-1590). The seat hears
-    // it as `<writer> in <channel>: <body>`, so the marker is still in the turn.
+    // A post to a mailbox the seat is a member of (FIX-1590). The seat hears
+    // it as `<writer> in <mailbox>: <body>`, so the marker is still in the turn.
     match: (turn) => turn.includes("[scenario:wake]"),
-    steps: [{ text: "[reply:wake] Heard it in the channel." }],
+    steps: [{ text: "[reply:wake] Heard it in the mailbox." }],
   },
   {
-    // A post the seat answers in the channel itself (FIX-1594). The first step
-    // calls `post-to-channel` with no text, so the real tool runs, into the
-    // channel the heard turn names; the second says so in the seat's own
-    // conversation. The line carries `[reply:in-channel]` and the post's
+    // A post the seat answers in the mailbox itself (FIX-1594). The first step
+    // calls `post-to-mailbox` with no text, so the real tool runs, into the
+    // mailbox the heard turn names; the second says so in the seat's own
+    // conversation. The line carries `[reply:in-mailbox]` and the post's
     // `reply-token-…`, never the scenario marker, so a seat that hears the
     // line does not answer it again. A seat without the tool posts nothing.
-    match: (turn) => turn.includes("[scenario:reply-in-channel]"),
-    steps: replyInChannel,
+    match: (turn) => turn.includes("[scenario:reply-in-mailbox]"),
+    steps: replyInMailbox,
   },
   {
     // The same answer, held about three seconds first, so a page can be seen
     // showing the seat as working on the post before its line lands.
     match: (turn) => turn.includes("[scenario:reply-after-a-hold]"),
     holdMs: 3_000,
-    steps: replyInChannel,
+    steps: replyInMailbox,
   },
   {
     // The wake's text answer, held about three seconds first. It never calls
     // the post tool, so on a routed post its line lands only as the kind's own
     // landing, and the hold outlasts the person's own post request: a page is
     // seen showing the seat as working before that line, and a page that does
-    // not follow the channel live never sees the line without a reload.
+    // not follow the mailbox live never sees the line without a reload.
     match: (turn) => turn.includes("[scenario:wake-after-a-hold]"),
     holdMs: 3_000,
-    steps: [{ text: "[reply:wake] Heard it in the channel." }],
+    steps: [{ text: "[reply:wake] Heard it in the mailbox." }],
   },
   {
     // What the seat can see from before this turn (FIX-1611 BR-19): every
@@ -147,12 +147,12 @@ const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
     // `escalate` with the post's token in the case, so the real tool runs; the
     // second says it filed, or, when the tool reports it filed nothing, says
     // that instead. `[forge-author]` makes the call also name an author, a
-    // board and a channel of its own, which the tool's input does not carry.
+    // board and a mailbox of its own, which the tool's input does not carry.
     match: (turn) => turn.includes("[scenario:needs-a-person]"),
     steps: (turn, toolResults) => {
       const token = TOKEN.exec(turn)?.[0] ?? "no-token";
       const forged = turn.includes("[forge-author]")
-        ? { author: "support.fsd", board: "followups", channel: "support.elsewhere" }
+        ? { author: "support.fsd", board: "followups", mailbox: "support.elsewhere" }
         : {};
       return [
         {
@@ -173,26 +173,26 @@ const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
 ];
 
 /**
- * A seat's answer in the channel its heard turn names: `post-to-channel` with
+ * A seat's answer in the mailbox its heard turn names: `post-to-mailbox` with
  * no text first, so the real tool runs, then a line in the seat's own
- * conversation. The line carries `[reply:in-channel]` and the post's
+ * conversation. The line carries `[reply:in-mailbox]` and the post's
  * `reply-token-…`, never a scenario marker, so a seat that hears the line does
  * not answer it again.
  */
-function replyInChannel(turn: string): MockGeneratorScriptStep[] {
-  const channel = /^"?\S+ in ([^\s:]+): /.exec(turn)?.[1] ?? "no-channel";
+function replyInMailbox(turn: string): MockGeneratorScriptStep[] {
+  const mailbox = /^"?\S+ in ([^\s:]+): /.exec(turn)?.[1] ?? "no-mailbox";
   const token = /reply-token-[a-z0-9]+/.exec(turn)?.[0] ?? "no-token";
   return [
     {
       toolCalls: [
         {
           toolCallId: `tc_${token}`,
-          toolName: "post-to-channel",
-          args: { channel, body: `[reply:in-channel] ${token} Refunds post on Fridays.` },
+          toolName: "post-to-mailbox",
+          args: { mailbox, body: `[reply:in-mailbox] ${token} Refunds post on Fridays.` },
         },
       ],
     },
-    { text: "[reply:in-channel] Answered in the channel." },
+    { text: "[reply:in-mailbox] Answered in the mailbox." },
   ];
 }
 
@@ -333,17 +333,17 @@ export function holdBeforeAnswer(generator: string, input: unknown): number {
 }
 
 /**
- * A routed channel's evaluation. Reads the post from the state the route
+ * A routed mailbox's evaluation. Reads the post from the state the route
  * hands it (`{ recent, post: { from, text } }`): `[route:<member>]` picks that
- * member, where `<member>` is the id a channel's `members:` lists. A post
- * that names none fails the call, which sends it to the channel's fallback.
+ * member, where `<member>` is the id a mailbox's `members:` lists. A post
+ * that names none fails the call, which sends it to the mailbox's fallback.
  */
-export const channelRouteMock = mockEvaluationModel({
+export const mailboxRouteMock = mockEvaluationModel({
   answers: ({ state }) => {
     const text = (state as { post?: { text?: unknown } }).post?.text;
     const member = typeof text === "string" ? /\[route:([^\]\s]+)\]/.exec(text)?.[1] : undefined;
     if (member === undefined) {
-      throw new Error("channel-route (test mode): the post names no [route:<member>], so the call fails");
+      throw new Error("mailbox-route (test mode): the post names no [route:<member>], so the call fails");
     }
     return { member: { type: "choice", choice: member } };
   },

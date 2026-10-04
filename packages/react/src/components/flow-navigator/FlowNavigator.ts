@@ -657,7 +657,8 @@ function useDefaultSources(
   client: FlowNavigatorFlowSource | undefined,
   sessionClient: FlowNavigatorSessionSource | undefined,
   userId: string | undefined,
-  baseUrl: string | undefined
+  baseUrl: string | undefined,
+  apiPath: string | undefined
 ): { flows: FlowNavigatorFlowSource; sessions: FlowNavigatorSessionSource } {
   // Memoised so the fences below key on one stable object. A fresh client each
   // render would retire and re-open every read, forever.
@@ -667,10 +668,10 @@ function useDefaultSources(
         client ??
         // `flowKind` is required to build a client and unused by `listFlows`,
         // which addresses the server's whole registry.
-        createClient({ flowKind: "flow-navigator", userId: userId ?? "anonymous", baseUrl }),
-      sessions: sessionClient ?? createSessionClient({ baseUrl })
+        createClient({ flowKind: "flow-navigator", userId: userId ?? "anonymous", baseUrl, apiPath }),
+      sessions: sessionClient ?? createSessionClient({ baseUrl, apiPath })
     }),
-    [client, sessionClient, userId, baseUrl]
+    [client, sessionClient, userId, baseUrl, apiPath]
   );
 }
 
@@ -686,7 +687,8 @@ export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
     props.client,
     props.sessionClient,
     userId,
-    context.baseUrl
+    context.baseUrl,
+    context.apiPath
   );
 
   const inventory = useFlowInventory(sources.flows);

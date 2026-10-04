@@ -34,9 +34,9 @@ describe("sequencer-state integration", () => {
       execute: async (_input, ctx) => {
         const collection = await getOrCreateTaskCollection({
           ctx,
-          backing: "sequencer",
+          backing: "state",
           collectionId: "plan",
-          sequencer: ctx.sequencer!,
+          state: ctx.sequencer!,
         });
         await collection.addTask({ id: "a", goal: "alpha" });
         await collection.addTask({ id: "b", goal: "beta" });
@@ -52,9 +52,9 @@ describe("sequencer-state integration", () => {
       execute: async (_input, ctx) => {
         const collection = await getOrCreateTaskCollection({
           ctx,
-          backing: "sequencer",
+          backing: "state",
           collectionId: "plan",
-          sequencer: ctx.sequencer!,
+          state: ctx.sequencer!,
         });
         const task = await fifoDispatcher.claim(collection, "worker-1", ctx);
         if (task !== null) {
@@ -103,9 +103,9 @@ describe("sequencer-state integration", () => {
       execute: async (_input, ctx) => {
         const collection = await getOrCreateTaskCollection({
           ctx,
-          backing: "sequencer",
+          backing: "state",
           collectionId: "plan",
-          sequencer: ctx.sequencer!,
+          state: ctx.sequencer!,
         });
         await collection.addTask({ id: "t", goal: "do" });
         await collection.claim("w");
@@ -159,9 +159,9 @@ describe("sequencer-state integration", () => {
       execute: async (_input, ctx) => {
         const collection = await getOrCreateTaskCollection({
           ctx,
-          backing: "sequencer",
+          backing: "state",
           collectionId: "plan",
-          sequencer: ctx.sequencer!,
+          state: ctx.sequencer!,
         });
         await collection.addTask({ id: "a", goal: "alpha" });
         return null;

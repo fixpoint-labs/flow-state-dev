@@ -25,7 +25,7 @@ export type {
   TargetRef
 } from "./block";
 
-export { asRuntime } from "./block";
+export { asRuntime, itemScope } from "./block";
 
 export type {
   LivenessAnswers,
@@ -308,6 +308,7 @@ export type {
   SessionMetadata,
   SessionMetadataInput,
   SessionScopeHandle,
+  StopRequestOutcome,
   UserScopeHandle
 } from "./scope";
 

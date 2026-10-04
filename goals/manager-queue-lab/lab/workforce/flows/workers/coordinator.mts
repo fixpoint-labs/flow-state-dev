@@ -5,7 +5,7 @@
  * This is the seat that files work, and the **grant is the composition**:
  *
  * ```ts
- * uses: [channelBoardTaskTools(work)]   // <- the whole of it
+ * uses: [mailboxBoardTaskTools(work)]   // <- the whole of it
  * ```
  *
  * The eight task tools arrive as capability **controls**, minted per resolver
@@ -46,9 +46,9 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { buildTaskToolsList } from "@flow-state-dev/orchestration";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
-  channelBoardTaskTools,
+  mailboxBoardTaskTools,
   workerConfigSchema,
-  type ChannelBoardCollection,
+  type MailboxBoardCollection,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { ledgerOf, rowsOf } from "../../../ledger.mts";
@@ -119,8 +119,8 @@ function noteTool(): GeneratorTool {
 }
 
 export interface CoordinatorWorkerFlowOptions {
-  /** The channel's own ledger — the one the `CHANNEL.md` declared by name. */
-  board: ChannelBoardCollection;
+  /** The mailbox's own ledger — the one the `MAILBOX.md` declared by name. */
+  board: MailboxBoardCollection;
   /**
    * Whether this kind composes the board capability.
    *
@@ -196,7 +196,7 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
    * Separate from the queue read because the two answer different questions and
    * a check needs both: the view is what a coordinator sees, and this is the
    * ledger the view has to be derivable from. It is also the only route to
-   * `claimedBy` and `leaseUntil` — the channel's own `readBoard` publishes an
+   * `claimedBy` and `leaseUntil` — the mailbox's own `readBoard` publishes an
    * allowlist that deliberately drops both, which is right for a public
    * projection and useless for grading a running/queued split.
    */
@@ -280,7 +280,7 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
     flowConfigSchema: coordinatorSettingsSchema(),
     // The grant, and the whole of it — under the lab's own door.
     ...(options.composeBoard && door === "capability"
-      ? { uses: [channelBoardTaskTools(board)] }
+      ? { uses: [mailboxBoardTaskTools(board)] }
       : {}),
     // Under the control's door the capability is gone, so the board resource it
     // would have installed has to be declared by hand — which is itself part of

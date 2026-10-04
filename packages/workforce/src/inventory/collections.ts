@@ -4,8 +4,8 @@
  * registered*, not *is open now*.
  *
  * The declared layer answers "what did somebody write down": a folder of
- * `WORKER.md` and `CHANNEL.md` files, read at boot. It cannot answer "which
- * channels is this seat in", because a block does not walk folders, and it
+ * `WORKER.md` and `MAILBOX.md` files, read at boot. It cannot answer "which
+ * mailboxes is this seat in", because a block does not walk folders, and it
  * cannot answer "which of these were registered", because a file has no idea.
  * These rows are that second answer. The two layers join on one thing, the record's
  * `id`, and nothing else — no mapping table, no second identity.
@@ -15,19 +15,22 @@
  * everything:
  *
  *   inventory/seats/<seatId>                which seats were registered in this org
- *   inventory/channels/<channelId>          which channels were registered, and who was in them
- *   inventory/members/<seatId>/<channelId>  which channels one seat is in
+ *   inventory/mailboxes/<mailboxId>          which mailboxes were registered, and who was in them
+ *   inventory/members/<seatId>/<mailboxId>  which mailboxes one seat is in
  *
  * The third is the second one indexed the other way round. Its key shape is the
- * whole point: the seat id is a complete path segment ahead of the channel id,
- * so "which channels is this seat in" is answerable from the key rather than
- * from a `members` array inside a channel row's value. That is a statement
+ * whole point: the seat id is a complete path segment ahead of the mailbox id,
+ * so "which mailboxes is this seat in" is answerable from the key rather than
+ * from a `members` array inside a mailbox row's value. That is a statement
  * about what a prefix can reach, NOT about reading less — see
  * {@link membershipPrefix}, which measures it. {@link membershipPrefix} spells
  * that prefix; {@link membershipKey} spells the row.
  *
  * These keys are a public surface. Moving one is a breaking change for any app
- * whose rows are already persisted, because nothing here ever deletes a row.
+ * whose rows are already persisted. Nothing here deletes a row for going
+ * missing. The two removals are `fire`'s, of a hired seat's own row in
+ * `inventory/seats/`, and a mailbox row whose id became a project talk
+ * template (see `open-inventory.ts`).
  *
  * ## The browser read
  *
@@ -35,7 +38,7 @@
  * (`GET /sessions/:id/resources/:ref`) serves their rows to a browser instead
  * of refusing with `403 State read not permitted`. That is how the DevTool's
  * Inventory tab — and any app's own browser code — names the organization's
- * seats, channels and memberships.
+ * seats, mailboxes and memberships.
  *
  * What it opens is exactly the SESSION'S organization's rows and no other's.
  * The route resolves rows through the session's stored `orgId`, and a session
@@ -50,7 +53,10 @@
  * Each read names its fields with `expose` rather than the identity default
  * (BP-015), so a key added to a row later stays server-side until someone adds
  * it to the list. A row means *was registered in this organization*, not *is
- * open now*: nothing deletes one, so a reader must label it that way.
+ * open now*: nothing deletes one for going missing, so a reader must label it
+ * that way. Firing a hired seat removes its row; a row an earlier version's
+ * fire left behind has no roster row, and `listedSeatRows` is the join that
+ * hides it.
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";
@@ -77,49 +83,75 @@ export const seatInventoryRowSchema = z.object({
   id: z.string().min(1),
   /** The flow kind this seat was hired into, e.g. the built-in `"agent"`. */
   kind: z.string().min(1),
+  /**
+   * The seat's door: the one public action its kind declares that takes a
+   * person's message (`userMessage`, `{ message }` input). `null` when the
+   * kind has none, or declares two (a hire problem). Defaulted so a row
+   * written before doors were published reads as no door (BP-030); the next
+   * boot rewrites it.
+   */
+  door: z.string().nullable().default(null),
+  /**
+   * Where the seat came from: `true` for a seat hired at runtime (its id is
+   * its address, `<org>.<seatId>`), `false` for a declared one. A team list
+   * reads this rather than the id's shape, because a declared team can share
+   * the organization's name. `null` on a row written before the field existed
+   * (BP-023, BP-030), or by a caller that couldn't say; the next boot rewrites
+   * a seat that is still registered.
+   */
+  hired: z.boolean().nullable().default(null),
+  /**
+   * The incarnation of the hire or repair that published this row (see
+   * `roster/incarnation.ts`). Fire deletes a hired seat's row only when it
+   * carries the incarnation fired (`null` only for a roster row from before
+   * incarnations), so a seat hired again at the same address keeps its row,
+   * and never deletes a declared seat's. `null` on a declared seat's row and
+   * on a row written before the field (BP-023, BP-030).
+   */
+  incarnation: z.string().nullable().default(null),
 });
 
 /** One row of the seat inventory. @see seatInventoryRowSchema */
 export type SeatInventoryRow = z.infer<typeof seatInventoryRowSchema>;
 
 /**
- * One registered channel: its identity, the kind that minted it, who was in it
+ * One registered mailbox: its identity, the kind that minted it, who was in it
  * when it registered, and when it first registered.
  *
- * `members` is the live set — read from the channel's own session state by the
- * channel itself, never copied from the tree. A member list taken from the
+ * `members` is the live set — read from the mailbox's own session state by the
+ * mailbox itself, never copied from the tree. A member list taken from the
  * declared record would be a file-time answer wearing a live name.
  *
  * `members` and `openedAt` carry defaults so a row written before either
  * existed still reads (BP-030); `openedAt` is nullable with a `null` default
  * per BP-023, so consumers `== null`-guard it rather than parsing `""`.
  */
-export const channelInventoryRowSchema = z.object({
-  /** The channel's id, `"<teamId>.<name>"` — also its session id. The join key. */
+export const mailboxInventoryRowSchema = z.object({
+  /** The mailbox's id, `"<teamId>.<name>"` — also its session id. The join key. */
   id: z.string(),
-  /** The channel kind that minted it: the built-in `"channel"`, or an app's own. */
+  /** The mailbox kind that minted it: the built-in `"mailbox"`, or an app's own. */
   kind: z.string(),
-  /** Seat ids currently in the channel, from the channel's own session state. */
+  /** Seat ids currently in the mailbox, from the mailbox's own session state. */
   members: z.array(z.string()).default([]),
-  /** ISO timestamp of when the channel opened, or `null` on a row that predates the field. */
+  /** ISO timestamp of when the mailbox opened, or `null` on a row that predates the field. */
   openedAt: z.string().nullable().default(null),
 });
 
-/** One row of the channel inventory. @see channelInventoryRowSchema */
-export type ChannelInventoryRow = z.infer<typeof channelInventoryRowSchema>;
+/** One row of the mailbox inventory. @see mailboxInventoryRowSchema */
+export type MailboxInventoryRow = z.infer<typeof mailboxInventoryRowSchema>;
 
 /**
- * One membership, keyed seat-first so a seat's channels are a prefix read.
+ * One membership, keyed seat-first so a seat's mailboxes are a prefix read.
  *
  * Both fields are already in the key. They are on the row as well so a listed
  * row answers for itself without the caller re-parsing storage keys — the key
  * shape is the index, not the payload.
  */
 export const membershipIndexRowSchema = z.object({
-  /** The seat in the channel. The first path segment of the row's key. */
+  /** The seat in the mailbox. The first path segment of the row's key. */
   seatId: z.string(),
-  /** The channel it is in. The second. */
-  channelId: z.string(),
+  /** The mailbox it is in. The second. */
+  mailboxId: z.string(),
 });
 
 /** One row of the membership index. @see membershipIndexRowSchema */
@@ -133,7 +165,7 @@ export type MembershipIndexRow = z.infer<typeof membershipIndexRowSchema>;
  * its org state wholesale gets an isolated skills catalog too. That is right
  * for a catalog each flow may reasonably want its own copy of. It is wrong
  * here. An inventory read by only the flow that wrote it answers nothing: the
- * point of these rows is that a seat's flow, a channel's flow and an app's own
+ * point of these rows is that a seat's flow, a mailbox's flow and an app's own
  * flow all see the same ones.
  *
  * Left undefined, `effectiveStorageTuple` (`packages/core/src/flow/defineFlow.ts`)
@@ -149,11 +181,11 @@ const SHARED_ACROSS_FLOWS = false;
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
-const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind"] as const;
+const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired", "incarnation"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
-const CHANNEL_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt"] as const;
+const MAILBOX_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
-const MEMBERSHIP_INDEX_CLIENT_FIELDS = ["seatId", "channelId"] as const;
+const MEMBERSHIP_INDEX_CLIENT_FIELDS = ["seatId", "mailboxId"] as const;
 
 /**
  * The seat inventory — one row per registered seat, at `inventory/seats/*`.
@@ -179,30 +211,30 @@ export function defineSeatInventoryCollection() {
 }
 
 /**
- * The channel inventory — one row per registered channel, at `inventory/channels/*`.
+ * The mailbox inventory — one row per registered mailbox, at `inventory/mailboxes/*`.
  *
  * Install it under any block's `resources` map. Org-scoped and option-free on
  * the same terms as {@link defineSeatInventoryCollection}.
  *
  * @example
- *   resources: { channels: defineChannelInventoryCollection() }
+ *   resources: { mailboxes: defineMailboxInventoryCollection() }
  */
-export function defineChannelInventoryCollection() {
+export function defineMailboxInventoryCollection() {
   return defineResourceCollection({
-    pattern: "inventory/channels/*",
+    pattern: "inventory/mailboxes/*",
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
-    stateSchema: channelInventoryRowSchema,
-    client: { state: { read: true }, expose: CHANNEL_INVENTORY_CLIENT_FIELDS },
+    stateSchema: mailboxInventoryRowSchema,
+    client: { state: { read: true }, expose: MAILBOX_INVENTORY_CLIENT_FIELDS },
   });
 }
 
 /**
- * The membership index — one row per seat-in-channel, at
- * `inventory/members/<seatId>/<channelId>`.
+ * The membership index — one row per seat-in-mailbox, at
+ * `inventory/members/<seatId>/<mailboxId>`.
  *
  * A deep pattern rather than a flat one because the key carries two segments,
- * and the first of them is what a seat's channels are read by. Build keys with
+ * and the first of them is what a seat's mailboxes are read by. Build keys with
  * {@link membershipKey} and prefixes with {@link membershipPrefix}.
  *
  * @example
@@ -219,7 +251,7 @@ export function defineMembershipIndexCollection() {
 }
 
 /**
- * The membership index key for one seat in one channel, relative to the
+ * The membership index key for one seat in one mailbox, relative to the
  * collection's prefix — what `upsert` and `get` take.
  *
  * @throws when either id is empty, contains a path separator, or is a dot
@@ -227,8 +259,8 @@ export function defineMembershipIndexCollection() {
  * seat's prefix and read back as that seat's membership, which no later check
  * would catch: the row is well-formed, just filed under the wrong seat.
  */
-export function membershipKey(seatId: string, channelId: string): string {
-  return `${idSegment(seatId, "seatId")}/${idSegment(channelId, "channelId")}`;
+export function membershipKey(seatId: string, mailboxId: string): string {
+  return `${idSegment(seatId, "seatId")}/${idSegment(mailboxId, "mailboxId")}`;
 }
 
 /**
@@ -236,7 +268,7 @@ export function membershipKey(seatId: string, channelId: string): string {
  * prefix — what `list` takes.
  *
  * The trailing slash is load-bearing. Without it, `"eng.lead"` also matches
- * `"eng.leadership"`, so a seat would read another seat's channels.
+ * `"eng.leadership"`, so a seat would read another seat's mailboxes.
  *
  * What this does *not* buy, measured rather than assumed: the narrowing is not
  * pushed into the store. The runtime loads the collection's own prefix and
@@ -245,10 +277,10 @@ export function membershipKey(seatId: string, channelId: string): string {
  * cheaper way to answer the question today.
  *
  * What the key shape buys is a read that CAN get narrower later. A `members`
- * array lives inside a channel row's value, where no prefix reaches it now or
+ * array lives inside a mailbox row's value, where no prefix reaches it now or
  * after any storage change; a seat id in the key is something a store could
  * push down. Do not restate this as the index moving less data — whether it
- * does depends on how many members a channel has, and on a realistic roster it
+ * does depends on how many members a mailbox has, and on a realistic roster it
  * moves more.
  *
  * @throws on the same ids {@link membershipKey} refuses.

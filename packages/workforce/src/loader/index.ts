@@ -3,24 +3,25 @@
  *
  * The Node-only half of the package. `readDeclaredRoster` is the widest entry
  * point: one call over the readers below, returning the whole declared tree —
- * workers, teams, documents, channels — plus one flattened list of what failed
+ * workers, teams, documents, mailboxes — plus one flattened list of what failed
  * to load, each entry tagged with the layer that reported it. It walks nothing
  * itself, and it collects rather than throws, so the caller keeps its own boot
  * policy. Under it, `readWorkforce` is the entry point an app wanting seats
  * alone still reaches for: it reads the tree and hands back records that already carry their
  * own skills, ready for `hireWorkforce`. Underneath it, `readWorkforceDirectory`
- * scans `teams/<id>/workers/<name>/` and returns one neutral `WorkerManifest`
- * per worker, and `readSeatSkills` reads the skills one seat can see across the
- * three levels it draws from; both stay exported for a caller that wants one
+ * scans `org/workers/<name>/` and `teams/<id>/workers/<name>/` and returns one
+ * neutral `WorkerManifest` per worker, and `readSeatSkills` reads the skills one seat can see across the
+ * levels it draws from (org, team and own for a team seat; org and own for an
+ * org seat, which has no team); both stay exported for a caller that wants one
  * half on its own. Alongside them, `readTeamsDirectory` reads each team's own
  * optional `TEAM.md` — what a team is, and the instructions every seat on it
  * carries — `readResourcesDirectory` scans `org/resources/` and
  * `teams/<id>/resources/` and returns one `ResourceDoc` per document, and
- * `readChannelsDirectory` scans `teams/<id>/channels/<name>/` and returns one
- * `ChannelManifest` per channel, and `readPackagesDirectory` reads every
+ * `readMailboxesDirectory` scans `teams/<id>/mailboxes/<name>/` and returns one
+ * `MailboxManifest` per mailbox, and `readPackagesDirectory` reads every
  * `packages/<name>/PACKAGE.md` at the org, team and worker levels into one
  * `PackageManifest` each. All seven stop there — nothing here builds a
- * flow, an agent, a resource, a channel instance or a registry, and neither
+ * flow, an agent, a resource, a mailbox instance or a registry, and neither
  * does the composer over them.
  *
  * Under all of them sit the walk primitives the readers share, published for
@@ -30,6 +31,10 @@
  * one wording for each refusal, `IGNORED_ENTRIES` is the one list of names
  * that never denote anything, and `validateSegment` is the one rule for what a
  * name in this tree may be. What a reader does inside a team is its own.
+ * One walk continues past the team, unexported: `resource-walk` is the descent
+ * to every place a `resources/` folder may sit, shared by the Markdown reader
+ * here and the module walk in `../codegen`, with the list of those places
+ * beside it.
  *
  * **One rule binds every reader here, and the next one added beside them.**
  * Anything the published convention tells an author they may write is either
@@ -93,11 +98,11 @@ export {
 } from "./read-packages-directory";
 
 export {
-  readChannelsDirectory,
-  type ChannelManifestError,
-  type ChannelManifestErrorKind,
-  type ReadChannelsDirectoryResult,
-} from "./read-channels-directory";
+  readMailboxesDirectory,
+  type MailboxManifestError,
+  type MailboxManifestErrorKind,
+  type ReadMailboxesDirectoryResult,
+} from "./read-mailboxes-directory";
 
 export {
   IGNORED_ENTRIES,
@@ -131,6 +136,6 @@ export type {
   WorkerManifest,
   TeamManifest,
   ResourceDoc,
-  ChannelManifest,
+  MailboxManifest,
   PackageManifest,
 } from "../manifest";

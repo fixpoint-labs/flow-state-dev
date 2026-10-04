@@ -2,16 +2,17 @@
  * The reads the workforce panels share.
  *
  * `Roster`, `BoardColumns` and `BoardList` page a collection; `SeatDetail`
- * reads one item. All go through `useFencedRead`, so the fence protocol lives
- * once. A live `BoardList` reads its board again on the session's changes
- * (`liveBoardDriver`). Internal on purpose — exporting a read would let a host
- * mount it twice.
+ * reads one item. All go through the package's internal `useFencedRead`
+ * (`internal/useFencedRead.ts`), which the flow navigator's reads share, so the
+ * fence protocol lives there, once. A live `BoardList` reads its board again on
+ * the session's changes (`liveBoardDriver`). Internal on purpose — exporting a
+ * read would let a host mount it twice.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { compareItemOrder, type ClientFetch, type ResourceClient } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { useReadFence } from "../../hooks/useReadFence";
 import { coalescedReads, followSession } from "../../internal/followSession";
+import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
 
 /**
  * The panels read one method and no more, and the type says which.
@@ -58,90 +59,10 @@ const EMPTY: PanelRow<never>[] = [];
  */
 const MAX_PAGES = 1000;
 
-function describe(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
-}
-
-type FencedRead<T> = {
-  readonly data: T;
-  readonly isLoading: boolean;
-  readonly error: string | null;
-  readonly refresh: () => void;
-};
-
-/**
- * What starts an identity's reads, when reading once on mount is not all it
- * does. Handed the read (which settles however it went); returns what stops
- * everything it started. Held stable by the caller: a new one restarts the
- * reads. A re-read under rows already drawn shows no loading note: every
- * panel draws that only while it has no rows.
- */
-type ReadDriver = (read: () => Promise<void>) => () => void;
-
-/**
- * One fenced read. `load` is held in a ref so a new closure does not restart
- * the effect; the identity tuple is what restarts it, same as `useReadFence`.
- * A `load` that returns after its identity has been left is discarded.
- */
-function useFencedRead<T>(
-  identity: readonly unknown[],
-  empty: T,
-  failureMessage: string,
-  load: (stillCurrent: () => boolean) => Promise<T>,
-  driver?: ReadDriver
-): FencedRead<T> {
-  const [data, setData] = useState(empty);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
-  const loadRef = useRef(load);
-  loadRef.current = load;
-
-  const fence = useReadFence(identity, () => {
-    setData(empty);
-    setError(null);
-    setIsLoading(true);
-    setHeldIdentity(null);
-  });
-  const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
-
-  const read = useCallback(async () => {
-    const stillCurrent = fence.begin();
-    if (stillCurrent === null) return;
-    setIsLoading(true);
-    setError(null);
-    setHeldIdentity(fence.identity);
-    try {
-      const next = await loadRef.current(stillCurrent);
-      if (!stillCurrent()) return;
-      setData(next);
-    } catch (err) {
-      if (!stillCurrent()) return;
-      setError(describe(err, failureMessage));
-    } finally {
-      if (stillCurrent()) setIsLoading(false);
-    }
-  }, [fence, failureMessage]);
-
-  useEffect(() => {
-    if (driver === undefined) {
-      void read();
-      return;
-    }
-    return driver(read);
-  }, [read, driver]);
-
-  return {
-    data: holdsCurrent ? data : empty,
-    isLoading: holdsCurrent ? isLoading : true,
-    error: holdsCurrent ? error : null,
-    refresh: () => void read()
-  };
-}
-
 /** Where a live read hears about changes, and the transport the stream is sent with. */
 export type PanelLive = {
   readonly baseUrl?: string;
+  readonly apiPath?: string;
   readonly fetcher?: ClientFetch;
 };
 
@@ -181,6 +102,7 @@ function liveBoardDriver(sessionId: string, boardRef: string, live: PanelLive): 
     const close = followSession({
       sessionId,
       baseUrl: live.baseUrl,
+      apiPath: live.apiPath,
       fetcher: live.fetcher,
       itemTypes: ["component"],
       onItem: ({ requestId, item }) => {
@@ -227,12 +149,15 @@ export function usePanelRows<TClient = unknown>(
   live?: PanelLive
 ): PanelRows<TClient> {
   const liveBaseUrl = live?.baseUrl;
+  const liveApiPath = live?.apiPath;
   const liveFetcher = live?.fetcher;
   const isLive = live !== undefined;
   const driver = useMemo(
     () =>
-      isLive ? liveBoardDriver(sessionId, ref, { baseUrl: liveBaseUrl, fetcher: liveFetcher }) : undefined,
-    [isLive, sessionId, ref, liveBaseUrl, liveFetcher]
+      isLive
+        ? liveBoardDriver(sessionId, ref, { baseUrl: liveBaseUrl, apiPath: liveApiPath, fetcher: liveFetcher })
+        : undefined,
+    [isLive, sessionId, ref, liveBaseUrl, liveApiPath, liveFetcher]
   );
   const { data, isLoading, error, refresh } = useFencedRead<readonly PanelRow<TClient>[]>(
     [source, sessionId, ref, limit],
@@ -257,7 +182,7 @@ export function usePanelRows<TClient = unknown>(
         `Stopped after ${MAX_PAGES} pages with more still to read, rather than show part of the list as all of it.`
       );
     },
-    driver
+    { driver }
   );
   return { rows: data, isLoading, error, refresh };
 }

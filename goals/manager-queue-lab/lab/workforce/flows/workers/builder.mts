@@ -61,7 +61,7 @@ import {
   type TaskDispatcher,
   type TaskWorkerInput,
 } from "@flow-state-dev/orchestration/tasks";
-import { workerConfigSchema, type ChannelBoardCollection } from "@flow-state-dev/workforce";
+import { workerConfigSchema, type MailboxBoardCollection } from "@flow-state-dev/workforce";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
 import { ledgerOf } from "../../../ledger.mts";
@@ -151,8 +151,8 @@ function deskDispatcher(assignees: Record<string, string>): TaskDispatcher {
 }
 
 export interface BuilderWorkerFlowOptions {
-  /** The channel's own ledger — the one the `CHANNEL.md` declared by name. */
-  board: ChannelBoardCollection;
+  /** The mailbox's own ledger — the one the `MAILBOX.md` declared by name. */
+  board: MailboxBoardCollection;
   /**
    * Which desk keys have a body on this board — the board's vocabulary.
    *
@@ -282,7 +282,7 @@ export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
     actions: {
       [DRAIN_ENTRY]: {
         block: board.drain,
-        description: "Work this seat's share of the channel's board.",
+        description: "Work this seat's share of the mailbox's board.",
       },
       [HOLD_ENTRY]: {
         block: holdRow,

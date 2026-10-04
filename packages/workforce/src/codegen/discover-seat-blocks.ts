@@ -42,6 +42,7 @@ import {
   validateSegment,
   walkTeams,
 } from "../loader";
+import { typescriptExtension } from "./typescript-module";
 
 /** The folder a block file sits in, at every level it may sit at. */
 export const BLOCKS_SLOT = "blocks";
@@ -65,9 +66,6 @@ export const SEAT_BLOCK_SLOT_PATTERNS: readonly string[] = Object.freeze([
   `teams/*/${WORKERS_LEVEL}/*/${BLOCKS_SLOT}`,
 ]);
 
-/** Extensions that denote a TypeScript module. Anything else in the folder is a note beside the code. */
-const TYPESCRIPT_EXTENSIONS = [".ts", ".tsx"];
-
 /** One block registered for one seat. A team-level file produces one of these per seat on the team. */
 export interface DiscoveredSeatBlock {
   /** The seat it is registered for — `<team>.<worker>`, the worker id. */
@@ -88,11 +86,6 @@ export interface SeatBlockDiscovery {
   seatBlocks: DiscoveredSeatBlock[];
   /** Each refusal, in the order the walk met it. */
   problems: string[];
-}
-
-/** The TypeScript extension this entry carries, or `undefined` when it is not a TypeScript module. */
-function typescriptExtension(entry: string): string | undefined {
-  return TYPESCRIPT_EXTENSIONS.find((extension) => entry.endsWith(extension));
 }
 
 /** One file found in a `blocks/` slot, before it is attached to any seat or package. */
@@ -252,9 +245,10 @@ export async function discoverSeatBlocks(root: string): Promise<SeatBlockDiscove
 
   await refuseToolsFolder(root, "", problems);
 
-  // The organisation level. It has no seats — a worker id is `<team>.<name>`,
-  // so nothing under `org/` is hireable — which is exactly why a `blocks/`
-  // folder there has to be named rather than passed over.
+  // The organisation level. Its own folder registers no seat's blocks, and an
+  // org seat (`org/workers/<name>/`) has no `blocks/` of its own — which is
+  // exactly why a `blocks/` folder there has to be named rather than passed
+  // over.
   const orgDir = path.join(root, "org");
   const org = await openStructuralDirectory(orgDir, "org");
   if (org.refusal !== undefined) problems.push(org.refusal.error.message);
@@ -347,11 +341,11 @@ export async function discoverSeatBlocks(root: string): Promise<SeatBlockDiscove
 }
 
 /**
- * Report a `blocks/` or `tools/` folder beside a worker under a parent that has
- * no seats — today only `org/`.
+ * Report a `blocks/` or `tools/` folder beside a worker under `org/`.
  *
  * Separate from the team walk because the two differ in what they go on to do:
- * a team's workers are seats and are read, and an org's are not.
+ * a team seat's own `blocks/` is read, and an org seat's is not — an org seat
+ * takes tools from the catalog and from packages.
  */
 async function refuseUnderWorkers(
   parentDir: string,

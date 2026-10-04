@@ -16,6 +16,7 @@ export type {
   OrgScopeHandle,
   RequestScopeHandle,
   SessionScopeHandle,
+  StopRequestOutcome,
   UserScopeHandle,
 } from "./types/scope";
 export type { ScopeStateOps } from "./types/state";

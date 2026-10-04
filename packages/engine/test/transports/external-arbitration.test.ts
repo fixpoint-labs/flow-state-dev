@@ -794,3 +794,64 @@ describe("a run a process starts in process, over the deployment's backend", () 
     await first.finished;
   });
 });
+
+describe("a run started in process whose place on the shared backend is lost", () => {
+  it.each(["queue", "reject"] as const)(
+    "is stopped rather than left running beside the next holder (%s)",
+    async (policy) => {
+      // Once the backend no longer has this run's place, another process may
+      // take the key. A run that kept going would overlap it, so it is stopped.
+      let stopped = false;
+      const watch = handler({
+        name: "watch",
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        execute: async (_input, ctx) => {
+          await new Promise<void>((_resolve, reject) => {
+            const stop = (): void => {
+              stopped = true;
+              reject(new DOMException("Aborted", "AbortError"));
+            };
+            if (ctx.signal.aborted) return stop();
+            ctx.signal.addEventListener("abort", stop, { once: true });
+          });
+          return {};
+        }
+      });
+      const flow = defineFlow({
+        kind: "lost-lease",
+        actions: { watch: { block: watch, inputSchema: z.object({}) } },
+        request: { concurrency: policy }
+      })({ id: "lost-lease" });
+      const registry = createFlowRegistry();
+      registry.register(flow);
+      const stores = createInMemoryStores();
+      const shaped = adapterShaped();
+      const backend: ConcurrencyLeaseBackend = {
+        ...shaped,
+        leaseMs: 400,
+        renew: async () => false
+      };
+      const host = createInboundTransportHost({
+        registry,
+        stores,
+        resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+        runtimeConfig: {},
+        arbiter: createConcurrencyArbiter({ backend })
+      });
+      const handle = host.dispatch({
+        source: "http",
+        flowKind: "lost-lease",
+        action: "watch",
+        input: {},
+        requestId: "req_lost",
+        sessionId: "s_alice",
+        principal: { userId: USER, orgId: DEFAULT_ORG_ID }
+      });
+      await handle.accepted;
+      await handle.finished.catch(() => undefined);
+      expect(stopped).toBe(true);
+      expect((await stores.request.get("req_lost"))?.status).toBe("interrupted");
+    }
+  );
+});

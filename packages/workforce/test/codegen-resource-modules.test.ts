@@ -16,7 +16,7 @@
  */
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import fsp from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -26,6 +26,7 @@ import {
   type DiscoveredResourceModule,
 } from "../src/codegen";
 import { readResourcesDirectory } from "../src/loader";
+import { RESOURCE_SLOT_PATTERNS, walkResourcePlaces } from "../src/loader/resource-walk";
 
 const roots: string[] = [];
 
@@ -55,6 +56,50 @@ const DOCUMENT = `---\ndescription: a document\n---\n\nbody`;
 /** Every discovered module as its ref, marked when it sat in a worker's own folder. */
 function found(modules: DiscoveredResourceModule[]): string[] {
   return modules.map((module) => (module.atWorkerRoot ? `${module.ref} (worker root)` : module.ref));
+}
+
+/** Concrete slot paths for each pattern on the list, with two fixture names per `*`. */
+function expandPlaces(patterns: readonly string[]): string[] {
+  return patterns.flatMap((pattern) =>
+    pattern
+      .split("/")
+      .reduce<string[]>(
+        (prefixes, segment) =>
+          prefixes.flatMap((prefix) =>
+            (segment === "*" ? ["one", "two"] : [segment]).map((name) =>
+              prefix === "" ? name : `${prefix}/${name}`,
+            ),
+          ),
+        [""],
+      ),
+  );
+}
+
+/** A `resources/` folder where the convention does not look: the root, mailboxes, a folder inside a worker. */
+const DECOY_SLOTS = [
+  "resources",
+  "org/mailboxes/one/resources",
+  "teams/one/mailboxes/one/resources",
+  "org/workers/one/nested/resources",
+  "teams/one/workers/one/nested/resources",
+];
+
+/**
+ * Folder names the saturated tree recurses on: the convention's structural
+ * names, and `one` for a `*`. Every name multiplies the tree by itself five
+ * levels down, so the slot names (`resources`, `references`, `skills`,
+ * `packages`, `blocks`) are left out: the walk never opens a slot, so a slot
+ * folder cannot change what it yields, and a worker or team that happens to be
+ * named like one is the both-doors fixtures' and the characterization test's.
+ */
+const SATURATED_NAMES = ["org", "teams", "workers", "mailboxes", "one"];
+
+/** One level below the deepest place, a team worker's folder, four folders down. */
+const SATURATED_DEPTH = 5;
+
+/** A list pattern as an anchored matcher, `*` standing for one path segment. */
+function patternMatcher(pattern: string): RegExp {
+  return new RegExp(`^${pattern.split("*").join("[^/]+")}$`);
 }
 
 /** Collect the refusal messages from a walk that should have refused. */
@@ -98,7 +143,7 @@ describe("where the modules are found", () => {
     ]);
   });
 
-  it("mints the same refs the Markdown door mints, over the same tree shape", async () => {
+  it("mints the same refs the Markdown door mints, at every place on the list", async () => {
     // Two claims in one assertion, and both are drift guards. The refs match,
     // so one ref has one owner and the collision check below can see a pair.
     // And *every* ref matches, so the two doors descended into the same
@@ -107,28 +152,62 @@ describe("where the modules are found", () => {
     // output rather than against a list of strings this file wrote down: a
     // second spelling of the rule in a test is how the doors drift apart while
     // both suites stay green.
-    const shape = (extension: string): Record<string, string> => ({
-      [`org/resources/atlas${extension}`]: MODULE,
-      [`org/workers/registrar/resources/ledger${extension}`]: MODULE,
-      [`teams/engineering/resources/research${extension}`]: MODULE,
-      [`teams/engineering/workers/lead/resources/notes${extension}`]: MODULE,
-      [`teams/design/workers/ic/resources/palette${extension}`]: MODULE,
-    });
-    const asModules = tree(shape(".ts"));
+    //
+    // The tree is built from the list of places beside the walk, so a place
+    // added there is tested here without anyone remembering to, and a place on
+    // the list the walk does not visit shows up below as a missing slot.
+    const places = expandPlaces(RESOURCE_SLOT_PATTERNS);
+    const files = (extension: string, body: string): Record<string, string> =>
+      Object.fromEntries([
+        ...places.map((slot) => [`${slot}/placed${extension}`, body]),
+        ...DECOY_SLOTS.map((slot) => [`${slot}/decoy${extension}`, body]),
+      ]);
     // Written separately because one basename cannot be both in one folder —
     // that pair is refused, which is the next block's subject.
-    const asDocuments = tree(
-      Object.fromEntries(Object.keys(shape(".md")).map((path) => [path, DOCUMENT])),
-    );
+    const asModules = tree(files(".ts", MODULE));
+    const asDocuments = tree(files(".md", DOCUMENT));
 
     const { resourceModules } = await discoverWorkforceCode(asModules);
     const { documents, errors } = await readResourcesDirectory(asDocuments);
 
     expect(errors).toEqual([]);
-    expect(documents).toHaveLength(5);
+    // Exactly one module per expanded place, and none from a decoy.
+    expect(resourceModules.map((module) => posix.dirname(module.path)).sort()).toEqual(
+      [...places].sort(),
+    );
+    expect(documents).toHaveLength(places.length);
     expect(resourceModules.map((module) => module.ref).sort()).toEqual(
       documents.map((document) => document.ref).sort(),
     );
+  });
+
+  it("visits exactly the places on the list, over a tree saturated with the convention's folder names", async () => {
+    // The other direction: a place the walk visits that the list lacks. Every
+    // folder holds every name in SATURATED_NAMES, down to one level below the
+    // deepest place, so the walk can reach anywhere a place could plausibly
+    // be added — and nearly all of it is somewhere it must not. The limit: a
+    // visit under a folder name not in SATURATED_NAMES is not caught until the
+    // name is added there.
+    const root = mkdtempSync(join(tmpdir(), "fsd-door-b-saturated-"));
+    roots.push(root);
+    const build = (dir: string, depth: number): void => {
+      mkdirSync(dir, { recursive: true });
+      if (depth === SATURATED_DEPTH) return;
+      for (const name of SATURATED_NAMES) build(join(dir, name), depth + 1);
+    };
+    build(root, 0);
+
+    const yielded = new Set<string>();
+    for await (const step of walkResourcePlaces(root, { workerOrder: (entries) => entries })) {
+      expect(step.type, `unexpected refusal at ${step.path}`).toBe("place");
+      if (step.type !== "place") continue;
+      // The pattern a place carries must describe where it actually is, or the
+      // set below could match while the walk visits somewhere else.
+      expect(`${step.path}/resources`).toMatch(patternMatcher(step.pattern));
+      yielded.add(step.pattern);
+    }
+
+    expect([...yielded].sort()).toEqual([...RESOURCE_SLOT_PATTERNS].sort());
   });
 
   it("finds a .tsx module beside a .ts one", async () => {

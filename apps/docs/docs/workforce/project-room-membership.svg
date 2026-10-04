@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 600" role="img" aria-labelledby="title desc">
+  <title id="title">Who can see a project and who can use its room</title>
+  <desc id="desc">Everyone in the organization can list project rows. Only the users in a row's members list can read or post in its room, and only through their own talk session. Every room call checks the session's owner, as the server recorded it, against members, and never trusts session state. Join binds the session to the project and lists it on the row; it never adds anyone to members. Only creating the project writes members.</desc>
+  <defs>
+    <style>
+      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
+              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
+              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
+              --faint:#94a3b8; --no:#b91c1c; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
+                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
+                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
+                --faint:#64748b; --no:#f87171; } }
+      .bg { fill: var(--bg); }
+      .wall-org { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
+      .wall-mem { fill: var(--org-fill); stroke: var(--org); stroke-width: 3; }
+      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.5; }
+      .room { fill: var(--card); stroke: var(--org); stroke-width: 1.5; }
+      .out { fill: var(--box); stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 5 4; }
+      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
+      .no { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--no); }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="600" rx="16" class="bg"/>
+
+  <text x="28" y="36" class="title">Who can see a project, and who can use its room</text>
+  <text x="28" y="58" class="muted">The project row is visible to the whole organization. The room is behind the members list.</text>
+
+  <!-- Organization wall -->
+  <rect x="28" y="84" width="600" height="380" rx="14" class="wall-org"/>
+  <text x="44" y="108" class="h">Everyone in the organization</text>
+  <text x="44" y="128" class="p">Can list the project rows from the browser</text>
+  <text x="44" y="146" class="muted">id · title · brief · status · owner · members · workstreams · sessions</text>
+
+  <rect x="44" y="164" width="208" height="128" rx="10" class="out"/>
+  <text x="58" y="188" class="h">Dan, not a member</text>
+  <text x="58" y="210" class="p">Sees the project exists</text>
+  <text x="58" y="232" class="no">join: not-a-member</text>
+  <text x="58" y="252" class="no">read, post: refused</text>
+  <text x="58" y="276" class="muted">Nothing is written</text>
+
+  <rect x="44" y="308" width="208" height="140" rx="10" class="out"/>
+  <text x="58" y="332" class="h">Browser, direct</text>
+  <text x="58" y="354" class="p">projects: readable</text>
+  <text x="58" y="376" class="no">room-lines: refused</text>
+  <text x="58" y="398" class="no">room-seq: refused</text>
+  <text x="58" y="422" class="muted">Lines only come back</text>
+  <text x="58" y="438" class="muted">from read on a talk session</text>
+
+  <!-- Members wall -->
+  <rect x="272" y="164" width="340" height="284" rx="14" class="wall-mem"/>
+  <text x="288" y="188" class="h">Members: alice, bob, cara</text>
+  <text x="288" y="206" class="muted">The row’s members list, and nothing else</text>
+
+  <rect x="288" y="220" width="308" height="94" rx="10" class="room"/>
+  <text x="302" y="244" class="h">The room</text>
+  <text x="302" y="266" class="p">Read and posted only through a</text>
+  <text x="302" y="286" class="p">member’s own talk session</text>
+
+  <rect x="288" y="328" width="308" height="104" rx="10" class="card"/>
+  <text x="302" y="352" class="h">Checked on every room call</text>
+  <text x="302" y="374" class="p">The session’s owner, as the server</text>
+  <text x="302" y="394" class="p">recorded it, must be in members</text>
+  <text x="302" y="418" class="muted">join · post · answer · read</text>
+
+  <!-- join panel -->
+  <rect x="648" y="84" width="244" height="380" rx="14" class="box"/>
+  <text x="664" y="108" class="h">What join binds</text>
+  <text x="664" y="132" class="p">This session’s state:</text>
+  <text x="664" y="150" class="code">resourceId: "storefront"</text>
+  <text x="664" y="174" class="p">The row’s sessions list:</text>
+  <text x="664" y="192" class="code">alice → s-1</text>
+  <text x="664" y="216" class="muted">Already listed for this person?</text>
+  <text x="664" y="232" class="muted">That session comes back instead.</text>
+
+  <text x="664" y="270" class="h">What join never does</text>
+  <text x="664" y="294" class="p">Add the caller to members</text>
+  <text x="664" y="318" class="p">Trust the session’s state.</text>
+  <text x="664" y="335" class="muted">resourceId only picks which</text>
+  <text x="664" y="351" class="muted">row to check</text>
+  <text x="664" y="375" class="p">Bind a mailbox’s own session</text>
+  <text x="664" y="392" class="code">talk-on-a-mailbox</text>
+  <text x="664" y="416" class="p">Rebind a session that is</text>
+  <text x="664" y="433" class="p">already on another project</text>
+  <text x="664" y="450" class="code">talk-bound-elsewhere</text>
+
+  <!-- Who writes members -->
+  <rect x="28" y="484" width="864" height="96" rx="12" class="box"/>
+  <text x="44" y="508" class="h">Who writes members</text>
+  <text x="44" y="532" class="p">Only createProject, as the creator’s own grant. The owner is always in it. Nothing a member does adds to it.</text>
+  <text x="44" y="552" class="p">Anyone can create a session and write any state into it, so a session naming a project proves nothing.</text>
+  <text x="44" y="572" class="p">The check reads two things: the row’s members, and the session’s owner as the server recorded it.</text>
+</svg>

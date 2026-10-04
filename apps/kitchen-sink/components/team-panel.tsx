@@ -10,9 +10,9 @@
  * itself.
  *
  * The roster reads through the assistant's session. Each board reads through
- * its own channel's session, whose flow declares it, so a board is drawn before
- * any assistant conversation exists and, when `live`, follows that channel's
- * stream: a case the channel files shows without a reload.
+ * its own mailbox's session, whose flow declares it, so a board is drawn before
+ * any assistant conversation exists and, when `live`, follows that mailbox's
+ * stream: a case the mailbox files shows without a reload.
  */
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { ClientFetch } from "@flow-state-dev/client";
@@ -45,7 +45,7 @@ export interface TeamPanelProps {
    * out the way its reads do. Stable, like the client.
    */
   fetcher: ClientFetch;
-  /** Read each board again whenever its channel keeps a change to it. Off unless asked. */
+  /** Read each board again whenever its mailbox keeps a change to it. Off unless asked. */
   live?: boolean;
   /** Anything the host puts above the roster, such as build mode's artifacts. */
   top?: ReactNode;
@@ -81,10 +81,10 @@ export function TeamPanel({ sessionId, resourceClient, fetcher, live = false, to
         <section key={board.ref} className="border-b px-2 py-3" data-testid={`board-${board.ref}`}>
           <h2 className="px-2 pb-1 text-sm font-semibold">
             {board.board}
-            <span className="ml-1 font-normal text-muted-foreground">· {board.channelId}</span>
+            <span className="ml-1 font-normal text-muted-foreground">· {board.mailboxId}</span>
           </h2>
           <BoardList
-            sessionId={board.channelId}
+            sessionId={board.mailboxId}
             boardRef={board.ref}
             resourceClient={resourceClient}
             fetcher={fetcher}

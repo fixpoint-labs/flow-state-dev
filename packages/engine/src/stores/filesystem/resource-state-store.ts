@@ -52,7 +52,6 @@
  * which bytes a write carries, and by the time the guarded body runs the caller
  * has long had control back.
  */
-import { cloneValue } from "@flow-state-dev/core/helpers";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
   StorageScopeType,
@@ -64,7 +63,8 @@ import type {
 import {
   assertDeleteExpectedVersion,
   assertSetExpectedVersion,
-  checkWriteVersion
+  checkWriteVersion,
+  toStoredState
 } from "../resource-state-predicate";
 import { createKeyedAsyncGate } from "../../utils/keyed-async-gate";
 import { createFilesystemResourceStoreWithLayoutOps } from "./filesystem-resource-store";
@@ -167,7 +167,13 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
       // run-up to their first `await`: memory clones with no `await` at all,
       // and both SQL adapters `JSON.stringify` before their first query. That
       // is the property to check, not the presence of serialization.
-      const snapshot = cloneValue(state);
+      //
+      // The snapshot is the JSON round-trip, not a structured clone (FIX-1266):
+      // a structured clone refuses a function or symbol field that the SQL
+      // adapters silently drop, and keeps a `bigint` until `serializeLeaf`
+      // throws on it inside the gate. Snapshotting the stored form makes this
+      // adapter commit, and refuse, exactly what the others do.
+      const snapshot = toStoredState(state);
       return gate.runExclusive(lockKey(scopeType, scopeId, resourceKey), async () => {
         // Guard first: a write that conflicts never reaches the factory's own
         // mutator, so the legacy re-scan has to happen here or a conflicting

@@ -82,13 +82,18 @@ A phase is the part that knows what the work *is*. Three values:
 ```ts
 const implementPhase = {
   phase: "implement",
-  buildPrompt: (run) => `Implement ${run.issue} in ${run.workspacePath}.`,
+  buildPrompt: (run) =>
+    `${run.task.goal}\n\nWork in ${run.workspacePath}, on branch ${run.branch}.`,
   isDone: (run) =>
     run.stopReport === "stopped-at-limit" ? false : pullRequestExists(run.branch),
 };
 ```
 
 `buildPrompt` runs on every attempt, rebuilt from current state rather than computed once when the row was filed. `isDone` answers whether the job is actually finished — and it is consulted only *after* a successful verdict, never as an alternative route to completion. Both halves have to hold.
+
+`run.task` is the row the manager claimed, as the board handed it over: its `goal`, and its `title`, `context`, `input`, `deps` and `priorWork` when the row has them. A field the row doesn't have is absent, not empty. `isDone` doesn't receive `run.task`.
+
+It's the same on every attempt, so a retry or a run that resumes after someone's message starts from the same task. If a run needs something said in a conversation, write it on the task's `context` when you file it.
 
 `isDone` gets one fact `buildPrompt` does not: `run.stopReport`, how the run itself said it stopped. It is the handle's `outcome`, `"finished"`, `"stopped-at-limit"` or `"failed"`, and it arrives exactly as the harness reported it. A value this version of the framework doesn't define reaches `isDone` unchanged, and never as `"finished"`. `null` means the run reported no terminal result at all, which is a different fact from finishing. What "done" means is entirely the phase's call.
 
@@ -112,11 +117,56 @@ Answer it and the run picks up **the same coding session** — not a new one tol
 
 **A lost session heals rather than failing.** The manager records the session the harness *confirmed* it was in, clears it at the start of every attempt, and never writes back an id it merely sent. So if the agent can no longer find a session, that attempt ends without naming one, and the next starts fresh instead of asking for a dead conversation forever.
 
+## Talking to a run
+
+A person can send a running coding run a message. The run stops where it is, and its next attempt continues **the same coding session** with the message added to its prompt. The checkout and the harness's memory of the conversation both carry over, so the run picks up with what it had already read and tried, plus what you said.
+
+The manager builds the action that does this, which we call its door. Declare it on the flow whose board runs the coding work. The door also needs a way to start the next attempt, so give the flow an `internal` entry that runs the board's drain and pass its name. The door runs that entry in the session that claimed the task, which keeps every attempt of the run in the same session. Internal entries can't be called from outside, so only the door can start the next attempt:
+
+```ts
+const manager = harnessManager({ /* … */ });
+const board = taskBoard({ /* … the board whose rows the manager works */ });
+
+defineFlow({
+  kind: "coder",
+  internal: { actions: { resume: { block: board.drain } } },
+  actions: { message: manager.messageDoor({ drain: "resume" }) },
+  task: { actions: { work: { block: manager } } },
+});
+```
+
+If the board is drained by a different flow, one that hands its rows to this flow, declare the `resume` entry on that flow instead and pass that flow's id as `flowKind` (for a flow with one instance, its kind): `manager.messageDoor({ drain: "resume", flowKind: "coordinator" })`.
+
+Call `message` with `{ message }` on the run's own session, the one the board row's run link names. The person's words go into that session as a user message the moment the action starts, so a UI can show them as delivered by reading the session, not by trusting the response.
+
+What happens depends on where the task is:
+
+| The task is | Your message |
+|---|---|
+| Running | Stops the attempt and continues the session with your message. The action answers `continuing` |
+| Running, but its harness hasn't opened its coding session yet | Held for up to a minute while the attempt starts. If the attempt picks your message up as it starts, it works on it straight away; if the harness opens its session first, it's handled as Running. Either way the action answers `continuing`. A harness that still hasn't opened one after a minute is refused with *this run is still starting* |
+| Running, but it didn't stop in time or couldn't be restarted | Kept, and given to the next attempt. The action answers `kept` |
+| About to start an attempt | Kept, and given to that attempt. The action answers `kept` |
+| Waiting on its own question, or between attempts | Kept, and given to the next attempt. The action answers `kept` |
+| Not started, or finished | Refused, with the reason |
+
+A request that completes answers `{ outcome: "continuing" | "kept", taskId }`.
+
+A refusal fails the request rather than answering with a value, so a request that completed is one whose message landed. The error's message is the reason in words, such as "A finished task takes no message.", and its cause is the door's `TurnRefused` error. A refused message is never handed to a later attempt either.
+
+**A message doesn't spend a retry.** The run parks for your turn and comes back without being charged an attempt, so talking to a run never makes it fail sooner.
+
+**A message isn't an answer.** If the run is waiting on its own question, your message is kept for later but the question still needs answering.
+
+**Only the run's own person can send one.** The session belongs to them, so anyone else is refused before the message is written.
+
+The stop costs the step the run was in the middle of.
+
 ## The checkout
 
 Each task gets its own directory, derived from who the run belongs to plus the board, the issue and the phase. Deriving rather than storing is what lets any later session resolve the same path.
 
-The board can be your own task collection or one a channel holds. A channel's board has an id like `eng.feature.work`; the manager accepts it as is and names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout, and a board whose id worked before keeps its folders and branches. On a channel's board, a row's run belongs to the person who started it, and another person's drain doesn't run it. Give the draining board `runOwnerDispatcher()` and that drain leaves the row untouched, without spending one of its attempts.
+The board can be your own task collection or one a mailbox holds. A mailbox's board has an id like `eng.feature.work`; the manager accepts it as is and names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout, and a board whose id worked before keeps its folders and branches. On a mailbox's board, a row's run belongs to the person who started it, and another person's drain doesn't run it. Give the draining board `runOwnerDispatcher()` and that drain leaves the row untouched, without spending one of its attempts.
 
 A **lease** keeps two attempts out of one tree: a lock file beside the checkout, taken before the tree is provisioned and released on every exit. It carries a token unique to the acquisition, so a replacement's lock is never removed by a process the replacement displaced.
 
@@ -179,6 +229,7 @@ record instead of deriving them again.
 
 - **One host's storage.** Checkouts and their leases are on a local filesystem, so a retry inherits the last attempt's work because that work is on disk. On a multi-host deployment the recorded checkout names nothing on the machine that picks the retry up.
 - **No retention policy.** Run records and question rows grow without bound. Fine for a board driving a few tasks; a long-lived one needs pruning, which is not built.
+- **A harness that can't resume can't be sent a message.** A run on Claude Code's cloud dispatch, which never names a coding session, is refused with *this run's harness can't continue with a message*.
 - **Git worktrees specifically.** The checkout is cut with `git worktree add`. A different strategy — a fresh clone per run, a projected workspace — is not pluggable today.
 
 ## Related pages

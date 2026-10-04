@@ -8,6 +8,7 @@
  * option/resolution interfaces shared across the path.
  */
 import { z } from "zod";
+import type { ClaudeAgentSpawnOptions } from "./process-exit";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { harnessRunHandleSchema } from "@flow-state-dev/core";
 import type { HarnessRunHandle, HarnessRunOutcome } from "@flow-state-dev/core/types";
@@ -46,15 +47,22 @@ const LEGACY_SDK_SOURCE = "sdk";
  * thing a manager reads as "no terminal result arrived" (LAB-154 settles runs
  * on this field). `translate.ts` guards the same hazard by keying its error
  * event off the raw subtype.
+ *
+ * `isError` is the result's `is_error` flag. It only changes a `success`: the
+ * error subtypes already read as a limit or a failure.
  */
 export function outcomeFromResultSubtype(
   subtype: SdkResultSubtype | null,
   terminalResultArrived: boolean,
+  isError = false,
 ): HarnessRunOutcome | null {
   if (!terminalResultArrived) return null;
   switch (subtype) {
     case "success":
-      return "finished";
+      // `success` + `is_error` is the SDK's shape for a turn that ended on an
+      // API error (its docs: the error text is in `result`). The subtype names
+      // how the loop exited; the flag says the turn failed.
+      return isError ? "failed" : "finished";
     case "error_max_turns":
     case "error_max_budget_usd":
       return "stopped-at-limit";
@@ -191,6 +199,12 @@ export type SdkMessageLike =
       result?: string;
       /** Present only on error-subtype results (replaces `result`). */
       errors?: string[];
+      /**
+       * The SDK's failure flag. On a `success` subtype it marks a turn that
+       * ended on an API error, with the error text in `result`, so it is read
+       * beside the subtype, never instead of it.
+       */
+      is_error?: boolean;
       session_id?: string;
       /** `NonNullableUsage` carries `input_tokens`/`output_tokens` (+ cache). */
       usage?: { input_tokens?: number; output_tokens?: number } | null;
@@ -320,6 +334,8 @@ export type TranslatedEvent =
   | {
       kind: "result";
       subtype: SdkResultSubtype | null;
+      /** The result's `is_error` flag; `false` when the SDK omitted it. */
+      isError: boolean;
       finalMessage: string | null;
       sessionId: string | null;
       usage: { inputTokens: number; outputTokens: number } | null;
@@ -381,6 +397,12 @@ export interface ClaudeAgentQueryOptions {
   sandbox?: unknown;
   /** Forwarded to the SDK so an aborted `ctx.signal` stops the run. */
   abortController?: AbortController;
+  /**
+   * The SDK's process-spawn hook. The block sets it so it holds the real
+   * process and can wait for it to exit on abort; a scripted `query` may
+   * ignore it.
+   */
+  spawnClaudeCodeProcess?: (options: ClaudeAgentSpawnOptions) => unknown;
 }
 
 /**

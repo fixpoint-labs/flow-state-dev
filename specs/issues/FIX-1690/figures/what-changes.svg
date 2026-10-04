@@ -1,0 +1,104 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="Before and after for sending a person&#x27;s line to a worker. Today: the task composer, @worker in a workstream and Inbox&#x27;s reply each stop at a disabled line, and nothing reaches a running coding run. After: each composer picks a target session (the task&#x27;s run, the worker&#x27;s current task run, or the ask&#x27;s session) and calls the door that session&#x27;s kind declares, which the Workforce inventory names. For a coding run, the harness manager&#x27;s door keeps the line, stops the attempt through a new generic stop hook in Core and Engine, and parks it without charging an attempt; the next attempt resumes the same coding session with the line as its prompt. The session holding the line is what makes the composer say delivered."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .band  { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .empty { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .door  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .hook  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="today">
+    <rect class="band" x="16" y="16" width="908" height="104" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · THREE COMPOSERS, NO DOOR</text>
+    <rect class="empty" x="32" y="50" width="284" height="54" rx="5"/>
+    <text class="t-b" x="46" y="72">Task composer</text>
+    <text class="t-s c-gone" x="46" y="90">disabled · not planned in the first cut</text>
+    <rect class="empty" x="328" y="50" width="284" height="54" rx="5"/>
+    <text class="t-b" x="342" y="72">@worker in a workstream</text>
+    <text class="t-s c-gone" x="342" y="90">Send disabled · isn't built yet</text>
+    <rect class="empty" x="624" y="50" width="284" height="54" rx="5"/>
+    <text class="t-b" x="638" y="72">Inbox reply</text>
+    <text class="t-s c-gone" x="638" y="90">no box · Approve or Reject only</text>
+  </g>
+
+  <g id="after-label">
+    <text class="t-lbl" x="32" y="150">AFTER · EACH PICKS A SESSION, ONE DOOR</text>
+  </g>
+
+  <g id="composers">
+    <rect class="n-box" x="32" y="162" width="240" height="46" rx="5"/>
+    <text class="t-b" x="46" y="182">Task composer</text>
+    <text class="t-s" x="46" y="198">→ the run its task's link names</text>
+    <rect class="n-box" x="32" y="218" width="240" height="46" rx="5"/>
+    <text class="t-b" x="46" y="238">@worker</text>
+    <text class="t-s" x="46" y="254">→ its current task run here</text>
+    <rect class="n-box" x="32" y="274" width="240" height="46" rx="5"/>
+    <text class="t-b" x="46" y="294">Inbox reply</text>
+    <text class="t-s" x="46" y="310">→ the session the ask sits in</text>
+    <path class="arrow" d="M272 185 C300 185 300 241 318 241"/>
+    <path class="arrow" d="M272 241 H318"/>
+    <path class="arrow" d="M272 297 C300 297 300 241 318 241"/>
+    <path class="head" d="M324 241 l-6 -4 v8 z"/>
+  </g>
+
+  <g id="door">
+    <rect class="door" x="326" y="196" width="262" height="90" rx="5"/>
+    <text class="t-lbl c-code" x="340" y="216">THE DOOR · WORKFORCE CONTRACT</text>
+    <text class="t-b" x="340" y="238">The kind's one action that</text>
+    <text class="t-b" x="340" y="256">declares userMessage</text>
+    <text class="t-s" x="340" y="276">takes { message } · named per seat in the inventory</text>
+  </g>
+
+  <g id="kinds">
+    <path class="arrow" d="M588 222 H614"/>
+    <path class="head" d="M620 222 l-6 -4 v8 z"/>
+    <rect class="n-box" x="622" y="162" width="286" height="46" rx="5"/>
+    <text class="t-b" x="636" y="182">Built-in agent kind · run</text>
+    <text class="t-s" x="636" y="198">a turn in its conversation, unchanged</text>
+    <rect class="door" x="622" y="218" width="286" height="102" rx="5"/>
+    <text class="t-b c-code" x="636" y="238">Coding kind · the manager's door</text>
+    <text class="t-s" x="636" y="256">keeps the line · stops the attempt</text>
+    <text class="t-s" x="636" y="272">parks it, no attempt charged</text>
+    <text class="t-s" x="636" y="288">next attempt resumes the same</text>
+    <text class="t-s" x="636" y="304">coding session, prompted by the line</text>
+    <path class="arrow" d="M588 260 H614"/>
+    <path class="head" d="M620 260 l-6 -4 v8 z"/>
+  </g>
+
+  <g id="hook">
+    <rect class="hook" x="622" y="336" width="286" height="58" rx="5"/>
+    <text class="t-lbl c-acc" x="636" y="356">CORE AND ENGINE · GENERIC</text>
+    <text class="t-b" x="636" y="376">Stop a request in its own session</text>
+    <path class="arrow" d="M765 320 V330"/>
+    <path class="head" d="M765 336 l-4 -6 h8 z"/>
+  </g>
+
+  <g id="delivered">
+    <rect class="n-box" x="32" y="336" width="556" height="58" rx="5"/>
+    <text class="t-lbl" x="46" y="356">DELIVERED · THE SESSION SAYS SO</text>
+    <text class="t-b" x="46" y="376">The line is a user item in the target session, then it says delivered</text>
+  </g>
+
+  <g id="not-here">
+    <text class="t-s" x="32" y="430">Not here: answering an ask (FIX-1671) · filing with a notify (FIX-1474) · live mid-step delivery (the first fork)</text>
+    <text class="t-s" x="32" y="448">App Lab writes no session item and names no kind.</text>
+  </g>
+</svg>

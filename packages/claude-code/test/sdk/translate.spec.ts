@@ -210,6 +210,7 @@ describe("translateSdkMessage", () => {
       {
         kind: "result",
         subtype: "success",
+        isError: false,
         finalMessage: "all done",
         sessionId: "sess_42",
         usage: { inputTokens: 100, outputTokens: 20 },
@@ -219,10 +220,12 @@ describe("translateSdkMessage", () => {
   });
 
   it("maps an error_max_turns result (errors[]) to an error event plus a result event", () => {
-    // Error-subtype results carry `errors: string[]`, never `result`.
+    // Error-subtype results carry `errors: string[]`, never `result`. The SDK
+    // also flags them `is_error`; the error code stays the subtype's own.
     const events = translateOne({
       type: "result",
       subtype: "error_max_turns",
+      is_error: true,
       errors: ["hit the turn limit", "and another detail"],
       session_id: "sess_7",
     });
@@ -231,6 +234,7 @@ describe("translateSdkMessage", () => {
       {
         kind: "result",
         subtype: "error_max_turns",
+        isError: true,
         finalMessage: "hit the turn limit; and another detail",
         sessionId: "sess_7",
         usage: null,
@@ -263,6 +267,30 @@ describe("translateSdkMessage", () => {
     expect(events.map((e) => e.kind)).toEqual(["error", "result"]);
     const result = events.find((e) => e.kind === "result");
     expect(result).toMatchObject({ subtype: "error_max_structured_output_retries" });
+  });
+
+  it("reads a success result flagged is_error as an errored outcome carrying the SDK's text", () => {
+    // The SDK's documented shape for a turn that ended on an API error:
+    // subtype "success", `is_error: true`, and the error text in `result`.
+    const events = translateOne({
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      result: "API Error: 401 invalid x-api-key",
+      session_id: "sess_e",
+    });
+    expect(events).toEqual([
+      { kind: "error", message: "API Error: 401 invalid x-api-key", code: "is_error" },
+      {
+        kind: "result",
+        subtype: "success",
+        isError: true,
+        finalMessage: "API Error: 401 invalid x-api-key",
+        sessionId: "sess_e",
+        usage: null,
+        costUsd: null,
+      },
+    ]);
   });
 
   it("drops usage and cost to null when the result omits them", () => {

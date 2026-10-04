@@ -15,6 +15,25 @@ import { toError } from "./utils";
 import { SuspensionError, SuspensionRejectedError } from "../../errors/suspension-error";
 import { errorDetailsWithCause } from "../../errors/serialize-error";
 
+/** `tool_output.error.code` recorded when a tool's `mapModelOutput` throws. */
+export const MODEL_OUTPUT_MAP_FAILED = "MODEL_OUTPUT_MAP_FAILED";
+
+/**
+ * A tool ran, but its `mapModelOutput` mapper threw. This is the framework's
+ * failure, not the tool's: the owned loop fails the run on it rather than
+ * telling the model the call failed. Recorded on the `tool_output` with
+ * {@link MODEL_OUTPUT_MAP_FAILED} so a resume or recovery fails the same way
+ * instead of replaying the raw output as a success.
+ */
+export class ToolModelOutputMapError extends Error {
+  readonly code = MODEL_OUTPUT_MAP_FAILED;
+  constructor(toolName: string, cause: unknown) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    super(`mapModelOutput for tool "${toolName}" failed: ${reason}`, { cause });
+    this.name = "ToolModelOutputMapError";
+  }
+}
+
 /**
  * Attribution fields stamped on the emitted `tool_output` item. The AI SDK
  * tool-loop path populates these from the parent generator and supplies the
@@ -59,8 +78,9 @@ export type EmitToolOutputAttribution = {
    * a mapper that could observe drifted state. When absent, `modelOutput` is
    * the raw output. Sourced from a tool's `mapModelOutput` declaration by the
    * owned-loop executor; the mapper receives only `output` (its `ctx` is bound
-   * by the caller). Defensive: a throw falls back to the raw output rather than
-   * failing the (successful) tool call.
+   * by the caller). A throw records the call as failed with
+   * {@link MODEL_OUTPUT_MAP_FAILED} and rethrows a {@link ToolModelOutputMapError},
+   * so nothing persists a completed call the model never received.
    */
   mapModelOutput?: (output: unknown) => unknown | Promise<unknown>;
   /**
@@ -157,8 +177,8 @@ export async function emitToolOutputAround(
     if (attribution.mapModelOutput !== undefined) {
       try {
         modelOutput = await attribution.mapModelOutput(output);
-      } catch {
-        modelOutput = undefined;
+      } catch (mapError) {
+        throw new ToolModelOutputMapError(blockName, mapError);
       }
     }
     item.status = "completed";
@@ -166,7 +186,7 @@ export async function emitToolOutputAround(
     if (modelOutput !== undefined) item.modelOutput = modelOutput;
     await ctx.response.emit({
       type: "item.updated",
-      id: itemId,
+      itemId,
       patch: { status: "completed", output, ...(modelOutput !== undefined ? { modelOutput } : {}) },
     });
     await ctx.response.emit({ type: "item.done", item });
@@ -195,7 +215,7 @@ export async function emitToolOutputAround(
     };
     await ctx.response.emit({
       type: "item.updated",
-      id: itemId,
+      itemId,
       patch: { status: "failed", output: undefined, error: item.error },
     });
     await ctx.response.emit({ type: "item.done", item });

@@ -24,7 +24,7 @@
  */
 import { describe, expect, it, beforeEach } from "vitest";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   createResourceBackedTaskCollection,
   MIN_LEASE_DURATION_MS,
   ticketForClaim,
@@ -60,9 +60,9 @@ function sequencerBacking(): BackingFactory {
     });
     const captured = createCapturedChanges();
     return {
-      collection: createSequencerBackedTaskCollection({
+      collection: createStateBackedTaskCollection({
         collectionId: "tasks",
-        sequencer,
+        state: sequencer,
         onChange: captured.onChange,
         now: () => clock,
       }),
@@ -1046,9 +1046,9 @@ describe("retry budget — a declined stale failure records nothing (FIX-948)", 
     const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
       tasks: {},
     });
-    const collection = createSequencerBackedTaskCollection({
+    const collection = createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer,
+      state: sequencer,
       maxTotalRetries: budget === "spent" ? 1 : 10,
       onChange: captured.onChange,
     });
@@ -1463,9 +1463,9 @@ describe("the seam judges the call by what was true WHEN IT RAN (FIX-964)", () =
       tasks: {},
     });
     const captured = createCapturedChanges();
-    const collection = createSequencerBackedTaskCollection({
+    const collection = createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer,
+      state: sequencer,
       onChange: captured.onChange,
       now: () => clock,
     });
@@ -1599,9 +1599,9 @@ describe("resolving fail's route against pre-write budget state (FIX-964)", () =
     const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
       tasks: {},
     });
-    const collection = createSequencerBackedTaskCollection({
+    const collection = createStateBackedTaskCollection({
       collectionId: "budgeted",
-      sequencer,
+      state: sequencer,
       maxTotalRetries: 1,
     });
 
@@ -1652,9 +1652,9 @@ describe("fail's route is a prediction, not a fact (FIX-964)", () => {
     const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
       tasks: {},
     });
-    const collection = createSequencerBackedTaskCollection({
+    const collection = createStateBackedTaskCollection({
       collectionId: "budgeted",
-      sequencer,
+      state: sequencer,
       maxTotalRetries: 1,
     });
 

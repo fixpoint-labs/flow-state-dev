@@ -5,10 +5,10 @@
  * somewhere real? The inventory rows these read are **append-only** — nothing
  * ever deletes one, and `open-inventory.ts` says in its own header that a row
  * means *was registered in this org*, not *still declared*. So a source that
- * simply listed the rows would hand a planner a channel that closed months ago
+ * simply listed the rows would hand a planner a mailbox that closed months ago
  * as somewhere to send work, and every shape assertion over it would be green.
  *
- * That is why the closed-channel and undeclared-seat cases below are the ones
+ * That is why the closed-mailbox and undeclared-seat cases below are the ones
  * that matter, and why each is written as a row that EXISTS alongside one that
  * should be found: a run where both vanish proves nothing.
  */
@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core/types";
 import { workforceManifestSources } from "../src/manifest-sources";
 import type { DeclaredWorkforce } from "../src/manifest-sources";
-import type { ChannelManifest, WorkerManifest } from "../src/manifest";
+import type { MailboxManifest, WorkerManifest } from "../src/manifest";
 
 const worker = (id: string, description?: string): WorkerManifest => ({
   id,
@@ -24,7 +24,7 @@ const worker = (id: string, description?: string): WorkerManifest => ({
   body: ""
 });
 
-const channel = (id: string, description?: string): ChannelManifest => ({
+const mailbox = (id: string, description?: string): MailboxManifest => ({
   id,
   declared: description === undefined ? {} : { description },
   body: ""
@@ -52,20 +52,20 @@ function ctxWith(collections: Record<string, unknown[]>, orgId?: string): never 
 /** The sources, keyed by domain, for a roster and a set of inventory keys. */
 function sourcesOf(
   roster: DeclaredWorkforce,
-  inventory: { seats?: string; channels?: string },
+  inventory: { seats?: string; mailboxes?: string },
   hiredRoster?: string,
 ) {
   const built = workforceManifestSources({ roster, inventory, hiredRoster });
   return Object.fromEntries(built.map((source) => [source.domain, source]));
 }
 
-const EMPTY: DeclaredWorkforce = { workers: [], channels: [] };
+const EMPTY: DeclaredWorkforce = { workers: [], mailboxes: [] };
 
 describe("the seats source", () => {
   it("projects a registered seat that is still declared, with its file's description", async () => {
     const roster: DeclaredWorkforce = {
       workers: [worker("engineering.lead", "Breaks requests into tasks and assigns them.")],
-      channels: []
+      mailboxes: []
     };
     const { seats } = sourcesOf(roster, { seats: "seatRows" });
     const ctx = ctxWith({ seatRows: [{ id: "engineering.lead", kind: "agent" }] });
@@ -83,7 +83,7 @@ describe("the seats source", () => {
   it("BR-12a · withholds a seat whose row survives but whose declaration is gone", async () => {
     const roster: DeclaredWorkforce = {
       workers: [worker("engineering.lead", "Still on the roster.")],
-      channels: []
+      mailboxes: []
     };
     const { seats } = sourcesOf(roster, { seats: "seatRows" });
     // Both rows are present and well-formed. `engineering.scribe` was hired
@@ -99,7 +99,7 @@ describe("the seats source", () => {
   });
 
   it("withholds a row that lost its id rather than projecting an unjoinable entry", async () => {
-    const { seats } = sourcesOf({ workers: [worker("a.b", "Here.")], channels: [] }, {
+    const { seats } = sourcesOf({ workers: [worker("a.b", "Here.")], mailboxes: [] }, {
       seats: "seatRows"
     });
     const ctx = ctxWith({ seatRows: [{ kind: "agent" }, { id: "a.b", kind: "agent" }] });
@@ -108,7 +108,7 @@ describe("the seats source", () => {
   });
 
   it("falls back to the id when a worker file declares no description", async () => {
-    const { seats } = sourcesOf({ workers: [worker("a.b")], channels: [] }, { seats: "seatRows" });
+    const { seats } = sourcesOf({ workers: [worker("a.b")], mailboxes: [] }, { seats: "seatRows" });
     const [entry] = await seats!.entries(ctxWith({ seatRows: [{ id: "a.b", kind: "agent" }] }));
     expect(entry!.purpose).toBe('The seat "a.b". Its file declares no description.');
   });
@@ -146,7 +146,7 @@ describe("the seats source", () => {
   it("FIX-1526 · a file-declared seat still wins over a same-id roster row", async () => {
     const roster: DeclaredWorkforce = {
       workers: [worker("acme.eng.ada", "Declared on disk.")],
-      channels: [],
+      mailboxes: [],
     };
     const { seats } = sourcesOf(roster, { seats: "seatRows" }, "hiredRows");
     const ctx = ctxWith(
@@ -171,7 +171,7 @@ describe("the seats source", () => {
     // whole seats domain degrading to a problem.
     const roster: DeclaredWorkforce = {
       workers: [worker("eng.lead", "Declared on disk.")],
-      channels: [],
+      mailboxes: [],
     };
     const { seats } = sourcesOf(roster, { seats: "seatRows" }, "hiredRows");
     const ctx = ctxWith(
@@ -229,18 +229,18 @@ describe("the seats source", () => {
   });
 });
 
-describe("the channels source", () => {
-  it("projects a registered, still-declared channel with its members", async () => {
+describe("the mailboxes source", () => {
+  it("projects a registered, still-declared mailbox with its members", async () => {
     const roster: DeclaredWorkforce = {
       workers: [],
-      channels: [channel("engineering.standup", "Where the team reports progress each morning.")]
+      mailboxes: [mailbox("engineering.standup", "Where the team reports progress each morning.")]
     };
-    const { channels: source } = sourcesOf(roster, { channels: "channelRows" });
+    const { mailboxes: source } = sourcesOf(roster, { mailboxes: "mailboxRows" });
     const ctx = ctxWith({
-      channelRows: [
+      mailboxRows: [
         {
           id: "engineering.standup",
-          kind: "channel",
+          kind: "mailbox",
           members: ["engineering.lead", "engineering.scribe"],
           openedAt: "2026-01-04T09:00:00.000Z"
         }
@@ -250,7 +250,7 @@ describe("the channels source", () => {
     expect(await source!.entries(ctx)).toEqual([
       {
         id: "engineering.standup",
-        kind: "channel",
+        kind: "mailbox",
         purpose: "Where the team reports progress each morning.",
         contract:
           "2 members: engineering.lead, engineering.scribe. " +
@@ -259,20 +259,20 @@ describe("the channels source", () => {
     ]);
   });
 
-  it("BR-12a · withholds a channel that has closed, and keeps the one that has not", async () => {
+  it("BR-12a · withholds a mailbox that has closed, and keeps the one that has not", async () => {
     const roster: DeclaredWorkforce = {
       workers: [],
-      channels: [channel("engineering.standup", "Still open.")]
+      mailboxes: [mailbox("engineering.standup", "Still open.")]
     };
-    const { channels: source } = sourcesOf(roster, { channels: "channelRows" });
+    const { mailboxes: source } = sourcesOf(roster, { mailboxes: "mailboxRows" });
     // `engineering.retro` reads as open by every signal the ROW carries: it
     // has members and an `openedAt` and no `closedAt` — because there is no
     // such field and no reconcile pass. Its declaration is gone, and that is
     // the only thing that says so.
     const ctx = ctxWith({
-      channelRows: [
-        { id: "engineering.standup", kind: "channel", members: ["a"], openedAt: "2026-01-04T09:00:00.000Z" },
-        { id: "engineering.retro", kind: "channel", members: ["a", "b"], openedAt: "2025-06-01T09:00:00.000Z" }
+      mailboxRows: [
+        { id: "engineering.standup", kind: "mailbox", members: ["a"], openedAt: "2026-01-04T09:00:00.000Z" },
+        { id: "engineering.retro", kind: "mailbox", members: ["a", "b"], openedAt: "2025-06-01T09:00:00.000Z" }
       ]
     });
 
@@ -284,13 +284,13 @@ describe("the channels source", () => {
   it("BR-15 · projects a row written before `members` and `openedAt` existed", async () => {
     const roster: DeclaredWorkforce = {
       workers: [],
-      channels: [channel("engineering.standup", "Opened by an older build.")]
+      mailboxes: [mailbox("engineering.standup", "Opened by an older build.")]
     };
-    const { channels: source } = sourcesOf(roster, { channels: "channelRows" });
+    const { mailboxes: source } = sourcesOf(roster, { mailboxes: "mailboxRows" });
     // Exactly what an old row reads back as once the schema's defaults apply,
     // and what a hand-written row can still be: no members, a null timestamp.
     const ctx = ctxWith({
-      channelRows: [{ id: "engineering.standup", kind: "channel", members: [], openedAt: null }]
+      mailboxRows: [{ id: "engineering.standup", kind: "mailbox", members: [], openedAt: null }]
     });
 
     const [entry] = await source!.entries(ctx);
@@ -299,18 +299,18 @@ describe("the channels source", () => {
   });
 
   it("BR-15 · projects a row that carries neither optional field at all", async () => {
-    const roster: DeclaredWorkforce = { workers: [], channels: [channel("a.b", "Here.")] };
-    const { channels: source } = sourcesOf(roster, { channels: "channelRows" });
-    const ctx = ctxWith({ channelRows: [{ id: "a.b", kind: "channel" }] });
+    const roster: DeclaredWorkforce = { workers: [], mailboxes: [mailbox("a.b", "Here.")] };
+    const { mailboxes: source } = sourcesOf(roster, { mailboxes: "mailboxRows" });
+    const ctx = ctxWith({ mailboxRows: [{ id: "a.b", kind: "mailbox" }] });
 
     const [entry] = await source!.entries(ctx);
     expect(entry!.contract).toBe("0 members. Opened at an unrecorded time. Addressed by its id. Listed here means registered, not open.");
   });
 
-  it("BR-12a · tells the model how to address a channel, never to post to one", async () => {
+  it("BR-12a · tells the model how to address a mailbox, never to post to one", async () => {
     // A manifest entry means DECLARED plus a row, and neither closes: the
     // declaration map is built at boot and the inventory is append-only
-    // (FIX-1485). So a channel whose session is long gone still projects, and
+    // (FIX-1485). So a mailbox whose session is long gone still projects, and
     // a contract that said "post to it" would be the catalog asserting a
     // liveness it cannot see — the same shape as advertising a write the
     // engine rejects.
@@ -318,10 +318,10 @@ describe("the channels source", () => {
     // Graded on the instruction rather than the exact sentence, so a future
     // rewording that reintroduces the command goes red here even though the
     // string assertions above were updated with it.
-    const roster: DeclaredWorkforce = { workers: [], channels: [channel("a.b", "Here.")] };
-    const { channels: source } = sourcesOf(roster, { channels: "channelRows" });
+    const roster: DeclaredWorkforce = { workers: [], mailboxes: [mailbox("a.b", "Here.")] };
+    const { mailboxes: source } = sourcesOf(roster, { mailboxes: "mailboxRows" });
     const ctx = ctxWith({
-      channelRows: [{ id: "a.b", kind: "channel", members: ["x"], openedAt: "2026-01-04T09:00:00.000Z" }]
+      mailboxRows: [{ id: "a.b", kind: "mailbox", members: ["x"], openedAt: "2026-01-04T09:00:00.000Z" }]
     });
 
     const [entry] = await source!.entries(ctx);
@@ -335,29 +335,29 @@ describe("what gets registered, and what a missing collection does", () => {
   it("registers only the domains whose inventory key was named", () => {
     expect(workforceManifestSources({ roster: EMPTY, inventory: {} })).toEqual([]);
     expect(
-      workforceManifestSources({ roster: EMPTY, inventory: { channels: "channelRows" } }).map(
+      workforceManifestSources({ roster: EMPTY, inventory: { mailboxes: "mailboxRows" } }).map(
         (source) => source.domain
       )
-    ).toEqual(["channels"]);
+    ).toEqual(["mailboxes"]);
     expect(
       workforceManifestSources({
         roster: EMPTY,
-        inventory: { seats: "seatRows", channels: "channelRows" }
+        inventory: { seats: "seatRows", mailboxes: "mailboxRows" }
       }).map((source) => source.domain)
-    ).toEqual(["seats", "channels"]);
+    ).toEqual(["seats", "mailboxes"]);
   });
 
   it("names both registration sites in the origin, for the duplicate-domain refusal", () => {
     for (const source of workforceManifestSources({
       roster: EMPTY,
-      inventory: { seats: "seatRows", channels: "channelRows" }
+      inventory: { seats: "seatRows", mailboxes: "mailboxRows" }
     })) {
       expect(source.origin).toBe("createWorkforceCapability");
     }
   });
 
   it("reports a problem rather than an empty domain when the collection is not mounted", async () => {
-    const { seats } = sourcesOf({ workers: [worker("a.b", "Here.")], channels: [] }, {
+    const { seats } = sourcesOf({ workers: [worker("a.b", "Here.")], mailboxes: [] }, {
       seats: "seatRows"
     });
     await expect(seats!.entries(ctxWith({ somethingElse: [] }))).rejects.toThrow(

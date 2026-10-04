@@ -84,4 +84,33 @@ describe("ctx.cap on nested blocks", () => {
     // ...while still seeing the inherited accessor (the ancestor's instance).
     expect(innerCap.shared).toEqual({ build: 1 });
   });
+
+  it("a sequencer's declared capability survives .connectInput()", async () => {
+    const greeter = defineCapability({
+      name: "greeter",
+      fns: () => ({ greet: (who: string) => `hi ${who}` }),
+    });
+
+    // The step declares no capability of its own: it can only reach
+    // `ctx.cap.greeter` by inheriting the accessor its sequencer built.
+    const step = handler({
+      name: "inner",
+      inputSchema: z.string(),
+      outputSchema: z.string(),
+      execute: (name, ctx) =>
+        (ctx.cap as { greeter?: { greet: (w: string) => string } }).greeter?.greet(name) ??
+        "no greeter",
+    });
+
+    // `.connectInput` rebuilds the chain. The rebuild must carry the
+    // sequencer's `uses` forward like every other builder method, or the
+    // capability silently vanishes for the whole chain.
+    const seq = sequencer({ name: "outer", inputSchema: z.string(), uses: [greeter] })
+      .step(step)
+      .connectInput((input: { name: string }) => input.name);
+
+    const out = await runForTest(seq, { name: "ada" }, createMockContext());
+
+    expect(out).toBe("hi ada");
+  });
 });

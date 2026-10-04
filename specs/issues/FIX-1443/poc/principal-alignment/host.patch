@@ -1,0 +1,32 @@
+diff --git a/goals/pentest-lab/lab/host.mts b/goals/pentest-lab/lab/host.mts
+index e4b20701a..8ec7d4adf 100644
+--- a/goals/pentest-lab/lab/host.mts
++++ b/goals/pentest-lab/lab/host.mts
+@@ -355,6 +355,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
+       ...hired.map((seat) => [seat.id, seat]),
+     ]),
+     stores: { default: { primary: options.stores } },
++    ...(options.omitOrgWrap === true ? {} : { resolvePrincipal: () => ({ userId: LAB_USER_ID, orgId: LAB_ORG_ID }) }),
+     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
+     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
+   } as never);
+@@ -391,8 +392,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
+         ...(create.sessionId === undefined ? {} : { sessionId: create.sessionId }),
+         ...(create.description === undefined ? {} : { description: create.description }),
+         ...(create.state === undefined ? {} : { state: create.state }),
+-        // ---- the wrap, both lines of it ----
+-        ...(options.omitOrgWrap === true ? {} : { orgId: LAB_ORG_ID }),
+       });
+       if (status >= 400) {
+         throw Object.assign(new Error(`createSession ${status}: ${JSON.stringify(json)}`), { status });
+@@ -529,6 +528,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
+       // `content` rather than stored state, it even reads the document. The
+       // refusal this rule names therefore has to be asked for where it lives.
+       if (inspectOptions?.omitOrg === true) {
++        const r = await act(seat, "inspect", {}, `no-org-${seatId}`, { omitOrg: true });
++        return r.error === undefined ? { facts: (r.output ?? {}) as Record<string, unknown> } : { error: `${(r.error as any)?.name}: ${messageOf(r.error)}` };
++      }
++      if (false as boolean) {
+         // A session id nothing has used, and that is load-bearing:
+         // `validateDispatch` satisfies the org requirement from an EXISTING
+         // session's stored org binding. Reusing the ordinary inspect session

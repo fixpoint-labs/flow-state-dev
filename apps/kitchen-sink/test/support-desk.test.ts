@@ -1,18 +1,18 @@
 /**
  * The boot serves the support desk the team's files describe: one routed
- * channel, four specialists on the built-in kind, and one board nobody
+ * mailbox, four specialists on the built-in kind, and one board nobody
  * drains.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1611/PLAN.md`, V1):
  *
  *   - the boot hires `support.devices`, `support.accounts`, `support.fsd` and
  *     `support.general`, each on the `agent` kind, and no other seat;
- *   - it opens one channel, `support.help`, on the built-in channel kind;
+ *   - it opens one mailbox, `support.help`, on the built-in mailbox kind;
  *   - it warns once that a board is unattended, and names `escalations`
  *     (BR-12);
  *   - the generated map holds `escalate` and no kind of the app's own;
- *   - the rail lists `support.help` alone under the channel kind, though a
- *     store kept across the upgrade still holds a channel the old roster
+ *   - the rail lists `support.help` alone under the mailbox kind, though a
+ *     store kept across the upgrade still holds a mailbox the old roster
  *     declared (BR-1). Red: the rail reading the kind's listing, which draws
  *     `support.desk` beside it.
  */
@@ -65,7 +65,7 @@ async function boot() {
   return { get, sessions };
 }
 
-describe("V1 · the boot serves one routed channel and four specialists", () => {
+describe("V1 · the boot serves one routed mailbox and four specialists", () => {
   it("hires the four specialists on the agent kind, and no other seat", async () => {
     const { get } = await boot();
     const { flows } = (await get([])) as { flows: Array<{ id: string; kind: string; cardinality: string }> };
@@ -78,34 +78,34 @@ describe("V1 · the boot serves one routed channel and four specialists", () => 
     ]);
   });
 
-  it("opens one channel, support.help, on the built-in channel kind, beside the app's own flows", async () => {
+  it("opens one mailbox, support.help, on the built-in mailbox kind, beside the app's own flows", async () => {
     const { get } = await boot();
     const { flows } = (await get([])) as { flows: Array<{ id: string; kind: string }> };
     // The workforce's kinds are the two built-ins; the rest are the app's own flows.
     expect([...new Set(flows.map((flow) => flow.kind))].sort()).toEqual([
       "agent",
-      "channel",
       "chat-agent",
+      "mailbox",
       "rich-text-component",
       "weekly-digest",
     ]);
-    const { sessions } = (await get(["sessions"], "?flowId=channel&limit=100")) as { sessions: Array<{ id: string }> };
+    const { sessions } = (await get(["sessions"], "?flowId=mailbox&limit=100")) as { sessions: Array<{ id: string }> };
     expect(sessions.map((session) => session.id)).toEqual(["support.help"]);
   });
 
-  it("lists support.help alone in the rail, though a kept store still holds a retired channel", async () => {
+  it("lists support.help alone in the rail, though a kept store still holds a retired mailbox", async () => {
     const { sessions } = await boot();
     const { railSessions } = await import("@/lib/rail-sessions");
     // What an earlier roster leaves in a store kept across the upgrade: a
-    // session of the same channel kind, for a channel the tree no longer declares.
-    await sessions.createSession({ flowKind: "channel", userId: "devuser", sessionId: "support.desk" });
+    // session of the same mailbox kind, for a mailbox the tree no longer declares.
+    await sessions.createSession({ flowKind: "mailbox", userId: "devuser", sessionId: "support.desk" });
     // Not vacuous: the store holds it, and a listing by kind returns it.
-    const stored = await sessions.listSessions({ flowKind: "channel", userId: "devuser" });
+    const stored = await sessions.listSessions({ flowKind: "mailbox", userId: "devuser" });
     expect(stored.map((session) => session.id).sort()).toEqual(["support.desk", "support.help"]);
 
     // The navigator's own query for a singleton kind's leaf.
     const listed = await railSessions(sessions).listSessions({
-      flowKind: "channel",
+      flowKind: "mailbox",
       userId: "devuser",
       include: "dispatch-runs",
     });
@@ -127,13 +127,13 @@ describe("V1 · the boot serves one routed channel and four specialists", () => 
     await boot();
     const unattended = warn.mock.calls.map((call) => call.join(" ")).filter((line) => line.includes("holds board"));
     expect(unattended).toHaveLength(1);
-    expect(unattended[0]).toContain('channel "support.help" holds board "escalations"');
+    expect(unattended[0]).toContain('mailbox "support.help" holds board "escalations"');
   });
 
   it("generates escalate into the catalog, and no kind of the app's own", async () => {
     const generated = await import("@/workforce/workforce.gen");
     expect(Object.keys(generated.kinds)).toEqual([]);
-    expect(Object.keys(generated.channelKinds)).toEqual([]);
+    expect(Object.keys(generated.mailboxKinds)).toEqual([]);
     expect(Object.keys(generated.blocks)).toEqual(["escalate"]);
   });
 });

@@ -4,7 +4,8 @@
  *
  * A `packages/` folder may sit at three levels: the org's (`org/packages/`), a
  * team's (`teams/<team>/packages/`), and one worker's own
- * (`teams/<team>/workers/<worker>/packages/`). Where it sits is who it is for,
+ * (`teams/<team>/workers/<worker>/packages/`, or `org/workers/<worker>/packages/`
+ * for an org seat). Where it sits is who it is for,
  * and the record says so; which worker HOLDS which package is decided at the
  * hire, from the record's level and the worker's `packages:` line.
  *
@@ -105,6 +106,7 @@ export async function readPackagesDirectory(root: string): Promise<ReadPackagesD
   }
   if (org.entries !== undefined) {
     await readPackagesSlot(path.join(root, "org"), "org", { level: "org" }, packages, errors);
+    await readWorkerPackages(path.join(root, "org"), "org", undefined, packages, errors);
   }
 
   const report = (at: string, error: Error): void => {
@@ -113,38 +115,56 @@ export async function readPackagesDirectory(root: string): Promise<ReadPackagesD
 
   for await (const team of walkTeams(root, report)) {
     await readPackagesSlot(team.dir, team.path, { level: "team", team: team.id }, packages, errors);
-
-    const workersPath = `${team.path}/${WORKERS_LEVEL}`;
-    const workers = await openStructuralDirectory(path.join(team.dir, WORKERS_LEVEL), workersPath);
-    if (workers.refusal !== undefined) {
-      errors.push({ path: workersPath, error: workers.refusal.error, kind: "unreadable-slot" });
-    }
-    if (workers.entries === undefined) continue;
-
-    for (const workerName of [...workers.entries].sort()) {
-      if (IGNORED_ENTRIES.has(workerName)) continue;
-      const workerDir = path.join(team.dir, WORKERS_LEVEL, workerName);
-      // Only a real folder is descended into. A symlinked, unreadable or badly
-      // named worker folder is the worker reader's to report — it is the seat
-      // that is missing, and naming it twice reads as two problems. Nothing
-      // under it is read here either way.
-      if ((await classify(workerDir)).kind !== "directory") continue;
-      try {
-        validateSegment(workerName, "Worker");
-      } catch {
-        continue;
-      }
-      await readPackagesSlot(
-        workerDir,
-        `${workersPath}/${workerName}`,
-        { level: "worker", team: team.id, worker: `${team.id}.${workerName}` },
-        packages,
-        errors,
-      );
-    }
+    await readWorkerPackages(team.dir, team.path, team.id, packages, errors);
   }
 
   return { packages, errors };
+}
+
+/**
+ * Read each worker's own `packages/` slot under one parent — `org/`
+ * (`teamId` undefined, an org seat) or a team folder.
+ *
+ * The owner is the seat's id as the roster mints it: `<team>.<worker>`, or the
+ * bare `<worker>` for an org seat, which has no team.
+ */
+async function readWorkerPackages(
+  parentDir: string,
+  parentPath: string,
+  teamId: string | undefined,
+  packages: PackageManifest[],
+  errors: PackageError[],
+): Promise<void> {
+  const workersPath = `${parentPath}/${WORKERS_LEVEL}`;
+  const workers = await openStructuralDirectory(path.join(parentDir, WORKERS_LEVEL), workersPath);
+  if (workers.refusal !== undefined) {
+    errors.push({ path: workersPath, error: workers.refusal.error, kind: "unreadable-slot" });
+  }
+  if (workers.entries === undefined) return;
+
+  for (const workerName of [...workers.entries].sort()) {
+    if (IGNORED_ENTRIES.has(workerName)) continue;
+    const workerDir = path.join(parentDir, WORKERS_LEVEL, workerName);
+    // Only a real folder is descended into. A symlinked, unreadable or badly
+    // named worker folder is the worker reader's to report — it is the seat
+    // that is missing, and naming it twice reads as two problems. Nothing
+    // under it is read here either way.
+    if ((await classify(workerDir)).kind !== "directory") continue;
+    try {
+      validateSegment(workerName, "Worker");
+    } catch {
+      continue;
+    }
+    await readPackagesSlot(
+      workerDir,
+      `${workersPath}/${workerName}`,
+      teamId === undefined
+        ? { level: "worker", worker: workerName }
+        : { level: "worker", team: teamId, worker: `${teamId}.${workerName}` },
+      packages,
+      errors,
+    );
+  }
 }
 
 /**

@@ -16,10 +16,11 @@
  * Loading, empty and a failed read are three different renders.
  */
 import { createElement, useMemo, type ReactNode } from "react";
-import { createResourceClient, type ClientFetch } from "@flow-state-dev/client";
+import type { ClientFetch } from "@flow-state-dev/client";
 import { useFlowContext } from "../../context/FlowContext";
 import { cardRows, type BoardCard, type BoardCardRow } from "./cards";
 import { usePanelRows, type PanelRowSource } from "./reads";
+import { usePanelSource } from "./usePanelSource";
 import { bareList, labelStyle, note, panelStyle, retryLine, rowStyle } from "./chrome";
 
 /** The parts of a board list that belong to the host rather than to the component. */
@@ -150,10 +151,9 @@ function defaultRowBody({ card }: BoardCardRow): ReactNode {
 export function BoardList(props: BoardListProps): ReactNode {
   const { sessionId, boardRef, resourceClient, fetcher, limit, live = false, slots = {} } = props;
 
-  const providerBaseUrl = useFlowContext().baseUrl;
+  const { baseUrl: providerBaseUrl, apiPath } = useFlowContext();
   const baseUrl = props.baseUrl ?? providerBaseUrl;
-  const fallback = useMemo(() => createResourceClient({ baseUrl, fetcher }), [baseUrl, fetcher]);
-  const source = resourceClient ?? fallback;
+  const source = usePanelSource(resourceClient, { baseUrl, fetcher });
 
   const state = usePanelRows<unknown>(
     source,
@@ -161,7 +161,7 @@ export function BoardList(props: BoardListProps): ReactNode {
     boardRef,
     limit,
     "Failed to load this board",
-    live ? { baseUrl, fetcher } : undefined
+    live ? { baseUrl, apiPath, fetcher } : undefined
   );
   const rows = useMemo(() => newestFirst(cardRows(state.rows)), [state.rows]);
 

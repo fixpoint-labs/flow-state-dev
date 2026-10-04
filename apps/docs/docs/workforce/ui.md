@@ -2,7 +2,7 @@
 title: Workforce components
 sidebar_label: Components
 sidebar_position: 9
-description: Render a roster, its channels and its boards with components from @flow-state-dev/react.
+description: Render a roster, its mailboxes and its boards with components from @flow-state-dev/react.
 ---
 
 # Workforce components
@@ -14,14 +14,14 @@ import { FlowNavigator, Roster, BoardColumns, BoardList } from "@flow-state-dev/
 
 <FlowNavigator
   sections={[
-    { label: "Channels", kinds: ["channel"] },
+    { label: "Mailboxes", kinds: ["mailbox"] },
     { label: "Seats", kinds: ["agent"] },
   ]}
   onSelectSession={setSessionId}
 />
 ```
 
-`channel` is the kind the framework ships for channels. For seats, list the kinds your seats run: `agent` is the built-in one, and a worker whose `WORKER.md` names a `flow:` runs on that kind instead. If your app declares a channel kind of its own, add its name to the Channels list.
+`mailbox` is the kind the framework ships for mailboxes. For seats, list the kinds your seats run: `agent` is the built-in one, and a worker whose `WORKER.md` names a `flow:` runs on that kind instead. If your app declares a mailbox kind of its own, add its name to the Mailboxes list.
 
 A section is a label and a set of kind names. The navigator reads the rest of the shape from your flows. Conversation and item rendering come from the [component registry](../ui/overview), as they do in any other app.
 
@@ -31,7 +31,7 @@ The navigator starts at the kind. How many levels sit under it depends on how th
 
 A flow with `cardinality: "collection"` has many addressable copies, so it gets **three levels**: kind, then instances, then sessions. The built-in `agent` kind works this way. Open it and you see the seats hired on it; open a seat and you see that seat's sessions.
 
-A flow with `cardinality: "singleton"` is one instance whose address is its kind, so it gets **two levels**: kind, then sessions. A channel kind works this way, because a channel is a session on that kind. A hundred channels are a hundred sessions on one instance, so opening the kind lists the channels directly.
+A flow with `cardinality: "singleton"` is one instance whose address is its kind, so it gets **two levels**: kind, then sessions. A mailbox kind works this way, because a mailbox is a session on that kind. A hundred mailboxes are a hundred sessions on one instance, so opening the kind lists the mailboxes directly.
 
 There is no prop for choosing the depth. What the navigator shows always matches the flow, so a flow that changes its cardinality changes the navigator with it.
 
@@ -41,9 +41,9 @@ There is no prop for choosing the depth. What the navigator shows always matches
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { channelBoard, defineHiredRosterCollection } from "@flow-state-dev/workforce";
+import { mailboxBoard, defineHiredRosterCollection } from "@flow-state-dev/workforce";
 
-const followups = channelBoard("support.desk", "followups");
+const followups = mailboxBoard("support.desk", "followups");
 
 export const shell = defineFlow({
   kind: "shell",
@@ -110,13 +110,13 @@ import { BoardList } from "@flow-state-dev/react";
 />
 ```
 
-With `live`, the list follows the session you pass and reads the board again whenever that session records a change to it. A task filed through a channel's `fileTask` is recorded in the channel's own session, so pass the channel's id, as above. Each new task then shows up in every tab that has the list open. Reading through the channel needs nothing extra in your shell's flow.
+With `live`, the list follows the session you pass and reads the board again whenever that session records a change to it. A task filed through a mailbox's `fileTask` is recorded in the mailbox's own session, so pass the mailbox's id, as above. Each new task then shows up in every tab that has the list open. Reading through the mailbox needs nothing extra in your shell's flow.
 
 `fetcher` is the `fetch` the live stream is sent with. When you pass your own `resourceClient` and `live`, also pass the `fetcher` that client was built with, so the stream carries the same credential as the reads. TypeScript rejects `resourceClient` with `live` and no `fetcher`. Pass neither and both go through the nearest `FlowProvider`'s `baseUrl` with the plain `fetch`. If your `resourceClient` reads a different origin, pass that origin as the `baseUrl` prop on `BoardList` as well, so the stream goes to the same server as the reads.
 
 Rows already on screen stay there while the list reads again.
 
-A change recorded in a different session does not reach a live list until something makes it read again: a remount, a reload, or the next change in the session it follows. A seat that claims and finishes tasks from its own conversation is the usual example. So `live` suits a board that is filed through its channel and read by people. For a board your seats work, read it on mount, as `BoardColumns` does.
+A change recorded in a different session does not reach a live list until something makes it read again: a remount, a reload, or the next change in the session it follows. A seat that claims and finishes tasks from its own conversation is the usual example. So `live` suits a board that is filed through its mailbox and read by people. For a board your seats work, read it on mount, as `BoardColumns` does.
 
 Each live list holds its own connection to its session's stream while it is mounted, the same kind [`useSession`'s `live`](../client/react.md#hearing-requests-you-didnt-send) opens. A page that also follows that session with `useSession(..., { live: true })` holds two connections to it. If the server doesn't offer the stream, or refuses it, the list reads once, as if you hadn't asked, with no error.
 
@@ -126,15 +126,11 @@ Loading, an empty board and a failed read look different from each other. A fail
 
 ## Where each component reads from
 
-What a component reads decides what it shows and when it updates.
+![Three columns. One session's items, read by messages, task plans and approval cards: they arrive live and are still there after a reload. An organization's collection, read by the roster, board columns and board list: everyone sees the same rows, read once on mount. Your server's flow list, read by the navigator: read once, with a leaf's sessions read only when that leaf opens. A footer says how each reads again: items keep arriving, a panel reads again when its React key changes, and the navigator's leafToolbar slot is handed a refresh function](./ui-read-sources.svg)
 
-**The session's item stream.** Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) draw on the items a session persisted. They update as items arrive, and they are still there after a reload.
+What a component reads decides when it updates. Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) follow one session's items as they arrive. The roster and board panels read a standing collection once, when they mount; a `BoardList` with `live` is the exception ([A board as a list](#a-board-as-a-list)). The navigator reads the flow list once, and a leaf's sessions only when that leaf opens. A leaf is a singleton kind, or one instance of a collection kind, so opening a collection kind's own row reads nothing and a roster of two hundred seats costs one request to draw.
 
-**A standing collection.** The roster, the board columns and the board list read a collection that lives outside any one session. Everyone in the organization sees the same rows. Each reads on mount and does not watch. The exception is a `BoardList` with `live`, which reads again when the session it follows records a change to the board ([A board as a list](#a-board-as-a-list)). To read one on demand, change the component's React `key`.
-
-**The flow list.** The navigator reads your server's flow list once, however many sections you give it. It reads a leaf's sessions only when that **leaf** opens: a singleton kind, or one instance of a collection kind. Opening a collection kind's row asks your server for nothing, so a roster of two hundred seats costs one request to draw, and one more when somebody opens a seat.
-
-Like the panels, the navigator reads on mount and doesn't watch. To re-read a leaf's sessions on demand, use the `leafToolbar` slot. It's handed a `refresh` function, and what it returns sits on the open leaf's own row, after any `rowTrailing` content.
+To read again on demand, change a panel's React `key`, or use the `refresh` function the navigator's `leafToolbar` slot is handed. What that slot returns sits on the open leaf's own row, after any `rowTrailing` content.
 
 ## Styling it
 
@@ -176,7 +172,7 @@ Change a token and every component follows. Nothing here needs a class override 
 
 ## Limits
 
-These components render; they don't administer. There is no create-channel or invite control.
+These components render; they don't administer. There is no create-mailbox or invite control.
 
 The roster and the board columns are scoped to an organization, because the collections behind them are. **The navigator is not.** It shows the flow kinds your server has registered, the instances under them, and the sessions the caller can see, with no organization filter. The flow list is answered without authentication, so every caller sees every flow your app defines and every seat declared in a `WORKER.md` file.
 

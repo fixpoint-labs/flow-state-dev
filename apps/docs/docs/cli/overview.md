@@ -24,8 +24,6 @@ Flags, NDJSON events, and exit codes live in the [CLI API](/docs/api/cli).
 
 `run`, `block`, and `chat` call the engine in-process: no HTTP server and no SSE. That is the Flow State transport only — a generator still calls its model provider over the network and still needs that provider's key. `dev` and `serve` start a host. See [Engine setup](/docs/server/setup) and [Deployment](/guides/deployment).
 
-This page is about running *your own* flows locally. To dispatch a coding task to a Claude Code *cloud* session from inside a flow, see [Claude Code remote dispatch](/docs/tools/claude-code-cli).
-
 ## When to use it
 
 - **Visual debugging** — `fsdev dev` starts the DevTool alongside your flows. Inspect sessions, stream items in real-time, dispatch actions from the browser. See [DevTool](/docs/devtool/overview) for details.

@@ -13,6 +13,13 @@ export type { BullmqRuntime, CreateBullmqRuntimeOptions } from "./runtime";
 export { createFlowWorker, createFlowJobProcessor } from "./worker";
 export type { FlowWorkerDeps, CreateFlowWorkerOptions } from "./worker";
 export { createWorkerDispatcher } from "./dispatcher";
+export { createRedisLeaseBackend, leaseJobId, DEFAULT_LEASE_MS } from "./lease-backend";
+export type {
+  CreateRedisLeaseBackendOptions,
+  JobLeaseBackend,
+  JobLeaseTakeInput,
+  RedisLeaseBackend,
+} from "./lease-backend";
 export type { CreateWorkerDispatcherOptions } from "./dispatcher";
 export { createRedisStreamBridge } from "./stream-bridge";
 export type { CreateRedisStreamBridgeOptions } from "./stream-bridge";

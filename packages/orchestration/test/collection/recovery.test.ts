@@ -21,7 +21,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createResourceBackedTaskCollection,
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   DEFAULT_LEASE_DURATION_MS,
   DEFAULT_MAX_ABANDONMENTS,
   eventDispatcher,
@@ -52,9 +52,9 @@ async function sequencerBacking(): Promise<Backing> {
   });
   const captured = createCapturedChanges();
   return {
-    collection: createSequencerBackedTaskCollection({
+    collection: createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer,
+      state: sequencer,
       onChange: captured.onChange,
       now: () => clock,
     }),

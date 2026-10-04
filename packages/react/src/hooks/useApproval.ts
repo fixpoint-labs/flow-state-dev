@@ -111,7 +111,7 @@ export function useApproval(
   options: UseApprovalOptions = {}
 ): UseApprovalResult {
   const { isResolved = false, resolution, onApprove, onReject } = options;
-  const { flowKind, baseUrl, userId } = useFlowContext();
+  const { flowKind, baseUrl, apiPath, userId } = useFlowContext();
   const streamingResolve = useSuspensionResolver();
 
   // The action currently in flight, or null when idle. Doubles as the
@@ -124,7 +124,10 @@ export function useApproval(
   // propagating back. null until this hook resolves its own suspension.
   const [resolvedAction, setResolvedAction] = useState<"approve" | "reject" | null>(null);
 
-  const recoveryClient = useMemo(() => createRecoveryClient({ baseUrl }), [baseUrl]);
+  const recoveryClient = useMemo(
+    () => createRecoveryClient({ baseUrl, apiPath }),
+    [baseUrl, apiPath]
+  );
 
   // A streaming resolver from context enables both actions just like a flowKind.
   const hasFlowKind = flowKind !== undefined && flowKind.length > 0;

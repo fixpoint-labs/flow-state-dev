@@ -34,9 +34,18 @@ export { shortId, tokenize, tokenOverlap, findBestOverlap } from "./text-match";
 export {
   withOutcome,
   updateStateWith,
+  readCommitted,
   type UpdateOutcome,
   type UpdateStateRunner,
 } from "./update-state-with";
 export { toError } from "./to-error";
 export { isWindowsReservedName } from "./windows-reserved-name";
 export { withTimeout } from "./with-timeout";
+export {
+  assertSetExpectedVersion,
+  assertDeleteExpectedVersion,
+  resourceStateConflict,
+  type ExpectedVersion,
+  type VersionedRow,
+  type VersionConflict,
+} from "./write-version";

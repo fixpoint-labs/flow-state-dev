@@ -246,15 +246,15 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 <header class="masthead">
   <p class="eyebrow">Architecture inventory</p>
   <h1>Everything in the framework, and how it fits</h1>
-  <p class="standfirst">A complete map of <code>@flow-state-dev</code>: 27 packages, four ways to decide what runs next, and six orthogonal systems underneath all of them. Sections 02&ndash;04 are how the pieces fit into one thing; the rest is the inventory of what each piece is.</p>
+  <p class="standfirst">A complete map of <code>@flow-state-dev</code>: 30 packages, four ways to decide what runs next, and six orthogonal systems underneath all of them. Sections 02&ndash;04 are how the pieces fit into one thing; the rest is the inventory of what each piece is. Counts are measured at <code>main</code> <code>67a3bb9b</code> (2026-09-30); <a href="#packages">&sect;05</a> says how.</p>
   <div class="stats">
-    <div class="stat"><b>27</b><span>packages</span></div>
-    <div class="stat"><b>~179k</b><span>lines of src</span></div>
-    <div class="stat"><b>7,655</b><span>tests</span></div>
-    <div class="stat"><b>4</b><span>block kinds</span></div>
+    <div class="stat"><b>30</b><span>packages</span></div>
+    <div class="stat"><b>~242k</b><span>lines of src</span></div>
+    <div class="stat"><b>~11.3k</b><span>tests</span></div>
+    <div class="stat"><b>5</b><span>block kinds</span></div>
     <div class="stat"><b>24</b><span>sequencer ops</span></div>
     <div class="stat"><b>17</b><span>item types</span></div>
-    <div class="stat"><b>23</b><span>deprecations</span></div>
+    <div class="stat"><b>7</b><span>deprecations</span></div>
   </div>
 </header>
 
@@ -663,7 +663,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
 <section id="workforce-layer">
   <div class="sec-head"><span class="sec-num">04</span><h2>Workforce: the Layer 2 product, not a Layer 1 type</h2></div>
-  <p class="lede">Workforce is the shippable Layer&nbsp;2 product — roster / teams + seats + channels + thin helpers. DevForce (software eng) and Pentest Lab (FIX-1355) are sibling consumers on it (D-12), not sibling ships — <a href="workforce.html#lab">Workforce atlas &#167;03</a>. The package hires file-declared workers into flow instances, supplies the built-in agent worker kind, loads resources and skills, and opens channels. It does not provide an Agent factory. The product lock and the honesty tags live on the <a href="workforce.html">Workforce atlas</a>. Channels are L2 — one roster (system + helper-minted), Collab later, not W2 — <a href="workforce.html#collab">Workforce atlas &#167;14</a>. When DM / channel vs dispatch: <a href="workforce.html#when">Workforce atlas &#167;08</a>. W3 is the file-convention surface (kinds + blocks scan as the code door; seats stay <code>WORKER.md</code>) — <a href="workforce.html#vision">Workforce atlas &#167;03</a> / <a href="workforce.html#doors">&#167;04</a>. Do not mint Team / Channel / MessageBoard here, and do not fold Workforce into core.</p>
+  <p class="lede">Workforce is the shippable Layer&nbsp;2 product — roster / teams + seats + mailboxes + thin helpers. DevForce (software eng) and Pentest Lab (FIX-1355) are sibling consumers on it (D-12), not sibling ships — <a href="workforce.html#lab">Workforce atlas &#167;03</a>. The package hires file-declared workers into flow instances, supplies the built-in agent worker kind, loads resources and skills, and opens mailboxes. It does not provide an Agent factory. The product lock and the honesty tags live on the <a href="workforce.html">Workforce atlas</a>. Mailboxes are L2 — one roster (system + helper-minted), Collab later, not W2 — <a href="workforce.html#collab">Workforce atlas &#167;14</a>. When DM / mailbox vs dispatch: <a href="workforce.html#when">Workforce atlas &#167;08</a>. W3 is the file-convention surface (kinds + blocks scan as the code door; seats stay <code>WORKER.md</code>) — <a href="workforce.html#vision">Workforce atlas &#167;03</a> / <a href="workforce.html#doors">&#167;04</a>. Do not mint Team / Mailbox / MessageBoard here, and do not fold Workforce into core.</p>
 
   <h3>What exists</h3>
   <p><code>core</code> declares the thin <code>Agent</code> and <code>AgentRegistry</code> extension contracts used by skills delegation. Applications using an <code>agent-ref</code> skill supply the registry and materializer. <code>@flow-state-dev/workforce</code> does not export <code>defineAgent</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code>, or <code>agentBlock</code>. Its workers are generators or flows with instructions, a model, and tools; its seats are flow instances. See the <a href="workforce.html#fence">Workforce atlas &#167;04</a>.</p>
@@ -675,7 +675,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 356" role="img" aria-label="What a team of agents needs, mapped to the layer that supplies it: seven capabilities are built — identity, tool surface, a place for work, a planning member, a shared workspace, per-member memory, and outliving the turn. Two Agent fields are reserved or not honored. The team itself is not a first-class Layer 1 object: it is Layer 2: a roster of seats plus shared channels plus dispatch.">
+      <svg viewBox="0 0 940 356" role="img" aria-label="What a team of agents needs, mapped to the layer that supplies it: seven capabilities are built — identity, tool surface, a place for work, a planning member, a shared workspace, per-member memory, and outliving the turn. Two Agent fields are reserved or not honored. The team itself is not a first-class Layer 1 object: it is Layer 2: a roster of seats plus shared mailboxes plus dispatch.">
         <text class="t-lbl" x="24" y="20">What a team of agents needs</text>
         <text class="t-lbl" x="330" y="20">The layer that supplies it</text>
         <text class="t-lbl" x="782" y="20">Status</text>
@@ -734,7 +734,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="855" y="332" text-anchor="middle">LOCKED</text>
       </svg>
     </div>
-    <figcaption><b>Seven built, two reserved, the team row closed.</b> <code>usesSkills</code> and <code>contextMode: "fork"</code> are declared on <code>Agent</code> and warn at materialization — deferred, not undecided. The team itself is not a first-class Layer&nbsp;1 object. A roster is the seat-list; a team is that roster plus shared channels plus dispatch as Layer&nbsp;2. Workforce story: <a href="workforce.html#fence">Workforce atlas</a>.</figcaption>
+    <figcaption><b>Seven built, two reserved, the team row closed.</b> <code>usesSkills</code> and <code>contextMode: "fork"</code> are declared on <code>Agent</code> and warn at materialization — deferred, not undecided. The team itself is not a first-class Layer&nbsp;1 object. A roster is the seat-list; a team is that roster plus shared mailboxes plus dispatch as Layer&nbsp;2. Workforce story: <a href="workforce.html#fence">Workforce atlas</a>.</figcaption>
   </figure>
 
   <h3>What "a team" would mean, given what already exists</h3>
@@ -749,51 +749,55 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <h5>Closed: a team is not a Layer 1 type</h5>
     <p>Everything below workforce got built because a running system needed it. Workforce is the one layer specified top-down — the <code>Agent</code> type carries two fields nothing resolves, and its capability factory returns a name and a TODO. That is the shape tenet 3 warns about: a contract taken on before there was a caller.</p>
     <p>The generous reading is that it is a placeholder held deliberately while the layers underneath matured — and they did mature; seven of the ten needs above are now met by systems that did not exist when <code>Agent</code> was first written.</p>
-    <p>Closed: a team is <strong>not</strong> a first-class Layer&nbsp;1 primitive. A roster is the seat-list; a team is that roster plus shared channels plus dispatch as Layer&nbsp;2. A seat is a flow instance, not an Agent catalog row. Product Agent is later Layer&nbsp;2. <code>Agent</code> / <code>AgentRegistry</code> are the old surface &#8212; honesty lives on the <a href="workforce.html#fence">Workforce atlas &#167;04</a>. Workforce is the product; DevForce and Pentest Lab are sibling Labs on it &#8212; <a href="workforce.html#conductor">Workforce atlas &#167;16</a>. Readiness gaps live on that page &#8212; <a href="workforce.html#gaps">&#167;19</a> &#8212; not as new Layer&nbsp;1 nouns.</p>
+    <p>Closed: a team is <strong>not</strong> a first-class Layer&nbsp;1 primitive. A roster is the seat-list; a team is that roster plus shared mailboxes plus dispatch as Layer&nbsp;2. A seat is a flow instance, not an Agent catalog row. Product Agent is later Layer&nbsp;2. <code>Agent</code> / <code>AgentRegistry</code> are the old surface &#8212; honesty lives on the <a href="workforce.html#fence">Workforce atlas &#167;04</a>. Workforce is the product; DevForce and Pentest Lab are sibling Labs on it &#8212; <a href="workforce.html#conductor">Workforce atlas &#167;16</a>. Readiness gaps live on that page &#8212; <a href="workforce.html#gaps">&#167;19</a> &#8212; not as new Layer&nbsp;1 nouns.</p>
   </div>
 </section>
 
 <section id="packages">
   <div class="sec-head"><span class="sec-num">05</span><h2>Package inventory</h2></div>
-  <p class="lede">Twenty-seven workspace packages in eight tiers. Line counts are all of <code>src/</code> including tests, measured on this branch — they are a rough mass indicator, not a quality signal.</p>
+  <p class="lede">Thirty workspace packages in eight tiers. <strong>Measured at <code>main</code> <code>67a3bb9b</code> (2026-09-30)</strong>: LOC and Files count every <code>.ts</code> / <code>.tsx</code> file under <code>packages/*/src</code>, tests included; workspace deps are the package's <code>dependencies</code> plus <code>peerDependencies</code>. The numbers are a rough mass indicator, not a quality signal, and they drift from the day they are taken &mdash; re-measure against a newer commit rather than trusting them past it.</p>
 
   <div class="tw">
   <table>
     <thead><tr><th>Package</th><th>Tier</th><th class="num">LOC</th><th class="num">Files</th><th>What it owns</th><th>Workspace deps</th></tr></thead>
     <tbody>
-      <tr><td><code>contracts</code></td><td>Foundation</td><td class="num">2,350</td><td class="num">19</td><td>Item taxonomy, pure item helpers, leaf types, block-instance-id. Zero dependencies of any kind.</td><td>—</td></tr>
-      <tr><td><code>core</code></td><td>Foundation</td><td class="num">34,054</td><td class="num">160</td><td>The five block builders, <code>defineFlow</code>, capabilities, resources, items, prompt assembly, model resolution, 11 utility factories, the graph layer.</td><td>contracts</td></tr>
-      <tr><td><code>engine</code></td><td>Runtime</td><td class="num">42,218</td><td class="num">167</td><td>Block dispatch, retry, rescue, side chains, scopes and CAS, stores, SSE streaming, HTTP routes, transports, durability, recovery, voice pipeline.</td><td>core</td></tr>
-      <tr><td><code>orchestration</code></td><td>Composition</td><td class="num">20,347</td><td class="num">89</td><td>Task schema + state machine, <code>TaskCollection</code>, five dispatchers, the task-board primitive, goal-seek loop, flow policy, and the whole skills runtime.</td><td>core</td></tr>
-      <tr><td><code>patterns</code></td><td>Composition</td><td class="num">8,058</td><td class="num">54</td><td>Eight named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
-      <tr><td><code>memory</code></td><td>Composition</td><td class="num">7,825</td><td class="num">32</td><td>Four memory tiers (working / episodic / semantic / digest), consolidation, hygiene janitor, recall tools, one composed capability.</td><td>core</td></tr>
-      <tr><td><code>tools</code></td><td>Composition</td><td class="num">7,170</td><td class="num">53</td><td>Search (7 providers), fetch (3), crawl (2), sandboxed bash (5 adapters), MCP client manager.</td><td>core</td></tr>
-      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">6,635</td><td class="num">28</td><td>The seat factory (<code>hireWorkforce</code>), the built-in <code>agent</code> worker kind, the <code>WORKER.md</code> / resource / channel loaders, resource-map codegen, and personas. No Agent factory. The L2 product story (teams / seats / channels) is convention &mdash; see &sect;04 and the <a href="workforce.html">Workforce atlas</a>.</td><td>core, orchestration</td></tr>
-      <tr><td><code>@thought-fabric/core</code></td><td>Composition</td><td class="num">3,931</td><td class="num">17</td><td>Cognitive primitives: attention (salience, relevance), identity (constitution, perspective), metacognition (bias detection).</td><td>core</td></tr>
+      <tr><td><code>contracts</code></td><td>Foundation</td><td class="num">2,614</td><td class="num">22</td><td>Item taxonomy, pure item helpers, leaf types, block-instance-id. Zero dependencies of any kind.</td><td>—</td></tr>
+      <tr><td><code>core</code></td><td>Foundation</td><td class="num">38,977</td><td class="num">178</td><td>The five block builders, <code>defineFlow</code>, capabilities, resources, items, prompt assembly, model resolution, 11 utility factories, the graph layer.</td><td>contracts</td></tr>
+      <tr><td><code>engine</code></td><td>Runtime</td><td class="num">52,999</td><td class="num">183</td><td>Block dispatch, retry, rescue, side chains, scopes and CAS, stores, SSE streaming, HTTP routes, transports, durability, recovery, voice pipeline.</td><td>core</td></tr>
+      <tr><td><code>orchestration</code></td><td>Composition</td><td class="num">24,847</td><td class="num">107</td><td>Task schema + state machine, <code>TaskCollection</code>, five dispatchers, the task-board primitive, goal-seek loop, flow policy, and the whole skills runtime.</td><td>core</td></tr>
+      <tr><td><code>patterns</code></td><td>Composition</td><td class="num">7,962</td><td class="num">53</td><td>Nine named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
+      <tr><td><code>memory</code></td><td>Composition</td><td class="num">8,079</td><td class="num">33</td><td>Four memory tiers (working / episodic / semantic / digest), consolidation, hygiene janitor, recall tools, one composed capability.</td><td>core</td></tr>
+      <tr><td><code>tools</code></td><td>Composition</td><td class="num">7,554</td><td class="num">52</td><td>Search (7 providers), fetch (3), crawl (2), sandboxed bash (5 adapters), MCP client manager.</td><td>core, workspace</td></tr>
+      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">17,557</td><td class="num">63</td><td>The seat factory (<code>hireWorkforce</code>), the built-in <code>agent</code> worker kind, the <code>WORKER.md</code> / resource / mailbox loaders, resource-map codegen, and personas. No Agent factory. The L2 product story (teams / seats / mailboxes) is convention &mdash; see &sect;04 and the <a href="workforce.html">Workforce atlas</a>.</td><td>core, orchestration</td></tr>
+      <tr><td><code>harness-manager</code></td><td>Composition</td><td class="num">5,341</td><td class="num">11</td><td>A task-board worker that turns a row into a supervised coding run: its own checkout, a verdict read before the row settles, a question channel, and the coding harness as a slot.</td><td>core, orchestration</td></tr>
+      <tr><td><code>workspace</code></td><td>Composition</td><td class="num">1,287</td><td class="num">8</td><td>File projection between resource collections and a directory an agent works in: mounts, hydrate, flush, and a baseline that makes a contested write loud.</td><td>core</td></tr>
+      <tr><td><code>@thought-fabric/core</code></td><td>Composition</td><td class="num">3,902</td><td class="num">17</td><td>Cognitive primitives: attention (salience, relevance), identity (constitution, perspective), metacognition (bias detection).</td><td>core</td></tr>
       <tr><td><code>ui</code></td><td>Composition</td><td class="num">387</td><td class="num">10</td><td>Generative component registry — link-card, info-card.</td><td>contracts, core</td></tr>
-      <tr><td><code>store-sqlite</code></td><td>Persistence</td><td class="num">3,301</td><td class="num">16</td><td>SQLite-backed implementation of the store registry.</td><td>core, engine</td></tr>
-      <tr><td><code>store-postgres</code></td><td>Persistence</td><td class="num">3,662</td><td class="num">16</td><td>PostgreSQL-backed implementation of the store registry.</td><td>core, engine</td></tr>
-      <tr><td><code>mcp</code></td><td>Transport</td><td class="num">947</td><td class="num">6</td><td>MCP server adapter — actions as MCP tools. Workforce MCP door is held until W3 conventions and a Lab Proof run — see <a href="workforce.html#vision">Workforce atlas &#167;03</a> / <a href="workforce.html#mcp">&#167;15</a>.</td><td>core, engine</td></tr>
-      <tr><td><code>scheduled</code></td><td>Transport</td><td class="num">1,097</td><td class="num">11</td><td>Cron and dynamic schedules, idempotency cache, overlap policy.</td><td>core, engine</td></tr>
+      <tr><td><code>store-sqlite</code></td><td>Persistence</td><td class="num">3,584</td><td class="num">16</td><td>SQLite-backed implementation of the store registry.</td><td>core, engine, scheduled</td></tr>
+      <tr><td><code>store-postgres</code></td><td>Persistence</td><td class="num">4,003</td><td class="num">16</td><td>PostgreSQL-backed implementation of the store registry.</td><td>core, engine, scheduled</td></tr>
+      <tr><td><code>mcp</code></td><td>Transport</td><td class="num">964</td><td class="num">6</td><td>MCP server adapter — actions as MCP tools. Workforce MCP door is held until W3 conventions and a Lab Proof run — see <a href="workforce.html#vision">Workforce atlas &#167;03</a> / <a href="workforce.html#mcp">&#167;15</a>.</td><td>core, engine</td></tr>
+      <tr><td><code>scheduled</code></td><td>Transport</td><td class="num">1,388</td><td class="num">11</td><td>Cron and dynamic schedules, idempotency cache, overlap policy.</td><td>core, engine</td></tr>
       <tr><td><code>voice-openai</code></td><td>Transport</td><td class="num">473</td><td class="num">5</td><td>OpenAI TTS / transcription provider behind the framework's voice contract.</td><td>core</td></tr>
-      <tr><td><code>claude-code</code></td><td>Transport</td><td class="num">2,418</td><td class="num">20</td><td>Dispatches cloud coding tasks via the local <code>claude</code> CLI; ships both a CLI and an SDK capability.</td><td>core</td></tr>
+      <tr><td><code>claude-code</code></td><td>Transport</td><td class="num">5,662</td><td class="num">23</td><td>Dispatches cloud coding tasks via the local <code>claude</code> CLI; ships both a CLI and an SDK capability.</td><td>core, workspace</td></tr>
+      <tr><td><code>codex</code></td><td>Transport</td><td class="num">1,816</td><td class="num">9</td><td>Runs OpenAI&rsquo;s Codex agent as a block through the Codex SDK, returning core&rsquo;s neutral harness handle.</td><td>core</td></tr>
+      <tr><td><code>cursor</code></td><td>Transport</td><td class="num">2,066</td><td class="num">9</td><td>Runs Cursor&rsquo;s coding agent as a block through the Cursor SDK local runtime, returning core&rsquo;s neutral harness handle.</td><td>core</td></tr>
       <tr><td><code>node</code></td><td>Host</td><td class="num">731</td><td class="num">6</td><td>Long-lived Node HTTP host in one call.</td><td>engine</td></tr>
       <tr><td><code>next</code></td><td>Host</td><td class="num">61</td><td class="num">2</td><td>Next.js catch-all route adapter. The thinnest package in the repo.</td><td>engine</td></tr>
-      <tr><td><code>vercel</code></td><td>Host</td><td class="num">739</td><td class="num">9</td><td>SSE shaping, heartbeats, runtime config for Vercel's execution model.</td><td>engine, store-postgres</td></tr>
-      <tr><td><code>bullmq</code></td><td>Host</td><td class="num">1,098</td><td class="num">11</td><td>Durable background jobs, native cron, full-flow worker dispatch. The only topology where dispatched work is durable.</td><td>core, engine</td></tr>
-      <tr><td><code>client</code></td><td>Consumer</td><td class="num">3,632</td><td class="num">12</td><td>Isomorphic API client: actions, sessions, SSE stream store, resources, recovery, transcription.</td><td>contracts, core</td></tr>
-      <tr><td><code>react</code></td><td>Consumer</td><td class="num">7,160</td><td class="num">37</td><td>15 hooks, item and suspension renderers, renderer registry, voice components. No transport logic.</td><td>client, contracts, core</td></tr>
-      <tr><td><code>devtool</code></td><td>Consumer</td><td class="num">11,626</td><td class="num">87</td><td>Pre-built inspector assets served by <code>fsdev dev</code>. Built from <code>apps/devtool</code>.</td><td>client, core</td></tr>
-      <tr><td><code>cli</code></td><td>Consumer</td><td class="num">3,909</td><td class="num">27</td><td>The <code>fsdev</code> binary: run, chat, dev, serve, block, benchmark, list, add, ui.</td><td>core, engine, node, store-sqlite, testing</td></tr>
-      <tr><td><code>testing</code></td><td>Proving</td><td class="num">4,464</td><td class="num">29</td><td>Harnesses, mocks, snapshot helpers, transport conformance, eval and benchmark runners.</td><td>core, engine</td></tr>
-      <tr><td><code>integration-tests</code></td><td>Proving</td><td class="num">5,711</td><td class="num">34</td><td>27 tier-1 end-to-end flow scenarios, private to the workspace.</td><td>core, engine, testing, patterns, orchestration</td></tr>
+      <tr><td><code>vercel</code></td><td>Host</td><td class="num">696</td><td class="num">7</td><td>SSE shaping, heartbeats, runtime config for Vercel's execution model.</td><td>engine, scheduled, store-postgres</td></tr>
+      <tr><td><code>bullmq</code></td><td>Host</td><td class="num">1,154</td><td class="num">11</td><td>Durable background jobs, native cron, full-flow worker dispatch. The only topology where dispatched work is durable.</td><td>core, engine, scheduled</td></tr>
+      <tr><td><code>client</code></td><td>Consumer</td><td class="num">4,086</td><td class="num">13</td><td>Isomorphic API client: actions, sessions, SSE stream store, resources, recovery, transcription.</td><td>contracts, core</td></tr>
+      <tr><td><code>react</code></td><td>Consumer</td><td class="num">10,485</td><td class="num">54</td><td>15 hooks, item and suspension renderers, renderer registry, voice components. No transport logic.</td><td>client, contracts, core</td></tr>
+      <tr><td><code>devtool</code></td><td>Consumer</td><td class="num">13,803</td><td class="num">90</td><td>Pre-built inspector assets served by <code>fsdev dev</code>. Built from <code>apps/devtool</code>.</td><td>client, core, react</td></tr>
+      <tr><td><code>cli</code></td><td>Consumer</td><td class="num">4,968</td><td class="num">31</td><td>The <code>fsdev</code> binary: run, chat, dev, serve, block, benchmark, list, add, ui.</td><td>core, devtool, engine, node, store-sqlite, testing, workforce</td></tr>
+      <tr><td><code>testing</code></td><td>Proving</td><td class="num">4,887</td><td class="num">32</td><td>Harnesses, mocks, snapshot helpers, transport conformance, eval and benchmark runners.</td><td>core, engine</td></tr>
+      <tr><td><code>integration-tests</code></td><td>Proving</td><td class="num">9,977</td><td class="num">49</td><td>41 tier-1 end-to-end scenario files, private to the workspace.</td><td>claude-code, core, engine, node, orchestration, patterns, store-sqlite, testing, tools</td></tr>
     </tbody>
   </table>
   </div>
 
   <div class="note">
     <span class="lbl">Mass distribution</span>
-    <p><code>core</code> and <code>engine</code> together are 76k lines — 43% of all source in the repo. <code>orchestration</code> at 20k is the third centre of gravity, and it holds two arguably separate things (the task substrate and the skills runtime) behind one package.</p>
+    <p><code>core</code> and <code>engine</code> together are 92k lines — 38% of the 242k in <code>packages/*/src</code>. <code>orchestration</code> at 25k is the third centre of gravity, and it holds two arguably separate things (the task substrate and the skills runtime) behind one package.</p>
   </div>
 </section>
 
@@ -1747,7 +1751,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   </div>
 
   <h3>Workforce</h3>
-  <p>A composition package for hiring workers, defining the built-in agent worker flow, loading file-declared resources and skills, generating resource maps, defining personas, and opening channels. Its root exports include <code>hireWorkforce</code>, <code>defineAgentWorkerFlow</code>, <code>definePersona</code>, <code>createWorkforceCapability</code>, resource helpers, worker schemas, and the channel surface. It does not export an Agent factory. Workers are generators or flows with instructions, a model, and tools; seats are flow instances. See the <a href="workforce.html#fence">Workforce atlas</a>.</p>
+  <p>A composition package for hiring workers, defining the built-in agent worker flow, loading file-declared resources and skills, generating resource maps, defining personas, and opening mailboxes. Its root exports include <code>hireWorkforce</code>, <code>defineAgentWorkerFlow</code>, <code>definePersona</code>, <code>createWorkforceCapability</code>, resource helpers, worker schemas, and the mailbox surface. It does not export an Agent factory. Workers are generators or flows with instructions, a model, and tools; seats are flow instances. See the <a href="workforce.html#fence">Workforce atlas</a>.</p>
   <p>What the package does and does not yet do is <a href="#workforce-layer">&sect;04</a>. The product lock &#8212; Workforce as the Layer&nbsp;2 surface, DevForce and Pentest Lab as sibling Labs on it &#8212; is the <a href="workforce.html">Workforce atlas</a>, not this inventory.</p>
 
   <h3>Thought fabric</h3>
@@ -1962,7 +1966,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <div class="cards">
     <div class="card"><h5>testing</h5><span class="role">harness package</span><p><code>createTestContext</code>, <code>testBlock</code>, <code>testSequencer</code>, <code>testRouter</code>, <code>testFlow</code>, <code>testItems</code>, <code>runForTest</code>, replaying refs, trace snapshots, transport conformance, eval and benchmark runners.</p></div>
-    <div class="card"><h5>integration-tests</h5><span class="role">tier 1, mocked</span><p>27 end-to-end scenarios: chat tool loops, session resume, cross-process abort delivery, side-chain pool isolation, and ten distinct task-board cases.</p></div>
+    <div class="card"><h5>integration-tests</h5><span class="role">tier 1, mocked</span><p>41 end-to-end scenario files: chat tool loops, session resume, cross-process abort delivery, side-chain pool isolation, fifteen task-board cases, and seven two-users-one-tenant isolation cases.</p></div>
     <div class="card"><h5>goals/</h5><span class="role">real path, real model</span><p>29 goal families with <code>goal.md</code> + <code>run.mts</code>, run by hand outside CI. The library exists so a goal written for one PR becomes a regression check a year later.</p></div>
     <div class="card"><h5>apps/kitchen-sink</h5><span class="role">reference app</span><p>Next.js app hosting every subsystem — where features get tested end to end in a browser. Carries its own e2e suite and skills folder.</p></div>
     <div class="card"><h5>apps/pattern-benchmark</h5><span class="role">cross-pattern</span><p>Runs six patterns against a fixed task suite and model through the shared benchmark registry.</p></div>
@@ -1971,7 +1975,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <div class="card"><h5>apps/docs</h5><span class="role">129 pages</span><p>Docusaurus site across 21 sections, with its own voice standard and an outsider rule — docs describe what the thing does, never how it was built.</p></div>
   </div>
 
-  <p><strong>7,655 declared test cases</strong> across 630 files sit inside the packages — 61 of those are <code>it.each</code> blocks that expand to more at runtime, so the executed count is higher. The weight follows the mass: 1,878 in <code>core</code>, 1,803 in <code>engine</code>, 937 in <code>orchestration</code>, 459 in <code>memory</code>. The framework's own verification hierarchy is explicit in <code>AGENTS.md</code>: <code>fsdev run</code> is the default for a flow change, <code>pnpm test</code> for unit-level changes, and the kitchen sink in a browser for UI-layer changes.</p>
+  <p><strong>About 11,300 declared test cases</strong> across 904 test files sit inside the packages. That is a grep count of <code>it(</code> / <code>test(</code> calls, so each of the 141 <code>.each</code> tables counts once and the executed count is higher. The weight follows the mass: 2,653 in <code>engine</code>, 2,118 in <code>core</code>, 1,221 in <code>orchestration</code>, 969 in <code>workforce</code>. The framework's own verification hierarchy is explicit in <code>AGENTS.md</code>: <code>fsdev run</code> is the default for a flow change, <code>pnpm test</code> for unit-level changes, and the kitchen sink in a browser for UI-layer changes.</p>
 </section>
 
 
@@ -1979,24 +1983,26 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <div class="sec-head"><span class="sec-num">26</span><h2>The removal ledger</h2></div>
   <p class="lede">Two kinds of entry: surface already <strong>marked</strong> <code>@deprecated</code> in the code, and surface <strong>proposed</strong> for removal, reduction, or extraction but not yet marked. The first is a cleanup list. The second is a set of boundary decisions.</p>
 
-  <h3>Already marked — 23 deprecations across 6 packages</h3>
-  <p>Every one names its replacement, so none of these is a research task. Twenty-five of the twenty-seven packages are <code>public</code>; only <code>integration-tests</code> and <code>ui</code> are <code>private</code> today, which means everything below is currently published surface.</p>
+  <h3>Already marked — 7 deprecations across 3 packages</h3>
+  <p>Same commit and scope as <a href="#packages">&sect;05</a>, counting <code>@deprecated</code> in non-test <code>.ts</code> / <code>.tsx</code> only. Every one names its replacement, so none of these is a research task. Twenty-seven of the thirty packages are <code>public</code>; only <code>integration-tests</code>, <code>ui</code>, and <code>@thought-fabric/core</code> are <code>private</code> today, which means everything below is currently published surface.</p>
 
   <div class="tw"><table>
     <thead><tr><th>Package</th><th class="num">Marks</th><th>What is deprecated</th><th>Replacement</th></tr></thead>
     <tbody>
-      <tr><td><code>patterns</code></td><td class="num">7</td><td><code>shared/legacy-plan-types.ts</code> — <code>BasePlan</code>, <code>BasePlanTask</code>, the plan/task collection aliases, <code>PlanMeta</code>, <code>PlanTaskUpdate</code></td><td><code>Task</code> / <code>TaskCollection</code> from <code>orchestration</code>; the <code>task-board-meta</code> and <code>task-change</code> component shapes</td></tr>
-      <tr><td><code>core</code></td><td class="num">6</td><td><code>clientData</code> on session/user/org config (×3), the collection-key helper, a <code>ResourceRef</code> alias, a generator tool-type alias</td><td><code>client.derived</code>; <code>resolveCollectionKey</code>; <code>ResourceRef</code>; <code>GeneratorTool</code></td></tr>
-      <tr><td><code>react</code></td><td class="num">4</td><td>The module-singleton <code>FlowContext</code> (×3, flagged unsafe) and a <code>CollectionItem</code> back-compat shape</td><td><code>&lt;FlowProvider&gt;</code> and <code>useFlowContext()</code> inside its tree</td></tr>
-      <tr><td><code>contracts</code></td><td class="num">3</td><td>The removed <code>context</code> item type (×2) and an <code>ItemVisibility</code> alias</td><td>Generator context slots; <code>ItemVisibility</code></td></tr>
-      <tr><td><code>vercel</code></td><td class="num">2</td><td>The heartbeat re-export shim and its config option</td><td>SSE heartbeat injection now lives in <code>engine</code></td></tr>
-      <tr><td><code>memory</code></td><td class="num">1</td><td>The LLM filter strategy</td><td>Superseded when the prepare gate split into per-source pools</td></tr>
+      <tr><td><code>claude-code</code></td><td class="num">4</td><td>The <code>RemoteAgent*</code> aliases in <code>shared/</code>: <code>remoteAgentTaskHandleSchema</code>, <code>RemoteAgentTaskHandle</code>, <code>RemoteAgentSource</code>, <code>RemoteAgentStatus</code></td><td><code>harnessRunEnvelopeSchema</code>, <code>HarnessRunEnvelope</code>, <code>HarnessSource</code>, <code>HarnessRunStatus</code> from <code>core</code></td></tr>
+      <tr><td><code>workforce</code></td><td class="num">2</td><td>The removed <code>agents</code> and <code>catalog</code> options on the workforce capability, typed as their own error message</td><td><code>roster</code> + <code>inventory</code>; a catalog through <code>defineAgentWorkerFlow({ catalog })</code></td></tr>
+      <tr><td><code>core</code></td><td class="num">1</td><td>The removed <code>dynamic</code> option on resource config, typed <code>never</code></td><td>Drop it; collections are declared with <code>defineResourceCollection</code></td></tr>
     </tbody>
   </table></div>
 
   <div class="note">
+    <span class="lbl">Removed since the earlier list</span>
+    <p>The earlier list had 23 marks in 6 packages; its largest cluster (<code>patterns</code>' legacy plan types, <code>react</code>'s <code>CollectionItem</code>, <code>vercel</code>'s heartbeat shim) was deleted in <code>3c6aa682</code> (2026-08-22), and its other rows no longer carry a mark, which this table does not re-audit.</p>
+  </div>
+
+  <div class="note">
     <span class="lbl">The pattern in the list</span>
-    <p>Four of the six clusters are <strong>old-and-new side by side</strong> — a superseding change that landed without deleting what it replaced. That is the exact shape tenet 3 names: <em>a change that supersedes a path deletes it in the same change</em>. The <code>patterns</code> cluster is the largest and the clearest: seven aliases pointing at a substrate that has been canonical since the task-board migration.</p>
+    <p>Two shapes remain, and they are opposites. The <code>claude-code</code> aliases are <strong>old-and-new side by side</strong> &mdash; a superseding change that landed without deleting what it replaced, the shape tenet 3 names: <em>a change that supersedes a path deletes it in the same change</em>. The <code>workforce</code> and <code>core</code> marks are the deliberate kind: a removed option kept as an unassignable type so a caller still passing it gets a loud error instead of silence (BP-030).</p>
   </div>
 
   <h3>Proposed — the boundary moves</h3>
@@ -2085,7 +2091,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       </tr>
       <tr>
         <td><strong>tools → separate packages</strong></td>
-        <td><code>bash</code> is 4,454 of 7,170 lines (62%) with 5 sandbox adapters. <code>search</code>+<code>fetch</code>+<code>crawl</code> together are 1,725 across 12 providers. <code>mcp</code> is 604.</td>
+        <td><code>bash</code> is 4,838 of 7,554 lines (64%) with 5 sandbox adapters. <code>search</code>+<code>fetch</code>+<code>crawl</code> together are 1,725 across 12 providers. <code>mcp</code> is 604.</td>
         <td>The split lines are already the directory lines. <code>bash</code> alone justifies a package; the MCP <em>client</em> and the MCP <em>server</em> package are opposite ends of one protocol and are worth naming as such.</td>
       </tr>
       <tr>
@@ -2119,22 +2125,22 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <div class="tension">
     <h5>The contracts merge, restated as the question it actually is</h5>
     <p><code>contracts</code> exists so browser code can value-import the item taxonomy without pulling <code>core</code> into the bundle. That boundary is intact and enforced: <code>client</code> and <code>react</code> are type-only on <code>core</code>, and merging the two would create the runtime edge the split was built to prevent.</p>
-    <p>But the split is <strong>2,350 lines across 19 files serving 3 runtime import sites</strong> — one item-store helper, one deep-equal, one items barrel. That is the live question: not "should the boundary exist" but "is the whole of <code>contracts</code> on the right side of it?" A smaller <code>contracts</code> holding only what browsers actually execute, with the rest folded back into <code>core</code> as types, would keep the property and shrink the surface.</p>
-    <span class="ask">Before merging: check what those 3 runtime imports pull transitively. If it is a small closure, the answer is a smaller <code>contracts</code>, not no <code>contracts</code>. If it is most of the package, the split is already right-sized and should be left alone.</span>
+    <p>But the split is <strong>2,614 lines across 22 files serving 4 runtime imports</strong> in <code>client</code> and <code>react</code> — the item-ordering helpers, one deep-equal, one <code>toError</code>, and <code>resolveItemVisibility</code> from the root barrel. That is the live question: not "should the boundary exist" but "is the whole of <code>contracts</code> on the right side of it?" A smaller <code>contracts</code> holding only what browsers actually execute, with the rest folded back into <code>core</code> as types, would keep the property and shrink the surface.</p>
+    <span class="ask">Before merging: check what those 4 runtime imports pull transitively. If it is a small closure, the answer is a smaller <code>contracts</code>, not no <code>contracts</code>. If it is most of the package, the split is already right-sized and should be left alone.</span>
   </div>
 
   <h3>Making things private is the cheaper half</h3>
-  <p>Twenty-five of twenty-seven packages are published. For anything on the list above that is not ready to delete, <code>private: true</code> costs one line, stops the surface growing new external callers, and is reversible — where a deletion, once published consumers exist, is not. It is the move that buys time without the contract.</p>
+  <p>Twenty-seven of thirty packages are published. For anything on the list above that is not ready to delete, <code>private: true</code> costs one line, stops the surface growing new external callers, and is reversible — where a deletion, once published consumers exist, is not. It is the move that buys time without the contract.</p>
 </section>
 
 <section id="lenses">
   <div class="sec-head"><span class="sec-num">27</span><h2>Refactor lenses</h2></div>
   <p class="lede">Nine tensions the inventory surfaces. None of these is a bug report — each is a place where the code and the stated grounding pull in slightly different directions, and where a decision would be worth more than another patch.</p>
-    <p>Two of them now have an owner's decision attached and live in <a href="#ledger">&sect;26</a> instead: the superseded paths, and the packages proposed for extraction, splitting, or merge. A tenth sat in <a href="#workforce-layer">&sect;04</a> and is closed: a team is not a first-class Layer&nbsp;1 primitive — a roster is the seat-list; a team is that roster plus shared channels plus dispatch as Layer&nbsp;2. Workforce story: <a href="workforce.html#fence">Workforce atlas</a>.</p>
+    <p>Two of them now have an owner's decision attached and live in <a href="#ledger">&sect;26</a> instead: the superseded paths, and the packages proposed for extraction, splitting, or merge. A tenth sat in <a href="#workforce-layer">&sect;04</a> and is closed: a team is not a first-class Layer&nbsp;1 primitive — a roster is the seat-list; a team is that roster plus shared mailboxes plus dispatch as Layer&nbsp;2. Workforce story: <a href="workforce.html#fence">Workforce atlas</a>.</p>
 
   <div class="tension">
     <h5>1 · The two mega-packages</h5>
-    <p><code>core</code> (34k lines, 160 files) and <code>engine</code> (42k, 167) are 43% of all source. <code>core/src/index.ts</code> is 443 lines of nothing but export statements across a dozen subdirectories — blocks, flow, capability, graph, items, prompt, models, helpers, adapters, schema, tools, utility, resource-template.</p>
+    <p><code>core</code> (39k lines, 178 files) and <code>engine</code> (53k, 183) are 38% of all source. <code>core/src/index.ts</code> is 545 lines of nothing but export statements reaching into sixteen subdirectories — blocks, flow, capability, items, models, helpers, adapters, schema, tools, utility, types, and more.</p>
     <p>The precedent for splitting already exists: <code>contracts</code> was carved out of <code>core</code> and re-exported so consumers never noticed. Twelve subpath exports on <code>core</code> suggest the seams are already drawn.</p>
     <span class="ask">Is <code>core</code> one package with twelve subpaths, or three packages? What did carving out <code>contracts</code> actually buy, and does that argument extend?</span>
   </div>
@@ -2155,16 +2161,16 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <div class="tension">
     <h5>4 · The architecture overview is measurably stale</h5>
-    <p><code>docs/architecture/overview.md</code> opens its package section with "Six packages with strict dependency boundaries" and lists eight names. There are 27. Its dependency graph shows five nodes. It does not mention orchestration, patterns, memory, tools, workforce, or any host or store adapter.</p>
+    <p><code>docs/architecture/overview.md</code> opens its package section with "Six packages with strict dependency boundaries" and lists eight names. There are 30. Its dependency graph shows seven nodes. It does not mention orchestration, patterns, memory, tools, workforce, or any host or store adapter.</p>
     <p>Tenet 1 is explicit that a doc/code mismatch is <em>itself</em> incoherence, and that the move is to resolve it deliberately rather than rank one over the other silently. This one has a clear answer — the code is right — but it has not been made.</p>
     <span class="ask">Is the overview meant to be a complete map or a 30-second on-ramp? If the latter, say so in it, and point at something that <em>is</em> complete.</span>
   </div>
 
   <div class="tension">
     <h5>5 · Superseded paths that outlived their supersession</h5>
-    <p>23 <code>@deprecated</code> marks across 6 packages, each naming its replacement. Four of the six clusters are old-and-new landing side by side rather than the new path deleting the old one.</p>
+    <p>7 <code>@deprecated</code> marks across 3 packages, each naming its replacement. Only the <code>claude-code</code> aliases are old-and-new landing side by side rather than the new path deleting the old one; the other marks are removed options kept as loud type errors.</p>
     <p>This one now has a decision attached — take them out, or make the package private where a deletion is not yet safe. The itemised list is <a href="#ledger">&sect;26</a>.</p>
-    <span class="ask">What remains open is the general rule, not the list: a supersession that does not delete is how the next 23 accumulate. Is that a review checklist line, or is it already BP-038 and simply not enforced?</span>
+    <span class="ask">What remains open is the general rule, not the list: a supersession that does not delete is how the next batch accumulates. Is that a review checklist line, or is it already BP-038 and simply not enforced?</span>
   </div>
 
   <div class="tension">

@@ -71,7 +71,9 @@ const chatFlow = defineFlow({ kind: "my-chat", ... });
 export default chatFlow();
 ```
 
-A definition describes a flow. A registered instance names one configured copy of it. Most flows have exactly one copy, and that is the default: a flow is a **singleton** unless you say otherwise, and its instance id is its `kind`. Calling the factory with no argument gives you that instance; `chatFlow({ id: "my-chat" })` is the same thing spelled out, and any other id is refused.
+![Definition, instance and session, and where each lives. defineFlow returns a definition in your code: its kind, its cardinality, the configSchema a copy's settings must match, the webhooks, schedules and MCP entry points every copy serves, and the entries only the flow can call; it answers no request itself. Calling it makes an instance with its own id, settings and resources, and its own isolated state when set, such as review-east and review-west of kind review, which you register; a singleton's id is its kind, and the settings stay in the process, never listed or stored. Requests name an instance id, and the kind is never a fallback. Sessions live in the store: session chat-1 records flowId review-east as its owner and flowKind review only as a label for listings. Named through review-west, it is refused with 409 wrong-instance-session before anything runs](./flow-type-instance-session.svg)
+
+A definition describes a flow. A registered instance names one configured copy of it. Most flows have exactly one copy, and that is the default: a flow is a **singleton** unless you say otherwise, and its instance id is its `kind`. Calling the factory with no argument gives you that instance; `chatFlow({ id: "my-chat" })` is the same thing spelled out, and registering a singleton under any other id is refused.
 
 To run several configured copies of one definition on one server, declare the definition a **collection** and give every instance its own id:
 
@@ -184,7 +186,7 @@ Route templates across these docs write the segment that carries the id as `:flo
 
 The `kind` still says what an instance *is*. Sessions and requests record it alongside the id, listings group by it, and the definition-level transports below apply to every instance of the definition.
 
-Saved work stays with the instance that created it. A session started through `review-east` records `review-east` as its owner, and a later call that names the same session through `review-west` is refused before anything runs. Every entry point enforces that, each in its own idiom:
+A session belongs to the instance that created it, as the [figure above](#flowtype-vs-flowinstance) shows. One started through `review-east` is refused when a later call names it through `review-west`, and each entry point refuses it in its own way:
 
 | Surface | What a mismatched address gets you |
 |---|---|
@@ -246,6 +248,15 @@ When an action executes:
 3. `userMessage(input)` emits a user message item (if defined)
 4. The root block executes asynchronously
 5. Lifecycle hooks fire on completion or error
+
+A block can also stop another request running in its own session, the way the abort route does from outside. It's how an action that takes a message can make room for it:
+
+```ts
+const outcome = await ctx.session.stopRequest(requestId);
+// "stopped" | "already-finished" | "not-in-this-session"
+```
+
+The stop is recorded on the request, so it reaches a request running in another process on that process's next heartbeat, exactly like an abort. `"not-in-this-session"` is the answer for any id outside the session, including one that doesn't exist, so the call can't be used to learn about other sessions' requests.
 
 See [Actions](/docs/fundamentals/actions) for the full picture.
 

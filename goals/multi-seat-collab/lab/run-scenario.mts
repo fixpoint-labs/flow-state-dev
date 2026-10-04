@@ -6,8 +6,8 @@
  * It reports raw observations and grades nothing: the grading is the goal's.
  *
  * Every door used here is one a person or an app already has — the session
- * route to open the channel (through the workforce package's own
- * `openChannels`), the action route to file, drain and answer, and the
+ * route to open the mailbox (through the workforce package's own
+ * `openMailboxes`), the action route to file, drain and answer, and the
  * DevTool's own debug read for the ledger. Nothing is written into a store by
  * hand, and nothing runs in this process that the server does not.
  *
@@ -24,8 +24,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { openChannels } from "@flow-state-dev/workforce";
-import { REPO_ROOT, intentFreeEnv } from "../../lib/index.mts";
+import { openMailboxes } from "@flow-state-dev/workforce";
+import { REPO_ROOT, intentFreeEnv, refuseIfAnswering, stopProcessGroup } from "../../lib/index.mts";
 import { LAB_USER_ID, type LabTree } from "./host.mts";
 import { FILE_ENTRY, type FileInput } from "./workforce/flows/workers/planner.mts";
 import {
@@ -73,9 +73,11 @@ export async function serveLab(options: {
   const outbox = join(options.workDir, "work.ndjson");
   writeFileSync(outbox, "", "utf8");
   // Never a fixed port: an incumbent on it would answer the readiness probe
-  // while our child died on EADDRINUSE. The exit watch closes the same hole.
+  // while our child died on EADDRINUSE. A random port can still land on one,
+  // so the pre-flight refuses it; the exit watch below closes the same hole.
   const port = 4300 + Math.floor(Math.random() * 600);
   const origin = `http://127.0.0.1:${port}`;
+  await refuseIfAnswering(origin);
 
   let log = "";
   let exited: string | undefined;
@@ -98,6 +100,8 @@ export async function serveLab(options: {
         ...(options.debugEndpoints === false ? { FSDEV_DEBUG_ENDPOINTS: "0" } : {}),
       }),
       stdio: ["ignore", "pipe", "pipe"],
+      // Detached, so `stop` reaches the whole group, not only the `tsx` wrapper.
+      detached: true,
     },
   );
   child.stdout?.on("data", (chunk) => (log += String(chunk)));
@@ -118,9 +122,7 @@ export async function serveLab(options: {
           workDir: options.workDir,
           outbox,
           log: () => log,
-          stop: () => {
-            child.kill("SIGTERM");
-          },
+          stop: () => stopProcessGroup(child),
           exited: () => exitedPromise,
         };
       }
@@ -129,7 +131,7 @@ export async function serveLab(options: {
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  child.kill("SIGTERM");
+  stopProcessGroup(child);
   if (log.includes("DevTool assets not found")) {
     throw new Error(
       "the DevTool bundle is not built, so `fsdev dev` refused to start. Build it once:\n" +
@@ -217,10 +219,10 @@ export class Scenario {
   }
 
   /**
-   * Open the channel through the workforce package's own `openChannels`, over
-   * the server's HTTP session route — the only route that takes a channel's
+   * Open the mailbox through the workforce package's own `openMailboxes`, over
+   * the server's HTTP session route — the only route that takes a mailbox's
    * state at create — and create each seat's working session the same way.
-   * The config's boot has already opened the channel; `openChannels` meets
+   * The config's boot has already opened the mailbox; `openMailboxes` meets
    * that session and leaves it as it is.
    */
   async open(): Promise<void> {
@@ -257,7 +259,7 @@ export class Scenario {
         await this.json(`/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
       },
     };
-    await openChannels([this.tree.channel], { client, userId: LAB_USER_ID });
+    await openMailboxes([this.tree.mailbox], { client, userId: LAB_USER_ID });
     for (const seat of [this.tree.plannerId, ...this.tree.workerIds]) {
       await client.createSession({ flowKind: seat, userId: LAB_USER_ID, sessionId: this.seatSession(seat) });
     }

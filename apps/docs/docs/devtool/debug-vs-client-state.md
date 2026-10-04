@@ -117,7 +117,7 @@ The mark follows the reported `writable` and nothing else. Where the resource wa
 
 ## Enabling the debug endpoint
 
-The endpoint is off by default. Three ways to turn it on:
+The endpoint is off by default.
 
 ```ts
 import { createFlowApiRouter } from "@flow-state-dev/engine";
@@ -129,15 +129,15 @@ const router = createFlowApiRouter({
 });
 ```
 
-`debugEndpointsEnabled` is the master switch. `debugAllowedOrigins` widens the default loopback-only origin check — add the origins your DevTool is served from. Both options also read from the `FSDEV_DEBUG_ENDPOINTS=1` env flag, which is convenient for local development.
+`debugEndpointsEnabled` is the master switch. Leave it unset and it reads the `FSDEV_DEBUG_ENDPOINTS=1` env flag instead. `debugAllowedOrigins` widens the default loopback-only origin check: add the origins your DevTool is served from.
 
-`fsdev dev` enables the endpoint automatically and restricts it to loopback. You don't need to set anything to use the DevTool in local development.
+A request with no `Origin` header, such as curl, a script, or a same-origin GET from a browser, gets a 403. To accept those requests, set `debugAllowAnonymousLocal: true` or `FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL=1`. Only do this on a server bound to loopback. The origin check doesn't identify the caller, so with this on, any client that can reach the port gets in.
+
+`fsdev dev` enables the endpoint automatically, restricts it to loopback, and turns on `debugAllowAnonymousLocal` so the DevTool can reach it. You don't need to set anything to use the DevTool in local development. `fsdev serve` turns on neither. Both options are listed in the [`createFlowState` fields](../configuration/runtime.md#createflowstate-fields).
 
 ## Don't ship it enabled to production
 
 The endpoint is read-only, but it exposes the full server-side state of every session, including fields your `client.data` deliberately hides. That's the point of it as a debugging tool, and it's also the reason you don't want it reachable from the public internet.
-
-We made the default fail-closed because the cost of an accidental opt-in to a production deployment is much higher than the cost of typing one extra env flag in local development.
 
 If you have a legitimate reason to enable it in a non-local environment (a staging tier where the DevTool runs on a known internal origin), audit `debugAllowedOrigins` carefully and put the route behind whatever authentication your platform already enforces.
 

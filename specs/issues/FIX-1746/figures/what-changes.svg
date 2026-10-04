@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 330" role="img" aria-label="The opening of the Channels page, before and after. Today it is four paragraphs, about 155 words, and no picture, and the reader has to assemble where the members, the transcript, the board and the inventory row live. After, it is one plate showing three walls, the registered channel kind, the engine sessions and the organization's data, followed by one paragraph of about 45 words. The tip box and the rest of the page stay.">
+  <style>
+    :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b; --line:#cbd5e1; --panel:#f8fafc; --rule:#334155;
+            --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8; --org-fill:#f0fdf4; --org:#15803d; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8; --line:#334155; --panel:#181822; --rule:#64748b;
+              --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa; --org-fill:#0b2016; --org:#4ade80; } }
+    .bg { fill:var(--bg); }
+    .panel { fill:var(--panel); stroke:var(--rule); stroke-width:1.2; }
+    .ln { fill:var(--line); }
+    .wp { fill:var(--proc-fill); stroke:var(--proc); stroke-width:1.5; }
+    .ws { fill:var(--sess-fill); stroke:var(--sess); stroke-width:1.5; }
+    .wo { fill:var(--org-fill); stroke:var(--org); stroke-width:1.5; }
+    .lbl { font:600 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:.08em; fill:var(--muted); }
+    .h { font:700 14px ui-sans-serif, system-ui, sans-serif; fill:var(--ink); }
+    .p { font:12.5px ui-sans-serif, system-ui, sans-serif; fill:var(--ink-2); }
+    .tiny { font:10px ui-sans-serif, system-ui, sans-serif; fill:var(--ink-2); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330" rx="16"/>
+
+  <g id="today">
+    <text class="lbl" x="24" y="30">TODAY · CHANNELS → WHAT A CHANNEL IS</text>
+    <rect class="panel" x="16" y="42" width="440" height="230" rx="10"/>
+    <rect class="ln" x="36" y="62" width="400" height="7" rx="3"/><rect class="ln" x="36" y="76" width="390" height="7" rx="3"/><rect class="ln" x="36" y="90" width="220" height="7" rx="3"/>
+    <rect class="ln" x="36" y="112" width="400" height="7" rx="3"/><rect class="ln" x="36" y="126" width="396" height="7" rx="3"/><rect class="ln" x="36" y="140" width="400" height="7" rx="3"/><rect class="ln" x="36" y="154" width="140" height="7" rx="3"/>
+    <rect class="ln" x="36" y="176" width="400" height="7" rx="3"/><rect class="ln" x="36" y="190" width="392" height="7" rx="3"/><rect class="ln" x="36" y="204" width="260" height="7" rx="3"/>
+    <rect class="ln" x="36" y="226" width="400" height="7" rx="3"/><rect class="ln" x="36" y="240" width="380" height="7" rx="3"/><rect class="ln" x="36" y="254" width="120" height="7" rx="3"/>
+    <text class="h" x="24" y="300">4 paragraphs · about 155 words · no picture</text>
+    <text class="p" x="24" y="319">The reader assembles where members, lines, rows and copies live.</text>
+  </g>
+
+  <g id="after">
+    <text class="lbl" x="500" y="30">AFTER · THE SAME SECTION</text>
+    <rect class="panel" x="484" y="42" width="440" height="230" rx="10"/>
+    <rect class="wp" x="500" y="56" width="92" height="142" rx="8"/>
+    <rect class="ws" x="602" y="56" width="190" height="142" rx="8"/>
+    <rect class="wo" x="802" y="56" width="106" height="142" rx="8"/>
+    <text class="tiny" x="508" y="74">Registered</text>
+    <text class="tiny" x="610" y="74">Engine sessions</text>
+    <text class="tiny" x="810" y="74">Organization</text>
+    <rect class="ln" x="500" y="222" width="408" height="7" rx="3"/><rect class="ln" x="500" y="236" width="300" height="7" rx="3"/>
+    <text class="h" x="492" y="300">1 plate · 1 paragraph · about 45 words</text>
+    <text class="p" x="492" y="319">The plate carries the boundary. The paragraph says what to look at.</text>
+  </g>
+</svg>

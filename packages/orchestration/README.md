@@ -71,12 +71,12 @@ denied.
 
 ### TaskCollection
 
-`getOrCreateTaskCollection` resolves a `TaskCollectionRef` over one of
-three backings — request-state (the `taskBoard` default; survives block boundaries
-within a request), block-scoped state (per board invocation — `backing: "sequencer"`
-is the common case), or resource-collection (outlives the request: a user's queue, an
-org work pool — declare one with `defineTaskCollection`). Every mutation that
-changes a field emits a `task-change` component item.
+`getOrCreateTaskCollection` resolves a `TaskCollectionRef` over one of two backings.
+`backing: "state"` keeps tasks in block or request state: on the request when you pass no `state`
+(the `taskBoard` default; survives block boundaries within a request), or on a state ref you
+pass, such as `ctx.sequencer` for one board invocation. `backing: "resource"` outlives the
+request: a user's queue, an org work pool, declared with `defineTaskCollection`. Every
+mutation that changes a field emits a `task-change` component item.
 
 **Server-only task fields.** A `task-change` item carries the whole post-mutation
 row, and that stream is client-visible. A few fields on `Task` are substrate
@@ -194,7 +194,7 @@ maintains no provenance leaves its callers with `undefined`, never a false `fals
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 
-const collection = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "plan" });
+const collection = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "plan" });
 await collection.addTask({ id: "research", goal: "research the topic" });
 await collection.addTask({ goal: "draft the post", deps: ["research"] });
 ```

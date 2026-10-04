@@ -4,13 +4,15 @@ import {
   readUserId,
   readBearerToken,
   hasInjectedUserId,
+  readSessionAddress,
 } from "@flow-state-dev/devtool/react";
 
 /**
  * Standalone DevTool shell. Resolves `userId` and `bearerToken` from the
  * page config (`fsdev dev` injects them from `fsdev.config.ts`, falling back to
  * localStorage / default for userId), mounts the embeddable panel with
- * `userIdControl="internal"` and `autoRecoverInterrupted` on.
+ * `userIdControl="internal"` and `autoRecoverInterrupted` on. A page address
+ * with `?session=<id>` opens that session under the instance that owns it.
  */
 export function App() {
   // Resolve on mount — these touch `window` (localStorage / injected global),
@@ -19,6 +21,7 @@ export function App() {
   // bearer prop on that sync so a partial injection cannot re-authorize token.
   const [userId, setUserId] = useState(() => readUserId());
   const [bearerToken, setBearerToken] = useState(() => readBearerToken());
+  const [openSessionId] = useState(() => readSessionAddress());
 
   useEffect(() => {
     // Injected userId is fixed until reload; cross-tab sync applies only without it.
@@ -43,6 +46,7 @@ export function App() {
         bearerToken={bearerToken}
         userIdControl="internal"
         autoRecoverInterrupted
+        {...(openSessionId === undefined ? {} : { openSessionId })}
       />
     </div>
   );

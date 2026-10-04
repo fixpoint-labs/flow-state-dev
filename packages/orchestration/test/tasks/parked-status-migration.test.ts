@@ -29,7 +29,7 @@ import {
 } from "../../src/tasks/schema/task-status";
 import {
   createResourceBackedTaskCollection,
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   type TaskCollectionRef
 } from "../../src/tasks";
 import {
@@ -92,9 +92,9 @@ async function sequencerBacking(): Promise<LegacyBacking> {
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
     tasks: {}
   });
-  const collection = createSequencerBackedTaskCollection({
+  const collection = createStateBackedTaskCollection({
     collectionId: "tasks",
-    sequencer
+    state: sequencer
   });
   return {
     collection,

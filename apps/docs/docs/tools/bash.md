@@ -99,12 +99,18 @@ Each provider implements the same `Sandbox` interface. Swapping providers change
 
 | Provider | Config | Best for | Real filesystem? |
 |----------|--------|----------|-------------------|
-| Local FS | `{ type: "local", cwd?: string }` | Development, local agents | Yes |
+| Local FS | `{ type: "local", cwd?: string, env?: Record<string, string>, execTimeoutMs?: number }` (`execTimeoutMs` defaults to 60 000) | Development, local agents | Yes |
 | just-bash | `{ type: "just-bash", python?: true, ... }` | Testing, lightweight analysis | No (in-memory) |
 | Vercel | `{ type: "vercel", Sandbox, sandboxId? }` | Production, cloud execution | Yes (remote) |
 | Upstash | `{ type: "upstash", client, boxId? }` | Remote sandbox | Yes (remote) |
 | MOAT | `{ type: "moat", grants, allowHosts, ... }` | Local container isolation with credential injection | Yes (host, bind-mounted) |
 | Custom | `{ type: "custom", sandbox: Sandbox }` | Anything else | You decide |
+
+The `local` provider runs each command with a minimal environment: `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR` and `TZ`, plus whatever you pass in `env`. Anything else a command needs goes in `env`. That includes API tokens, proxy settings (`HTTPS_PROXY`, `NO_PROXY`), custom CA bundle paths and `SSH_AUTH_SOCK` for git over ssh. Values in `env` override the defaults, `PATH` included.
+
+The minimal environment keeps commands from inheriting the server's environment by accident. It is not an isolation boundary. Commands run as the same OS user as the server, so a command that goes looking can still read the server's environment, for example through `/proc/<parent pid>/environ` or `ps eww`. For untrusted commands, use the `moat` provider or a container.
+
+A command that runs past `execTimeoutMs` has its process group killed and returns `exitCode` `124`. A process that detaches into its own session, through `setsid` or as a daemon, can survive the timeout.
 
 `just-bash` takes a `python: true` toggle to expose `python3` in the sandbox, and a `network` config to gate external HTTP access.
 
@@ -134,7 +140,7 @@ MOAT is a separate CLI ([majorcontext/moat](https://majorcontext.com/moat/)) tha
 ### When to use it
 
 - You want OS-level isolation without sending the workspace off-host. Faster than the Vercel or Upstash sandboxes because there is no network round trip per command, but slower than `local` because container start adds a few seconds on the first call.
-- You do not want the agent process to inherit your shell environment. The `local` provider exposes every variable in `process.env` to whatever the agent runs; MOAT's container starts with a clean environment.
+- You want commands to reach APIs without seeing the keys. With `local`, a token goes in `env` and the command can read it, and a command can also read the server's own environment if it tries. MOAT's container starts with a clean environment, and the proxy attaches credentials to outbound requests.
 - You are running on macOS 15+ on Apple Silicon (native containers) or any Linux host with Docker installed.
 
 Skip it if you only need an in-memory test sandbox (`just-bash` is lighter), if you want zero install footprint (`local` requires nothing), or if you are already deploying on serverless (Vercel/Upstash fit better).

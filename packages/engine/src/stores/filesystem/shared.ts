@@ -177,12 +177,16 @@ export type FilesystemRecordStore<
    *
    * It does not run when a CAS conflict refuses the write, because nothing
    * is written in that case.
+   *
+   * A hook that returns a record has that record written in place of
+   * `value`, which lets a caller carry a field from the stored record
+   * through the write under the same lock (the request store's items).
    */
   set(
     id: string,
     value: TRecord,
     expectedVersion: ExpectedVersion,
-    beforeWrite?: (current: TRecord | undefined) => Promise<void>
+    beforeWrite?: (current: TRecord | undefined) => Promise<TRecord | void>
   ): Promise<SetResult<TRecord>>;
   /**
    * Atomically read-modify-write a record under the per-id write lock.
@@ -349,7 +353,7 @@ export function createFilesystemRecordStore<
       id: string,
       value: TRecord,
       expectedVersion: ExpectedVersion,
-      beforeWrite?: (current: TRecord | undefined) => Promise<void>
+      beforeWrite?: (current: TRecord | undefined) => Promise<TRecord | void>
     ): Promise<SetResult<TRecord>> =>
       withLock(id, async () => {
         // The read and the decision both sit inside the per-id lock, which
@@ -371,9 +375,10 @@ export function createFilesystemRecordStore<
         }
         // Same lock, same read. A hook that had to re-read or re-lock would
         // reopen the window this parameter exists to close.
-        if (beforeWrite !== undefined) await beforeWrite(current);
-        await writeRecord(rootDir, id, value);
-        return { ok: true, version: value.version };
+        const replaced = beforeWrite === undefined ? undefined : await beforeWrite(current);
+        const record = replaced ?? value;
+        await writeRecord(rootDir, id, record);
+        return { ok: true, version: record.version };
       }),
 
     update: (
@@ -474,6 +479,11 @@ export function createFilesystemRecordStore<
         expectedVersion,
         (current) => {
           const existing = current.state?.[path[0]];
+          if (existing !== undefined && existing !== null && typeof existing !== "number") {
+            throw new Error(
+              `incField target at path[${path[0]}] is not a number (got ${Array.isArray(existing) ? "array" : typeof existing})`
+            );
+          }
           const baseline = typeof existing === "number" ? existing : 0;
           return {
             ...current,

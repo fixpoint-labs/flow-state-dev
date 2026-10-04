@@ -6,6 +6,7 @@ import type {
   ActionCore,
   BlockDefinition,
   FlowInstance,
+  ResumeContext,
   RetryPolicy
 } from "@flow-state-dev/core/types";
 import type { ExecutionContext } from "../context/types";
@@ -97,6 +98,12 @@ export type RunActionOptions<
    * for callers that pre-date the transport adapter contract (FIX-438).
    */
   source?: string;
+  /**
+   * Caller-supplied request metadata. Treated as caller-controlled: the
+   * `resumeContext` and `resumeOf` keys are stripped before the run starts and
+   * never resolve a suspension (FIX-1707). Resuming goes through
+   * {@link RunActionOptions.resumeContext}.
+   */
   metadata?: Record<string, unknown>;
   /**
    * Pre-resolved action core, set only by adapters for an event dispatch with
@@ -183,11 +190,22 @@ export type RunActionOptions<
    * mode: prior persisted items are loaded into a `ReplayLog` so completed
    * blocks are injected (not re-run), a `suspension_resume` audit item is
    * emitted, and the terminal write merges prior + re-entry items. Inferred as
-   * `true` when a `resumeContext` is present and the existing record is
-   * `suspended`, so callers that thread a resumeContext for a same-id record
-   * get replay even without setting this explicitly.
+   * `true` when {@link RunActionOptions.resumeContext} is present and the
+   * existing record is `suspended`.
    */
   replayMode?: boolean;
+  /**
+   * The suspension resolution a same-request continuation injects — which
+   * gate, approve/reject/skip, payload, resolver. Set by `continueRequest`
+   * after the resume endpoint has validated the suspension; never derived from
+   * `metadata`, which callers control (BP-031, FIX-1707).
+   *
+   * Honoured only in replay mode, and only at the gate the replay log names as
+   * pending: the runtime overwrites `pendingBlockLogicalId` from the log, so a
+   * supplied value is ignored. On a run that is not a continuation it has no
+   * effect and the gate suspends as usual.
+   */
+  resumeContext?: ResumeContext;
   /**
    * Instance-level options forwarded verbatim through the execution chain
    * (resolvers, settings, logger, tracing). See

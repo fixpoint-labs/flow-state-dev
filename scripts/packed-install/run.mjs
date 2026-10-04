@@ -16,7 +16,9 @@
  *      it and not to the last version on the registry;
  *   3. run each check in {@link CHECKS} against that project: the installed
  *      copies are the packed ones, every entry point imports, a server starts
- *      and answers an action, and DevTool serves its client assets.
+ *      and answers an action, and DevTool serves its client assets;
+ *   4. run the shared two-users-one-tenant HTTP suite against those installed
+ *      copies, with a real Redis for its queue case (`suite.mjs` owns how).
  *
  * `--control` runs the same install and import path against the published
  * `@flow-state-dev/core@0.1.1` tarball, pinned by its integrity hash, and
@@ -26,14 +28,21 @@
  * check never seen to fail proves nothing. It is pinned rather than "the latest
  * release" because the latest release stops failing the moment a good one ships.
  *
+ * `--control=workspace-link` packs and installs as above, swaps the installed
+ * {@link LINK_CONTROL} for a symlink to its repository directory, and runs the
+ * suite check. It exits 0 only if the suite's resolution guard names that
+ * package: a guard never seen to fail could be reading a repository copy and
+ * calling it the install.
+ *
  * **Adding a check.** Append to {@link CHECKS}: `{ name, run(project) }`, where
  * `run` returns a list of failure strings (empty on pass). `project` carries the
  * consumer directory and the packed packages with their manifests. Checks run
  * against the installed copy only; never import from the repository.
  *
- * Usage: `node scripts/packed-install/run.mjs [--control] [--keep]`.
+ * Usage: `node scripts/packed-install/run.mjs [--control | --control=workspace-link] [--keep]`.
  * `--keep` leaves the temporary project on disk and prints its path.
- * Needs network access to the npm registry for third-party dependencies.
+ * Needs network access to the npm registry for third-party dependencies, and
+ * `REDIS_URL` pointing at a live Redis for the suite's queue case.
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -45,13 +54,15 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { createRequire } from "node:module";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { publishableDists } from "../add-esm-extensions.mjs";
+import { runSuite } from "./suite.mjs";
+import { runVitestJson } from "./vitest-json.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
 const PACKAGES = join(ROOT, "packages");
@@ -68,6 +79,9 @@ export const CONTROL = {
   integrity:
     "sha512-PeOUBikYvtb1L9U3WY0oTf3wXJAXOzbBbrQ56hxSjS62dJyjqV1UcE8aTQ5Rnaw+rrUxQhy2Q8Ez3jVQGPK1jw==",
 };
+
+/** The package `--control=workspace-link` swaps for a link into the repository. */
+export const LINK_CONTROL = "@flow-state-dev/core";
 
 const log = (msg) => console.log(msg);
 
@@ -250,6 +264,12 @@ export const CHECKS = [
     name: "DevTool serves its client assets from the installed copy",
     run: (project) => runFixture(project, "serve-devtool.mjs", "devtool"),
   },
+  {
+    // Legs b and c: every hole's case, asked for over HTTP as the second user,
+    // against the installed copies rather than the repository's `src`.
+    name: "the two-users-one-tenant suite passes against the installed copies",
+    run: (project) => runSuite(project).failures,
+  },
 ];
 
 /**
@@ -317,30 +337,13 @@ export function retryWithPeers(dir, needPeer) {
 function vitestProbe(dir, specs) {
   if (specs.length === 0) return [];
   const probe = "fsd-import-probe.test.mjs";
-  const report = join(dir, "fsd-import-probe.json");
   copyFileSync(join(FIXTURES, probe), join(dir, probe));
-  rmSync(report, { force: true });
-  const vitest = join(
-    dirname(createRequire(join(dir, "package.json")).resolve("vitest/package.json")),
-    "vitest.mjs",
-  );
-  const res = spawnSync(
-    process.execPath,
-    [vitest, "run", probe, "--root", dir, "--reporter=json", `--outputFile=${report}`],
-    {
-      cwd: dir,
-      encoding: "utf8",
-      timeout: 120_000,
-      env: { ...process.env, FSD_PROBE_SPECS: JSON.stringify(specs) },
-    },
-  );
-  let tests = [];
-  try {
-    tests = JSON.parse(readFileSync(report, "utf8")).testResults.flatMap((f) => f.assertionResults);
-  } catch {
-    // No report: the run itself failed. Every spec falls through to NOT_REACHED.
-  }
-  const detail = `${res.stderr ?? ""}${res.stdout ?? ""}`.trim().slice(-300);
+  const { testResults, output } = runVitestJson(dir, [probe], {
+    env: { ...process.env, FSD_PROBE_SPECS: JSON.stringify(specs) },
+  });
+  // No report means the run itself failed: every spec falls through to NOT_REACHED.
+  const tests = testResults.flatMap((f) => f.assertionResults);
+  const detail = output.slice(-300);
   return specs.map((spec) => {
     const t = tests.find((a) => a.title === spec);
     if (!t) return { spec, ok: false, code: "NOT_REACHED", message: detail };
@@ -487,11 +490,13 @@ function runChecks(project, checks) {
 
 function main() {
   const control = process.argv.includes("--control");
+  const linkControl = process.argv.includes("--control=workspace-link");
   const keep = process.argv.includes("--keep");
   const work = mkdtempSync(join(tmpdir(), "fsd-packed-tarballs-"));
   const dir = emptyProject();
   try {
     if (control) return runControl(work, dir);
+    if (linkControl) return runLinkControl(work, dir);
 
     log("packing publishable packages…");
     const packed = packAll(work);
@@ -549,6 +554,41 @@ function runControl(work, dir) {
       ? `\n✗ control PASSED against ${CONTROL.spec}; this check can no longer see the 0.1.1 defect`
       : `\n✗ control failed, but not on an extensionless relative import in dist; fix the check before trusting it`,
   );
+  return 1;
+}
+
+/**
+ * The suite's resolution guard must fail when an installed package is really
+ * the repository. Pack and install as the check does, replace
+ * {@link LINK_CONTROL} with a symlink to its workspace directory, and run the
+ * suite. Returns 0 only when the guard names that package.
+ */
+function runLinkControl(work, dir) {
+  log("packing publishable packages…");
+  const packed = packAll(work);
+  log("installing into an empty ESM project…");
+  npmInstall(dir, packed.map((p) => p.tarball));
+  const pkg = packed.find((p) => p.name === LINK_CONTROL);
+  if (!pkg) {
+    log(`✗ control: ${LINK_CONTROL} was not packed`);
+    return 1;
+  }
+  log(`\n• the suite, with ${LINK_CONTROL} linked to packages/${pkg.dir} (control)`);
+  // Linked after the suite's own install, which would otherwise put the tarball back.
+  const link = (consumer) => {
+    const installed = join(consumer, "node_modules", LINK_CONTROL);
+    rmSync(installed, { recursive: true, force: true });
+    symlinkSync(join(PACKAGES, pkg.dir), installed, "dir");
+  };
+  const { failures, violations } = runSuite({ dir, packages: packed }, { beforeRun: link });
+  const named = violations.filter((v) => v.id === LINK_CONTROL || v.id.startsWith(`${LINK_CONTROL}/`));
+  if (named.length > 0) {
+    log(`\n✓ control failed as it must: the resolution guard named ${LINK_CONTROL} ${named.length} time(s)`);
+    log(`    e.g. ${named[0].importer}: ${named[0].id} → ${named[0].real}`);
+    return 0;
+  }
+  log(`\n✗ control: the resolution guard did not name ${LINK_CONTROL}; it cannot tell the repository from the install`);
+  for (const f of failures.slice(0, 20)) log(`    ${f}`);
   return 1;
 }
 

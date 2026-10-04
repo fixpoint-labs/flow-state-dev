@@ -150,7 +150,7 @@ describe("running one", () => {
 
   it("BR-15 · reports a failed request with its error", async () => {
     const outcome = await submitted([
-      request("req_1", "failed", { error: { code: "execution_error", message: "board-not-declared: not this channel" } }),
+      request("req_1", "failed", { error: { code: "execution_error", message: "board-not-declared: not this mailbox" } }),
     ]);
     expect(outcome?.getAttribute("data-outcome")).toBe("failed");
     expect(outcome?.textContent).toContain("board-not-declared");

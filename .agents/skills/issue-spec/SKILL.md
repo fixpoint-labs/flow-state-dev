@@ -388,7 +388,7 @@ How this workflow's research feeds the set:
   decision (the filters in `asking-for-decisions.md`), with *Instead of · Because · Locks
   in*; the tree; *Decided, not asked*; *Considered and dropped* (the simpler approach
   considered, and why it lost or won); *Open / Settled*; *How it got here* with the draft
-  line. Size — read off `PLAN.md` — goes on `SPEC.md`'s header line, last.
+  line. Size — read off `PLAN.md` — goes on `SPEC.md`'s facts line, written last.
 - **`BUSINESS-RULES.md` is the cases.** Every case the decisions don't already answer as a
   row: when → then → proved by, grouped by area; the failure taxonomy; the acceptance
   criteria this issue owns. A human reviews it for missed cases; the plan turns it into
@@ -508,9 +508,9 @@ Publish canonical content in the repository; Linear carries status and links, no
    approach chosen, and the build shape>.` This directory is the canonical reviewable
    artifact.
 
-   **The people table is the first content in `SPEC.md`**, under the title and the header
-   line — structural navigation is exempt — with no metadata, status block, or timeline above
-   it (BP-039). The goal section follows it. *How it got here* is the change story and sits at the bottom of
+   **The people table is the first content in `SPEC.md`**, directly under the title and the
+   nav line — structural navigation is exempt — with no metadata, status block, or timeline above
+   it (BP-039); the metadata goes on the facts line at the end. The goal section follows it. *How it got here* is the change story and sits at the bottom of
    `DECISIONS.md`; it never leads.
 
 2. **Draw, render and check the figures** before the commit — the *what changes* figure, a
@@ -533,6 +533,7 @@ Publish canonical content in the repository; Linear carries status and links, no
 
    **Write the PR description to [`spec-template.md`](../../../docs/contributing/spec-template.md) → "The PR body"** — the instance — under the rules in [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout". Don't restate them here. What's specific to a **spec** PR:
 
+   - **Language: ASD-STE100.** Write every line of prose in the body in Simplified Technical English, per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "Language — ASD-STE100". Text you cut from `SPEC.md` gets rewritten to STE, not pasted. What is exempt is that section's list, not restated here.
    - **The people table**, cut from `SPEC.md` to five rows, is blocks 1 and 2. **The goal**
      follows it: its sentence, the *how we'll know* mermaid fence with its sentence, and one
      line naming the goal check and the control that must fail (or, when no goal check

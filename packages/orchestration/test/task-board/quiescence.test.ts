@@ -22,7 +22,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   DEFAULT_LEASE_DURATION_MS,
   type TaskCollectionRef,
 } from "../../src/tasks";
@@ -50,9 +50,9 @@ async function collectionInState(
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
     tasks: {},
   });
-  const collection = createSequencerBackedTaskCollection({
+  const collection = createStateBackedTaskCollection({
     collectionId: "tasks",
-    sequencer,
+    state: sequencer,
     now: () => BOARD_NOW,
   });
 
@@ -204,9 +204,9 @@ async function boardWithRows(
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
     tasks: {},
   });
-  const collection = createSequencerBackedTaskCollection({
+  const collection = createStateBackedTaskCollection({
     collectionId: "tasks",
-    sequencer,
+    state: sequencer,
     now: () => now,
   });
   for (const spec of specs) {

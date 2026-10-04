@@ -128,12 +128,15 @@ describe("what a package's blocks folder registers", () => {
     expect(found.problems).toEqual([]);
   });
 
-  it("does not look in a package under an org-level worker, which is no seat", async () => {
-    // `org/workers/<w>/` holds no hireable seat, so a package there would be
-    // held by nobody. The loader does not read it either; neither door
-    // pretends it is a level.
+  it("registers a package in an org seat's own folder under its address", async () => {
+    // `org/workers/<w>/` is an org seat, and the loader reads its own
+    // `packages/` as it reads a team seat's; this door must find the blocks
+    // the seat then holds.
     await write("org/workers/build/packages/kit/blocks/tool.ts");
-    expect((await discoverWorkforceCode(root)).packageBlocks).toEqual([]);
+    const found = await discoverWorkforceCode(root);
+    expect(found.packageBlocks.map((entry) => `${entry.package}:${entry.name}`)).toEqual([
+      "org/workers/build/packages/kit:tool",
+    ]);
   });
 });
 

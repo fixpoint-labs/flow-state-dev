@@ -1,6 +1,6 @@
 {
   "port": 3039,
-  "channel": { "kind": "channel", "id": "support.help" },
+  "mailbox": { "kind": "mailbox", "id": "support.help" },
   "agents": [{ "kind": "agent", "id": "support.accounts" }],
   "others": [
     { "kind": "agent", "id": "support.devices" },

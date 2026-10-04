@@ -4,14 +4,14 @@
  *
  * Its own module, beside `notify.mts`, because two kinds of host call it:
  * `openLab` (the goal checks) and a host that builds its own flow state rather
- * than opening through the lab, such as an `fsdev` config App Lab serves. The
+ * than opening through the lab, such as an `fsdev` config Shift Manager serves. The
  * host keeps one option and one call; the rule for when to ask lives here.
  *
  * What it does, and nothing else: in the EM seat's own session (`s_<seat id>`,
  * the one `file` and `drain` run in, and which a session listing returns), run
  * the asking door as the given person until it suspends on a stock
  * `human_approval`. The answer is not this module's business: it arrives
- * through the engine's resume route, the one App Lab's Inbox uses.
+ * through the engine's resume route, the one Shift Manager's Inbox uses.
  *
  * **Once per feature, per store, claimed atomically.** Before it runs anything
  * the step writes a claim for the feature with the resource-state store's

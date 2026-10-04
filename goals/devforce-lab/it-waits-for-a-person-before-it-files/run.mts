@@ -62,7 +62,7 @@ interface Fixture {
   coordinatorSeat: string;
   assignedSeat: string;
   silentSeat: string;
-  channel: string;
+  mailbox: string;
   wait: { timeoutMs: number; pollMs: number };
 }
 
@@ -176,7 +176,7 @@ function messagesOf(requests: Array<{ items?: any[] }>): string[] {
     .map((i) => JSON.stringify(i.content ?? i.text ?? i));
 }
 
-/** Answer through the engine's resume route, as App Lab does. */
+/** Answer through the engine's resume route, as Shift Manager does. */
 async function answer(
   lab: Lab,
   ask: PendingAsk,
@@ -284,9 +284,9 @@ await runGoal(async () => {
         }
       }
       const members =
-        lab.roster.channels.find((c) => c.id === fixture.channel)?.declared.members ?? [];
+        lab.roster.mailboxes.find((c) => c.id === fixture.mailbox)?.declared.members ?? [];
       if (!(members as string[]).includes(fixture.coordinatorSeat)) {
-        note("1", `the feature channel's declared members ${JSON.stringify(members)} omit the EM`);
+        note("1", `the feature mailbox's declared members ${JSON.stringify(members)} omit the EM`);
       }
       if ((await lab.dispatched(fixture.coordinatorSeat)).length !== 0) {
         note("1", "the EM dispatched before any answer");
@@ -423,7 +423,7 @@ await runGoal(async () => {
     const root = mkdtempSync(join(tmpdir(), "devforce-tree-no-em-"));
     cpSync(LAB_TREE, root, { recursive: true });
     rmSync(join(root, "teams/eng/workers/em"), { recursive: true });
-    const charter = join(root, "teams/eng/channels/feature/CHANNEL.md");
+    const charter = join(root, "teams/eng/mailboxes/feature/MAILBOX.md");
     writeFileSync(
       charter,
       readFileSync(charter, "utf8").replace(`${fixture.coordinatorSeat}, `, ""),

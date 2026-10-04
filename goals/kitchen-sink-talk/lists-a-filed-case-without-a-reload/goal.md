@@ -4,7 +4,7 @@
 
 **Outcome:** A person who asks `support.help` for a real person sees the case appear in the escalations panel as a row with its status, in a list, with no reload, in that tab and in any other tab open on the demo.
 
-**Input:** `fixtures/input.json`: the channel and its board (`support.help`, `escalations`), the specialist a case is routed to (`support.devices`), the scenario marker the scripted specialist files on (`[scenario:needs-a-person]`), the status every filed row shows (`pending`, since nothing works the board), how long a row may take (10 s), how many board reads a tab may make meanwhile (2), and the idle window (10 s). Held-out: each run files two cases, each with a fresh `case-token-…`, and only those tokens are graded, so a row another run left on the shared board can never be the one that passes. `GOAL_SEAT` routes both cases to another specialist.
+**Input:** `fixtures/input.json`: the mailbox and its board (`support.help`, `escalations`), the specialist a case is routed to (`support.devices`), the scenario marker the scripted specialist files on (`[scenario:needs-a-person]`), the status every filed row shows (`pending`, since nothing works the board), how long a row may take (10 s), how many board reads a tab may make meanwhile (2), and the idle window (10 s). Held-out: each run files two cases, each with a fresh `case-token-…`, and only those tokens are graded, so a row another run left on the shared board can never be the one that passes. `GOAL_SEAT` routes both cases to another specialist.
 
 **Signal:** two tabs on kitchen-sink's **production build** (built by the run, never assumed), served by `next start` on the scripted model, the in-memory store and **no model key**. Tab 2 is opened first and never picks anything; tab 1 opens `support.help` and posts both cases, the second once the first has settled. Everything graded is read off the two pages as drawn; each tab is reloaded once, for the last leg only.
 
@@ -14,9 +14,9 @@
 - **once**: no reading while the tabs are open shows a case's row twice, and after the final reload each case is exactly one row in each tab.
 - **no-poll**: each tab reads the board (`GET …/sessions/<id>/resources/support.help.escalations`, through whichever session) at most twice between Send and the row, and not at all in a 10 s window after the first case has settled.
 
-**Anti-game:** the panel as drawn, never the ledger, the specialist's "filed" line, or a response. A reload or navigation in either tab before **once** voids the run (`void`). Tab 2 never picks the channel, so a list that re-reads when its own page sends cannot pass **other-tab**. The run reads the server only to know when a case has settled (the specialist's line is kept, and the board holds the row); that read is not graded. Only this run's tokens count.
+**Anti-game:** the panel as drawn, never the ledger, the specialist's "filed" line, or a response. A reload or navigation in either tab before **once** voids the run (`void`). Tab 2 never picks the mailbox, so a list that re-reads when its own page sends cannot pass **other-tab**. The run reads the server only to know when a case has settled (the specialist's line is kept, and the board holds the row); that read is not graded. Only this run's tokens count.
 
-**Model:** n/a. kitchen-sink's scripted model routes each post by the specialist it names (`[route:…]`), and a specialist sent `[scenario:needs-a-person]` files the case onto `escalations` through the channel and says so. Keyless: the server runs with `AI_GATEWAY_API_KEY` empty.
+**Model:** n/a. kitchen-sink's scripted model routes each post by the specialist it names (`[route:…]`), and a specialist sent `[scenario:needs-a-person]` files the case onto `escalations` through the mailbox and says so. Keyless: the server runs with `AI_GATEWAY_API_KEY` empty.
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/lists-a-filed-case-without-a-reload/run.mts`
 

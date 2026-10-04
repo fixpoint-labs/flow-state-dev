@@ -8,7 +8,8 @@ import type {
 } from "@flow-state-dev/core/types";
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
 import {
-  type ClientFetch,
+  ClientHttpError,
+  type ClientTransportOptions,
   type ExecuteActionRequestBody,
   type ExecuteActionResponse,
   type FlowCapabilities,
@@ -29,9 +30,7 @@ import {
 export type CreateClientOptions = {
   flowKind: string;
   userId: string;
-  baseUrl?: string;
-  fetcher?: ClientFetch;
-};
+} & ClientTransportOptions;
 
 /**
  * Generic client contract used for dynamic flow execution.
@@ -88,6 +87,7 @@ export function createClient(options: CreateClientOptions): Client {
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: "/api/flows"
       })
     });
@@ -100,6 +100,7 @@ export function createClient(options: CreateClientOptions): Client {
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: "/api/flows/capabilities"
       })
     });
@@ -128,6 +129,7 @@ export function createClient(options: CreateClientOptions): Client {
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path
       }),
       init: {
@@ -159,7 +161,7 @@ export function createClient(options: CreateClientOptions): Client {
         ? `/api/flows/${encodeURIComponent(flowKind)}/actions/${encodeURIComponent(actionName)}`
         : `/api/flows/${encodeURIComponent(flowKind)}/${encodeURIComponent(sendOptions.sessionId)}/actions/${encodeURIComponent(actionName)}`;
 
-    const url = buildFlowApiUrl({ baseUrl: options.baseUrl, path });
+    const url = buildFlowApiUrl({ baseUrl: options.baseUrl, apiPath: options.apiPath, path });
 
     const response = await fetcher(url, {
       method: "POST",
@@ -180,12 +182,15 @@ export function createClient(options: CreateClientOptions): Client {
 
   const abortRequest = async (requestId: string): Promise<void> => {
     const path = `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/abort`;
-    const url = buildFlowApiUrl({ baseUrl: options.baseUrl, path });
+    const url = buildFlowApiUrl({ baseUrl: options.baseUrl, apiPath: options.apiPath, path });
     const response = await fetcher(url, { method: "POST" });
     if (!response.ok && response.status !== 204) {
       const body = await response.text().catch(() => "");
-      throw new Error(
-        `Abort request failed (${response.status}): ${body}`.trim()
+      // A `ClientHttpError`, so a caller reads the refusal's status (409:
+      // already finished, 403: not yours) instead of parsing the message.
+      throw new ClientHttpError(
+        `Abort request failed (${response.status}): ${body}`.trim(),
+        { status: response.status, body }
       );
     }
   };
@@ -196,7 +201,7 @@ export function createClient(options: CreateClientOptions): Client {
     const path = `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/status`;
     return requestJson<RequestStatusSnapshot>({
       fetcher,
-      url: buildFlowApiUrl({ baseUrl: options.baseUrl, path })
+      url: buildFlowApiUrl({ baseUrl: options.baseUrl, apiPath: options.apiPath, path })
     });
   };
 
@@ -226,12 +231,10 @@ export function createTypedClient<TFlow extends FlowLike>(
     flowKind,
     userId: options.userId,
     baseUrl: options.baseUrl,
+    apiPath: options.apiPath,
     fetcher: options.fetcher
   });
-  const sessions = createSessionClient({
-    baseUrl: options.baseUrl,
-    fetcher: options.fetcher
-  });
+  const sessions = createSessionClient(options);
 
   const actions = Object.fromEntries(
     Object.keys(options.flow.actions).map((actionName) => [

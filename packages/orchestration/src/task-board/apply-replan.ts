@@ -143,7 +143,7 @@ export function createApplyReplan(options: ApplyReplanOptions) {
             )[capability.name].tasks()
           : await getOrCreateTaskCollection({
               ctx,
-              backing: "request",
+              backing: "state",
               collectionId,
             });
 

@@ -1,10 +1,11 @@
 /**
  * Factory: `getOrCreateTaskCollection({ backing, ... })`.
  *
- * One-call helper that builds a `TaskCollectionRef` against any of three
- * backings (sequencer-state, request-state, resource-collection) and
- * adapts the substrate's `onChange` callback to the framework's
- * component-item stream via `ctx.emit.component`.
+ * One-call helper that builds a `TaskCollectionRef` against one of two
+ * backings — atomic state (`"state"`: a state ref you pass, or the request
+ * when you pass none) or a resource collection (`"resource"`) — and adapts
+ * the substrate's `onChange` callback to the framework's component-item
+ * stream via `ctx.emit.component`.
  *
  * Each lifecycle transition emits a `task-change` component item keyed by
  * `${collectionId}/${taskId}`. The `key` ensures latest-wins replacement
@@ -22,7 +23,7 @@ import type {
 import type { TaskCollectionRef } from "./types";
 import type { TaskClaimIdentity } from "../schema/task";
 import { toEmittedTask, type TaskChangeEvent } from "./change-event";
-import { createSequencerBackedTaskCollection } from "./sequencer-backed";
+import { createStateBackedTaskCollection } from "./state-backed";
 import { createResourceBackedTaskCollection } from "./resource-backed";
 import type { TaskCapOptions } from "./task-caps";
 
@@ -46,25 +47,39 @@ interface CommonOptions {
 }
 
 /**
- * Sequencer-state backing options.
+ * Atomic-state backing options.
  *
- * The caps (creation caps FIX-931, retry budget FIX-948) live here and on
- * {@link RequestBackingSpec} rather than on the shared common options, because
- * these are exactly the two backings that route through
- * `createSequencerBackedTaskCollection` — where enforcement lives.
- * `ResourceBackingSpec` builds a different constructor and enforces nothing, so
- * asking for a cap there is a type error rather than a silently ignored ceiling.
- * (That backing still *counts* retries; see `task-caps.ts` on why counting and
- * enforcing are separate there.)
+ * Tasks live as a `Record<id, Task>` on one atomic state, written through its
+ * CAS-guarded `atomicState`. Which state, and the default slot, follow from
+ * whether you pass `state`:
+ *
+ * - **`state` passed** (e.g. `ctx.sequencer`, or a generator's own state via
+ *   `ctx.parent`) — tasks live at `[stateKey]`, default `"tasks"`, on that ref.
+ *   Durability follows the ref: a sequencer's state is checkpointed and restored
+ *   on resume; a generator's own state is not.
+ * - **`state` omitted** — tasks live on the request (`ctx.request`), at
+ *   `[stateKey]`, default the `collectionId`, so several boards in one request
+ *   stay apart. The collection survives every block boundary within the request
+ *   and ends with it; for cross-request boards use `backing: "resource"`.
+ *
+ * The caps are accepted here and not on {@link ResourceBackingSpec}: this arm
+ * builds `createStateBackedTaskCollection`, where enforcement lives, and asking
+ * for a cap on a backing that enforces nothing is a type error rather than a
+ * silently ignored ceiling. (That backing still *counts* retries; see
+ * `task-caps.ts` on why counting and enforcing are separate there.)
  */
-export interface SequencerBackingSpec extends CommonOptions, TaskCapOptions {
-  backing: "sequencer";
+export interface StateBackingSpec extends CommonOptions, TaskCapOptions {
+  backing: "state";
   /**
-   * Sequencer state ref. Typically `ctx.sequencer`. The sequencer's
-   * stateSchema must include a record at `[stateKey]` (default `"tasks"`)
-   * shaped as `Record<string, Task>`.
+   * The atomic state that holds the tasks. Omit it to keep them on the request.
+   * A passed ref's state schema must include a record at `[stateKey]` shaped as
+   * `Record<string, Task>`.
    */
-  sequencer: StateRef<Record<string, unknown>>;
+  state?: StateRef<Record<string, unknown>>;
+  /**
+   * Top-level field holding the `Record<id, Task>`. Default: `"tasks"` on a
+   * passed `state`; the `collectionId` on the request.
+   */
   stateKey?: string;
 }
 
@@ -82,35 +97,8 @@ export interface ResourceBackingSpec extends CommonOptions {
   immutableAssignee?: boolean;
 }
 
-/**
- * Request-state backing options (FIX-471).
- *
- * Tasks live on `ctx.request` — the same atomic-state surface a
- * sequencer state ref exposes — so the collection survives every block
- * boundary inside a single request. Use this backing when a board needs
- * to be re-entered from inside an outer loop (e.g. a replan loop wraps
- * the same `taskBoard.drain` to drain freshly added tasks across
- * iterations); sequencer-backed collections don't survive across
- * sequencer invocations because each call creates a fresh state
- * container.
- *
- * Lifetime is the request, not the session. For cross-request boards,
- * use `backing: "resource"` with a session/user/org-scoped resource
- * collection.
- */
-export interface RequestBackingSpec extends CommonOptions, TaskCapOptions {
-  backing: "request";
-  /**
-   * Top-level field on `ctx.request.state` that holds the
-   * `Record<id, Task>`. Defaults to the `collectionId`, which keeps
-   * multiple boards in the same request namespaced by default.
-   */
-  stateKey?: string;
-}
-
 export type GetOrCreateTaskCollectionOptions =
-  | (SequencerBackingSpec & { ctx: BlockContext })
-  | (RequestBackingSpec & { ctx: BlockContext })
+  | (StateBackingSpec & { ctx: BlockContext })
   | (ResourceBackingSpec & { ctx: BlockContext });
 
 /**
@@ -118,24 +106,30 @@ export type GetOrCreateTaskCollectionOptions =
  * not allocate the underlying storage — the caller is expected to have
  * declared it (sequencer state schema, resource collection definition).
  *
- * Example (sequencer-backed):
+ * Example (on a sequencer's state):
  * ```ts
  * const tasks = await getOrCreateTaskCollection({
  *   ctx,
- *   backing: "sequencer",
+ *   backing: "state",
+ *   state: ctx.sequencer!,
  *   collectionId: "my-plan",
- *   sequencer: ctx.sequencer!,
  * });
  * ```
  *
+ * Throws, before touching any storage, when `backing` is not `"state"` or
+ * `"resource"` — including the removed `"sequencer"` and `"request"` spellings
+ * an untyped caller may still send — or when `state` is present but empty.
+ *
  * Async: the resource backing hydrates a sync read-mirror at construction
- * (see `createResourceBackedTaskCollection`). The sequencer/request
- * backings build synchronously, but the factory is uniformly `async` so
+ * (see `createResourceBackedTaskCollection`). The state backing builds
+ * synchronously, but the factory is uniformly `async` so
  * callers `await` it regardless of backing.
  */
 export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
   options: GetOrCreateTaskCollectionOptions
 ): Promise<TaskCollectionRef<TInput, TOutput>> {
+  assertKnownBacking(options);
+
   // Item-log accessor for `TaskHandle.items()` (FIX-480). Duck-typed
   // against `ctx.response` — same access pattern as
   // `getEmitterItemCount` in `packages/core/src/blocks/generator.ts`.
@@ -175,28 +169,15 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     );
   };
 
-  if (options.backing === "sequencer") {
-    return createSequencerBackedTaskCollection<TInput, TOutput>({
+  if (options.backing === "state") {
+    const passed = options.state;
+    return createStateBackedTaskCollection<TInput, TOutput>({
       collectionId: options.collectionId,
-      sequencer: options.sequencer,
-      stateKey: options.stateKey,
-      onChange,
-      getItems,
-      now: options.now,
-      claimIdentity,
-      maxTotalTasks: options.maxTotalTasks,
-      maxEnqueuedTasks: options.maxEnqueuedTasks,
-      maxTotalRetries: options.maxTotalRetries,
-    });
-  }
-
-  if (options.backing === "request") {
-    return createSequencerBackedTaskCollection<TInput, TOutput>({
-      collectionId: options.collectionId,
-      sequencer: requestStateRef(options.ctx.request),
-      // Default to the collectionId — multiple boards in one request
-      // each get an isolated top-level slot without manual namespacing.
-      stateKey: options.stateKey ?? options.collectionId,
+      state: passed ?? requestStateRef(options.ctx.request),
+      // The two default slots are where stored tasks already live: `tasks` on
+      // a passed ref, the collectionId on the request — so multiple boards in
+      // one request each get an isolated top-level slot without namespacing.
+      stateKey: options.stateKey ?? (passed ? "tasks" : options.collectionId),
       onChange,
       getItems,
       now: options.now,
@@ -216,6 +197,43 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     claimIdentity,
     immutableAssignee: options.immutableAssignee,
   });
+}
+
+/**
+ * Reject a backing this factory does not build, before any storage or context
+ * handle is read. Typed callers cannot get here; an untyped caller (plain JS,
+ * a cast, a config loaded at runtime) still sending a removed spelling gets the
+ * replacement named rather than a failure one step later.
+ */
+function assertKnownBacking(options: GetOrCreateTaskCollectionOptions): void {
+  const raw = options as { backing?: unknown; collectionId?: unknown; state?: unknown };
+  const where = `[tasks] getOrCreateTaskCollection("${String(raw.collectionId)}")`;
+  if (raw.backing === "sequencer") {
+    throw new Error(
+      `${where}: backing "sequencer" was removed. Write backing: "state" and pass ` +
+        "the ref as `state` (was `sequencer`). Valid backings: \"state\", \"resource\"."
+    );
+  }
+  if (raw.backing === "request") {
+    throw new Error(
+      `${where}: backing "request" was removed. Write backing: "state" with no ` +
+        "`state` field to keep tasks on the request. Valid backings: \"state\", \"resource\"."
+    );
+  }
+  if (raw.backing !== "state" && raw.backing !== "resource") {
+    throw new Error(
+      `${where}: unknown backing ${JSON.stringify(raw.backing)}. ` +
+        'Valid backings: "state", "resource".'
+    );
+  }
+  // An explicit `state: undefined` must not quietly become "on the request":
+  // that would put the board's tasks on a different state, at a different slot.
+  if (raw.backing === "state" && "state" in raw && raw.state == null) {
+    throw new Error(
+      `${where}: \`state\` was passed but is ${String(raw.state)}. Pass a state ref, ` +
+        "or leave `state` out to keep tasks on the request."
+    );
+  }
 }
 
 /**
@@ -243,12 +261,13 @@ function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
 }
 
 /**
- * Adapt `ctx.request` to the `StateRef` shape the sequencer-backed CAS
- * impl expects. Both surfaces expose the same `ScopeStateOps` mutators
- * (`atomicState`, `patchState`, etc.) so the only adaptation needed is a
- * live `state` getter and a stable name/instanceId pair. Keeping this in
- * one place lets request-backed and sequencer-backed share the same
- * mutation engine, retry semantics, and `onChange` emission path.
+ * Adapt `ctx.request` to the `StateRef` shape the state-backed CAS impl
+ * expects — the omitted-`state` case of `backing: "state"`. Both surfaces
+ * expose the same `ScopeStateOps` mutators (`atomicState`, `patchState`,
+ * etc.) so the only adaptation needed is a live `state` getter and a stable
+ * name/instanceId pair. Keeping this in one place lets a request board and a
+ * board on a passed ref share the same mutation engine, retry semantics, and
+ * `onChange` emission path.
  */
 function requestStateRef(
   request: RequestScopeHandle
@@ -256,8 +275,8 @@ function requestStateRef(
   return {
     name: "request",
     instanceId: request.identity.id,
-    // Live getter — the CAS read path inside createSequencerBackedTaskCollection
-    // calls `sequencer.state` to peek at the current tasks map (e.g. inside
+    // Live getter — the CAS read path inside createStateBackedTaskCollection
+    // calls `state.state` to peek at the current tasks map (e.g. inside
     // the retry-on-fail branch). A frozen snapshot would silently desync.
     get state() {
       return request.state as Record<string, unknown>;

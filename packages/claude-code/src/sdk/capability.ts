@@ -1,10 +1,9 @@
 /**
  * `createClaudeCodeAgentCapability` — host opt-in for the in-process Agent SDK.
  *
- * Mirrors `createClaudeCliCapability`: a single `tools` preset (on by default)
- * exposes the agent block to a generator, and the capability declares the
- * session-state schema (`sdkSessionId` + `sdkAgentRuns`) the block reads and
- * appends to. Installing this capability is the explicit declaration that a
+ * A single `tools` preset (on by default) exposes the agent block to a
+ * generator, and the capability declares the session-state schema
+ * (`sdkSessionId` + `sdkAgentRuns`) the block reads and appends to. Installing this capability is the explicit declaration that a
  * process may run the Agent SDK in-process.
  *
  * `detached` is documented once, on the option itself in `./agent`.

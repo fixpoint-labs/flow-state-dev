@@ -160,7 +160,9 @@ Optional comments do not require another design round merely to reach zero comme
 [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md); what follows is the spec-PR instance.
 Budget ~475 prose words above the fold. The body is not another spec document: every line
 in it is in `SPEC.md` too, shorter. The one thing it takes from elsewhere is each decision's
-trade-off figure, which lives beside its card in `DECISIONS.md`.)*
+trade-off figure, which lives beside its card in `DECISIONS.md`. Write its prose in
+ASD-STE100, per [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → "Language — ASD-STE100";
+the rows cut from `SPEC.md` get rewritten to STE, not pasted.)*
 
 The people table from `SPEC.md`, cut to five rows. Then **the goal**, in its one sentence,
 the *how we'll know* figure (a mermaid fence, pasted as text) with its sentence, and one line
@@ -277,23 +279,27 @@ review.
 The document the product owner reads. It answers *who feels this, what do they see before and
 after, and what am I signing*, in observable behaviour with no file paths. Sections, in order:
 
-1. **The header line** — kind · packages · size · PR count · epic, and sibling links.
-2. **People, before and after** — a table: someone who… · today · after. Three to six rows.
+1. **People, before and after** — a table: someone who… · today · after. Three to six rows.
    Each row is a person doing one thing and what they see. This table is the spec's problem
-   statement and its solution statement at once, and the PR body cuts it to five rows.
-3. **The goal, and how we'll know it's met** — the section below this list says what it owes.
+   statement and its solution statement at once, and the PR body cuts it to five rows. It
+   comes first: nothing sits between the nav line and it.
+2. **The goal, and how we'll know it's met** — the section below this list says what it owes.
    It sits right after the problem because every section after it is judged against it.
-4. **What changes** — the one figure, with its sentence. Then any surface a person edits, **as
+3. **What changes** — the one figure, with its sentence. Then any surface a person edits, **as
    a diff**: a config file, a worker file, a call site. The diff is the highest-density form we
    have for a file-shaped surface, and it is what a person will actually type.
-5. **Optionally, one more figure** where a quantity carries the argument — what a turn costs,
+4. **Optionally, one more figure** where a quantity carries the argument — what a turn costs,
    what a request carries — and **one mermaid** for the mechanism as a path through layers.
-6. **What stays as it is** — the neighbours a reader would otherwise assume changed.
-7. **Sign off** — here, one-liners with no figures; the trade-offs stay beside their cards, and
+5. **What stays as it is** — the neighbours a reader would otherwise assume changed.
+6. **Sign off** — here, one-liners with no figures; the trade-offs stay beside their cards, and
    only the PR body pins them (see "The PR body"). **The goal first**, unnumbered, with its *If wrong:*: approval certifies the
    goal's size as much as the approach. Then the numbered decisions as one-liners linking to
    their cards, each with *If wrong:*, and the one to weigh named. **Open: none**, or the live
    forks named.
+7. **The facts line** — kind · packages · size · PR count · epic; sibling links stay on the nav line. Last,
+   for the reason a PR body's links line is last: a reader wants it only after deciding to go
+   deeper, and above the problem it is a label they must read past
+   ([`writing-for-humans.md`](writing-for-humans.md) → "The rule").
 
 ### The goal, and how we'll know it's met
 
@@ -345,8 +351,6 @@ check" is a statement with a reason, never a blank.
 > # FIX-775 · Resume a stream after a disconnect
 >
 > **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
->
-> Feature · `engine` + `client` · medium · 1 PR · no epic
 >
 > ## Three people, before and after
 >
@@ -458,8 +462,10 @@ check" is a statement with a reason, never a blank.
 > **Open: none.** Number 1 is the one to weigh. The full reasoning, what was rejected, and what
 > each locks in is in [DECISIONS.md](DECISIONS.md). The cases the code must satisfy are in
 > [BUSINESS-RULES.md](BUSINESS-RULES.md).
+>
+> Feature · `engine` + `client` · medium · 1 PR · no epic
 
-**Size is a count, not an adjective.** The header line's *medium* is read off `PLAN.md` —
+**Size is a count, not an adjective.** The facts line's *medium* is read off `PLAN.md` —
 surfaces, checks, doc surfaces, PR count — and written last. A label written before the plan is
 finished is a guess.
 

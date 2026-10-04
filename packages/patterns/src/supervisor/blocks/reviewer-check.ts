@@ -187,7 +187,7 @@ export function buildReviewedWorker(
       if (taskId !== undefined) {
         const collection = await getOrCreateTaskCollection({
           ctx,
-          backing: "request",
+          backing: "state",
           collectionId,
         });
         goal = collection.get(taskId)?.goal;

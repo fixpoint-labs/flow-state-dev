@@ -125,7 +125,7 @@ export function workerConfigSchema() {
     [TEAM_INSTRUCTIONS_KEY]: z.string().optional(),
 
     /**
-     * The skills this seat can see — the org ∪ team ∪ own-folder union the
+     * The skills this seat can see — the org ∪ team (team seats only) ∪ own-folder union the
      * loader resolved for it, in level order.
      *
      * **Imposed by the factory on every record, never authored**, and present
@@ -142,8 +142,9 @@ export function workerConfigSchema() {
     [SEAT_SKILLS_KEY]: z.array(seatSkillSchema).default([]),
 
     /**
-     * The blocks this seat's `tools:` resolved to **from its own levels** — its
-     * own `blocks/` folder, then its team's — already resolved, in the order
+     * The blocks this seat's `tools:` resolved to **from its own levels** — a
+     * team seat's own `blocks/` folder, then its team's; an org seat has
+     * neither, so only its held packages' — already resolved, in the order
      * the file named them.
      *
      * **Imposed by the factory on every record, never authored**, and present

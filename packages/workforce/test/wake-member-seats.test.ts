@@ -1,6 +1,6 @@
 /**
  * `wakeMemberSeats`: the notify block that wakes each member whose hired seat
- * declares the internal `onChannelPost` entry, on a real in-process host.
+ * declares the internal `onMailboxPost` entry, on a real in-process host.
  *
  * What is graded is what each seat heard, never the router's output: the
  * listening kind below records every post it runs on (which seat, which
@@ -10,24 +10,26 @@
  * Checks, by the spec's ids (`specs/issues/FIX-1602/BUSINESS-RULES.md`, V1):
  *
  *   BR-1, BR-8, BR-9  a post with no author runs each declaring member once,
- *                     in one conversation per seat per channel, reused by
+ *                     in one conversation per seat per mailbox, reused by
  *                     the next post. The built-in `agent` kind and an app's
  *                     own kind (BR-6) alike.
  *   BR-2              a member whose kind declares no entry runs nothing and
  *                     gets the fallback.
- *   BR-3, BR-13       a post with an author runs no seat, and a member that
- *                     would have woken gets nothing, not even the fallback;
- *                     every other member gets the fallback as on any post.
+ *   BR-3, BR-13       a post on the seat post action runs no seat, and a
+ *                     member that would have woken gets nothing, not even the
+ *                     fallback. A public post, and a dispatched `post`, that
+ *                     only claim an author still wake. Every other member
+ *                     gets the fallback as on any post.
  *   BR-4, BR-15       a member with no seat among those passed gets the
  *                     fallback; an empty seat list gives everyone the
- *                     fallback. A hired seat in no channel never runs.
+ *                     fallback. A hired seat in no mailbox never runs.
  *   BR-5              a seat minted from a stored roster row, at
  *                     `<org>.<seatId>`, wakes by its logical id. Two such
  *                     seats of one id in two organizations: the post's
  *                     organization decides which.
  *   BR-7              a seat whose entry refuses the post fails alone; the
  *                     others still run.
- *   BR-10             a seat in two channels keeps a conversation per channel.
+ *   BR-10             a seat in two mailboxes keeps a conversation per mailbox.
  *   BR-12             no fallback passed: a member not woken gets nothing.
  *
  * BR-14 (seats, not ids) is the compile-time half, in
@@ -41,14 +43,14 @@ import type { FlowStateRuntime, StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  CHANNEL_KIND,
-  channelNotifyInputSchema,
+  MAILBOX_KIND,
+  mailboxNotifyInputSchema,
   defineAgentWorkerFlow,
-  defineChannelFlow,
+  defineMailboxFlow,
   hireWorkforce,
   wakeMemberSeats,
   workerConfigSchema,
-  type ChannelNotifyInput,
+  type MailboxNotifyInput,
   type WorkerManifest
 } from "../src/index";
 import { hiredSeatManifest, toHiredSeatRow } from "../src/roster/rows";
@@ -61,7 +63,7 @@ type Heard = { seat: string; conversation: string; body: string };
 /**
  * The kinds a test hires into, each recording into its own lists.
  *
- * - `listener` is an app's own kind that declares `onChannelPost`.
+ * - `listener` is an app's own kind that declares `onMailboxPost`.
  * - `note` declares only a public action.
  * - `picky` declares the entry, but its input asks for a field no post has.
  * - `agent` is the built-in, answering from a scripted model.
@@ -76,20 +78,20 @@ function kinds() {
   });
   const listen = handler({
     name: "test-listen",
-    inputSchema: channelNotifyInputSchema,
+    inputSchema: mailboxNotifyInputSchema,
     outputSchema: z.object({ ok: z.boolean() }),
-    execute: (post: ChannelNotifyInput, ctx) => {
+    execute: (post: MailboxNotifyInput, ctx) => {
       heard.push({ seat: ctx.flow.id, conversation: ctx.session.identity.id, body: post.body });
       return { ok: true };
     }
   });
-  const pickyInput = channelNotifyInputSchema.extend({ ticket: z.string() });
+  const pickyInput = mailboxNotifyInputSchema.extend({ ticket: z.string() });
   const listener = defineFlow({
     kind: "listener",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: { ask: { block: answer } },
-    internal: { actions: { onChannelPost: { inputSchema: channelNotifyInputSchema, block: listen } } }
+    internal: { actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: listen } } }
   } as never);
   const note = defineFlow({
     kind: "note",
@@ -104,7 +106,7 @@ function kinds() {
     actions: { ask: { block: answer } },
     internal: {
       actions: {
-        onChannelPost: {
+        onMailboxPost: {
           inputSchema: pickyInput,
           block: listen.connectInput((post: z.infer<typeof pickyInput>) => post)
         }
@@ -134,9 +136,9 @@ function recordingFallback() {
   const ran: string[] = [];
   const block = handler({
     name: "test-fallback",
-    inputSchema: channelNotifyInputSchema,
+    inputSchema: mailboxNotifyInputSchema,
     outputSchema: z.object({ ok: z.boolean() }),
-    execute: (post: ChannelNotifyInput) => {
+    execute: (post: MailboxNotifyInput) => {
       ran.push(`${post.member}|${post.body}`);
       return { ok: true };
     }
@@ -149,9 +151,9 @@ function host(
   notify: BlockDefinition<any, any>,
   registered: FlowInstance[] = seats
 ) {
-  const channel = defineChannelFlow({ notify })();
+  const mailbox = defineMailboxFlow({ notify })();
   const state = createFlowState({
-    flows: { [CHANNEL_KIND]: channel, ...Object.fromEntries(registered.map((s) => [s.id, s])) },
+    flows: { [MAILBOX_KIND]: mailbox, ...Object.fromEntries(registered.map((s) => [s.id, s])) },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {
@@ -163,7 +165,7 @@ function host(
       policy: "allow"
     })
   });
-  return { channel, state };
+  return { mailbox, state };
 }
 
 async function bind(stores: StoreRegistry, sessionId: string, members: string[], orgId = DEFAULT_ORG_ID) {
@@ -172,8 +174,8 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[],
     sessionId,
     {
       id: sessionId,
-      flowKind: CHANNEL_KIND,
-      flowId: CHANNEL_KIND,
+      flowKind: MAILBOX_KIND,
+      flowId: MAILBOX_KIND,
       userId: USER_ID,
       orgId,
       state: { members, instructions: "Charter.", transcript: [] },
@@ -189,25 +191,26 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[],
 
 async function post(
   runtime: FlowStateRuntime,
-  channel: FlowInstance,
+  mailbox: FlowInstance,
   sessionId: string,
   body: string,
-  options: { author?: string; orgId?: string } = {}
+  options: { author?: string; orgId?: string; source?: "internal"; actionName?: string } = {}
 ) {
   const result = await runAction({
     orgId: options.orgId ?? DEFAULT_ORG_ID,
-    flow: channel,
-    actionName: "post",
+    flow: mailbox,
+    actionName: options.actionName ?? "post",
     input: options.author === undefined ? { body } : { body, author: options.author },
     userId: USER_ID,
     sessionId,
     stores: runtime.stores,
-    runtimeConfig: { ...runtime.runtimeConfig }
+    runtimeConfig: { ...runtime.runtimeConfig },
+    ...(options.source === undefined ? {} : { source: options.source })
   });
   expect(result.error).toBeUndefined();
 }
 
-/** Wait until every fan-out request on the channel has settled, then a beat for any stray run. */
+/** Wait until every fan-out request on the mailbox has settled, then a beat for any stray run. */
 async function settle(runtime: FlowStateRuntime, sessionId: string, posts: number): Promise<void> {
   for (let attempt = 0; attempt < 400; attempt += 1) {
     const fanOuts = (await runtime.stores.request.list({ sessionId })).filter((r) => r.actionName === "onPosted");
@@ -271,13 +274,13 @@ describe("wakeMemberSeats · who a post wakes", () => {
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note"), worker("desk.idle", "listener")],
       { kinds: map }
     );
-    const { channel, state } = host(seats, wakeMemberSeats(seats));
+    const { mailbox, state } = host(seats, wakeMemberSeats(seats));
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, "desk.front", ["desk.amy", "desk.ivy", "desk.oz", "desk.ned"]);
-      await post(runtime, channel, "desk.front", "first");
+      await post(runtime, mailbox, "desk.front", "first");
       await settle(runtime, "desk.front", 1);
-      await post(runtime, channel, "desk.front", "second");
+      await post(runtime, mailbox, "desk.front", "second");
       await settle(runtime, "desk.front", 2);
 
       const seen = bySeat(heard);
@@ -287,10 +290,10 @@ describe("wakeMemberSeats · who a post wakes", () => {
         expect(new Set(seen[seat]!.map((h) => h.conversation)).size, seat).toBe(1);
       }
       expect(seen["desk.ivy"]![0]!.conversation).not.toBe(seen["desk.oz"]![0]!.conversation);
-      // A hired seat in no channel, and a kind with no entry, heard nothing.
+      // A hired seat in no mailbox, and a kind with no entry, heard nothing.
       expect(Object.keys(seen).sort()).toEqual(["desk.ivy", "desk.oz"]);
 
-      // The built-in agent kind: one conversation of the channel, both posts as turns.
+      // The built-in agent kind: one conversation of the mailbox, both posts as turns.
       const turns = await agentTurns(runtime, "desk.amy", "desk.front");
       expect(turns).toHaveLength(1);
       expect(turns[0]!.sort()).toEqual(["u_wake in desk.front: first", "u_wake in desk.front: second"]);
@@ -304,35 +307,84 @@ describe("wakeMemberSeats · who a post wakes", () => {
     }
   });
 
-  it("wakes nobody on a post with an author; only members that could not wake get the fallback (BR-3, BR-13)", async () => {
+  it("wakes hearing members when a public post claims a hire address as author", async () => {
     const { heard, map } = kinds();
     const seats = hireWorkforce(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
       { kinds: map }
     );
     const fallback = recordingFallback();
-    const { channel, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
+    const { mailbox, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, "desk.front", ["desk.amy", "desk.ivy", "desk.oz", "desk.ned", "desk.gone"]);
 
-      await post(runtime, channel, "desk.front", "from a person");
+      // The caller-supplied string is a display claim. It must not withhold the wake.
+      await post(runtime, mailbox, "desk.front", "claimed", { author: "desk.ivy" });
       await settle(runtime, "desk.front", 1);
-      await post(runtime, channel, "desk.front", "from ivy", { author: "desk.ivy" });
+
+      expect(heard.filter((h) => h.body === "claimed").map((h) => h.seat).sort()).toEqual(["desk.ivy", "desk.oz"]);
+      expect((await agentTurns(runtime, "desk.amy", "desk.front")).flat().filter((t) => t.includes("claimed"))).toHaveLength(1);
+      // Members that could not wake still get the fallback, and only those.
+      expect(fallback.ran.sort()).toEqual(["desk.gone|claimed", "desk.ned|claimed"]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("wakes hearing members when a dispatched post claims a hire address as author", async () => {
+    const { heard, map } = kinds();
+    const seats = hireWorkforce(
+      [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
+      { kinds: map }
+    );
+    const fallback = recordingFallback();
+    const { mailbox, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, "desk.front", ["desk.amy", "desk.ivy", "desk.oz", "desk.ned", "desk.gone"]);
+
+      // `internal` is the cross-flow address, not proof the sender is a seat.
+      await post(runtime, mailbox, "desk.front", "relayed", { author: "desk.ivy", source: "internal" });
+      await settle(runtime, "desk.front", 1);
+
+      expect(heard.filter((h) => h.body === "relayed").map((h) => h.seat).sort()).toEqual(["desk.ivy", "desk.oz"]);
+      expect((await agentTurns(runtime, "desk.amy", "desk.front")).flat().filter((t) => t.includes("relayed"))).toHaveLength(1);
+      expect(fallback.ran.sort()).toEqual(["desk.gone|relayed", "desk.ned|relayed"]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("wakes nobody when the post arrives on the seat post action; the fallback stays with members that could not wake", async () => {
+    const { heard, map } = kinds();
+    const seats = hireWorkforce(
+      [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
+      { kinds: map }
+    );
+    const fallback = recordingFallback();
+    const { mailbox, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, "desk.front", ["desk.amy", "desk.ivy", "desk.oz", "desk.ned", "desk.gone"]);
+
+      await post(runtime, mailbox, "desk.front", "from a person");
+      await settle(runtime, "desk.front", 1);
+      await post(runtime, mailbox, "desk.front", "from ivy", {
+        author: "desk.ivy",
+        source: "internal",
+        actionName: "seatPost"
+      });
       await settle(runtime, "desk.front", 2);
 
-      // The seat's post ran no seat.
       expect(heard.filter((h) => h.body === "from ivy")).toEqual([]);
       expect((await agentTurns(runtime, "desk.amy", "desk.front")).flat().filter((t) => t.includes("from ivy"))).toEqual([]);
-      // On both posts the fallback ran for exactly the members that could not
-      // wake, and never for one that could: the author withholds, never widens.
       expect(fallback.ran.sort()).toEqual([
         "desk.gone|from a person",
         "desk.gone|from ivy",
         "desk.ned|from a person",
         "desk.ned|from ivy"
       ]);
-      // The person's post did wake them.
       expect(heard.filter((h) => h.body === "from a person").map((h) => h.seat).sort()).toEqual(["desk.ivy", "desk.oz"]);
     } finally {
       await state.dispose();
@@ -343,11 +395,11 @@ describe("wakeMemberSeats · who a post wakes", () => {
     const { heard, map } = kinds();
     const seats = hireWorkforce([worker("desk.ivy", "listener")], { kinds: map });
     const fallback = recordingFallback();
-    const { channel, state } = host([], wakeMemberSeats([], { fallback: fallback.block }), seats);
+    const { mailbox, state } = host([], wakeMemberSeats([], { fallback: fallback.block }), seats);
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, "desk.front", ["desk.ivy", "desk.gone"]);
-      await post(runtime, channel, "desk.front", "anyone?");
+      await post(runtime, mailbox, "desk.front", "anyone?");
       await settle(runtime, "desk.front", 1);
 
       // desk.ivy is registered and declares the entry, but was not passed.
@@ -366,11 +418,11 @@ describe("wakeMemberSeats · where a woken seat runs", () => {
       kinds: map
     });
     expect(seats.map((s) => s.id).sort()).toEqual(["acme.desk.rex", "globex.desk.rex"]);
-    const { channel, state } = host(seats, wakeMemberSeats(seats));
+    const { mailbox, state } = host(seats, wakeMemberSeats(seats));
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, "desk.front", ["desk.rex"], "acme");
-      await post(runtime, channel, "desk.front", "for acme", { orgId: "acme" });
+      await post(runtime, mailbox, "desk.front", "for acme", { orgId: "acme" });
       await settle(runtime, "desk.front", 1);
 
       expect(heard.map((h) => `${h.seat}|${h.body}`)).toEqual(["acme.desk.rex|for acme"]);
@@ -387,11 +439,11 @@ describe("wakeMemberSeats · where a woken seat runs", () => {
       { kinds: map }
     );
     const fallback = recordingFallback();
-    const { channel, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
+    const { mailbox, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, "desk.front", ["desk.rex"], "acme");
-      await post(runtime, channel, "desk.front", "for me", { orgId: "acme" });
+      await post(runtime, mailbox, "desk.front", "for me", { orgId: "acme" });
       await settle(runtime, "desk.front", 1);
 
       const mine = seats.find((s) => s.ownerPin?.userId === USER_ID)!.id;
@@ -402,19 +454,19 @@ describe("wakeMemberSeats · where a woken seat runs", () => {
     }
   });
 
-  it("keeps one conversation per channel for a seat in two channels (BR-10)", async () => {
+  it("keeps one conversation per mailbox for a seat in two mailboxes (BR-10)", async () => {
     const { heard, map } = kinds();
     const seats = hireWorkforce([worker("desk.ivy", "listener")], { kinds: map });
-    const { channel, state } = host(seats, wakeMemberSeats(seats));
+    const { mailbox, state } = host(seats, wakeMemberSeats(seats));
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, "room.one", ["desk.ivy"]);
       await bind(runtime.stores, "room.two", ["desk.ivy"]);
-      await post(runtime, channel, "room.one", "in one");
+      await post(runtime, mailbox, "room.one", "in one");
       await settle(runtime, "room.one", 1);
-      await post(runtime, channel, "room.two", "in two");
+      await post(runtime, mailbox, "room.two", "in two");
       await settle(runtime, "room.two", 1);
-      await post(runtime, channel, "room.one", "in one again");
+      await post(runtime, mailbox, "room.one", "in one again");
       await settle(runtime, "room.one", 2);
 
       const conv = (body: string) => heard.find((h) => h.body === body)!.conversation;
@@ -428,11 +480,11 @@ describe("wakeMemberSeats · where a woken seat runs", () => {
   it("fails one member's delivery when its entry refuses the post, and still runs the others (BR-7)", async () => {
     const { heard, map } = kinds();
     const seats = hireWorkforce([worker("desk.pip", "picky"), worker("desk.ivy", "listener")], { kinds: map });
-    const { channel, state } = host(seats, wakeMemberSeats(seats));
+    const { mailbox, state } = host(seats, wakeMemberSeats(seats));
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, "desk.front", ["desk.pip", "desk.ivy"]);
-      await post(runtime, channel, "desk.front", "hello");
+      await post(runtime, mailbox, "desk.front", "hello");
       await settle(runtime, "desk.front", 1);
 
       expect(heard.map((h) => h.seat)).toEqual(["desk.ivy"]);

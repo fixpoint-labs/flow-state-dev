@@ -10,7 +10,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   dispatchAndExecuteBlock,
   fifoDispatcher,
   MIN_LEASE_DURATION_MS,
@@ -26,9 +26,9 @@ import { dropsTheGuards, unreachable } from "../collection/store-wrappers";
 function buildCollection(): TaskCollectionRef {
   const captured = createCapturedChanges();
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
-  return createSequencerBackedTaskCollection({
+  return createStateBackedTaskCollection({
     collectionId: "tasks",
-    sequencer,
+    state: sequencer,
     onChange: captured.onChange,
   });
 }

@@ -13,7 +13,7 @@
  * streaming item to close at a turn boundary. What remains is the open/settle
  * pair for tool calls, which is the only correlation Codex's stream has.
  */
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { itemScope, type BlockContext } from "@flow-state-dev/core/types";
 import type { TranslatedEvent } from "./types";
 
 /** Provenance derived once per run and stamped on every emitted item. */
@@ -22,34 +22,6 @@ interface EmitProvenance {
   blockInstanceId: string;
   parentBlockInstanceId?: string;
   phase: "main" | "sideChain";
-}
-
-/**
- * Where this run sits, as the runtime describes it on `ctx._blockIdentity`.
- *
- * Both fields go on **every** item, which is what every canonical emit site in
- * the framework does. They are not decoration: `taskId` is what puts an item in
- * a task's own item list, and `ownedBy` is what nests it inside an enclosing
- * container. A harness that drops them emits items a manager cannot attribute
- * to the task it dispatched — and running inside a manager's task scope is the
- * entire reason this package exists.
- *
- * Absent outside a task scope, and then the keys are omitted rather than set to
- * `undefined`, so a persisted item does not carry a key that means nothing.
- */
-interface EmitScope {
-  taskId?: string;
-  ownedBy?: string;
-}
-
-/** Read the run's scope off the block identity. */
-function deriveScope(ctx: BlockContext): EmitScope {
-  const identity = (ctx as { _blockIdentity?: { taskId?: string; ownedBy?: string } })
-    ._blockIdentity;
-  return {
-    ...(identity?.taskId !== undefined ? { taskId: identity.taskId } : {}),
-    ...(identity?.ownedBy !== undefined ? { ownedBy: identity.ownedBy } : {}),
-  };
 }
 
 /**
@@ -105,7 +77,9 @@ function mintId(kind: string): string {
  * Per-item base fields, reading a fresh `itemIndex` each call.
  *
  * Every item this package creates goes through here, so the scope is stamped in
- * one place rather than remembered at six call sites.
+ * one place rather than remembered at six call sites. The scope is the task the
+ * item belongs to (what puts it in a task's own item list) and the container
+ * that owns it (what nests it inside that container), via {@link itemScope}.
  */
 function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) {
   return {
@@ -114,7 +88,7 @@ function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) 
     itemIndex: ctx.response.getItemCount(),
     provenance,
     ts: Date.now(),
-    ...deriveScope(ctx),
+    ...itemScope(ctx),
   };
 }
 
@@ -166,30 +140,34 @@ async function emitText(
   provenance: EmitProvenance,
 ): Promise<void> {
   const base = buildBase(ctx, provenance, kind === "message" ? "msg" : "reason");
+  const partType = kind === "message" ? ("output_text" as const) : ("reasoning_text" as const);
+  const body = (partText: string) =>
+    kind === "message"
+      ? { role: "assistant" as const, content: [{ type: partType, text: partText }] }
+      : { summary: [{ type: partType, text: partText }] };
   const inProgress = {
     ...base,
     type: kind,
-    ...(kind === "message" ? { role: "assistant" as const } : {}),
     status: "in_progress" as const,
     itemVisibility: CONVERSATIONAL_VISIBILITY,
-    content: [{ type: "output_text" as const, text: "" }],
+    ...body(""),
   };
   await ctx.response.emit({ type: "item.added", item: inProgress });
   await ctx.response.emit({
     type: "content.added",
     itemId: base.id,
     contentIndex: 0,
-    content: { type: "output_text", text: "" },
+    content: { type: partType, text: "" },
   });
   await ctx.response.emit({
     type: "content.done",
     itemId: base.id,
     contentIndex: 0,
-    content: { type: "output_text", text },
+    content: { type: partType, text },
   });
   await ctx.response.emit({
     type: "item.done",
-    item: { ...inProgress, status: "completed", content: [{ type: "output_text", text }] },
+    item: { ...inProgress, status: "completed", ...body(text) },
   });
   if (kind === "message") state.finalMessage = text;
 }
@@ -249,7 +227,7 @@ async function emitToolResult(
     itemIndex: ctx.response.getItemCount(),
     provenance,
     ts: Date.now(),
-    ...deriveScope(ctx),
+    ...itemScope(ctx),
     blockName: open?.name ?? event.name,
     output: event.output,
     toolCall: {
@@ -307,7 +285,7 @@ export async function finalizeOpenItems(
         itemIndex: ctx.response.getItemCount(),
         provenance,
         ts: Date.now(),
-        ...deriveScope(ctx),
+        ...itemScope(ctx),
         blockName: open.name,
         output: null,
         toolCall: {

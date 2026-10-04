@@ -57,7 +57,7 @@ import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   DEFAULT_MAX_ENQUEUED_TASKS,
   DEFAULT_MAX_TOTAL_RETRIES,
   DEFAULT_MAX_TOTAL_TASKS,
@@ -289,10 +289,10 @@ describe("the documented hand-wired bounded board actually runs", () => {
   const boundedResolver = (ctx: never) =>
     getOrCreateTaskCollection({
       ctx,
-      backing: "sequencer",
+      backing: "state",
       // The HOST generator's own state. Each tool runs as a child block, so the
       // generator's state is `ctx.parent`, not `ctx.sequencer`.
-      sequencer: (ctx as unknown as { parent: never }).parent,
+      state: (ctx as unknown as { parent: never }).parent,
       stateKey: DELEGATION_BOARD_FIELD,
       collectionId: DELEGATION_BOARD_FIELD,
       maxEnqueuedTasks: 2,
@@ -371,9 +371,9 @@ describe("delegation board — the retry budget is filtered out of the cap sprea
       maxTotalRetries: RETRY_BUDGET_NOT_APPLICABLE,
     });
 
-    const board = createSequencerBackedTaskCollection({
+    const board = createStateBackedTaskCollection({
       collectionId: DELEGATION_BOARD_FIELD,
-      sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+      state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
       ...caps,
     });
 
@@ -392,9 +392,9 @@ describe("delegation board — the retry budget is filtered out of the cap sprea
     // exactly what the delegation surface performs — silently acquires a budget
     // the board cannot configure.
     const unfiltered = resolveTaskCapDefaults("[skills] delegation board", {});
-    const board = createSequencerBackedTaskCollection({
+    const board = createStateBackedTaskCollection({
       collectionId: DELEGATION_BOARD_FIELD,
-      sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+      state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
       ...unfiltered,
     });
     expect(board.maxTotalRetries).toBe(DEFAULT_MAX_TOTAL_RETRIES);

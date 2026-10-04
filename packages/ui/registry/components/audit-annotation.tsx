@@ -95,7 +95,6 @@ export function AuditAnnotation({ item }: { item: ComponentItem }) {
   }
 
   const severity = highestSeverity(data.surfacedResults);
-  const Icon = SEVERITY_ICON[severity];
   const totalAnnotations = data.surfacedResults.reduce(
     (sum, r) => sum + r.annotations.length,
     0,

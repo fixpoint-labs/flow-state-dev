@@ -29,6 +29,12 @@ Use the higher-level wrappers when their shape fits:
 
 Drop to the board only when none of those fit.
 
+## The parts
+
+The board is a handle you drain. Its tasks are rows in a collection. Workers are blocks keyed by assignee.
+
+![The board is a handle that drains, the task collection holds the rows, and workers are blocks keyed by assignee](./task-board-parts.svg)
+
 ## Block composition
 
 ```
@@ -574,13 +580,9 @@ When a board's completion item reports `terminationReason: "retry-budget-exhaust
 
 No count is a stored counter. All three are read off the board's stored task map at the moment the bound is checked: the total is that map's size, the enqueue count is how many of its tasks are `pending`, and the retry count is the sum of every task's `retryLedger.granted`. The two creation counts are read when a task is created; the retry count is read when a task fails. All three last exactly as long as the map does, which depends on the backing:
 
-- **Request-backed** (the default) — the tasks live on the request, so a new request starts empty and all three counts start from zero.
-- **Sequencer-backed, resumed from a checkpoint** — the sequencer restores its whole state on resume, and the task map is part of that state. All three counts come back with it, retries included, so work after a resume is checked against the tasks that were already there, not against an empty board.
+- **On the request** (the default) — the tasks live on the request, so a new request starts empty and all three counts start from zero.
+- **On a state you pass** — the counts last as long as that state does. A sequencer's state is restored from its checkpoint on resume, task map included, so work after a resume is checked against the tasks already there. A generator's own state is not checkpointed, so a board kept there, such as the [delegation board](../skills/delegation#board-and-overrides), starts its tasks and counts from zero after a resume. See [Block State → The durability boundary](../advanced/block-state#the-durability-boundary).
 - **Durable (resource-backed)** — no bound is enforced. What the resource layer gives you instead is `maxInstances` on `defineTaskCollection`, and that is a capacity limit rather than a lifetime ceiling: it caps how many task instances the collection **holds at once**, and creating one past it throws. Deleting an instance through the resource collection frees the slot again, so a board that deletes and re-queues can create more tasks over its life than `maxInstances` ever allows at one moment. Creation here also goes one instance at a time, so a batch that crosses the limit stops partway and the tasks made before it stay; the all-or-nothing behavior above belongs to the request and sequencer backings only.
-
-`backing: "sequencer"` names the shape of the state reference the tasks are stored in, not the kind of block it hangs off. Any block that holds its own state can supply one, and only a sequencer block checkpoints. See [Block State → The durability boundary](../advanced/block-state#the-durability-boundary).
-
-A delegation board is where the two come apart: it uses the sequencer backing, but its tasks live on the coordinator generator's own state rather than a sequencer's. It does not checkpoint, so its tasks and counts start from zero after a resume.
 
 ### One writer, or hand every writer the bounds
 
@@ -590,16 +592,18 @@ The bounds are carried by the collection reference the board resolved. Resolving
 const board = taskBoard({ name: "research", workers });
 
 // This second reference is unbounded, even though the board has bounds.
-const loose = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "research" });
+const loose = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "research" });
 
 // Hand it the board's own resolved bounds and it enforces them.
 const bounded = await getOrCreateTaskCollection({
   ctx,
-  backing: "request",
+  backing: "state",
   collectionId: "research",
   ...board.caps,
 });
 ```
+
+`taskBoard` and `getOrCreateTaskCollection` name backings differently. A board takes `collection: { backing: "request" }` or `{ backing: "sequencer" }`, or a `defineTaskCollection()` value. `getOrCreateTaskCollection` takes `backing: "state"` or `backing: "resource"`. With `backing: "state"` and no `state` field, the tasks live on the request, which is where a default board keeps them.
 
 `board.caps` is on the handle for exactly this. Most code never needs it: reaching the board through `board.capability` (or letting the board's own seed and drain do the writing) is already bounded. It matters when you resolve the collection yourself.
 
@@ -617,16 +621,16 @@ The bounds belong to the collection, so the board applies them only to a collect
 ```ts
 const tasks = await getOrCreateTaskCollection({
   ctx,
-  backing: "sequencer",
+  backing: "state",
+  state: ctx.sequencer!,
   collectionId: "my-board",
-  sequencer: ctx.sequencer!,
   maxTotalTasks: 2000,
 });
 ```
 
 Which state ref to pass depends on where your code runs, and getting it wrong fails quietly rather than loudly: you get a working collection over the wrong slot. From a block *inside* the sequencer, pass `ctx.sequencer`. From a tool running as a child of a generator that owns the board, pass `ctx.parent` (see [wiring a bounded board by hand](../skills/delegation#board-and-overrides)).
 
-The cap options exist on the sequencer and request backing specs only. Passing `maxTotalTasks` or `maxEnqueuedTasks` with `backing: "resource"` is a TypeScript error, not a ceiling that quietly does nothing.
+The cap options exist on `backing: "state"` only. Passing `maxTotalTasks` or `maxEnqueuedTasks` with `backing: "resource"` is a TypeScript error, not a ceiling that quietly does nothing.
 
 ### If the defaults are too low for your board
 
@@ -709,11 +713,12 @@ These are public actions. Anyone who can call your flow can call them, so add th
 
 ## Collection backing
 
-A board stores its tasks in one of three places. You choose once; nothing downstream restates it.
+A board stores its tasks in one of four places. You choose once; nothing downstream restates it.
 
 - **Request (default)** — tasks live on `ctx.request` and survive every block boundary in the request, including re-entry across an outer loop (Plan and Execute replans this way) and adds from sibling steps before or during the drain. Omit `collection` entirely, or pass `{ collectionId }` to name it (the id defaults to the board name).
 - **Durable (resource-backed)** — tasks outlive the request. Declare the collection with `defineTaskCollection` and pass it as `collection`; the board registers and resolves it for you. Don't count on a running request seeing a write made by another request; a later request reads it.
 - **Sequencer** — tasks live on the board's own sequencer state, which lasts one `board.drain` invocation. Opt in with `{ backing: "sequencer", collectionId }`. Calling the board twice gives two independent collections.
+- **Factory** — tasks live in a store you manage. Pass a function `(ctx) => TaskCollectionRef` as `collection`; the rules for writing that ref are below.
 
 ```ts
 // Request default — nothing to restate.
@@ -757,23 +762,23 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 
 `id` names the collection (it forms the resource pattern and the board's `collectionId`), `scope` sets its lifetime, and `stateSchema` types each task's `input` payload. The rest of the task envelope is validated for you. The board installs the collection on both its own drain and `board.capability`, so a sibling action that lists `board.capability` in `uses` reads and writes the same durable tasks.
 
-### A board a channel holds
+### A board a mailbox holds
 
-A [channel](../workforce/channels.md) can keep a durable board of its own, declared in its `CHANNEL.md` rather than in TypeScript. The channel owns the ledger and gains two actions for filing and reading rows; a worker that claims those rows resolves the same collection with `channelBoard` and drains it like any other durable board.
+A [mailbox](../workforce/mailboxes.md) can keep a durable board of its own, declared in its `MAILBOX.md` rather than in TypeScript. The mailbox owns the ledger and gains two actions for filing and reading rows; a worker that claims those rows resolves the same collection with `mailboxBoard` and drains it like any other durable board.
 
 ```ts
-import { channelBoard } from "@flow-state-dev/workforce";
+import { mailboxBoard } from "@flow-state-dev/workforce";
 
-const followups = channelBoard("engineering.incidents", "followups");
+const followups = mailboxBoard("engineering.incidents", "followups");
 const board = taskBoard({ name: "followups", collection: followups, workers });
 ```
 
-The collection is org-scoped, so its rows sit in the organization the channel runs in. The channel id and board name in that call are retyped, and a typo resolves a second, empty ledger rather than failing; the unattended-board warning at hire is what catches it. See [holding a board](../workforce/channels.md#holding-a-board).
+The collection is org-scoped, so its rows sit in the organization the mailbox runs in. The mailbox id and board name in that call are retyped, and a typo resolves a second, empty ledger rather than failing; the unattended-board warning at hire is what catches it. See [holding a board](../workforce/mailboxes.md#holding-a-board).
 
 ## See also
 
 - [Configuration](./configuration) — every `taskBoard` field, including defaults.
-- [Channels](../workforce/channels.md#holding-a-board) — declaring a durable board on a channel in Markdown, and reaching it from a worker.
+- [Mailboxes](../workforce/mailboxes.md#holding-a-board) — declaring a durable board on a mailbox in Markdown, and reaching it from a worker.
 - [Task substrate](./task-substrate.md) — the `Task` record, the status state machine, and the collection API underneath.
 - [GoalSeekLoop](./goal-seek-loop) — a config-driven, judge-gated loop over the board's drain.
 - [Block State](../advanced/block-state) — the primitive behind the board's sequencer-scoped task collection; see [The durability boundary](../advanced/block-state#the-durability-boundary) for what survives a resume.

@@ -201,10 +201,10 @@ import {
 const bounded = (ctx) =>
   getOrCreateTaskCollection({
     ctx,
-    backing: "sequencer",
+    backing: "state",
     // The HOST generator's own state. Each tool runs as a child block, so the
     // generator's state is `ctx.parent`; the tool's own `ctx.self` is per-call.
-    sequencer: ctx.parent,
+    state: ctx.parent,
     stateKey: DELEGATION_BOARD_FIELD,
     collectionId: DELEGATION_BOARD_FIELD,
     maxEnqueuedTasks: 25,

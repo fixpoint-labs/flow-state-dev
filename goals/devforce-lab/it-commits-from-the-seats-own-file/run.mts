@@ -45,7 +45,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { handler, harnessRunHandleSchema, harnessRunInputSchema, sequencer } from "@flow-state-dev/core";
 import { inMemoryStores } from "@flow-state-dev/engine";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { GIT_TIMEOUT_MS } from "@flow-state-dev/harness-manager/checkout";
@@ -53,6 +52,7 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { LAB_TREE, openLab } from "../lab/host.mts";
 import { BASE_REF, createScratchRepo } from "../lab/scratch-repo.mts";
+import { claudeCodeHarness } from "../lab/harness.mts";
 import { PHASE } from "../lab/phase.mts";
 
 stripIntentOverrides();
@@ -149,10 +149,9 @@ await runGoal(async () => {
     logger: silentLogger,
     // ---- the one expression that differs from the contract gate ----
     //
-    // `detached: true` is not decoration: the harness becomes a child block of
-    // the flow's gated task entry, and the claim gate refuses an entry that
-    // authors session state anywhere beneath it. `recordWork: true` keys the
-    // index of what the run touched to the run's own checkout.
+    // Claude Code as the lab's `claudeCodeHarness` sets it up — the same agent
+    // a served Lab runs under `DEVFORCE_LAB_HARNESS=claude-code` — with the
+    // prompt-recording tap in front of it.
     harness: ({ cwd, resume, onSession }) =>
       sequencer({
         name: "devforce-lab-recorded-harness",
@@ -160,22 +159,7 @@ await runGoal(async () => {
         outputSchema: harnessRunHandleSchema,
       })
         .tap(recordPrompt)
-        .step(
-          claudeCodeAgent({
-            cwd,
-            resume,
-            onSession,
-            detached: true,
-            recordWork: true,
-            allowedTools: ["Read", "Write", "Edit", "Bash"],
-            permissionMode: "acceptEdits",
-            maxTurns: 30,
-            systemPrompt:
-              "You are a coding agent working in the directory you have been placed in. " +
-              "Do what your instructions and your brief say, then commit your work with git. " +
-              "Do nothing else.",
-          } as never) as never,
-        ) as unknown as HarnessBlock,
+        .step(claudeCodeHarness({ cwd, resume, onSession }) as never) as unknown as HarnessBlock,
   });
 
   try {

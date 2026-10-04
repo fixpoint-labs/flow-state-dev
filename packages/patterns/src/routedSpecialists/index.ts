@@ -199,9 +199,9 @@ function buildDefaultController(config: {
 
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "sequencer",
+        backing: "state",
         collectionId: config.collectionId,
-        sequencer: ctx.sequencer!,
+        state: ctx.sequencer!,
       });
       const completed = collection.list({ status: "completed" });
       const ordered = [...completed].sort(
@@ -305,9 +305,9 @@ async function getCollection(
 ): Promise<TaskCollectionRef> {
   return getOrCreateTaskCollection({
     ctx,
-    backing: "sequencer",
+    backing: "state",
     collectionId,
-    sequencer: ctx.sequencer!,
+    state: ctx.sequencer!,
   });
 }
 
