@@ -112,8 +112,18 @@ const ASSIGNED_SEAT = "eng.coder";
 const COORDINATOR_SEAT = "eng.em";
 /** Declared on the channel, hired into the same kind as the coder, and never given work. */
 const REVIEWER_SEAT = "eng.reviewer";
-/** Every member `CHANNEL.md` declares, in the order the fan-out walks them. */
-const DECLARED_MEMBERS = [COORDINATOR_SEAT, ASSIGNED_SEAT, REVIEWER_SEAT];
+/**
+ * The members this check's claim names. The channel's full member list is read
+ * off `CHANNEL.md` at run time (`declaredMembers`), not restated here: a list
+ * this check typed out goes stale the moment the tree seats someone else.
+ */
+const CLAIMED_MEMBERS = [COORDINATOR_SEAT, ASSIGNED_SEAT, REVIEWER_SEAT];
+
+/** Every member the lab's channel declares in `CHANNEL.md`, as the lab read it. */
+function declaredMembers(lab: Lab): string[] {
+  const channel = lab.roster.channels.find((c) => c.id === lab.channelId);
+  return (channel?.declared.members as string[] | undefined) ?? [];
+}
 
 /** The feature, and the line an operator posts to ask for it. */
 const ISSUE = "greeting-module";
@@ -743,9 +753,8 @@ await runGoal(async () => {
     coderSeatId: ASSIGNED_SEAT,
     runTimeoutMs: RUN_TIMEOUT_MS,
     logger: silentLogger,
-    // Only the EM is addressed. The coder and the reviewer are declared members
-    // of the channel and are true no-ops in the fan-out — recorded and skipped,
-    // never dispatched to.
+    // Only the EM is addressed. Every other declared member of the channel is a
+    // true no-op in the fan-out — recorded and skipped, never dispatched to.
     channels: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log: notifyLog },
     harness: ({ cwd, resume, onSession }) =>
       sequencer({
@@ -829,10 +838,18 @@ await runGoal(async () => {
     }
     if (failures.length > 0) return { failures, evidence: "" };
 
-    // BR-8's positive half: exactly the EM was addressed, and the other two
-    // declared members were seen and skipped. Not an absence — a record.
+    // BR-8's positive half: exactly the EM was addressed, and every other
+    // declared member was seen and skipped. Not an absence — a record.
+    const declared = declaredMembers(lab);
+    const unseated = CLAIMED_MEMBERS.filter((m) => !declared.includes(m));
+    if (unseated.length > 0) {
+      failures.push(
+        `the channel declares [${declared.join(", ")}], without [${unseated.join(", ")}] — ` +
+          `the claim is about those seats, so it would hold vacuously`,
+      );
+    }
     const skipped = [...notifyLog.skipped].sort();
-    const expectedSkips = DECLARED_MEMBERS.filter((m) => m !== COORDINATOR_SEAT).sort();
+    const expectedSkips = declared.filter((m) => m !== COORDINATOR_SEAT).sort();
     if (notifyLog.addressed.join(",") !== COORDINATOR_SEAT) {
       failures.push(
         `the fan-out addressed [${notifyLog.addressed.join(", ")}]; wanted only ${COORDINATOR_SEAT}`,

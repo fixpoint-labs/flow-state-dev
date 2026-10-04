@@ -23,8 +23,9 @@ convention file and in none of the lab's own code, before the run starts.
 **Signal:**
 
 1. Before anybody posts, the board carries no row. After one post, the line is in the channel's
-   transcript, the fan-out addressed the EM seat and recorded the other two declared members as
-   skipped, and exactly one row exists.
+   transcript, the fan-out addressed the EM seat and recorded every other member `CHANNEL.md`
+   declares as skipped (read off the tree, which must still declare the coder and the reviewer),
+   and exactly one row exists.
 2. The board's dispatch record names the coder seat and never the reviewer seat, by `flowId`.
 3. The prompt the manager handed the agent carries all four held-out tokens.
 4. Exactly one branch under `conductor/` resolves at the published address **after** the store is
@@ -167,3 +168,4 @@ own verdict log, which re-proves BR-10 and BR-17. **Re-run on `origin/main` at `
 while the same read with an org lands"*. The paragraph above is kept as history.
 | 2026-09-30 | a1b122eb1 | n/a | PASS | Local leg. Row read back in a fresh process from the organization's storage under the channel's board id; the transcript count reads channel-post items. The published branch carries `eng.feature.work`. |
 | 2026-10-01 | a25134ebd+wip (FIX-1691/1692) | Claude Code (Agent SDK) | PASS | Local leg. 19 lab TypeScript files classified, `harness.mts` among them. |
+| 2026-10-04 | d5225ecd8+FIX-1756 | Claude Code (Agent SDK) | PASS | Local leg. The skip list is read off `CHANNEL.md`: 3 declared members seen and skipped (`chief-of-staff`, `eng.coder`, `eng.reviewer`). All nine controls red. Red on `d5225ecd8` before the change: *the fan-out skipped [chief-of-staff, eng.coder, eng.reviewer]; wanted [eng.coder, eng.reviewer]*. |
