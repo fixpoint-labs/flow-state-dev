@@ -96,6 +96,14 @@ exception too. STE is a controlled language: a small vocabulary with one meaning
 word, and a set of writing rules. A reviewer who reads English as a second language, or
 who reads fast, gets the same meaning that the author intended.
 
+STE adds to [`writing-for-humans.md`](writing-for-humans.md) → "Density"; it does not
+replace it. Density decides what each sentence carries. STE decides the words and the
+grammar. Where the two overlap, they agree.
+
+STE applies to blocks 1–3 too. [`asking-for-decisions.md`](asking-for-decisions.md) decides
+what a decision says: the fork, the trade-off, the recommendation, and the cost. STE decides
+how you write it. A decision in STE is still a decision priced in consequences.
+
 The writing rules that apply to a PR body:
 
 - **Short sentences.** A procedural sentence (an instruction) has 20 words or fewer. A

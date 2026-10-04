@@ -533,7 +533,7 @@ Publish canonical content in the repository; Linear carries status and links, no
 
    **Write the PR description to [`spec-template.md`](../../../docs/contributing/spec-template.md) → "The PR body"** — the instance — under the rules in [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout". Don't restate them here. What's specific to a **spec** PR:
 
-   - **Language: ASD-STE100.** Write every line of prose in the body in Simplified Technical English, per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "Language — ASD-STE100". Text you cut from `SPEC.md` gets rewritten to STE, not pasted. The verbatim contract, code, figures and the title are exempt.
+   - **Language: ASD-STE100.** Write every line of prose in the body in Simplified Technical English, per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "Language — ASD-STE100". Text you cut from `SPEC.md` gets rewritten to STE, not pasted. What is exempt is that section's list, not restated here.
    - **The people table**, cut from `SPEC.md` to five rows, is blocks 1 and 2. **The goal**
      follows it: its sentence, the *how we'll know* mermaid fence with its sentence, and one
      line naming the goal check and the control that must fail (or, when no goal check
