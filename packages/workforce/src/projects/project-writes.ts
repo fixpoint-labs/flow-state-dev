@@ -565,7 +565,7 @@ export function defineProjectBlocks(): ProjectBlocks {
       },
       readProjectFiles: {
         block: readProjectFiles,
-        description: "Read the files a project keeps: each file's path under the project, and its body. Members only."
+        description: "Read the files a project keeps: each file's path under the project and its size in bytes. Members only."
       }
     }
   };
