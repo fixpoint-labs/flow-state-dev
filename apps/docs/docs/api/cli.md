@@ -82,7 +82,10 @@ fsdev dev
 
 | Flag | Description |
 |------|-------------|
-| `-p, --port <port>` | Port to listen on (default: `4200`) |
+| `-p, --port <port>` | Port to listen on (default: `4200`). `0` picks a free port. |
+| `--app <package\|dir>` | Serve an app's pages at the root instead of the DevTool. See [Serving an app beside your flows](#serving-an-app-beside-your-flows). |
+| `--host <host>` | Host to bind (default `127.0.0.1`). A non-loopback host runs the same check as `fsdev serve` and refuses a config that hands its page a bearer token. |
+| `--allow-unauthenticated` | With a non-loopback `--host`, bind even when a flow has no authentication configured, as on `fsdev serve`. |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |
@@ -90,9 +93,25 @@ fsdev dev
 | `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides). Errors if a config is loaded. |
 | `--no-open` | Don't open the browser automatically |
 
-**Requires:** `@flow-state-dev/devtool` installed (provides the pre-built UI assets).
+**Requires:** `@flow-state-dev/devtool` installed (provides the pre-built UI assets). With `--app` it's optional.
 
 Without a config, the server discovers flows, registers them in an in-memory flow registry, creates filesystem stores at `.fsdev/data/`, and starts listening. With an `fsdev.config.ts` present, it serves the app's own router (`await flowState.getRouter()`) using the config's registry, resolver, and stores. Because the config builds the router with its own resolver, `--model` together with a config is an error. API routes are served at `/api/flows/*`. The DevTool UI is served for all other paths. See [DevTool Setup](/docs/devtool/setup) and [App Configuration](/docs/cli/configuration) for full details.
+
+A non-loopback `--host` needs a config, so its flows' authentication can be checked. On such a host the debug surface the DevTool's Resources panel reads stays closed.
+
+#### Serving an app beside your flows
+
+`fsdev dev` normally puts the DevTool at the root of its port. With `--app`, your own app's pages go there instead and the DevTool moves to a port of its own:
+
+```bash
+fsdev dev --config ./fsdev.config.mts --app @acme/ops-console
+```
+
+`--app` takes a directory with an `index.html`, or a package that exports `getAssetPath()`, a function returning that directory. A relative path or a package name resolves from the directory you run the command in. The API stays at `/api/flows` on the same origin, so your pages call it with relative URLs and need no proxy.
+
+Every HTML page fsdev serves carries two things your app can read on boot. The connection config from your config's `devtool` block is `window.__FSD_DEVTOOL_CONFIG__`, as the DevTool gets it, on a loopback host only. The DevTool's address is `<meta name="fsdev-devtool-url" content="…">`, absent when the DevTool isn't installed. In that case the app still starts, and the command says why there's no DevTool.
+
+This is for development. To host an app's pages in production, pass its directory as `staticDir` to [`serve()`](/docs/server/host-adapters).
 
 ### `fsdev serve`
 

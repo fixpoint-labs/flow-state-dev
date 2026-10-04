@@ -3,7 +3,7 @@
  * (or a pre-built `FlowApiRouter`).
  *
  * This is the web-process host adapter: the counterpart to `@flow-state-dev/vercel`
- * (serverless) and a worker runtime (background). It is a thin long-lived wrapper
+ * (serverless) and a background-job runtime. It is a thin long-lived wrapper
  * over the portable Hono app from `createServerApp` (health checks + the engine
  * router) run on `@hono/node-server`. On top of that app it adds the concerns a
  * self-host needs but a serverless target does not: a static asset directory with
@@ -17,13 +17,14 @@
  * inside `@hono/node-server` rather than logged to stderr, so there is no longer a
  * server-side signal when a live stream dies mid-flight.
  */
-import type { Server } from "node:http";
-import { serve as honoServe } from "@hono/node-server";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import { serve as honoServe, type HttpBindings } from "@hono/node-server";
+import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import type { FlowApiRouter, FlowState, DevToolConnectionConfig } from "@flow-state-dev/engine";
 import { createServerApp } from "./app";
-import { injectDevtoolConfig } from "./devtool-config-injection";
+import { createPageHtmlTransform } from "./page-html";
 import { isLoopbackHost } from "./bind-guard";
 
 /** Options for {@link serve}. All have sensible defaults for PaaS hosting. */
@@ -45,6 +46,22 @@ export interface ServeOptions {
    * the loopback page this dev server serves. Omit for production serving.
    */
   devtoolConfig?: DevToolConnectionConfig;
+  /**
+   * Extra `<meta name content>` tags written into every HTML page served from
+   * `staticDir` (each `.html` file and the SPA fallback), on any host. For
+   * values a page reads on boot, such as another server's address. Not for
+   * secrets: unlike `devtoolConfig`, these are written on a network bind too.
+   */
+  pageMeta?: Record<string, string>;
+  /**
+   * A Connect-style `(req, res, next)` handler for non-API `GET` requests, such
+   * as a dev server's middleware. Tried after a real file in `staticDir` and
+   * after a dedicated adapter route, before the SPA fallback (a 404 without
+   * `staticDir`). It answers by writing `res`, or passes with `next()`;
+   * `next(err)` is a 500. A handler that renders its own HTML applies
+   * {@link createPageHtmlTransform} with the same options to match `staticDir`.
+   */
+  pageHandler?: PageHandler;
   /** SIGTERM/SIGINT grace window (ms) before connections are force-closed. Default 10000. */
   shutdownGraceMs?: number;
   /**
@@ -54,6 +71,13 @@ export interface ServeOptions {
    */
   handleSignals?: boolean;
 }
+
+/** A Connect-style request handler: answer by writing `res`, or call `next()` to pass. */
+export type PageHandler = (
+  req: IncomingMessage,
+  res: ServerResponse,
+  next: (err?: unknown) => void,
+) => void;
 
 /** Handle returned by {@link serve} for lifecycle control. */
 export interface ServeHandle {
@@ -136,11 +160,13 @@ export function serve(
   //      BLOCKS on init. That serves a dedicated GET route outside `basePath`
   //      (e.g. an OAuth/webhook callback) instead of shadowing it with SPA HTML,
   //      including one that arrives during cold start.
-  //   3. Anything still unmatched falls back to `index.html` (SPA routing).
-  if (staticDir !== undefined) {
-    // Inject the DevTool connection config into every HTML response (both the
-    // real index.html and the SPA fallback) so the loopback DevTool page picks
-    // up userId/bearer on boot. Undefined for production serving.
+  //   3. A `pageHandler` (a dev server's middleware) gets what's left.
+  //   4. Anything still unmatched falls back to `index.html` (SPA routing).
+  const pageHandler = options.pageHandler;
+  if (staticDir !== undefined || pageHandler !== undefined) {
+    // Write the page meta and the DevTool connection config into every HTML
+    // response (both a real .html file and the SPA fallback) so the page picks
+    // them up on boot. Undefined, and the HTML untouched, when neither is set.
     //
     // Enforce the loopback contract: the config can carry a bearer token, so it
     // must never be injected on a network-exposed bind. Ignore it (with a
@@ -153,15 +179,19 @@ export function serve(
           `Bind a loopback host (127.0.0.1) to use DevTool config injection.\n`,
       );
     }
-    const htmlTransform =
-      devtoolConfig !== undefined && isLoopbackHost(host)
-        ? (html: string) => injectDevtoolConfig(html, devtoolConfig)
-        : undefined;
+    const htmlTransform = createPageHtmlTransform({ host, devtoolConfig, pageMeta: options.pageMeta });
     honoApp.get("*", async (c) => {
-      const file = await serveStaticFile(c.req.path, staticDir, htmlTransform);
-      if (file !== null) return file;
+      if (staticDir !== undefined) {
+        const file = await serveStaticFile(c.req.path, staticDir, htmlTransform);
+        if (file !== null) return file;
+      }
       const dedicated = await tryDedicatedRoute(c.req.raw);
       if (dedicated !== null) return dedicated;
+      if (pageHandler !== undefined) {
+        const { incoming, outgoing } = c.env as HttpBindings;
+        if (await runPageHandler(pageHandler, incoming, outgoing)) return RESPONSE_ALREADY_SENT;
+      }
+      if (staticDir === undefined) return c.json({ error: "Not found" }, 404);
       return serveSpaIndex(staticDir, htmlTransform);
     });
   }
@@ -234,6 +264,34 @@ export function serve(
 }
 
 /**
+ * Run a Connect-style handler on the raw Node request. Resolves `true` once the
+ * handler has finished the response, `false` when it calls `next()`; rejects on
+ * `next(err)` or a throw, which the app's error handler turns into a 500.
+ */
+function runPageHandler(
+  handler: PageHandler,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  return new Promise<boolean>((resolveRun, rejectRun) => {
+    const onDone = () => resolveRun(true);
+    res.once("finish", onDone);
+    res.once("close", onDone);
+    const next = (err?: unknown) => {
+      res.off("finish", onDone);
+      res.off("close", onDone);
+      if (err === undefined || err === null) resolveRun(false);
+      else rejectRun(err);
+    };
+    try {
+      handler(req, res, next);
+    } catch (err) {
+      next(err ?? new Error("pageHandler threw"));
+    }
+  });
+}
+
+/**
  * Serve a real file (or directory `index.html`) from `staticDir` as a Web
  * `Response`. Returns `null` when the path resolves to no file — the caller then
  * decides between a dedicated route and the SPA `index.html` fallback. A
@@ -270,8 +328,8 @@ async function serveStaticFile(
     const injected = ext === ".html" && htmlTransform !== undefined;
     const body = injected ? htmlTransform(content.toString("utf8")) : content;
     const headers: Record<string, string> = { "content-type": mimeType };
-    // The injected HTML may carry a bearer token — never let a browser or proxy
-    // cache the credential-bearing document.
+    // The injected HTML may carry a bearer token, or an address that changes
+    // per run — never let a browser or proxy cache it.
     if (injected) headers["cache-control"] = "no-store";
     return new Response(body, { status: 200, headers });
   } catch {

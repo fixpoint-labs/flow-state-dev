@@ -145,7 +145,24 @@ durable background work). See the deployment guides for the full topology:
 | `healthPath` | `"/healthz"` | Health endpoint. `200` once ready, `503` before. |
 | `staticDir` | — | Directory served for non-API routes, with `index.html` SPA fallback. |
 | `devtoolConfig` | — | DevTool connection config (`{ userId?, bearerToken? }`) injected into the served `index.html` as `window.__FSD_DEVTOOL_CONFIG__`. **Dev-only, loopback-only:** it can carry a bearer token, so `serve()` ignores it (with a warning) on a non-loopback `host`, and the injected document is served `Cache-Control: no-store`. Set by `fsdev dev`; omit for production. |
+| `pageMeta` | — | A `Record<string, string>` of `<meta name content>` tags written into every HTML page served from `staticDir`, on any host. Not for secrets. |
+| `pageHandler` | — | A Connect-style `(req, res, next)` handler tried before `staticDir`'s SPA fallback for non-API GET requests, for a dev server's middleware. A real file in `staticDir` and a dedicated adapter route are served ahead of it. Calling `next()` passes the request on; `next(err)` returns a 500. |
 | `shutdownGraceMs` | `10000` | Grace window before lingering connections are force-closed. |
+
+### `createPageHtmlTransform(options)`
+
+Returns the function `serve()` applies to each HTML page it serves: the
+`pageMeta` tags, then the `devtoolConfig` script on a loopback `host`. A
+`pageHandler` that renders its own `index.html` calls it with the same
+`{ host, devtoolConfig, pageMeta }` so its page gets what `staticDir` pages get.
+Returns `undefined` when there is nothing to write.
+
+```ts
+import { createPageHtmlTransform } from "@flow-state-dev/node";
+
+const transform = createPageHtmlTransform({ host: "127.0.0.1", pageMeta: { "app-scheme": "dark" } });
+const html = transform ? transform(indexHtml) : indexHtml;
+```
 
 ### `ServeHandle`
 

@@ -39,8 +39,14 @@ export function injectDevtoolConfig(
     .replace(/</g, "\\u003c")
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
-  const tag = `<script>${GLOBAL} = ${json};</script>`;
+  return insertBeforeHeadClose(html, `<script>${GLOBAL} = ${json};</script>`);
+}
 
+/**
+ * Insert `tag` just before `</head>`, falling back to before `</body>`, then
+ * appended. The one place a served page gets markup written into it.
+ */
+export function insertBeforeHeadClose(html: string, tag: string): string {
   const headClose = html.match(/<\/head>/i);
   if (headClose?.index !== undefined) {
     const at = headClose.index;
