@@ -2,7 +2,7 @@
 
 A task-board worker that turns a row into a **supervised coding run**: its own checkout, a verdict read before the row settles, a question it can ask a person, and the coding agent itself as a slot you fill.
 
-A *harness* is a coding agent driven as a block — you hand it a prompt, it works in its own agentic loop, and it hands back a handle describing the run. This package imports none of them.
+A *harness* is a coding agent driven as a block: you hand it a prompt, it works in its own agentic loop, and it hands back a handle describing the run. This package imports none of them.
 
 ## Installation
 
@@ -10,7 +10,7 @@ A *harness* is a coding agent driven as a block — you hand it a prompt, it wor
 pnpm add @flow-state-dev/harness-manager
 ```
 
-Peer of `@flow-state-dev/core` and `@flow-state-dev/orchestration`. You install a harness separately — `@flow-state-dev/claude-code`, `@flow-state-dev/codex`, `@flow-state-dev/cursor`, or your own.
+Peer of `@flow-state-dev/core` and `@flow-state-dev/orchestration`. You install a harness separately: `@flow-state-dev/claude-code`, `@flow-state-dev/codex`, `@flow-state-dev/cursor`, or your own.
 
 ## Quick start
 
@@ -80,13 +80,13 @@ The manager calls your factory once, with three feeds:
 
 | Feed | What it does |
 |---|---|
-| `cwd` | Where this run works — the checkout the manager derived and provisioned. |
+| `cwd` | Where this run works: the checkout the manager derived and provisioned. |
 | `resume` | Which session this attempt continues, or `null` for a fresh one. |
 | `onSession` | Called by the harness when it names its session, so the manager records it. |
 
-They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context and nothing else — never the run's prompt, because the prompt is something a caller (or a model calling the harness as a tool) sets, and these three decide where a run writes and what it continues.
+They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context and nothing else, never the run's prompt: the prompt is set by a caller (or a model calling the harness as a tool), and these three decide where a run writes and what it continues.
 
-Everything else about the agent — model, tools, permissions, sandbox — you write inside the factory. Pointing the same manager at another harness is one line, and the manager is unchanged:
+Everything else about the agent (model, tools, permissions, sandbox) you write inside the factory. Pointing the same manager at another harness is one line, and the manager is unchanged:
 
 ```ts
 import { codexAgent } from "@flow-state-dev/codex";
@@ -133,13 +133,13 @@ Collections a phase reads ride the standard `uses` option:
 harnessManager({ …, uses: [myPhaseCapability] });
 ```
 
-A capability claiming one of the manager's own accessors (`runs`, `inbox`, `turns`, the board's ledger) is refused when you build the manager, naming the key — silently overriding one of them would send the manager's bookkeeping somewhere nothing reads.
+A capability claiming one of the manager's own accessors (`runs`, `inbox`, `turns`, the board's ledger) is refused when you build the manager, naming the key.
 
 ## Continuing a run
 
 A run that needs a decision writes a question and parks. Answer it, and the next attempt **continues the same coding session** rather than starting over told what was answered.
 
-The rule that makes it safe to leave running: the recorded session is the one the harness *confirmed* it was in. `onSession` is its only writer, every attempt clears it first, and the manager never writes back an id it merely sent. So a session the agent has lost is asked for once, and the attempt after that starts fresh.
+The recorded session is the one the harness *confirmed* it was in. `onSession` is its only writer, every attempt clears it first, and the manager never writes back an id it merely sent. So a session the agent has lost is asked for once, and the attempt after that starts fresh.
 
 ## Talking to a run
 
@@ -177,38 +177,36 @@ Neither bounds what the run *spawned*. A command the agent's process started can
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** — the supported host API, and what this package versions: `harnessManager` and its options, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
 
-**`@flow-state-dev/harness-manager/checkout`** — how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. A separate entry point rather than a note on the main barrel, because semver binds what the barrel exports whatever a header says about it. This repository's own consumer and its goal checks import from here; a host should not. They are git-worktree-specific, and a second checkout strategy would put them behind a seam. Adopt `harnessManager({ harness })` and let it own the checkout.
+**`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 
 The run record's writes (`openRunRow`, `writeRunRow`) and the inbox's `withdrawEarlierQuestions` are on neither: they write through the attempt fence, and calling one from outside a claimed attempt either gets refused or corrupts a ledger the board is the authority on. Read with `readRunRow` and the collections.
 
 ## Telling the guard where you live
 
 `assertDistinctRepository` stops a run being pointed at the repository your own
-application lives in — a coding agent editing the thing that dispatched it. It
-needs to know where that is, and it will not guess:
+application lives in, so a coding agent never edits the thing that dispatched
+it. It needs to know where that is, and it will not guess:
 
 ```ts
 assertDistinctRepository("workspace.sourceRepo", sourceRepo, process.cwd());
 ```
 
 Pass the directory your code lives in. Pass a list if it spans more than one
-place. **Pass `[]` if this host genuinely has no repository of its own** — a
-built artifact, compiled output in an image with no `.git` anywhere. That case
-is real and supported; it just has to be said.
+place. **Pass `[]` if this host has no repository of its own**, such as a built
+artifact or compiled output in an image with no `.git` anywhere. That case is
+supported; it just has to be said.
 
-There is no default. A default is a guess, and the wrong guess is silent: this
-guard refuses only on a *match*, so a host it cannot identify would match
-nothing and pass, leaving the fence off in exactly the deployment shapes
-where nobody would notice — a container whose `WORKDIR` sits outside the source
-tree, a service unit, a process launched from `/`. Given a location it cannot
-resolve, it refuses and names the option.
+There is no default. The guard refuses only on a *match*, so a host it can't
+identify would pass unchecked. That is easy to hit with a container whose
+`WORKDIR` sits outside the source tree, a service unit, or a process launched
+from `/`. Given a location it cannot resolve, it refuses and names the option.
 
 ## Limits
 
 - **One host's storage.** Checkouts and leases live on a local filesystem, so a retry inherits the last attempt's work because that work is on disk. On a multi-host deployment the recorded checkout names nothing on the machine that picks the retry up.
-- **The lease is not a mutex.** Checking the lock and removing it are two steps. A dead holder's lock is reclaimed after a stale window rather than instantly, and the manager refuses a configuration that shortens that window below the longest a live attempt could legitimately hold it. The per-acquisition token replaces an inode check so the lease can be written down — it does not buy stronger cross-process exclusion.
+- **The lease is not a mutex.** Checking the lock and removing it are two steps. A dead holder's lock is reclaimed after a stale window rather than instantly, and the manager refuses a configuration that shortens that window below the longest a live attempt could legitimately hold it. Each acquisition carries its own token, so a displaced process never removes its replacement's lock. The token gives no stronger cross-process exclusion than that.
 - **No retention policy.** Run records and question rows grow without bound.
 - **A harness that can't resume can't take a message.** The door refuses a run whose harness never confirmed a coding session, such as `claude-code/cli-remote`.
 - **Git worktrees specifically**, as above.
@@ -219,7 +217,7 @@ resolve, it refuses and names the option.
 pnpm --filter @flow-state-dev/harness-manager test
 ```
 
-The suite drives the manager with a fake harness the tests own — no coding agent, no network. A source check asserts that nothing in `src/` imports one, which is the property the slot exists for.
+The suite drives the manager with a fake harness the tests own, with no coding agent and no network. A source check asserts that nothing in `src/` imports one, which is the property the slot exists for.
 
 ## Documentation
 
