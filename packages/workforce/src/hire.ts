@@ -117,6 +117,14 @@ function missingKindReason(kind: string, available: string): string {
   return `names flow kind "${kind}", which was not passed to hireWorkforce. Kinds passed: ${available}`;
 }
 
+/**
+ * What {@link hireWorkforce} throws when every refusal came from a kind's own
+ * minter (its `configSchema`), and none from the framework. The message is
+ * the ordinary refusal; the type lets a runtime hire say the caller can
+ * correct the settings and try again, which no framework refusal allows.
+ */
+export class KindRefusedHireError extends Error {}
+
 function hireRefusalMessage(refused: number, total: number, problems: readonly string[]): string {
   return (
     `hireWorkforce refused ${refused} of ${total} worker${total === 1 ? "" : "s"}; ` +
@@ -516,6 +524,8 @@ export function hireWorkforce(
   // contribute several reasons — two unresolved grants, two malformed entries —
   // and counting sentences is how `refused 2 of 1 worker` gets printed.
   const refusedWorkers = new Set<string>();
+  // The workers whose one refusal came from their kind's own minter.
+  const kindRefusedWorkers = new Set<string>();
   const seen = new Set<string>();
   const seatBlocks = options.seatBlocks ?? {};
   const packageBlocks = options.packageBlocks ?? {};
@@ -843,6 +853,9 @@ export function hireWorkforce(
     }
     seatResources = wall.resources;
 
+    // True only while the kind's own minter runs, so the catch below can tell
+    // the kind's refusal (its `configSchema`) from a throw after it.
+    let minting = true;
     try {
       // Always a bag, so always admitted. The branch that stood here passed no
       // bag at all for a record that declared nothing — which is admission
@@ -855,6 +868,7 @@ export function hireWorkforce(
         ...(manifest.ownerPin !== undefined ? { ownerPin: manifest.ownerPin } : {}),
         ...(seatResources !== undefined ? { resources: seatResources } : {})
       });
+      minting = false;
 
       // The narrowing is checked on the seat that was BUILT, not on the map it
       // was built from. `defineFlow` merges the blocks' own declarations on top
@@ -903,6 +917,7 @@ export function hireWorkforce(
       const message = messageOf(error);
       const hint = admissionHint(message);
       refuse(hint === undefined ? message : `${message} ${hint}`);
+      if (minting) kindRefusedWorkers.add(manifest.id);
     }
   }
 
@@ -921,7 +936,14 @@ export function hireWorkforce(
   // which happens in the loop above.
 
   if (problems.length > 0) {
-    throw new Error(hireRefusalMessage(refusedWorkers.size, ordered.length, problems));
+    const message = hireRefusalMessage(refusedWorkers.size, ordered.length, problems);
+    // Typed only when every refusal is a kind's own: one framework refusal in
+    // the roster and the whole error stays the framework's.
+    // A kind-refused worker contributes exactly one problem (the catch is its
+    // last step), so the counts match only when nothing else was refused.
+    throw problems.length === kindRefusedWorkers.size
+      ? new KindRefusedHireError(message)
+      : new Error(message);
   }
 
   // After the refusals, deliberately: a roster that did not hire has nothing

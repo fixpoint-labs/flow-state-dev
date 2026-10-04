@@ -122,6 +122,29 @@ describe("a hire missing a required setting comes back correctable", () => {
   });
 });
 
+describe("a framework refusal is not dressed as the kind's", () => {
+  it("refuses a reserved `seatId` setting with the framework's message and no settings hint", async () => {
+    const { hire, ctx, registered, rosterIds } = await hireTool();
+
+    const refused = await executeBlock({
+      block: hire,
+      input: {
+        seatId: "coder-4",
+        flow: "coder",
+        settings: { document: "teams/eng/feature-brief", seatId: "someone-else" },
+      },
+      ctx,
+    });
+    const message = refused.error?.message ?? "";
+    // The framework's own sentence for the reserved key, unframed.
+    expect(message).toMatch(/^hireWorkforce refused 1 of 1 worker/);
+    expect(message).toMatch(/declares `seatId:`, which is not a setting a worker declares/);
+    expect(message).not.toMatch(/call hire again|nothing was written/i);
+    expect(registered).toEqual([]);
+    expect(await rosterIds()).toEqual([]);
+  });
+});
+
 describe("a mint fault that is not the kind's refusal keeps its own message", () => {
   it("does not dress it as a correctable settings refusal", async () => {
     const { hire, ctx, registered, rosterIds } = await hireTool();

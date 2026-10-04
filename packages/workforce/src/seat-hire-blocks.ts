@@ -47,7 +47,7 @@ import {
   SEAT_HIRE_CAPABILITY,
 } from "./seat-hire-keys";
 import { seatDoorOf } from "./seat-door";
-import { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
+import { hireWorkforce, KindRefusedHireError, unattendedBoardWarnings, type HireOptions } from "./hire";
 import { checkHiredSeatRow } from "./roster/check";
 import { HIRED_ROSTER_PREFIX, type HiredSeatRow } from "./roster/collections";
 import { hiredSeatOwnerPinFromRosterOwner, registerHiredSeat } from "./roster/register-hired-seat";
@@ -220,13 +220,6 @@ const rehireInput = z
     orgId: z.unknown().optional(),
   })
   .strict();
-
-/**
- * The kind's own refusal of a seat (its settings schema, through
- * `hireWorkforce`), as `mint` raises it. The message is the kind's, unchanged;
- * the class only lets `hire` tell it apart from a manifest fault.
- */
-class KindRefusedSeat extends Error {}
 
 /**
  * The org the call runs under, from the verified principal.
@@ -506,16 +499,10 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
     if ("problem" in record) {
       throw new Error(`"${address}" could not be hired: ${record.problem}.`);
     }
-    let minted: FlowInstance[];
-    try {
-      minted = hireWorkforce([record.manifest], {
-        kinds,
-        channelBoards: options.channelBoards,
-      });
-    } catch (error) {
-      throw new KindRefusedSeat(error instanceof Error ? error.message : String(error));
-    }
-    const [seat] = minted;
+    const [seat] = hireWorkforce([record.manifest], {
+      kinds,
+      channelBoards: options.channelBoards,
+    });
     if (seat === undefined) {
       throw new Error(`"${address}" could not be hired, and no reason was given.`);
     }
@@ -748,14 +735,15 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       owningOrgId: orgId,
       incarnation,
     });
-    // A kind's refusal writes nothing and the caller can correct it, so say
-    // so: a model reading only the boot-time sentence takes it as final.
-    // Any other mint fault keeps its own message.
+    // The kind's own refusal (typed at its source by `hireWorkforce`) writes
+    // nothing and the caller can correct it, so say so: a model reading only
+    // the boot-time sentence takes it as final. A framework refusal or any
+    // other mint fault keeps its own message.
     let seat: FlowInstance;
     try {
       seat = mint(orgId, row, address);
     } catch (error) {
-      if (!(error instanceof KindRefusedSeat)) throw error;
+      if (!(error instanceof KindRefusedHireError)) throw error;
       throw new Error(
         `"${address}" was not hired, and nothing was written. Kind "${input.flow}" refused it: ` +
           `${error.message}\n` +
