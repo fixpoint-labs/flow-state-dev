@@ -1,18 +1,18 @@
 ---
 title: Discovery
 sidebar_label: Discovery
-description: One tool call that tells an agent what is in scope for it right now — the seats it can hand work to, the channels they share, the skills it can load, and the resources it can read.
+description: One tool call that tells an agent what is in scope for it right now — the seats it can hand work to, the mailboxes they share, the skills it can load, and the resources it can read.
 ---
 
 # Discovery
 
-An agent that has to decide *who does this* needs to know what is around it. Discovery is how it asks: one tool call that returns a short list of what is in scope right now — the seats it can hand work to, the channels those seats talk in, the skills it can load, and the resources it can read.
+An agent that has to decide *who does this* needs to know what is around it. Discovery is how it asks: one tool call that returns a short list of what is in scope right now — the seats it can hand work to, the mailboxes those seats talk in, the skills it can load, and the resources it can read.
 
-A **seat** is one worker in a workforce, declared by a file. A **channel** is a place seats share work. A **skill** is a set of instructions an agent can pull into context on demand.
+A **seat** is one worker in a workforce, declared by a file. A **mailbox** is a conversation several seats post into, with one durable transcript. A **skill** is a set of instructions an agent can pull into context on demand.
 
 ## Why not just put the list in the prompt
 
-You can, and for a handful of entries you probably should. It stops working for the same reason any fixed context does: the list is paid for on every step of every turn, including the turns that never needed it, and it cannot reflect anything that changed while the turn was running. A channel that opened a minute ago is not in a prompt written at boot.
+You can, and for a handful of entries you probably should. It stops working for the same reason any fixed context does: the list is paid for on every step of every turn, including the turns that never needed it, and it cannot reflect anything that changed while the turn was running. A mailbox that opened a minute ago is not in a prompt written at boot.
 
 Discovery is the other half of that trade. Nothing is spent until the agent asks, and what it gets back is read at the moment it asks.
 
@@ -39,7 +39,7 @@ An entry is deliberately short — an id, what kind of thing it is, and a line s
 
 That line is what the agent chooses on, so it is worth writing well. A seat whose purpose reads "does engineering things" will not get picked over one that says what it actually does.
 
-Entries also carry an optional `contract` — a hint at how to work with the thing, like the uri to read a resource by or how many members a channel has. It is withheld from a plain call and returned by `discover({ detail: "full" })`, so a catalog stays cheap on the calls that only need to choose.
+Entries also carry an optional `contract` — a hint at how to work with the thing, like the uri to read a resource by or how many members a mailbox has. It is withheld from a plain call and returned by `discover({ detail: "full" })`, so a catalog stays cheap on the calls that only need to choose.
 
 ## Setting it up
 
@@ -56,8 +56,8 @@ const kind = defineAgentWorkerFlow({
     createWorkforceCapability({
       // What the tree declared, read once at boot.
       roster: declaredRoster,
-      // Where the inventory's seat and channel rows are mounted on this block.
-      inventory: { seats: "seatInventory", channels: "channelInventory" },
+      // Where the inventory's seat and mailbox rows are mounted on this block.
+      inventory: { seats: "seatInventory", mailboxes: "mailboxInventory" },
       // The other domains, behind the same door.
       sources: [
         // `allowed` has to be the same array the binding was given. The
@@ -94,7 +94,7 @@ A seat can narrow this further in its own file:
 ```yaml
 ---
 name: coordinator
-discover: [seats, channels]
+discover: [seats, mailboxes]
 ---
 ```
 
@@ -102,13 +102,13 @@ Naming a domain the scope does not carry does not add it. A worker file may narr
 
 ## When a domain has nothing, or fails
 
-A domain with no entries returns an empty list. That is an ordinary answer — a workforce with no channels registered yet is not an error, and an agent should read it as "nothing here" rather than as a fault. If one domain cannot be read at all, the others still answer and that domain reports the problem, so a single misconfigured collection does not cost the agent its turn.
+A domain with no entries returns an empty list. That is an ordinary answer — a workforce with no mailboxes registered yet is not an error, and an agent should read it as "nothing here" rather than as a fault. If one domain cannot be read at all, the others still answer and that domain reports the problem, so a single misconfigured collection does not cost the agent its turn.
 
 Asking for a domain name that does not exist comes back with the four real names in the answer, so the next call can succeed.
 
 ## What an entry does and does not promise
 
-An entry says a thing was **registered or declared** in this workspace. It does not promise the thing is open, running, or still there. Seats and channels are projected from a record that is only ever appended to, so discovery cross-checks those rows against what the tree declares before it lists them — a channel whose declaration is gone does not appear, even though its row remains. Treat an entry as "this exists and here is what it is for", and confirm the state of anything you are about to act on the same way you would without the catalog.
+An entry says a thing was **registered or declared** in this workspace. It does not promise the thing is open, running, or still there. Seats and mailboxes are projected from a record that is only ever appended to, so discovery cross-checks those rows against what the tree declares before it lists them — a mailbox whose declaration is gone does not appear, even though its row remains. Treat an entry as "this exists and here is what it is for", and confirm the state of anything you are about to act on the same way you would without the catalog.
 
 ## Moving skills from the prompt to the door
 

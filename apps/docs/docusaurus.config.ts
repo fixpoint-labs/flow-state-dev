@@ -70,6 +70,7 @@ const config: Config = {
       // Workers on disk moved from /docs/orchestration/* to /docs/workforce/*
       // when Workforce became its own top-level section. The Claude Code
       // `--remote` page was removed; its address points at the SDK agent.
+      // The Workforce channels page became the mailboxes page.
       "@docusaurus/plugin-client-redirects",
       {
         redirects: [
@@ -96,6 +97,10 @@ const config: Config = {
           {
             from: "/docs/tools/claude-code-cli",
             to: "/docs/tools/claude-code-sdk",
+          },
+          {
+            from: "/docs/workforce/channels",
+            to: "/docs/workforce/mailboxes",
           },
         ],
       },

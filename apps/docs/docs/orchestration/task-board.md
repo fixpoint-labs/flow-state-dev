@@ -762,23 +762,23 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 
 `id` names the collection (it forms the resource pattern and the board's `collectionId`), `scope` sets its lifetime, and `stateSchema` types each task's `input` payload. The rest of the task envelope is validated for you. The board installs the collection on both its own drain and `board.capability`, so a sibling action that lists `board.capability` in `uses` reads and writes the same durable tasks.
 
-### A board a channel holds
+### A board a mailbox holds
 
-A [channel](../workforce/channels.md) can keep a durable board of its own, declared in its `CHANNEL.md` rather than in TypeScript. The channel owns the ledger and gains two actions for filing and reading rows; a worker that claims those rows resolves the same collection with `channelBoard` and drains it like any other durable board.
+A [mailbox](../workforce/mailboxes.md) can keep a durable board of its own, declared in its `MAILBOX.md` rather than in TypeScript. The mailbox owns the ledger and gains two actions for filing and reading rows; a worker that claims those rows resolves the same collection with `mailboxBoard` and drains it like any other durable board.
 
 ```ts
-import { channelBoard } from "@flow-state-dev/workforce";
+import { mailboxBoard } from "@flow-state-dev/workforce";
 
-const followups = channelBoard("engineering.incidents", "followups");
+const followups = mailboxBoard("engineering.incidents", "followups");
 const board = taskBoard({ name: "followups", collection: followups, workers });
 ```
 
-The collection is org-scoped, so its rows sit in the organization the channel runs in. The channel id and board name in that call are retyped, and a typo resolves a second, empty ledger rather than failing; the unattended-board warning at hire is what catches it. See [holding a board](../workforce/channels.md#holding-a-board).
+The collection is org-scoped, so its rows sit in the organization the mailbox runs in. The mailbox id and board name in that call are retyped, and a typo resolves a second, empty ledger rather than failing; the unattended-board warning at hire is what catches it. See [holding a board](../workforce/mailboxes.md#holding-a-board).
 
 ## See also
 
 - [Configuration](./configuration) — every `taskBoard` field, including defaults.
-- [Channels](../workforce/channels.md#holding-a-board) — declaring a durable board on a channel in Markdown, and reaching it from a worker.
+- [Mailboxes](../workforce/mailboxes.md#holding-a-board) — declaring a durable board on a mailbox in Markdown, and reaching it from a worker.
 - [Task substrate](./task-substrate.md) — the `Task` record, the status state machine, and the collection API underneath.
 - [GoalSeekLoop](./goal-seek-loop) — a config-driven, judge-gated loop over the board's drain.
 - [Block State](../advanced/block-state) — the primitive behind the board's sequencer-scoped task collection; see [The durability boundary](../advanced/block-state#the-durability-boundary) for what survives a resume.

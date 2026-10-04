@@ -180,7 +180,7 @@ export default workforceAdmin();
 | `instanceAt?(address)` | The seat serving an address right now, if any. With it, `fire` releases only the seat its roster row minted, and a hire or re-hire stopped part-way by another call releases only its own seat. Without it, `fire` goes by the kind, and a stopped call leaves its seat registered in this process until the next start. |
 | `refuseRosterAdmin?` | When `true`, `hire` and `rehire` refuse settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`. Default `false`. |
 | `allowKinds?` | The subset of `kinds` these handlers may mint. |
-| `channelBoards?` | Channel board ids. For each one the new seat doesn't declare, the hire's `warning` names it, since rows filed on that board sit pending until something works them. |
+| `mailboxBoards?` | Mailbox board ids. For each one the new seat doesn't declare, the hire's `warning` names it, since rows filed on that board sit pending until something works them. |
 
 The seats these handlers and the `seat-hire` tools hire are always org-visible: pinned to the organization and no user, so any caller the seat's resolver places in that organization can call one, and its roster row, `instructions` included, is readable by a browser in that organization. For a seat only one member can reach, write the hire yourself as in [Hiring a seat only one member can reach](#hiring-a-seat-only-one-member-can-reach).
 
@@ -216,7 +216,7 @@ It returns the seat id and the address the seat answers on:
 { "seatId": "support.ada", "address": "acme.support.ada" }
 ```
 
-`warning` is added when the new seat doesn't declare one of the `channelBoards`.
+`warning` is added when the new seat doesn't declare one of the `mailboxBoards`.
 
 A hire runs in this order:
 
@@ -364,7 +364,7 @@ Each entry has one of three reasons:
 
 **To retire a seat, fire it.** `fire` removes the roster row and the inventory row. Nothing was serving the seat, so there's no address to release and `released` is `false`. The next start names nothing for it. An `unreadable` row is deleted by its key and nothing else is touched, so that answer's `address` is `null`.
 
-**To keep the seat, re-hire it.** `rehire` takes the seat id, the kind to run it on, its settings for that kind, and optionally new instructions and the `owner` `brokenSeats` reported. Pass `owner` when the caller has a seat of their own under the same id as an organization's; without it, `rehire` refuses rather than pick one. The seat keeps its id and its address, so channels that list it and sessions it owns carry on:
+**To keep the seat, re-hire it.** `rehire` takes the seat id, the kind to run it on, its settings for that kind, and optionally new instructions and the `owner` `brokenSeats` reported. Pass `owner` when the caller has a seat of their own under the same id as an organization's; without it, `rehire` refuses rather than pick one. The seat keeps its id and its address, so mailboxes that list it and sessions it owns carry on:
 
 ```bash
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/rehire \

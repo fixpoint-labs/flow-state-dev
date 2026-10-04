@@ -112,7 +112,7 @@ loader and at the hire, from the shared constants in `manifest.ts` that every do
 than re-spelling. Those five are both; `instructions` is the one key that is imposed and authored all
 the same — as the file's body.
 
-`seatId` is the seat's logical id, the one a channel's `members:` lists (FIX-1589). A file
+`seatId` is the seat's logical id, the one a mailbox's `members:` lists (FIX-1589). A file
 record's `id` is that id; a runtime-hired record's `id` is its org-qualified address, so the roster
 row carries the logical id on the record's `seatId` field and the hire stamps that. It exists because a seat that files or posts must
 name itself, and a block cannot see which seat it runs in: core keeps the flow's id off the block
@@ -440,7 +440,7 @@ solely the generator's own `tools:` mapping (C1).
   or mirrors them — equally, nothing here waits on their deletion (FIX-1344 / PR #1713 owns
   that kill).
 - Seats are flow instances of a kind. There is no `worker.ts` seat door.
-- No Channel or MessageBoard types follow from this contract.
+- No Mailbox or MessageBoard types follow from this contract.
 
 ### And one thing that must not be *copied*
 

@@ -484,7 +484,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   {
     shape: "teams/<team>/mailboxes/<mailbox>/MAILBOX.md",
     publishedIn: {
-      file: "apps/docs/docs/workforce/channels.md",
+      file: "apps/docs/docs/workforce/mailboxes.md",
       quote: "`teams/engineering/mailboxes/standup/` becomes `engineering.standup`",
     },
     write: (root) =>

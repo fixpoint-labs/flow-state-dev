@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 572" role="img" aria-label="The records about seats and channels, and the question each answers. Your files declare seats and channels and are read at every start. The inventory, in the organization's store, records what was registered here: a seat row, a channel row with a copy of its members, and a membership row per seat in a channel. A declared seat's or channel's row is never deleted; firing a seat hired at runtime removes its row. The hired roster, also in the organization's store, lists the seats hired while the app runs and loses a row when its seat is fired. The channel's own session holds the members and charter, and is what checks the author a post names. The inventory's members list is a copy for finding channels, never the check.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 572" role="img" aria-label="The records about seats and mailboxes, and the question each answers. Your files declare seats and mailboxes and are read at every start. The inventory, in the organization's store, records what was registered here: a seat row, a mailbox row with a copy of its members, and a membership row per seat in a mailbox. A declared seat's or mailbox's row is never deleted; firing a seat hired at runtime removes its row. The hired roster, also in the organization's store, lists the seats hired while the app runs and loses a row when its seat is fired. The mailbox's own session holds the members and charter, and is what checks the author a post names. The inventory's members list is a copy for finding mailboxes, never the check.">
   <style>
     :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
             --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
@@ -36,9 +36,9 @@
     <text class="code" x="50" y="184">teams/engineering/</text>
     <text class="code" x="50" y="202">  workers/lead/</text>
     <rect class="card" x="36" y="236" width="187" height="86" rx="10"/>
-    <text class="h" x="50" y="260">CHANNEL.md</text>
+    <text class="h" x="50" y="260">MAILBOX.md</text>
     <text class="code" x="50" y="282">teams/engineering/</text>
-    <text class="code" x="50" y="300">  channels/standup/</text>
+    <text class="code" x="50" y="300">  mailboxes/standup/</text>
     <text class="p" x="40" y="352">Read at every start.</text>
     <text class="muted" x="40" y="374">A seat hired at runtime</text>
     <text class="muted" x="40" y="392">has no file here.</text>
@@ -53,12 +53,12 @@
     <text class="code" x="277" y="178">id · kind · door</text>
     <text class="code" x="277" y="194">hired · incarnation</text>
     <rect class="card" x="263" y="214" width="187" height="68" rx="10"/>
-    <text class="lbl" x="277" y="234">CHANNEL ROW</text>
+    <text class="lbl" x="277" y="234">MAILBOX ROW</text>
     <text class="code" x="277" y="254">members: [ … ]</text>
     <text class="muted" x="277" y="272">A copy, for finding</text>
     <rect class="card" x="263" y="290" width="187" height="52" rx="10"/>
     <text class="lbl" x="277" y="310">MEMBERSHIP ROW</text>
-    <text class="muted" x="277" y="330">One per seat in a channel</text>
+    <text class="muted" x="277" y="330">One per seat in a mailbox</text>
     <text class="muted" x="267" y="368">A declared row is never</text>
     <text class="muted" x="267" y="386">deleted. Firing a hired</text>
     <text class="muted" x="267" y="404">seat removes its row.</text>
@@ -79,9 +79,9 @@
     <text class="muted" x="494" y="332">is fired.</text>
   </g>
 
-  <g id="channel">
+  <g id="mailbox">
     <rect class="wall-sess" x="705" y="80" width="211" height="356" rx="14"/>
-    <text class="h" x="721" y="104">The channel's session</text>
+    <text class="h" x="721" y="104">The mailbox's session</text>
     <text class="muted" x="721" y="122">Will this post be accepted?</text>
     <rect class="card-sess" x="717" y="138" width="187" height="104" rx="10"/>
     <text class="lbl" x="731" y="158">SESSION STATE</text>
@@ -97,7 +97,7 @@
   <g id="not-a-copy">
     <rect class="box" x="24" y="452" width="892" height="104" rx="12"/>
     <text class="h" x="40" y="476">Not a copy</text>
-    <text class="p" x="40" y="500">The inventory's members is a copy for finding channels. The channel's session is the check on a post.</text>
+    <text class="p" x="40" y="500">The inventory's members is a copy for finding mailboxes. The mailbox's session is the check on a post.</text>
     <text class="p" x="40" y="520">A seat hired at runtime has its address as its inventory id, acme.support.ada; members name it support.ada.</text>
     <text class="p" x="40" y="540">The roster says who is hired now. The inventory says what was registered, and keeps every declared row.</text>
   </g>
