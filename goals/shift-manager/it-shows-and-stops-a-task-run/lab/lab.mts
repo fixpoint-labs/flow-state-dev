@@ -17,7 +17,10 @@
  *   second and holds until it is aborted (or `holdMs` passes);
  * - two **short** rows for the per-worker seat, which run two steps each in
  *   the one session that seat keeps, so that session is shared;
- * - one **waiting** row, filed after the drain, so nothing ever claims it.
+ * - one **waiting** row, filed after the drain, so nothing ever claims it;
+ * - with `asking`, one **asking** row for the seat on a flow of its own, whose
+ *   run opens and then waits on a person's approval. With `holdAsk`, it
+ *   asks only once `releaseAsk()` is called, so a screen can be open first.
  *
  * Every run opens as a coding harness does: a message, a reasoning item, and
  * one tool call with its result, each stamped with the task the way the
@@ -81,8 +84,23 @@ const STEP_MS = 1_000;
 const PROGRESS_COMPONENT = "run-lab-progress";
 const PROGRESS_KEY = "progress";
 
-/** What a row asks its scripted run to do. */
-export type RunScript = { steps?: number; holdMs?: number };
+/** What an asking run asks a person to approve. */
+export const RUN_LAB_ASK = "Write the audit note?";
+
+/**
+ * What a row asks its scripted run to do; `ask`: suspend on a person's approval
+ * of this, after the opening; `holdAsk`: only once the Lab's `releaseAsk()` is called.
+ */
+export type RunScript = { steps?: number; holdMs?: number; ask?: string; holdAsk?: boolean };
+
+/** The open Lab's ask gate: a `holdAsk` run asks once it resolves. One Lab is open at a time. */
+let askGate: { opened: Promise<void>; open(): void } = gate();
+
+function gate(): { opened: Promise<void>; open(): void } {
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => (open = resolve));
+  return { opened, open };
+}
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
@@ -139,6 +157,16 @@ const scriptedRun = handler({
     const script = (input.input ?? {}) as RunScript;
     ctx.emit.message(`Reading the task: ${input.goal ?? input.taskId}`);
     await emitHarnessOpening(ctx);
+    if (script.holdAsk === true) {
+      await Promise.race([
+        askGate.opened,
+        new Promise<never>((_, reject) => {
+          if (ctx.signal.aborted) reject(ctx.signal.reason ?? new Error("aborted"));
+          ctx.signal.addEventListener("abort", () => reject(ctx.signal.reason ?? new Error("aborted")), { once: true });
+        }),
+      ]);
+    }
+    if (script.ask !== undefined) await ctx.suspend!({ reason: "human_approval", message: script.ask });
 
     const resources = (ctx as { resources?: Record<string, unknown> }).resources ?? {};
     const plan = resources[OBSERVED_PLAN] as Upsertable | undefined;
@@ -176,7 +204,8 @@ async function readTree() {
 }
 
 /** Build, open and hand back the Lab, with its rows filed and drained. */
-export async function openRunLab() {
+export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean } = {}) {
+  const asks = (askGate = gate());
   const orgId = DEFAULT_ORG_ID;
   const tree = await readTree();
   const channel = tree.channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
@@ -266,6 +295,8 @@ export async function openRunLab() {
     flows,
     stores: { default: { primary: inMemoryStores() } },
     devtool: { userId: RUN_LAB_USER_ID },
+    // An asking run suspends until a person answers, which needs durable execution.
+    ...(options.asking === true ? { durable: true } : {}),
   } as never);
 
   const router = (await flowState.getRouter()) as Record<string, (r: Request, c: unknown) => Promise<Response>>;
@@ -333,9 +364,14 @@ export async function openRunLab() {
       taskId: string;
     }).taskId;
 
-  const filed: Array<{ taskId: string; seatId: string; kind: "held" | "short" | "waiting" }> = [];
+  const filed: Array<{ taskId: string; seatId: string; kind: "held" | "short" | "waiting" | "asking" }> = [];
   for (const seat of seats.filter((s) => s.policy === "per-task")) {
     filed.push({ taskId: await file(seat, `${seat.name}: hold until stopped`, {}), seatId: seat.id, kind: "held" });
+  }
+  if (options.asking === true) {
+    // One more row for the seat on a flow of its own, whose run stops to ask a person.
+    const seat = seats.find((s) => s.policy === "per-task" && s.flow !== undefined)!;
+    filed.push({ taskId: await file(seat, `${seat.name}: ask before writing`, { ask: RUN_LAB_ASK, ...(options.holdAsk === true ? { holdAsk: true } : {}) }), seatId: seat.id, kind: "asking" });
   }
   for (const seat of seats.filter((s) => s.policy === "per-worker")) {
     for (const n of [1, 2]) filed.push({ taskId: await file(seat, `${seat.name}: short run ${n}`, { steps: 2 }), seatId: seat.id, kind: "short" });
@@ -359,5 +395,5 @@ export async function openRunLab() {
     }
   };
 
-  return { flowState, tree, flows, channel, boardName, ledger, drainerId: drainer.id, seats, filed, stopHeldRuns };
+  return { flowState, tree, flows, channel, boardName, ledger, drainerId: drainer.id, seats, filed, stopHeldRuns, releaseAsk: () => asks.open() };
 }

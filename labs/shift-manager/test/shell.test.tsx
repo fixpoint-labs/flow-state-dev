@@ -147,6 +147,30 @@ describe("empty states (BR-14, BR-28)", () => {
   });
 });
 
+describe("a workstream's Stream holds its members' asks (BR-16)", () => {
+  it("draws a pending ask in the feed, marked as waiting on you, and answering it there clears Inbox too", async () => {
+    const lab = await serveLab((await openAskLab()).flowState);
+    served.push(lab);
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/w/ops.desk/stream`);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    // ops.asker sits in #ops.desk, so its ask belongs in that Stream.
+    await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+
+    const ask = await screen.findByTestId("feed-ask");
+    // In the feed itself, not beside it.
+    expect(screen.getByTestId("transcript").contains(ask)).toBe(true);
+    expect(within(ask).getByText("NEEDS YOU").getAttribute("data-look")).toBe("needs-tag");
+    expect(within(ask).getByTestId("ask-card").textContent).toMatch(/ship it/);
+    await waitFor(() => expect(screen.getByTestId("nav-inbox-count").textContent).toBe("1"));
+
+    act(() => fireEvent.click(within(ask).getByRole("button", { name: "Approve" })));
+    // The ask leaves the feed and Inbox together: there is one list of pending asks.
+    await waitFor(() => expect(screen.queryByTestId("feed-ask")).toBeNull(), { timeout: 10_000 });
+    await waitFor(() => expect(screen.getByTestId("nav-inbox-count").textContent).toBe("0"));
+  });
+});
+
 describe("the composer (V6)", () => {
   it("draws a post only once the channel holds it", async () => {
     const { clients } = await openApp("/w/ops.side/stream");

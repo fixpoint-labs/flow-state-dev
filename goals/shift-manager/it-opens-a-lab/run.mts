@@ -22,7 +22,8 @@
  *   Inbox     Inbox equals the stored pending asks, or names its empty state
  *   reach     every level, tab and panel opens, and each empty one is named
  *   post      a composer post is drawn, and is in the stored transcript
- *   answer    an ask approved from Inbox is no longer pending in the store
+ *   answer    an ask approved in its workstream's Stream is no longer pending
+ *             in the store, and Inbox no longer lists it
  *
  * Controls rebuild Shift Manager with source modules swapped for a module under
  * `controls/` (a Vite `resolveId` plugin; the build fails if a swap never
@@ -34,7 +35,7 @@
  *                    both its paths (`transcript.ts` and `send.ts`). Must
  *                    fail at "the post is in the stored transcript".
  *   unanswerable-asks  every ask is marked unanswerable. Must fail at "an
- *                    answer from Inbox lands in the store" on DevTeam.
+ *                    answer from the Stream lands in the store" on DevTeam.
  *
  * Run:      pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts
  * Control:  GOAL_CONTROL=static-names pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts
@@ -468,10 +469,16 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
         )) as string[];
         if (!same(cards, rowsHere)) fail("Board equals the store's rows", `${channel.id}: ${diff(rowsHere, cards)}`);
         for (const row of store.rows[channel.id] ?? []) {
-          const status = await page
-            .locator(`[data-testid=board-card][data-task-id="${row.id}"] [data-testid=board-card-status]`)
-            .textContent();
-          if (status !== row.status) fail("Board equals the store's rows", `${row.id} shows "${status}", stored "${row.status}"`);
+          const card = page.locator(`[data-testid=board-card][data-task-id="${row.id}"]`);
+          if (DONE.has(row.status)) {
+            // A done row is one line in DONE, its id and title (v2:547); it carries its stored status.
+            const inDone = await page.locator(`[data-testid=board-column][data-column=DONE] [data-testid=board-card][data-task-id="${row.id}"]`).count();
+            const status = await card.getAttribute("data-status");
+            if (inDone !== 1 || status !== row.status) fail("Board equals the store's rows", `${row.id} is ${inDone === 1 ? `in DONE as "${status}"` : "not in DONE"}, stored "${row.status}"`);
+          } else {
+            const status = await card.locator("[data-testid=board-card-status]").textContent();
+            if (status !== row.status) fail("Board equals the store's rows", `${row.id} shows "${status}", stored "${row.status}"`);
+          }
         }
       }
 
@@ -519,34 +526,43 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     if (!(await visible(page, "transcript-line-body"))) fail("the post is in the stored transcript", "after a reload the transcript is empty");
     else if ((await drawn.count()) !== 1) fail("the post is in the stored transcript", `after a reload "${line}" is drawn ${await drawn.count()} times`);
 
-    // ---- answer: an ask approved from Inbox is resumed in the store --------
-    // A Lab holding any pending ask must offer at least one to answer: pick
-    // the first whose card has an enabled Approve. None at all is a failure.
+    // ---- answer: an ask approved in its workstream's Stream is resumed in the store, and leaves Inbox ----
+    // A pending ask sits in its channel's Stream, inline at its time (BR-16).
+    // A Lab holding any pending ask must offer at least one to answer there:
+    // pick the first whose card has an enabled Approve. None at all is a failure.
     let answered = "no ask to answer";
     if (store.asks.length > 0) {
-      await open(page, served.origin, "/inbox");
-      const items = page.getByTestId("inbox-item");
-      const approve = page.getByTestId("inbox-detail").getByRole("button", { name: "Approve" });
-      let picked = false;
-      for (let i = 0; i < (await items.count()) && !picked; i += 1) {
-        await items.nth(i).click();
-        await page.getByTestId("inbox-detail").waitFor();
-        picked = (await approve.count()) > 0 && !(await approve.isDisabled());
+      let picked: string | null = null;
+      for (const channel of tree.channels) {
+        if (picked !== null) break;
+        await open(page, served.origin, `/w/${encodeURIComponent(channel.id)}/stream`);
+        await page.getByTestId("feed-ask").first().waitFor({ timeout: 5_000 }).catch(() => undefined);
+        const asks = page.getByTestId("feed-ask");
+        for (let i = 0; i < (await asks.count()) && picked === null; i += 1) {
+          const approve = asks.nth(i).getByRole("button", { name: "Approve" });
+          if ((await approve.count()) > 0 && !(await approve.isDisabled())) {
+            picked = await asks.nth(i).getAttribute("data-suspension-id");
+            await approve.click();
+          }
+        }
       }
-      if (!picked) {
-        fail("an answer from Inbox lands in the store", `${store.asks.length} ask(s) pending and Shift Manager offers an answer on none`);
+      if (picked === null) {
+        fail("an answer from the Stream lands in the store", `${store.asks.length} ask(s) pending and no workstream's Stream offers an answer on any`);
         answered = "no ask answerable";
       } else {
-        await approve.click();
-        let left = store.asks.length;
-        for (let waited = 0; waited < 20_000 && left === store.asks.length; waited += 250) {
+        let left = store.asks;
+        for (let waited = 0; waited < 20_000 && left.includes(picked); waited += 250) {
           await sleep(250);
-          left = (await readStore(api, tree, userId)).asks.length;
+          left = (await readStore(api, tree, userId)).asks;
         }
-        if (left !== store.asks.length - 1) {
-          fail("an answer from Inbox lands in the store", `${store.asks.length} pending before Approve, ${left} after`);
+        if (left.includes(picked) || left.length !== store.asks.length - 1) {
+          fail("an answer from the Stream lands in the store", `${store.asks.length} pending before Approve, ${left.length} after, the approved one ${left.includes(picked) ? "still" : "no longer"} pending`);
         }
-        answered = `approved 1 of ${store.asks.length}, ${left} left in the store`;
+        // The answer clears it from Inbox too: both draw the same pending asks.
+        await open(page, served.origin, "/inbox");
+        const listed = await page.locator(`[data-testid=inbox-item][data-suspension-id="${picked}"]`).count();
+        if (listed !== 0) fail("an answer from the Stream leaves Inbox", `the ask approved in the Stream is still listed in Inbox`);
+        answered = `approved 1 of ${store.asks.length} in the Stream, ${left.length} left in the store, ${listed} listed in Inbox`;
       }
     }
 

@@ -147,6 +147,21 @@ export function asksFor(workstream: Workstream, asks: readonly Ask[]): Ask[] {
 }
 
 /**
+ * The pending asks a task's run waits on (BR-17): those in the session its
+ * row's run link names, stamped with this task, or unstamped and raised by
+ * the very request the link names. Empty while the snapshot or its asks
+ * aren't read.
+ */
+export function asksOfTask(snapshot: LabSnapshot | undefined, row: BoardRow | undefined): Ask[] {
+  if (snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || !snapshot.asks.ok || row?.run == null) return [];
+  const { sessionId, requestId } = row.run;
+  return snapshot.asks.value.filter(
+    (ask) =>
+      ask.sessionId === sessionId && (ask.item.taskId === row.id || (ask.item.taskId === undefined && ask.item.requestId === requestId)),
+  );
+}
+
+/**
  * The workstreams an ask belongs to: the channel whose post started the run,
  * when there is one, otherwise every channel the seat is a member of.
  */

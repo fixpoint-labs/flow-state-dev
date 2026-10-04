@@ -32,10 +32,11 @@
  *            as an extra one
  *
  * Which regions are graded whole grows with the screens' slices: the sidebar,
- * the shared parts and Chief of Staff's centre now. Each slice's rows,
- * exceptions and regions live in a file of their own under `rows/`, spread
- * into the table here. The fonts, the radius and the highlighter are graded
- * on every element of every screen.
+ * the shared parts, Chief of Staff's centre, and the workstream, Board, task
+ * and team strip. Each slice's rows, exceptions and regions live in a file of
+ * their own (slice B's under `rows/`, slice C's in `look-c.mts`), spread into
+ * the table here. The fonts, the radius and the highlighter are graded on
+ * every element of every screen.
  *
  * Controls (scratch patches to a copy of Shift Manager, never the checkout):
  *   GOAL_CONTROL=drift         the sidebar's team row rounded, its Roster count
@@ -68,6 +69,7 @@ import {
   sidebarAndCosContent,
   type SidebarAndCosRead,
 } from "./rows/sidebar-and-cos.mts";
+import { SLICE_C_EXCEPTIONS, SLICE_C_ROWS, SLICE_C_WHOLE } from "./look-c.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["drift", "unclassified", "missing"] as const;
@@ -101,7 +103,7 @@ const LABS = {
 } as const;
 type LabName = keyof typeof LABS;
 
-const SCREENS = ["workstream", "task", "tasks", "cos", "inbox", "roster", "project"] as const;
+const SCREENS = ["workstream", "board", "task", "tasks", "cos", "inbox", "roster", "project"] as const;
 export type Screen = (typeof SCREENS)[number];
 const SHIFTS = ["day", "night"] as const;
 type Shift = (typeof SHIFTS)[number];
@@ -128,9 +130,10 @@ export type Store = {
   asks: number;
   /**
    * Per channel: its stored rows, the names of its members running one, how
-   * many of its rows run, and whether one of its members' asks waits on the person.
+   * many of its rows run, whether one of its members' asks waits on the
+   * person, its kept transcript lines, and its members' pending asks.
    */
-  channels: Record<string, { rows: number; live: string[]; running: number; needs: boolean }>;
+  channels: Record<string, { rows: number; live: string[]; running: number; needs: boolean; lines: number; asks: number }>;
 };
 export type Where = { screen: Screen; width: Width; store: Store; /** A line to the chief of staff is held in flight. */ working?: boolean };
 
@@ -144,8 +147,8 @@ type Want = {
   weight?: number;
   /** type: letter-spacing, in em of the element's own size. */
   tracking?: number;
-  /** surface: the background is this token. */
-  surface?: "sidebar" | "inspector" | "card" | "accent" | "foreground" | "info";
+  /** surface: the background is this token, or none is painted. */
+  surface?: "sidebar" | "inspector" | "card" | "accent" | "foreground" | "info" | "none";
   /** surface: every side's border is this wide, in px, in this token (any alpha), solid unless named. */
   border?: { width: number; colour: "foreground"; style?: "dashed" };
   /** marks: the background is the highlighter, because what this is waits on a person. */
@@ -186,8 +189,8 @@ export type Row = {
 };
 
 const OFF_COS: readonly Screen[] = SCREENS.filter((s) => s !== "cos");
-const WITH_RAIL: readonly Screen[] = ["cos", "workstream", "task"];
-const WITH_TABS: readonly Screen[] = ["workstream", "task", "project"];
+const WITH_RAIL: readonly Screen[] = ["cos", "workstream", "board", "task"];
+const WITH_TABS: readonly Screen[] = ["workstream", "board", "task", "project"];
 const COMPOSERS = "[data-testid=composer], [data-testid=task-composer], [data-testid=inbox-reply]";
 
 const LOOK: Row[] = [
@@ -242,6 +245,10 @@ const LOOK: Row[] = [
   { id: "state square, in review", audit: "F7", v2: { line: 894, has: "review: { nb: 'transparent', nbd: A, nbs: 'solid' }" }, select: "[data-state-square=review]", min: 0, want: { square: "review" } },
   { id: "state square, queued", audit: "F7", v2: { line: 895, has: "queued: { nb: 'transparent', nbd: 'rgba(var(--inkrgb),.5)', nbs: 'dashed' }" }, select: "[data-state-square=queued]", min: 0, want: { square: "queued" } },
   { id: "state square, done", audit: "F7", v2: { line: 895, has: "done: { nb: INK, nbd: INK, nbs: 'solid' }" }, select: "[data-state-square=done]", min: 0, want: { square: "done" } },
+
+  // ---- slice C: the workstream, its Board, the task screen, the team strip (look-c.mts) ----
+  ...SLICE_C_ROWS,
+  // ---- end slice C ----
 ];
 
 /**
@@ -258,10 +265,23 @@ const EXCEPTIONS: Exception[] = [
   { id: "also post to the workstream", select: "[data-testid=task-also-post]", why: "the task composer's also-post box waits on FIX-1474" },
   { id: "registry pill", select: "[data-slot=badge]", why: "a registry part whose `rounded-full` is a literal the theme's radius can't reach", radius: "skip" },
   ...SIDEBAR_AND_COS_EXCEPTIONS,
+  // ---- slice C ----
+  ...SLICE_C_EXCEPTIONS,
+  // ---- end slice C ----
 ];
 
 /** The regions every painting element of which must be covered by a row or an exception. */
-const WHOLE = ["[data-testid=sidebar]", "[data-look=tabs]", "[data-look=composer]", "[data-look=composer-footer]", "[data-look=screen-title]", ...SIDEBAR_AND_COS_WHOLE];
+const WHOLE = [
+  "[data-testid=sidebar]",
+  "[data-look=tabs]",
+  "[data-look=composer]",
+  "[data-look=composer-footer]",
+  "[data-look=screen-title]",
+  ...SIDEBAR_AND_COS_WHOLE,
+  // ---- slice C ----
+  ...SLICE_C_WHOLE,
+  // ---- end slice C ----
+];
 
 // ---- reading the page ----------------------------------------------------------
 
@@ -462,7 +482,10 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
       if (w.tracking !== undefined && e.text && Math.abs(e.tracking - w.tracking * e.size) > 0.06) {
         failures.add("type", `${at} tracks ${px(e.tracking)}, v2 ${w.tracking}em (${px(w.tracking * e.size)}) ${cite(row)}`, tag);
       }
-      if (w.surface !== undefined && token[w.surface] !== null && !same(rgbOf(e.bg), token[w.surface])) {
+      if (w.surface === "none") {
+        const alpha = parseColour(e.bg)?.alpha ?? 0;
+        if (alpha > 0) failures.add("surface", `${at} paints ${e.bg}, v2 paints no fill there ${cite(row)}`, tag);
+      } else if (w.surface !== undefined && token[w.surface] !== null && !same(rgbOf(e.bg), token[w.surface])) {
         const got = rgbOf(e.bg);
         failures.add("surface", `${at} paints ${got === null ? "no background" : hex(got)}, v2's ${w.surface} surface is ${hex(token[w.surface]!)} ${cite(row)}`, tag);
       }
@@ -550,9 +573,9 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
   const roster = await readDeclaredRoster(tree);
   const host = roster.channels[0]!.id;
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
-  const refOf = (pattern: string) =>
-    (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
-  const seatsRef = refOf("inventory/seats/*");
+  const seatsRef = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
+    (r) => r.kind === "collection" && r.pattern === "inventory/seats/*",
+  )?.ref;
   // A seat's name is its address after the team: `<team>.<name>` (the tree's convention).
   const seats =
     seatsRef === undefined
@@ -581,6 +604,8 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
         .slice(0, 3)
         // A name two members share reaches neither, so that member is offered by its id.
         .map((s) => (members.filter((m) => seats.find((x) => x.id === m)?.name === s.name).length > 1 ? s.id : s.name)),
+      lines: (await api.items(channel.id, ["component"])).filter((i) => i.component === "channel-post").length,
+      asks: members.reduce((n, m) => n + (asks.get(m) ?? 0), 0),
     };
   }
   return {
@@ -616,7 +641,8 @@ async function pendingAsks(api: LabApi, userId: string): Promise<number> {
  * by a seat, or one with no owner on a seat's kind (`labs/shift-manager/src/lib/reads.ts`).
  */
 async function pendingAsksBySeat(api: LabApi, userId: string, seats?: ReadonlyArray<{ id: string; kind: string | null }>): Promise<Map<string, number>> {
-  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&limit=500`);
+  // Dispatch runs included: a seat woken by a channel post asks from one, and the app lists them.
+  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
   const ids = new Set(seats?.map((s) => s.id));
   const kinds = new Set(seats?.flatMap((s) => (s.kind === null ? [] : [s.kind])));
   const bySeat = new Map<string, number>();
@@ -655,6 +681,12 @@ async function open(page: Page, screen: Screen, ids: { channel: string; taskId: 
       await page.locator("[role=tab][data-tab=stream]").click();
       await ready("transcript-line");
       return;
+    case "board":
+      await page.getByTestId(`nav-workstream-${ids.channel}`).click();
+      await ready("workstream");
+      await page.locator("[role=tab][data-tab=board]").click();
+      await ready("board");
+      return;
     case "task":
       await page.getByTestId("nav-tasks").click();
       await page.locator(`[data-testid=task-row][data-task-id="${ids.taskId}"]`).click();
@@ -682,8 +714,12 @@ async function open(page: Page, screen: Screen, ids: { channel: string; taskId: 
       await ready("roster");
       return;
     case "project":
-      await page.getByTestId("projects-heading").click();
+      // ---- slice C: the project holding the workstream, on its Board, under the team strip ----
+      await page.locator(`[data-testid=project-group]:has([data-testid="nav-workstream-${ids.channel}"]) [data-testid^=nav-project-]`).click();
       await ready("project");
+      await page.locator("[role=tab][data-tab=board]").click();
+      await ready("project-lane");
+      // ---- end slice C ----
   }
 }
 
