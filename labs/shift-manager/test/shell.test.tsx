@@ -216,7 +216,7 @@ describe("the composer's @mentions", () => {
         send={async () => {}}
         onKept={async () => {}}
         mentions={["coder"]}
-        addressing={() => ({ blocked: null, rows: [row], send: async () => ({ stopped: null }) })}
+        addressing={() => ({ blocked: null, rows: [row], send: async () => ({ suspended: false, stopped: null }) })}
       />,
     );
     fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "@coder first line" } });
@@ -572,6 +572,35 @@ describe("Chief of Staff (FIX-1722)", () => {
     await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
     expect(status.textContent).toMatch(/Delivered\..*waiting/);
     expect(screen.queryByTestId("cos-composer-retry")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
+  });
+
+  // The send read nothing pending (resumed meanwhile, say) and the turn then stopped on a new
+  // ask: the words say plain delivered, but a turn seen suspended still reads the Lab again.
+  it("lists the ask a gated line raised even when the send read nothing pending", async () => {
+    await openCos("/", { chiefOfStaff: true });
+    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
+    const real = globalThis.fetch;
+    let emptying = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+      const url = String(i instanceof Request ? i.url : i);
+      // The send's first read of the conversation's suspensions finds none pending.
+      if (emptying > 0 && /\/sessions\/cos_[^/]+\/state/.test(url) && url.includes("item_types=suspension")) {
+        emptying -= 1;
+        return new Response(JSON.stringify({ items: [], pagination: { offset: 0, limit: 200, total: 0, hasMore: false } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return real(i, init);
+    });
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
+    emptying = 1;
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    const status = screen.getByTestId("cos-composer-status");
+    await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    expect(status.textContent).toBe("Delivered.");
     await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
   });
 

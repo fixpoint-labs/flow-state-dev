@@ -116,8 +116,8 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
           if (door === null) throw new TurnNotDelivered("refused", `${seat.id} ${gaps.turn.noDoor}`);
           const sent = await sendTurn(clients, { sessionId: link.sessionId, flowId, door }, message);
           setReceipts((held) => [...held, { id: held.length, row }]);
-          // It stopped, maybe on a new ask: read the Lab again so this Stream and Inbox list whatever it raised.
-          if (sent.stopped !== null) void refresh();
+          // It stopped short, maybe on a new ask: read the Lab again so this Stream and Inbox list whatever it raised.
+          if (sent.suspended) void refresh();
           return sent;
         },
       };
@@ -221,7 +221,7 @@ export function TranscriptLines({ lines }: { lines: readonly ChannelTranscriptLi
 /** Where an `@name` line goes, or why it can't. */
 export type Addressing =
   | { blocked: string }
-  | { blocked: null; rows: BoardRow[]; send: (row: BoardRow, message: string) => Promise<{ stopped: TurnStop }> };
+  | { blocked: null; rows: BoardRow[]; send: (row: BoardRow, message: string) => Promise<{ suspended: boolean; stopped: TurnStop }> };
 
 /** `@name rest` → the name and the line, or `undefined` for a line to the channel. */
 function parseAddress(draft: string): { name: string; message: string } | undefined {

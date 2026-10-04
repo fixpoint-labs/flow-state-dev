@@ -12,9 +12,12 @@
  * request is `completed` or `suspended` **and** the target session holds the
  * request's user item. The HTTP answer alone never says so: it only says the
  * request started. A `suspended` request stopped short of finishing, with the
- * line in: the send resolves with `stopped` saying on what. `ask` is a
- * person's ask Inbox lists, such as a chief of staff's approval to fire a
- * seat; `wait` is any other suspension, which Inbox doesn't list.
+ * line in: the send resolves with `suspended` set, and `stopped` saying on
+ * what. `ask` is a person's ask Inbox lists, such as a chief of staff's
+ * approval to fire a seat; `wait` is any other suspension, which Inbox
+ * doesn't list. `suspended`, not `stopped`, is what tells a caller to read
+ * the Lab again: `stopped` only picks the words, so a stop it reads wrong,
+ * or reads as gone, never keeps an ask out of Inbox.
  *
  * Three ways a line can fail to be delivered, and the caller keeps the draft
  * for each:
@@ -133,15 +136,15 @@ async function pendingStop(
  * `null`, plain delivered.
  *
  * The label only picks the composer's words: callers read the Lab again on
- * any non-null stop, so a stop read wrong never keeps an ask out of Inbox.
+ * the send's `suspended`, whatever this says.
  *
  * A stop is bound to the suspensions it was read from. A resume marks the
  * request running before it writes its resume item, and a resumed request can
  * suspend again under the same id, so after the first read the status is
  * polled once more (not suspended: `null`) and the pending suspensions are
  * read again. The same suspensions keep the first answer; different ones are
- * classified from the second read. Whatever can't be read is `wait`, which
- * still refreshes. The line is delivered whatever this says.
+ * classified from the second read. Whatever can't be read is `wait`. The line
+ * is delivered whatever this says.
  */
 async function stopOf(
   clients: LabClients,
@@ -174,14 +177,16 @@ async function refusalOf(clients: LabClients, sessionId: string, requestId: stri
  * Send `message` through the target's door, and resolve only once it is
  * delivered (BR-4). Rejects with {@link TurnNotDelivered} otherwise.
  *
- * @returns the door's request, and what it `stopped` on ({@link TurnStop}).
+ * @returns the door's request; `suspended`, whether the poll saw it suspended,
+ * which is when a caller reads the Lab again; and what it `stopped` on
+ * ({@link TurnStop}), for the words only.
  */
 export async function sendTurn(
   clients: LabClients,
   target: TurnTarget,
   message: string,
   options: { timeoutMs?: number; pollMs?: number } = {},
-): Promise<{ requestId: string; stopped: TurnStop }> {
+): Promise<{ requestId: string; suspended: boolean; stopped: TurnStop }> {
   const actions = clients.actions(target.flowId);
   let requestId: string;
   try {
@@ -213,5 +218,5 @@ export async function sendTurn(
     if (error instanceof ClientCallFailed) throw unconfirmed(`Couldn't read back whether the message arrived: ${error.message}.`);
     throw error;
   }
-  return { requestId, stopped: suspended ? await stopOf(clients, actions, target.sessionId, requestId) : null };
+  return { requestId, suspended, stopped: suspended ? await stopOf(clients, actions, target.sessionId, requestId) : null };
 }

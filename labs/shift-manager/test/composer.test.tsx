@@ -87,7 +87,7 @@ describe("a delivered line that stopped the worker says on what", () => {
         send={async () => undefined}
         onKept={async () => {}}
         mentions={["coder"]}
-        addressing={() => ({ blocked: null, rows: [row], send: async () => ({ stopped: "ask" as const }) })}
+        addressing={() => ({ blocked: null, rows: [row], send: async () => ({ suspended: true, stopped: "ask" as const }) })}
       />,
     );
     fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "@coder fire eng.helper" } });

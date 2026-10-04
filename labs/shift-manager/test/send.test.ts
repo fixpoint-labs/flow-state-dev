@@ -85,7 +85,7 @@ describe("sendTurn", () => {
       status: "completed",
       items: [{ requestId: "req_door", role: "user", type: "message" }],
     });
-    await expect(sendTurn(clients, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: null });
+    await expect(sendTurn(clients, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: false, stopped: null });
     // Through the target's door, into its session, with the line as `{ message }`.
     expect(sent).toEqual([{ flowId: "eng.coder", action: "message", input: { message: "hello" }, opts: { sessionId: "s_run" } }]);
   });
@@ -93,7 +93,7 @@ describe("sendTurn", () => {
   it("finds the line at the end of a long session, where a new line is", async () => {
     const older = Array.from({ length: 5_000 }, (_, i) => ({ requestId: `req_${i}`, role: "user", type: "message" }));
     const { clients } = stubClients({ status: "completed", items: [...older, { requestId: "req_door", role: "user", type: "message" }] });
-    await expect(sendTurn(clients, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: null });
+    await expect(sendTurn(clients, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: false, stopped: null });
   });
 
   // A turn that stops on a person's approval (a chief of staff's fire or retire) holds the
@@ -106,7 +106,7 @@ describe("sendTurn", () => {
         { requestId: "req_door", type: "suspension", reason: "human_approval", suspensionId: "susp_fire" },
       ],
     });
-    await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "ask" });
+    await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "ask" });
   });
 
   // Inbox lists only a person's asks, so a suspension on anything else must not point there.
@@ -119,7 +119,7 @@ describe("sendTurn", () => {
         { requestId: "req_door", type: "suspension", reason: "external_event", suspensionId: "susp_deploy" },
       ],
     });
-    await expect(sendTurn(clients, TARGET, "wait for the deploy", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "wait" });
+    await expect(sendTurn(clients, TARGET, "wait for the deploy", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "wait" });
   });
 
   // An ask someone already answered is not in Inbox any more: only the still-pending stop counts.
@@ -133,7 +133,7 @@ describe("sendTurn", () => {
         { requestId: "req_door", type: "suspension", reason: "external_event", suspensionId: "susp_deploy" },
       ],
     });
-    await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "wait" });
+    await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "wait" });
   });
 
   // Every state a suspended poll can be followed by, and what the composer is told for each.
@@ -150,7 +150,7 @@ describe("sendTurn", () => {
     for (const [what, items, stopped] of cases) {
       it(what, async () => {
         const { clients } = stubClients({ status: "suspended", items });
-        await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped });
+        await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped });
       });
     }
 
@@ -158,7 +158,7 @@ describe("sendTurn", () => {
     // reads as pending, but the turn is no longer stopped on it.
     it("resumed after the read but before its resume item lands: the recheck says running, so plain delivered", async () => {
       const { clients } = stubClients({ status: "suspended", later: ["in_progress"], items: [line, ask("s1")] });
-      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: null });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: null });
     });
 
     // Inbox pages every suspension item; so does this, or an older pending ask is missed.
@@ -168,7 +168,7 @@ describe("sendTurn", () => {
         { requestId: `req_${i}`, type: "suspension_resume", suspensionId: `o${i}` },
       ]).flat();
       const { clients } = stubClients({ status: "suspended", items: [line, ask("s1"), ...others] });
-      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "ask" });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "ask" });
     });
 
     // suspended → resumed → suspended again on another reason, all under one request id: the
@@ -179,7 +179,7 @@ describe("sendTurn", () => {
         items: [line, ask("s1")],
         itemsLater: [line, ask("s1"), resume("s1"), ask("s2", "external_event")],
       });
-      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "wait" });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "wait" });
     });
 
     it("re-suspended on a person's ask after a wait was read: the ask is reported", async () => {
@@ -188,17 +188,24 @@ describe("sendTurn", () => {
         items: [line, ask("s1", "external_event")],
         itemsLater: [line, ask("s1", "external_event"), resume("s1"), ask("s2")],
       });
-      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "ask" });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "ask" });
+    });
+
+    // Whatever the words say, a turn the poll saw suspended tells the caller to read the Lab again.
+    it("nothing pending at the first read, then re-suspended on an ask: still reported suspended", async () => {
+      const { clients } = stubClients({ status: "suspended", items: [line, ask("s1"), resume("s1")], itemsLater: [line, ask("s1"), resume("s1"), ask("s2")] });
+      const sent = await sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 });
+      expect(sent.suspended).toBe(true);
     });
 
     it("a failed read of the suspensions, resumed meanwhile: the recheck says running, so plain delivered", async () => {
       const { clients } = stubClients({ status: "suspended", later: ["completed"], items: [line, ask("s1")], suspensionsFail: true });
-      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: null });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: null });
     });
 
     it("a failed read of the suspensions is still delivered, as a wait that points nowhere", async () => {
       const { clients } = stubClients({ status: "suspended", items: [line, ask("s1")], suspensionsFail: true });
-      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "wait" });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "wait" });
     });
   });
 

@@ -64,6 +64,6 @@ export async function sendToChiefOfStaff(
   clients: LabClients,
   target: { seatId: string; door: string; sessionId: string },
   message: string,
-): Promise<{ requestId: string; stopped: TurnStop }> {
+): Promise<{ requestId: string; suspended: boolean; stopped: TurnStop }> {
   return sendTurn(clients, { sessionId: target.sessionId, flowId: target.seatId, door: target.door }, message);
 }
