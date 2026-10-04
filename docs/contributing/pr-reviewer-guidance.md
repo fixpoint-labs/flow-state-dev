@@ -88,6 +88,55 @@ same thing on every PR of its kind, which is exactly what a `<details>` is for.
 > triage under [`orchestration.md`](orchestration.md) → "Spec review: the bar and the
 > convergence rule".
 
+## Language — ASD-STE100
+
+Write the prose of every PR description in **ASD-STE100 Simplified Technical English**
+(STE). It applies to every PR that follows the layout above, and to the `settle-claim`
+exception too. STE is a controlled language: a small vocabulary with one meaning per
+word, and a set of writing rules. A reviewer who reads English as a second language, or
+who reads fast, gets the same meaning that the author intended.
+
+The writing rules that apply to a PR body:
+
+- **Short sentences.** A procedural sentence (an instruction) has 20 words or fewer. A
+  descriptive sentence has 25 words or fewer.
+- **One topic per sentence, one topic per paragraph.** A paragraph has six sentences or
+  fewer.
+- **Active voice.** Say who or what does the action: *the worker writes the row*, not
+  *the row is written*.
+- **Simple tenses.** Use the simple present, the simple past, and the future. Do not use
+  the *-ing* form of a verb except in a technical name.
+- **One word, one meaning.** Use a common word in its most common meaning. Do not use a
+  synonym for variety. If a word has two meanings (*block*, *flow*, *fork*), use it only
+  in the one meaning that this repository gives it.
+- **No phrasal verbs or idioms.** Write *remove*, not *get rid of*. Write *start*, not
+  *kick off*.
+- **Keep the articles.** Write *the* and *a*. Do not write in a telegraphic style.
+- **Noun clusters have three words or fewer.** Write *the timeout for the stream resume*,
+  not *the stream resume timeout value*.
+- **Instructions:** one instruction per sentence, in the imperative. Put a condition
+  before the instruction: *If the check fails, run it again.*
+- **Use vertical lists** for a sequence of steps or for more than two items.
+
+**Technical names stay as they are.** A code identifier, a file path, a package name, a
+product name, and a term this repository defines (*generator*, *sequencer*, *capability*)
+are STE *technical names*. Use them without change. Define a term of art at first use, as
+[`writing-for-humans.md`](writing-for-humans.md) → "Density" says.
+
+**What STE does not touch:**
+
+- The **reviewer contract** (*How to review this*) and the other text this guide says to
+  paste **verbatim**. Copy it exactly.
+- Code blocks, mermaid fences, figures, command output, and quoted text from a person, a
+  review, or a log.
+- PR titles in conventional-commit form (`spec(FIX-775): …`).
+
+The official STE dictionary is not in this repository. Where you are not sure if a word
+is approved, use the shortest common word that has only one meaning. STE controls the
+words, not the layout: the blocks, the fold, and the budgets above stay the same. The
+worked examples in this file show structure. Their sentences are older than this rule, so
+do not copy their wording.
+
 ## 1. The problem
 
 **Two to four sentences, in words that don't require the codebase.** What breaks, who
