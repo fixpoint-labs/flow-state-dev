@@ -10,15 +10,16 @@ It is research software. Several screens are drawn as placeholders that name wha
 
 ## Run it
 
-Build the pages once, then start Shift Manager over a team profile or a Lab's config:
+Start Shift Manager over a team profile or a Lab's config:
 
 ```bash
-pnpm --filter @flow-state-dev/shift-manager build
 pnpm --filter @flow-state-dev/shift-manager start --team devteam
 pnpm --filter @flow-state-dev/shift-manager start --config <path to a Lab's fsdev.config.mts>
 ```
 
 It prints the address, `http://127.0.0.1:4300` by default. One process serves the Lab's API under `/api/flows` and Shift Manager's pages beside it. It also serves the devtool over the same Lab, on a port of its own, and prints that address too. The Lab's config is loaded as-is. Nothing in it is edited or wrapped.
+
+Start builds the pages first when they aren't built yet, or when any source file they were built from has changed since. A page built from older source can look for data under names the Lab no longer uses, and then shows empty screens as if the Lab had nothing in it. Each build records the files it was made from in `dist/build-inputs.json`, and start compares them with the files as they are now.
 
 | Option | Default | What it does |
 |--------|---------|--------------|
@@ -26,7 +27,7 @@ It prints the address, `http://127.0.0.1:4300` by default. One process serves th
 | `--team <name>` | | A team profile from `teams/`, by folder name. Give `--team` or `--config`, not both. |
 | `--port <n>` | `4300` | `0` picks a free port. |
 | `--host <host>` | `127.0.0.1` | A non-loopback host is refused unless the Lab authenticates requests. |
-| `--assets <dir>` | `dist/` | Serve a different build of the pages. |
+| `--assets <dir>` | `dist/` | Serve a different build of the pages. Start serves it as it is, without checking or rebuilding it. |
 | `--devtool <url>` | the devtool Shift Manager serves | Point a task's *Open trace* link at a devtool you run yourself instead. Must be an `http(s)` address. Shift Manager then serves no devtool of its own. |
 | `--devtool-assets <dir>` | the `@flow-state-dev/devtool` build | Serve a different build of the devtool's pages. |
 | `--shift <day\|night>` | `SHIFT_MANAGER_SHIFT`, else unset | Start on the light (`day`) or dark (`night`) look, whatever the OS setting. Unset, the page follows the OS. A shift picked in the sidebar's switch wins over the flag and the variable. See [How it looks](#how-it-looks). |
@@ -218,7 +219,7 @@ The panel on the right shows who is on it and when it started. If the harness re
 
 The devtool it opens is the one Shift Manager serves: the same pages `fsdev dev` serves, over the same Lab, in the same process. That matters because the devtool can only show a run from the store the run is in. A Lab whose stores are in memory lives only in Shift Manager's process, so a devtool started separately has its own empty store. The link adds `?session=<id>`, and the devtool opens the session under the flow that owns it.
 
-The devtool's pages ship prebuilt in the published `@flow-state-dev/devtool` package. In this repository, build them once with `pnpm build:assets`. Without them Shift Manager still starts, says so, and the link is off.
+The devtool's pages ship prebuilt in the published `@flow-state-dev/devtool` package. In this repository, build them once with `pnpm build:assets`. Without them Shift Manager still starts, says so, and the link is off. When they were built from source that has changed since, Shift Manager warns and serves them anyway. Rebuild them with `pnpm --filter @flow-state-dev/devtool build:assets`.
 
 To use a devtool you run yourself, pass its address. It has to read the same store as Shift Manager, as the same user, so this suits a Lab with a persistent store, such as SQLite:
 

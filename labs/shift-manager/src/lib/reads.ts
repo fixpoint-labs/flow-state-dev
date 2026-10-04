@@ -683,7 +683,7 @@ export function createLabReader(clients: LabClients): LabReader {
       ok: false,
       failure: {
         message:
-          "No inventory to read: none of this person's sessions is on a flow that declares the organization's seat and mailbox inventory. The Lab booted without opening its inventory.",
+          `No inventory to read: none of this person's sessions is on a flow that declares the organization's seat and mailbox inventory (${INVENTORY_PATTERNS.seats}, ${INVENTORY_PATTERNS.mailboxes}). Either the Lab booted without opening its inventory, or these pages are an older build than the Lab and look for keys it no longer uses: rebuild them (pnpm --filter @flow-state-dev/shift-manager build) and reload.`,
       },
     };
   };
