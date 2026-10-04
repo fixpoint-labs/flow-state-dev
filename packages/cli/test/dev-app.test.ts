@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { connect } from "node:net";
 import { join, resolve } from "node:path";
 import { executeDevCommand, type DevServer } from "../src/commands/dev";
 import { CliError } from "../src/resolve-block";
@@ -186,6 +187,32 @@ describe("fsdev dev --app <dir>", () => {
     await expect(fetch(server.devtoolUrl!)).rejects.toThrow();
   });
 
+  it("close() keeps the shared runtime up until both servers have drained", async () => {
+    const server = await executeDevCommand({ port: "0", open: false, config: appConfig, app: await pagesDir() });
+    const { port } = new URL(server.url);
+    // A request in flight on the app's port: headers sent, not yet finished.
+    const socket = connect(Number(port), "127.0.0.1");
+    await new Promise<void>((done) => socket.once("connect", () => done()));
+    socket.write(`GET /api/flows HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nConnection: close\r\n`);
+    let reply = "";
+    socket.on("data", (chunk) => (reply += String(chunk)));
+    const ended = new Promise<void>((done) => socket.once("close", () => done()));
+
+    const g = globalThis as { __fsdevDisposed?: boolean };
+    g.__fsdevDisposed = false;
+    const closing = server.close();
+    // The DevTool's idle port closes at once; the app's waits on the request,
+    // and the runtime both share must outlive it.
+    await new Promise((r) => setTimeout(r, 300));
+    await expect(fetch(server.devtoolUrl!)).rejects.toThrow();
+    expect(g.__fsdevDisposed).toBe(false);
+    socket.write("\r\n");
+    await ended;
+    await closing;
+    expect(reply).toMatch(/^HTTP\/1\.1 200/);
+    expect(g.__fsdevDisposed).toBe(true);
+  });
+
   it.each(["12abc", "80.5", "70000", "-1"])("refuses --port %s, exit 3", async (port) => {
     const err = await refused({ config: appConfig, app: await pagesDir(), port });
     expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
@@ -249,11 +276,31 @@ describe("fsdev dev --host", () => {
   it("with --allow-unauthenticated, binds and keeps the anonymous debug surface closed", async () => {
     const server = await dev({ config: unauthConfig, host: "0.0.0.0", allowUnauthenticated: true, app: await pagesDir() });
     const port = new URL(server.url).port;
-    expect(process.env.FSDEV_DEBUG_ENDPOINTS).toBeUndefined();
-    expect(process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL).toBeUndefined();
+    expect(process.env.FSDEV_DEBUG_ENDPOINTS).not.toBe("1");
+    expect(process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL).not.toBe("1");
     const debug = await fetch(`http://127.0.0.1:${port}/api/flows/sessions/s1/debug/resources`);
     expect(debug.status).toBe(403);
     expect(await debug.json()).toMatchObject({ error: "debug_endpoints_disabled" });
+  });
+
+  it("keeps the debug surface closed on a network host even when the environment turned it on", async () => {
+    // A .env file, the shell, or an earlier loopback run in this process can
+    // leave these set; a network bind must not inherit them.
+    process.env.FSDEV_DEBUG_ENDPOINTS = "1";
+    process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL = "1";
+    const server = await dev({ config: unauthConfig, host: "0.0.0.0", allowUnauthenticated: true, app: await pagesDir() });
+    const port = new URL(server.url).port;
+    const debug = await fetch(`http://127.0.0.1:${port}/api/flows/sessions/s1/debug/resources`);
+    expect(debug.status).toBe(403);
+    expect(await debug.json()).toMatchObject({ error: "debug_endpoints_disabled" });
+  });
+
+  it("on a wildcard host, hands the page no DevTool address, since 0.0.0.0 reaches nothing from a browser", async () => {
+    const server = await dev({ config: unauthConfig, host: "0.0.0.0", allowUnauthenticated: true, app: await pagesDir() });
+    const port = new URL(server.url).port;
+    expect(await text(`http://127.0.0.1:${port}/`)).not.toContain("fsdev-devtool-url");
+    expect(server.devtoolUrl).toBeDefined();
+    expect(stderr).toContain(`DevTool: ${server.devtoolUrl!.replace(/\/$/, "")}`);
   });
 
   it("on loopback, the anonymous debug surface stays open as today", async () => {

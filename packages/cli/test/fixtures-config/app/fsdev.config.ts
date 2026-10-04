@@ -17,6 +17,7 @@ import { z } from "zod";
 const g = globalThis as unknown as {
   __fsdevModelCalls: string[];
   __fsdevTestStores?: StoreRegistry;
+  __fsdevDisposed?: boolean;
 };
 g.__fsdevModelCalls = [];
 
@@ -69,8 +70,18 @@ const genFlow = defineFlow({
   },
 })();
 
-export default createFlowState({
+const flowState = createFlowState({
   flows: { gen: genFlow },
   modelResolver: recordingResolver,
   stores: { default: { primary: stashingStores() } },
 });
+
+// Publishes when the runtime is disposed, so a test can tell whether shutdown
+// released it while a request was still in flight.
+const dispose = flowState.dispose.bind(flowState);
+flowState.dispose = () => {
+  g.__fsdevDisposed = true;
+  return dispose();
+};
+
+export default flowState;

@@ -218,6 +218,25 @@ describe("serve — FlowState lifecycle", () => {
     await handle.close();
     expect(adapter.disposed()).toBe(1);
   });
+
+  it("leaves the FlowState to its owner when disposeOnClose is false", async () => {
+    // Two servers over one runtime: the one that closes first must not take
+    // the runtime away from the other.
+    const adapter = gatedAdapter();
+    adapter.release();
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: adapter } },
+    });
+    const handle = await serve(fs, { port: 0, disposeOnClose: false });
+    await fs.ready();
+
+    await handle.close();
+    expect(adapter.disposed()).toBe(0);
+    await fs.dispose();
+    expect(adapter.disposed()).toBe(1);
+  });
 });
 
 describe("serve — static assets", () => {

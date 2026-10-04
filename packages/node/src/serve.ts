@@ -70,6 +70,12 @@ export interface ServeOptions {
    * handling and drives `handle.close()` itself, so teardown lives in one path.
    */
   handleSignals?: boolean;
+  /**
+   * Whether `close()` disposes the router and the `FlowState` after draining.
+   * Default `true`. Set `false` when several servers share one runtime, so the
+   * caller disposes it once, after every server has drained.
+   */
+  disposeOnClose?: boolean;
 }
 
 /** A Connect-style request handler: answer by writing `res`, or call `next()` to pass. */
@@ -87,7 +93,8 @@ export interface ServeHandle {
   readonly port: number;
   /**
    * Stop accepting connections, drain in-flight requests (force-closing after
-   * the grace window), then dispose the router and the `FlowState`. Idempotent.
+   * the grace window), then dispose the router and the `FlowState` (unless
+   * `disposeOnClose` is `false`). Idempotent.
    */
   close(): Promise<void>;
 }
@@ -142,6 +149,7 @@ export function serve(
   const staticDir = options.staticDir;
   const shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
   const handleSignals = options.handleSignals ?? true;
+  const disposeOnClose = options.disposeOnClose ?? true;
 
   // `basePath`/`healthPath` defaults live in `createServerApp`; pass through.
   const { app: honoApp, tryDedicatedRoute, dispose } = createServerApp(app, {
@@ -227,7 +235,7 @@ export function serve(
       timer.unref?.();
     });
 
-    await dispose();
+    if (disposeOnClose) await dispose();
   };
 
   const onSignal = () => {

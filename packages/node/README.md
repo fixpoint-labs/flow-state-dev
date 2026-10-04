@@ -148,6 +148,7 @@ durable background work). See the deployment guides for the full topology:
 | `pageMeta` | — | A `Record<string, string>` of `<meta name content>` tags written into every HTML page served from `staticDir`, on any host. Not for secrets. |
 | `pageHandler` | — | A Connect-style `(req, res, next)` handler tried before `staticDir`'s SPA fallback for non-API GET requests, for a dev server's middleware. A real file in `staticDir` and a dedicated adapter route are served ahead of it. Calling `next()` passes the request on; `next(err)` returns a 500. |
 | `shutdownGraceMs` | `10000` | Grace window before lingering connections are force-closed. |
+| `disposeOnClose` | `true` | Whether `close()` disposes the `FlowState` after draining. Set `false` when several servers share one runtime, and dispose it yourself once they have all closed. |
 
 ### `createPageHtmlTransform(options)`
 

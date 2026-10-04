@@ -154,7 +154,12 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<Dev
     beforeConfigLoad: () => {
       // Never on a network bind: the debug surface reads full server state and
       // admits Origin-less requests, which only a loopback page may make.
-      if (options.config !== false && loopback) {
+      if (!loopback) {
+        // Force off rather than leave unset: a .env file, the shell, or an
+        // earlier loopback run in this process may have turned them on.
+        process.env.FSDEV_DEBUG_ENDPOINTS = "0";
+        process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL = "0";
+      } else if (options.config !== false) {
         process.env.FSDEV_DEBUG_ENDPOINTS ??= "1";
         // The DevTool's same-origin GETs carry no Origin header; the engine
         // closes the debug surface to those unless opted in. Safe here: this
@@ -331,15 +336,20 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<Dev
       staticDir: devtoolAssets,
       devtoolConfig,
       handleSignals: false,
+      // The app's server owns the shared runtime and disposes it last.
+      disposeOnClose: false,
     }).catch(async (err: unknown) => {
       await releaseRuntime();
       throw err;
     });
   }
   const devtoolUrl = devtoolHandle === undefined ? undefined : `http://${urlHost(host)}:${devtoolHandle.port}/`;
+  // A wildcard bind address reaches nothing from a browser, and the server
+  // can't know which of its addresses the browser used, so the page gets no
+  // DevTool address then; the banner still prints the port.
   const pageMeta = {
     ...options.pageMeta,
-    ...(devtoolUrl === undefined ? {} : { [DEVTOOL_URL_META]: devtoolUrl }),
+    ...(devtoolUrl === undefined || isWildcardHost(host) ? {} : { [DEVTOOL_URL_META]: devtoolUrl }),
   };
 
   const handle = await serve(serveApp, {
@@ -378,15 +388,16 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<Dev
     openBrowser(shown(url));
   }
 
-  // Graceful shutdown. Each `close()` tears down its HTTP server and (in the
-  // config path) disposes the FlowState, which both handles share; disposal is
-  // idempotent, so the two run together. The discovery path additionally
-  // closes the SQLite stores it owns. serve's own signal handling is disabled
-  // above so this is the single teardown path.
+  // Graceful shutdown. The DevTool's server drains first without disposing;
+  // then the app's server drains and (in the config path) disposes the
+  // FlowState both share, so the runtime outlives every in-flight request. The
+  // discovery path additionally closes the SQLite stores it owns. serve's own
+  // signal handling is disabled above so this is the single teardown path.
   let closing: Promise<void> | undefined;
   const close = (): Promise<void> => {
     closing ??= (async () => {
-      await Promise.all([handle.close(), devtoolHandle?.close()]);
+      await devtoolHandle?.close();
+      await handle.close();
       closeStores?.();
       // Removed only once closed, so a second signal mid-shutdown is ignored.
       process.off("SIGINT", onSignal);
@@ -403,6 +414,11 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<Dev
   process.on("SIGTERM", onSignal);
 
   return { url, devtoolUrl, close };
+}
+
+/** Whether `host` is an all-interfaces bind address rather than one a browser can reach. */
+function isWildcardHost(host: string): boolean {
+  return host === "0.0.0.0" || host === "::" || host === "[::]";
 }
 
 /** `host` as it goes in a URL: an IPv6 address in brackets. */
