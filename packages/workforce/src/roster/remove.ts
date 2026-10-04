@@ -17,7 +17,7 @@
  *
  * What it never touches: a declared seat's inventory row (one whose address
  * something else holds, or that doesn't say it was hired), the seat's
- * sessions, state and resources, and channel membership rows.
+ * sessions, state and resources, and mailbox membership rows.
  */
 
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";

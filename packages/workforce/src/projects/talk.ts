@@ -1,7 +1,7 @@
 /**
  * The talk entries: how a person's own session reaches a project's room.
  *
- * A talk session is a session on the channel kind whose state holds one field,
+ * A talk session is a session on the mailbox kind whose state holds one field,
  * `resourceId`: the project it is about. That field **grants nothing**. A
  * caller writes session state when it creates a session, so anyone can create
  * one naming any project; every room entry therefore looks the row up and runs
@@ -9,7 +9,7 @@
  * the engine recorded it. Nobody's session is shared: each member reaches the
  * room through their own, and the room itself is org data (`room-store.ts`).
  *
- * Five entries, built into every channel kind by `defineChannelFlow`:
+ * Five entries, built into every mailbox kind by `defineMailboxFlow`:
  *
  * - `bind` (internal): bind this session to a project.
  * - `join`: the same, for a person — members only.
@@ -25,12 +25,12 @@
  * is returned.
  *
  * Project talk is written to `room-lines` only. No entry here emits a
- * `channel-post` item, in any session.
+ * `mailbox-post` item, in any session.
  *
  * **The template.** A room's seats and charter come from the talk template
  * built onto the kind at boot (`talk-template.ts`), never from session state:
  * `read` reports them, and a person's `post` wakes each seat once, under the
- * poster, with the room's recent lines (`channel-flow.ts` owns the fan-out).
+ * poster, with the room's recent lines (`mailbox-flow.ts` owns the fan-out).
  * A seat's reply comes back through `answer`, so it lands in the room for
  * every member and wakes nobody.
  */
@@ -39,7 +39,7 @@ import { handler } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { ChannelTranscriptLine } from "../channel/channel-post-line";
+import type { MailboxTranscriptLine } from "../mailbox/mailbox-post-line";
 import { retryOnConflict } from "./cas-retry";
 import {
   defineProjectsCollection,
@@ -69,8 +69,8 @@ import { appendRoomLine, readRoom, readRoomForMember, type RoomCollections } fro
 import type { TalkTemplateFacts } from "./talk-template";
 
 /**
- * The talk half of a channel session's state. Nullable with a `null` default
- * (BP-023, BP-030): a declared channel never sets it, and a session written
+ * The talk half of a mailbox session's state. Nullable with a `null` default
+ * (BP-023, BP-030): a declared mailbox never sets it, and a session written
  * before it existed reads as unbound.
  */
 export const talkSessionStateSchema = z.object({
@@ -117,7 +117,7 @@ export type TalkReadOutput = z.infer<typeof talkReadOutputSchema>;
 
 /**
  * The resources every talk entry declares: one map, since a flow refuses two
- * declarations under one ref. Exported for the channel kind's talk fan-out,
+ * declarations under one ref. Exported for the mailbox kind's talk fan-out,
  * which reads the room's recent lines.
  */
 export const TALK_RESOURCES = {
@@ -200,12 +200,12 @@ async function listedTalkProject(ctx: BlockContext): Promise<string> {
  */
 async function bindTalk(ctx: BlockContext, projectId: string): Promise<{ sessionId: string }> {
   const self = ctx.session.identity.id;
-  // A declared channel's session carries its roster and charter. Binding it
+  // A declared mailbox's session carries its roster and charter. Binding it
   // would turn its own `post` and `read` into the project's room.
   if ("members" in ctx.session.state || "instructions" in ctx.session.state) {
     throw new ProjectRefusedError(
-      "talk-on-a-channel",
-      `session "${self}" is a declared channel's session. Join a project from a session of its own.`
+      "talk-on-a-mailbox",
+      `session "${self}" is a declared mailbox's session. Join a project from a session of its own.`
     );
   }
   const bound = talkProjectOf(ctx.session.state);
@@ -265,8 +265,8 @@ export const talkBind = handler({
  * `join`: a member's way into a project's room. Returns the member's one talk
  * session: the one the row lists, or this session, now bound and listed. A
  * non-member is refused and nothing is written; `join` never adds its caller
- * to `members`. A declared channel's own session is refused too: `join` binds
- * a session of its own, never a channel. Also repairs a row whose owner was never bound.
+ * to `members`. A declared mailbox's own session is refused too: `join` binds
+ * a session of its own, never a mailbox. Also repairs a row whose owner was never bound.
  */
 export const talkJoin = handler({
   name: "talk-join",
@@ -277,7 +277,7 @@ export const talkJoin = handler({
   execute: (input, ctx) => bindTalk(ctx as unknown as BlockContext, input.projectId)
 });
 
-/** A person's post on a talk session. Same closed input as a channel post. */
+/** A person's post on a talk session. Same closed input as a mailbox post. */
 const talkPostInputSchema = z
   .object({ body: z.string().min(1), author: z.string().optional() })
   .strict();
@@ -305,7 +305,7 @@ export const talkPost = handler({
   }
 });
 
-/** A seat's answer: the same closed input a channel answer takes, with the delivery's token, which a talk answer requires. */
+/** A seat's answer: the same closed input a mailbox answer takes, with the delivery's token, which a talk answer requires. */
 const talkAnswerInputSchema = z
   .object({
     postId: z.string().min(1),
@@ -452,7 +452,7 @@ const TALK_WAKE_LINES = 20;
 
 /**
  * The room's last committed lines below `seq`, oldest first, at most
- * {@link TALK_WAKE_LINES}, as a woken seat is handed them: a channel transcript
+ * {@link TALK_WAKE_LINES}, as a woken seat is handed them: a mailbox transcript
  * line each, `principal` the poster, `author` the seat that answered. A room
  * line carries no time, so `at` is `0`.
  *
@@ -466,7 +466,7 @@ export async function recentTalkLines(
   ctx: BlockContext,
   projectId: string,
   seq: number
-): Promise<ChannelTranscriptLine[]> {
+): Promise<MailboxTranscriptLine[]> {
   return recentRoomLines(roomOf(ctx), projectId, seq);
 }
 
@@ -475,7 +475,7 @@ export async function recentRoomLines(
   rooms: RoomCollections,
   projectId: string,
   seq: number
-): Promise<ChannelTranscriptLine[]> {
+): Promise<MailboxTranscriptLine[]> {
   const committed = (await rooms.seq.getOptional(projectId))?.state.committed ?? 0;
   const after = Math.max(0, Math.min(committed, seq - 1) - TALK_WAKE_LINES);
   const { lines } = await readRoom(rooms, projectId, after);

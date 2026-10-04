@@ -307,8 +307,12 @@ function Talk({
         const target = sessionId ?? (fresh.current ??= newConversationId());
         const settled = startChiefOfStaffWork();
         try {
-          await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
+          const sent = await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
           setOpened(target);
+          // Read the Lab again either way. Stopped short, it may have raised an ask Inbox should
+          // list; finished, it may have changed the organization, such as a project it created.
+          void refresh();
+          return sent;
         } catch (error) {
           // The Lab may have opened the session before the line failed. The
           // listing says whether it did; the composer says what failed.
@@ -448,10 +452,10 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
             <li key={workstream.id}>
               <button
                 type="button"
-                onClick={() => navigate({ level: "workstream", channelId: workstream.id, tab: "stream" })}
+                onClick={() => navigate({ level: "workstream", mailboxId: workstream.id, tab: "stream" })}
                 className="flex w-full items-center justify-between gap-2 px-1 py-1 text-left text-sm hover:bg-accent/60"
                 data-testid="cos-stream"
-                data-channel-id={workstream.id}
+                data-mailbox-id={workstream.id}
               >
                 <span className="truncate">{workstream.id}</span>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">

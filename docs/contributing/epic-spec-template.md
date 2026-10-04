@@ -119,7 +119,8 @@ Optional comments are triaged, not a reason to grind to zero or restart the desi
 
 *(Authored for the reviewed revision, with dated status and pinned figures. After merge,
 leave this original review record intact; a follow-up amendment describes its own delta.
-Budget ~525 prose words above the fold. Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
+Budget ~525 prose words above the fold. Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md), including its prose in ASD-STE100
+(→ "Language — ASD-STE100"); the rows taken from `SPEC.md` get rewritten to STE, not pasted.)*
 
 The teams table from `SPEC.md`. Then **the goal** in its one sentence, the *how we'll know*
 figure as a mermaid fence with its sentence, and one line naming which issue's goal check

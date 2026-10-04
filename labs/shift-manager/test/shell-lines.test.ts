@@ -46,20 +46,20 @@ function snapshotOf(rows: BoardRow[], asks: Ask[]): LoadedSnapshot {
       value: {
         seats,
         workstreams: [
-          toWorkstream({ id: "eng.desk", kind: "channel", members: ["eng.coder"] })!,
-          toWorkstream({ id: "eng.side", kind: "channel", members: ["eng.reviewer"] })!,
+          toWorkstream({ id: "eng.desk", kind: "mailbox", members: ["eng.coder"] })!,
+          toWorkstream({ id: "eng.side", kind: "mailbox", members: ["eng.reviewer"] })!,
         ],
       },
     },
     boards: {
-      "eng.desk": { ok: true, value: { refs: ["eng.desk.work"], rows: rows.filter((r) => r.channelId === "eng.desk") } },
-      "eng.side": { ok: true, value: { refs: ["eng.side.work"], rows: rows.filter((r) => r.channelId === "eng.side") } },
+      "eng.desk": { ok: true, value: { refs: ["eng.desk.work"], rows: rows.filter((r) => r.mailboxId === "eng.desk") } },
+      "eng.side": { ok: true, value: { refs: ["eng.side.work"], rows: rows.filter((r) => r.mailboxId === "eng.side") } },
     },
     asks: { ok: true, value: asks },
     resources: { ok: true, value: [] },
   } as unknown as LoadedSnapshot;
 }
-const row = (channel: string, id: string, status: string): BoardRow => toBoardRow(`${channel}.work`, channel, id, { id, title: id, status, assignee: null });
+const row = (mailbox: string, id: string, status: string): BoardRow => toBoardRow(`${mailbox}.work`, mailbox, id, { id, title: id, status, assignee: null });
 const ask = (seatId: string): Ask =>
   ({ sessionId: `s_${seatId}`, seatId, flowId: seatId, parentSessionId: null, kind: "approval", item: { suspensionId: `q_${seatId}` }, since: 0, unanswerable: null }) as unknown as Ask;
 

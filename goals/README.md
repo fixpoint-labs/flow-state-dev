@@ -73,7 +73,7 @@ Checks that cannot fail are the common case, not the rare one. A leg asserting `
 **Prefer a named control over an ad-hoc mutation.** A control is a flag the run already understands, so the red state is reproducible by anyone, on any checkout, without touching the tree:
 
 ```bash
-GOAL_CONTROL=by-name pnpm tsx goals/channel-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
+GOAL_CONTROL=by-name pnpm tsx goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
 ```
 
 `run.mts` reads `process.env.GOAL_CONTROL` and passes it to the harness, which degrades the one behaviour the control names. Declare each one in `goal.md` under **Controls**, with the assertions it must fail, by name (`a:working`, not leg a) — a leg goes red on any of its assertions, so a control that fails the wrong one is itself a check that cannot fail. Record the run in the **Verdict log** as a `FAIL (expected)` row with what it printed.

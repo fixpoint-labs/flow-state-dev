@@ -29,7 +29,7 @@ describe("landing (V1, BR-1)", () => {
       { level: "tasks", by: "state" },
       { level: "tasks", by: "worker" },
       { level: "task", boardRef: "ops.desk.work", taskId: "t-1", tab: "diff" },
-      { level: "workstream", channelId: "ops.desk", tab: "board" },
+      { level: "workstream", mailboxId: "ops.desk", tab: "board" },
       { level: "project", projectId: "unassigned", tab: "brief" },
       { level: "resource", sessionId: "s_1", ref: "runbook" },
       { level: "cos" },
@@ -81,9 +81,9 @@ describe("which seat is the chief of staff (V2, D2)", () => {
 
 // ---- the summary and the rail ---------------------------------------------------
 
-const row = (channelId: string, id: string, status: string): BoardRow => ({
-  boardRef: `${channelId}.work`,
-  channelId,
+const row = (mailboxId: string, id: string, status: string): BoardRow => ({
+  boardRef: `${mailboxId}.work`,
+  mailboxId,
   id,
   title: id,
   goal: null,
@@ -121,9 +121,9 @@ function snapshotOf(over: Partial<LoadedSnapshot> = {}): LoadedSnapshot {
       value: {
         seats: [seat("ops.a"), seat("ops.b"), seat("ops.c")],
         workstreams: [
-          { id: "ops.desk", kind: "channel", members: ["ops.a", "ops.b"] },
-          { id: "ops.side", kind: "channel", members: ["ops.c"] },
-          { id: "ops.quiet", kind: "channel", members: [] },
+          { id: "ops.desk", kind: "mailbox", members: ["ops.a", "ops.b"] },
+          { id: "ops.side", kind: "mailbox", members: ["ops.c"] },
+          { id: "ops.quiet", kind: "mailbox", members: [] },
         ],
       },
     },
@@ -187,7 +187,7 @@ describe("the person's conversation with the chief of staff (V4, BR-14)", () => 
   const session = (id: string, flowId: string | undefined, createdAt: number, parentSessionId?: string): SessionSummary =>
     ({ id, flowKind: "agent", ...(flowId === undefined ? {} : { flowId }), userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;
 
-  it("is the newest session on the seat's flow that no channel or run started", () => {
+  it("is the newest session on the seat's flow that no mailbox or run started", () => {
     const sessions = [
       session("old", "desk.chief-of-staff", 1),
       session("newest", "desk.chief-of-staff", 3),
@@ -198,7 +198,7 @@ describe("the person's conversation with the chief of staff (V4, BR-14)", () => 
     expect(conversationSession(sessions, "desk.chief-of-staff")).toBe("newest");
   });
 
-  it("is never a session a channel post or another run started, and none when there is no direct one", () => {
+  it("is never a session a mailbox post or another run started, and none when there is no direct one", () => {
     expect(conversationSession([session("heard", "desk.chief-of-staff", 9, "desk.front")], "desk.chief-of-staff")).toBeNull();
     // A store that nulls absent keys hands back `null` for a direct session's parent.
     expect(conversationSession([{ ...session("direct", "desk.chief-of-staff", 1), parentSessionId: null } as unknown as SessionSummary], "desk.chief-of-staff")).toBe(

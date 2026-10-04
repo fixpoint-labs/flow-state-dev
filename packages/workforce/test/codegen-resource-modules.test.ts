@@ -75,11 +75,11 @@ function expandPlaces(patterns: readonly string[]): string[] {
   );
 }
 
-/** A `resources/` folder where the convention does not look: the root, channels, a folder inside a worker. */
+/** A `resources/` folder where the convention does not look: the root, mailboxes, a folder inside a worker. */
 const DECOY_SLOTS = [
   "resources",
-  "org/channels/one/resources",
-  "teams/one/channels/one/resources",
+  "org/mailboxes/one/resources",
+  "teams/one/mailboxes/one/resources",
   "org/workers/one/nested/resources",
   "teams/one/workers/one/nested/resources",
 ];
@@ -92,7 +92,7 @@ const DECOY_SLOTS = [
  * folder cannot change what it yields, and a worker or team that happens to be
  * named like one is the both-doors fixtures' and the characterization test's.
  */
-const SATURATED_NAMES = ["org", "teams", "workers", "channels", "one"];
+const SATURATED_NAMES = ["org", "teams", "workers", "mailboxes", "one"];
 
 /** One level below the deepest place, a team worker's folder, four folders down. */
 const SATURATED_DEPTH = 5;

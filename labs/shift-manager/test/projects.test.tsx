@@ -42,10 +42,10 @@ async function lab(projects: NonNullable<Parameters<typeof openAskLab>[0]>["proj
   return s;
 }
 
-/** Give `userId` a session of their own in the Lab, so Shift Manager has an organization to open it under. */
+/** Give `userId` a session of their own in the Lab before Shift Manager first opens for them. */
 async function holdASession(baseUrl: string, userId: string) {
   const clients = createLabClients({ userId, baseUrl });
-  await clients.actions("channel").sendAction("read", {}, {});
+  await clients.actions("mailbox").sendAction("read", {}, {});
   return clients;
 }
 
@@ -59,23 +59,23 @@ async function storedRow(baseUrl: string, id: string): Promise<Project> {
 }
 
 /**
- * Serve the inventory's channel rows rewritten by `rewrite`, as a Lab whose
+ * Serve the inventory's mailbox rows rewritten by `rewrite`, as a Lab whose
  * inventory says that would answer. Everything else goes to the Lab as is.
  * Returns the path of every action request sent, in order.
  */
-function rewriteChannelRows(
+function rewriteMailboxRows(
   baseUrl: string,
   rewrite: (rows: Array<{ clientData: Record<string, unknown> }>) => Array<{ clientData: Record<string, unknown> }>,
 ): { actions: string[] } {
   const real = globalThis.fetch;
   const actions: string[] = [];
-  let channelsRef: Promise<string> | undefined;
+  let mailboxesRef: Promise<string> | undefined;
   const refOf = () =>
-    (channelsRef ??= real(`${baseUrl}/api/flows/sessions/ops.desk/manifest`)
+    (mailboxesRef ??= real(`${baseUrl}/api/flows/sessions/ops.desk/manifest`)
       .then((r) => r.json())
       .then((m: { resources: Array<{ kind: string; pattern: string; ref: string }> }) => {
-        const found = m.resources.find((r) => r.kind === "collection" && r.pattern === "inventory/channels/*");
-        if (found === undefined) throw new Error("the ask-lab's channel kind declares no channel inventory");
+        const found = m.resources.find((r) => r.kind === "collection" && r.pattern === "inventory/mailboxes/*");
+        if (found === undefined) throw new Error("the ask-lab's mailbox kind declares no mailbox inventory");
         return found.ref;
       }));
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
@@ -136,7 +136,7 @@ describe("PROJECTS (BR-22, D3)", () => {
 
   it("a Lab whose inventory lists seats and projects but no workstreams still shows its projects", async () => {
     const { baseUrl } = await lab();
-    rewriteChannelRows(baseUrl, () => []);
+    rewriteMailboxRows(baseUrl, () => []);
     openApp(baseUrl, "/inbox");
     await screen.findByTestId("nav-project-desk", undefined, { timeout: 10_000 });
     expect(screen.getAllByTestId("project-group").map((g) => g.getAttribute("data-project-id"))).toEqual(["desk", "empty"]);
@@ -212,7 +212,7 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
     const { baseUrl } = await lab();
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
     await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: "ops.asker", userId: OTHER });
-    refuseSessionsOn("channel", 404);
+    refuseSessionsOn("mailbox", 404);
     const snapshot = await createLabReader(createLabClients({ userId: OTHER, baseUrl })).read();
     expect("projects" in snapshot && snapshot.projects).toEqual({ ok: true, value: { rows: [] } });
   });
@@ -221,11 +221,11 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
     const { baseUrl } = await lab();
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
     await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: "ops.asker", userId: OTHER });
-    refuseSessionsOn("channel", 503);
+    refuseSessionsOn("mailbox", 503);
     const snapshot = await createLabReader(createLabClients({ userId: OTHER, baseUrl })).read();
     const projects = "projects" in snapshot ? snapshot.projects : undefined;
     expect(projects?.ok).toBe(false);
-    expect(projects?.ok === false && projects.failure.message).toMatch(/no channel here/);
+    expect(projects?.ok === false && projects.failure.message).toMatch(/no mailbox here/);
   });
 });
 
@@ -237,11 +237,11 @@ describe("a project's tabs (BR-25 to BR-29)", () => {
     expect(screen.getByTestId("project-title").textContent).toBe("The desk");
 
     act(() => fireEvent.click(screen.getByRole("tab", { name: /board/i })));
-    const lanes = (await screen.findAllByTestId("project-lane")).map((l) => l.getAttribute("data-channel-id"));
+    const lanes = (await screen.findAllByTestId("project-lane")).map((l) => l.getAttribute("data-mailbox-id"));
     expect(lanes).toEqual(["ops.desk"]);
 
     act(() => fireEvent.click(screen.getByRole("tab", { name: /workstreams/i })));
-    const listed = (await screen.findAllByTestId("project-workstream")).map((l) => l.getAttribute("data-channel-id"));
+    const listed = (await screen.findAllByTestId("project-workstream")).map((l) => l.getAttribute("data-mailbox-id"));
     expect(listed).toEqual((await storedRow(baseUrl, "desk")).workstreams);
   });
 
@@ -258,7 +258,7 @@ describe("a project's tabs (BR-25 to BR-29)", () => {
   it("No project: Board and Workstreams list its workstreams; Stream and Brief say it has no room or brief (BR-28)", async () => {
     const { baseUrl } = await lab([{ id: "desk", title: "The desk", members: [OTHER], workstreams: ["ops.desk"] }]);
     openApp(baseUrl, "/p/unassigned/workstreams");
-    const listed = (await screen.findAllByTestId("project-workstream")).map((l) => l.getAttribute("data-channel-id"));
+    const listed = (await screen.findAllByTestId("project-workstream")).map((l) => l.getAttribute("data-mailbox-id"));
     expect(listed).toEqual(["ops.side"]);
     act(() => fireEvent.click(screen.getByRole("tab", { name: /board/i })));
     await screen.findByTestId("project-board-none");
@@ -293,12 +293,12 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
     // The line is in the room: the other member reads it through their own session.
     const other = await holdASession(baseUrl, OTHER);
     const otherSession = await joinAs(other, "desk");
-    expect((await readRoom(other, "channel", otherSession, 0)).lines.map((l) => [l.userId, l.body])).toEqual([
+    expect((await readRoom(other, "mailbox", otherSession, 0)).lines.map((l) => [l.userId, l.body])).toEqual([
       [ASK_LAB_USER_ID, "first line in the room"],
     ]);
 
     // The other member posts; the open room's refresh loop reads it in, with nothing done on this side.
-    await postToRoom(other, "channel", otherSession, "a reply from the other member");
+    await postToRoom(other, "mailbox", otherSession, "a reply from the other member");
     await waitFor(() => expect(document.body.textContent).toContain("a reply from the other member"), { timeout: 10_000 });
     void clients;
   });
@@ -330,7 +330,7 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
   it("a read the Lab can't answer shows beside the lines with Retry, and a post whose read-back fails keeps its draft", async () => {
     const { baseUrl } = await lab();
     const own = (await storedRow(baseUrl, "desk")).sessions.find((s) => s.userId === ASK_LAB_USER_ID)!.sessionId;
-    await postToRoom(createLabClients({ userId: ASK_LAB_USER_ID, baseUrl }), "channel", own, "a line already here");
+    await postToRoom(createLabClients({ userId: ASK_LAB_USER_ID, baseUrl }), "mailbox", own, "a line already here");
     const real = globalThis.fetch;
     let down = false;
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
@@ -361,18 +361,18 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
     await waitFor(() => expect(screen.queryByTestId("room-failure")).toBeNull());
   });
 
-  it("a room on a workstream of a custom kind is still opened, read and posted on the built-in channel kind", async () => {
+  it("a room on a workstream of a custom kind is still opened, read and posted on the built-in mailbox kind", async () => {
     const { baseUrl } = await lab();
     // The inventory says every workstream runs on an app's own kind. Rooms are
-    // always the built-in channel kind's, whatever kind carried the projects read.
-    const { actions } = rewriteChannelRows(baseUrl, (rows) => rows.map((r) => ({ ...r, clientData: { ...r.clientData, kind: "desk-kind" } })));
+    // always the built-in mailbox kind's, whatever kind carried the projects read.
+    const { actions } = rewriteMailboxRows(baseUrl, (rows) => rows.map((r) => ({ ...r, clientData: { ...r.clientData, kind: "desk-kind" } })));
     openApp(baseUrl, "/p/desk/stream");
     await screen.findByTestId("stream", undefined, { timeout: 10_000 });
     fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "posted beside a custom kind" } });
     act(() => fireEvent.click(screen.getByTestId("composer-send")));
     await waitFor(() => expect(screen.getAllByTestId("transcript-line-body").map((b) => b.textContent)).toContain("posted beside a custom kind"), { timeout: 10_000 });
     expect(actions.length).toBeGreaterThan(0);
-    expect(actions.filter((path) => !path.startsWith("/api/flows/channel/"))).toEqual([]);
+    expect(actions.filter((path) => !path.startsWith("/api/flows/mailbox/"))).toEqual([]);
   });
 
   it("only the Lab's own answer is a refusal: a 4xx or a failed request is TalkRefused, a 5xx is thrown as it came", async () => {
@@ -388,16 +388,16 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
       }) as unknown as LabClients;
     const started = async () => ({ request: { id: "r1" } });
 
-    await expect(postToRoom(fake(() => Promise.reject(new ClientHttpError("not-a-member", { status: 403, body: { error: "not-a-member" } }))), "channel", "s", "x")).rejects.toBeInstanceOf(TalkRefused);
-    await expect(postToRoom(fake(started, "failed", "not-a-member: you are not in this room"), "channel", "s", "x")).rejects.toThrow(TalkRefused);
-    const unreachable = postToRoom(fake(() => Promise.reject(new ClientHttpError("upstream", { status: 503, body: null }))), "channel", "s", "x");
+    await expect(postToRoom(fake(() => Promise.reject(new ClientHttpError("not-a-member", { status: 403, body: { error: "not-a-member" } }))), "mailbox", "s", "x")).rejects.toBeInstanceOf(TalkRefused);
+    await expect(postToRoom(fake(started, "failed", "not-a-member: you are not in this room"), "mailbox", "s", "x")).rejects.toThrow(TalkRefused);
+    const unreachable = postToRoom(fake(() => Promise.reject(new ClientHttpError("upstream", { status: 503, body: null }))), "mailbox", "s", "x");
     await expect(unreachable).rejects.toBeInstanceOf(ClientHttpError);
-    await expect(postToRoom(fake(() => Promise.reject(new TypeError("fetch failed"))), "channel", "s", "x")).rejects.not.toBeInstanceOf(TalkRefused);
+    await expect(postToRoom(fake(() => Promise.reject(new TypeError("fetch failed"))), "mailbox", "s", "x")).rejects.not.toBeInstanceOf(TalkRefused);
     // A request that ended without the Lab's answer is something to retry, not a refusal.
     for (const ended of ["aborted", "interrupted", "incomplete"]) {
-      const cut = postToRoom(fake(started, ended), "channel", "s", "x");
+      const cut = postToRoom(fake(started, ended), "mailbox", "s", "x");
       await expect(cut).rejects.toThrow(new RegExp(ended));
-      await expect(postToRoom(fake(started, ended), "channel", "s", "x")).rejects.not.toBeInstanceOf(TalkRefused);
+      await expect(postToRoom(fake(started, ended), "mailbox", "s", "x")).rejects.not.toBeInstanceOf(TalkRefused);
     }
   });
 
@@ -537,6 +537,38 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
     await expect(joinAs(outsider, "desk")).rejects.toThrow(/not-a-member|members/);
   });
 
+  // Projects are org-wide: a person the Lab verifies reaches them on their first visit,
+  // before the Lab holds any session of theirs to say which organization they are in.
+  describe("a person the Lab holds no session for yet", () => {
+    it("a project's member opens its Stream and gets Join, not the refusal", async () => {
+      const { baseUrl } = await lab();
+      openApp(baseUrl, "/p/desk/stream", OTHER);
+      await screen.findByTestId("project-join", undefined, { timeout: 10_000 });
+      expect(screen.queryByTestId("refusal")).toBeNull();
+      // The one session opened for them is their own, on the room kind, in the Lab's organization.
+      const mine = await createLabClients({ userId: OTHER, baseUrl }).sessions.listSessions({ userId: OTHER });
+      expect(mine.map((s) => s.flowKind)).toEqual(["mailbox"]);
+    });
+
+    it("an outsider sees the projects and the members-only state, and the room is never read", async () => {
+      const { baseUrl } = await lab();
+      const actions: string[] = [];
+      const real = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (/\/actions\//.test(url)) actions.push(url);
+        return real(input, init);
+      });
+      openApp(baseUrl, "/p/desk/stream", OUTSIDER);
+      await screen.findByTestId("project-stream-members-only", undefined, { timeout: 10_000 });
+      expect(screen.getByTestId("nav-project-desk")).toBeTruthy();
+      expect(screen.getByTestId("nav-project-empty")).toBeTruthy();
+      expect(screen.queryByTestId("composer")).toBeNull();
+      await new Promise((r) => setTimeout(r, 300));
+      expect(actions).toEqual([]);
+    });
+  });
+
   it("the owner of a project whose mint failed is bound on open, once (BR-8a)", async () => {
     const { baseUrl } = await lab([{ id: "orphan", title: "Orphaned", members: [OTHER], unbound: true }]);
     expect((await storedRow(baseUrl, "orphan")).sessions).toEqual([]);
@@ -550,7 +582,7 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
 /** Join `projectId`'s room as this client, through the Lab's own `join`. */
 async function joinAs(clients: LabClients, projectId: string): Promise<string> {
   const { joinRoom } = await import("../src/lib/talk");
-  return joinRoom(clients, "channel", projectId);
+  return joinRoom(clients, "mailbox", projectId);
 }
 
 describe("grouping is the snapshot's (V4)", () => {
@@ -564,9 +596,9 @@ describe("grouping is the snapshot's (V4)", () => {
         value: {
           seats: [],
           workstreams: [
-            { id: "eng.a", kind: "channel", members: [] },
-            { id: "ops.b", kind: "channel", members: [] },
-            { id: "ops.c", kind: "channel", members: [] },
+            { id: "eng.a", kind: "mailbox", members: [] },
+            { id: "ops.b", kind: "mailbox", members: [] },
+            { id: "ops.c", kind: "mailbox", members: [] },
           ],
         },
       },

@@ -3,20 +3,21 @@
  * inside FIX-1662's frame. A header from the row, the one working control
  * (Interrupt), the controls with no shipped operation disabled with their gap
  * line, and four tabs: Session (the run the row names, live), Diff and Checks
- * (named empty states), and Brief (the row as stored).
+ * (named empty states), and Brief (the row as stored). Above the composer, a
+ * line says what the worker is doing.
  *
  * What the screen reads is held by {@link TaskProvider}; this file only draws
  * it. The screen writes twice: the abort behind Interrupt, and the composer's
  * message, which goes through the one send path (`lib/send.ts`).
  */
 import { useEffect, useState } from "react";
-import { EmptyState, ScreenTitle, SectionFailure, Tabs } from "../components/ui";
+import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor, isDone, readStatus } from "../lib/columns";
-import { doorOf, rosterOf, seatFor, waited } from "../lib/derive";
+import { asksOfTask, doorOf, rosterOf, seatFor, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { sendTurn } from "../lib/send";
-import { channelOf, useTask } from "../lib/task";
+import { mailboxOf, useTask } from "../lib/task";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
 import { TaskSession } from "./TaskSession";
@@ -40,16 +41,30 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   }
 
   // The same resolver the inspector and Tasks use, so a name two teams share
-  // resolves to the seat in this row's channel, or to no seat at all.
+  // resolves to the seat in this row's mailbox, or to no seat at all.
   const seat = row === undefined || snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : seatFor(rosterOf(snapshot), row);
   const worker = row?.assignee == null ? null : (seat?.id ?? row.assignee);
 
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="task-frame" data-board-ref={boardRef} data-task-id={taskId}>
+    // Esc interrupts from anywhere in the frame, on every tab and from the
+    // composer, the same as the activity line's hint says.
+    <div
+      className="flex h-full min-h-0 flex-col outline-none"
+      data-testid="task-frame"
+      data-board-ref={boardRef}
+      data-task-id={taskId}
+      tabIndex={-1}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && task.run.kind === "open" && task.status === "in_progress") {
+          event.preventDefault();
+          void task.requestInterrupt();
+        }
+      }}
+    >
       <header className="px-4 pt-3">
         <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">
           TASK ·{" "}
-          <button type="button" className="hover:underline" onClick={() => navigate({ level: "workstream", channelId: channelOf(boardRef), tab: "board" })}>
+          <button type="button" className="hover:underline" onClick={() => navigate({ level: "workstream", mailboxId: mailboxOf(boardRef), tab: "board" })}>
             {boardRef}
           </button>
         </p>
@@ -83,6 +98,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
           <Brief gaps={gaps} />
         )}
       </div>
+      <Activity worker={worker} />
       <Composer gaps={gaps} worker={worker ?? "This worker"} />
     </div>
   );
@@ -112,6 +128,39 @@ function runWord(status: string | undefined): string {
   }
 }
 
+/**
+ * What the worker is doing, above the composer (v2:428-429): a mark (v2's
+ * needs square while the run waits on the person, its run square while it
+ * runs), the worker and the run's state, and Esc while it can be stopped.
+ */
+function Activity({ worker }: { worker: string | null }) {
+  const task = useTask();
+  const { snapshot } = useLab();
+  const pending = task.interrupt.kind === "pending";
+  const live = task.run.kind === "open" && task.status === "in_progress";
+  const waiting = asksOfTask(snapshot, task.row).length > 0;
+  return (
+    <div className="flex items-center gap-2 px-[22px] pt-3 font-mono text-[11px] font-medium text-muted-foreground" data-testid="task-activity">
+      {waiting ? (
+        <StateSquare state="needs" className="size-[7px]" />
+      ) : live ? (
+        <StateSquare state="run" className="size-[7px]" />
+      ) : (
+        <span className="inline-block size-[7px] shrink-0 border border-info" data-look="activity-dot" aria-hidden />
+      )}
+      {worker === null ? null : <span>{worker} ·</span>}
+      <span data-testid="run-state" data-state={task.status ?? "none"}>
+        {task.run.kind === "none"
+          ? "nothing is running"
+          : pending && task.status === "in_progress"
+            ? "stopping… (not stopped until the run says so)"
+            : runWord(task.status)}
+      </span>
+      {live && !pending ? <span className="ml-auto">esc to interrupt</span> : null}
+    </div>
+  );
+}
+
 /** Interrupt, and the controls with no shipped operation (D2). */
 function Actions({ gaps }: { gaps: Gaps }) {
   const task = useTask();
@@ -129,13 +178,6 @@ function Actions({ gaps }: { gaps: Gaps }) {
       >
         {pending ? "Interrupting…" : "Interrupt"}
       </button>
-      <span className="text-xs text-muted-foreground" data-testid="run-state" data-state={task.status ?? "none"}>
-        {task.run.kind === "none"
-          ? "nothing is running"
-          : pending && task.status === "in_progress"
-            ? "stopping… (not stopped until the run says so)"
-            : runWord(task.status)}
-      </span>
       {task.interrupt.kind === "refused" ? (
         <span role="alert" className="text-xs text-destructive" data-testid="interrupt-error">
           {task.interrupt.message}
@@ -201,7 +243,7 @@ function Brief({ gaps }: { gaps: Gaps }) {
  */
 function Composer({ gaps, worker }: { gaps: Gaps; worker: string }) {
   const task = useTask();
-  const { clients, snapshot } = useLab();
+  const { clients, snapshot, refresh } = useLab();
   const { row } = task;
   const seats =
     snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined
@@ -230,7 +272,10 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string }) {
       placeholder="Message this worker…"
       blocked={blocked}
       send={async (message) => {
-        await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message);
+        const sent = await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message);
+        // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
+        if (sent.suspended) void refresh();
+        return sent;
       }}
       extra={
         <label className="flex items-center gap-1.5" title={gaps.task.alsoPost}>

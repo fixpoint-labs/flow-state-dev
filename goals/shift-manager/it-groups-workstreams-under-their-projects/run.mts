@@ -16,7 +16,7 @@
  *            workstreams; every project's four tabs show its row, a line
  *            posted from its Stream is in the room, and no gap copy is reached.
  *   room     HTTP, as the owner, the profile's members and an outsider. The
- *            inventory equals the tree's channels; a burst of first joins from
+ *            inventory equals the tree's mailboxes; a burst of first joins from
  *            every member at once leaves one talk session per member; two
  *            members read each other's lines by cursor and both see the seat's
  *            answer; an outsider is refused, even from a session it made naming
@@ -127,7 +127,7 @@ const diff = (want: Iterable<string>, got: Iterable<string>) => {
   const g = new Set(got);
   return `missing [${[...w].filter((x) => !g.has(x)).join(", ")}], extra [${[...g].filter((x) => !w.has(x)).join(", ")}]`;
 };
-const teamOf = (channelId: string) => channelId.split(".")[0]!;
+const teamOf = (mailboxId: string) => mailboxId.split(".")[0]!;
 
 // ---- the controls' swaps -----------------------------------------------------
 
@@ -334,24 +334,24 @@ async function readAll(api: LabApi, kind: string, sessionId: string, after = 0):
 
 // ---- what the tree and the store hold ---------------------------------------
 
-type Tree = { channels: Array<{ id: string; boards: boolean }> };
+type Tree = { mailboxes: Array<{ id: string; boards: boolean }> };
 type Row = { id: string; title: string; brief: string | null; ownerUserId: string; members: string[]; workstreams: string[]; sessions: Array<{ sessionId: string; userId: string }> };
 
 async function readTree(): Promise<Tree> {
   const roster = await readDeclaredRoster(TREE);
   if (roster.problems.length > 0) throw new Error(`the tree did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
-  return { channels: roster.channels.map((c) => ({ id: c.id, boards: ((c.declared.boards as string[] | undefined) ?? []).length > 0 })) };
+  return { mailboxes: roster.mailboxes.map((c) => ({ id: c.id, boards: ((c.declared.boards as string[] | undefined) ?? []).length > 0 })) };
 }
 
-/** The inventory's channels and the project rows, read through a channel's session by its published key patterns. */
-async function readStore(api: LabApi, host: string): Promise<{ channels: string[]; rows: Row[] }> {
+/** The inventory's mailboxes and the project rows, read through a mailbox's session by its published key patterns. */
+async function readStore(api: LabApi, host: string): Promise<{ mailboxes: string[]; rows: Row[] }> {
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
   const refOf = (pattern: string) =>
     (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
-  const channelsRef = refOf("inventory/channels/*");
+  const mailboxesRef = refOf("inventory/mailboxes/*");
   const projectsRef = refOf("projects/*");
   return {
-    channels: channelsRef === undefined ? [] : (await api.collection(host, channelsRef)).map((r) => String(r.id)),
+    mailboxes: mailboxesRef === undefined ? [] : (await api.collection(host, mailboxesRef)).map((r) => String(r.id)),
     rows: projectsRef === undefined ? [] : ((await api.collection(host, projectsRef)) as Row[]),
   };
 }
@@ -395,7 +395,7 @@ async function screens(served: Running, tree: Tree, owner: LabApi, host: string,
     const injected = (await page.evaluate(() => (window as any).__FSD_DEVTOOL_CONFIG__ ?? null)) as { userId?: string } | null;
     if (injected?.userId !== owner.user.userId) throw new Error(`the page runs as ${injected?.userId}, not the projects' owner ${owner.user.userId}`);
 
-    const { channels, rows } = await readStore(owner, host);
+    const { mailboxes, rows } = await readStore(owner, host);
     await openPage(page, served.origin, "/inbox");
 
     // ---- PROJECTS: each row with exactly its workstreams, then No project ----
@@ -404,14 +404,14 @@ async function screens(served: Running, tree: Tree, owner: LabApi, host: string,
       els.map((g) => ({
         id: g.getAttribute("data-project-id") ?? "",
         streams: [...g.querySelectorAll("[data-testid^=nav-workstream-]")].map((e) =>
-          e.getAttribute("data-testid") === "nav-workstream-gone" ? `gone:${e.getAttribute("data-channel-id")}` : e.getAttribute("data-testid")!.slice("nav-workstream-".length),
+          e.getAttribute("data-testid") === "nav-workstream-gone" ? `gone:${e.getAttribute("data-mailbox-id")}` : e.getAttribute("data-testid")!.slice("nav-workstream-".length),
         ),
       })),
     );
     const listed = new Set(rows.flatMap((r) => r.workstreams));
-    const unlisted = channels.filter((c) => !listed.has(c));
+    const unlisted = mailboxes.filter((c) => !listed.has(c));
     const want = [
-      ...rows.map((r) => ({ id: r.id, streams: r.workstreams.map((w) => (channels.includes(w) ? w : `gone:${w}`)) })),
+      ...rows.map((r) => ({ id: r.id, streams: r.workstreams.map((w) => (mailboxes.includes(w) ? w : `gone:${w}`)) })),
       ...(unlisted.length === 0 ? [] : [{ id: "unassigned", streams: unlisted }]),
     ];
     const show = (gs: typeof want) => gs.map((g) => `${g.id}[${g.streams.join(",")}]`).join(" ");
@@ -452,12 +452,12 @@ async function screens(served: Running, tree: Tree, owner: LabApi, host: string,
       await noGap("brief");
 
       await tab("board");
-      const boardWant = row.workstreams.filter((w) => tree.channels.find((c) => c.id === w)?.boards === true);
+      const boardWant = row.workstreams.filter((w) => tree.mailboxes.find((c) => c.id === w)?.boards === true);
       if (boardWant.length === 0) {
         if (!(await visible(page, "project-board-none"))) fail(tabsLeg, `${row.id} holds no board and its Board doesn't say so`);
       } else {
         await visible(page, "project-lane");
-        const lanes = await attr(page, "[data-testid=project-lane]", "data-channel-id");
+        const lanes = await attr(page, "[data-testid=project-lane]", "data-mailbox-id");
         if (!same(lanes, boardWant)) fail(tabsLeg, `${row.id}'s Board lanes: ${diff(boardWant, lanes)}`);
       }
       await noGap("board");
@@ -467,7 +467,7 @@ async function screens(served: Running, tree: Tree, owner: LabApi, host: string,
         if (!(await visible(page, "project-workstreams-none"))) fail(tabsLeg, `${row.id} lists no workstream and its Workstreams doesn't say so`);
       } else {
         await visible(page, "project-workstream");
-        const listedHere = await attr(page, "[data-testid=project-workstream]", "data-channel-id");
+        const listedHere = await attr(page, "[data-testid=project-workstream]", "data-mailbox-id");
         if (!same(listedHere, row.workstreams)) fail(tabsLeg, `${row.id}'s Workstreams: ${diff(row.workstreams, listedHere)}`);
         if (row.id === crossTeam?.id && new Set(listedHere.map(teamOf)).size < 2) {
           fail("the cross-team project", `${row.id}'s Workstreams tab lists one team's workstreams: ${listedHere.join(", ")}`);
@@ -511,11 +511,11 @@ async function screens(served: Running, tree: Tree, owner: LabApi, host: string,
 
 async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: LabApi[]; outsider: LabApi }, host: string, fail: (leg: string, why: string) => void, evidence: string[]) {
   const { owner, member, outsider } = apis;
-  const { channels, rows } = await readStore(owner, host);
+  const { mailboxes, rows } = await readStore(owner, host);
 
-  // ---- the inventory is the tree's channels, and no talk session ------------
-  const declared = tree.channels.map((c) => c.id);
-  if (!same(channels, declared)) fail("the inventory equals the tree's channels", diff(declared, channels));
+  // ---- the inventory is the tree's mailboxes, and no talk session ------------
+  const declared = tree.mailboxes.map((c) => c.id);
+  if (!same(mailboxes, declared)) fail("the inventory equals the tree's mailboxes", diff(declared, mailboxes));
 
   const project = rows.find((r) => r.members.includes(member.user.userId) && !r.members.includes(outsider.user.userId));
   if (project === undefined) throw new Error(`no project lists ${member.user.userId} as a member and leaves out ${outsider.user.userId}`);
@@ -647,7 +647,7 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: La
   if (new Set(seqs).size !== seqs.length) fail(burstLeg, "two lines share a sequence number");
 
   evidence.push(
-    `room: ${channels.length} channels as declared; ${joinsSent} joins from ${joiners.length} members at once left one session per member on ${memberProjects.length} project(s); cross-member reads by cursor (longest wait ${crossWait} ms, ${rereads} re-read(s)); ${SEAT_ANSWERS} answered in the room for both; outsider join ${outJoin.status}, forged read ${outRead.status}, post ${outPost.status}; ${burst.length - lost.length} of ${burst.length} burst posts from ${posters.length} members completed, ${held.length} lines in ${project.id}'s room`,
+    `room: ${mailboxes.length} mailboxes as declared; ${joinsSent} joins from ${joiners.length} members at once left one session per member on ${memberProjects.length} project(s); cross-member reads by cursor (longest wait ${crossWait} ms, ${rereads} re-read(s)); ${SEAT_ANSWERS} answered in the room for both; outsider join ${outJoin.status}, forged read ${outRead.status}, post ${outPost.status}; ${burst.length - lost.length} of ${burst.length} burst posts from ${posters.length} members completed, ${held.length} lines in ${project.id}'s room`,
   );
 }
 
@@ -826,7 +826,7 @@ await runGoal(async () => {
   const evidence: string[] = [];
   const fail = (leg: string, why: string) => failures.push(`${leg}: ${why}`);
   const tree = await readTree();
-  const host = tree.channels[0]!.id;
+  const host = tree.mailboxes[0]!.id;
   mkdirSync(join(SCRATCH, "stores"), { recursive: true });
   const store = join(mkdtempSync(join(SCRATCH, "stores", "devteam-")), "devteam.sqlite");
   let served = await startLab(pages, fired, store);
@@ -850,9 +850,7 @@ await runGoal(async () => {
       const before = await whatIsHeld(apis.owner, host);
       const roomKinds = new Set(before.map((k) => k.kind));
       const talkBefore = await talkSessionsOf(apis.owner, roomKinds);
-      // The count reaches the sessions it guards: every talk session a row lists
-      // for the owner is among them (they are dispatch-run children of the
-      // projects session, not top-level).
+      // Sanity: the owner's row-listed talk sessions are within `talkSessionsOf`.
       const unseen = before.map((k) => k.own).filter((id) => !talkBefore.includes(id));
       if (unseen.length > 0) {
         fail("a restart keeps the projects and their rooms", `the owner's talk sessions as listed miss ${unseen.length} the rows list (${unseen.join(", ")}), so a minted one would go unseen`);

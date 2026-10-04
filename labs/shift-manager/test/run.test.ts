@@ -32,7 +32,7 @@ let clients: LabClients;
 
 /** The board's rows, as Shift Manager's own board read returns them. */
 async function rows(): Promise<BoardRow[]> {
-  return createLabReader(clients).readBoard(lab.channel.id, lab.ledger.id);
+  return createLabReader(clients).readBoard(lab.mailbox.id, lab.ledger.id);
 }
 
 /** The row for a filed task, once its run has linked itself. */

@@ -3,7 +3,7 @@
  *
  *     fsdev dev --config goals/multi-seat-collab/lab/fsdev.config.mts
  *
- * One `FlowState` holding the hired seats and the channel singleton, and
+ * One `FlowState` holding the hired seats and the mailbox singleton, and
  * nothing else: no app, no wrapper, no route of the lab's own, and no package
  * manifest. The file is ESM by extension, which is what makes the tree read's
  * top-level await legal without one. The DevTool the server hands out is the
@@ -21,9 +21,9 @@
  * - `swapped-desks` — the two desks trade seats.
  * - `one-seat` — both desks route to the first seat; the other gets nothing.
  * - `ignore-the-answer`, `silent-park` — passed to the worker kind.
- * - `no-inventory` — the boot opens the channel and skips `openInventory`, so
+ * - `no-inventory` — the boot opens the mailbox and skips `openInventory`, so
  *   the organization's inventory holds no rows.
- * - `channel-actions-off` — the channel is hired as if its `CHANNEL.md` had
+ * - `mailbox-actions-off` — the mailbox is hired as if its `MAILBOX.md` had
  *   not declared `boardActions: true`, so it exposes no task actions.
  *
  * Any other value leaves the app as written.
@@ -31,7 +31,7 @@
  * ## The boot
  *
  * After the `FlowState` is built, and before this module finishes loading —
- * so before `fsdev dev` takes a request — {@link openLab} opens the channel
+ * so before `fsdev dev` takes a request — {@link openLab} opens the mailbox
  * and then the inventory, in-process, exactly as the inventory docs show an
  * app doing it. A boot whose inventory reports a problem throws here, and the
  * server does not start.
@@ -83,7 +83,7 @@ const flows = hireLab({
   routes: routesFor(control),
   outbox,
   ...(workerControl === undefined ? {} : { workerControl }),
-  boardActions: control !== "channel-actions-off",
+  boardActions: control !== "mailbox-actions-off",
 });
 
 const flowstate = createFlowState({

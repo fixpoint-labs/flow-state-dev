@@ -66,14 +66,14 @@ export interface GenResult {
 function countBySlot(
   result: Pick<GenResult, "files" | "resourceModules" | "seatBlocks" | "packageBlocks">,
 ): string {
-  const counts = { worker: 0, channel: 0, block: 0 };
+  const counts = { worker: 0, mailbox: 0, block: 0 };
   for (const file of result.files) counts[file.slot] += 1;
   // Seat blocks are counted by FILE rather than by registration: one team-level
   // file registers for every seat on the team, and a count of registrations
   // would not match the number of files an author can point at.
   const seatBlockFiles = new Set(result.seatBlocks.map((entry) => entry.path)).size;
   return (
-    `${counts.worker} worker kind(s), ${counts.channel} channel kind(s), ` +
+    `${counts.worker} worker kind(s), ${counts.mailbox} mailbox kind(s), ` +
     `${counts.block} block(s), ${result.resourceModules.length} resource module(s), ` +
     `${seatBlockFiles} seat block(s), ${result.packageBlocks.length} package block(s)`
   );

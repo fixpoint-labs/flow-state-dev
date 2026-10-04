@@ -2,7 +2,7 @@
  * The hire — read the tree, build the two kinds, hire the seats, and hand back
  * what `fsdev.config.mts` serves and what the checks need to read.
  *
- * Every file it reads is found by walking from one root; no seat, channel or
+ * Every file it reads is found by walking from one root; no seat, mailbox or
  * board is named in this code. The minted ledger id is not written anywhere
  * under this lab — including in this comment — because a check greps every
  * file for it.
@@ -24,16 +24,16 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "@flow-state-dev/engine";
 import {
-  CHANNEL_KIND,
-  channelBoard,
-  channelBoardIds,
-  channelInstances,
+  MAILBOX_KIND,
+  mailboxBoard,
+  mailboxBoardIds,
+  mailboxInstances,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   openInventory,
-  type ChannelManifest,
+  type MailboxManifest,
   type InventoryActionRequest,
-  type OpenChannelsOptions,
+  type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { fileURLToPath } from "node:url";
@@ -52,9 +52,9 @@ export const LAB_DB_PATH = ".fsdev/data/multi-seat-collab.db";
 /** Everything the tree says, read once and refused whole if any of it did not load. */
 export interface LabTree {
   roster: DeclaredRoster;
-  /** The one channel the tree declares. */
-  channel: ChannelManifest;
-  /** The board's LOCAL name, as `CHANNEL.md` wrote it. */
+  /** The one mailbox the tree declares. */
+  mailbox: MailboxManifest;
+  /** The board's LOCAL name, as `MAILBOX.md` wrote it. */
   boardName: string;
   /** The MINTED ledger id. Appears in no file — a check greps for it. */
   boardId: string;
@@ -80,14 +80,14 @@ export async function readLabTree(root: string = LAB_TREE): Promise<LabTree> {
     const lines = roster.problems.map((problem) => `${problem.layer} ${problem.path}: ${problem.error.message}`);
     throw new Error(`the tree at ${root} did not load cleanly:\n  - ${lines.join("\n  - ")}`);
   }
-  if (roster.channels.length !== 1) {
-    throw new Error(`the tree at ${root} declares ${roster.channels.length} channels; this lab runs one`);
+  if (roster.mailboxes.length !== 1) {
+    throw new Error(`the tree at ${root} declares ${roster.mailboxes.length} mailboxes; this lab runs one`);
   }
-  const channel = roster.channels[0]!;
-  // Read off the FILE. Rename the team, the channel folder or the board and a
+  const mailbox = roster.mailboxes[0]!;
+  // Read off the FILE. Rename the team, the mailbox folder or the board and a
   // correct implementation still passes.
-  const boardName = (channel.declared.boards as string[] | undefined)?.[0];
-  if (boardName === undefined) throw new Error(`channel "${channel.id}" declares no board`);
+  const boardName = (mailbox.declared.boards as string[] | undefined)?.[0];
+  if (boardName === undefined) throw new Error(`mailbox "${mailbox.id}" declares no board`);
 
   // Exactly the declared topology — one planner, two workers, nothing else. A
   // stray third worker would still hire and drain, and the proof would be
@@ -113,9 +113,9 @@ export async function readLabTree(root: string = LAB_TREE): Promise<LabTree> {
 
   return {
     roster,
-    channel,
+    mailbox,
     boardName,
-    boardId: channelBoard(channel.id, boardName).id,
+    boardId: mailboxBoard(mailbox.id, boardName).id,
     plannerId: planner.id,
     workerIds: workers.map((worker) => worker.id),
     declaredDesks,
@@ -132,15 +132,15 @@ export interface HireLabOptions {
   /** A worker-body perturbation, or none. */
   workerControl?: WorkerControl;
   /**
-   * `false` hires the channel as if its `CHANNEL.md` had not opted in to its
-   * board's task actions — the `channel-actions-off` control. The file is
+   * `false` hires the mailbox as if its `MAILBOX.md` had not opted in to its
+   * board's task actions — the `mailbox-actions-off` control. The file is
    * left as written.
    */
   boardActions?: boolean;
 }
 
 /**
- * Build the kinds and hire every seat, plus the channel singleton.
+ * Build the kinds and hire every seat, plus the mailbox singleton.
  *
  * `hireWorkforce` refuses the WHOLE roster when any record cannot be hired, so
  * a refusal cannot leave a short roster running.
@@ -149,7 +149,7 @@ export interface HireLabOptions {
  */
 export function hireLab(options: HireLabOptions): Record<string, FlowInstance> {
   const { tree } = options;
-  const board = channelBoard(tree.channel.id, tree.boardName);
+  const board = mailboxBoard(tree.mailbox.id, tree.boardName);
   const seats = hireWorkforce(tree.roster.workers, {
     kinds: {
       [WORKER_KIND]: defineWorkerFlow({
@@ -158,18 +158,18 @@ export function hireLab(options: HireLabOptions): Record<string, FlowInstance> {
         outbox: options.outbox,
         ...(options.workerControl === undefined ? {} : { control: options.workerControl }),
       }) as never,
-      [PLANNER_KIND]: definePlannerFlow({ channelId: tree.channel.id, boardName: tree.boardName }) as never,
+      [PLANNER_KIND]: definePlannerFlow({ mailboxId: tree.mailbox.id, boardName: tree.boardName }) as never,
     },
-    channelBoards: channelBoardIds([tree.channel]),
+    mailboxBoards: mailboxBoardIds([tree.mailbox]),
   });
-  const { boardActions: _optIn, ...withoutOptIn } = tree.channel.declared;
-  const channel =
-    options.boardActions === false ? { ...tree.channel, declared: withoutOptIn } : tree.channel;
+  const { boardActions: _optIn, ...withoutOptIn } = tree.mailbox.declared;
+  const mailbox =
+    options.boardActions === false ? { ...tree.mailbox, declared: withoutOptIn } : tree.mailbox;
   return {
-    // The inventory's writer half on the built-in channel kind, as the
+    // The inventory's writer half on the built-in mailbox kind, as the
     // inventory docs tell every app to build it. `openLab` runs the write.
     ...Object.fromEntries(
-      channelInstances([channel], { inventory: true }).map((instance) => [instance.kind, instance]),
+      mailboxInstances([mailbox], { inventory: true }).map((instance) => [instance.kind, instance]),
     ),
     ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
   };
@@ -186,12 +186,12 @@ export interface LabServer {
 
 /**
  * The documented boot, in-process, after the server is built: open the
- * channel, then — unless `inventory` is off — open the inventory, under the
+ * mailbox, then — unless `inventory` is off — open the inventory, under the
  * organization the lab's sessions run in.
  *
- * Opening the channel here rather than leaving it to the driver is what lets
- * the inventory follow it: a channel registers from its own open session. The
- * driver still calls `openChannels`, which meets this session and leaves it
+ * Opening the mailbox here rather than leaving it to the driver is what lets
+ * the inventory follow it: a mailbox registers from its own open session. The
+ * driver still calls `openMailboxes`, which meets this session and leaves it
  * as it is.
  *
  * @throws Naming every problem `openInventory` reported. A half-registered
@@ -220,7 +220,7 @@ export async function openLab(
     const text = await response.text();
     return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
   };
-  const client: OpenChannelsOptions["client"] = {
+  const client: OpenMailboxesOptions["client"] = {
     createSession: async (create) => {
       const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
       if (status >= 400) {
@@ -239,7 +239,7 @@ export async function openLab(
       await call("DELETE", ["sessions", sessionId]);
     },
   };
-  await openChannels([tree.channel], { client, userId: LAB_USER_ID });
+  await openMailboxes([tree.mailbox], { client, userId: LAB_USER_ID });
   if (!options.inventory) return;
 
   const runtime = await server.getRuntime();
@@ -268,8 +268,8 @@ export async function openLab(
     return seat;
   });
   const binding = await openInventory(
-    { seats, channels: [tree.channel] },
-    { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+    { seats, mailboxes: [tree.mailbox] },
+    { run, seatWriter: { flowKind: MAILBOX_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
   );
   if (binding.problems.length > 0) {
     throw new Error(

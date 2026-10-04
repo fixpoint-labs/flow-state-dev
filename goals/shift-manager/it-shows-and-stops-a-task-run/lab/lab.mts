@@ -1,23 +1,26 @@
 /**
- * The run-lab: a Lab whose channel-attached board hands rows to scripted
+ * The run-lab: a Lab whose mailbox-attached board hands rows to scripted
  * coding runs that hold until they are stopped. The input tree for
  * `goals/shift-manager/it-shows-and-stops-a-task-run`, and the Lab Shift Manager's task
  * screen tests open in CI.
  *
- * The tree is FIX-1668's goal tree: one channel with one board, a member that
+ * The tree is FIX-1668's goal tree: one mailbox with one board, a member that
  * drains it (a flow of its own, no hand-off policy), and three seats it hands
  * rows to, read off each `WORKER.md`: a per-task seat on the drainer's flow,
  * a per-worker seat on the drainer's flow, and a per-task seat on a flow of
- * its own. No seat, channel or board is named in this file.
+ * its own. No seat, mailbox or board is named in this file.
  *
- * At boot, after the inventory, the Lab files its rows through the channel's
+ * At boot, after the inventory, the Lab files its rows through the mailbox's
  * own `fileTask` and drains the board once from a conversation of its own:
  *
  * - one **held** row per per-task seat: its run narrates a step about every
  *   second and holds until it is aborted (or `holdMs` passes);
  * - two **short** rows for the per-worker seat, which run two steps each in
  *   the one session that seat keeps, so that session is shared;
- * - one **waiting** row, filed after the drain, so nothing ever claims it.
+ * - one **waiting** row, filed after the drain, so nothing ever claims it;
+ * - with `asking`, one **asking** row for the seat on a flow of its own, whose
+ *   run opens and then waits on a person's approval. With `holdAsk`, it
+ *   asks only once `releaseAsk()` is called, so a screen can be open first.
  *
  * Every run opens as a coding harness does: a message, a reasoning item, and
  * one tool call with its result, each stamped with the task the way the
@@ -47,17 +50,17 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import {
-  CHANNEL_KIND,
-  channelBoard,
-  channelBoardIds,
-  channelInstances,
-  defineChannelFlow,
+  MAILBOX_KIND,
+  mailboxBoard,
+  mailboxBoardIds,
+  mailboxInstances,
+  defineMailboxFlow,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   openInventory,
   workerConfigSchema,
   type InventoryActionRequest,
-  type OpenChannelsOptions,
+  type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { dirname, join } from "node:path";
@@ -81,8 +84,23 @@ const STEP_MS = 1_000;
 const PROGRESS_COMPONENT = "run-lab-progress";
 const PROGRESS_KEY = "progress";
 
-/** What a row asks its scripted run to do. */
-export type RunScript = { steps?: number; holdMs?: number };
+/** What an asking run asks a person to approve. */
+export const RUN_LAB_ASK = "Write the audit note?";
+
+/**
+ * What a row asks its scripted run to do; `ask`: suspend on a person's approval
+ * of this, after the opening; `holdAsk`: only once the Lab's `releaseAsk()` is called.
+ */
+export type RunScript = { steps?: number; holdMs?: number; ask?: string; holdAsk?: boolean };
+
+/** The open Lab's ask gate: a `holdAsk` run asks once it resolves. One Lab is open at a time. */
+let askGate: { opened: Promise<void>; open(): void } = gate();
+
+function gate(): { opened: Promise<void>; open(): void } {
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => (open = resolve));
+  return { opened, open };
+}
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
@@ -139,6 +157,16 @@ const scriptedRun = handler({
     const script = (input.input ?? {}) as RunScript;
     ctx.emit.message(`Reading the task: ${input.goal ?? input.taskId}`);
     await emitHarnessOpening(ctx);
+    if (script.holdAsk === true) {
+      await Promise.race([
+        askGate.opened,
+        new Promise<never>((_, reject) => {
+          if (ctx.signal.aborted) reject(ctx.signal.reason ?? new Error("aborted"));
+          ctx.signal.addEventListener("abort", () => reject(ctx.signal.reason ?? new Error("aborted")), { once: true });
+        }),
+      ]);
+    }
+    if (script.ask !== undefined) await ctx.suspend!({ reason: "human_approval", message: script.ask });
 
     const resources = (ctx as { resources?: Record<string, unknown> }).resources ?? {};
     const plan = resources[OBSERVED_PLAN] as Upsertable | undefined;
@@ -176,17 +204,18 @@ async function readTree() {
 }
 
 /** Build, open and hand back the Lab, with its rows filed and drained. */
-export async function openRunLab() {
+export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean } = {}) {
+  const asks = (askGate = gate());
   const orgId = DEFAULT_ORG_ID;
   const tree = await readTree();
-  const channel = tree.channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
-  if (channel === undefined) throw new Error("the run-lab tree declares no channel holding a board");
-  const boardName = (channel.declared.boards as string[])[0]!;
-  const ledger = channelBoard(channel.id, boardName);
+  const mailbox = tree.mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
+  if (mailbox === undefined) throw new Error("the run-lab tree declares no mailbox holding a board");
+  const boardName = (mailbox.declared.boards as string[])[0]!;
+  const ledger = mailboxBoard(mailbox.id, boardName);
 
-  // Members, off the channel file: the one that drains, and the seats it hands rows to.
+  // Members, off the mailbox file: the one that drains, and the seats it hands rows to.
   const byId = new Map(tree.workers.map((w) => [w.id, w]));
-  const members = ((channel.declared.members as string[] | undefined) ?? []).map((id) => byId.get(id)!);
+  const members = ((mailbox.declared.members as string[] | undefined) ?? []).map((id) => byId.get(id)!);
   const drainer = members.find((w) => w.declared.flow !== undefined && w.declared.handoff === undefined);
   const seats = members
     .filter((w) => typeof w.declared.handoff === "string")
@@ -254,10 +283,10 @@ export async function openRunLab() {
       [PASSIVE_KIND]: passiveKind as never,
       ...(ownKinds as Record<string, never>),
     },
-    channelBoards: channelBoardIds(tree.channels),
+    mailboxBoards: mailboxBoardIds(tree.mailboxes),
   });
-  const channelKind = defineChannelFlow({ inventory: true });
-  const instances = channelInstances(tree.channels, { kinds: { [CHANNEL_KIND]: channelKind as never } });
+  const mailboxKind = defineMailboxFlow({ inventory: true });
+  const instances = mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } });
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(instances.map((i) => [i.kind, i])),
     ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
@@ -266,6 +295,8 @@ export async function openRunLab() {
     flows,
     stores: { default: { primary: inMemoryStores() } },
     devtool: { userId: RUN_LAB_USER_ID },
+    // An asking run suspends until a person answers, which needs durable execution.
+    ...(options.asking === true ? { durable: true } : {}),
   } as never);
 
   const router = (await flowState.getRouter()) as Record<string, (r: Request, c: unknown) => Promise<Response>>;
@@ -281,7 +312,7 @@ export async function openRunLab() {
     const text = await response.text();
     return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
   };
-  const client: OpenChannelsOptions["client"] = {
+  const client: OpenMailboxesOptions["client"] = {
     createSession: async (create) => {
       const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
       if (status >= 400) throw Object.assign(new Error(`create session: ${status}`), { status });
@@ -296,7 +327,7 @@ export async function openRunLab() {
       await call("DELETE", ["sessions", sessionId]);
     },
   };
-  await openChannels(tree.channels, { client, userId: RUN_LAB_USER_ID });
+  await openMailboxes(tree.mailboxes, { client, userId: RUN_LAB_USER_ID });
 
   const runtime = await flowState.getRuntime();
   const act = async (flow: FlowInstance, sessionId: string, actionName: string, input: unknown, source?: string) => {
@@ -316,26 +347,31 @@ export async function openRunLab() {
   };
 
   const inventory = await openInventory(
-    { seats: hired, channels: tree.channels },
+    { seats: hired, mailboxes: tree.mailboxes },
     {
       run: (request: InventoryActionRequest) => act(flows[request.flowKind]!, request.sessionId, request.action, request.input, request.source),
-      seatWriter: { flowKind: CHANNEL_KIND },
+      seatWriter: { flowKind: MAILBOX_KIND },
       userId: RUN_LAB_USER_ID,
       orgId,
     },
   );
   if (inventory.problems.length > 0) throw new Error(inventory.problems.join("; "));
 
-  // ---- the rows, filed through the channel, then one drain ------------------
-  const channelInstance = instances.find((i) => i.kind === CHANNEL_KIND)!;
+  // ---- the rows, filed through the mailbox, then one drain ------------------
+  const mailboxInstance = instances.find((i) => i.kind === MAILBOX_KIND)!;
   const file = async (seat: (typeof seats)[number], goal: string, script: RunScript) =>
-    ((await act(channelInstance, channel.id, "fileTask", { board: boardName, goal, assignee: seat.name, input: script })) as {
+    ((await act(mailboxInstance, mailbox.id, "fileTask", { board: boardName, goal, assignee: seat.name, input: script })) as {
       taskId: string;
     }).taskId;
 
-  const filed: Array<{ taskId: string; seatId: string; kind: "held" | "short" | "waiting" }> = [];
+  const filed: Array<{ taskId: string; seatId: string; kind: "held" | "short" | "waiting" | "asking" }> = [];
   for (const seat of seats.filter((s) => s.policy === "per-task")) {
     filed.push({ taskId: await file(seat, `${seat.name}: hold until stopped`, {}), seatId: seat.id, kind: "held" });
+  }
+  if (options.asking === true) {
+    // One more row for the seat on a flow of its own, whose run stops to ask a person.
+    const seat = seats.find((s) => s.policy === "per-task" && s.flow !== undefined)!;
+    filed.push({ taskId: await file(seat, `${seat.name}: ask before writing`, { ask: RUN_LAB_ASK, ...(options.holdAsk === true ? { holdAsk: true } : {}) }), seatId: seat.id, kind: "asking" });
   }
   for (const seat of seats.filter((s) => s.policy === "per-worker")) {
     for (const n of [1, 2]) filed.push({ taskId: await file(seat, `${seat.name}: short run ${n}`, { steps: 2 }), seatId: seat.id, kind: "short" });
@@ -359,5 +395,5 @@ export async function openRunLab() {
     }
   };
 
-  return { flowState, tree, flows, channel, boardName, ledger, drainerId: drainer.id, seats, filed, stopHeldRuns };
+  return { flowState, tree, flows, mailbox, boardName, ledger, drainerId: drainer.id, seats, filed, stopHeldRuns, releaseAsk: () => asks.open() };
 }

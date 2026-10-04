@@ -32,19 +32,22 @@
  *            as an extra one
  *
  * Which regions are graded whole grows with the screens' slices: the sidebar,
- * the shared parts and Chief of Staff's centre now. Each slice's rows,
- * exceptions and regions live in a file of their own under `rows/`, spread
- * into the table here. The fonts, the radius and the highlighter are graded
- * on every element of every screen.
+ * the shared parts, Chief of Staff's centre, the workstream, Board, task and
+ * team strip, and the parts of Inbox, Tasks and Roster drawn to v2. Each
+ * slice's rows, exceptions and regions live in a file of their own (slice B's
+ * under `rows/`, slice C's in `look-c.mts`, slice D's, with its content grade,
+ * in `screens-inbox-tasks-roster.mts`), spread into the table here. The fonts,
+ * the radius and the highlighter are graded on every element of every screen.
  *
  * Controls (scratch patches to a copy of Shift Manager, never the checkout):
  *   GOAL_CONTROL=drift         the sidebar's team row rounded, its Roster count
- *                              in the sans. Must FAIL at surface on that row and
- *                              type on that count, both shifts, nothing else.
+ *                              and Tasks' ID cells in the sans. Must FAIL at
+ *                              surface on that row and type on that count and
+ *                              those cells, both shifts, nothing else.
  *   GOAL_CONTROL=unclassified  one visible element no row covers, in the
  *                              sidebar. Must FAIL at totality, naming it.
- *   GOAL_CONTROL=missing       the team rows' on-shift counts removed. Must FAIL
- *                              at that row's expected count, and nowhere else.
+ *   GOAL_CONTROL=missing       Tasks' ID column removed. Must FAIL at that
+ *                              row's expected count, and nowhere else.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts
  * Control:  GOAL_CONTROL=drift PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts
@@ -61,6 +64,9 @@ import { EM_KIND } from "../../devforce-lab/lab/workforce/flows/workers/em.mts";
 import { hex, parseColour, type Rgb } from "../../lib/colour.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerCopy, labApi, startShiftManager, type LabApi, type Patch } from "../../lib/shift-manager.mts";
+// ---- slice D ----
+import * as inboxTasksRoster from "./screens-inbox-tasks-roster.mts";
+// ---- end slice D ----
 import {
   SIDEBAR_AND_COS_EXCEPTIONS,
   SIDEBAR_AND_COS_ROWS,
@@ -68,6 +74,7 @@ import {
   sidebarAndCosContent,
   type SidebarAndCosRead,
 } from "./rows/sidebar-and-cos.mts";
+import { SLICE_C_EXCEPTIONS, SLICE_C_ROWS, SLICE_C_WHOLE } from "./look-c.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["drift", "unclassified", "missing"] as const;
@@ -95,19 +102,21 @@ const LABS = {
     tree: repoPath("goals", "devforce-lab", "lab", "workforce"),
     // Long enough that the filed row is still running while the sweep reads it, short
     // enough to finish inside the scripted run's 60s limit.
-    env: { DEVFORCE_LAB_STEP_MS: "11000" },
+    // DevTeam on a fresh store each run, for a profile whose store outlives the process:
+    // a row an earlier run left errored in the checkout's store would break this one.
+    env: { DEVFORCE_LAB_STEP_MS: "11000", DEVTEAM_STORE: join(SCRATCH, `devteam-${RUN_STAMP}.sqlite`) },
   },
   desk: { config: join(HERE, "lab", "fsdev.config.mts"), tree: join(HERE, "lab", "workforce"), env: {} },
 } as const;
 type LabName = keyof typeof LABS;
 
-const SCREENS = ["workstream", "task", "tasks", "cos", "inbox", "roster", "project"] as const;
+const SCREENS = ["workstream", "board", "task", "tasks", "cos", "inbox", "roster", "project"] as const;
 export type Screen = (typeof SCREENS)[number];
 const SHIFTS = ["day", "night"] as const;
 type Shift = (typeof SHIFTS)[number];
 const WIDTHS = [1600, 1100] as const;
-type Width = (typeof WIDTHS)[number];
-type Leg = "type" | "surface" | "marks" | "layout" | "content" | "totality";
+export type Width = (typeof WIDTHS)[number];
+export type Leg = "type" | "surface" | "marks" | "layout" | "content" | "totality";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -127,15 +136,20 @@ export type Store = {
   /** The person's pending asks, across the seats' sessions. */
   asks: number;
   /**
-   * Per channel: its stored rows, the names of its members running one, how
-   * many of its rows run, and whether one of its members' asks waits on the person.
+   * Per mailbox: its stored rows, the names of its members running one, how
+   * many of its rows run, whether one of its members' asks waits on the
+   * person, its kept transcript lines, and its members' pending asks.
    */
-  channels: Record<string, { rows: number; live: string[]; running: number; needs: boolean }>;
+  mailboxes: Record<string, { rows: number; live: string[]; running: number; needs: boolean; lines: number; asks: number }>;
+  // ---- slice D ----
+  /** What Inbox, Tasks and Roster draw (`screens-inbox-tasks-roster.mts`). */
+  screens: inboxTasksRoster.StoreScreens;
+  // ---- end slice D ----
 };
 export type Where = { screen: Screen; width: Width; store: Store; /** A line to the chief of staff is held in flight. */ working?: boolean };
 
 /** The computed values a row's elements must have. Each is graded in its own leg. */
-type Want = {
+export type Want = {
   /** type: the first family a text element is set in. */
   family?: "sans" | "mono";
   /** type: font size in px, one value or an inclusive range. */
@@ -144,8 +158,8 @@ type Want = {
   weight?: number;
   /** type: letter-spacing, in em of the element's own size. */
   tracking?: number;
-  /** surface: the background is this token. */
-  surface?: "sidebar" | "inspector" | "card" | "accent" | "foreground" | "info";
+  /** surface: the background is this token, or none is painted. */
+  surface?: "sidebar" | "inspector" | "card" | "accent" | "foreground" | "info" | "none";
   /** surface: every side's border is this wide, in px, in this token (any alpha), solid unless named. */
   border?: { width: number; colour: "foreground"; style?: "dashed" };
   /** marks: the background is the highlighter, because what this is waits on a person. */
@@ -186,9 +200,13 @@ export type Row = {
 };
 
 const OFF_COS: readonly Screen[] = SCREENS.filter((s) => s !== "cos");
-const WITH_RAIL: readonly Screen[] = ["cos", "workstream", "task"];
-const WITH_TABS: readonly Screen[] = ["workstream", "task", "project"];
+const WITH_RAIL: readonly Screen[] = ["cos", "workstream", "board", "task"];
+const WITH_TABS: readonly Screen[] = ["workstream", "board", "task", "project"];
 const COMPOSERS = "[data-testid=composer], [data-testid=task-composer], [data-testid=inbox-reply]";
+// ---- slice D ----
+/** A composer is drawn on every screen that has one, except Inbox with no ask to reply under. */
+const replyBox = ({ screen, store }: Where) => (screen === "inbox" && store.screens.asks.length === 0 ? 0 : 1);
+// ---- end slice D ----
 
 const LOOK: Row[] = [
   // The frame.
@@ -229,9 +247,9 @@ const LOOK: Row[] = [
   { id: "other tab", audit: "W4", v2: { line: 222, has: "padding:8px 0;color:var(--ink3)" }, select: "[role=tablist] > [role=tab][aria-selected=false]", on: WITH_TABS, min: 1, want: { underline: "none" } },
 
   // The composers.
-  { id: "composer box", audit: "W12", v2: { line: 306, has: "border:1px solid var(--ink);background:var(--card)" }, select: `:is(${COMPOSERS}) [data-look=composer]`, on: ["workstream", "task", "inbox"], min: 1, want: { border: { width: 1, colour: "foreground" } } },
-  { id: "composer input", audit: "W12", v2: { line: 307, has: "padding:11px 12px;font-size:14px" }, select: `:is(${COMPOSERS}) [data-look=composer-input]`, on: ["workstream", "task", "inbox"], min: 1, want: { family: "sans", size: 14 } },
-  { id: "composer footer", audit: "W12", v2: { line: 308, has: "font:500 11px 'IBM Plex Mono'" }, select: `:is(${COMPOSERS}, [data-testid=cos-composer]) [data-look=composer-footer], :is(${COMPOSERS}, [data-testid=cos-composer]) [data-look=composer-footer] :is(p, span, label, button)`, on: ["workstream", "task", "inbox", "cos"], min: ({ screen }) => (screen === "cos" ? 0 : 1), want: { family: "mono", size: 11 } },
+  { id: "composer box", audit: "W12", v2: { line: 306, has: "border:1px solid var(--ink);background:var(--card)" }, select: `:is(${COMPOSERS}) [data-look=composer]`, on: ["workstream", "task", "inbox"], min: replyBox, want: { border: { width: 1, colour: "foreground" } } },
+  { id: "composer input", audit: "W12", v2: { line: 307, has: "padding:11px 12px;font-size:14px" }, select: `:is(${COMPOSERS}) [data-look=composer-input]`, on: ["workstream", "task", "inbox"], min: replyBox, want: { family: "sans", size: 14 } },
+  { id: "composer footer", audit: "W12", v2: { line: 308, has: "font:500 11px 'IBM Plex Mono'" }, select: `:is(${COMPOSERS}, [data-testid=cos-composer]) [data-look=composer-footer], :is(${COMPOSERS}, [data-testid=cos-composer]) [data-look=composer-footer] :is(p, span, label, button)`, on: ["workstream", "task", "inbox", "cos"], min: (where) => (where.screen === "cos" ? 0 : replyBox(where)), want: { family: "mono", size: 11 } },
   { id: "Chief of Staff composer box", audit: "C9", v2: { line: 175, has: "border:1.5px solid var(--ink);background:var(--card)" }, select: "[data-testid=cos-composer] [data-look=composer]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { border: { width: 1.5, colour: "foreground" } } },
   { id: "Chief of Staff composer input", audit: "C9", v2: { line: 176, has: "padding:16px;font-size:16px" }, select: "[data-testid=cos-composer] [data-look=composer-input]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { family: "sans", size: 16 } },
   { id: "Chief of Staff send", audit: "C9", v2: { line: 177, has: "font:500 12px 'IBM Plex Mono'" }, select: "[data-testid=cos-composer] [data-look=composer] > [data-look=composer-send]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { family: "mono", size: 12 } },
@@ -242,6 +260,14 @@ const LOOK: Row[] = [
   { id: "state square, in review", audit: "F7", v2: { line: 894, has: "review: { nb: 'transparent', nbd: A, nbs: 'solid' }" }, select: "[data-state-square=review]", min: 0, want: { square: "review" } },
   { id: "state square, queued", audit: "F7", v2: { line: 895, has: "queued: { nb: 'transparent', nbd: 'rgba(var(--inkrgb),.5)', nbs: 'dashed' }" }, select: "[data-state-square=queued]", min: 0, want: { square: "queued" } },
   { id: "state square, done", audit: "F7", v2: { line: 895, has: "done: { nb: INK, nbd: INK, nbs: 'solid' }" }, select: "[data-state-square=done]", min: 0, want: { square: "done" } },
+
+  // ---- slice C: the workstream, its Board, the task screen, the team strip (look-c.mts) ----
+  ...SLICE_C_ROWS,
+  // ---- end slice C ----
+
+  // ---- slice D: Inbox, Tasks and Roster (screens-inbox-tasks-roster.mts) ----
+  ...inboxTasksRoster.ROWS,
+  // ---- end slice D ----
 ];
 
 /**
@@ -258,10 +284,29 @@ const EXCEPTIONS: Exception[] = [
   { id: "also post to the workstream", select: "[data-testid=task-also-post]", why: "the task composer's also-post box waits on FIX-1474" },
   { id: "registry pill", select: "[data-slot=badge]", why: "a registry part whose `rounded-full` is a literal the theme's radius can't reach", radius: "skip" },
   ...SIDEBAR_AND_COS_EXCEPTIONS,
+  // ---- slice C ----
+  ...SLICE_C_EXCEPTIONS,
+  // ---- end slice C ----
+  // ---- slice D ----
+  ...inboxTasksRoster.EXCEPTIONS,
+  // ---- end slice D ----
 ];
 
 /** The regions every painting element of which must be covered by a row or an exception. */
-const WHOLE = ["[data-testid=sidebar]", "[data-look=tabs]", "[data-look=composer]", "[data-look=composer-footer]", "[data-look=screen-title]", ...SIDEBAR_AND_COS_WHOLE];
+const WHOLE = [
+  "[data-testid=sidebar]",
+  "[data-look=tabs]",
+  "[data-look=composer]",
+  "[data-look=composer-footer]",
+  "[data-look=screen-title]",
+  ...SIDEBAR_AND_COS_WHOLE,
+  // ---- slice C ----
+  ...SLICE_C_WHOLE,
+  // ---- end slice C ----
+  // ---- slice D ----
+  ...inboxTasksRoster.WHOLE,
+  // ---- end slice D ----
+];
 
 // ---- reading the page ----------------------------------------------------------
 
@@ -294,10 +339,21 @@ type Sweep = {
   mentions: string[] | null;
   boardCount: string | null;
   sidebarAndCos: SidebarAndCosRead;
+  // ---- slice D ----
+  /** Per content key, what each match reads (see `inboxTasksRoster.TEXTS`), and the page's clock when it was read. */
+  texts: Record<string, inboxTasksRoster.Read[]>;
+  now: number;
+  // ---- end slice D ----
 };
 
 /** Runs in the page: every visible element that paints anything, with what each row and exception matches. */
-function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: Array<{ id: string; select: string }>; whole: string[]; tokens: string[] }): Sweep {
+function sweep(args: {
+  rows: Array<{ id: string; select: string }>;
+  exceptions: Array<{ id: string; select: string }>;
+  whole: string[];
+  tokens: string[];
+  texts: Record<string, string>;
+}): Sweep {
   const describe = (el: Element) => {
     const id = el.getAttribute("data-testid");
     const look = el.getAttribute("data-look");
@@ -356,6 +412,16 @@ function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: 
   }
   probe.remove();
   const mentionEls = Array.from(document.querySelectorAll("[data-testid=composer] [data-testid=composer-mention]"));
+  // ---- slice D ----
+  const texts: Record<string, Array<{ text: string; data: Record<string, string>; parts: Record<string, string> }>> = {};
+  for (const [key, select] of Object.entries(args.texts)) {
+    texts[key] = Array.from(document.querySelectorAll<HTMLElement>(select)).map((el) => ({
+      text: el.textContent ?? "",
+      data: { ...el.dataset } as Record<string, string>,
+      parts: Object.fromEntries(Array.from(el.querySelectorAll("[data-testid]")).map((part) => [part.getAttribute("data-testid")!, part.textContent ?? ""])),
+    }));
+  }
+  // ---- end slice D ----
   return {
     els,
     matched,
@@ -366,13 +432,15 @@ function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: 
     sidebarAndCos: {
       inbox: ((el) => (el === null ? null : { text: el.textContent ?? "", waiting: el.getAttribute("data-waiting") }))(document.querySelector("[data-testid=nav-inbox-count]")),
       dots: Array.from(document.querySelectorAll("[data-testid^=nav-workstream-]:not([data-testid=nav-workstream-gone])")).map((el) => ({
-        channel: el.getAttribute("data-testid")!.slice("nav-workstream-".length),
+        mailbox: el.getAttribute("data-testid")!.slice("nav-workstream-".length),
         dot: el.getAttribute("data-dot"),
       })),
       sub: document.querySelector("[data-testid=cos-sub]")?.textContent ?? null,
       watching: document.querySelector("[data-testid=cos-watching]")?.textContent ?? null,
       suggestions: document.querySelector("[data-testid=cos]") === null ? null : Array.from(document.querySelectorAll("[data-look=suggestion]")).map((el) => el.textContent ?? ""),
     },
+    texts,
+    now: Date.now(),
   };
 }
 
@@ -462,7 +530,10 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
       if (w.tracking !== undefined && e.text && Math.abs(e.tracking - w.tracking * e.size) > 0.06) {
         failures.add("type", `${at} tracks ${px(e.tracking)}, v2 ${w.tracking}em (${px(w.tracking * e.size)}) ${cite(row)}`, tag);
       }
-      if (w.surface !== undefined && token[w.surface] !== null && !same(rgbOf(e.bg), token[w.surface])) {
+      if (w.surface === "none") {
+        const alpha = parseColour(e.bg)?.alpha ?? 0;
+        if (alpha > 0) failures.add("surface", `${at} paints ${e.bg}, v2 paints no fill there ${cite(row)}`, tag);
+      } else if (w.surface !== undefined && token[w.surface] !== null && !same(rgbOf(e.bg), token[w.surface])) {
         const got = rgbOf(e.bg);
         failures.add("surface", `${at} paints ${got === null ? "no background" : hex(got)}, v2's ${w.surface} surface is ${hex(token[w.surface]!)} ${cite(row)}`, tag);
       }
@@ -531,14 +602,17 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
 
   // content: what the shared parts draw from the store.
   if (where.screen === "workstream" && lab === "devteam") {
-    const channel = Object.keys(where.store.channels)[0]!;
-    const want = where.store.channels[channel]!;
+    const mailbox = Object.keys(where.store.mailboxes)[0]!;
+    const want = where.store.mailboxes[mailbox]!;
     if (read.mentions === null) failures.add("content", "the workstream draws no composer", tag);
     else if (JSON.stringify(read.mentions) !== JSON.stringify(want.live)) {
       failures.add("content", `the composer offers [${read.mentions.map((m) => `@${m}`).join(", ")}], the store's running members are [${want.live.map((m) => `@${m}`).join(", ")}] (v2:308)`, tag);
     }
     if (read.boardCount !== String(want.rows)) failures.add("content", `the Board tab counts ${read.boardCount ?? "nothing"}, the store holds ${want.rows} row(s) (v2:222)`, tag);
   }
+  // ---- slice D ----
+  inboxTasksRoster.gradeContent(read.texts, read.now, where, (leg, what) => failures.add(leg, what, tag));
+  // ---- end slice D ----
 }
 
 // ---- the store, read by this check ----------------------------------------------
@@ -548,11 +622,11 @@ const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 
 async function readStore(api: LabApi, tree: string, userId: string): Promise<Store> {
   const roster = await readDeclaredRoster(tree);
-  const host = roster.channels[0]!.id;
+  const host = roster.mailboxes[0]!.id;
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
-  const refOf = (pattern: string) =>
-    (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
-  const seatsRef = refOf("inventory/seats/*");
+  const seatsRef = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
+    (r) => r.kind === "collection" && r.pattern === "inventory/seats/*",
+  )?.ref;
   // A seat's name is its address after the team: `<team>.<name>` (the tree's convention).
   const seats =
     seatsRef === undefined
@@ -562,16 +636,18 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
           return { id, kind: r.kind == null ? null : String(r.kind), name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
         });
   const asks = await pendingAsksBySeat(api, userId, seats);
-  const channels: Store["channels"] = {};
+  const mailboxes: Store["mailboxes"] = {};
+  const allRows: Array<Record<string, any>> = [];
   let running = 0;
-  for (const channel of roster.channels) {
-    const members = (channel.declared.members as string[] | undefined) ?? [];
+  for (const mailbox of roster.mailboxes) {
+    const members = (mailbox.declared.members as string[] | undefined) ?? [];
     const rows: Array<Record<string, any>> = [];
-    for (const board of (channel.declared.boards as string[] | undefined) ?? []) rows.push(...(await api.collection(channel.id, `${channel.id}.${board}`)));
+    for (const board of (mailbox.declared.boards as string[] | undefined) ?? []) rows.push(...(await api.collection(mailbox.id, `${mailbox.id}.${board}`)));
+    allRows.push(...rows.map((r) => ({ ...r, mailboxId: mailbox.id })));
     const live = rows.filter((r) => r.status === "in_progress");
     running += live.length;
     const holds = (seat: { id: string; name: string }) => live.some((r) => r.assignee === seat.id || r.assignee === seat.name);
-    channels[channel.id] = {
+    mailboxes[mailbox.id] = {
       rows: rows.length,
       running: live.length,
       needs: members.some((m) => (asks.get(m) ?? 0) > 0),
@@ -581,6 +657,8 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
         .slice(0, 3)
         // A name two members share reaches neither, so that member is offered by its id.
         .map((s) => (members.filter((m) => seats.find((x) => x.id === m)?.name === s.name).length > 1 ? s.id : s.name)),
+      lines: (await api.items(mailbox.id, ["component"])).filter((i) => i.component === "mailbox-post").length,
+      asks: members.reduce((n, m) => n + (asks.get(m) ?? 0), 0),
     };
   }
   return {
@@ -590,18 +668,21 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
     chiefOfStaff: seats.some((s) => s.name === "chief-of-staff"),
     replied: false,
     asks: [...asks.values()].reduce((a, b) => a + b, 0),
-    channels,
+    mailboxes,
+    // ---- slice D ----
+    screens: await inboxTasksRoster.readScreensStore(api, userId, { seats, rows: allRows }),
+    // ---- end slice D ----
   };
 }
 
-/** The flow kind the inventory registers a channel under: the flow its `post` action is on. */
-async function channelKind(api: LabApi, channel: string): Promise<string> {
-  const manifest = await api.get(`/sessions/${encodeURIComponent(channel)}/manifest`);
+/** The flow kind the inventory registers a mailbox under: the flow its `post` action is on. */
+async function mailboxKind(api: LabApi, mailbox: string): Promise<string> {
+  const manifest = await api.get(`/sessions/${encodeURIComponent(mailbox)}/manifest`);
   const ref = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
-    (r) => r.kind === "collection" && r.pattern === "inventory/channels/*",
+    (r) => r.kind === "collection" && r.pattern === "inventory/mailboxes/*",
   )?.ref;
-  const kind = ref === undefined ? undefined : (await api.collection(channel, ref)).find((r) => r.id === channel)?.kind;
-  if (kind === undefined) throw new Error(`the inventory registers no channel ${channel}`);
+  const kind = ref === undefined ? undefined : (await api.collection(mailbox, ref)).find((r) => r.id === mailbox)?.kind;
+  if (kind === undefined) throw new Error(`the inventory registers no mailbox ${mailbox}`);
   return String(kind);
 }
 
@@ -616,7 +697,8 @@ async function pendingAsks(api: LabApi, userId: string): Promise<number> {
  * by a seat, or one with no owner on a seat's kind (`labs/shift-manager/src/lib/reads.ts`).
  */
 async function pendingAsksBySeat(api: LabApi, userId: string, seats?: ReadonlyArray<{ id: string; kind: string | null }>): Promise<Map<string, number>> {
-  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&limit=500`);
+  // Dispatch runs included: a seat woken by a mailbox post asks from one, and the app lists them.
+  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
   const ids = new Set(seats?.map((s) => s.id));
   const kinds = new Set(seats?.flatMap((s) => (s.kind === null ? [] : [s.kind])));
   const bySeat = new Map<string, number>();
@@ -646,14 +728,20 @@ async function settle(page: Page, shift: Shift): Promise<void> {
 }
 
 /** Open `screen` by clicking, the way a person reaches it, and wait for it to draw. */
-async function open(page: Page, screen: Screen, ids: { channel: string; taskId: string | null }): Promise<void> {
+async function open(page: Page, screen: Screen, ids: { mailbox: string; taskId: string | null }): Promise<void> {
   const ready = (testId: string) => page.getByTestId(testId).first().waitFor({ timeout: 20_000 });
   switch (screen) {
     case "workstream":
-      await page.getByTestId(`nav-workstream-${ids.channel}`).click();
+      await page.getByTestId(`nav-workstream-${ids.mailbox}`).click();
       await ready("workstream");
       await page.locator("[role=tab][data-tab=stream]").click();
       await ready("transcript-line");
+      return;
+    case "board":
+      await page.getByTestId(`nav-workstream-${ids.mailbox}`).click();
+      await ready("workstream");
+      await page.locator("[role=tab][data-tab=board]").click();
+      await ready("board");
       return;
     case "task":
       await page.getByTestId("nav-tasks").click();
@@ -674,16 +762,29 @@ async function open(page: Page, screen: Screen, ids: { channel: string; taskId: 
     case "inbox":
       await page.getByTestId("nav-inbox").click();
       await ready("inbox");
+      // ---- slice D: an empty Inbox, and the ask's session read before *From the session* ----
+      // An Inbox with nothing waiting has nothing to select.
+      if ((await page.getByTestId("inbox-item").count()) === 0) {
+        await ready("inbox-empty");
+        return;
+      }
       await page.getByTestId("inbox-item").first().click();
       await ready("inbox-reply");
+      // The detail reads the ask's session before it draws *From the session*.
+      await page.locator("[data-testid=inbox-from-session], [data-testid=inbox-session-failure]").first().waitFor({ timeout: 20_000 });
+      // ---- end slice D ----
       return;
     case "roster":
       await page.getByTestId("nav-roster").click();
       await ready("roster");
       return;
     case "project":
-      await page.getByTestId("projects-heading").click();
+      // ---- slice C: the project holding the workstream, on its Board, under the team strip ----
+      await page.locator(`[data-testid=project-group]:has([data-testid="nav-workstream-${ids.mailbox}"]) [data-testid^=nav-project-]`).click();
       await ready("project");
+      await page.locator("[role=tab][data-tab=board]").click();
+      await ready("project-lane");
+      // ---- end slice C ----
   }
 }
 
@@ -704,36 +805,36 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     if (injected?.userId === undefined) throw new Error(`${lab}: the page was handed no userId`);
     const api = labApi(served.origin, injected.bearerToken);
     const roster = await readDeclaredRoster(LABS[lab].tree);
-    const channel = roster.channels[0]!.id;
+    const mailbox = roster.mailboxes[0]!.id;
 
     let taskId: string | null = null;
     let screens: readonly Screen[];
     if (lab === "devteam") {
-      // File one row through the channel's own post, and wait for it to run.
-      const kind = await channelKind(api, channel);
-      const posted = await api.call("POST", `/${encodeURIComponent(String(kind))}/${encodeURIComponent(channel)}/actions/post`, {
+      // File one row through the mailbox's own post, and wait for it to run.
+      const kind = await mailboxKind(api, mailbox);
+      const posted = await api.call("POST", `/${encodeURIComponent(String(kind))}/${encodeURIComponent(mailbox)}/actions/post`, {
         userId: injected.userId,
         input: { body: `${fixture.devteam.issue}: ${fixture.devteam.text}` },
       });
       if (posted.status !== 202) throw new Error(`devteam: the filing post answered ${posted.status} ${JSON.stringify(posted.body)}`);
-      const board = `${channel}.${((roster.channels[0]!.declared.boards as string[]) ?? [])[0]}`;
+      const board = `${mailbox}.${((roster.mailboxes[0]!.declared.boards as string[]) ?? [])[0]}`;
       // The EM seat runs the board when asked to drain it; in a session of its own, so its
       // ask, pending in the seat's session, stays pending.
       for (let waited = 0; waited < 30_000; waited += 250) {
-        if ((await api.collection(channel, board)).length > 0) break;
+        if ((await api.collection(mailbox, board)).length > 0) break;
         await sleep(250);
       }
-      const em = roster.workers.find((w) => w.declared.flow === EM_KIND && ((roster.channels[0]!.declared.members as string[]) ?? []).includes(w.id));
-      if (em === undefined) throw new Error("devteam: the channel has no EM member to drain its board");
+      const em = roster.workers.find((w) => w.declared.flow === EM_KIND && ((roster.mailboxes[0]!.declared.members as string[]) ?? []).includes(w.id));
+      if (em === undefined) throw new Error("devteam: the mailbox has no EM member to drain its board");
       const drained = await api.call("POST", `/${encodeURIComponent(em.id)}/goal_look_drain_${RUN_STAMP}/actions/drain`, { userId: injected.userId, input: {} });
       if (drained.status !== 202) throw new Error(`devteam: the EM's drain answered ${drained.status} ${JSON.stringify(drained.body)}`);
       for (let waited = 0; waited < 30_000 && taskId === null; waited += 250) {
-        const row = (await api.collection(channel, board)).find((r) => r.status === "in_progress" && r.run != null);
+        const row = (await api.collection(mailbox, board)).find((r) => r.status === "in_progress" && r.run != null);
         if (row !== undefined) taskId = String(row.id);
         else await sleep(250);
       }
       if (taskId === null) {
-        const rows = (await api.collection(channel, board)).map((r) => `${r.id} ${r.status} run=${r.run == null ? "none" : "yes"}`);
+        const rows = (await api.collection(mailbox, board)).map((r) => `${r.id} ${r.status} run=${r.run == null ? "none" : "yes"}`);
         throw new Error(`devteam: the filed row never ran, so the sweep has no live run to read (board ${board}: ${rows.join("; ") || "no rows"})`);
       }
       if ((await pendingAsks(api, injected.userId)) === 0) throw new Error("devteam: no ask is pending, so Inbox has nothing to select");
@@ -744,7 +845,10 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
       await page.getByTestId("cos-composer-input").fill(fixture.desk.line);
       await page.getByTestId("cos-composer-send").click();
       await page.locator("[data-testid=cos-item]", { hasText: fixture.desk.reply }).first().waitFor({ timeout: 30_000 });
-      screens = ["cos"];
+      // ---- slice D ----
+      // The desk has no ask and no board: Inbox and Tasks with nothing in them, and a one-seat Roster.
+      screens = ["cos", "inbox", "tasks", "roster"];
+      // ---- end slice D ----
     }
     // The page read the Lab before the row was filed; read it again.
     await page.reload();
@@ -755,7 +859,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
 
     const counts: string[] = [];
     for (const screen of screens) {
-      await open(page, screen, { channel, taskId });
+      await open(page, screen, { mailbox, taskId });
       for (const shift of SHIFTS) {
         await page.getByTestId(shift === "day" ? "shift-day" : "shift-night").click();
         for (const width of WIDTHS) {
@@ -766,6 +870,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
             exceptions: EXCEPTIONS.map((x) => ({ id: x.id, select: x.select })),
             whole: WHOLE,
             tokens: [...TOKENS],
+            texts: inboxTasksRoster.TEXTS,
           });
           const tag = `${screen} ${shift} ${width}`;
           // The page drew from the Lab as it stood at the reload, so the store read then is what it must equal.
@@ -787,6 +892,10 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
         await held;
         await route.continue();
       });
+      // ---- slice D ----
+      // The desk's sweep ends on another screen; go back to Chief of Staff.
+      await open(page, "cos", { mailbox, taskId });
+      // ---- end slice D ----
       await page.setViewportSize({ width: WIDTHS[0], height: 1000 });
       await page.getByTestId("cos-composer-input").fill(fixture.desk.line);
       await page.getByTestId("cos-composer-send").click();
@@ -799,6 +908,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
           exceptions: EXCEPTIONS.map((x) => ({ id: x.id, select: x.select })),
           whole: WHOLE,
           tokens: [...TOKENS],
+          texts: inboxTasksRoster.TEXTS,
         });
         grade(read, { screen: "cos", width: WIDTHS[0], store, working: true }, `${lab} cos working ${shift} ${WIDTHS[0]}`, failures, lab);
         counts.push(`cos working ${shift} ${WIDTHS[0]}: ${read.els.length}`);
@@ -834,6 +944,12 @@ function controlPatches(control: string): Patch[] {
           to: '<Meta role="count" className="ml-2 font-sans tabular-nums text-muted-foreground" testId={`${testId}-count`}>',
           why: "the Roster count set in the sans",
         },
+        {
+          file: "src/surfaces/Tasks.tsx",
+          from: 'className={cn(MONO_CELL, "truncate text-muted-foreground")} title={row.id} data-testid="task-row-id"',
+          to: 'className={cn(MONO_CELL, "truncate font-sans text-muted-foreground")} title={row.id} data-testid="task-row-id"',
+          why: "Tasks' ID cells set in the sans",
+        },
       ];
     case "unclassified":
       return [
@@ -847,10 +963,10 @@ function controlPatches(control: string): Patch[] {
     case "missing":
       return [
         {
-          file: "src/surfaces/Sidebar.tsx",
-          from: /<Meta role="count" className="w-8 text-right tabular-nums text-muted-foreground" testId="team-on-shift">[\s\S]*?<\/Meta>/,
+          file: "src/surfaces/Tasks.tsx",
+          from: /<td className=\{cn\(MONO_CELL, "truncate text-muted-foreground"\)\} title=\{row\.id\} data-testid="task-row-id">[\s\S]*?<\/td>/,
           to: "",
-          why: "the team rows' on-shift counts removed",
+          why: "Tasks' ID column removed",
         },
       ];
     default:

@@ -1,31 +1,54 @@
 /**
  * Tasks (S9): every row on every attached board, done ones left out, full
- * width (BR-15). Grouped by State, Worker or Stream over the same rows; the
- * Queued toggle hides pending rows. Columns with no shipped read say who ships
- * them (BR-16).
+ * width (BR-15). Grouped by State, Worker or Stream over the same rows.
+ *
+ * Drawn as design v2's Tasks (v2:650-689): the ALL STREAMS tag and a mono
+ * summary line, GROUP BY as a segmented control, and the Queued toggle, off
+ * by default and saying how many rows it hides (BR-14). The columns are
+ * v2's: the state square, ID, TASK, NOW, STREAM, WORKER, TIME (elapsed from
+ * the row's start, by a clock) and COST. Columns with no shipped read say who
+ * ships them (BR-16).
  */
-import { useState } from "react";
-import { COLUMNS, columnFor, isBlocked, readStatus } from "../lib/columns";
+import { useEffect, useState } from "react";
+import { COLUMNS, columnFor, readStatus } from "../lib/columns";
 import { openRows, rosterOf, seatFor, type LoadedSnapshot } from "../lib/derive";
 import type { BoardRow } from "../lib/reads";
 import { navigate, TASK_GROUPINGS, type TaskGrouping } from "../lib/routes";
-import { EmptyState, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare } from "../components/ui";
+import { elapsed, isQueued, tasksSummary } from "../lib/tasks";
+import { EmptyState, Meta, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare } from "../components/ui";
 import { useLab } from "../lib/lab-data";
+import { cn } from "../lib/utils";
 import type { Gaps } from "../gaps";
 
 /** The columns Tasks groups by State, done excluded. */
 const OPEN_COLUMNS = COLUMNS.filter((c) => c !== "DONE");
 
+/** The time now, ticking each second while `running`: TIME is read by a clock, not a refresh. */
+function useNow(running: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [running]);
+  return now;
+}
+
+/** A mono cell: the id, NOW, STREAM, TIME and COST columns (v2:677-683). */
+const MONO_CELL = "py-2 pr-3 font-mono text-[11.5px] font-medium whitespace-nowrap";
+
 export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: TaskGrouping; gaps: Gaps }) {
   const { refresh } = useLab();
-  const [showQueued, setShowQueued] = useState(true);
+  const [showQueued, setShowQueued] = useState(false);
   const roster = rosterOf(snapshot);
   const all = openRows(snapshot);
-  const rows = showQueued ? all : all.filter((row) => readStatus(row.status) !== "pending");
+  const queued = all.filter(isQueued).length;
+  const rows = showQueued ? all : all.filter((row) => !isQueued(row));
+  const now = useNow(rows.some((row) => readStatus(row.status) === "in_progress"));
   const failed = Object.entries(snapshot.boards).filter(([, b]) => !b.ok);
 
   const keyOf = (row: BoardRow): string =>
-    by === "state" ? columnFor(row.status) : by === "worker" ? (seatFor(roster, row)?.id ?? row.assignee ?? "unassigned") : row.channelId;
+    by === "state" ? columnFor(row.status) : by === "worker" ? (seatFor(roster, row)?.id ?? row.assignee ?? "unassigned") : row.mailboxId;
   const groups =
     by === "state"
       ? OPEN_COLUMNS.map((column) => [column, rows.filter((r) => columnFor(r.status) === column)] as const)
@@ -33,43 +56,54 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="tasks">
-      <header className="flex flex-wrap items-center gap-4 border-b px-6 py-3">
-        <ScreenTitle>Tasks</ScreenTitle>
-        <dl className="flex gap-4 text-xs" data-testid="tasks-summary">
-          {OPEN_COLUMNS.map((column) => (
-            <div key={column} className="flex gap-1">
-              <dt className="text-muted-foreground">{column}</dt>
-              <dd className="tabular-nums" data-testid={`tasks-summary-${column}`}>
-                {all.filter((r) => columnFor(r.status) === column).length}
-              </dd>
-            </div>
-          ))}
-        </dl>
-        <div role="tablist" aria-label="Group by" className="ml-auto flex gap-1">
-          {TASK_GROUPINGS.map((g) => (
-            <button
-              key={g}
-              type="button"
-              role="tab"
-              aria-selected={g === by}
-              data-grouping={g}
-              onClick={() => navigate({ level: "tasks", by: g })}
-              className={`px-2 py-1 text-xs capitalize ${g === by ? "bg-accent font-medium" : "text-muted-foreground"}`}
-            >
-              {g}
-            </button>
-          ))}
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-foreground/20 px-[22px] py-3.5" data-testid="tasks-header">
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-2">
+            <ScreenTitle>Tasks</ScreenTitle>
+            <Meta role="label" className="border border-foreground/40 px-[5px] py-px tracking-[0.12em] text-foreground/80" testId="tasks-tag">
+              ALL STREAMS
+            </Meta>
+          </div>
+          <Meta role="control" className="mt-1 block text-muted-foreground" testId="tasks-summary">
+            {tasksSummary(snapshot)}
+          </Meta>
         </div>
-        <label className="flex items-center gap-1.5 text-xs">
-          <input type="checkbox" checked={showQueued} onChange={(e) => setShowQueued(e.target.checked)} data-testid="tasks-queued-toggle" />
-          Queued
-        </label>
+        <div className="flex items-center gap-3 font-mono text-[11.5px] font-medium">
+          <span className="text-[10.5px] tracking-[0.12em] text-muted-foreground" data-testid="tasks-group-by-label">
+            GROUP BY
+          </span>
+          <div role="tablist" aria-label="Group by" className="flex border border-foreground" data-testid="tasks-group-by">
+            {TASK_GROUPINGS.map((g, i) => (
+              <button
+                key={g}
+                type="button"
+                role="tab"
+                aria-selected={g === by}
+                data-grouping={g}
+                onClick={() => navigate({ level: "tasks", by: g })}
+                className={cn("px-3 py-[5px] capitalize", i > 0 && "border-l border-foreground", g === by && "bg-foreground text-background")}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            aria-pressed={showQueued}
+            onClick={() => setShowQueued((on) => !on)}
+            className="flex items-center gap-[7px] border border-foreground/45 px-2.5 py-[5px] hover:border-foreground"
+            data-testid="tasks-queued-toggle"
+          >
+            <span className={cn("size-2.5 border border-foreground", showQueued && "bg-foreground")} data-testid="tasks-queued-box" aria-hidden />
+            Queued <span data-testid="tasks-queued-count">{queued}</span>
+          </button>
+        </div>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
-        {failed.map(([channelId, b]) =>
+      <div className="min-h-0 flex-1 overflow-y-auto px-[22px] pb-5">
+        {failed.map(([mailboxId, b]) =>
           b.ok ? null : (
-            <div key={channelId} className="mb-3">
-              <SectionFailure what={`The boards of ${channelId}`} failure={b.failure} onRetry={() => void refresh()} />
+            <div key={mailboxId} className="mt-3">
+              <SectionFailure what={`The boards of ${mailboxId}`} failure={b.failure} onRetry={() => void refresh()} />
             </div>
           ),
         )}
@@ -80,20 +114,29 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
             No attached board holds a row that isn't done.
           </EmptyState>
         ) : (
-          <table className="w-full text-sm" data-testid="tasks-table">
+          <table className="w-full table-fixed text-sm" data-testid="tasks-table">
+            <colgroup>
+              <col className="w-[26px]" />
+              <col className="w-[132px]" />
+              <col />
+              <col className="w-[14%]" />
+              <col className="w-[128px]" />
+              <col className="w-[112px]" />
+              <col className="w-[76px]" />
+              <col className="w-[62px]" />
+            </colgroup>
             <thead>
-              <tr className="text-left text-[11px] tracking-wider text-muted-foreground">
-                <th className="py-1 font-semibold">TASK</th>
-                <th className="py-1 font-semibold">STATE</th>
-                <th className="py-1 font-semibold">WORKER</th>
-                <th className="py-1 font-semibold">STREAM</th>
-                <th className="py-1 font-semibold" title={gaps.now}>
+              <tr className="border-b border-foreground/20 text-left font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground" data-testid="tasks-columns">
+                <th className="px-2 pt-[9px] pb-[7px] font-medium" aria-label="State" />
+                <th className="pt-[9px] pb-[7px] font-medium">ID</th>
+                <th className="pt-[9px] pb-[7px] font-medium">TASK</th>
+                <th className="pt-[9px] pb-[7px] font-medium" title={gaps.now}>
                   NOW
                 </th>
-                <th className="py-1 font-semibold" title={gaps.cost}>
-                  TIME
-                </th>
-                <th className="py-1 font-semibold" title={gaps.cost}>
+                <th className="pt-[9px] pb-[7px] font-medium">STREAM</th>
+                <th className="pt-[9px] pb-[7px] font-medium">WORKER</th>
+                <th className="pt-[9px] pb-[7px] font-medium">TIME</th>
+                <th className="pt-[9px] pb-[7px] text-right font-medium" title={gaps.cost}>
                   COST
                 </th>
               </tr>
@@ -101,7 +144,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
             {groups.map(([key, groupRows]) => (
               <tbody key={key} data-testid="tasks-group" data-group={key}>
                 <tr>
-                  <th colSpan={7} className="pt-4 pb-1 text-left text-xs font-semibold">
+                  <th colSpan={8} className="pt-4 pb-1 text-left text-xs font-semibold">
                     {key} <span className="font-normal text-muted-foreground">{groupRows.length}</span>
                     {by === "state" && key === "IN REVIEW" ? (
                       <span className="ml-2 font-normal text-muted-foreground" data-testid="tasks-in-review-gap">
@@ -110,34 +153,46 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                     ) : null}
                   </th>
                 </tr>
-                {groupRows.map((row) => (
-                  <tr
-                    key={`${row.boardRef}/${row.id}`}
-                    className="cursor-pointer border-t hover:bg-accent/50"
-                    data-testid="task-row"
-                    data-board-ref={row.boardRef}
-                    data-task-id={row.id}
-                    onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
-                  >
-                    <td className="py-1.5 pr-2">{row.title}</td>
-                    <td className="py-1.5 pr-2 text-xs" data-testid="task-row-status">
-                      <StateSquare state={STATE_OF_COLUMN[columnFor(row.status)]} className="mr-1.5" />
-                      {row.status}
-                      {isBlocked(row.status) ? <span className="ml-1 bg-warning px-1 text-warning-foreground">blocked</span> : null}
-                    </td>
-                    <td className="py-1.5 pr-2 text-xs">{seatFor(roster, row)?.id ?? row.assignee ?? "—"}</td>
-                    <td className="py-1.5 pr-2 text-xs">{row.channelId}</td>
-                    <td className="py-1.5 pr-2 text-xs text-muted-foreground" title={gaps.now}>
-                      —
-                    </td>
-                    <td className="py-1.5 pr-2 text-xs text-muted-foreground" title={gaps.cost}>
-                      —
-                    </td>
-                    <td className="py-1.5 text-xs text-muted-foreground" title={gaps.cost}>
-                      —
-                    </td>
-                  </tr>
-                ))}
+                {groupRows.map((row) => {
+                  const seat = seatFor(roster, row);
+                  const time = elapsed(row, now);
+                  return (
+                    <tr
+                      key={`${row.boardRef}/${row.id}`}
+                      className="cursor-pointer border-b border-foreground/10 hover:bg-foreground/5"
+                      data-testid="task-row"
+                      data-board-ref={row.boardRef}
+                      data-task-id={row.id}
+                      data-status={row.status}
+                      onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
+                    >
+                      <td className="px-2 py-2" title={row.status} data-testid="task-row-status">
+                        <StateSquare state={STATE_OF_COLUMN[columnFor(row.status)]} className="align-middle" />
+                      </td>
+                      <td className={cn(MONO_CELL, "truncate text-muted-foreground")} title={row.id} data-testid="task-row-id">
+                        {row.id}
+                      </td>
+                      <td className="truncate py-2 pr-3 text-[13.5px]" data-testid="task-row-title">
+                        {row.title}
+                      </td>
+                      <td className={cn(MONO_CELL, "text-muted-foreground")} title={gaps.now} data-testid="task-row-now">
+                        —
+                      </td>
+                      <td className={cn(MONO_CELL, "truncate text-foreground/80")} data-testid="task-row-stream">
+                        #{row.mailboxId}
+                      </td>
+                      <td className="truncate py-2 pr-3 text-[13px]" title={seat?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
+                        {seat?.name ?? row.assignee ?? "—"}
+                      </td>
+                      <td className={cn(MONO_CELL, "text-muted-foreground")} data-testid="task-row-time">
+                        {time ?? "—"}
+                      </td>
+                      <td className={cn(MONO_CELL, "pr-0 text-right text-muted-foreground")} title={gaps.cost} data-testid="task-row-cost">
+                        —
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             ))}
           </table>

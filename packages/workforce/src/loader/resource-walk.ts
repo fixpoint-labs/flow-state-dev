@@ -142,7 +142,7 @@ export async function* walkResourcePlaces(
   // The org root. Opened structurally rather than merely classified, so a
   // symlinked or unreadable `org/` is reported the way `teams/` is. Absence is
   // silent: an app may declare nothing at the organisation level. It stays in
-  // this walk rather than in `walkTeams`, which the channels reader also rides
+  // this walk rather than in `walkTeams`, which the mailboxes reader also rides
   // and which must not hand it an `org/` scope it is not allowed to use.
   const orgDir = path.join(root, "org");
   const org = await openStructuralDirectory(orgDir, "org");

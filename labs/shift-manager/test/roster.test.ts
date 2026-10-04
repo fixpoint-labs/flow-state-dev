@@ -32,7 +32,7 @@ function snapshotOf(seats: Seat[], rows: BoardRow[], asks: Ask[] | "failed" = []
     readAt: 0,
     sessions: [],
     orgId: ORG,
-    inventory: { ok: true, value: { seats, workstreams: [toWorkstream({ id: "eng.desk", kind: "channel", members })!] } },
+    inventory: { ok: true, value: { seats, workstreams: [toWorkstream({ id: "eng.desk", kind: "mailbox", members })!] } },
     boards: { "eng.desk": { ok: true, value: { refs: ["eng.desk.work"], rows } } },
     asks: asks === "failed" ? { ok: false, failure: { message: "asks offline" } } : { ok: true, value: asks },
     resources: { ok: true, value: [] },
@@ -83,7 +83,7 @@ describe("BR-1 to BR-5: the one status rule", () => {
 
   it("BR-5: an assignee that resolves to no single seat, or an ask with no seat, counts for nobody", () => {
     const ops = seat("ops.coder");
-    // `coder` names a seat in two teams, both members of the channel: no single seat.
+    // `coder` names a seat in two teams, both members of the mailbox: no single seat.
     const states = seatStates(
       snapshotOf([coder, ops], [row("a", "in_progress", "coder"), row("b", "in_progress", "ghost")], [ask(null, "q1"), ask("nobody.here", "q2")], ["eng.coder", "ops.coder"]),
     );
@@ -163,7 +163,7 @@ describe("a hired seat holds its rows by its logical id", () => {
     expect(states.seats.get(`${ORG}.eng.coder-2`)!.held.map((r) => r.id)).toEqual(["a", "b"]);
   });
 
-  it("its bare name, shared with a seat in another team, resolves through the channel's logical members", () => {
+  it("its bare name, shared with a seat in another team, resolves through the mailbox's logical members", () => {
     const hired = seat(`${ORG}.eng.coder`);
     const ops = seat("ops.coder");
     const states = seatStates(snapshotOf([hired, ops], [row("a", "in_progress", "coder")], [], ["eng.coder"]));

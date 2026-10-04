@@ -7,11 +7,11 @@ description: "A project is a row your organization keeps: a title, a brief, an o
 
 # Projects
 
-A workstream is a channel you declare in a `CHANNEL.md`, with the boards it holds. A **project** groups workstreams. It answers a question no single channel can: which pieces of work belong together, and who is working on them.
+A workstream is a mailbox you declare in a `MAILBOX.md`, with the boards it holds. A **project** groups workstreams. It answers a question no single mailbox can: which pieces of work belong together, and who is working on them.
 
-A project is data, not a file. You don't write a folder or a `CHANNEL.md` for one. It's a row in the organization's `projects` collection, created while the app runs, by your own code or by a seat acting for a person. It belongs to the organization rather than to a team, so one project usually gathers workstreams from several teams.
+A project is data, not a file. You don't write a folder or a `MAILBOX.md` for one. It's a row in the organization's `projects` collection, created while the app runs, by your own code or by a seat acting for a person. It belongs to the organization rather than to a team, so one project usually gathers workstreams from several teams.
 
-Each project also has a **room**: one conversation its members share. Everyone on the project reads and posts in the same room, each through a session of their own.
+Each project also has a **room**: one conversation its members share. [The room and talk sessions](#the-room-and-talk-sessions) covers it, and [A room or a mailbox](#a-room-or-a-mailbox) compares it with a mailbox.
 
 ## How it fits together
 
@@ -29,7 +29,7 @@ The organization owns the projects. A project groups the workstreams that belong
 | `status` | A free label. New projects are `"active"` |
 | `ownerUserId` | The person who created it |
 | `members` | Who can read and post in the room. Always includes the owner |
-| `workstreams` | Full channel ids of the declared channels it groups, such as `eng.feature` and `ops.release` |
+| `workstreams` | Full mailbox ids of the declared mailboxes it groups, such as `eng.feature` and `ops.release` |
 | `sessions` | Each member's own talk session on the room, at most one per person |
 
 Everyone in the organization can list the rows. That a project exists isn't a secret. Its room is.
@@ -46,7 +46,7 @@ export default defineProjectsCollection();
 
 You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. The collection is org-scoped, shared across flows, and readable from the browser, which is how a UI lists an organization's projects.
 
-Its one option, `talk`, is the template every project's room is built from: the seats a post wakes and the charter they work under. Declare it once, usually in `org/resources/projects.ts`. Passing the same template again changes nothing, and passing a different one throws. [A room per project](./channels.md#a-room-per-project) covers it.
+Its one option, `talk`, is the template every project's room is built from: the seats a post wakes and the charter they work under. Declare it once, usually in `org/resources/projects.ts`. Passing the same template again changes nothing, and passing a different one throws. [A room per project](./mailboxes.md#a-room-per-project) covers it.
 
 ## Creating a project
 
@@ -113,7 +113,7 @@ const agent = defineAgentWorkerFlow({
     }).step(projects.createProject),
     setWorkstreams: sequencer({
       name: "setWorkstreams",
-      description: "Replace a project's workstreams with this list of full channel ids.",
+      description: "Replace a project's workstreams with this list of full mailbox ids.",
       inputSchema: setWorkstreamsInputSchema,
       outputSchema: setWorkstreamsOutputSchema,
     }).step(projects.setWorkstreams),
@@ -123,29 +123,29 @@ const agent = defineAgentWorkerFlow({
 
 A seat calls them only when its own `tools:` names them. The owner is the person whose session the seat is answering in, so a project a seat creates belongs to whoever asked for it, and `members` adds the people they name. The talk session `createProject` gets ready is that person's.
 
-The writes read the organization's [channel inventory](./inventory.md) to check workstream ids. A flow takes one declaration of a collection, so if the same kind reads the inventory itself, for example through `createWorkforceCapability`'s `discover`, declare that read with `projectWritesChannelInventory` rather than a `defineChannelInventoryCollection()` of its own:
+The writes read the organization's [mailbox inventory](./inventory.md) to check workstream ids. A flow takes one declaration of a collection, so if the same kind reads the inventory itself, for example through `createWorkforceCapability`'s `discover`, declare that read with `projectWritesMailboxInventory` rather than a `defineMailboxInventoryCollection()` of its own:
 
 ```ts
 import { defineCapability } from "@flow-state-dev/core";
-import { projectWritesChannelInventory } from "@flow-state-dev/workforce";
+import { projectWritesMailboxInventory } from "@flow-state-dev/workforce";
 
-const channelInventory = defineCapability({
-  name: "channel-inventory",
-  resources: { channelInventory: projectWritesChannelInventory },
+const mailboxInventory = defineCapability({
+  name: "mailbox-inventory",
+  resources: { mailboxInventory: projectWritesMailboxInventory },
 });
 ```
 
 A second declaration of the inventory beside the writes fails when the flow is built:
 
 ```text
-Resource collision in flow "agent": accessor keys "channelInventory" and "project-writes-channel-inventory" resolve to the same effective storage key (scope=org, ref=inventory/channels/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
+Resource collision in flow "agent": accessor keys "mailboxInventory" and "project-writes-mailbox-inventory" resolve to the same effective storage key (scope=org, ref=inventory/mailboxes/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
 ```
 
 [The chief of staff](./chief-of-staff.md#starting-projects) is a seat set up this way.
 
 ## One project per workstream
 
-A workstream belongs to at most one project. Each id must be a channel in the organization's [inventory](./inventory.md). Before a row is written, the write claims each of its workstreams. If two projects claim the same workstream at the same moment, exactly one of them gets it.
+A workstream belongs to at most one project. Each id must be a mailbox in the organization's [inventory](./inventory.md). Before a row is written, the write claims each of its workstreams. If two projects claim the same workstream at the same moment, exactly one of them gets it.
 
 A refused write leaves nothing behind. If one workstream is already claimed, the whole write fails, the refusal names that workstream, and any claims the write had already taken are released. Removing a workstream with `setWorkstreams` releases its claim.
 
@@ -153,7 +153,7 @@ A workstream no project lists isn't lost. A UI shows it under **No project**.
 
 ## The room and talk sessions
 
-A project's room is stored on the organization's side, one row per line. Nobody reaches it directly. Each member gets their own **talk session**: a session on the channel kind that knows which project it's about. Every room call goes through one.
+A project's room is stored on the organization's side, one row per line. Nobody reaches it directly. Each member gets their own **talk session**: a session on the mailbox kind that knows which project it's about. Every room call goes through one.
 
 A session, the room and a line are three separate things. The session is one person's, the room and its lines are the organization's, and none of them holds a copy of another.
 
@@ -169,11 +169,11 @@ Each member has exactly one talk session on the project, however many windows th
 
 | Call | What it does |
 |------|--------------|
-| `join { projectId }` | Returns your talk session on the project. If the project already lists one for you, you get that one back, so a second window ends up in the same session. Otherwise the session you called from becomes your talk session. A declared channel's own session can't become one: `join` from it is refused with `talk-on-a-channel` |
+| `join { projectId }` | Returns your talk session on the project. If the project already lists one for you, you get that one back, so a second window ends up in the same session. Otherwise the session you called from becomes your talk session. A declared mailbox's own session can't become one: `join` from it is refused with `talk-on-a-mailbox` |
 | `post { body }` | Adds a line to the room, as you |
 | `read { after }` | Returns the lines after a cursor, up to 200 at a time, and the cursor for the next read, with the room's charter and seats |
 
-`createProject` gets the creator's talk session ready for them. With a [talk template](./channels.md#a-room-per-project) in place, so does any other code that creates a project inside a flow turn. Every other member joins.
+`createProject` gets the creator's talk session ready for them. With a [talk template](./mailboxes.md#a-room-per-project) in place, so does any other code that creates a project inside a flow turn. Every other member joins.
 
 Other members' lines aren't pushed to you. They show up the next time your view reads the room, so read on open, on focus, and after you post.
 
@@ -190,3 +190,13 @@ Everyone in the organization can see the row. Only the people in its `members` c
 ![Everyone in the organization can list project rows. Only members can read or post in the room, through their own talk session, and every room call checks the session's server-recorded owner against members. Join binds the session and lists it on the row but never adds to members.](./project-room-membership.svg)
 
 Room lines aren't readable from the browser through the collection route. The only way to read them is `read` on a member's talk session.
+
+## A room or a mailbox
+
+![A mailbox and a room compared. Both usually run on the built-in mailbox flow kind; they differ in what the session is and where the talk is kept. A mailbox is declared in a MAILBOX.md in a team folder and opened at boot. The mailbox is one session on the mailbox kind, or on the kind its file names, such as support.desk. Its transcript is mailbox-post items in that one session. Its members are workers named in the file, fixed for that mailbox; when the kind has a notify block, a post wakes them. It can hold a board and route a post to one member. A room belongs to one project, created while the app runs; there is no file and it is never in the inventory. No session is the room: each member of the project has their own talk session on the built-in mailbox kind, and every one reaches the same room. The room's lines are organization data, the room-lines collection, and a member's view reads them; they are not pushed. Its members are the people on the project row, checked on every call. A post wakes the workers in the organization's talk template, which are not members. A room holds no board and routes nothing. Use a mailbox for a standing topic a team owns, set in files, with a board or routing. Use a room for the people on a project talking together, private to them](./mailbox-or-room.svg)
+
+A room and a mailbox usually run on the same built-in mailbox kind, but a mailbox is one declared session that holds its own transcript, and a room is the project's lines in organization data, reached through each member's own talk session. Use a mailbox for a standing topic a team owns. Use the project's room when the people on a piece of work need to talk among themselves.
+
+![How a post travels through a mailbox and through a project's room, as swimlanes with time running left to right. A mailbox: Alice owns the session support.desk, a session on the mailbox kind that holds the transcript. Alice posts, the line is kept in that session, the notify block wakes the worker in its own session keyed mailbox:support.desk, the worker's answer line lands back in support.desk, and Alice reads the transcript. Bob, another user, posts to support.desk and is refused with the same 404 as an unknown session, because the session belongs to Alice. A room: Alice and Bob are members of a project and each has their own talk session. Alice posts from hers, and the line is written to room-lines, organization data that holds the room's transcript. The template worker is woken as Alice, in a conversation it keeps per person, and its answer comes back through Alice's session as the next line in room-lines. Bob reads from his own session and gets both lines. Carol is in the organization but not a member, and her join is refused with not-a-member. Why a session per member: a session acts for one user, and anyone else is refused as if it did not exist, so people share a conversation through a room, each posting from their own session into one organization resource. A mailbox is one session, so only its owner can post to it or read it; it is how workers and one user talk](./mailbox-room-flow.svg)
+
+Why a room needs a session per member: a session acts for one user, and a post from anyone else is refused as if the session did not exist. A mailbox is one session, so only the user who opened it, and the workers it wakes, can post to it. A room is how several people share one conversation.

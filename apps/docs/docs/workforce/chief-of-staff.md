@@ -7,7 +7,7 @@ description: "One seat a person asks who works here, and asks to change it. Hire
 
 # The chief of staff
 
-The chief of staff is a seat a person talks to about the organization itself. Ask it who works here or who is on a channel, and it looks it up. Ask it for another seat, and it hires one. Ask it for one fewer, and it puts the fire in front of you to approve. Nothing is removed until you do. Give it the project tools, and it starts [projects](./projects.md) for you too.
+The chief of staff is a seat a person talks to about the organization itself. Ask it who works here or who is in a mailbox, and it looks it up. Ask it for another seat, and it hires one. Ask it for one fewer, and it puts the fire in front of you to approve. Nothing is removed until you do. Give it the project tools, and it starts [projects](./projects.md) for you too.
 
 With `refuseRosterAdmin` on, as in the setup below, it is the only seat that hires or fires. Another seat that needs help sends the chief of staff a message and lets it decide. A Lab that doesn't declare one doesn't have one.
 
@@ -22,17 +22,19 @@ The file goes under `org/workers/`, beside `teams/`. Its folder name is its id, 
 description: Who works here, and the one seat that changes it.
 flow: agent
 model: openai/gpt-5.4-mini
-tools: [hire, fire, rehire, brokenSeats, post-to-channel]
+tools: [hire, fire, rehire, brokenSeats, post-to-mailbox]
 ---
 
 You are the chief of staff for this organization.
 
-When someone asks who works here or who is on a channel, look it up with
+When someone asks who works here or who is in a mailbox, look it up with
 `discover` and answer from what it returns.
 
 To add a seat, call `hire`. It lands at once. To remove one, call `fire`.
 The person approves every fire before it happens; if they deny it, say so
 and don't try again unless they ask.
+
+To hire a `coder`, pass `settings: { "document": "teams/eng/feature-brief" }`.
 
 You can't fire yourself or any seat declared in the organization's files.
 Those change when someone edits their folder.
@@ -43,22 +45,23 @@ Then give the `agent` kind the tools, with `askBefore: ["fire"]` so a fire waits
 ```ts title="src/workforce.ts"
 import { defineCapability } from "@flow-state-dev/core";
 import {
-  channelPostCapability,
+  mailboxPostCapability,
   createSeatHireCapability,
   createWorkforceCapability,
   defineAgentWorkerFlow,
-  defineChannelInventoryCollection,
+  defineMailboxInventoryCollection,
   HIRED_ROSTER_RESOURCE,
   SEAT_INVENTORY_RESOURCE,
   type HireOptions,
 } from "@flow-state-dev/workforce";
 
+import { coderFlow } from "./flows/coder";
 import { deskClerkFlow } from "./flows/desk-clerk";
 import { instanceAt, kindAt, registerSeat, releaseSeat } from "./registry-access";
 import { roster } from "./roster";
 
 // Typed as the whole map, so the `agent` entry can be added below.
-export const kinds: NonNullable<HireOptions["kinds"]> = { "desk-clerk": deskClerkFlow };
+export const kinds: NonNullable<HireOptions["kinds"]> = { "desk-clerk": deskClerkFlow, coder: coderFlow };
 
 const seatHire = createSeatHireCapability({
   kinds,
@@ -66,7 +69,7 @@ const seatHire = createSeatHireCapability({
   unregister: releaseSeat,
   kindAt,
   instanceAt,
-  allowKinds: ["desk-clerk", "agent"],
+  allowKinds: ["desk-clerk", "coder", "agent"],
   askBefore: ["fire"],
   refuseRosterAdmin: true,
 });
@@ -74,15 +77,15 @@ const seatHire = createSeatHireCapability({
 kinds.agent = defineAgentWorkerFlow({
   uses: [
     defineCapability({
-      name: "channel-inventory",
-      resources: { channelInventory: defineChannelInventoryCollection() },
+      name: "mailbox-inventory",
+      resources: { mailboxInventory: defineMailboxInventoryCollection() },
     }),
     createWorkforceCapability({
-      roster: { workers: roster.workers, channels: roster.channels },
-      inventory: { seats: SEAT_INVENTORY_RESOURCE, channels: "channelInventory" },
+      roster: { workers: roster.workers, mailboxes: roster.mailboxes },
+      inventory: { seats: SEAT_INVENTORY_RESOURCE, mailboxes: "mailboxInventory" },
       hiredRoster: HIRED_ROSTER_RESOURCE,
     }),
-    channelPostCapability,
+    mailboxPostCapability,
     seatHire,
   ],
 });
@@ -90,11 +93,15 @@ kinds.agent = defineAgentWorkerFlow({
 
 `registry-access.ts` is the module from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), with two more exports, both read from `(await flowState.getRuntime()).registry` once the app is up. `kindAt(address)` returns the kind of the flow registered at that address; the hire tools use it to refuse a declared seat by name. `instanceAt(address)` returns the flow instance registered at that address, or `undefined`. The hire tools use it to tell a seat they minted apart from another seat at the same address, so a re-hire interrupted by a restart completes, and `fire` releases only its own seat.
 
-`createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. The small `channel-inventory` capability declares the channel inventory as a resource on the kind, and passing its key, `channelInventory` here, as `inventory.channels` lets `discover` answer who is on a channel too. `channelPostCapability` adds `post-to-channel`, so the chief of staff can answer in a channel it is a member of. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
+`createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. The small `mailbox-inventory` capability declares the mailbox inventory as a resource on the kind, and passing its key, `mailboxInventory` here, as `inventory.mailboxes` lets `discover` answer who is in a mailbox too. `mailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can answer in a mailbox it is a member of. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
+
+`hire` asks the model for a kind, a seat id, and `settings`, but doesn't say which kinds require which settings. The chief of staff learns that from its `WORKER.md` body, so name each required setting and its value there, as the example file does for a `coder`. A hire missing a required setting is refused with the setting named and nothing written, so the model can call `hire` again with it.
+
+In the snippet above, `coderFlow` requires a `document` setting through its `configSchema`: `workerConfigSchema().extend({ document: z.string().min(1) })`.
 
 Installing the tools on a kind doesn't hand them to every seat of it. A seat holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other. `refuseRosterAdmin: true` keeps them out of the seats the chief of staff hires, too. Leave it off and a hire may name them like any other tool.
 
-If your Lab has projects, add `chief-of-staff` to the project template's `seats` (or a team `CHANNEL.md` template's `members:`), so the chief of staff is in every project's room.
+If your Lab has projects, add `chief-of-staff` to the project template's `seats` (or a team `MAILBOX.md` template's `members:`), so the chief of staff is in every project's room.
 
 Read the seats it hired back when the app starts, as in [Reading the roster back at the next start](./durable-hire.md#reading-the-roster-back-at-the-next-start), and serve the app over a store that survives a restart. Otherwise a hire lasts only as long as the process.
 
@@ -107,7 +114,7 @@ It needs the two project tools, `createProject` and `setWorkstreams`, in its `to
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
 ---
 flow: agent
-tools: [hire, fire, rehire, brokenSeats, post-to-channel, createProject, setWorkstreams]
+tools: [hire, fire, rehire, brokenSeats, post-to-mailbox, createProject, setWorkstreams]
 ---
 ```
 
@@ -117,10 +124,10 @@ and tell it how to use them in the body, for example:
 When the person asks for a project, call `createProject` with the title they
 gave and a short lowercase `id` made from it. They own it and are always a
 member; put anyone else they name in `members`. Add workstreams only when they
-name them, by full channel id.
+name them, by full mailbox id.
 ```
 
-If the kind's `discover` reads channels too, declare its channel inventory with `projectWritesChannelInventory`, as that section shows. The project tools read the same collection, and the kind refuses a second declaration of it.
+If the kind's `discover` reads mailboxes too, declare its mailbox inventory with `projectWritesMailboxInventory`, as that section shows. The project tools read the same collection, and the kind refuses a second declaration of it.
 
 A workstream belongs to one project at most. When the person asks for one another project holds, the tool is refused, and the chief of staff can tell them which project has it.
 
@@ -192,4 +199,4 @@ Asking also needs a model with the single-step methods: `generateStep`, and `str
 - **Hire under a declared seat's id.** A hire that reuses one is refused, naming the kind already there.
 - **Hire a kind outside `allowKinds`.** The refusal lists the kinds it may hire.
 - **Hire another seat that can hire, when `refuseRosterAdmin` is on.** A hire or re-hire whose settings name `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or pick the `seat-hire` capability under `capabilities:`, is refused, whatever the kind. Roster admin stays with the seats your app declares.
-- **Open, close or rename a channel.** Channels are declared on disk.
+- **Open, close or rename a mailbox.** Mailboxes are declared on disk.

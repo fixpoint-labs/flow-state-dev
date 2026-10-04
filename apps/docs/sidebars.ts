@@ -232,7 +232,7 @@ const sidebars: SidebarsConfig = {
         "workforce/overview",
         "workforce/workers-on-disk",
         "workforce/built-in-worker",
-        "workforce/channels",
+        "workforce/mailboxes",
         "workforce/inventory",
         "workforce/projects",
         "workforce/documents-on-disk",
@@ -243,6 +243,11 @@ const sidebars: SidebarsConfig = {
         "workforce/chief-of-staff",
         "workforce/ui",
       ],
+    },
+    {
+      type: "category",
+      label: "Shift Manager",
+      items: ["shift-manager/overview"],
     },
     {
       type: "category",
@@ -334,6 +339,7 @@ const sidebars: SidebarsConfig = {
         "api/cli",
       ],
     },
+    "glossary",
   ],
 };
 

@@ -17,7 +17,7 @@
 - **standing**: once the next attempt is claimed, the stored row's retry standing is unchanged (`attempts − abandonments − turnReentries`).
 - **picker**: `@coder` asks which of the coder's two running tasks the line is for. The line reaches the chosen task, not the other.
 - **no door**: on DevTeam's EM ask, Inbox's reply box is disabled. Its line names the seat.
-- **heard**: on the fixture seat's ask, Inbox's reply is a user item in the ask's own session, and the seat says *Heard: <token>* there.
+- **heard**: on the fixture seat's ask, Inbox's reply is a user item in the ask's own session, the seat says *Heard: <token>* there, and Inbox then draws the reply under the ask as the person's own, read back from that session.
 - **reach**: the pages throw nothing.
 
 Routes: **task composer** (the first row, reached from Tasks by clicking), **@coder** (the second row, chosen from the picker in the feature workstream), **Inbox, no door** and **Inbox reply**.
@@ -53,3 +53,5 @@ Routes: **task composer** (the first row, reached from Tasks by clicking), **@co
 | 2026-10-01 | caf8e92ea+wip (review round) | n/a | PASS | After the shared send state, the tail read and the unconfirmed outcome: both coding routes delivered with the line held, request `aborted`, same coding session resumed, standing 1 → 1; EM reply disabled; fixture reply heard. `optimistic-turn` FAILS at **delivered** on all three routes; `fresh-session` FAILS only at **continued**. |
 | 2026-10-01 | f7c87dc2c+wip (door fix: the drain runs in the claiming session) | n/a | PASS | Both coding routes delivered with the line held, and once the next attempt linked, the task still named the session the line went into. Request `aborted`, same coding session resumed, standing 1 → 1. EM reply disabled; fixture reply heard. Planted control (the door drains in the run's own session): FAILS only at **delivered**, on both coding routes ("after delivery the task links session dsx_…, not dsx_… where the line was delivered"). `optimistic-turn` FAILS at **delivered** on all three routes; `fresh-session` FAILS only at **continued**. |
 | 2026-10-01 | 475b3cd4b (feat/FIX-1649-shift-manager) | n/a | PASS | After the rename to Shift Manager. DevTeam served from `labs/shift-manager/teams/devteam`; the pages carry the boot-shift code, unset in this run. |
+| 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR) | n/a | PASS | **heard** now also requires Inbox to draw the reply under the ask, read back from the ask's session: drawn. Both coding routes delivered with the line held, request `aborted`, same coding session resumed, standing 1 → 1; EM reply disabled. |
+| 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR), `GOAL_CONTROL=optimistic-turn` | n/a | FAIL (expected) | **delivered** on the sending routes, and on the Inbox reply **heard** now also names the reply never drawn under the ask. |

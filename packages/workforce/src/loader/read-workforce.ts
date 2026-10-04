@@ -109,7 +109,7 @@ export interface ReadWorkforceResult {
  *
  * @param root The workforce tree — the folder holding `org/` and `teams/`.
  * @returns Records ready for `hireWorkforce`, plus the four collected error
- *   channels.
+ *   mailboxes.
  *
  * @example
  * import { packageBlocks, seatBlocks } from "./workforce/workforce.gen";

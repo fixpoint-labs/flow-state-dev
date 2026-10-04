@@ -19,15 +19,15 @@ export {
 } from "./open-inventory";
 
 export {
-  channelInventoryRowSchema,
-  defineChannelInventoryCollection,
+  mailboxInventoryRowSchema,
+  defineMailboxInventoryCollection,
   defineMembershipIndexCollection,
   defineSeatInventoryCollection,
   membershipIndexRowSchema,
   membershipKey,
   membershipPrefix,
   seatInventoryRowSchema,
-  type ChannelInventoryRow,
+  type MailboxInventoryRow,
   type MembershipIndexRow,
   type SeatInventoryRow
 } from "./collections";

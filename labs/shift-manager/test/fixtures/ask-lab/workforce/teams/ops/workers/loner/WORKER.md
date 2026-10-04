@@ -1,5 +1,5 @@
 ---
-description: In no channel at all.
+description: In no mailbox at all.
 flow: asker
 ---
 

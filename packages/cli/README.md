@@ -261,9 +261,9 @@ Output is a JSON object with execution results, schema validation status, and ti
 
 ### `fsdev gen` — Register an app's kinds, blocks and resource modules from its files
 
-Walks `workforce/flows/workers/`, `workforce/flows/channels/` and `workforce/blocks/`, and writes
-`workforce/workforce.gen.ts` beside them. The generated module exports `kinds`, `channelKinds` and
-`blocks`: the maps `hireWorkforce`, `channelInstances` and a task board already take. Each discovered
+Walks `workforce/flows/workers/`, `workforce/flows/mailboxes/` and `workforce/blocks/`, and writes
+`workforce/workforce.gen.ts` beside them. The generated module exports `kinds`, `mailboxKinds` and
+`blocks`: the maps `hireWorkforce`, `mailboxInstances` and a task board already take. Each discovered
 file registers under its basename.
 
 It also walks every `resources/` folder the workforce convention reads — the organisation's, each

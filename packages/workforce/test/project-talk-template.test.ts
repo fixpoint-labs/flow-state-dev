@@ -2,7 +2,7 @@
  * A project's talk template, and the wakes a post in a project's room makes.
  *
  * The binder half reads templates from both sites (the org-level default
- * beside the projects collection, and a team `CHANNEL.md` marked `mintFor:`),
+ * beside the projects collection, and a team `MAILBOX.md` marked `mintFor:`),
  * refuses the bad ones all together at boot, builds the template onto the kind,
  * and installs the reaction that mints a creator's talk session on create.
  * The runtime half runs over the real HTTP router as verified users, with
@@ -30,23 +30,23 @@ import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  CHANNEL_KIND,
-  channelInstances,
-  channelNotifyInputSchema,
-  defineChannelFlow,
+  MAILBOX_KIND,
+  mailboxInstances,
+  mailboxNotifyInputSchema,
+  defineMailboxFlow,
   defineProjectBlocks,
   defineProjectsCollection,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   openInventory,
   wakeMemberSeats,
   workerConfigSchema,
-  type ChannelManifest,
-  type ChannelNotifyInput,
+  type MailboxManifest,
+  type MailboxNotifyInput,
   type ProjectRow,
   type WorkerManifest
 } from "../src/index";
-import { CHANNEL_ANSWER_ACTION } from "../src/channel/channel-flow";
+import { MAILBOX_ANSWER_ACTION } from "../src/mailbox/mailbox-flow";
 import { forgetOrgTalkTemplate, forgetTalkTemplate, registeredTalkTemplate } from "../src/projects/talk-template";
 import { roomLineKey } from "../src/projects/collections";
 
@@ -60,59 +60,59 @@ afterEach(() => {
   forgetTalkTemplate(projects);
 });
 
-/** A team's channel record. */
-const channel = (id: string, declared: Record<string, unknown> = {}, body = ""): ChannelManifest => ({
+/** A team's mailbox record. */
+const mailbox = (id: string, declared: Record<string, unknown> = {}, body = ""): MailboxManifest => ({
   id,
-  declared: { description: `The ${id} channel.`, ...declared },
+  declared: { description: `The ${id} mailbox.`, ...declared },
   body
 });
 
-/** Whatever `channelInstances` refused, as one message. */
+/** Whatever `mailboxInstances` refused, as one message. */
 function refusalOf(run: () => unknown): string {
   try {
     run();
   } catch (error) {
     return (error as Error).message;
   }
-  throw new Error("expected channelInstances to refuse");
+  throw new Error("expected mailboxInstances to refuse");
 }
 
 /** The built-in kind built waking seats, as a host with a talk template passes it. */
-const waking = () => ({ [CHANNEL_KIND]: defineChannelFlow({ notify: wakeMemberSeats([]) }) }) as never;
+const waking = () => ({ [MAILBOX_KIND]: defineMailboxFlow({ notify: wakeMemberSeats([]) }) }) as never;
 
 describe("declaring a talk template", () => {
   it("refuses a template with a board, an unknown or wrong collection, a bad seat id, and two templates for one collection, all at once", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Org charter." } });
     const other = defineResourceCollection({ pattern: "notes/*", scope: "org", stateSchema: z.object({}) });
     const message = refusalOf(() =>
-      channelInstances(
+      mailboxInstances(
         [
-          channel("eng.feature", { members: ["eng.em"] }),
-          channel("eng.room", { mintFor: "projects", members: ["eng.em"] }, "Team charter."),
-          channel("ops.boarded", { mintFor: "projects", boards: ["work"] }),
-          channel("ops.nowhere", { mintFor: "tickets" }),
-          channel("ops.notes", { mintFor: "notes" }),
-          channel("ops.badseat", { mintFor: "projects", members: ["a.b.c"] }),
-          channel("ops.flowed", { mintFor: "projects", flow: "channel" }),
-          channel("eng.typo", { member: ["eng.em"] })
+          mailbox("eng.feature", { members: ["eng.em"] }),
+          mailbox("eng.room", { mintFor: "projects", members: ["eng.em"] }, "Team charter."),
+          mailbox("ops.boarded", { mintFor: "projects", boards: ["work"] }),
+          mailbox("ops.nowhere", { mintFor: "tickets" }),
+          mailbox("ops.notes", { mintFor: "notes" }),
+          mailbox("ops.badseat", { mintFor: "projects", members: ["a.b.c"] }),
+          mailbox("ops.flowed", { mintFor: "projects", flow: "mailbox" }),
+          mailbox("eng.typo", { member: ["eng.em"] })
         ],
         { kinds: waking(), resources: { projects, notes: other } }
       )
     );
     // Every refusal of the boot, named, in one message.
     expect(message).toContain("refused 7 of 9 declarations");
-    expect(message).toMatch(/channel "ops\.boarded" — .*`mintFor:` and `boards:`/);
-    expect(message).toMatch(/channel "ops\.nowhere" — names collection "tickets", which is not in the org's resources/);
-    expect(message).toMatch(/channel "ops\.notes" — names "notes", which is not the projects collection/);
-    expect(message).toMatch(/channel "ops\.badseat" — .*seat "a\.b\.c" is not a seat id/);
-    expect(message).toMatch(/channel "eng\.typo" — declares `member`/);
+    expect(message).toMatch(/mailbox "ops\.boarded" — .*`mintFor:` and `boards:`/);
+    expect(message).toMatch(/mailbox "ops\.nowhere" — names collection "tickets", which is not in the org's resources/);
+    expect(message).toMatch(/mailbox "ops\.notes" — names "notes", which is not the projects collection/);
+    expect(message).toMatch(/mailbox "ops\.badseat" — .*seat "a\.b\.c" is not a seat id/);
+    expect(message).toMatch(/mailbox "eng\.typo" — declares `member`/);
     // A template runs on the built-in kind; there is no kind to choose.
-    expect(message).toMatch(/channel "ops\.flowed" — .*`mintFor:` and `flow:`.*runs on the built-in channel kind/);
+    expect(message).toMatch(/mailbox "ops\.flowed" — .*`mintFor:` and `flow:`.*runs on the built-in mailbox kind/);
     // The org default and the team template for one collection are refused together, in one line naming both.
     expect(message).toMatch(
-      /the "projects" collection has 2 talk templates: the talk template beside "projects" in the org's resources; channel "eng\.room"\./
+      /the "projects" collection has 2 talk templates: the talk template beside "projects" in the org's resources; mailbox "eng\.room"\./
     );
-    expect(message).not.toContain('channel "eng.feature"');
+    expect(message).not.toContain('mailbox "eng.feature"');
   });
 
   it("keeps the first org template: the same one declared again is a no-op, a different one throws where it is declared", () => {
@@ -127,13 +127,13 @@ describe("declaring a talk template", () => {
     expect(() => defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Other." } })).toThrow(
       /already declared beside this collection/
     );
-    channelInstances([], { kinds: waking(), resources: { projects } });
+    mailboxInstances([], { kinds: waking(), resources: { projects } });
     expect(registeredTalkTemplate(projects)?.facts).toEqual({ seats: ["eng.em"], charter: "Plan." });
   });
 
   it("takes a full seat id from any team and a dotless org seat id, and refuses anything else in the org default", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em", "ops.lead", "chief-of-staff"] } });
-    expect(() => channelInstances([], { kinds: waking(), resources: { projects } })).not.toThrow();
+    expect(() => mailboxInstances([], { kinds: waking(), resources: { projects } })).not.toThrow();
 
     // A bad org seat fails where the template is declared, before any bind.
     expect(() => defineProjectsCollection({ talk: { seats: ["Chief Of Staff"] } })).toThrow(
@@ -142,17 +142,17 @@ describe("declaring a talk template", () => {
     expect(() => defineProjectsCollection({ talk: { seats: ["a.b.c"] } })).toThrow(/seat "a\.b\.c" is not a seat id/);
   });
 
-  it("refuses a talk kind defineChannelFlow did not build, or one filed under the built-in's key", () => {
+  it("refuses a talk kind defineMailboxFlow did not build, or one filed under the built-in's key", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"] } });
-    const custom = Object.assign(() => defineFlow({ kind: CHANNEL_KIND, cardinality: "singleton", actions: {} })(), {
-      kind: CHANNEL_KIND
+    const custom = Object.assign(() => defineFlow({ kind: MAILBOX_KIND, cardinality: "singleton", actions: {} })(), {
+      kind: MAILBOX_KIND
     });
-    expect(refusalOf(() => channelInstances([], { kinds: { [CHANNEL_KIND]: custom } as never, resources: { projects } }))).toMatch(
-      /the talk template beside "projects" in the org's resources — .*not one `defineChannelFlow` built/
+    expect(refusalOf(() => mailboxInstances([], { kinds: { [MAILBOX_KIND]: custom } as never, resources: { projects } }))).toMatch(
+      /the talk template beside "projects" in the org's resources — .*not one `defineMailboxFlow` built/
     );
     // A kind of another name under the built-in's key would run a different graph.
-    const other = Object.assign(defineChannelFlow({ notify: wakeMemberSeats([]) }), { kind: "other" });
-    expect(refusalOf(() => channelInstances([], { kinds: { [CHANNEL_KIND]: other } as never, resources: { projects } }))).toMatch(
+    const other = Object.assign(defineMailboxFlow({ notify: wakeMemberSeats([]) }), { kind: "other" });
+    expect(refusalOf(() => mailboxInstances([], { kinds: { [MAILBOX_KIND]: other } as never, resources: { projects } }))).toMatch(
       /the flow passed under that key is kind "other"/
     );
   });
@@ -163,64 +163,64 @@ describe("declaring a talk template", () => {
     );
     expect(
       refusalOf(() =>
-        channelInstances([channel("eng.room", { mintFor: "projects", members: ["eng.em", "eng.em"] })], {
+        mailboxInstances([mailbox("eng.room", { mintFor: "projects", members: ["eng.em", "eng.em"] })], {
           resources: { projects }
         })
       )
-    ).toMatch(/channel "eng\.room" — .*seat "eng\.em" is listed twice/);
+    ).toMatch(/mailbox "eng\.room" — .*seat "eng\.em" is listed twice/);
   });
 
   it("refuses a template with seats on a kind built with no notify block, which would wake none of them", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"] } });
-    // The default: `channelInstances` seeds the built-in kind, which wakes nobody.
-    expect(refusalOf(() => channelInstances([], { resources: { projects } }))).toMatch(
-      /names seats, but talk sessions run on kind "channel", which was built with no `notify` block/
+    // The default: `mailboxInstances` seeds the built-in kind, which wakes nobody.
+    expect(refusalOf(() => mailboxInstances([], { resources: { projects } }))).toMatch(
+      /names seats, but talk sessions run on kind "mailbox", which was built with no `notify` block/
     );
     // A template with no seats wakes nobody by design, so the plain kind serves it (a fresh process).
     forgetOrgTalkTemplate(projects);
     defineProjectsCollection({ talk: { seats: [], charter: "Just the room." } });
-    expect(() => channelInstances([], { resources: { projects } })).not.toThrow();
+    expect(() => mailboxInstances([], { resources: { projects } })).not.toThrow();
   });
 
-  it("registers the template's kind with no channel on it, holding the template, and installs the mint on create", () => {
+  it("registers the template's kind with no mailbox on it, holding the template, and installs the mint on create", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Org charter." } });
-    const instances = channelInstances([], { kinds: waking(), resources: { projects } });
-    expect(instances.map((instance) => instance.kind)).toEqual([CHANNEL_KIND]);
+    const instances = mailboxInstances([], { kinds: waking(), resources: { projects } });
+    expect(instances.map((instance) => instance.kind)).toEqual([MAILBOX_KIND]);
     expect((projects as { reactTo?: { created?: unknown } }).reactTo?.created).toBeDefined();
   });
 
   it("reads one projects collection exposed under two refs as one template, not two rivals", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Plan." } });
-    const instances = channelInstances([], { kinds: waking(), resources: { projects, workProjects: projects } });
-    expect(instances.map((instance) => instance.kind)).toEqual([CHANNEL_KIND]);
+    const instances = mailboxInstances([], { kinds: waking(), resources: { projects, workProjects: projects } });
+    expect(instances.map((instance) => instance.kind)).toEqual([MAILBOX_KIND]);
     expect(registeredTalkTemplate(projects)?.facts).toEqual({ seats: ["eng.em"], charter: "Plan." });
   });
 
   it("accepts later calls that reach the same template through another alias or order, and still refuses a different one", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Plan." } });
-    channelInstances([], { kinds: waking(), resources: { projects } });
+    mailboxInstances([], { kinds: waking(), resources: { projects } });
     // The same collection and facts, under another ref, and under two refs in the other order.
-    expect(() => channelInstances([], { kinds: waking(), resources: { workProjects: projects } })).not.toThrow();
-    expect(() => channelInstances([], { kinds: waking(), resources: { b: projects, a: projects } })).not.toThrow();
-    expect(() => channelInstances([], { kinds: waking(), resources: { a: projects, b: projects } })).not.toThrow();
+    expect(() => mailboxInstances([], { kinds: waking(), resources: { workProjects: projects } })).not.toThrow();
+    expect(() => mailboxInstances([], { kinds: waking(), resources: { b: projects, a: projects } })).not.toThrow();
+    expect(() => mailboxInstances([], { kinds: waking(), resources: { a: projects, b: projects } })).not.toThrow();
     expect(registeredTalkTemplate(projects)?.facts).toEqual({ seats: ["eng.em"], charter: "Plan." });
 
     // Other facts under any alias are a second template.
     forgetOrgTalkTemplate(projects);
     defineProjectsCollection({ talk: { seats: ["ops.lead"], charter: "Plan." } });
-    expect(() => channelInstances([], { kinds: waking(), resources: { workProjects: projects } })).toThrow(
+    expect(() => mailboxInstances([], { kinds: waking(), resources: { workProjects: projects } })).toThrow(
       /already have a talk template in this process .*with other seats or charter/
     );
   });
 
   it("binds a roster with no template as today: no reaction, and a template file is never opened or registered", async () => {
-    const plain = channelInstances([channel("eng.feature", { members: ["eng.em"] })], { resources: { projects } });
+    const plain = mailboxInstances([mailbox("eng.feature", { members: ["eng.em"] })], { resources: { projects } });
     expect((projects as { reactTo?: unknown }).reactTo).toBeUndefined();
     expect(Object.keys((plain[0] as unknown as { actions: object }).actions)).toEqual(["post", "read", "join"]);
 
-    const records = [channel("eng.feature", { members: ["eng.em"] }), channel("eng.room", { mintFor: "projects" })];
+    const records = [mailbox("eng.feature", { members: ["eng.em"] }), mailbox("eng.room", { mintFor: "projects" })];
     const opened: string[] = [];
-    await openChannels(records, {
+    await openMailboxes(records, {
       userId: "alice",
       client: {
         createSession: async (options) => {
@@ -236,93 +236,93 @@ describe("declaring a talk template", () => {
 
     const registered: string[] = [];
     const binding = await openInventory(
-      { seats: [], channels: records },
+      { seats: [], mailboxes: records },
       {
         userId: "alice",
         orgId: ORG,
-        seatWriter: { flowKind: CHANNEL_KIND },
+        seatWriter: { flowKind: MAILBOX_KIND },
         run: async (request) => {
           registered.push(`${request.action} ${request.sessionId} ${JSON.stringify(request.input)}`);
         }
       }
     );
-    // The template registers nothing; its id only goes to the writer, to retire any old channel row.
+    // The template registers nothing; its id only goes to the writer, to retire any old mailbox row.
     expect(registered).toEqual([
-      'retireChannelsInInventory inventory-binder {"ids":["eng.room"]}',
-      "registerChannelInInventory eng.feature {}"
+      'retireMailboxesInInventory inventory-binder {"ids":["eng.room"]}',
+      "registerMailboxInInventory eng.feature {}"
     ]);
-    expect(binding).toMatchObject({ channels: 1, problems: [] });
+    expect(binding).toMatchObject({ mailboxes: 1, problems: [] });
 
     // With no writer named, the retirement is named as a problem rather than skipped.
-    const unwritten = await openInventory({ seats: [], channels: records }, { userId: "alice", orgId: ORG, run: async () => undefined });
+    const unwritten = await openInventory({ seats: [], mailboxes: records }, { userId: "alice", orgId: ORG, run: async () => undefined });
     expect(unwritten.problems).toEqual([expect.stringMatching(/talk templates "eng\.room" could not be retired .*no `seatWriter`/)]);
   });
 });
 
 describe("a host that builds several flows", () => {
-  it("builds every later call's channel kind from the one registered template, with or without resources", () => {
+  it("builds every later call's mailbox kind from the one registered template, with or without resources", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"] } });
-    channelInstances([channel("eng.feature", { members: ["eng.em"] })], { kinds: waking(), resources: { projects } });
+    mailboxInstances([mailbox("eng.feature", { members: ["eng.em"] })], { kinds: waking(), resources: { projects } });
     const installed = (projects as { reactTo?: unknown }).reactTo;
     expect(installed).toBeDefined();
 
-    // A second flow's channels, bound with no resources: the reaction stands,
-    // and its channel kind is built holding the template (`onTalkPosted`).
-    const later = channelInstances([channel("ops.release", { members: ["ops.lead"] })], { kinds: waking() });
+    // A second flow's mailboxes, bound with no resources: the reaction stands,
+    // and its mailbox kind is built holding the template (`onTalkPosted`).
+    const later = mailboxInstances([mailbox("ops.release", { members: ["ops.lead"] })], { kinds: waking() });
     expect((projects as { reactTo?: unknown }).reactTo).toBe(installed);
-    expect(later.map((instance) => instance.kind)).toEqual([CHANNEL_KIND]);
+    expect(later.map((instance) => instance.kind)).toEqual([MAILBOX_KIND]);
     expect(Object.keys((later[0] as unknown as { internal?: { actions?: object } }).internal?.actions ?? {})).toContain("onTalkPosted");
 
-    // A later call whose channel kind could not wake the registered seats is refused, naming the template.
-    expect(refusalOf(() => channelInstances([channel("ops.release", { members: ["ops.lead"] })]))).toMatch(
+    // A later call whose mailbox kind could not wake the registered seats is refused, naming the template.
+    expect(refusalOf(() => mailboxInstances([mailbox("ops.release", { members: ["ops.lead"] })]))).toMatch(
       /the talk template registered in this process \(the talk template beside "projects" in the org's resources\) — names seats/
     );
   });
 
   it("reports a later call's different template together with its other refusals, in one throw", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Plan." } });
-    channelInstances([], { kinds: waking(), resources: { projects } });
+    mailboxInstances([], { kinds: waking(), resources: { projects } });
 
-    // Another flow's roster: a team template that differs from the registered one, and a malformed channel.
+    // Another flow's roster: a team template that differs from the registered one, and a malformed mailbox.
     forgetOrgTalkTemplate(projects);
     const message = refusalOf(() =>
-      channelInstances(
+      mailboxInstances(
         [
-          channel("eng.room", { mintFor: "projects", members: ["ops.lead"] }, "Plan."),
-          channel("eng.typo", { member: ["eng.em"] })
+          mailbox("eng.room", { mintFor: "projects", members: ["ops.lead"] }, "Plan."),
+          mailbox("eng.typo", { member: ["eng.em"] })
         ],
         { kinds: waking(), resources: { projects } }
       )
     );
-    expect(message).toContain("refused 2 of 2 channels");
-    expect(message).toMatch(/channel "eng\.room" — project rooms already have a talk template in this process/);
-    expect(message).toMatch(/channel "eng\.typo" — declares `member`/);
+    expect(message).toContain("refused 2 of 2 mailboxes");
+    expect(message).toMatch(/mailbox "eng\.room" — project rooms already have a talk template in this process/);
+    expect(message).toMatch(/mailbox "eng\.typo" — declares `member`/);
     // Nothing was registered over the first template.
     expect(registeredTalkTemplate(projects)?.facts).toEqual({ seats: ["eng.em"], charter: "Plan." });
   });
 
   it("registers one template per process: the same one again is a no-op, a different one is refused", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Plan." } });
-    channelInstances([], { kinds: waking(), resources: { projects } });
+    mailboxInstances([], { kinds: waking(), resources: { projects } });
     // The same roster bound again, as a host binding it once per flow does.
-    expect(() => channelInstances([], { kinds: waking(), resources: { projects } })).not.toThrow();
+    expect(() => mailboxInstances([], { kinds: waking(), resources: { projects } })).not.toThrow();
 
     // The same facts from another site are the same template; other seats, at any site, are a second one.
     forgetOrgTalkTemplate(projects);
     expect(() =>
-      channelInstances([channel("eng.room", { mintFor: "projects", members: ["eng.em"] }, "Plan.")], {
+      mailboxInstances([mailbox("eng.room", { mintFor: "projects", members: ["eng.em"] }, "Plan.")], {
         kinds: waking(),
         resources: { projects }
       })
     ).not.toThrow();
     expect(() =>
-      channelInstances([channel("eng.room", { mintFor: "projects", members: ["ops.lead"] }, "Plan.")], {
+      mailboxInstances([mailbox("eng.room", { mintFor: "projects", members: ["ops.lead"] }, "Plan.")], {
         kinds: waking(),
         resources: { projects }
       })
-    ).toThrow(/already have a talk template in this process .*channel "eng\.room" would be a second with other seats or charter\./);
+    ).toThrow(/already have a talk template in this process .*mailbox "eng\.room" would be a second with other seats or charter\./);
     defineProjectsCollection({ talk: { seats: ["ops.lead"], charter: "Plan." } });
-    expect(() => channelInstances([], { kinds: waking(), resources: { projects } })).toThrow(
+    expect(() => mailboxInstances([], { kinds: waking(), resources: { projects } })).toThrow(
       /already have a talk template in this process \(the talk template beside "projects" in the org's resources\).*with other seats or charter/
     );
   });
@@ -331,7 +331,7 @@ describe("a host that builds several flows", () => {
 // --- The runtime half ---
 
 /** One run of a listening seat: which seat, whose session, which conversation, and what it was handed. */
-type Heard = { seat: string; owner: string | undefined; conversation: string; post: ChannelNotifyInput };
+type Heard = { seat: string; owner: string | undefined; conversation: string; post: MailboxNotifyInput };
 
 /**
  * A seat kind that records each post it hears, then answers into the room the
@@ -341,9 +341,9 @@ type Heard = { seat: string; owner: string | undefined; conversation: string; po
 function listeningKind(heard: Heard[], kept: { postId?: string; token?: string }) {
   const record = handler({
     name: "test-record-heard",
-    inputSchema: channelNotifyInputSchema,
-    outputSchema: channelNotifyInputSchema,
-    execute: (post: ChannelNotifyInput, ctx) => {
+    inputSchema: mailboxNotifyInputSchema,
+    outputSchema: mailboxNotifyInputSchema,
+    execute: (post: MailboxNotifyInput, ctx) => {
       heard.push({
         seat: (ctx.flow.config as { seatId: string }).seatId,
         owner: ctx.session.identity.userId,
@@ -355,11 +355,11 @@ function listeningKind(heard: Heard[], kept: { postId?: string; token?: string }
   });
   const answer = dispatcher({
     name: "test-answer-in-room",
-    flowKind: CHANNEL_KIND,
-    action: CHANNEL_ANSWER_ACTION,
-    inputSchema: channelNotifyInputSchema,
-    session: { id: (post: ChannelNotifyInput) => post.channelId },
-    payload: (post: ChannelNotifyInput) => ({
+    flowKind: MAILBOX_KIND,
+    action: MAILBOX_ANSWER_ACTION,
+    inputSchema: mailboxNotifyInputSchema,
+    session: { id: (post: MailboxNotifyInput) => post.mailboxId },
+    payload: (post: MailboxNotifyInput) => ({
       postId: post.postId,
       body: `noted: ${post.body}`,
       author: post.member,
@@ -369,11 +369,11 @@ function listeningKind(heard: Heard[], kept: { postId?: string; token?: string }
   // A seat answering as another template seat, with its own delivery's token.
   const impersonate = dispatcher({
     name: "test-answer-as-another-seat",
-    flowKind: CHANNEL_KIND,
-    action: CHANNEL_ANSWER_ACTION,
-    inputSchema: channelNotifyInputSchema,
-    session: { id: (post: ChannelNotifyInput) => post.channelId },
-    payload: (post: ChannelNotifyInput) => ({
+    flowKind: MAILBOX_KIND,
+    action: MAILBOX_ANSWER_ACTION,
+    inputSchema: mailboxNotifyInputSchema,
+    session: { id: (post: MailboxNotifyInput) => post.mailboxId },
+    payload: (post: MailboxNotifyInput) => ({
       postId: post.postId,
       body: `forged by ${post.member}`,
       author: "ops.lead",
@@ -384,9 +384,9 @@ function listeningKind(heard: Heard[], kept: { postId?: string; token?: string }
   // a later run woken under another member, through that member's session.
   const keep = handler({
     name: "test-keep-token",
-    inputSchema: channelNotifyInputSchema,
-    outputSchema: channelNotifyInputSchema,
-    execute: (post: ChannelNotifyInput) => {
+    inputSchema: mailboxNotifyInputSchema,
+    outputSchema: mailboxNotifyInputSchema,
+    execute: (post: MailboxNotifyInput) => {
       kept.postId = post.postId;
       kept.token = post.answerToken;
       return post;
@@ -394,11 +394,11 @@ function listeningKind(heard: Heard[], kept: { postId?: string; token?: string }
   });
   const replay = dispatcher({
     name: "test-answer-with-a-kept-token",
-    flowKind: CHANNEL_KIND,
-    action: CHANNEL_ANSWER_ACTION,
-    inputSchema: channelNotifyInputSchema,
-    session: { id: (post: ChannelNotifyInput) => post.channelId },
-    payload: (post: ChannelNotifyInput) => ({
+    flowKind: MAILBOX_KIND,
+    action: MAILBOX_ANSWER_ACTION,
+    inputSchema: mailboxNotifyInputSchema,
+    session: { id: (post: MailboxNotifyInput) => post.mailboxId },
+    payload: (post: MailboxNotifyInput) => ({
       postId: kept.postId as string,
       body: `replayed by ${post.member}`,
       author: post.member,
@@ -408,16 +408,16 @@ function listeningKind(heard: Heard[], kept: { postId?: string; token?: string }
   // Holds the genuine answer back, so a forged one would land first.
   const later = handler({
     name: "test-answer-later",
-    inputSchema: channelNotifyInputSchema,
-    outputSchema: channelNotifyInputSchema,
-    execute: async (post: ChannelNotifyInput) => {
+    inputSchema: mailboxNotifyInputSchema,
+    outputSchema: mailboxNotifyInputSchema,
+    execute: async (post: MailboxNotifyInput) => {
       await new Promise((r) => setTimeout(r, 300));
       return post;
     }
   });
-  const impersonating = (post: ChannelNotifyInput) => post.body.startsWith("[impersonate]");
-  const holding = (post: ChannelNotifyInput) => post.body.startsWith("[hold]");
-  const replaying = (post: ChannelNotifyInput) => post.body.startsWith("[replay]");
+  const impersonating = (post: MailboxNotifyInput) => post.body.startsWith("[impersonate]");
+  const holding = (post: MailboxNotifyInput) => post.body.startsWith("[hold]");
+  const replaying = (post: MailboxNotifyInput) => post.body.startsWith("[replay]");
   return defineFlow({
     kind: "listener",
     cardinality: "collection",
@@ -425,17 +425,17 @@ function listeningKind(heard: Heard[], kept: { postId?: string; token?: string }
     actions: {},
     internal: {
       actions: {
-        onChannelPost: {
-          inputSchema: channelNotifyInputSchema,
-          block: sequencer({ name: "test-heard", inputSchema: channelNotifyInputSchema })
+        onMailboxPost: {
+          inputSchema: mailboxNotifyInputSchema,
+          block: sequencer({ name: "test-heard", inputSchema: mailboxNotifyInputSchema })
             .step(record)
-            .tapIf((post: ChannelNotifyInput) => post.body.startsWith("[answer]"), answer)
+            .tapIf((post: MailboxNotifyInput) => post.body.startsWith("[answer]"), answer)
             // The same delivery answered twice, as a replayed or retried delivery would.
-            .tapIf((post: ChannelNotifyInput) => post.body.startsWith("[answer-twice]"), answer)
-            .tapIf((post: ChannelNotifyInput) => post.body.startsWith("[answer-twice]"), answer)
-            .tapIf((post: ChannelNotifyInput) => impersonating(post) && post.member === "eng.em", impersonate)
-            .stepIf((post: ChannelNotifyInput) => impersonating(post) && post.member === "ops.lead", later)
-            .tapIf((post: ChannelNotifyInput) => impersonating(post) && post.member === "ops.lead", answer)
+            .tapIf((post: MailboxNotifyInput) => post.body.startsWith("[answer-twice]"), answer)
+            .tapIf((post: MailboxNotifyInput) => post.body.startsWith("[answer-twice]"), answer)
+            .tapIf((post: MailboxNotifyInput) => impersonating(post) && post.member === "eng.em", impersonate)
+            .stepIf((post: MailboxNotifyInput) => impersonating(post) && post.member === "ops.lead", later)
+            .tapIf((post: MailboxNotifyInput) => impersonating(post) && post.member === "ops.lead", answer)
             .stepIf(holding, keep)
             .stepIf(holding, later)
             .stepIf(holding, later)
@@ -490,14 +490,14 @@ type Answer = { status: number; json: any };
 
 /**
  * Boot a host over `stores`: the template's seats hired on the listening kind,
- * the channel kind built waking them, and `channelInstances` reading the org
+ * the mailbox kind built waking them, and `mailboxInstances` reading the org
  * template (when `talk` is given) from the resources.
  */
 async function boot(options: {
   talk?: { seats: string[]; charter?: string };
   stores?: StoreRegistry;
   seats?: string[];
-  /** Build the host's channel kind from a second `channelInstances` call made without `resources`. */
+  /** Build the host's mailbox kind from a second `mailboxInstances` call made without `resources`. */
   laterCall?: boolean;
   /** Refuse the first wake of this seat, as a notify slot whose dispatch is refused would. */
   refuseOnce?: string;
@@ -517,7 +517,7 @@ async function boot(options: {
     let refused = false;
     const refuse = handler({
       name: "test-refuse-wake",
-      inputSchema: channelNotifyInputSchema,
+      inputSchema: mailboxNotifyInputSchema,
       outputSchema: z.unknown(),
       execute: () => {
         throw new Error("the wake was refused");
@@ -525,23 +525,23 @@ async function boot(options: {
     });
     return routerBlock({
       name: "test-refuse-once",
-      inputSchema: channelNotifyInputSchema,
+      inputSchema: mailboxNotifyInputSchema,
       routes: [wake, refuse],
-      execute: (post: ChannelNotifyInput) => {
+      execute: (post: MailboxNotifyInput) => {
         if (refused || post.member !== options.refuseOnce) return wake;
         refused = true;
         return refuse;
       }
     } as never) as typeof wake;
   })();
-  const kinds = { [CHANNEL_KIND]: defineChannelFlow({ notify }) as never };
-  const [first] = channelInstances([], { kinds, resources: { projects } });
-  const [kind] = options.laterCall === true ? channelInstances([], { kinds }) : [first];
-  // A roster with no template registers no channel kind at all; projects still talk on the built-in.
-  const talkKind = kind ?? defineChannelFlow({ notify })();
+  const kinds = { [MAILBOX_KIND]: defineMailboxFlow({ notify }) as never };
+  const [first] = mailboxInstances([], { kinds, resources: { projects } });
+  const [kind] = options.laterCall === true ? mailboxInstances([], { kinds }) : [first];
+  // A roster with no template registers no mailbox kind at all; projects still talk on the built-in.
+  const talkKind = kind ?? defineMailboxFlow({ notify })();
   const stores = options.stores ?? inMemoryStores();
   const state = createFlowState({
-    flows: { app: appFlow(), [CHANNEL_KIND]: talkKind, ...Object.fromEntries(seats.map((seat) => [seat.id, seat])) },
+    flows: { app: appFlow(), [MAILBOX_KIND]: talkKind, ...Object.fromEntries(seats.map((seat) => [seat.id, seat])) },
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
     resolvePrincipal: (context: any) => {
@@ -663,13 +663,13 @@ describe("a project's talk template at runtime", () => {
     const h = await boot({ talk: { seats: ["eng.em", "ops.lead", "chief-of-staff"], charter: "Plan the work." } });
     await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice", "bob"] });
     const aliceTalk = await h.sessionOf("apollo", "alice");
-    const bobTalk = (await h.ok("bob", CHANNEL_KIND, await h.openSession("bob", CHANNEL_KIND), "join", { projectId: "apollo" }))
+    const bobTalk = (await h.ok("bob", MAILBOX_KIND, await h.openSession("bob", MAILBOX_KIND), "join", { projectId: "apollo" }))
       .sessionId as string;
 
-    await h.ok("alice", CHANNEL_KIND, aliceTalk, "post", { body: "first" });
+    await h.ok("alice", MAILBOX_KIND, aliceTalk, "post", { body: "first" });
     await h.until(async () => (h.heard.length === 3 ? true : undefined), "three wakes for alice's first post");
-    await h.ok("alice", CHANNEL_KIND, aliceTalk, "post", { body: "[answer] second" });
-    await h.ok("bob", CHANNEL_KIND, bobTalk, "post", { body: "third" });
+    await h.ok("alice", MAILBOX_KIND, aliceTalk, "post", { body: "[answer] second" });
+    await h.ok("bob", MAILBOX_KIND, bobTalk, "post", { body: "third" });
     await h.until(async () => (h.heard.length === 9 ? true : undefined), "nine wakes");
     await new Promise((r) => setTimeout(r, 100));
     expect(h.heard).toHaveLength(9);
@@ -685,7 +685,7 @@ describe("a project's talk template at runtime", () => {
     // Under the poster, and one seat conversation per person per room.
     for (const run of h.heard) {
       expect(run.owner).toBe(run.post.body === "third" ? "bob" : "alice");
-      expect(run.post.channelId).toBe(run.post.body === "third" ? bobTalk : aliceTalk);
+      expect(run.post.mailboxId).toBe(run.post.body === "third" ? bobTalk : aliceTalk);
       expect(run.post.routed).toBe(true);
     }
     const conversations = (seat: string, user: string) =>
@@ -705,7 +705,7 @@ describe("a project's talk template at runtime", () => {
 
     // Each seat's answer to alice's second post is in the room, for bob too, as the seat.
     const read = await h.until(async () => {
-      const page = await h.ok("bob", CHANNEL_KIND, bobTalk, "read", { after: 0 });
+      const page = await h.ok("bob", MAILBOX_KIND, bobTalk, "read", { after: 0 });
       return page.lines.filter((line: { author: string | null }) => line.author !== null).length === 3 ? page : undefined;
     }, "three seat answers in the room");
     expect(read.charter).toBe("Plan the work.");
@@ -721,27 +721,27 @@ describe("a project's talk template at runtime", () => {
     const h = await boot({ talk: { seats: ["eng.em", "ops.lead"] } });
     await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
     const talk = await h.sessionOf("apollo", "alice");
-    await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "[answer-twice] once please" });
+    await h.ok("alice", MAILBOX_KIND, talk, "post", { body: "[answer-twice] once please" });
     await h.until(async () => (h.heard.length === 2 ? true : undefined), "two wakes");
     // Each seat answers its delivery twice: wait for both seats' first answers, then give any second one time to land.
     await h.until(async () => {
-      const page = await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 });
+      const page = await h.ok("alice", MAILBOX_KIND, talk, "read", { after: 0 });
       return page.lines.filter((line: { author: string | null }) => line.author !== null).length >= 2 ? true : undefined;
     }, "both seats' answers");
     await new Promise((r) => setTimeout(r, 200));
-    const page = await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 });
+    const page = await h.ok("alice", MAILBOX_KIND, talk, "read", { after: 0 });
     const answers = page.lines.filter((line: { author: string | null }) => line.author !== null);
     expect(answers.map((line: { author: string }) => line.author).sort()).toEqual(["eng.em", "ops.lead"]);
   });
 
-  it("wakes the seats, with the charter, from a channel kind built by a later call that passed no resources", async () => {
+  it("wakes the seats, with the charter, from a mailbox kind built by a later call that passed no resources", async () => {
     const h = await boot({ talk: { seats: ["eng.em", "ops.lead"], charter: "Plan the work." }, laterCall: true });
     await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
     const talk = await h.sessionOf("apollo", "alice");
-    await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "hello" });
+    await h.ok("alice", MAILBOX_KIND, talk, "post", { body: "hello" });
     await h.until(async () => (h.heard.length === 2 ? true : undefined), "both seats woken");
     expect(h.heard.map((run) => run.seat).sort()).toEqual(["eng.em", "ops.lead"]);
-    expect(await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 })).toMatchObject({
+    expect(await h.ok("alice", MAILBOX_KIND, talk, "read", { after: 0 })).toMatchObject({
       charter: "Plan the work.",
       seats: ["eng.em", "ops.lead"]
     });
@@ -755,16 +755,16 @@ describe("a project's talk template at runtime", () => {
     for (let seq = 0; seq <= 4; seq += 1) {
       for (const seat of ["eng.em", "ops.lead"]) forged[JSON.stringify([roomLineKey("apollo", seq), seat])] = seq;
     }
-    const created = await h.call("POST", "bob", [CHANNEL_KIND, "sessions"], {
+    const created = await h.call("POST", "bob", [MAILBOX_KIND, "sessions"], {
       userId: "bob",
       state: { talkAnsweredPosts: forged }
     });
     const seeded = created.json.session.id as string;
-    expect((await h.ok("bob", CHANNEL_KIND, seeded, "join", { projectId: "apollo" })).sessionId).toBe(seeded);
+    expect((await h.ok("bob", MAILBOX_KIND, seeded, "join", { projectId: "apollo" })).sessionId).toBe(seeded);
 
-    await h.ok("bob", CHANNEL_KIND, seeded, "post", { body: "[answer] status?" });
+    await h.ok("bob", MAILBOX_KIND, seeded, "post", { body: "[answer] status?" });
     const page = await h.until(async () => {
-      const read = await h.ok("bob", CHANNEL_KIND, seeded, "read", { after: 0 });
+      const read = await h.ok("bob", MAILBOX_KIND, seeded, "read", { after: 0 });
       return read.lines.filter((line: { author: string | null }) => line.author !== null).length === 2 ? read : undefined;
     }, "both seats' answers despite the forged claims");
     const answers = page.lines.filter((line: { author: string | null }) => line.author !== null);
@@ -776,13 +776,13 @@ describe("a project's talk template at runtime", () => {
     await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
     const talk = await h.sessionOf("apollo", "alice");
     // eng.em answers at once, as ops.lead; ops.lead answers for itself a moment later.
-    await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "[impersonate] who is on call?" });
+    await h.ok("alice", MAILBOX_KIND, talk, "post", { body: "[impersonate] who is on call?" });
     const page = await h.until(async () => {
-      const read = await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 });
+      const read = await h.ok("alice", MAILBOX_KIND, talk, "read", { after: 0 });
       return read.lines.some((line: { author: string | null }) => line.author !== null) ? read : undefined;
     }, "ops.lead's answer");
     await new Promise((r) => setTimeout(r, 100));
-    const answers = (await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 })).lines.filter(
+    const answers = (await h.ok("alice", MAILBOX_KIND, talk, "read", { after: 0 })).lines.filter(
       (line: { author: string | null }) => line.author !== null
     );
     // The forged answer claimed nothing: ops.lead's slot holds its own words, and eng.em wrote no line.
@@ -794,20 +794,20 @@ describe("a project's talk template at runtime", () => {
     const h = await boot({ talk: { seats: ["eng.em"] } });
     await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice", "bob"] });
     const talk = await h.sessionOf("apollo", "alice");
-    const bobs = await h.openSession("bob", CHANNEL_KIND);
-    expect((await h.ok("bob", CHANNEL_KIND, bobs, "join", { projectId: "apollo" })).sessionId).toBe(bobs);
+    const bobs = await h.openSession("bob", MAILBOX_KIND);
+    expect((await h.ok("bob", MAILBOX_KIND, bobs, "join", { projectId: "apollo" })).sessionId).toBe(bobs);
 
     // eng.em keeps the token of alice's post and answers it a moment later. Meanwhile bob
     // posts, and eng.em, woken under bob, answers alice's post with that token through bob's session.
-    await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "[hold] who is on call?" });
+    await h.ok("alice", MAILBOX_KIND, talk, "post", { body: "[hold] who is on call?" });
     await h.until(async () => (h.kept.token === undefined ? undefined : true), "eng.em keeping alice's token");
-    await h.ok("bob", CHANNEL_KIND, bobs, "post", { body: "[replay] me too" });
+    await h.ok("bob", MAILBOX_KIND, bobs, "post", { body: "[replay] me too" });
     await h.until(async () => {
-      const read = await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 });
+      const read = await h.ok("alice", MAILBOX_KIND, talk, "read", { after: 0 });
       return read.lines.some((line: { author: string | null }) => line.author !== null) ? true : undefined;
     }, "eng.em's answer");
     await new Promise((r) => setTimeout(r, 700));
-    const answers = (await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 })).lines.filter(
+    const answers = (await h.ok("alice", MAILBOX_KIND, talk, "read", { after: 0 })).lines.filter(
       (line: { author: string | null }) => line.author !== null
     );
     // The replay claimed nothing: the one line is under alice, the poster, in the genuine words.
@@ -830,10 +830,10 @@ describe("a project's talk template at runtime", () => {
       "any"
     );
 
-    await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "[answer] who is on call?" });
+    await h.ok("alice", MAILBOX_KIND, talk, "post", { body: "[answer] who is on call?" });
     await h.until(async () => (h.heard.length === 1 ? true : undefined), "eng.em's wake");
     await h.until(async () => {
-      const read = await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 });
+      const read = await h.ok("alice", MAILBOX_KIND, talk, "read", { after: 0 });
       return read.lines.some((line: { author: string | null }) => line.author === "eng.em") ? true : undefined;
     }, "eng.em's answer under the recorded token");
     await new Promise((r) => setTimeout(r, 200));
@@ -845,12 +845,12 @@ describe("a project's talk template at runtime", () => {
     await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
     await h.sessionOf("apollo", "alice");
     // A second session of alice's, seeded as bound to the project but never listed on the row.
-    const created = await h.call("POST", "alice", [CHANNEL_KIND, "sessions"], { userId: "alice", state: { resourceId: "apollo" } });
+    const created = await h.call("POST", "alice", [MAILBOX_KIND, "sessions"], { userId: "alice", state: { resourceId: "apollo" } });
     const stray = created.json.session.id as string;
-    await expect(h.ok("alice", CHANNEL_KIND, stray, "post", { body: "from a side window" })).rejects.toThrow(
+    await expect(h.ok("alice", MAILBOX_KIND, stray, "post", { body: "from a side window" })).rejects.toThrow(
       /talk-session-not-listed/
     );
-    await expect(h.ok("alice", CHANNEL_KIND, stray, "read", { after: 0 })).rejects.toThrow(/talk-session-not-listed/);
+    await expect(h.ok("alice", MAILBOX_KIND, stray, "read", { after: 0 })).rejects.toThrow(/talk-session-not-listed/);
     await new Promise((r) => setTimeout(r, 100));
     expect(h.heard).toEqual([]);
   });
@@ -859,7 +859,7 @@ describe("a project's talk template at runtime", () => {
     const h = await boot({ talk: { seats: ["eng.em", "ops.lead"] }, refuseOnce: "eng.em" });
     await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
     const talk = await h.sessionOf("apollo", "alice");
-    const line = await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "who is on call?" });
+    const line = await h.ok("alice", MAILBOX_KIND, talk, "post", { body: "who is on call?" });
     // ops.lead is woken; eng.em's wake was refused, and that refusal does not hold up ops.lead's.
     await h.until(async () => (h.heard.length === 1 ? true : undefined), "ops.lead's wake");
     await new Promise((r) => setTimeout(r, 200));
@@ -883,7 +883,7 @@ describe("a project's talk template at runtime", () => {
     const h = await boot({ talk: { seats: ["eng.em", "ops.lead"] } });
     await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
     const talk = await h.sessionOf("apollo", "alice");
-    const line = await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "who is on call?" });
+    const line = await h.ok("alice", MAILBOX_KIND, talk, "post", { body: "who is on call?" });
     await h.until(async () => (h.heard.length === 2 ? true : undefined), "the post's two wakes");
 
     // The same post's fan-out, delivered again.
@@ -897,15 +897,15 @@ describe("a project's talk template at runtime", () => {
     const before = await boot({ stores, talk: { seats: ["eng.em"], charter: "Old charter." } });
     await before.ok("alice", "app", before.app, "writeRow", { id: "apollo", members: ["alice"] });
     const talk = await before.sessionOf("apollo", "alice");
-    await before.ok("alice", CHANNEL_KIND, talk, "post", { body: "before the edit" });
+    await before.ok("alice", MAILBOX_KIND, talk, "post", { body: "before the edit" });
     await before.until(async () => (before.heard.length === 1 ? true : undefined), "one wake before the edit");
 
     // The same store, restarted with a seat added and the charter rewritten.
     const after = await boot({ stores, talk: { seats: ["eng.em", "ops.lead"], charter: "New charter." } });
-    await after.ok("alice", CHANNEL_KIND, talk, "post", { body: "after the edit" });
+    await after.ok("alice", MAILBOX_KIND, talk, "post", { body: "after the edit" });
     await after.until(async () => (after.heard.length === 2 ? true : undefined), "two wakes after the edit");
     expect(after.heard.map((run) => run.seat).sort()).toEqual(["eng.em", "ops.lead"]);
-    const page = await after.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 });
+    const page = await after.ok("alice", MAILBOX_KIND, talk, "read", { after: 0 });
     expect(page).toMatchObject({ charter: "New charter.", seats: ["eng.em", "ops.lead"] });
     expect(page.lines.map((line: { body: string }) => line.body)).toEqual(["before the edit", "after the edit"]);
   });

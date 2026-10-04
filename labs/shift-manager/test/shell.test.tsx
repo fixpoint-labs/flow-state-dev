@@ -12,7 +12,7 @@ import type { BoardRow } from "../src/lib/reads";
 import { GAPS } from "../src/gaps";
 import { bootColorScheme } from "../src/lib/color-scheme";
 import { createLabClients } from "../src/lib/connection";
-import { ASKER_REFUSED_LINE, heardLine } from "./fixtures/ask-lab/asker.mts";
+import { ASKER_GATED_LINE, ASKER_REFUSED_LINE, heardLine, startProjectLine } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -86,7 +86,14 @@ describe("the refusal (V2, BR-3)", () => {
   });
 
   it("a Lab that names no organization for the person gets the refusal, never an unknown one", async () => {
-    await openApp("/inbox", { channels: false });
+    // A Lab that holds no session of theirs and serves no room kind to open one on.
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
+      /\/api\/flows\/mailbox\/sessions$/.test(String(input instanceof Request ? input.url : input))
+        ? new Response(JSON.stringify({ error: "no flow" }), { status: 404 })
+        : real(input, init),
+    );
+    await openApp("/inbox", { mailboxes: false });
     await screen.findByTestId("refusal");
     expect(screen.getByTestId("refusal-message").textContent).toMatch(/no organization/);
     expect(screen.queryByTestId("sidebar")).toBeNull();
@@ -133,7 +140,7 @@ describe("a Lab booted without its inventory (V3, BR-4)", () => {
 });
 
 describe("empty states (BR-14, BR-28)", () => {
-  it("a workstream whose channel attaches no board says so on the Board tab and in the panel", async () => {
+  it("a workstream whose mailbox attaches no board says so on the Board tab and in the panel", async () => {
     await openApp("/w/ops.side/board");
     expect((await screen.findByTestId("board-none")).textContent).toMatch(/attaches no board/);
     expect(screen.getByTestId("panel-tasks-none").textContent).toMatch(/attaches no board/);
@@ -141,14 +148,39 @@ describe("empty states (BR-14, BR-28)", () => {
 
   it("Inbox and Tasks with nothing say so in a sentence", async () => {
     await openApp("/inbox");
-    expect((await screen.findByTestId("inbox-empty")).textContent).toMatch(/No seat in this Lab is waiting/);
+    // v2's sentence, with what is still going: nothing runs and nobody is on call in this Lab.
+    expect((await screen.findByTestId("inbox-empty")).textContent).toBe("Nothing needs you. 0 sessions are still running and 0 workers are on call.");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     expect((await screen.findByTestId("tasks-empty")).textContent).toMatch(/No attached board holds a row/);
   });
 });
 
+describe("a workstream's Stream holds its members' asks (BR-16)", () => {
+  it("draws a pending ask in the feed, marked as waiting on you, and answering it there clears Inbox too", async () => {
+    const lab = await serveLab((await openAskLab()).flowState);
+    served.push(lab);
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/w/ops.desk/stream`);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    // ops.asker sits in #ops.desk, so its ask belongs in that Stream.
+    await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+
+    const ask = await screen.findByTestId("feed-ask");
+    // In the feed itself, not beside it.
+    expect(screen.getByTestId("transcript").contains(ask)).toBe(true);
+    expect(within(ask).getByText("NEEDS YOU").getAttribute("data-look")).toBe("needs-tag");
+    expect(within(ask).getByTestId("ask-card").textContent).toMatch(/ship it/);
+    await waitFor(() => expect(screen.getByTestId("nav-inbox-count").textContent).toBe("1"));
+
+    act(() => fireEvent.click(within(ask).getByRole("button", { name: "Approve" })));
+    // The ask leaves the feed and Inbox together: there is one list of pending asks.
+    await waitFor(() => expect(screen.queryByTestId("feed-ask")).toBeNull(), { timeout: 10_000 });
+    await waitFor(() => expect(screen.getByTestId("nav-inbox-count").textContent).toBe("0"));
+  });
+});
+
 describe("the composer (V6)", () => {
-  it("draws a post only once the channel holds it", async () => {
+  it("draws a post only once the mailbox holds it", async () => {
     const { clients } = await openApp("/w/ops.side/stream");
     const input = (await screen.findByTestId("composer-input")) as HTMLTextAreaElement;
     // Hold the post's request open: nothing may be drawn while it is.
@@ -169,7 +201,7 @@ describe("the composer (V6)", () => {
     // The live stream can draw the kept line before the post's next status poll
     // answers, and only that answer clears the draft: wait for it, don't race it.
     await waitFor(() => expect(input.value).toBe(""));
-    // And the channel holds it.
+    // And the mailbox holds it.
     const state = await clients.sessions.getSessionState("ops.side", { includeItems: true, itemTypes: ["component"] });
     expect(JSON.stringify(state.items)).toContain("kept line");
   });
@@ -180,12 +212,12 @@ describe("the composer (V6)", () => {
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation((i, init) =>
       String(i instanceof Request ? i.url : i).includes("/actions/post")
-        ? Promise.resolve(new Response(JSON.stringify({ error: "post refused by the channel" }), { status: 422 }))
+        ? Promise.resolve(new Response(JSON.stringify({ error: "post refused by the mailbox" }), { status: 422 }))
         : real(i, init),
     );
     fireEvent.change(input, { target: { value: "refused line" } });
     fireEvent.click(screen.getByTestId("composer-send"));
-    expect((await screen.findByTestId("composer-error")).textContent).toMatch(/post refused by the channel/);
+    expect((await screen.findByTestId("composer-error")).textContent).toMatch(/post refused by the mailbox/);
     expect(input.value).toBe("refused line");
     expect(screen.queryByText("refused line", { selector: "[data-testid=transcript-line-body]" })).toBeNull();
   });
@@ -196,7 +228,7 @@ describe("the composer (V6)", () => {
     fireEvent.change(input, { target: { value: "@asker please look" } });
     await waitFor(() => expect(screen.getByTestId("composer-status").textContent).toBe(`ops.asker ${GAPS.turn.noTask}`));
     expect((screen.getByTestId("composer-send") as HTMLButtonElement).disabled).toBe(true);
-    // The button draws v2's ⏎; its name says the line goes to a worker, not the channel.
+    // The button draws v2's ⏎; its name says the line goes to a worker, not the mailbox.
     expect(screen.getByTestId("composer-send").getAttribute("aria-label")).toBe("Send");
 
     fireEvent.change(input, { target: { value: "@nobody please" } });
@@ -216,7 +248,7 @@ describe("the composer's @mentions", () => {
         send={async () => {}}
         onKept={async () => {}}
         mentions={["coder"]}
-        addressing={() => ({ blocked: null, rows: [row], send: async () => {} })}
+        addressing={() => ({ blocked: null, rows: [row], send: async () => ({ suspended: false, stopped: null }) })}
       />,
     );
     fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "@coder first line" } });
@@ -230,12 +262,13 @@ describe("the composer's @mentions", () => {
 
 describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
   /** An ask in the asker's session, then Inbox open on it. */
-  async function openOnAsk(options: Parameters<typeof openAskLab>[0] = {}) {
+  async function openOnAsk(options: Parameters<typeof openAskLab>[0] = {}, beforeRender?: () => void) {
     const lab = await serveLab((await openAskLab(options)).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
+    beforeRender?.();
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
     const item = await screen.findByTestId("inbox-item");
     act(() => fireEvent.click(item));
@@ -251,6 +284,9 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
 
   it("shows delivered only once the seat's session holds the line, through its door", async () => {
     const { clients } = await openOnAsk();
+    // The asker asks before doing anything, so its session holds no tool call before the ask.
+    expect((await screen.findByTestId("inbox-from-session-none")).textContent).toBe("No tool call before this ask.");
+    expect(screen.queryAllByTestId("inbox-reply-line")).toHaveLength(0);
     const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
     // Hold the door's request open: nothing may read delivered while it is.
@@ -269,8 +305,33 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"));
     expect(input.value).toBe("");
     expect(await userLines(clients, "s_ops_asker")).toContain("a reply line");
+    // Read back from the session, the line is drawn under the ask as the person's reply.
+    await waitFor(() => expect(screen.getAllByTestId("inbox-reply-line-text").map((el) => el.textContent)).toEqual(["a reply line"]));
+    expect(screen.getByTestId("inbox-reply-line-label").textContent).toMatch(/^You · \d\d:\d\d · sent into s_ops_asker$/);
     // The ask is untouched: a reply isn't an answer.
     expect(screen.getByTestId("inbox-detail").textContent).toMatch(/Approve/);
+  });
+
+  it("says so when the ask's session holds more than one read returns, rather than dropping later replies unseen", async () => {
+    // Every page of the session read says more remain, so the read stops at its cap.
+    await openOnAsk({}, () => {
+      const real = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+        const url = String(i instanceof Request ? i.url : i);
+        const response = await real(i, init);
+        // Only the whole-session read Inbox's detail makes; the asks read filters by item type.
+        if (!url.includes("/sessions/s_ops_asker/state") || url.includes("item_types")) return response;
+        const body = (await response.json()) as { pagination?: Record<string, unknown> };
+        return Response.json({ ...body, pagination: { ...body.pagination, hasMore: true, nextOffset: 200 } });
+      });
+    });
+    expect((await screen.findByTestId("inbox-session-truncated")).textContent).toMatch(/^More than shown/);
+  });
+
+  it("draws no truncation note when the session's read is whole", async () => {
+    await openOnAsk();
+    await screen.findByTestId("inbox-from-session-none");
+    expect(screen.queryByTestId("inbox-session-truncated")).toBeNull();
   });
 
   it("keeps the draft and shows the seat's own reason when its door refuses", async () => {
@@ -450,11 +511,11 @@ describe("Chief of Staff (FIX-1722)", () => {
     await openCos("/cos", {}, 1);
     await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("1"));
     const streams = screen.getAllByTestId("cos-stream").map((el) => [
-      el.getAttribute("data-channel-id"),
+      el.getAttribute("data-mailbox-id"),
       within(el).getByTestId("cos-stream-running").textContent,
       within(el).getByTestId("cos-stream-needs-you").textContent,
     ]);
-    // ops.asker sits in both channels; ops.helper only in the desk.
+    // ops.asker sits in both mailboxes; ops.helper only in the desk.
     expect(streams).toEqual([
       ["ops.desk", "0", "1"],
       ["ops.side", "0", "1"],
@@ -465,7 +526,11 @@ describe("Chief of Staff (FIX-1722)", () => {
 
   it("names the missing seat in place of the conversation, with the summary still drawn (BR-11)", async () => {
     await openCos("/");
-    expect((await screen.findByTestId("cos-none")).textContent).toContain(GAPS.chiefOfStaff.none.title);
+    const none = (await screen.findByTestId("cos-none")).textContent ?? "";
+    expect(none).toContain(GAPS.chiefOfStaff.none.title);
+    // Org seats have shipped: the copy names where to declare the seat today, and promises nothing.
+    expect(none).toContain("org/workers/chief-of-staff/");
+    expect(none).not.toMatch(/once .* ship|FIX-\d+/);
     expect(screen.getByTestId("cos-summary")).toBeTruthy();
     expect(screen.queryByTestId("cos-composer")).toBeNull();
   });
@@ -514,6 +579,19 @@ describe("Chief of Staff (FIX-1722)", () => {
     await waitFor(() => expect(screen.getAllByTestId("cos-item").map((el) => el.getAttribute("data-item-id"))).toContain(reply!.id));
   });
 
+  // A finished turn raised no ask, but it may have changed the organization: a project it
+  // created is listed without a reload.
+  it("lists a project the chief of staff's turn created, without a reload", async () => {
+    await openCos("/", { chiefOfStaff: true, seatsStartProjects: true });
+    await screen.findByTestId("nav-project-unassigned");
+    expect(screen.queryByTestId("nav-project-launch")).toBeNull();
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: startProjectLine("launch") } });
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    expect((await screen.findByTestId("nav-project-launch", undefined, { timeout: 5_000 })).textContent).toContain("Project launch");
+  });
+
   it("keeps the draft and shows the seat's reason when its door refuses (BR-15)", async () => {
     await openCos("/", { chiefOfStaff: true });
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
@@ -521,6 +599,87 @@ describe("Chief of Staff (FIX-1722)", () => {
     fireEvent.click(screen.getByTestId("cos-composer-send"));
     expect((await screen.findByTestId("cos-composer-error", {}, { timeout: 5_000 })).textContent).toBe("This seat won't take that line.");
     expect(input.value).toBe(ASKER_REFUSED_LINE);
+  });
+
+  // A gated change (fire, retire) stops the seat's turn on the person's approval. The line
+  // is delivered and the ask waits in Inbox: Retry would send it, and raise the ask, twice.
+  it("reads a line whose turn stopped on an approval as delivered, pointing at Inbox, with no Retry", async () => {
+    const { clients } = await openCos("/", { chiefOfStaff: true });
+    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    const status = screen.getByTestId("cos-composer-status");
+    await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    expect(status.textContent).toMatch(/Delivered\..*Inbox/);
+    expect(screen.queryByTestId("cos-composer-retry")).toBeNull();
+    expect(screen.queryByTestId("cos-composer-error")).toBeNull();
+    expect(input.value).toBe("");
+    // The Lab is read again, so the ask the composer points at is listed: here, and in Inbox.
+    await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
+    // The session holds the line once, with the one ask it raised.
+    const sessionId = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
+    const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message", "suspension"] });
+    const items = (state.items ?? []) as Array<{ type: string; role?: string }>;
+    expect(items.filter((item) => item.type === "message" && item.role === "user")).toHaveLength(1);
+    expect(items.filter((item) => item.type === "suspension")).toHaveLength(1);
+  });
+
+  // Which stop it was only picks the words: a stop the send couldn't classify still reads the
+  // Lab again, so a real ask is never kept out of Inbox.
+  it("lists the ask a gated line raised even when the send couldn't read what it stopped on", async () => {
+    await openCos("/", { chiefOfStaff: true });
+    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
+    const real = globalThis.fetch;
+    let failing = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+      const url = String(i instanceof Request ? i.url : i);
+      // The send's own read of the turn's suspended request fails, so it can't tell what the
+      // turn stopped on; the refresh after it reads normally.
+      if (failing > 0 && /\/sessions\/cos_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
+        failing -= 1;
+        return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
+      }
+      return real(i, init);
+    });
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
+    failing = 1;
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    const status = screen.getByTestId("cos-composer-status");
+    await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    expect(status.textContent).toMatch(/Delivered\..*waiting/);
+    expect(screen.queryByTestId("cos-composer-retry")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
+  });
+
+  // The send read nothing pending (resumed meanwhile, say) and the turn then stopped on a new
+  // ask: the words say plain delivered, but a turn seen suspended still reads the Lab again.
+  it("lists the ask a gated line raised even when the send read nothing pending", async () => {
+    await openCos("/", { chiefOfStaff: true });
+    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
+    const real = globalThis.fetch;
+    let emptying = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+      const url = String(i instanceof Request ? i.url : i);
+      // The send's read of the turn's suspended request finds it no longer suspended.
+      if (emptying > 0 && /\/sessions\/cos_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
+        emptying -= 1;
+        return new Response(JSON.stringify({ requests: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return real(i, init);
+    });
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
+    emptying = 1;
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    const status = screen.getByTestId("cos-composer-status");
+    await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    expect(status.textContent).toBe("Delivered.");
+    await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
   });
 
   it("keeps a refused first line's conversation, so the next line goes into the same session (BR-15)", async () => {

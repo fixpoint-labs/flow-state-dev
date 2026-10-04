@@ -2,11 +2,11 @@
  * The feature board's two declarations: the EM's, whose worker hands a row to
  * the coder seat, and the coder's, which only lets that hand-off in.
  *
- * **The board itself belongs to the channel.** The feature channel's
- * `CHANNEL.md` names it by a plain local name (`boards: [work]`), and the
- * framework mints its id from where the channel sits (`<channel id>.<name>`),
+ * **The board itself belongs to the mailbox.** The feature mailbox's
+ * `MAILBOX.md` names it by a plain local name (`boards: [work]`), and the
+ * framework mints its id from where the mailbox sits (`<mailbox id>.<name>`),
  * so no file in the tree, and no line of this lab, writes that id.
- * The host resolves the ledger with `channelBoard(channel.id, boardName)`,
+ * The host resolves the ledger with `mailboxBoard(mailbox.id, boardName)`,
  * reading both off the tree, and hands it to the two kinds below. The ledger
  * is kept per organization, which is what lets Shift Manager show the workstream's
  * board to everyone working it.
@@ -24,7 +24,7 @@
  *   Same `boardId`, same ledger, its own same-flow dispatcher.
  *
  * **Do not copy the second shape as "how boards are declared."** Where the
- * board lives is settled: on the channel, as its file says. The second
+ * board lives is settled: on the mailbox, as its file says. The second
  * declaration is the cross-flow hand-off's cost, and removing it is the
  * framework's to do — FIX-1408 closed with it in place, and nothing owns it
  * now. `packages/orchestration/test/task-board/hand-off-cross-flow.test.ts`
@@ -41,7 +41,7 @@ import { runOwnerDispatcher } from "@flow-state-dev/harness-manager";
  *
  * Not the ledger's id: this names the board (the claim gate compares it, so
  * the two declarations cannot drift), while the ledger it reads and writes is
- * the channel's, whose id the framework mints.
+ * the mailbox's, whose id the framework mints.
  */
 export const BOARD_ID = "devforce-feature-board";
 
@@ -69,8 +69,8 @@ export const RESUME_ENTRY = "resume";
  * The ledger both declarations read and write, with the id it is registered
  * under.
  *
- * The host builds it — `channelBoard(channel.id, boardName)` — and passes the
- * one object to both kinds, so the channel, the EM's board and the coder's
+ * The host builds it — `mailboxBoard(mailbox.id, boardName)` — and passes the
+ * one object to both kinds, so the mailbox, the EM's board and the coder's
  * manager all hold the same declaration.
  */
 export interface FeatureLedger {
@@ -88,7 +88,7 @@ export interface FeatureRow {
 }
 
 export interface CoordinatorBoardOptions {
-  /** The ledger this board reads and writes — the channel's. */
+  /** The ledger this board reads and writes — the mailbox's. */
   collection: DefinedTaskCollection;
   /**
    * The hired coder seat's **instance id** — where the row is handed.
