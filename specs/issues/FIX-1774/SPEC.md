@@ -2,122 +2,110 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-## Five people, before and after
+## Six people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
-| **asks the chief of staff for a small app and says "just do it"** | It hires a worker, then a second one, asks which stack to use, and says it has no way to route work. No task exists | It assigns a task to the team's coder, with the stack picked and named, and the coder's run opens |
-| **says "just do it" again after the hand-off** | Another hire | No hire and no second task. It says the task is already with the coder |
-| **asks for work no worker here can do** | A hire that nothing ever runs | It hires one worker of a kind that can, assigns the task to that worker, and the worker starts |
-| **asks for coding work in a project with no mailbox for it** | A hire that nothing ever runs | It sets up a mailbox with a task list on that project, subscribes the worker, and files the task there |
-| **asks the chief of staff to hire a worker by name** | It hires one | The same |
+| **asks the coordinator to build a small app and says "just do it"** | It hires a worker, then a second one, asks which stack to use, and says it can't route work. No task exists | It files a task for the team's coder, with the stack picked and named, and the coder starts |
+| **says "just do it" again** | Another hire | Nothing new. It says where the task is |
+| **asks for work nobody on the team does** | A hire that nothing ever reaches | It hires one worker for it, puts that worker on a mailbox, files the task for it, and the worker starts |
+| **starts a project that needs several kinds of work** | A project with no place for the work | It sets up a mailbox with a task list for each kind of work, staffs each one, and files the first tasks |
+| **has a task fail** | Nobody hears | The coordinator hears, reassigns the task or tells the person what is stuck |
+| **builds their own app with a coordinator** | Writes the routing, staffing and set-up mechanics into the worker's file and its host | Adds the coordinator capability, names the kinds it may hire, and writes only house rules |
 
 ## The goal, and how we'll know it's met
 
-**When a person asks the chief of staff for work, it gets that work assigned to a worker who
-can do it, in the same turn, and that worker starts: an existing worker if one fits, otherwise a
-worker it hires, on a mailbox it sets up if none can hold the task; and when nothing it can do
-would start the work, it says what is missing instead of hiring and stopping.**
+**A coordinator gets a person's request done: it routes the work to the right mailbox's task list
+for the right worker, hires and sets up mailboxes when nothing fits, follows the task through, and
+says what is missing when it can't. It works this way in any Workforce app, through one
+capability, and DevTeam's chief of staff is the first to use it.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | Jake, on this spec: "It should be instructed to get the user request accomplished. If that means hiring and then routing a task to that new hire, thats what it should do. The coordinator should prioritize assigning tasks … It might be that the appropriate mailbox needs to be setup … subscribe the appropriate workers so that it can create the task in the mailbox's task list." And on [FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774): "If the coding run cannot start because the repo or harness floor is missing, say that gap. Do not imitate it by hiring and stopping" |
-| **Smaller, and rejected** | "Never hire for a coding ask; hand it to the declared coder or say the gap." This spec's first draft. It works only where a coder is already declared, and turns every other ask into a refusal |
-| **Where the boundary sits** | This issue is the coordinator's behaviour: its instructions, a read of the projects, and the check. The verbs it needs are three sibling issues, each its own spec: a post that files a task starts its worker ([FIX-1777](https://linear.app/fixpoint-labs/issue/FIX-1777)), assigning a task to a named worker, a fresh hire included ([FIX-1778](https://linear.app/fixpoint-labs/issue/FIX-1778)), and setting up a mailbox with workers and a task list ([FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779)). This issue builds after them |
-| **Bigger, and not this issue's** | A project that records its repository and runs there ([FIX-1762](https://linear.app/fixpoint-labs/issue/FIX-1762)); where a run's files live and how its branch lands (FIX-1766 to FIX-1768) |
-| **Not done if** | A hire happens while a fitting worker exists · a hire is never given the task · a second task or a clone appears after "just do it" · the turn ends on a stack question the person waived, or on "shall I go ahead?" · the task is filed and nobody starts it · the reply says it can't direct work, or offers a spec instead · a project with no mailbox for the work gets a task on another project |
+| **The real need** | Jake, on this spec: "The coordinator has a responsibility to route work, hire the workforce as needed, setup mailboxes, and get the work flowing to the right places … Imagine other use cases, not just this very specific flow." And: "If that means hiring and then routing a task to that new hire, thats what it should do." On [FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774): "If the coding run cannot start because the repo or harness floor is missing, say that gap. Do not imitate it by hiring and stopping" |
+| **Smaller, and rejected** | "Give DevTeam's chief of staff a coding job." The first two drafts. It fixed one flow, in one Lab's prose, and left every other coordinator to rebuild the same mechanics |
+| **Where the boundary sits** | This issue is the coordinator's job as a capability: its view, its instructions, the tools bundled. The tools' mechanics are four sibling issues, built first: a task that lands starts its worker ([FIX-1777](https://linear.app/fixpoint-labs/issue/FIX-1777)), an assignee names a worker, found at hand-over ([FIX-1778](https://linear.app/fixpoint-labs/issue/FIX-1778)), mailboxes set up and subscribed at run time with a filing tool ([FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779)), and hearing how a task ended ([FIX-1780](https://linear.app/fixpoint-labs/issue/FIX-1780)) |
+| **Bigger, and not this issue's** | Kitchen-sink support and the manager-queue lab adopting the capability ([follow-ups](PLAN.md#follow-ups)); project repositories ([FIX-1762](https://linear.app/fixpoint-labs/issue/FIX-1762)); where a run's files live and how its branch lands (FIX-1766 to FIX-1768) |
+| **Not done if** | A hire happens while a fitting worker exists · a hire never gets its task · a clone appears because a worker didn't start · the turn ends on a question the person waived · a task is filed and nobody starts it · a failed task goes unheard · the reply says it can't route, or offers a spec instead · the capability only works in DevTeam |
 
 ```mermaid
 flowchart LR
-  A["DevTeam via Shift Manager start · real model · held-out word"] --> L1["leg a · coding ask, coder exists"]
-  A --> L2["leg b · just do it again"]
-  A --> L3["leg c · no coder declared"]
-  A --> L4["leg d · Platform, no mailbox"]
-  L1 -->|"no hire · one task on eng.coder · run opens"| P["PASS"]
-  L2 -->|"still one task · no hire"| P
-  L3 -->|"one hire · task assigned to it · its run opens"| P
-  L4 -->|"new mailbox on Platform · coder subscribed · task there · run opens"| P
-  C["control · today's chief of staff file"] -.->|"leg a, c or d"| F["must FAIL · a hire with no task, or no task"]
+  A["DevTeam via Shift Manager · real model · held-out word"] --> L1["a · coding ask"]
+  A --> L2["b · again"]
+  A --> L3["c · work nobody does"]
+  A --> L4["d · new project, two kinds of work"]
+  A --> L5["e · a task fails"]
+  L1 & L2 & L3 & L4 & L5 -->|"stores match · runs open · reply asks nothing"| P["PASS"]
+  C["control · chief of staff without the capability"] -.-> F["must FAIL legs a, c, d"]
 ```
 
-The check grades the roster, the boards, the mailboxes and the run records through the Lab's
-routes. It reads the model's reply only to confirm it asks nothing and names where the task is.
+The check grades the roster, mailboxes, task lists, run records and settle records through the
+Lab's routes. It reads the reply only to confirm it asks nothing and says where the work is.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/shift-manager/it-gets-the-ask-done/` · `openai/gpt-5.4-mini` for the chief of staff, scripted harness for the run · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | Leg a: zero new roster rows; exactly one new task, assigned to `eng.coder`, whose goal holds the held-out word; within 120 seconds a `harness-manager` run record exists for it; the turn did not suspend; the reply has no question mark, offers no spec, and names where the task is. Leg b: still one task, zero hires. Leg c (a tree with no coder declared): exactly one hire, of the coder kind; the task is assigned to that hire and its run opens. Leg d: exactly one new mailbox, attached to Platform, with a task list and the coder as a member; the task is on it and its run opens; no task on `eng.feature` |
-| **Input** | Legs a then b in one session; c and d each fresh. Leg a: "Build a simple hello-world React app that shows the word `<held-out>`. Use Claude Code. Hire a worker if you need to. Just do it, I don't care how." Leg b: "Just do it." Leg c: leg a's text against the no-coder tree. Leg d: "Build a hello-world page that shows the word `<held-out>` in the Platform project. Just do it." The word is random hex picked at run time |
-| **Anti-game** | No hire, assign, mailbox or file block called by the check. Nothing seeded. Grades read off the stores |
-| **Control that must fail** | `GOAL_CONTROL=main-instructions` (the chief of staff's file as on `main`): leg a, c or d FAILS, with a hire and no task or with no task at all, as the [POC](poc/the-dogfood-turn/README.md) recorded on `main` |
+| **Goal check** | `goals/shift-manager/the-coordinator-gets-work-done/` · `openai/gpt-5.4-mini` for the coordinator, scripted harness for runs · run by the implementer at completion · verdict in the implementation PR |
+| **Signal** | **a**: zero hires; one task for `eng.coder` holding the held-out word; its run opens within 120 s; no suspension; the reply has no question mark and names where the task is. **b**: still one task, zero hires. **c** ("audit our dependencies' licenses"): one hire, with a description; it works a task list; one task for it; its run opens. **d** ("start a project called `<held-out>` that needs an API and its docs"): one project; two new mailboxes on it, each with a task list and at least one worker; one task on each; both runs open. **e**: a task whose scripted run fails; the coordinator's next turn reassigns or cancels it, and its reply names the task and what failed |
+| **Input** | a then b in one session; c, d, e each fresh. Words in each ask are held out at run time |
+| **Anti-game** | The check calls no hire, mailbox, file or settle block. Nothing seeded beyond e's scripted failure |
+| **Control that must fail** | `GOAL_CONTROL=no-capability`: the chief of staff as on `main`, without the coordinator capability. Legs a, c and d FAIL, with a hire and no task or with no task, as the [POC](poc/the-dogfood-turn/README.md) recorded on `main` |
 
 ## What changes
 
 ```mermaid
 flowchart LR
-  subgraph today["Today"]
-    P1["person · build it"] --> C1["chief of staff"]
-    C1 -->|"hire"| H1["new worker · on no mailbox"]
-    C1 -->|"asks about the stack"| P1
+  subgraph today["Today · per app"]
+    W1["coordinator file · mechanics in prose"] --> T1["hire · post · project writes"]
+    H1["host code · who works which board"] --> T1
   end
-  subgraph after["After"]
-    P2["person · build it"] --> C2["chief of staff"]
-    C2 -->|"fits? assign"| W["existing worker"]
-    C2 -->|"none fits? hire, then assign"| H2["new worker"]
-    C2 -->|"no mailbox? set one up"| M["mailbox with a task list"]
-    W --> R["run opens"]
-    H2 --> R
+  subgraph after["After · one capability"]
+    CAP["coordinator capability"] --> V["view · projects, mailboxes, who works each list, task status"]
+    CAP --> TL["tools · hire, set up, subscribe, file, reassign"]
+    CAP --> I["the job · route, staff, set up, follow through, tidy"]
+    W2["coordinator file · kinds it may hire, house rules"] --> CAP
   end
 ```
 
-Today the turn ends on a worker nothing reaches. After, every branch ends on a task a worker is
-running.
+Today every app teaches its coordinator the mechanics. After, the capability carries them and the
+file carries only what is the app's own.
 
-**The chief of staff's file** (`goals/devforce-lab/lab/workforce/org/workers/chief-of-staff/WORKER.md`)
-gets one new job, first in the file, and its tools grow by the verbs the three sibling issues add:
+**The job the capability teaches, in order:**
 
-```diff
-+ **Get the person's request done.** When the person asks for work, get it
-+ assigned to a worker who will do it, in this turn.
-+
-+ 1. Find a worker who does this kind of work (`discover`). If one fits,
-+    create the task for that worker.
-+ 2. If none fits, hire one of a kind you may hire, then create the task for
-+    the worker you hired. Hire once.
-+ 3. A task lives on a mailbox's task list. If no mailbox in the person's
-+    project can hold it, set one up there with a task list, subscribe the
-+    worker, then create the task on it.
-+
-+ - If the person left choices to you, pick plain defaults, put them in the
-+   task, and name them in your reply. Do not ask about them.
-+ - Asked again, do not create a second task or hire again. Say where the
-+   task is.
-+ - If nothing you can do would start the work, say what is missing. Do not
-+   hire a worker and stop.
-```
+1. **Route.** Turn the ask into tasks. File each on the task list of the mailbox where it belongs,
+   for the worker who should do it.
+2. **Staff.** If no worker fits, hire one with a description of the work, and subscribe it. If a
+   list backs up behind a busy worker, add one. Never hire a twin because a worker didn't start.
+3. **Set up.** If no mailbox fits, set one up with a task list on the person's project, and
+   subscribe the workers.
+4. **Follow through.** When a task it filed fails or blocks, reassign it, re-staff it, or tell the
+   person.
+5. **Tidy.** Repair broken workers; when work ends, unsubscribe and let idle hires go. Firing still
+   asks the person.
 
-**The chief of staff also sees the projects.** To find the person's project and its mailboxes it
-needs which project holds which mailbox. Today `discover` has no projects and its project tools
-only write. The Lab gives it a read of the organization's projects each turn.
+Throughout: pick plain defaults for choices the person waived and name them; ask again changes
+nothing; say what is missing instead of hiring and stopping.
+
+**DevTeam's chief of staff** keeps its file short: who it is, the kinds it may hire, and house
+rules. The mechanics come from the capability.
 
 ## What stays as it is
 
-- **An explicit hire.** "Hire a coder named X" still hires, at once, and creates no task.
-- **Fire and rehire.** Still wait for the person's approval in Inbox.
-- **The EM's Inbox ask.** Still asks first.
-- **Projects as data.** The chief of staff's file names no project.
-- **Which harness runs.** Still the Lab operator's choice. The chief of staff promises none.
+- **Hire, fire, rehire.** Same tools; hire gains an optional description. Fire and rehire still ask.
+- **An explicit hire.** "Hire a coder named X" still hires, at once, and files nothing.
+- **Purpose routing and the EM.** A mailbox that routes by purpose, and the EM's Inbox ask, behave
+  as today.
+- **Core and engine.** No change. The capability is Workforce's.
+- **Which harness runs.** The app operator's choice. The coordinator promises none.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** a request ends with a worker
-running its task, or a plain statement of what is missing.
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** one Workforce capability that
+makes any coordinator route, staff, set up and follow through, proved on DevTeam across five legs.
 
-**Open: none.** The order (assign, then hire, then set up a mailbox) is Jake's. The calls made
-without asking are in [DECISIONS.md](DECISIONS.md); the cases in
-[BUSINESS-RULES.md](BUSINESS-RULES.md).
+**Open: none.** The job is Jake's. Calls made without asking are in [DECISIONS.md](DECISIONS.md);
+the cases in [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Enhancement · DevTeam Lab (`goals/devforce-lab/lab/`) + Shift Manager docs · small · 1 PR, after
-FIX-1777, FIX-1778 and FIX-1779 · epic [FIX-1763](https://linear.app/fixpoint-labs/issue/FIX-1763)
-· composes with [FIX-1762](https://linear.app/fixpoint-labs/issue/FIX-1762),
-[FIX-1761](https://linear.app/fixpoint-labs/issue/FIX-1761), [FIX-1732](https://linear.app/fixpoint-labs/issue/FIX-1732)
+Enhancement · `packages/workforce` + DevTeam Lab + docs · medium · 1 PR, after FIX-1777 to
+FIX-1780 · epic [FIX-1763](https://linear.app/fixpoint-labs/issue/FIX-1763) · composes with
+[FIX-1762](https://linear.app/fixpoint-labs/issue/FIX-1762), [FIX-1761](https://linear.app/fixpoint-labs/issue/FIX-1761),
+[FIX-1732](https://linear.app/fixpoint-labs/issue/FIX-1732)

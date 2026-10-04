@@ -2,53 +2,90 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs**
 
-Three updates to pages that exist. No new page and no sidebar change. Write "worker", never
-"seat", in every sentence added; leave the rest of each page's wording alone. Tool names are
-placeholders until FIX-1778 and FIX-1779 pin them.
+One new page and three updates. Write "worker", never "seat", in every sentence added. Tool names
+from FIX-1779 are as its spec pins them; reassign is FIX-1780's.
 
-## 1 · Update `apps/docs/docs/workforce/chief-of-staff.md` — new section after *Adding one*
+## 1 · New page `apps/docs/docs/workforce/coordinator.md` — sidebar under Workforce, after *Chief of staff*
 
-> ## Getting a request done
+> ---
+> sidebar_label: Coordinator
+> ---
 >
-> Ask a chief of staff for work, "build me a hello-world page", and it gets that work to a
-> worker who will do it. It looks for a worker who already does that kind of work and creates a
-> task for them. If nobody fits, it hires one and gives the task to the new hire. And if no
-> mailbox in your project can hold the task, it sets one up with a task list, adds the worker,
-> and files the task there.
+> # The coordinator
 >
-> Tell it how in its `WORKER.md`:
+> Most teams want one worker people can hand a request to and trust that it lands somewhere. That's
+> a coordinator. It routes the work to the right mailbox, hires when nobody fits, sets up a mailbox
+> when nothing can hold the work, and keeps track of what it filed.
 >
-> ```md title="workforce/org/workers/chief-of-staff/WORKER.md (excerpt)"
-> **Get the person's request done.** When the person asks for work, get it
-> assigned to a worker who will do it, in this turn.
+> You make a worker a coordinator by composing one capability:
 >
-> 1. Find a worker who does this kind of work (`discover`). If one fits,
->    create the task for that worker.
-> 2. If none fits, hire one of a kind you may hire, then create the task for
->    the worker you hired. Hire once.
-> 3. If no mailbox in the person's project can hold the task, set one up
->    there with a task list, subscribe the worker, then create the task on it.
+> ```ts
+> import { createCoordinatorCapability } from "@flow-state-dev/workforce";
+>
+> const coordinator = createCoordinatorCapability({ roster, inventory, hire, open, projects });
 > ```
 >
-> Give it the tools those steps name in `tools:`. It hires once per request: asking again
-> doesn't hire a second worker or create a second task. When nothing it can do would start the
-> work, it tells you what is missing.
+> Then name the tools it may use in its `WORKER.md`, and the kinds it may hire:
+>
+> ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
+> ---
+> flow: agent
+> tools: [hire, fire, rehire, brokenSeats, setUpMailbox, subscribeWorkers,
+>         unsubscribeWorkers, fileTask, reassignTask, createProject, setWorkstreams]
+> ---
+>
+> You coordinate this organization. You may hire `coder` workers for code and
+> `agent` workers for anything else; give each hire a one-line description.
+> ```
+>
+> ## What it does with a request
+>
+> 1. **Routes it.** It files a task on the task list of the mailbox where the work belongs, for the
+>    worker who should do it. That worker starts.
+> 2. **Staffs it.** If nobody fits, it hires one worker, describes what the worker is for, and
+>    subscribes it to the mailbox.
+> 3. **Makes room.** If no mailbox fits, it sets one up with a task list on your project.
+> 4. **Follows through.** When a task fails or gets stuck, it hears about it and reassigns it or
+>    tells you.
+> 5. **Tidies up.** It repairs broken workers and lets idle ones go when the work is done. Letting a
+>    worker go waits for your approval.
+>
+> If you leave choices to it ("I don't care how"), it picks sensible defaults and tells you which.
+> Asking twice doesn't hire twice. And when nothing it can do would start the work, it says what's
+> missing rather than hiring someone and stopping.
+>
+> ## What it sees
+>
+> Every turn, the coordinator sees your organization's projects, its mailboxes and what each is
+> for, which workers work each task list, and where every task it filed stands. It doesn't see
+> other organizations, or workers a member hired for themselves.
+>
+> ## Writing your own instructions
+>
+> The capability carries the coordinator's job as instructions. To write your own, turn them off
+> with `coordinator.presets({ job: false })` and keep the tools and the view.
 
-## 2 · Update `labs/shift-manager/README.md` — the `devteam` bullet under *Team profiles*
+## 2 · Update `apps/docs/docs/workforce/chief-of-staff.md` — after the opening paragraph
+
+> A chief of staff is usually also your coordinator: compose the
+> [coordinator capability](./coordinator.md) and it routes requests, hires and sets up mailboxes
+> as well as answering questions about who works here.
+
+## 3 · Update `labs/shift-manager/README.md` — the `devteam` bullet under *Team profiles*
 
 After "The EM answers every line posted in a project's room.", add:
 
-> Ask the chief of staff for something to be built and it creates a task for the coder, with any
-> choices you left open filled in, and the coder starts on it. Ask for work in a project with no
-> mailbox for it, Platform for one, and it sets one up there first.
+> The chief of staff is the team's coordinator. Ask it for something to be built and it files a
+> task for the coder, who starts on it. Ask for work nobody does and it hires someone for it.
+> Start a project and it sets up a mailbox for each kind of work.
 
-## 3 · Update `apps/docs/docs/shift-manager/overview.md` — the `devteam` paragraph
+## 4 · Update `apps/docs/docs/shift-manager/overview.md` — the `devteam` paragraph
 
 After "Two projects exist from the start, Storefront and Platform.", add:
 
-> Ask the chief of staff on Shift Coordinator to build something and it hands the task to a
+> Shift Coordinator talks to the team's coordinator. Hand it a request and it gets the work to a
 > worker who can do it, hiring one if it has to, and the run shows up under Tasks.
 
 ## Not changed
 
-- The Workforce reference for the new verbs: FIX-1778 and FIX-1779 document their own tools.
+- The hire, mailbox set-up and follow-through references: their own issues document their tools.

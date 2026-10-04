@@ -2,64 +2,72 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-Nothing here needs a sign-off. The shape (assign first, hire when nothing fits, set up a mailbox
-when nothing can hold the task) is Jake's, from his comment on this spec. What follows are the
-calls that fill it in.
+Nothing here needs a sign-off. The job (route, hire as needed, set up mailboxes, get work
+flowing) is Jake's. These are the calls that give it a shape.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-1774"] --> S["split · verbs in three sibling issues, behaviour here"]
-  I --> E1["assign before hire, hire before a new mailbox"]
-  I --> E2["defaults picked and named, never asked"]
-  I --> E3["one task per ask, one hire at most"]
-  I --> E4["reads projects each turn"]
-  S -.->|"rejected"| X1["one PR with the verbs and the behaviour"]
-  I -.->|"rejected"| X2["never hire, say the gap · first draft"]
+  I["FIX-1774 · the coordinator's job"] --> E1["one Workforce capability"]
+  I --> E2["the view is context each turn"]
+  I --> E3["mechanics in four sibling issues"]
+  I --> E4["DevTeam first, two adopters later"]
+  I --> E5["route before staff, staff before set up"]
+  E1 -.->|"rejected"| X1["prose in each app's coordinator file"]
+  E1 -.->|"rejected"| X2["a new worker kind"]
+  I -.->|"rejected"| X3["a DevTeam coding job · drafts 1 and 2"]
 ```
 
 Solid edges are this spec's calls. Dashed edges lost.
 
 ## Decided, not asked
 
-- **The verbs live in three sibling issues; this one is behaviour.** Assigning a task to a named
-  worker ([FIX-1778](https://linear.app/fixpoint-labs/issue/FIX-1778)) and setting up a mailbox
-  ([FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779)) are Workforce capabilities any
-  coordinator can use, each with its own design and its own reversal of a documented rule. A post
-  that starts its worker ([FIX-1777](https://linear.app/fixpoint-labs/issue/FIX-1777)) is a Lab fix
-  people hit without a coordinator. Folding them in would make one PR carry three designs.
-- **Assign before hire, hire before a new mailbox.** Jake's order. A hire is a lasting change to
-  who works here, and a mailbox a lasting change to where work lives; the cheapest change that
-  gets the work done goes first.
-- **"Fits" is the worker's kind and its file**, as `discover` returns them. The chief of staff
-  judges the fit; the check grades the outcome (no hire while the coder exists).
-- **One task per ask, one hire at most.** "Just do it" again changes nothing. A hire that didn't
-  start is a missing floor to report, never a reason to hire its twin (the Architect's fence).
-- **A task, not a post.** The chief of staff creates the task for the worker rather than posting
-  a line for another worker to file, because Jake asked it to prioritize assigning tasks and a
-  post leaves the outcome to someone else. Posting stays a way for people to file work
-  (FIX-1777), and is the fallback if FIX-1778's tool doesn't start the worker: Workforce's own
-  `fileTask` starts nothing today.
-- **Waived choices get plain defaults, named in the task and the reply.** Vite, React,
-  TypeScript, plain CSS for a React ask.
-- **The chief of staff reads the projects each turn**, from the stored rows, because projects
-  are the app's data and change at run time. Its file names no project.
-- **"With Claude Code" picks no harness.** Which harness a run uses is the Lab operator's setting.
-- **The reply names where the task is, not a run result.** The chief of staff does not claim the
-  run succeeded.
+- **One capability, `createCoordinatorCapability(options)`, in `@flow-state-dev/workforce`.** A
+  coordinator is any worker that composes it. It bundles the coordinator's tools, a view, and the
+  job as instructions. A capability, because that is how the codebase hands a worker a
+  self-contained bundle of tools, context and resources (CLAUDE.md, *Capabilities*), and because
+  any kind can compose it: DevTeam's `agent` kind, kitchen-sink's specialists, a lab's
+  `coordinator` kind.
+- **Not a new worker kind.** A kind fixes a flow; apps already have coordinators on different
+  kinds. A kind would make each rebuild on it or lose it.
+- **The view is context on every turn, not tools to call.** Projects, mailboxes with their
+  descriptions, task lists and who works each one, and the status of tasks this coordinator filed.
+  The model can't route to what it can't see, and the survey found every coordinator today guesses
+  from names. It is bounded to the organization's mailboxes and the coordinator's own tasks, so it
+  stays small.
+- **The job is instructions the capability carries, as a preset.** An app can turn it off
+  (`presets({ job: false })`) and write its own. The app's file adds the kinds it may hire and its
+  house rules.
+- **The tools' mechanics are the sibling issues'.** FIX-1777 makes a task start its worker
+  however it landed; FIX-1778 makes an assignee a worker's name, found at hand-over, gives `agent`
+  hires a task door and lets any worker claim from any list; FIX-1779 sets up and subscribes
+  mailboxes and adds the filing tool and the "who works this list" read; FIX-1780 tells the filer
+  how a task ended and adds reassign. This issue composes them and owns the job.
+- **Route before staff, staff before set up.** Jake's order. The cheapest lasting change goes
+  first: a task changes nothing about who works here; a hire does; a mailbox changes where work
+  lives.
+- **Hire gains an optional `description`.** Purpose routing and the view both read a worker's
+  description, and a hire has none today, so it can only ever be a fallback.
+- **Overload hiring is in the job; the app prices it.** A second worker of the same kind when a
+  list backs up behind a busy one. An app that wants a person to approve hires lists `hire` in
+  `askBefore`, which exists. Not graded here: a backlog needs a slow harness to be real.
+- **No twin for a worker that didn't start.** A worker that never starts is a missing floor. The
+  coordinator says so. (The Architect's fence.)
+- **DevTeam is the proving ground; kitchen-sink and the manager-queue lab adopt later.** Each has a
+  coordinator-shaped hole today (an escalations list nobody works; desks hard-coded in a prompt).
+  Naming them as follow-ups keeps this PR to one adopter and one check.
+- **The control is "without the capability", not "today's file".** It changes one thing: whether
+  the chief of staff composes the capability.
 
 ## Considered and dropped
 
-- **Never hire for a coding ask; say the gap instead.** The first draft, because in this Lab a hire
-  can't be given work today. Jake rejected it: the coordinator should hire and assign. FIX-1778
-  makes that possible.
-- **Run the ask on another project's mailbox** when the named one has none. The task would land
-  on a project nobody named. FIX-1779 lets the chief of staff set one up instead.
-- **A routing skill or a dispatch tool in this issue.** The verbs come from FIX-1778 and FIX-1779,
-  which are Workforce's; nothing is invented here.
-- **Instructions only, on today's tools.** The POC showed hires can't be given work and a post
-  starts nothing.
+- **A DevTeam coding job in the chief of staff's file.** Drafts 1 and 2. One flow, one Lab, and
+  every other coordinator left to copy it.
+- **Posting a shaped line to hand work over.** A post leaves the outcome to whoever reads it; a
+  filed task is the coordinator's own and FIX-1780 can report on it.
+- **A routing skill.** Skills load on demand; routing is the coordinator's every turn.
+- **Cross-organization coordination.** One coordinator, one organization.
 
 ## Open
 
@@ -68,16 +76,16 @@ None.
 <a name="settled"></a>
 ## Settled
 
-- **Hired workers have no way in today.** Confirmed by the POC: no mailbox address and no board
-  hand-off for any hired worker. FIX-1778 and FIX-1779 own that.
-- **A shaped post files a task and nothing runs it.** Confirmed. FIX-1777 owns it.
-- **Running the board after filing starts the coder.** Confirmed with a local, uncommitted change.
+- **Hires can't be given work today; a post files a task nobody runs.** Confirmed by the
+  [POC](poc/the-dogfood-turn/README.md). FIX-1777 and FIX-1778 own the fixes.
+- **No coordinator today can create a mailbox, see who works a list, or hear how a task ended.**
+  Confirmed by survey of DevTeam, kitchen-sink, the manager-queue lab and the pentest lab.
 
 ## How it got here
 
-- **Draft** — Two gaps: the chief of staff wasn't told how to hand off coding work, and the
-  hand-off it should use files a task nobody runs. Never hire; post on `eng.feature`.
-- **Round 1** — Codex found the chief of staff can't read projects. Added the project read.
-- **Round 2** — Jake: break it into parts; the coordinator should hire, assign, and set up a
-  mailbox when needed. The verbs split into FIX-1777, FIX-1778 and FIX-1779; this spec became
-  the coordinator's behaviour, built after them.
+- **Draft** — Never hire; post the ask on `eng.feature`; make the post door run the board.
+- **Round 1** — Codex: the chief of staff can't read projects. Added a project read.
+- **Round 2** — Jake: break it into parts; hire, assign, set up mailboxes. Split out FIX-1777,
+  FIX-1778, FIX-1779; this became the chief of staff's instructions.
+- **Round 3** — Jake: step back; the coordinator's job across use cases. This became the
+  coordinator capability, with FIX-1780 for follow-through.
