@@ -19,8 +19,6 @@ A mailbox can also be [routed](#routing-a-mailbox). A post someone sends then go
 
 Each mailbox is a session on a mailbox kind, the built-in `mailbox` unless its file names another. Look at what sits inside the session (members, charter and transcript) and what sits outside it (a member's seat, the board's rows, the inventory row). A post's `author` is checked against the members in the session. The inventory's list is only for finding which mailboxes a seat is in.
 
-If you use Shift Manager: a **workstream** there is a team's mailbox together with the boards it holds. Its **Inbox** is not a mailbox. It is the list of approvals and questions seats are waiting on you for.
-
 :::tip When a mailbox, and when something else
 
 1. **One-shot, "go do this" → a dispatch** into that flow's own session. Nothing about it wants a shared transcript.

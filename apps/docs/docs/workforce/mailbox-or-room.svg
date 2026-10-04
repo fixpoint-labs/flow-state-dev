@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 676" role="img" aria-label="A mailbox and a room compared. Both usually run on the built-in mailbox flow kind; they differ in what the session is and where the talk is kept. A mailbox is declared in a MAILBOX.md in a team folder and opened at boot. The mailbox is one session on the mailbox kind, or on the kind its file names, such as support.desk. Its transcript is mailbox-post items in that one session. Its members are workers named in the file, fixed for that mailbox; when the kind has a notify block, a post wakes them. It can hold a board and route a post to one member. A room belongs to one project, created while the app runs; there is no file and it is never in the inventory. No session is the room: each member of the project has their own talk session on the built-in mailbox kind, and every one reaches the same room. The room's lines are organization data, the room-lines collection, and a member's view reads them; they are not pushed. Its members are the people on the project row, checked on every call. A post wakes the workers in the organization's talk template, which are not members. A room holds no board and routes nothing. Use a mailbox for a standing topic a team owns, set in files, with a board or routing. Use a room for the people on a project talking together, private to them. In Shift Manager a workstream is a team's mailbox with its boards, and a project groups workstreams and has one room.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 646" role="img" aria-labelledby="title desc">
+  <title id="title">Mailbox or room</title>
+  <desc id="desc">A mailbox and a room compared. Both usually run on the built-in mailbox flow kind; they differ in what the session is and where the talk is kept. A mailbox is declared in a MAILBOX.md in a team folder and opened at boot. The mailbox is one session on the mailbox kind, or on the kind its file names, such as support.desk. Its transcript is mailbox-post items in that one session. Its members are workers named in the file, fixed for that mailbox; when the kind has a notify block, a post wakes them. It can hold a board and route a post to one member. A room belongs to one project, created while the app runs; there is no file and it is never in the inventory. No session is the room: each member of the project has their own talk session on the built-in mailbox kind, and every one reaches the same room. The room's lines are organization data, the room-lines collection, and a member's view reads them; they are not pushed. Its members are the people on the project row, checked on every call. A post wakes the workers in the organization's talk template, which are not members. A room holds no board and routes nothing. Use a mailbox for a standing topic a team owns, set in files, with a board or routing. Use a room for the people on a project talking together, private to them.</desc>
   <style>
     :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
             --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
@@ -25,7 +27,7 @@
     .code { font:11.5px ui-monospace, SFMono-Regular, Menlo, monospace; fill:var(--ink); }
   </style>
 
-  <rect class="bg" x="0" y="0" width="940" height="676" rx="16"/>
+  <rect class="bg" x="0" y="0" width="940" height="646" rx="16"/>
   <text class="title" x="24" y="38">Mailbox or room</text>
   <text class="muted" x="24" y="60">Usually the same flow kind underneath. What differs is what the session is, and where the talk is kept.</text>
 
@@ -89,11 +91,10 @@
   </g>
 
   <g id="footer">
-    <rect class="box" x="24" y="524" width="892" height="136" rx="12"/>
+    <rect class="box" x="24" y="524" width="892" height="106" rx="12"/>
     <text class="h" x="40" y="548">Which one</text>
     <text class="p" x="40" y="572">Standing topic, set in files, the same workers every time, maybe a board: a mailbox.</text>
     <text class="p" x="40" y="592">A group of people on one piece of work, created at runtime, readable only by them: a project's room.</text>
     <text class="p" x="40" y="612">A one-shot "go do this": neither. Dispatch it into that flow's own session.</text>
-    <text class="muted" x="40" y="640">In Shift Manager, a workstream is a team's mailbox with its boards. A project groups workstreams and has one room.</text>
   </g>
 </svg>
