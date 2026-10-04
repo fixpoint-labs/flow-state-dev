@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, where a run&#x27;s repository comes from on the machine. Chosen: the host keeps one clone per remote under the checkout folder and branches every run from it. Instead of: the operator maps each remote to a local folder. It comes down to the first row: with the chosen option nobody names a path, while the map is a path per repository per machine that goes stale when a project changes its repository. The price: what a run can reach is what the host&#x27;s git credentials reach. Disk is a clone per remote either way. Locks in: credentials are the host&#x27;s, and a private repository it can&#x27;t read fails by name at the first run. Flips if: hosts must never reach the network."
+<svg viewBox="0 0 940 420" role="img" aria-label="Open fork, recommendation not yet approved: how far the project&#x27;s own files go in this slice. Recommended: the boundary only, meaning a members-only collection per project, and a directory beside each checkout that is never inside it, with a generic before-and-after hook on the run; nothing is copied in or saved back yet. Instead of: lay the files out before each run and save them back after, now. It comes down to the first row: the save needs new sync code in a package that has none and a per-project filter that does not exist today, while the boundary needs neither. The price: an agent can&#x27;t yet keep a note that outlives the run, so the issue&#x27;s third item ships smaller. Both keep the files out of the checkout. Locks in: the save is a follow-up the first agent that writes project memory pays for. Flips if: a coding agent needs project memory this cycle."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -34,61 +34,62 @@
   <rect class="bg" x="0" y="0" width="940" height="420"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Where does a run&#x27;s repository come from on the machine?</text>
+    <text class="t-lbl" x="32" y="32">D3 · OPEN · RECOMMENDED, NOT YET APPROVED</text>
+    <text class="t-q" x="32" y="52">How far do the project&#x27;s own files go in this slice?</text>
   </g>
   <g id="options">
-    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">A clone the host keeps</text>
+    <rect class="chosen" style="stroke-dasharray:5 4" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">Boundary only</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">An operator&#x27;s map, remote to folder</text>
+    <text class="t-h c-lost" x="592" y="112">Lay out and save back, now</text>
   </g>
   <g id="row-0">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WHO NAMES</text>
-    <text class="t-lbl" x="32" y="169">A PATH</text>
+    <text class="t-lbl" x="32" y="156">NEW CODE AND</text>
+    <text class="t-lbl" x="32" y="169">NEW RISK</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Nobody</text>
-    <text class="t-s" x="248" y="179">one folder, set once, for all clones</text>
+    <text class="t-b" x="248" y="161">A place and a rule</text>
+    <text class="t-s" x="248" y="179">no sync code, no cross-project read</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">The operator, per repository</text>
-    <text class="t-s" x="612" y="179">stale when a project switches</text>
+    <text class="t-b" x="612" y="161">New sync in harness-manager</text>
+    <text class="t-s" x="612" y="179">plus a per-project filter that is not built</text>
   </g>
   <g id="row-1">
-    <text class="t-lbl" x="32" y="222">REACHING A</text>
-    <text class="t-lbl" x="32" y="235">PRIVATE REPO</text>
+    <text class="t-lbl" x="32" y="222">CAN AN AGENT</text>
+    <text class="t-lbl" x="32" y="235">KEEP A NOTE</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">The host&#x27;s git credentials</text>
-    <text class="t-s" x="248" y="241">a repo it can&#x27;t read fails, named</text>
+    <text class="t-b" x="248" y="223">Not past the run yet</text>
+    <text class="t-s" x="248" y="241">the third item ships smaller</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Whatever the operator cloned</text>
-    <text class="t-s" x="612" y="241">they fixed access by hand</text>
+    <text class="t-b" x="612" y="223">Yes, saved to the project</text>
+    <text class="t-s" x="612" y="241">the goal check proves it</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="282">DISK</text>
+    <text class="t-lbl" x="32" y="282">OUT OF THE</text>
+    <text class="t-lbl" x="32" y="295">CHECKOUT</text>
     <text class="mark tie" x="228" y="284">=</text>
-    <text class="t-b" x="248" y="283">One clone per remote</text>
-    <text class="t-s" x="248" y="301">until someone deletes it</text>
+    <text class="t-b" x="248" y="283">Never inside it</text>
+    <text class="t-s" x="248" y="301">a directory of its own</text>
     <text class="mark tie" x="592" y="284">=</text>
-    <text class="t-b" x="612" y="283">One clone per remote</text>
+    <text class="t-b" x="612" y="283">Never inside it</text>
     <text class="t-s" x="612" y="301">the same</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Credentials are the host&#x27;s own git setup</text>
-    <text class="t-s" x="32" y="389">nothing about access is stored on the project</text>
+    <text class="t-b" x="32" y="371">Saving files back is a follow-up</text>
+    <text class="t-s" x="32" y="389">the first agent that writes project memory pays for it</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">Hosts must never reach the network</text>
-    <text class="t-s" x="494" y="389">the same cache, seeded by hand, still beats a map</text>
+    <text class="t-b" x="494" y="371">A coding agent needs project memory this cycle</text>
+    <text class="t-s" x="494" y="389">then build the save now, with the filter</text>
   </g>
 </svg>

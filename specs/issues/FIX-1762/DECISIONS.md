@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-What was considered, what was chosen, why, and what each choice locks in. Three decisions are
-the sign-off surface. Everything else here is context for them.
+What was considered, what was chosen, why, and what each choice locks in. Two decisions and one
+open fork are the sign-off surface. Everything else here is context for them.
 
 ## The tree
 
@@ -11,13 +11,40 @@ the sign-off surface. Everything else here is context for them.
 flowchart TD
   I["FIX-1762"] --> D1["D1 · no repository means the coding row is refused by name"]
   D1 -.->|"rejected"| X1["fall back to the Lab's default repository<br/>work lands in the wrong code silently"]
-  I --> D2["D2 · the host keeps one clone per remote<br/>runs branch from it"]
-  D2 -.->|"rejected"| X2["operator maps each remote to a local folder<br/>a path per repository per machine"]
-  I --> D3["D3 · project files are a collection<br/>laid out beside the checkout"]
-  D3 -.->|"rejected"| X3["declare the collection only<br/>no agent can keep anything yet"]
+  I --> D2["D2 · members set it · the chief of staff asks first<br/>only allowed remotes"]
+  D2 -.->|"rejected"| X2["the chief of staff sets it unasked<br/>a wrong or injected ask re-points the next run"]
+  I --> D3["D3 · open · recommended boundary only"]
+  D3 -.->|"recommended against"| X3["lay out and save back now<br/>new sync code and a cross-project read"]
 ```
 
-Solid edges are what you're signing. Dashed edges lost, and the label says why.
+Solid edges are what you're signing. Dashed edges lost, and the label says why. D3 is still open.
+
+<a name="open"></a>
+## Open · D3 · Does a run's project-files directory get saved back to the project in this slice?
+
+**Plain terms.** The issue's third item says a project's own files (memory, notes an agent keeps)
+live with the project, never in the checkout. We can ship the *place and the rule* now: a
+members-only collection per project, and a directory beside each checkout that is never inside
+it. Or we can also copy those files in before each run and save them back after.
+
+**The trade-off.** Saving back needs sync code harness-manager does not have today (it has no
+dependency on the workspace package and no lay-out or save step), and the existing sync binds a
+whole collection, so a run in one project could read or write another project's files unless we
+build a per-project filter first. The boundary needs neither. The price is that an agent's notes
+do not outlive the run yet, so item 3 ships smaller than the issue's words.
+
+**My recommendation: boundary only.** The manager gets a generic directory beside the checkout and
+a before/after hook a host can fill; Workforce declares the collection, keyed by project. The save
+comes with the first agent that writes project memory.
+
+**What would change my mind:** a coding agent that needs project memory this cycle.
+
+**What being wrong costs:** notes an agent writes during a run are lost when the run ends, until
+the follow-up lands. Nothing is lost from the code, and nothing built here is thrown away.
+
+![Open, D3: boundary only, recommended, beside lay out and save back now. Decides it: new sync code and a cross-project read the save needs. Price: an agent's note does not outlive the run yet](figures/open-project-files.svg)
+
+It comes down to new sync code and a per-project filter that don't exist yet; the boundary needs neither.
 
 <a name="d1"></a>
 ## D1 · A coding row in a project with no repository is refused, by name, before any agent runs
@@ -32,81 +59,65 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 It comes down to a person who forgot: the fallback runs their feature in someone else's code.
 
-**What would change my mind:** a Lab that genuinely wants one repository for all projects and
-many projects. Then a Lab-level default with the project overriding it is cheap to add, and
-nothing here blocks it.
+**What would change my mind:** a Lab that genuinely wants one repository for many projects. Then
+a Lab-level default the project overrides is cheap to add.
 
 <a name="d2"></a>
-## D2 · The host keeps one clone per repository and cuts every run's branch from it; nobody maps a remote to a folder
+## D2 · Members set the repository directly; the chief of staff asks a person in Inbox first; both only within the operator's allowed remotes
 
 | | |
 |---|---|
-| **Instead of** | The operator writing a map from each remote to a clone they keep on the machine |
-| **Because** | The issue's point is that nobody names a path. A per-repository map is a path per repository per machine, and it goes stale the moment a project changes its repository. One clone per remote, kept under the folder checkouts already live in, needs no per-repository setup |
-| **Locks in** | What a run can reach is what the host's own git credentials can reach. A private repository the host can't read fails at the run's first attempt, by name. The host's disk holds one clone per repository ever used, until someone deletes it |
+| **Instead of** | The chief of staff setting it on its own, the way it hires |
+| **Because** | A repository decides what code the next coding run executes with the host's credentials. A mistaken or prompt-injected chief of staff could point it at code nobody chose. The chief of staff's fire already asks through the same `human_approval` pause; a repository change is at least as hard to undo once a run has used it. A member typing it themselves is already the person deciding |
+| **Locks in** | Every repository the chief of staff sets, at create or later, waits on a click in Inbox. The host's git only ever reaches remotes the operator listed: a scheme and host allowlist, `file://` off unless listed, a value starting with `-` refused, the clone run with `--` and git's protocol list limited to the allowed schemes. Access is the host's own git credentials; a private repository it can't read fails at the first run, named |
 
-![D2 · Where a run's repository comes from on the machine: a clone the host keeps, chosen, beside an operator's map of remote to folder. Decides it: nobody names a path. Price: credentials are the host's git](figures/d2-clone-per-remote.svg)
+![D2 · Who may point a project at a repository: members directly and the chief of staff after approval, chosen, beside the chief of staff on its own. Decides it: a wrong or injected ask. Price: one approval click per chief-of-staff change](figures/d2-who-sets.svg)
 
-It comes down to the issue's own line: the map is a path someone names, for every repository.
+It comes down to a wrong or injected ask: unasked, the next run executes code nobody chose.
 
-**What would change my mind:** a host that must not reach the network. Then the same clone cache
-can be seeded by hand, and the map is not needed for that either.
-
-<a name="d3"></a>
-## D3 · The project's own files are a collection, laid out beside the checkout for a coding run and saved back after it
-
-| | |
-|---|---|
-| **Instead of** | Declaring the collection and the rule now, with no run able to write to it until project memory exists |
-| **Because** | The issue puts it in this slice: memory and anything an agent keeps "is written there". A collection no run reaches is a rule nobody can break and nobody can test. The existing projection already lays a collection into a directory and reconciles it back; pointing it at a directory beside the checkout, never inside, is the issue's own "same machine for the side files". No new sync code |
-| **Locks in** | Every coding run in a project with files pays a lay-out before and a save after. Two runs in one project writing the same note settle through the projection's existing conflict outcomes, which the run's record reports |
-
-![D3 · How a project's own files reach a coding run: a directory beside the checkout, chosen, beside the collection only. Decides it: an agent can keep a note this slice. Price: a lay-out and save around every run](figures/d3-project-files.svg)
-
-It comes down to whether anything can keep a note now: the smaller option ships a promise nothing exercises.
-
-**What would change my mind:** if the first writer of project files is an agent with no
-filesystem (a chief of staff's memory), not a coding run. Then the collection ships alone and
-the directory comes with the first coding agent that needs it.
+**What would change my mind:** repository changes turning out frequent and routine; then it lands
+at once, as a hire does, still inside the operator's list.
 
 ## Decided, not asked
 
-- **The repository is a remote, stored as a string on the project row**; `null` means none.
-  `https://`, `ssh://`, `git@host:path` and `file://` are accepted. A bare filesystem path is
-  refused ("a remote, not a checkout path"). A URL carrying a user or password is refused, so
-  no credential is ever stored or shown.
-- **Set at create (`createProject.repository`) or later (`setRepository`), by members only**,
-  as `setWorkstreams` is. The chief of staff gets `setRepository` as a tool beside its two.
-- **The Brief tab shows it.** A remote with no credentials in it is not a secret.
-- **A run branches from the repository's default branch** as the clone reports it. No per-project
-  base ref in this slice.
-- **The clone is fetched only before cutting a new branch**, never on a retry of an existing one.
-  A retry continues the work it left; it is not rebased.
+- **The repository is a remote, stored as a string on the project row**; `null` means none. A
+  bare filesystem path, a value starting with `-`, and a credential (userinfo on `http(s)`, or a
+  password anywhere) are refused at the write; an SSH login name like `git@` is fine. Whether a remote is *allowed* is the host's call, checked at the run.
+- **The host keeps one clone per remote**, under the folder checkouts already live in, and cuts
+  each run's branch from it, off the remote's default branch. Nobody maps a remote to a folder:
+  that would be the path-per-repository the issue rules out.
+- **One provisioning path.** Every attempt resolves `{ repo, baseRef }` before provisioning; a
+  fixed `sourceRepo` is a resolver that always returns it. No "one of two" mode.
+- **The clone is fetched only before cutting a new branch**, never on a retry.
 - **A row already started keeps its checkout.** If its project's repository changed since, the
-  next attempt is refused, naming both repositories, and nothing in the checkout is touched (the
-  existing ownership guard). New rows use the new repository.
-- **The resolution lives in Workforce, the mechanism in harness-manager.** Harness-manager learns
-  a generic per-run "where does this run's code come from" hook and a clone cache; it never
-  imports Workforce and never says "project". Workforce supplies the policy: workstream → claim →
-  project → repository and files.
-- **PR plan: three PRs** (harness-manager hook · Workforce row and files · Lab wiring and goal
-  check), shape in [PLAN.md](PLAN.md#pr-plan). An engineering call.
+  next attempt is refused, naming both, and nothing in the checkout is touched.
+- **Project files are isolated by key**: `project-files/<projectId>/…`, read only through a
+  Workforce accessor that checks the row's `members`. No browser read. With the boundary-only
+  answer to D3, no run reads the collection at all; a later save must filter at the source to the
+  run's project (BP-033), never mount the whole collection.
+- **The resolution lives in Workforce, the mechanism in harness-manager**, which never imports
+  Workforce or says "project".
+- **PR plan: three PRs**, shape in [PLAN.md](PLAN.md#pr-plan). An engineering call.
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
 | Store a local checkout path on the project | The issue rules it out: the row is org-wide and outlives any one machine |
-| A repository on the workstream (mailbox) instead of the project | A workstream is declared in a file; the repository is runtime data a person changes. The project is the org's record of the work |
-| A repository on the board row (task) | Caller-writable input deciding where a run writes is the hazard BP-031 names, and the manager already refuses it |
+| An operator's map of remote → local clone | A path per repository per machine, stale when a project switches |
+| A repository on the workstream (mailbox) | A workstream is declared in a file; the repository is runtime data a person changes |
+| A repository on the board row (task) | Caller-writable input deciding where a run writes is the hazard BP-031 names |
 | Copy project files into the checkout under a dot-folder | Gets committed or lost with the branch; the issue forbids it |
 | A new `Project` or `Repository` type in core | Layer 1 stays free of Workforce concepts ([FIX-1650 ER-10](../../epics/FIX-1650/BUSINESS-RULES.md#what-no-child-may-do)) |
 
 ## How it got here
 
 - **Draft** — framed as "the work ignores which code a project is about"; the repository rides on
-  the existing project row, a coding run resolves it through its workstream's claim, harness-manager
-  gains a generic per-run source and a clone cache, and the project's files are a collection laid
-  beside the checkout through the existing projection. Three PRs.
-
-**Open: none.**
+  the existing project row, resolved through the workstream's claim; harness-manager gains a
+  per-run source and a clone cache; project files laid beside the checkout through the existing
+  projection. Three PRs.
+- **Review round 1** — added the operator's remote allowlist and made a chief-of-staff repository
+  change ask in Inbox (D2 replaced the clone-vs-map card, which became an engineering call),
+  because a model-writable remote could point the host's git anywhere; reopened D3 with a
+  boundary-only recommendation, because harness-manager has no sync step today and the existing
+  sync can't isolate one project's files; one provisioning path instead of two modes.

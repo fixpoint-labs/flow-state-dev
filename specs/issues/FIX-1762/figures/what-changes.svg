@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today, on the left: the Lab's operator wires one repository at boot, and runs for project Storefront and project Platform both cut their checkouts from it, whichever code the project is about. After, on the right: each project row records a remote or none. A run for Storefront follows its workstream to the project, takes the remote, and the host keeps one clone of it and cuts the run's checkout from it. Beside the checkout, never inside it, sits a directory of the project's own files, laid out from and saved back to the project's files collection. Platform records no repository, so its coding row is refused by name."
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today, on the left: the Lab's operator wires one repository at boot, and runs for project Storefront and project Platform both cut their checkouts from it, whichever code the project is about. After, on the right: each project row records a remote or none. A run for Storefront follows its workstream to the project, takes the remote, and the host, if its operator allows that remote, keeps one clone of it and cuts the run's checkout from it. Beside the checkout, never inside it, the run gets a directory of its own for the project's files; the project's members-only files collection is separate, and nothing is copied between them in this slice. Platform records no repository, so its coding row is refused by name."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -55,7 +55,7 @@
     <text class="t-g" x="650" y="96">a coding row here is refused, by name</text>
     <rect class="n-acc" x="396" y="140" width="220" height="50" rx="5"/>
     <text class="t-b" x="410" y="162">The host's clone</text>
-    <text class="t-s" x="410" y="179">one per remote, under the root</text>
+    <text class="t-s" x="410" y="179">allowed remotes only · one each</text>
     <path class="wire-n" d="M506 106 L506 140"/>
     <rect class="n-new" x="396" y="250" width="220" height="62" rx="5"/>
     <text class="t-b" x="410" y="272">The run's checkout</text>
@@ -66,12 +66,11 @@
     <text class="t-g" x="642" y="232">never copied either way</text>
     <rect class="n-new" x="656" y="250" width="248" height="62" rx="5"/>
     <text class="t-b" x="670" y="272">Project files, beside it</text>
-    <text class="t-s" x="670" y="289">laid out before, saved after</text>
-    <text class="t-s" x="670" y="303">project-files/storefront/…</text>
+    <text class="t-s" x="670" y="289">outside the worktree, never inside</text>
+    <text class="t-s" x="670" y="303">nothing copied in or out yet</text>
     <rect class="n-in" x="656" y="140" width="248" height="50" rx="5"/>
     <text class="t-b" x="670" y="162">The project's files collection</text>
-    <text class="t-s" x="670" y="179">members only · kept by the Lab</text>
-    <path class="wire-n" d="M780 190 L780 250"/>
+    <text class="t-s" x="670" y="179">members only · per project</text>
     <text class="t-s" x="396" y="350">Found through the workstream's project, never the row's input.</text>
   </g>
 </svg>

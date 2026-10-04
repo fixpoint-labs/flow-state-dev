@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3, how a project&#x27;s own files reach a coding run in this slice. Chosen: a collection laid out in a directory beside the checkout before the run and saved back after it. Instead of: declare the collection only, with no run able to write to it yet. It comes down to the first row: with the chosen option an agent can keep a note for the project now and the rule is tested, while the smaller option ships a rule nothing exercises. The price: a lay-out before and a save after every run in a project with files. Both options keep project files out of the checkout. Locks in: every coding run in a project pays the lay-out and save. Flips if: the first writer of project files is an agent with no filesystem."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, who may point a project at a repository. Chosen: any member directly, the chief of staff only after a person approves in Inbox, and both only inside the remotes the host&#x27;s operator allows. Instead of: the chief of staff sets it on its own, the way it hires. It comes down to the first row: a prompt-injected or mistaken chief of staff could point the next coding run at code nobody chose, and the chosen option puts a person in front of that, while the alternative lets it land. The price: one approval click for each repository the chief of staff sets. Inside the operator&#x27;s allowed remotes both are the same. Locks in: every chief-of-staff repository change waits on a person, and the operator keeps the allowed list. Flips if: repository changes turn out to be frequent and routine."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -34,61 +34,62 @@
   <rect class="bg" x="0" y="0" width="940" height="420"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Do a coding run&#x27;s kept files reach the project in this slice?</text>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Who may point a project&#x27;s coding runs at a repository?</text>
   </g>
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Yes, beside the checkout</text>
+    <text class="t-h c-code" x="228" y="112">Members; the chief of staff asks first</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Collection only, no run reaches it</text>
+    <text class="t-h c-lost" x="592" y="112">The chief of staff sets it on its own</text>
   </g>
   <g id="row-0">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">CAN AN AGENT</text>
-    <text class="t-lbl" x="32" y="169">KEEP A NOTE NOW</text>
+    <text class="t-lbl" x="32" y="156">A WRONG OR</text>
+    <text class="t-lbl" x="32" y="169">INJECTED ASK</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Yes, and the goal check proves it</text>
-    <text class="t-s" x="248" y="179">through the existing projection</text>
+    <text class="t-b" x="248" y="161">A person sees it first</text>
+    <text class="t-s" x="248" y="179">an Inbox approval, as a fire does</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">No writer exists yet</text>
-    <text class="t-s" x="612" y="179">a promise nothing exercises</text>
+    <text class="t-b" x="612" y="161">The next run uses that code</text>
+    <text class="t-s" x="612" y="179">nobody chose it</text>
   </g>
   <g id="row-1">
-    <text class="t-lbl" x="32" y="222">COST PER RUN</text>
+    <text class="t-lbl" x="32" y="222">COST PER</text>
+    <text class="t-lbl" x="32" y="235">CHANGE</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">A lay-out and a save</text>
-    <text class="t-s" x="248" y="241">around every run with files</text>
+    <text class="t-b" x="248" y="223">One approval click</text>
+    <text class="t-s" x="248" y="241">for each repo the chief of staff sets</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Nothing</text>
-    <text class="t-s" x="612" y="241">no run touches it</text>
+    <text class="t-b" x="612" y="223">None</text>
+    <text class="t-s" x="612" y="241">it lands at once, like a hire</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="282">OUT OF THE</text>
-    <text class="t-lbl" x="32" y="295">CHECKOUT</text>
+    <text class="t-lbl" x="32" y="282">OUTSIDE THE HOST&#x27;S</text>
+    <text class="t-lbl" x="32" y="295">ALLOWED REMOTES</text>
     <text class="mark tie" x="228" y="284">=</text>
-    <text class="t-b" x="248" y="283">Never inside it</text>
-    <text class="t-s" x="248" y="301">its own directory</text>
+    <text class="t-b" x="248" y="283">Refused before any run</text>
+    <text class="t-s" x="248" y="301">the operator list bounds both</text>
     <text class="mark tie" x="592" y="284">=</text>
-    <text class="t-b" x="612" y="283">Never inside it</text>
+    <text class="t-b" x="612" y="283">Refused before any run</text>
     <text class="t-s" x="612" y="301">the same</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Every coding run in a project pays lay-out and save</text>
-    <text class="t-s" x="32" y="389">conflicts reported on the run record</text>
+    <text class="t-b" x="32" y="371">A chief-of-staff repository change waits on a person</text>
+    <text class="t-s" x="32" y="389">and the operator keeps the allowed-remotes list</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">The first writer is an agent with no filesystem</text>
-    <text class="t-s" x="494" y="389">then the collection ships alone</text>
+    <text class="t-b" x="494" y="371">Repository changes become frequent and routine</text>
+    <text class="t-s" x="494" y="389">then it lands at once, as a hire does</text>
   </g>
 </svg>

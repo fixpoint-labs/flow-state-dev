@@ -27,12 +27,14 @@ Add one row after `workstreams`:
 > await setRepository({ projectId: "storefront", repository: null });
 > ```
 >
-> Only members can change it. A bare path like `/home/me/storefront` is refused, and so is a URL
-> with a username or token in it: the row is visible to the whole organization, so credentials
-> stay in the host's own git setup.
+> Only members can change it. When the chief of staff sets it for you, it asks you to approve
+> the change in Inbox first, the same way it asks before a fire. A bare path like
+> `/home/me/storefront` is refused, and so is an address carrying a token or password (an SSH login like `git@` is fine): the row is
+> visible to the whole organization, so credentials stay in the host's own git setup.
 >
 > When a coding run picks up work from one of the project's workstreams, it works in a fresh
-> branch of that repository. Nobody names a folder. The harness manager's README, under
+> branch of that repository, as long as the host running the Lab allows that remote. Nobody
+> names a folder. The harness manager's README, under
 > "Running a project's work", shows how a host wires it.
 >
 > If the project names no repository, a coding row filed there is refused before any agent runs,
@@ -42,49 +44,56 @@ Add one row after `workstreams`:
 >
 > ### The project's own files
 >
-> A project also keeps files that aren't code: notes an agent decides to keep, memory, anything
-> that belongs to the project rather than to a branch. They live in the organization's
-> `project-files` collection, under the project's id, and only members can read them.
+> A project also keeps files that aren't code: notes, memory, anything that belongs to the
+> project rather than to a branch. They live in the organization's `project-files` collection,
+> under the project's id, and only the project's members can read them.
 >
-> A coding run gets them in a directory beside its checkout, never inside it. Whatever the agent
-> leaves there is saved back to the collection when the run ends. Nothing moves between the
-> two: project files never show up in `git status`, and the checkout never ends up in the
-> collection.
+> A coding run gets a directory for these files beside its checkout, never inside it, so
+> nothing there shows up in `git status`. The run's files in that directory aren't saved to the
+> collection yet; a host that wants them kept can do it in the manager's after-run hook.
 
 ## UPDATE · `packages/harness-manager/README.md` · new section after "Running a mailbox's board"
 
 > ## Running a project's work
 >
 > A fixed `sourceRepo` sends every run to one repository. When the repository depends on the
-> work, hand the manager a resolver instead. It's called at each attempt, with the block's
-> context and nothing else, and returns the remote to work in, or a reason to refuse:
+> work, give the manager a run source instead. It's called at each attempt, with the block's
+> context and nothing else, and answers with the remote to work in or a reason to refuse:
 >
 > ```ts
 > import { projectWorkspace } from "@flow-state-dev/workforce";
 >
 > harnessManager({
+>   boardCollectionId: work.id,
+>   boardCollection: work,
+>   workspace: {
+>     root,
+>     remotes: { allow: ["github.com"] },
+>     ...projectWorkspace({ board: work }),
+>   },
 >   // ...
->   workspace: { root, ...projectWorkspace({ mailboxId: "eng.feature" }) },
 > });
 > ```
 >
-> The manager keeps one clone per remote under `root`, made the first time a run needs it.
-> Before cutting a new branch it fetches, and it branches from the remote's default branch. A
-> retry continues its existing checkout and never fetches, resets or rebases. Access is the
-> host's own git credentials; a remote the host can't read fails the attempt before the harness
-> runs, naming the remote.
+> The manager only reaches remotes listed in `remotes.allow`. `file://` is off unless you list
+> `file`. Anything else is refused at the attempt, before git runs, naming the remote.
 >
-> A resolver can also return collections to lay out beside the checkout, in `<checkout>.files/`.
-> They're filled before the harness runs and saved back after it, and the run's prompt context
-> carries the directory. The outcome of the save is on the run record.
+> It keeps one clone per remote under `root`, made the first time a run needs it. Before cutting
+> a new branch it fetches, and it branches from the remote's default branch. A retry continues
+> its existing checkout and never fetches, resets or rebases. Access is the host's own git
+> credentials; a remote the host can't read fails the attempt before the harness runs.
 >
-> Pass `sourceRepo` or a resolver, not both.
+> Each run also gets a directory beside its checkout, outside the worktree, named in the
+> prompt context. Pass `before` and `after` hooks to fill it and keep what the run left there;
+> `after` runs whether the harness succeeded or failed.
+>
+> A fixed `sourceRepo` still works as before.
 
 ## UPDATE · `packages/workforce/README.md` · Projects section
 
 > `createProject` takes an optional `repository`, and `setRepository` changes it (members only).
-> `projectWorkspace({ mailboxId })` gives a harness manager the repository and the project's
-> files for that workstream's project. See the docs site's Projects page.
+> `projectWorkspace({ board })` gives a harness manager the repository of the project that holds
+> that board's workstream. See the docs site's Projects page.
 
 ## Publication ownership
 
