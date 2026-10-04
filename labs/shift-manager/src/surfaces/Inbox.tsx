@@ -158,7 +158,7 @@ function Reply({
           // The box is disabled while blocked; a send that got here anyway
           // must not read as delivered.
           if (route.blocked !== null) throw new TurnNotDelivered("refused", route.blocked);
-          await sendTurn(clients, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message);
+          return sendTurn(clients, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message);
         }}
         onDelivered={onDelivered}
       />

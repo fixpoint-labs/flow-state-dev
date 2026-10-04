@@ -8,16 +8,19 @@
  * owner names it. Shift Manager knows no kind and no action name of its own.
  *
  * **Delivered means the session holds it (BR-4).** The door's request is
- * followed until it ends. A line counts as delivered only when that request is
- * `completed` **and** the target session holds the request's user item. The
- * HTTP answer alone never says so: it only says the request started.
+ * followed until it ends or stops. A line counts as delivered only when that
+ * request is `completed` or `suspended` **and** the target session holds the
+ * request's user item. The HTTP answer alone never says so: it only says the
+ * request started. A `suspended` request stopped on an ask the worker raised,
+ * such as a chief of staff's approval to fire a seat: the line is in, and the
+ * ask waits in Inbox, so the send resolves with `waiting` set.
  *
  * Three ways a line can fail to be delivered, and the caller keeps the draft
  * for each:
  *
  * - **refused**: the door's request failed. It rejects with the door's own reason.
  * - **not sent**: the line never reached the Lab, or its request ended some
- *   other way. Safe to send again.
+ *   other way (aborted, interrupted). Safe to send again.
  * - **unconfirmed**: the line may have arrived, but Shift Manager can't confirm it.
  *   The worker didn't answer in time, the session read failed, or the session
  *   doesn't show it. Sending again could send it twice, so nothing offers to.
@@ -107,13 +110,16 @@ async function refusalOf(clients: LabClients, sessionId: string, requestId: stri
 /**
  * Send `message` through the target's door, and resolve only once it is
  * delivered (BR-4). Rejects with {@link TurnNotDelivered} otherwise.
+ *
+ * @returns the door's request, and `waiting`: whether that request stopped on
+ * an ask the worker raised rather than finishing.
  */
 export async function sendTurn(
   clients: LabClients,
   target: TurnTarget,
   message: string,
   options: { timeoutMs?: number; pollMs?: number } = {},
-): Promise<{ requestId: string }> {
+): Promise<{ requestId: string; waiting: boolean }> {
   const actions = clients.actions(target.flowId);
   let requestId: string;
   try {
@@ -124,11 +130,16 @@ export async function sendTurn(
   }
 
   const until = Date.now() + (options.timeoutMs ?? SEND_TIMEOUT_MS);
+  let waiting = false;
   const unconfirmed = (why: string) => new TurnNotDelivered("unconfirmed", `${why} Check the worker's session before sending it again.`);
   try {
     for (;;) {
       const { status } = await call(() => actions.getRequestStatus(requestId));
       if (status === "completed") break;
+      if (status === "suspended") {
+        waiting = true;
+        break;
+      }
       if (status === "failed") throw new TurnNotDelivered("refused", await refusalOf(clients, target.sessionId, requestId));
       if (status !== "in_progress") throw new TurnNotDelivered("not-sent", `The message's request ended ${status}.`);
       if (Date.now() > until) throw unconfirmed("The worker did not answer in time; the message may still arrive.");
@@ -141,5 +152,5 @@ export async function sendTurn(
     if (error instanceof ClientCallFailed) throw unconfirmed(`Couldn't read back whether the message arrived: ${error.message}.`);
     throw error;
   }
-  return { requestId };
+  return { requestId, waiting };
 }

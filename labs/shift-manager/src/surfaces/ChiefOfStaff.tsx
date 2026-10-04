@@ -307,8 +307,9 @@ function Talk({
         const target = sessionId ?? (fresh.current ??= newConversationId());
         const settled = startChiefOfStaffWork();
         try {
-          await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
+          const sent = await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
           setOpened(target);
+          return sent;
         } catch (error) {
           // The Lab may have opened the session before the line failed. The
           // listing says whether it did; the composer says what failed.

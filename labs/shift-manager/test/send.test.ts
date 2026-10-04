@@ -65,7 +65,7 @@ describe("sendTurn", () => {
       status: "completed",
       items: [{ requestId: "req_door", role: "user", type: "message" }],
     });
-    await expect(sendTurn(clients, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door" });
+    await expect(sendTurn(clients, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", waiting: false });
     // Through the target's door, into its session, with the line as `{ message }`.
     expect(sent).toEqual([{ flowId: "eng.coder", action: "message", input: { message: "hello" }, opts: { sessionId: "s_run" } }]);
   });
@@ -73,7 +73,20 @@ describe("sendTurn", () => {
   it("finds the line at the end of a long session, where a new line is", async () => {
     const older = Array.from({ length: 5_000 }, (_, i) => ({ requestId: `req_${i}`, role: "user", type: "message" }));
     const { clients } = stubClients({ status: "completed", items: [...older, { requestId: "req_door", role: "user", type: "message" }] });
-    await expect(sendTurn(clients, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door" });
+    await expect(sendTurn(clients, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", waiting: false });
+  });
+
+  // A turn that stops on a person's approval (a chief of staff's fire or retire) holds the
+  // line already: it is delivered, and resending it would raise the ask twice.
+  it("is delivered, and says it waits, when the door's request suspended and the session holds its user item", async () => {
+    const { clients } = stubClients({ status: "suspended", items: [{ requestId: "req_door", role: "user", type: "message" }] });
+    await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", waiting: true });
+  });
+
+  it("is unconfirmed, not not-sent, when the request suspended but the session doesn't show the line", async () => {
+    const { clients } = stubClients({ status: "suspended", items: [] });
+    const error = await kindOf(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 }));
+    expect(error.kind).toBe("unconfirmed");
   });
 
   it("is refused, in the door's own words, when the door's request failed", async () => {

@@ -229,9 +229,7 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string }) {
       label="Message this worker"
       placeholder="Message this worker…"
       blocked={blocked}
-      send={async (message) => {
-        await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message);
-      }}
+      send={(message) => sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message)}
       extra={
         <label className="flex items-center gap-1.5" title={gaps.task.alsoPost}>
           <input type="checkbox" disabled data-testid="task-also-post" data-gap={gaps.task.alsoPost} />
