@@ -117,7 +117,7 @@ coordinator hires, and the hire still idles for every skill but coding.
 **Open: none.** D3 is the one to weigh. The calls made without asking, and what was dropped, are
 in [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Enhancement · `core` + `orchestration` + `workforce` + DevTeam Lab · large · 1 PR · epic
+Enhancement · `core` + `orchestration` + `workforce` + DevTeam Lab · large · 2 PRs, stacked · epic
 [FIX-1763](https://linear.app/fixpoint-labs/issue/FIX-1763) · before
 [FIX-1777](https://linear.app/fixpoint-labs/issue/FIX-1777) and
 [FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779) · blocks
