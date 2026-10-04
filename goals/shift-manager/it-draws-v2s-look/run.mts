@@ -31,14 +31,16 @@
  *            expected number of elements, so a missing element fails as surely
  *            as an extra one
  *
- * Which regions are graded whole grows with the screens' slices: the sidebar
- * and the shared parts now. The fonts, the radius and the highlighter are
- * graded on every element of every screen.
+ * Which regions are graded whole grows with the screens' slices: the sidebar,
+ * the shared parts and Chief of Staff's centre now. Each slice's rows,
+ * exceptions and regions live in a file of their own under `rows/`, spread
+ * into the table here. The fonts, the radius and the highlighter are graded
+ * on every element of every screen.
  *
  * Controls (scratch patches to a copy of Shift Manager, never the checkout):
- *   GOAL_CONTROL=drift         the sidebar's team row rounded, its nav counts in
- *                              the sans. Must FAIL at surface on that row and
- *                              type on those counts, both shifts, nothing else.
+ *   GOAL_CONTROL=drift         the sidebar's team row rounded, its Roster count
+ *                              in the sans. Must FAIL at surface on that row and
+ *                              type on that count, both shifts, nothing else.
  *   GOAL_CONTROL=unclassified  one visible element no row covers, in the
  *                              sidebar. Must FAIL at totality, naming it.
  *   GOAL_CONTROL=missing       the team rows' on-shift counts removed. Must FAIL
@@ -59,6 +61,13 @@ import { EM_KIND } from "../../devforce-lab/lab/workforce/flows/workers/em.mts";
 import { hex, parseColour, type Rgb } from "../../lib/colour.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerCopy, labApi, startShiftManager, type LabApi, type Patch } from "../../lib/shift-manager.mts";
+import {
+  SIDEBAR_AND_COS_EXCEPTIONS,
+  SIDEBAR_AND_COS_ROWS,
+  SIDEBAR_AND_COS_WHOLE,
+  sidebarAndCosContent,
+  type SidebarAndCosRead,
+} from "./rows/sidebar-and-cos.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["drift", "unclassified", "missing"] as const;
@@ -93,7 +102,7 @@ const LABS = {
 type LabName = keyof typeof LABS;
 
 const SCREENS = ["workstream", "task", "tasks", "cos", "inbox", "roster", "project"] as const;
-type Screen = (typeof SCREENS)[number];
+export type Screen = (typeof SCREENS)[number];
 const SHIFTS = ["day", "night"] as const;
 type Shift = (typeof SHIFTS)[number];
 const WIDTHS = [1600, 1100] as const;
@@ -105,7 +114,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 // ---- the v2 look table -----------------------------------------------------------
 
 /** What the Lab's store holds that a row's expected count reads. */
-type Store = {
+export type Store = {
   /** The teams the seat inventory names, and its seats. */
   teams: number;
   seats: number;
@@ -113,10 +122,17 @@ type Store = {
   running: number;
   /** Whether the Lab has a chief-of-staff seat. */
   chiefOfStaff: boolean;
-  /** Per channel: its stored rows, and the names of its members running one. */
-  channels: Record<string, { rows: number; live: string[] }>;
+  /** Whether the person's conversation with it holds a reply: only the desk Lab's sweep sends a line. */
+  replied: boolean;
+  /** The person's pending asks, across the seats' sessions. */
+  asks: number;
+  /**
+   * Per channel: its stored rows, the names of its members running one, how
+   * many of its rows run, and whether one of its members' asks waits on the person.
+   */
+  channels: Record<string, { rows: number; live: string[]; running: number; needs: boolean }>;
 };
-type Where = { screen: Screen; width: Width; store: Store };
+export type Where = { screen: Screen; width: Width; store: Store; /** A line to the chief of staff is held in flight. */ working?: boolean };
 
 /** The computed values a row's elements must have. Each is graded in its own leg. */
 type Want = {
@@ -129,9 +145,17 @@ type Want = {
   /** type: letter-spacing, in em of the element's own size. */
   tracking?: number;
   /** surface: the background is this token. */
-  surface?: "sidebar" | "inspector";
-  /** surface: every side's border is this wide, in px, in this token. */
-  border?: { width: number; colour: "foreground" };
+  surface?: "sidebar" | "inspector" | "card" | "accent" | "foreground" | "info";
+  /** surface: every side's border is this wide, in px, in this token (any alpha), solid unless named. */
+  border?: { width: number; colour: "foreground"; style?: "dashed" };
+  /** marks: the background is the highlighter, because what this is waits on a person. */
+  highlight?: true;
+  /** marks: the text is painted in this token. */
+  colour?: "info";
+  /** type: line height, in multiples of the element's own size. */
+  lineHeight?: number;
+  /** layout: padding top, right, bottom, left, in px. */
+  padding?: [number, number, number, number];
   /** marks: the bottom border is 2px of `info`, or none painted. */
   underline?: "info" | "none";
   /** marks: v2's state square for this state (`NODE`). */
@@ -145,7 +169,7 @@ type Want = {
 };
 
 /** One row: a role, the elements that play it, what v2 gives it, and the v2 line it came from. */
-type Row = {
+export type Row = {
   id: string;
   /** The audit rows (`assets/GAPS.md`) it grades. */
   audit: string;
@@ -181,7 +205,7 @@ const LOOK: Row[] = [
   { id: "Jump to text", audit: "F2", v2: { line: 35, has: "font:500 12px 'IBM Plex Mono'" }, select: "[data-testid=jump-to] > [data-look=meta-control]", min: 1, want: { family: "mono", size: 12 } },
   { id: "Jump to key box", audit: "F2", v2: { line: 36, has: "border:1px solid" }, select: "[data-testid=jump-to] kbd", min: 1, want: {} },
   { id: "Jump to key", audit: "F2", v2: { line: 36, has: "font:500 10.5px 'IBM Plex Mono'" }, select: "[data-testid=jump-to] kbd > span", min: 1, want: { family: "mono", size: 10.5 } },
-  { id: "nav label", audit: "F2", v2: { line: 59, has: "<span style=\"flex:1\">Inbox</span>" }, select: "[data-testid=sidebar] [data-testid^=nav-] > span:first-child", min: 4, want: { family: "sans" } },
+  { id: "nav label", audit: "F2", v2: { line: 59, has: "<span style=\"flex:1\">Inbox</span>" }, select: "[data-testid=sidebar] [data-testid^=nav-] > [data-look=nav-label]", min: 4, want: { family: "sans" } },
   { id: "nav count", audit: "F2", v2: { line: 60, has: "font:600 10.5px 'IBM Plex Mono'" }, select: "[data-testid=sidebar] [data-testid^=nav-][data-testid$=-count]", min: 3, want: { family: "mono", size: 10.5 } },
   { id: "current row", audit: "F4", v2: { line: 908, has: "NAVSEL" }, select: "[data-testid=sidebar] [aria-current=page]", min: 0, want: {} },
   { id: "section label", audit: "F2", v2: { line: 76, has: "font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em" }, select: "[data-testid=projects-heading] > [data-look=meta-label], [data-testid=teams-heading] > [data-look=meta-label]", min: 2, want: { family: "mono", size: 10, tracking: 0.14 } },
@@ -189,7 +213,9 @@ const LOOK: Row[] = [
   { id: "team name", audit: "F2", v2: { line: 99, has: "<span style=\"flex:1\">{{ t.name }}</span>" }, select: "[data-testid=team] > span:first-child", min: ({ store }) => store.teams, want: { family: "sans" } },
   { id: "status square", audit: "F4", v2: { line: 99, has: "width:7px;height:7px" }, select: "[data-testid=sidebar] [data-mark]", min: ({ store }) => store.seats, want: {} },
   { id: "team on-shift count", audit: "F2", v2: { line: 99, has: "font:500 10.5px 'IBM Plex Mono'" }, select: "[data-testid=team-on-shift]", min: ({ store }) => store.teams, want: { family: "mono", size: 10.5 } },
-  { id: "footer", audit: "F2", v2: { line: 107, has: "font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=sidebar-footer], [data-testid=sidebar-footer] > p, [data-testid=sidebar-footer] span:not([data-mark])", min: 1, want: { family: "mono", size: 11 } },
+  { id: "footer", audit: "F2", v2: { line: 107, has: "font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=sidebar-footer], [data-testid=sidebar-footer] > p, [data-testid=sidebar-footer] span:not([data-mark]):not([data-look=avatar])", min: 1, want: { family: "mono", size: 11 } },
+  // The sidebar's entries and Chief of Staff: slice B's rows.
+  ...SIDEBAR_AND_COS_ROWS,
   { id: "shift switch", audit: "F2", v2: { line: 113, has: "border:1px solid var(--ink);font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=shift-switch], [data-testid=shift-switch] > button", min: 3, want: { family: "mono", size: 11 } },
 
   // A screen's title.
@@ -223,19 +249,19 @@ const LOOK: Row[] = [
  * skipped only where the theme's radius can't reach it; everything else on
  * this list is still graded for its fonts, its radius and the highlighter.
  */
-type Exception = { id: string; select: string; why: string; radius?: "skip" };
+export type Exception = { id: string; select: string; why: string; radius?: "skip" };
 const EXCEPTIONS: Exception[] = [
   { id: "organization switcher", select: "[data-testid=org-switcher], [data-testid=org-switcher] *", why: "kept by the epic (ER-1); v2's brand header waits on FIX-1650 for an organization's display name" },
-  { id: "PROJECTS note", select: "[data-testid=projects] > p", why: "the named gap PROJECTS keeps until FIX-1650 ships projects" },
   { id: "TEAMS unread note", select: "[data-testid=teams-roster-unread]", why: "says why TEAMS can't be read; v2 draws no failed state" },
   { id: "partial mark", select: "[data-testid=partial-mark]", why: "Shift Manager's mark for a partial status read; v2 draws no failed state" },
   { id: "section failure", select: "[data-testid$=-failure], [data-testid$=-failure] *", why: "a section's Retry; v2 draws no failed state" },
   { id: "also post to the workstream", select: "[data-testid=task-also-post]", why: "the task composer's also-post box waits on FIX-1474" },
   { id: "registry pill", select: "[data-slot=badge]", why: "a registry part whose `rounded-full` is a literal the theme's radius can't reach", radius: "skip" },
+  ...SIDEBAR_AND_COS_EXCEPTIONS,
 ];
 
 /** The regions every painting element of which must be covered by a row or an exception. */
-const WHOLE = ["[data-testid=sidebar]", "[data-look=tabs]", "[data-look=composer]", "[data-look=composer-footer]", "[data-look=screen-title]"];
+const WHOLE = ["[data-testid=sidebar]", "[data-look=tabs]", "[data-look=composer]", "[data-look=composer-footer]", "[data-look=screen-title]", ...SIDEBAR_AND_COS_WHOLE];
 
 // ---- reading the page ----------------------------------------------------------
 
@@ -251,6 +277,9 @@ type El = {
   weight: number;
   tracking: number;
   bg: string;
+  colour: string;
+  lineHeight: number;
+  padding: number[];
   radius: number[];
   border: Array<{ width: number; style: string; colour: string }>;
   width: number;
@@ -264,6 +293,7 @@ type Sweep = {
   faces: Array<{ family: string; weight: string; status: string }>;
   mentions: string[] | null;
   boardCount: string | null;
+  sidebarAndCos: SidebarAndCosRead;
 };
 
 /** Runs in the page: every visible element that paints anything, with what each row and exception matches. */
@@ -306,6 +336,9 @@ function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: 
       weight: Number(cs.fontWeight === "normal" ? 400 : cs.fontWeight === "bold" ? 700 : cs.fontWeight),
       tracking: cs.letterSpacing === "normal" ? 0 : parseFloat(cs.letterSpacing),
       bg: cs.backgroundColor,
+      colour: cs.color,
+      lineHeight: parseFloat(cs.lineHeight),
+      padding: [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].map((p) => parseFloat(p)),
       radius: [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map((r) => parseFloat(r)),
       border,
       width: box.width,
@@ -330,12 +363,22 @@ function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: 
     faces: Array.from(document.fonts).map((f) => ({ family: f.family.replace(/^["']|["']$/g, ""), weight: f.weight, status: f.status })),
     mentions: document.querySelector("[data-testid=composer]") === null ? null : mentionEls.map((m) => m.getAttribute("data-name") ?? ""),
     boardCount: document.querySelector("[data-testid=tab-count-board]")?.textContent ?? null,
+    sidebarAndCos: {
+      inbox: ((el) => (el === null ? null : { text: el.textContent ?? "", waiting: el.getAttribute("data-waiting") }))(document.querySelector("[data-testid=nav-inbox-count]")),
+      dots: Array.from(document.querySelectorAll("[data-testid^=nav-workstream-]:not([data-testid=nav-workstream-gone])")).map((el) => ({
+        channel: el.getAttribute("data-testid")!.slice("nav-workstream-".length),
+        dot: el.getAttribute("data-dot"),
+      })),
+      sub: document.querySelector("[data-testid=cos-sub]")?.textContent ?? null,
+      watching: document.querySelector("[data-testid=cos-watching]")?.textContent ?? null,
+      suggestions: document.querySelector("[data-testid=cos]") === null ? null : Array.from(document.querySelectorAll("[data-look=suggestion]")).map((el) => el.textContent ?? ""),
+    },
   };
 }
 
 // ---- grading -------------------------------------------------------------------
 
-const TOKENS = ["sidebar", "inspector", "attention", "info", "foreground"] as const;
+const TOKENS = ["sidebar", "inspector", "attention", "info", "foreground", "card", "accent"] as const;
 const FAMILY = { sans: "Space Grotesk", mono: "IBM Plex Mono" } as const;
 
 /**
@@ -426,8 +469,9 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
       if (w.border !== undefined) {
         // Chromium computes a border width down to a whole pixel, so v2's 1.5px reads as 1px, in v2 as here.
         const painted = Math.floor(w.border.width);
-        const off = e.border.filter((b) => Math.abs(b.width - painted) > 0.01 || b.style !== "solid" || !same(rgbOf(b.colour), token[w.border!.colour]));
-        if (off.length > 0) failures.add("surface", `${at} has a ${e.border.map((b) => `${px(b.width)} ${b.style}`).join(" / ")} border, v2 a ${px(w.border.width)} ink one ${cite(row)}`, tag);
+        const style = w.border.style ?? "solid";
+        const off = e.border.filter((b) => Math.abs(b.width - painted) > 0.01 || b.style !== style || !same(rgbOf(b.colour), token[w.border!.colour]));
+        if (off.length > 0) failures.add("surface", `${at} has a ${e.border.map((b) => `${px(b.width)} ${b.style}`).join(" / ")} border, v2 a ${px(w.border.width)} ${style} ink one ${cite(row)}`, tag);
       }
       if (w.underline !== undefined) {
         const b = e.border[2]!;
@@ -451,6 +495,16 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
         const edgeOk = edge.width > 0 && edge.style === want.style && (want.edge === null || same(rgbOf(edge.colour), want.edge));
         if (!fillOk || !edgeOk) failures.add("marks", `${at} is not v2's ${w.square} square (fill ${fill === null ? "none" : hex(fill)}, edge ${edge.style}) ${cite(row)}`, tag);
       }
+      if (w.highlight === true && !same(rgbOf(e.bg), token.attention)) failures.add("marks", `${at} carries no highlighter, and it waits on a person ${cite(row)}`, tag);
+      if (w.colour !== undefined && e.text && !same(rgbOf(e.colour), token[w.colour])) {
+        failures.add("marks", `${at} is painted ${hex(rgbOf(e.colour) ?? [0, 0, 0])}, v2 paints it ${w.colour} ${hex(token[w.colour]!)} ${cite(row)}`, tag);
+      }
+      if (w.lineHeight !== undefined && e.text && Math.abs(e.lineHeight - w.lineHeight * e.size) > 0.1) {
+        failures.add("type", `${at} sets a ${px(e.lineHeight)} line, v2 ${w.lineHeight} (${px(w.lineHeight * e.size)}) ${cite(row)}`, tag);
+      }
+      if (w.padding !== undefined && w.padding.some((p, i) => Math.abs(p - e.padding[i]!) > 0.5)) {
+        failures.add("layout", `${at} is padded ${e.padding.map(px).join(" ")}, v2 ${w.padding.map(px).join(" ")} ${cite(row)}`, tag);
+      }
       if (w.width !== undefined && Math.abs(e.width - w.width) > 0.5) failures.add("layout", `${at} is ${px(e.width)} wide, v2 ${px(w.width)} ${cite(row)}`, tag);
       if (w.minWidth !== undefined && e.minWidth !== `${w.minWidth}px`) failures.add("layout", `${at} holds a ${e.minWidth} minimum, v2 ${w.minWidth}px ${cite(row)}`, tag);
     }
@@ -465,12 +519,15 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
   }
 
   // marks: the highlighter on a needs-you element and nothing else.
-  const needsYou = new Set(LOOK.filter((r) => r.want.square === "needs").map((r) => r.id));
+  const needsYou = new Set(LOOK.filter((r) => r.want.square === "needs" || r.want.highlight === true).map((r) => r.id));
   for (const e of read.els) {
     if (token.attention !== null && same(rgbOf(e.bg), token.attention) && !e.rows.some((id) => needsYou.has(id))) {
       failures.add("marks", `${e.el} carries the highlighter, and nothing on it waits on a person`, tag);
     }
   }
+
+  // content: what the sidebar and Chief of Staff draw from the store.
+  for (const failure of sidebarAndCosContent(read.sidebarAndCos, where.store, where.screen, where.working)) failures.add("content", failure, tag);
 
   // content: what the shared parts draw from the store.
   if (where.screen === "workstream" && lab === "devteam") {
@@ -489,7 +546,7 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
 /** Suspension reasons that are a person being asked something. */
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 
-async function readStore(api: LabApi, tree: string): Promise<Store> {
+async function readStore(api: LabApi, tree: string, userId: string): Promise<Store> {
   const roster = await readDeclaredRoster(tree);
   const host = roster.channels[0]!.id;
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
@@ -502,8 +559,9 @@ async function readStore(api: LabApi, tree: string): Promise<Store> {
       ? []
       : (await api.collection(host, seatsRef)).map((r) => {
           const id = String(r.id);
-          return { id, name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
+          return { id, kind: r.kind == null ? null : String(r.kind), name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
         });
+  const asks = await pendingAsksBySeat(api, userId, seats);
   const channels: Store["channels"] = {};
   let running = 0;
   for (const channel of roster.channels) {
@@ -515,9 +573,11 @@ async function readStore(api: LabApi, tree: string): Promise<Store> {
     const holds = (seat: { id: string; name: string }) => live.some((r) => r.assignee === seat.id || r.assignee === seat.name);
     channels[channel.id] = {
       rows: rows.length,
+      running: live.length,
+      needs: members.some((m) => (asks.get(m) ?? 0) > 0),
       live: members
         .map((m) => seats.find((s) => s.id === m))
-        .filter((s): s is { id: string; name: string } => s !== undefined && holds(s))
+        .filter((s): s is (typeof seats)[number] => s !== undefined && holds(s))
         .slice(0, 3)
         // A name two members share reaches neither, so that member is offered by its id.
         .map((s) => (members.filter((m) => seats.find((x) => x.id === m)?.name === s.name).length > 1 ? s.id : s.name)),
@@ -528,6 +588,8 @@ async function readStore(api: LabApi, tree: string): Promise<Store> {
     seats: seats.length,
     running,
     chiefOfStaff: seats.some((s) => s.name === "chief-of-staff"),
+    replied: false,
+    asks: [...asks.values()].reduce((a, b) => a + b, 0),
     channels,
   };
 }
@@ -545,14 +607,28 @@ async function channelKind(api: LabApi, channel: string): Promise<string> {
 
 /** The person's pending asks, across the seats' sessions. */
 async function pendingAsks(api: LabApi, userId: string): Promise<number> {
+  return [...(await pendingAsksBySeat(api, userId)).values()].reduce((a, b) => a + b, 0);
+}
+
+/**
+ * The person's pending asks, by the flow (the seat) whose session each waits in. Given the
+ * inventory's seats, only their sessions count, as Shift Manager reads asks: a session owned
+ * by a seat, or one with no owner on a seat's kind (`labs/shift-manager/src/lib/reads.ts`).
+ */
+async function pendingAsksBySeat(api: LabApi, userId: string, seats?: ReadonlyArray<{ id: string; kind: string | null }>): Promise<Map<string, number>> {
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&limit=500`);
-  let pending = 0;
+  const ids = new Set(seats?.map((s) => s.id));
+  const kinds = new Set(seats?.flatMap((s) => (s.kind === null ? [] : [s.kind])));
+  const bySeat = new Map<string, number>();
   for (const session of (listing.sessions ?? []) as Array<Record<string, any>>) {
+    if (seats !== undefined && !(session.flowId != null ? ids.has(String(session.flowId)) : kinds.has(String(session.flowKind)))) continue;
     const found = await api.items(String(session.id), ["suspension", "suspension_resume"]);
     const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
-    pending += found.filter((i) => i.type === "suspension" && PERSON_REASONS.has(String(i.reason)) && !resumed.has(String(i.suspensionId))).length;
+    const pending = found.filter((i) => i.type === "suspension" && PERSON_REASONS.has(String(i.reason)) && !resumed.has(String(i.suspensionId))).length;
+    const seat = String(session.flowId ?? "");
+    if (pending > 0) bySeat.set(seat, (bySeat.get(seat) ?? 0) + pending);
   }
-  return pending;
+  return bySeat;
 }
 
 // ---- driving the page --------------------------------------------------------------
@@ -592,6 +668,8 @@ async function open(page: Page, screen: Screen, ids: { channel: string; taskId: 
     case "cos":
       await page.getByTestId("nav-cos").click();
       await ready("cos");
+      // The conversation, once read, or the named state in its place.
+      await page.locator("[data-testid=cos-items], [data-testid=cos-conversation-empty], [data-testid=cos-none], [data-testid=cos-several]").first().waitFor({ timeout: 20_000 });
       return;
     case "inbox":
       await page.getByTestId("nav-inbox").click();
@@ -671,8 +749,9 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     // The page read the Lab before the row was filed; read it again.
     await page.reload();
     await page.getByTestId("shell").waitFor({ timeout: 20_000 });
-    const store = await readStore(api, LABS[lab].tree);
-    evidence.push(`${lab}: ${store.teams} team(s), ${store.seats} seats, ${store.running} running, chief of staff ${store.chiefOfStaff ? "yes" : "no"}`);
+    // The desk Lab's exchange above waited for the seat's reply to be drawn.
+    const store = { ...(await readStore(api, LABS[lab].tree, injected.userId)), replied: lab === "desk" };
+    evidence.push(`${lab}: ${store.teams} team(s), ${store.seats} seats, ${store.running} running, ${store.asks} ask(s) pending, chief of staff ${store.chiefOfStaff ? "yes" : "no"}`);
 
     const counts: string[] = [];
     for (const screen of screens) {
@@ -699,6 +778,36 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
         }
       }
     }
+    if (lab === "desk") {
+      // Chief of Staff while it works: a line held in flight (its delivery check waits), so the
+      // working dot, the sub line and the thinking line are graded drawn, not only absent.
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      await page.route("**/requests/*/status", async (route) => {
+        await held;
+        await route.continue();
+      });
+      await page.setViewportSize({ width: WIDTHS[0], height: 1000 });
+      await page.getByTestId("cos-composer-input").fill(fixture.desk.line);
+      await page.getByTestId("cos-composer-send").click();
+      await page.getByTestId("cos-working").waitFor({ timeout: 20_000 });
+      for (const shift of SHIFTS) {
+        await page.getByTestId(shift === "day" ? "shift-day" : "shift-night").click();
+        await settle(page, shift);
+        const read = await page.evaluate(sweep, {
+          rows: LOOK.map((r) => ({ id: r.id, select: r.select })),
+          exceptions: EXCEPTIONS.map((x) => ({ id: x.id, select: x.select })),
+          whole: WHOLE,
+          tokens: [...TOKENS],
+        });
+        grade(read, { screen: "cos", width: WIDTHS[0], store, working: true }, `${lab} cos working ${shift} ${WIDTHS[0]}`, failures, lab);
+        counts.push(`cos working ${shift} ${WIDTHS[0]}: ${read.els.length}`);
+        if (process.env.GOAL_SHOTS !== undefined) await page.screenshot({ path: join(process.env.GOAL_SHOTS, `${lab}-cos-working-${shift}-${WIDTHS[0]}.png`) });
+      }
+      release();
+      await page.getByTestId("cos-working").waitFor({ state: "detached", timeout: 30_000 });
+      await page.unroute("**/requests/*/status");
+    }
     if (errors.length > 0) failures.add("totality", `the page threw: ${errors.join(" | ")}`, lab);
     evidence.push(`${lab} painting elements read: ${counts.join("; ")}`);
   } finally {
@@ -723,7 +832,7 @@ function controlPatches(control: string): Patch[] {
           file: "src/surfaces/Sidebar.tsx",
           from: '<Meta role="count" className="ml-2 tabular-nums text-muted-foreground" testId={`${testId}-count`}>',
           to: '<Meta role="count" className="ml-2 font-sans tabular-nums text-muted-foreground" testId={`${testId}-count`}>',
-          why: "the nav counts set in the sans",
+          why: "the Roster count set in the sans",
         },
       ];
     case "unclassified":
