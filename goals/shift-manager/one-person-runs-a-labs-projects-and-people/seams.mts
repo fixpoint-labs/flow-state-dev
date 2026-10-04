@@ -212,56 +212,6 @@ export function seams(base: string): SeamRow[] {
     return naming.length === 0 && all.length === 0 && keysOk;
   });
 
-  // ---- Vocabulary (ER-13) ---------------------------------------------------------------
-  const PAGES = [
-    "apps/docs/docs/workforce/overview.md",
-    "apps/docs/docs/workforce/mailboxes.md",
-    "apps/docs/docs/workforce/projects.md",
-    "apps/docs/docs/workforce/chief-of-staff.md",
-    "apps/docs/docs/workforce/durable-hire.md",
-    "labs/shift-manager/README.md",
-  ];
-  row("Vocabulary (ER-13)", (out) => {
-    // The lines the set's own commits added to the pages it published, still on the commit.
-    const commits = git("log", "--format=%H %s", "--no-merges", "-E", "--grep=FIX-(1621|1718|1719)\\b", `${base}..HEAD`, "--", ...PAGES)
-      .split("\n")
-      .filter(Boolean);
-    const added = new Map<string, Set<string>>();
-    for (const c of commits) {
-      const sha = c.split(" ")[0]!;
-      let file = "";
-      for (const l of git("show", "--format=", "-U0", sha, "--", ...PAGES).split("\n")) {
-        if (l.startsWith("+++ ")) file = l.slice(6);
-        else if (l.startsWith("+") && !l.startsWith("+++")) (added.get(file) ?? added.set(file, new Set()).get(file)!).add(l.slice(1));
-      }
-    }
-    const hits: string[] = [];
-    for (const page of PAGES) {
-      if (!existsSync(join(REPO_ROOT, page))) continue;
-      let fenced = false;
-      readFileSync(join(REPO_ROOT, page), "utf8")
-        .split("\n")
-        .forEach((line, i) => {
-          if (/^\s*(```|~~~)/.test(line)) {
-            fenced = !fenced;
-            return;
-          }
-          if (fenced || !(added.get(page)?.has(line) ?? false)) return;
-          // Prose only: inline code, links' targets and paths are not nouns.
-          const prose = line
-            .replace(/`[^`]*`/g, "")
-            .replace(/\]\([^)]*\)/g, "]")
-            .replace(/\S*workers?\/\S*/gi, "")
-            .replace(/WORKER\.md/g, "");
-          if (/\bworkers?\b/i.test(prose)) hits.push(`${page}:${i + 1}: ${line.trim().slice(0, 200)}`);
-        });
-    }
-    out.push(`$ prose lines the FIX-1621/1718/1719 commits (${commits.length}) added to the published pages, still on the commit, saying "worker" outside a path or code: ${hits.length}`);
-    for (const h of hits) out.push(`  ${h}`);
-    if (hits.length > 0) out.push('FAIL: published prose calls a seat a "worker"');
-    return hits.length === 0;
-  });
-
   // ---- Docs published (ER-18) -------------------------------------------------------------
   row("Docs published (ER-18)", (out) => {
     const has = (page: string, re: RegExp) => existsSync(join(REPO_ROOT, page)) && re.test(readFileSync(join(REPO_ROOT, page), "utf8"));

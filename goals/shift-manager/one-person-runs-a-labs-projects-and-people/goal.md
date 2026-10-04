@@ -24,6 +24,7 @@
 - **J4** A docs-only writer adds CoS, the hire capability with `askBefore: ["fire"]`, the projects collection and the project tools to a scratch copy of the pentest Lab; Shift Manager over it boots, PROJECTS lists the project CoS created with a room the person posts in, and TEAMS lists the seat CoS hired. Each step the writer logs as *doc silent* fails.
 - **P3.1 to P3.4** every child's check on its green path, with the controls part 1 hasn't already failed (`manifest.mts`).
 - **Part 4** the seam rows, each a scripted assertion (`seams.mts`).
+- ER-13 (published prose never says "worker") is removed: FIX-1755 was dropped because the term "seat" is being retired.
 
 **Anti-game:** no assertion on a child's output or on Shift Manager's state. Only rows CoS created in this run are graded; the profile's default projects are left alone and must be unchanged. Every change goes through a CoS turn typed in the Chief of Staff view, a post in a composer, or a click in Inbox: no hire, fire or project block is called by the check. Each CoS turn and the room's answer runs once (FIX-1720 D2); a provider error re-runs that one turn and is reported. The second member's and the outsider's browsers are the same page handed their own user id and verified bearer (the Lab has no sign-in), and the outsider is in the same organization, so only the membership check keeps the room from it.
 
