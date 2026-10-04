@@ -1,0 +1,68 @@
+<svg viewBox="0 0 940 300" role="img" aria-label="What changes. Today a line shaped slug and what, posted on the feature workstream, reaches the EM's post door, which files the task and stops; the task stays pending because nothing runs the board. After: the post door files the task and, when the task is new, runs the board in the same delivery, so the coder's run starts. A repeated slug or an unshaped line still files nothing new and runs nothing."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg { fill:var(--surface); }
+    .lane { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .ok { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .dead { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arr { stroke:var(--ink-3); stroke-width:1.4; }
+    .arr-h { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-lane { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; letter-spacing:.12em; font-weight:600; }
+    .t-b { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:12px; }
+    .t-v { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="300"/>
+  <g id="today">
+    <rect class="lane" x="12" y="12" width="916" height="106" rx="6"/>
+    <text class="t-lane" x="28" y="32">TODAY</text>
+    <rect class="n-box" x="28" y="44" width="200" height="58" rx="5"/>
+    <text class="t-lbl" x="40" y="61">POST ON ENG.FEATURE</text>
+    <text class="t-b" x="40" y="79">slug: what to build</text>
+    <text class="t-s" x="40" y="94">a person or the chief of staff</text>
+    <line class="arr" x1="228" y1="73" x2="250" y2="73"/><path class="arr-h" d="M249,69 L256,73 L249,77 Z"/>
+    <rect class="n-box" x="256" y="44" width="220" height="58" rx="5"/>
+    <text class="t-lbl" x="268" y="61">EM · POST DOOR</text>
+    <text class="t-b" x="268" y="79">files the task</text>
+    <text class="t-s" x="268" y="94">and stops</text>
+    <line class="arr" x1="476" y1="73" x2="498" y2="73"/><path class="arr-h" d="M497,69 L504,73 L497,77 Z"/>
+    <rect class="dead" x="504" y="44" width="200" height="58" rx="5"/>
+    <text class="t-lbl" x="516" y="61">TASK</text>
+    <text class="t-b" x="516" y="79">pending, for good</text>
+    <text class="t-s" x="516" y="94">nothing runs the board</text>
+    <text class="t-x" x="722" y="78">✕ the coder never starts</text>
+  </g>
+  <g id="after">
+    <rect class="lane" x="12" y="130" width="916" height="158" rx="6"/>
+    <text class="t-lane" x="28" y="150">AFTER</text>
+    <rect class="n-box" x="28" y="162" width="200" height="58" rx="5"/>
+    <text class="t-lbl" x="40" y="179">POST ON ENG.FEATURE</text>
+    <text class="t-b" x="40" y="197">slug: what to build</text>
+    <text class="t-s" x="40" y="212">a person or the chief of staff</text>
+    <line class="arr" x1="228" y1="191" x2="250" y2="191"/><path class="arr-h" d="M249,187 L256,191 L249,195 Z"/>
+    <rect class="ok" x="256" y="162" width="220" height="58" rx="5"/>
+    <text class="t-lbl" x="268" y="179">EM · POST DOOR</text>
+    <text class="t-b" x="268" y="197">files, then runs the board</text>
+    <text class="t-s" x="268" y="212">new task only, same delivery</text>
+    <line class="arr" x1="476" y1="191" x2="498" y2="191"/><path class="arr-h" d="M497,187 L504,191 L497,195 Z"/>
+    <rect class="ok" x="504" y="162" width="200" height="58" rx="5"/>
+    <text class="t-lbl" x="516" y="179">ENG.CODER</text>
+    <text class="t-b" x="516" y="197">coding run starts</text>
+    <text class="t-s" x="516" y="212">shows under Tasks</text>
+    <text class="t-v" x="722" y="196">✓ one run per new slug</text>
+    <rect class="n-box" x="28" y="232" width="448" height="44" rx="5"/>
+    <text class="t-lbl" x="40" y="249">SAME SLUG AGAIN · OR AN UNSHAPED LINE</text>
+    <text class="t-b" x="40" y="267">nothing new filed, nothing run</text>
+    <text class="t-s" x="504" y="258">other waiting tasks stay as they are</text>
+  </g>
+</svg>
