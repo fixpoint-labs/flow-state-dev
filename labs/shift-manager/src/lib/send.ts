@@ -19,6 +19,12 @@
  * the Lab again: `stopped` only picks the words, so a stop it reads wrong,
  * or reads as gone, never keeps an ask out of Inbox.
  *
+ * **Held comes first.** The person's line lands in the session as soon as the
+ * door's request starts, long before the worker answers. A caller that passes
+ * `onHeld` hears the moment the session holds the line, so it can draw the
+ * line and say the worker is on it while the reply is in flight. Delivered
+ * still waits for the request to end.
+ *
  * Three ways a line can fail to be delivered, and the caller keeps the draft
  * for each:
  *
@@ -68,6 +74,12 @@ export class TurnNotDelivered extends Error {
  */
 const SEND_TIMEOUT_MS = 130_000;
 const SEND_POLL_MS = 250;
+/**
+ * How often, while the request runs, the send looks for the line in the
+ * session for `onHeld`. Each look is one session read, or a few on a session
+ * longer than {@link ITEM_PAGE} items, so it runs slower than the status poll.
+ */
+const HELD_POLL_MS = 1_000;
 /** Message items per session-state page while looking for the line. */
 const ITEM_PAGE = 200;
 /** Pages read back from the session's end before giving up. A new line is at the end. */
@@ -183,6 +195,9 @@ async function refusalOf(clients: LabClients, sessionId: string, requestId: stri
  * Send `message` through the target's door, and resolve only once it is
  * delivered (BR-4). Rejects with {@link TurnNotDelivered} otherwise.
  *
+ * @param options.onHeld called once, while the request is still running, when
+ * the session first holds the line. A request that ends before a poll sees it
+ * running never calls it: the send's own resolve says the same thing then.
  * @returns the door's request; `suspended`, whether the poll saw it suspended,
  * which is when a caller reads the Lab again; and what it `stopped` on
  * ({@link TurnStop}), for the words only.
@@ -191,7 +206,7 @@ export async function sendTurn(
   clients: LabClients,
   target: TurnTarget,
   message: string,
-  options: { timeoutMs?: number; pollMs?: number } = {},
+  options: { timeoutMs?: number; pollMs?: number; onHeld?: () => void } = {},
 ): Promise<{ requestId: string; suspended: boolean; stopped: TurnStop }> {
   const actions = clients.actions(target.flowId);
   let requestId: string;
@@ -204,6 +219,8 @@ export async function sendTurn(
 
   const until = Date.now() + (options.timeoutMs ?? SEND_TIMEOUT_MS);
   let suspended = false;
+  let held = false;
+  let nextHeldLook = 0;
   const unconfirmed = (why: string) => new TurnNotDelivered("unconfirmed", `${why} Check the worker's session before sending it again.`);
   try {
     for (;;) {
@@ -215,11 +232,20 @@ export async function sendTurn(
       if (status === "failed") throw new TurnNotDelivered("refused", await refusalOf(clients, target.sessionId, requestId));
       if (status !== "in_progress") throw new TurnNotDelivered("not-sent", `The message's request ended ${status}.`);
       if (Date.now() > until) throw unconfirmed("The worker did not answer in time; the message may still arrive.");
+      // Still running: say so once the session holds the line. A read that
+      // fails here only means "not yet"; the read after the request ends decides.
+      if (!held && options.onHeld !== undefined && Date.now() >= nextHeldLook) {
+        nextHeldLook = Date.now() + HELD_POLL_MS;
+        if (await sessionHoldsLine(clients, target.sessionId, requestId).catch(() => false)) {
+          held = true;
+          options.onHeld();
+        }
+      }
       await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? SEND_POLL_MS));
     }
-    const held = await sessionHoldsLine(clients, target.sessionId, requestId);
-    if (held === false) throw unconfirmed("The worker answered, but its session doesn't hold your message.");
-    if (held === undefined) throw unconfirmed("The worker answered, but its session is too long to find your message in.");
+    const holds = held || (await sessionHoldsLine(clients, target.sessionId, requestId));
+    if (holds === false) throw unconfirmed("The worker answered, but its session doesn't hold your message.");
+    if (holds === undefined) throw unconfirmed("The worker answered, but its session is too long to find your message in.");
   } catch (error) {
     if (error instanceof ClientCallFailed) throw unconfirmed(`Couldn't read back whether the message arrived: ${error.message}.`);
     throw error;

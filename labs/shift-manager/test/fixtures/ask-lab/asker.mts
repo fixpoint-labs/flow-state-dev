@@ -14,7 +14,7 @@
  * And a door, `message`: a person's line into the seat's session, which the
  * engine writes as a user item before the block runs. It says it heard, as an
  * assistant item of its own ({@link heardLine}), refuses a line that asks to
- * be refused, or stops on a stock approval for a line that asks for one, the
+ * be refused, takes its time over a line that asks it to, or stops on a stock approval for a line that asks for one, the
  * way a chief of staff's gated change does, so a test can see each. Built
  * with `projects`, a line `start project <id>` also creates that project
  * through the project writes' own `createProject`, the way a chief of staff's
@@ -45,6 +45,24 @@ export const ASKER_REFUSED_LINE = "refuse me";
 /** The line a test sends to have the seat stop on a person's approval before it answers. */
 export const ASKER_GATED_LINE = "ask me first";
 
+/**
+ * The line a test sends to keep the seat's turn running: the seat answers it
+ * only once the test lets it ({@link holdSlowLines}).
+ */
+export const ASKER_SLOW_LINE = "take your time";
+
+let slow: Promise<void> = Promise.resolve();
+
+/**
+ * Hold every {@link ASKER_SLOW_LINE} turn until the returned function is
+ * called. The session holds the line meanwhile; only the answer waits.
+ */
+export function holdSlowLines(): () => void {
+  let release!: () => void;
+  slow = new Promise<void>((resolve) => (release = resolve));
+  return release;
+}
+
 /** The line that starts project `<id>`, on a kind built with `projects`. */
 export const startProjectLine = (id: string) => `start project ${id}`;
 const START_PROJECT = /^start project (\S+)$/;
@@ -58,6 +76,7 @@ const hear = handler({
   outputSchema: z.object({ heard: z.string() }),
   execute: async (input, ctx) => {
     if (input.message === ASKER_REFUSED_LINE) throw new Error("This seat won't take that line.");
+    if (input.message === ASKER_SLOW_LINE) await slow;
     if (input.message === ASKER_GATED_LINE) await ctx.suspend!({ reason: "human_approval", message: `Approve: ${input.message}` });
     ctx.emit.message(heardLine(input.message));
     return { heard: input.message };

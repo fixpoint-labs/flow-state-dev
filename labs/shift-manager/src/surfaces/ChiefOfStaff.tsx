@@ -30,6 +30,7 @@ import { SessionItemsProvider } from "../components/flow-state/session-items-con
 import { TurnComposer } from "../components/TurnComposer";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { currentConversation, newConversationId, readConversation, sendToChiefOfStaff } from "../lib/cos";
+import { useFollowLatest } from "../lib/follow";
 import { chiefOfStaffOf, seatStates, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
@@ -41,6 +42,9 @@ import { startChiefOfStaffWork, useChiefOfStaffWorking } from "../lib/working";
 import type { Gaps } from "../gaps";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** What Shift Manager calls the chief of staff seat (FIX-1747); the seat keeps its id. */
+const NAME = "Shift Coordinator";
 
 export function ChiefOfStaffView({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
   const lead = (
@@ -56,10 +60,10 @@ export function ChiefOfStaffView({ snapshot, gaps }: { snapshot: LoadedSnapshot;
  * v2's Shift Coordinator frame (v2:122-180): the feed in a 720px column padded
  * 36/32, and the composer under it, outside the scroll, in the same column.
  */
-function Frame({ children, composer }: { children: ReactNode; composer?: ReactNode }) {
+function Frame({ children, composer, feed }: { children: ReactNode; composer?: ReactNode; feed?: (node: HTMLElement | null) => void }) {
   return (
     <div className="flex h-full flex-col" data-testid="cos">
-      <div className="min-h-0 flex-1 overflow-y-auto px-8 pt-9 pb-3" data-look="cos-feed">
+      <div ref={feed} className="min-h-0 flex-1 overflow-y-auto px-8 pt-9 pb-3" data-testid="cos-feed" data-look="cos-feed">
         <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6" data-look="cos-column">
           {children}
         </div>
@@ -98,7 +102,7 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
         SC
       </span>
       <div className="min-w-0">
-        <ScreenTitle scale="cos">Shift Coordinator</ScreenTitle>
+        <ScreenTitle scale="cos">{NAME}</ScreenTitle>
         {working ? (
           <Meta className="block text-[11.5px] text-muted-foreground" testId="cos-sub">
             working…
@@ -265,6 +269,8 @@ function Talk({
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
   const working = useChiefOfStaffWorking();
+  // The feed opens on the summary; from the person's first line it follows the conversation.
+  const feed = useFollowLatest({ startAtEnd: false });
 
   useEffect(() => {
     if (sessionId === null) return;
@@ -299,15 +305,21 @@ function Talk({
     <TurnComposer
       testId="cos-composer"
       scale="cos"
-      label={`Message ${seat.id}`}
-      placeholder={`Message ${seat.id}…`}
+      label={`Message ${NAME}`}
+      placeholder={`Message ${NAME}…`}
       blocked={blocked}
       suggestions={suggestions}
-      send={async (message) => {
+      send={async (message, held) => {
         const target = sessionId ?? (fresh.current ??= newConversationId());
         const settled = startChiefOfStaffWork();
+        feed.follow();
         try {
-          const sent = await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
+          const sent = await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message, () => {
+            // The session holds the line: read it back now, so it is drawn while the reply is in flight.
+            setOpened(target);
+            setReads((n) => n + 1);
+            held();
+          });
           setOpened(target);
           // Read the Lab again either way. Stopped short, it may have raised an ask Inbox should
           // list; finished, it may have changed the organization, such as a project it created.
@@ -327,10 +339,10 @@ function Talk({
   );
 
   return (
-    <Frame composer={composer}>
+    <Frame composer={composer} feed={feed.ref}>
       {lead}
       <section
-        aria-label={`Conversation with ${seat.id}`}
+        aria-label={`Conversation with ${NAME}`}
         className="flex flex-col gap-6"
         data-testid="cos-conversation"
         data-seat-id={seat.id}
@@ -340,7 +352,7 @@ function Talk({
           <SectionFailure what="The conversation" failure={failure} onRetry={() => setReads((n) => n + 1)} testId="cos-conversation-failure" />
         ) : sessionId === null ? (
           <p className="text-sm text-muted-foreground" data-testid="cos-conversation-empty">
-            You haven't talked with {seat.id} yet. Your first line starts the conversation.
+            You haven't talked with {NAME} yet. Your first line starts the conversation.
           </p>
         ) : read === undefined ? (
           <p className="text-sm text-muted-foreground" data-testid="cos-conversation-reading">
@@ -355,7 +367,7 @@ function Talk({
           // v2's thinking line (v2:167-169), saying only what is true: the seat has the line.
           <p className="flex items-center gap-2 font-mono text-[11.5px] font-medium text-muted-foreground" data-testid="cos-working">
             <span className="size-[7px] shrink-0 bg-info" data-look="working" aria-hidden />
-            {seat.id} is working on it…
+            {NAME} is working on it…
           </p>
         ) : null}
       </section>

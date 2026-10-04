@@ -298,12 +298,13 @@ function Reply({
         label={`Reply to ${ask.seatId ?? "this worker"}`}
         placeholder={`Reply to ${ask.seatId ?? "this worker"}…`}
         blocked={route.blocked}
-        send={async (message) => {
+        send={async (message, held) => {
           // The box is disabled while blocked; a send that got here anyway
           // must not read as delivered.
           if (route.blocked !== null) throw new TurnNotDelivered("refused", route.blocked);
-          return sendTurn(clients, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message);
+          return sendTurn(clients, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message, { onHeld: held });
         }}
+        onHeld={onDelivered}
         onDelivered={onDelivered}
       />
     </div>

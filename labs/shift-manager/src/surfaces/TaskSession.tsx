@@ -24,6 +24,7 @@ import { asksOfTask } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
+import { useFollowLatest } from "../lib/follow";
 import { followRequest, mergeItems, readSessionItems, RunReadError, taskItems, type OpenRun } from "../lib/run";
 import { useTask } from "../lib/task";
 
@@ -97,6 +98,7 @@ function RunItems({ run }: { run: OpenRun }) {
   const [stored, setStored] = useState<{ items: OutputItem[]; truncated: boolean } | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
+  const feed = useFollowLatest();
   const { reportStatus } = task;
 
   useEffect(() => {
@@ -146,7 +148,7 @@ function RunItems({ run }: { run: OpenRun }) {
   if (stored === undefined || shown === undefined) return <p className="p-4 text-sm text-muted-foreground">Reading the run…</p>;
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto" data-testid="session" data-session-id={run.sessionId} data-request-id={run.requestId}>
+    <div ref={feed.ref} className="min-h-0 flex-1 overflow-y-auto" data-testid="session" data-session-id={run.sessionId} data-request-id={run.requestId}>
       {shown.shared ? (
         <p className="px-4 pt-3 text-xs text-muted-foreground" data-testid="session-shared">
           This worker keeps one session for several tasks. Only this task's steps are shown.

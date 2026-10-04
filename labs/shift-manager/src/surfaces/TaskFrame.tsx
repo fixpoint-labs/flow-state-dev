@@ -99,7 +99,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
         )}
       </div>
       <Activity worker={worker} />
-      <Composer gaps={gaps} worker={worker ?? "This worker"} />
+      <Composer gaps={gaps} worker={worker} />
     </div>
   );
 }
@@ -241,7 +241,7 @@ function Brief({ gaps }: { gaps: Gaps }) {
  * through the door of the flow that session records as its owner, never the
  * board's. Says why when it can't.
  */
-function Composer({ gaps, worker }: { gaps: Gaps; worker: string }) {
+function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
   const task = useTask();
   const { clients, snapshot, refresh } = useLab();
   const { row } = task;
@@ -263,14 +263,16 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string }) {
             : flowId === undefined
               ? "Reading the run…"
               : door === null
-                ? `${worker} ${gaps.turn.noDoor}`
+                ? `${worker ?? "This worker"} ${gaps.turn.noDoor}`
                 : null;
   return (
     <TurnComposer
       testId="task-composer"
-      label="Message this worker"
-      placeholder="Message this worker…"
+      label={`Message ${worker ?? "this worker"}`}
+      placeholder={`Message ${worker ?? "this worker"}…`}
       blocked={blocked}
+      // No `held`: the Session tab draws only the task's own run, not this line's
+      // request, so the line keeps its draft until delivered.
       send={async (message) => {
         const sent = await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message);
         // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
