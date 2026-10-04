@@ -1,15 +1,15 @@
 ---
 title: Glossary
-description: "The main terms in flow-state-dev, the package each comes from, and the lower pieces each is built from."
+description: "The main terms in flow-state.dev, the package each comes from, and the lower pieces each is built from."
 ---
 
 # Glossary
 
-flow-state-dev is built in layers. A small set of primitives in Core (blocks, flows, sessions, resources) carries everything above it. Orchestration builds task boards out of those primitives, Workforce builds workers and mailboxes out of flows and sessions, and Shift Manager is an app that reads what Workforce writes.
+flow-state.dev is built in layers. A small set of primitives in Core (blocks, flows, sessions, resources) carries everything above it. Orchestration builds task boards out of those primitives, Workforce builds workers and mailboxes out of flows and sessions, and Shift Manager is an app that reads what Workforce writes.
 
 Most terms higher up are a lower term with a name and a rule added. A worker is a flow instance. A mailbox is a session. A project is one row of a resource collection. The Built from column tells you where each term's data lives.
 
-The diagrams show the build-up. The tables below them give each term, the package it comes from, and what it is made of. Most terms link to their full page.
+Most terms link to their full page.
 
 ## The layers
 
@@ -17,7 +17,7 @@ The diagrams show the build-up. The tables below them give each term, the packag
 
 A package uses only the layers under it. Workforce imports Core and Orchestration and nothing from Engine: when it needs to register a flow or open a session, your app passes in the function that does it.
 
-## Core: from a block to a running flow
+## Core and Engine: from a block to a running flow
 
 ![Core builds up in five steps. A block is a typed unit of work, in one of five kinds. A sequencer is a block that runs other blocks in order. An action wraps one root block under a name. A flow is a kind that declares its actions, scopes, resources and capabilities. A flow instance is the flow called with an id and settings. The Engine registers instances and opens sessions on them, and each request on a session runs one action and streams items. Beside the chain, a tool is a block a generator may call, a capability bundles resources, state and tools a block pulls in with uses, and a resource collection is a family of resources keyed by a pattern.](./glossary/core.svg)
 
@@ -84,6 +84,13 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | **Skill agent** | orchestration | An entry in a skill's `agents:` map. It becomes a generator that works tasks on a board. See [Agents](./orchestration/agents.md). | Generator, board worker |
 | **Harness manager** | harness-manager | A board worker that turns one task into one supervised coding run in its own checkout, and checks the run's result before marking the task completed or errored. A run that asks a question parks its task until someone answers. See [Harness manager](./orchestration/harness-manager.md). | Board worker, sequencer, harness block, resource collection |
 | **Pattern** | patterns | A function that returns a composed block for a common shape. `supervisor`, `planAndExecute`, `parallelTasks` and `eventActors` run a task board; `debate`, `roundRobin` and `responseAuditor` don't. See [Patterns](./patterns/overview.md). | Sequencer, generators, sometimes a task board |
+
+### Smaller packages
+
+These sit beside Orchestration on Core and don't use a task board.
+
+| Term | Package | What it is | Built from |
+|---|---|---|---|
 | **Memory tier** | memory | `working` (one session), `episodic`, `semantic` and `digest`. Each tier is one resource. See [Memory](./memory/overview.md). | Resource, capability |
 | **Place** | workspace | Wherever an agent actually works, such as a folder on the host or in memory. Files sync between a place and resources. See [Workspace](./tools/workspace.md). | Resource collection |
 
@@ -129,7 +136,6 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | **Tasks** | Shift Manager | Every task not done, on every mailbox board, grouped by state, worker or workstream. | Task, mailbox board |
 | **Roster** | Shift Manager | Every worker, grouped as on shift (running a task), on call (a parked task or a pending ask) or off shift. The grouping is worked out on each read, not stored. | Inventory, tasks, asks |
 | **Staff** | Shift Manager | The group that lists org workers, the ones on no team. | Org worker |
-| **Day shift, Night shift** | Shift Manager | The light and dark look. | None |
 
 ## Words that mean two things
 
