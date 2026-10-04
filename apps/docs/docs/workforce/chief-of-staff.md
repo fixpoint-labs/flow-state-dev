@@ -91,7 +91,29 @@ kinds.agent = defineAgentWorkerFlow({
 });
 ```
 
-`registry-access.ts` is the module from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), with two more exports, both read from `(await flowState.getRuntime()).registry` once the app is up. `kindAt(address)` returns the kind of the flow registered at that address; the hire tools use it to refuse a declared seat by name. `instanceAt(address)` returns the flow instance registered at that address, or `undefined`. The hire tools use it to tell a seat they minted apart from another seat at the same address, so a re-hire interrupted by a restart completes, and `fire` releases only its own seat.
+Add `kindAt` and `instanceAt` to the `registry-access.ts` from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), next to `registerSeat` and `releaseSeat`. They use the `FlowInstance` and `FlowState` imports already in the file:
+
+```ts title="src/flows/workforce-admin/registry-access.ts"
+let registry: Awaited<ReturnType<FlowState["getRuntime"]>>["registry"] | undefined;
+
+/** Call once, right after `createFlowState`, alongside `useFlowState`. */
+export async function useRegistry(next: FlowState): Promise<void> {
+  registry = (await next.getRuntime()).registry;
+}
+
+export const kindAt = (address: string): string | undefined => registry?.get(address)?.kind;
+export const instanceAt = (address: string): FlowInstance | undefined => registry?.get(address);
+```
+
+`kindAt(address)` returns the kind of the flow registered at that address, or `undefined`; the hire tools use it to refuse a declared seat by name. `instanceAt(address)` returns the flow instance registered there, or `undefined`. The hire tools use it to tell a seat they minted apart from another seat at the same address, so a re-hire interrupted by a restart completes, and `fire` releases only its own seat.
+
+Both read nothing until `useRegistry` has run, so call it where you call `useFlowState`:
+
+```ts
+const app = createFlowState(/* ... */);
+useFlowState(app);
+await useRegistry(app);
+```
 
 `createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. The small `mailbox-inventory` capability declares the mailbox inventory as a resource on the kind, and passing its key, `mailboxInventory` here, as `inventory.mailboxes` lets `discover` answer who is in a mailbox too. `mailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can answer in a mailbox it is a member of. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
 
@@ -101,7 +123,7 @@ In the snippet above, `coderFlow` requires a `document` setting through its `con
 
 Installing the tools on a kind doesn't hand them to every seat of it. A seat holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other. `refuseRosterAdmin: true` keeps them out of the seats the chief of staff hires, too. Leave it off and a hire may name them like any other tool.
 
-If your Lab has projects, add `chief-of-staff` to the project template's `seats` (or a team `MAILBOX.md` template's `members:`), so the chief of staff is in every project's room.
+If your Lab has projects, add `chief-of-staff` to the project template's `seats` (or a team `MAILBOX.md` template's `members:`), so the chief of staff is in every project's room. Build the mailbox kind with `wakeMemberSeats(seats)` so a post in the room wakes it, and pass the template to `mailboxInstances` as [A room per project](./mailboxes.md#a-room-per-project) shows, including without `fsdev gen`.
 
 Read the seats it hired back when the app starts, as in [Reading the roster back at the next start](./durable-hire.md#reading-the-roster-back-at-the-next-start), and serve the app over a store that survives a restart. Otherwise a hire lasts only as long as the process.
 

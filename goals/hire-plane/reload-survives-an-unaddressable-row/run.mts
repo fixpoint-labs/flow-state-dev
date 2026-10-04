@@ -40,6 +40,21 @@ type Router = {
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 
+/**
+ * The address an org-visible hire under `orgId` answers on, written out here from
+ * the documented rule (`[a-z0-9-]` kept, every other UTF-8 byte as `%XX`)
+ * rather than taken from `seatAddress`, the helper under test.
+ */
+function expectedAddress(orgId: string, seatId: string): string {
+  const org = [...new TextEncoder().encode(orgId)]
+    .map((byte) => {
+      const ch = String.fromCharCode(byte);
+      return /[a-z0-9-]/.test(ch) ? ch : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+    })
+    .join("");
+  return `${org}.${seatId}`;
+}
+
 /** A roster row as the store's JSON shape — the same cast the seat-hire writer makes. */
 function asStored(row: ReturnType<typeof toHiredSeatRow>): JsonObject {
   return row as unknown as JsonObject;
@@ -113,7 +128,9 @@ async function call(
     headers["x-verified-org"] = who.org;
   }
   const response = await router[method](
-    new Request(`http://goal/api/flows/${path.join("/")}`, {
+    // The URL as a client builds it (each segment encoded); `params.path` as
+    // Next hands it (each decoded once).
+    new Request(`http://goal/api/flows/${path.map(encodeURIComponent).join("/")}`, {
       method,
       headers,
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -154,7 +171,7 @@ await runGoal(async () => {
   const failures: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
   const stores = inMemoryStores();
-  const namedAddress = `${fixture.namedOrg}.${fixture.namedSeatId}`;
+  const namedAddress = expectedAddress(fixture.namedOrg, fixture.namedSeatId);
 
   // (a) An app with no resolver hires at runtime. One store is shared by both
   //     apps below because it is ONE deployment's database seen twice.
@@ -226,11 +243,16 @@ await runGoal(async () => {
   if (reload !== undefined) {
     const ids = reload.seats.map((seat) => seat.id);
     if (!ids.includes(namedAddress)) fail("c", `reload did not return ${namedAddress}; got ${JSON.stringify(ids)}`);
-    const devProblem = reload.problems.find(
-      (problem) => problem.includes(DEFAULT_ORG_ID) && problem.includes(fixture.devSeatId),
-    );
-    if (devProblem === undefined) {
-      fail("c", `the default-org row was not named in problems: ${JSON.stringify(reload.problems)}`);
+    // The dev hire comes back as a seat: the default org is escaped into its
+    // address rather than refused.
+    const devAddress = expectedAddress(DEFAULT_ORG_ID, fixture.devSeatId);
+    const devProblem = reload.problems.find((problem) => problem.includes(DEFAULT_ORG_ID));
+    if (!ids.includes(devAddress) || devProblem !== undefined) {
+      fail(
+        "c",
+        `the default-org row did not come back as ${devAddress}: ${JSON.stringify(ids)}, ` +
+          `problems ${JSON.stringify(reload.problems)}`,
+      );
     }
     const strayProblem = reload.problems.find((problem) => problem.includes(fixture.strayOrg));
     if (strayProblem === undefined || !strayProblem.includes("cannot be registered under")) {
@@ -240,9 +262,26 @@ await runGoal(async () => {
       fail("d", `the row stamped for ${fixture.strayOrg} was minted: ${JSON.stringify(ids)}`);
     }
 
-    // (c) The reloaded seat is not just returned; it registers and answers.
+    // (c) The reloaded seats are not just returned; they register and answer.
+    //     The named org's on the signed-in host; the dev seat on a host with
+    //     no resolver, the only place a default-org pin admits anyone.
+    const devRestarted = createFlowState({
+      flows: {},
+      stores: { default: { primary: stores } },
+    });
     for (const seat of reload.seats) {
-      restarted.register(seat as FlowInstance, { pin: seat.ownerPin ?? { orgId: fixture.namedOrg } });
+      const pin = seat.ownerPin ?? { orgId: fixture.namedOrg };
+      (pin.orgId === DEFAULT_ORG_ID ? devRestarted : restarted).register(seat as FlowInstance, { pin });
+    }
+    const devAnswered = await runAction(
+      (await devRestarted.getRouter()) as Router,
+      devAddress,
+      fixture.devUser,
+      "answer",
+      { tag: fixture.marker },
+    );
+    if (devAnswered.outcome !== "completed") {
+      fail("c", `${devAddress} did not answer over HTTP on the resolver-less host: ${JSON.stringify(devAnswered)}`);
     }
     const restartedRouter = (await restarted.getRouter()) as Router;
     const answered = await runAction(
@@ -263,7 +302,8 @@ await runGoal(async () => {
         evidence:
           `dev hire stored under ${DEFAULT_ORG_ID}; reload over [${DEFAULT_ORG_ID}, ${fixture.namedOrg}] ` +
           `returned ${JSON.stringify(ids)} and ${reload.problems.length} problems; ` +
-          `${namedAddress} answered after restart; default-org row named: ${devProblem}; ` +
+          `${namedAddress} answered after restart; default-org row came back as ${devAddress} ` +
+          `and answered over HTTP with no identity; ` +
           `stray row refused: ${strayProblem}`,
       };
     }

@@ -26,7 +26,7 @@ The framework's router uses Web standard `Request`/`Response` objects. You bridg
 
 ```ts title="src/server.ts"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createFlowState, filesystemStores } from "@flow-state-dev/engine";
+import { createFlowState, decodePathSegments, filesystemStores } from "@flow-state-dev/engine";
 import myFlow from "./flows/my-flow/flow.js";
 
 const port = parseInt(process.env.PORT ?? "3000", 10);
@@ -87,7 +87,8 @@ async function handleFlowRequest(
   // Extract path after /api/flows
   const pathAfterPrefix = url.replace(/^\/api\/flows\/?/, "");
   const [pathPart] = pathAfterPrefix.split("?", 2);
-  const pathSegments = pathPart.split("/").filter((s) => s.length > 0);
+  // The router takes decoded segments, one decode each, as Next hands them.
+  const pathSegments = decodePathSegments(pathPart);
 
   // Read body for POST/PATCH
   let body: string | undefined;

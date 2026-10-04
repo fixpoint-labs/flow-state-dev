@@ -14,6 +14,7 @@
  */
 import { Hono, type Context } from "hono";
 import {
+  decodePathSegments,
   dispatchDedicatedRoute,
   disposeFlowApiRouter,
   isFlowState,
@@ -69,11 +70,17 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Segments after the mount prefix, e.g. `/api/flows/chat/send` → `["chat","send"]`. */
+/**
+ * Decoded segments after the mount prefix, e.g. `/api/flows/chat/send` →
+ * `["chat","send"]`. `pathname` is the raw URL path; each segment is decoded
+ * once, the same shape Next hands the router as `params.path`. The prefix is
+ * matched in its encoded form, the one `URL.pathname` carries, so a basePath
+ * holding a space or other escaped character still comes off.
+ */
 function pathSegments(pathname: string, basePath: string): string[] {
-  const prefix = new RegExp(`^${escapeRegExp(basePath)}/?`);
-  const after = pathname.replace(prefix, "");
-  return after.split("/").filter((s) => s.length > 0);
+  const encodedBase = new URL(basePath, "http://base.invalid").pathname;
+  const prefix = new RegExp(`^${escapeRegExp(encodedBase)}/?`);
+  return decodePathSegments(pathname.replace(prefix, ""));
 }
 
 /**
@@ -154,7 +161,8 @@ export function createServerApp(
       // action handler (with its side effects) just to discard the body.
       return c.json({ error: "Method not allowed" }, 405);
     }
-    const path = pathSegments(c.req.path, basePath);
+    // From the raw URL, not `c.req.path`: Hono partly decodes that one.
+    const path = pathSegments(new URL(c.req.url).pathname, basePath);
     return handler(c.req.raw, { params: { path } });
   };
 
