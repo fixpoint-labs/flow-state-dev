@@ -155,12 +155,21 @@ export function seams(base: string): SeamRow[] {
     const stale = grep(files, /FIX-1650|arrives? with FIX-1(718|719|621)|once org seats ship|org seats ship|wait(s|ing)? (on|for) org seats/i);
     out.push(`$ grep labs/shift-manager/src for copy that something arrives with FIX-1650 or waits on org seats: ${stale.length}`);
     for (const h of stale) out.push(`  ${h.file}:${h.line}: ${h.text}`);
-    const pick = (text: string) => text.split("\n").filter((l) => /FIX-165[12]/.test(l));
-    const now = pick(readFileSync(join(REPO_ROOT, "labs/shift-manager/src/gaps.ts"), "utf8"));
-    const then = pick(git("show", `${base}:labs/shift-manager/src/gaps.ts`));
-    const added = now.filter((l) => !then.includes(l));
-    const removed = then.filter((l) => !now.includes(l));
-    out.push(`$ FIX-1651/FIX-1652 lines of gaps.ts, ${base.slice(0, 9)} → commit: ${then.length} → ${now.length}, added ${added.length}, removed ${removed.length}`);
+    // Only this epic's own commits are graded: another epic (FIX-1737's v2 look) may reword these entries.
+    const gaps = "labs/shift-manager/src/gaps.ts";
+    const epicCommits = git("log", "--format=%H %s", "--no-merges", "-E", "--grep=FIX-(1621|1718|1719|1720|1722|1723|175[2-8])\\b", `${base}..HEAD`, "--", gaps)
+      .split("\n")
+      .filter(Boolean);
+    const added: string[] = [];
+    const removed: string[] = [];
+    for (const c of epicCommits) {
+      for (const l of git("show", "--format=", "-U0", c.split(" ")[0]!, "--", gaps).split("\n")) {
+        if (!/FIX-165[12]/.test(l)) continue;
+        if (l.startsWith("+") && !l.startsWith("+++")) added.push(l.slice(1));
+        else if (l.startsWith("-") && !l.startsWith("---")) removed.push(l.slice(1));
+      }
+    }
+    out.push(`$ FIX-1651/FIX-1652 lines of ${gaps} the epic's own commits (${epicCommits.length}: ${epicCommits.map((c) => c.slice(0, 9)).join(", ")}) since ${base.slice(0, 9)} added ${added.length}, removed ${removed.length}`);
     for (const l of [...added.map((x) => `+ ${x.trim()}`), ...removed.map((x) => `- ${x.trim()}`)]) out.push(`  ${l}`);
     if (stale.length > 0) out.push("FAIL: gap copy still says something waits on this epic");
     if (added.length + removed.length > 0) out.push("FAIL: FIX-1651's or FIX-1652's entries changed");

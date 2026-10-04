@@ -15,7 +15,7 @@
  * project with a room the person can post in, and TEAMS the seat. The copy is
  * deleted after the run; `labs/shift-manager` is left untouched.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import type { Browser } from "playwright";
@@ -80,6 +80,17 @@ async function write(workspace: string, labCopy: string, log: (s: string) => voi
     }
     return [workspace, labCopy].some((root) => abs.startsWith(root) || real.startsWith(root));
   };
+  // An existing file is overwritten only after it is read, as Claude Code's own Write requires:
+  // a writer that clobbers the Lab's host unread is grading the agent, not the docs.
+  const realOf = (p: string) => {
+    const abs = resolve(workspace, p);
+    try {
+      return realpathSync(abs);
+    } catch {
+      return abs;
+    }
+  };
+  const read = new Set<string>();
   let summary = "";
   for await (const message of query({
     prompt: TASK,
@@ -91,6 +102,24 @@ async function write(workspace: string, labCopy: string, log: (s: string) => voi
       disallowedTools: ["Bash", "WebFetch", "WebSearch", "Task", "NotebookEdit"],
       maxTurns: 120,
       env: { ...process.env, ANTHROPIC_API_KEY: key },
+      // `allowedTools` skips `canUseTool`, so the workspace fence and read-before-write run as a hook, on every call.
+      hooks: {
+        PreToolUse: [
+          {
+            hooks: [
+              async (hook: { tool_name: string; tool_input: Record<string, unknown> }) => {
+                const deny = (reason: string) => ({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } });
+                const paths = [hook.tool_input.file_path, hook.tool_input.path, hook.tool_input.notebook_path].filter((p) => p !== undefined);
+                if (!paths.every(inside)) return deny("Only the docs and the Lab in this workspace are available.");
+                const file = typeof hook.tool_input.file_path === "string" ? realOf(hook.tool_input.file_path) : undefined;
+                if (hook.tool_name === "Read" && file !== undefined) read.add(file);
+                if (hook.tool_name === "Write" && file !== undefined && existsSync(file) && !read.has(file)) return deny("That file already exists. Read it before you overwrite it.");
+                return {};
+              },
+            ],
+          },
+        ],
+      },
       canUseTool: async (tool: string, input: Record<string, unknown>) => {
         const paths = [input.file_path, input.path, input.notebook_path].filter((p) => p !== undefined);
         if (!["Read", "Write", "Edit", "Glob", "Grep"].includes(tool) || !paths.every(inside)) {
@@ -115,8 +144,10 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
   const failures: string[] = [];
   const notes: string[] = [];
   const source = join(REPO_ROOT, "goals", "pentest-lab", "lab");
-  const copy = join(REPO_ROOT, "goals", "pentest-lab", `lab-j4-${hex(3)}`);
-  const workspace = join(scratch, "j4-writer");
+  // The workspace sits in the repository so the copy resolves the workspace's packages, and the copy is a real
+  // directory in it: the writer's Glob doesn't follow a symlink, and would report a linked `lab/` empty.
+  const workspace = join(REPO_ROOT, "goals", "pentest-lab", `j4-${hex(3)}`);
+  const copy = join(workspace, "lab");
   const smBefore = execFileSync("git", ["-C", REPO_ROOT, "status", "--porcelain", "--", "labs/shift-manager"], { encoding: "utf8" });
   cpSync(source, copy, { recursive: true });
   let diff = "";
@@ -128,7 +159,6 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
       cpSync(join(REPO_ROOT, page), to);
     }
     // The pentest Lab's README sits in the copy itself, where its author would find it.
-    symlinkSync(copy, join(workspace, "lab"));
     const summary = await write(workspace, copy, log);
     notes.push(`writer's summary: ${summary.slice(0, 600)}`);
     diff = spawnSync("diff", ["-ruN", "--exclude=J4-STEPS.md", source, copy], { encoding: "utf8", maxBuffer: 1 << 24 }).stdout.replaceAll(REPO_ROOT + "/", "");
@@ -218,6 +248,6 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
     } catch {
       /* best effort */
     }
-    rmSync(copy, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
   }
 }

@@ -65,6 +65,9 @@ export async function buildShiftManagerCopy(scratch: string, name: string, patch
   // The copy sits outside the workspace; its tsconfig still extends the workspace's.
   const tsconfig = join(root, "tsconfig.json");
   writeFileSync(tsconfig, readFileSync(tsconfig, "utf8").replace('"../../tsconfig.base.json"', JSON.stringify(join(REPO_ROOT, "tsconfig.base.json"))));
+  // So does its Vite config's import of the repository's build-inputs plugin.
+  const viteConfig = join(root, "vite.config.ts");
+  writeFileSync(viteConfig, readFileSync(viteConfig, "utf8").replace('"../../scripts/build-inputs.mjs"', JSON.stringify(join(REPO_ROOT, "scripts", "build-inputs.mjs"))));
   const diff: string[] = [];
   for (const patch of patches) {
     const path = join(root, patch.file);
@@ -199,7 +202,14 @@ export type LabApi = ReturnType<typeof labApi>;
 export async function buildShiftManagerPages(outDir: string, root: string = SHIFT_MANAGER): Promise<string> {
   const viteEntry = createRequire(join(root, "package.json")).resolve("vite");
   const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
-  await vite.build({ root, configFile: join(root, "vite.config.ts"), logLevel: "error", build: { outDir, emptyOutDir: true } });
+  const nodeEnv = process.env.NODE_ENV;
+  try {
+    await vite.build({ root, configFile: join(root, "vite.config.ts"), logLevel: "error", build: { outDir, emptyOutDir: true } });
+  } finally {
+    // Vite leaves `production` behind, which every child this process spawns would inherit.
+    if (nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = nodeEnv;
+  }
   return outDir;
 }
 
