@@ -1,7 +1,8 @@
 /**
  * The right panel's task slot: the task inspector (S7, BR-18 to BR-23).
  *
- * Worker and team from the seat inventory, started from the row, the plan and
+ * Worker and team from the seat inventory, started from the row, the ask the
+ * run waits on (on the highlighter, a way to it in Inbox), the plan and
  * files the run recorded under its own request (read once per open, no
  * stream), the rows it waits on and the rows waiting on it from the same board
  * read, and a link that opens the run's session in the devtool Shift Manager serves
@@ -11,7 +12,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
-import { rosterOf, seatFor, type LoadedSnapshot } from "../lib/derive";
+import { asksOfTask, rosterOf, seatFor, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, STAFF_TEAM, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
@@ -44,6 +45,8 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
   const missingAfter = row === undefined ? [] : row.deps.filter((id) => !task.boardRows.some((r) => r.id === id));
   const blocks = row === undefined ? [] : task.boardRows.filter((r) => r.deps.includes(row.id));
   const open = (id: string) => navigate({ level: "task", boardRef: task.boardRef, taskId: id, tab: "session" });
+  // The oldest ask this task's run waits on: the snapshot holds them oldest first.
+  const ask = asksOfTask(snapshot, row)[0];
 
   return (
     <div data-testid="task-panel-slot">
@@ -61,6 +64,22 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
             {row?.startedAt == null ? "Not started" : new Date(row.startedAt).toLocaleString()}
           </p>
         </Section>
+        {ask === undefined ? null : (
+          <div className="px-4 pt-3.5">
+            <button
+              type="button"
+              onClick={() => navigate({ level: "inbox", suspensionId: ask.item.suspensionId })}
+              className="flex w-full justify-between border border-foreground bg-attention px-2.5 py-2 text-left font-mono text-[11.5px] font-medium text-attention-foreground"
+              data-testid="inspector-needs"
+              data-suspension-id={ask.item.suspensionId}
+            >
+              <span>
+                {ask.kind} waiting {waited(ask.since, Date.now())}
+              </span>
+              <span>inbox ↗</span>
+            </button>
+          </div>
+        )}
         <Section title="HARNESS · TOKENS · COST" testId="inspector-harness">
           <Gap text={gaps.task.harness} testId="inspector-harness-gap" />
         </Section>

@@ -15,7 +15,7 @@ const NAV = "[data-testid=sidebar] [data-testid^=nav-]";
  * Screens whose sidebar always has a current row other than Shift Coordinator's: every one but
  * Shift Coordinator and the project, whose No project row is drawn only while a workstream is in no project.
  */
-const WITH_CURRENT: readonly Screen[] = ["workstream", "task", "tasks", "inbox", "roster"];
+const WITH_CURRENT: readonly Screen[] = ["workstream", "board", "task", "tasks", "inbox", "roster"];
 
 /**
  * Per workstream, the dot v2 gives it (v2:1183-1184): needs-you first, then running, else none.
@@ -31,7 +31,7 @@ const channelsWith = (store: Store, dot: "needs" | "run") => Object.values(store
 
 export const SIDEBAR_AND_COS_ROWS: Row[] = [
   // The sidebar's entries.
-  { id: "Shift Coordinator entry", audit: "F12", v2: { line: 52, has: "border:1px solid {{ nav.cosBd }};background:{{ nav.cosBg }}" }, select: "[data-testid=nav-cos]:not([aria-current=page])", on: ["workstream", "task", "tasks", "inbox", "roster", "project"], min: 1, want: { surface: "card", border: { width: 1, colour: "foreground" } } },
+  { id: "Shift Coordinator entry", audit: "F12", v2: { line: 52, has: "border:1px solid {{ nav.cosBd }};background:{{ nav.cosBg }}" }, select: "[data-testid=nav-cos]:not([aria-current=page])", on: ["workstream", "board", "task", "tasks", "inbox", "roster", "project"], min: 1, want: { surface: "card", border: { width: 1, colour: "foreground" } } },
   { id: "Shift Coordinator entry, current", audit: "F12", v2: { line: 1176, has: "cosBg: v.v === 'cos' ? INK" }, select: "[data-testid=nav-cos][aria-current=page]", on: ["cos"], min: 1, want: { surface: "foreground", border: { width: 1, colour: "foreground" } } },
   { id: "Shift Coordinator entry name", audit: "F12", v2: { line: 52, has: "font-size:13.5px;font-weight:600" }, select: "[data-testid=nav-cos] > [data-look=nav-label]", min: 1, want: { family: "sans", size: 13.5, weight: 600 } },
   { id: "Shift Coordinator entry square", audit: "F12", v2: { line: 53, has: "width:18px;height:18px;box-sizing:border-box;border:1px solid {{ nav.cosAvBd }}" }, select: "[data-testid=nav-cos] > [data-look=avatar]", min: 1, want: { family: "mono", size: 7.5, weight: 600, width: 18 } },
@@ -42,7 +42,7 @@ export const SIDEBAR_AND_COS_ROWS: Row[] = [
   { id: "current row tint", audit: "F16", v2: { line: 908, has: "NAVSEL = 'rgba(var(--bluergb),.12)'" }, select: `${NAV}[aria-current=page]:not([data-testid=nav-cos]), [data-testid=team][aria-current=page]`, min: ({ screen }) => (WITH_CURRENT.includes(screen) ? 1 : 0), want: { surface: "accent" } },
   { id: "current entry weight", audit: "F16", v2: { line: 1173, has: "[k + 'Fw']: v.v === k ? '700' : '500'" }, select: `:is([data-testid=nav-inbox], [data-testid=nav-tasks], [data-testid=nav-roster])[aria-current=page] > [data-look=nav-label]`, on: ["task", "tasks", "inbox", "roster"], min: 1, want: { weight: 700 } },
   { id: "other entry weight", audit: "F16", v2: { line: 1173, has: "[k + 'Fw']: v.v === k ? '700' : '500'" }, select: `:is([data-testid=nav-inbox], [data-testid=nav-tasks], [data-testid=nav-roster]):not([aria-current=page]) > [data-look=nav-label]`, min: 2, want: { weight: 500 } },
-  { id: "current workstream weight", audit: "F16", v2: { line: 1184, has: "fw: s ? '600' : '400'" }, select: "[data-testid^=nav-workstream-][aria-current=page] > [data-look=nav-label]", on: ["workstream"], min: 1, want: { weight: 600 } },
+  { id: "current workstream weight", audit: "F16", v2: { line: 1184, has: "fw: s ? '600' : '400'" }, select: "[data-testid^=nav-workstream-][aria-current=page] > [data-look=nav-label]", on: ["workstream", "board"], min: 1, want: { weight: 600 } },
   { id: "workstream #", audit: "F18", v2: { line: 88, has: "font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink4)\">#" }, select: "[data-testid^=nav-workstream-] > [data-look=meta-meta]", min: ({ store }) => Object.keys(store.channels).length, want: { family: "mono", size: 11.5 } },
   { id: "workstream name", audit: "F18", v2: { line: 88, has: "padding:5px 6px;font-size:13px" }, select: "[data-testid^=nav-workstream-] > [data-look=nav-label]", min: ({ store }) => Object.keys(store.channels).length, want: { family: "sans", size: 13 } },
   { id: "workstream dot, needs you", audit: "F18", v2: { line: 1184, has: "dot: wn ? Y : wr ? A" }, select: "[data-testid^=nav-workstream-] > [data-state-square=needs]", min: ({ store }) => channelsWith(store, "needs"), want: { square: "needs", width: 6 } },

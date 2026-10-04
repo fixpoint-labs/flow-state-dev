@@ -1,8 +1,9 @@
 /**
  * The workstream level (S7, S8): a declared channel and the boards attached
- * to it (D2). Four tabs, each mounted only when opened: Stream, Board, Brief
- * (the channel's charter) and Results. The right panel shows Progress, the
- * channel's members with their status, and its rows by column.
+ * to it (D2). A header as design v2 draws it (v2:215): `#`, the name and a
+ * boxed WORKSTREAM tag. Four tabs, each mounted only when opened: Stream,
+ * Board, Brief (the channel's charter) and Results. The right panel shows
+ * Progress, the channel's members with their status, and its rows by column.
  */
 import { useEffect, useState } from "react";
 import { Board } from "../components/Board";
@@ -33,9 +34,14 @@ export function WorkstreamView({
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="workstream" data-channel-id={workstream.id}>
-      <header className="px-4 pt-3">
-        <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">WORKSTREAM</p>
+      <header className="flex items-baseline gap-2 px-[22px] pt-3.5 pb-3" data-testid="workstream-header">
+        <span className="font-mono text-[15px] font-medium text-muted-foreground" data-look="title-hash">
+          #
+        </span>
         <ScreenTitle>{workstream.id}</ScreenTitle>
+        <span className="border border-foreground/40 px-[5px] py-px font-mono text-[10px] font-medium tracking-[0.12em]" data-look="screen-tag">
+          WORKSTREAM
+        </span>
       </header>
       <Tabs
         label="Workstream"
