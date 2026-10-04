@@ -68,8 +68,8 @@
   <text x="42" y="268" class="code">/inbox</text>
   <rect x="344" y="228" width="548" height="52" rx="10" class="card-sess"/>
   <text x="358" y="249" class="tag-sess">SUSPENSIONS</text>
-  <text x="508" y="249" class="p">Asks: runs suspended in workers' sessions, waiting</text>
-  <text x="508" y="267" class="p">on a person's approval or answer. Oldest first.</text>
+  <text x="508" y="249" class="p">Asks in sessions you started and their runs: work</text>
+  <text x="508" y="267" class="p">suspended until a person approves or answers.</text>
   <path d="M296 254 L342 254" class="edge"/>
   <rect x="28" y="290" width="268" height="52" rx="10" class="card-warm"/>
   <text x="42" y="312" class="h">Tasks</text>

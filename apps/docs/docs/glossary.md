@@ -30,7 +30,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | Term | Package | What it is | Built from |
 |---|---|---|---|
 | **Item** | contracts | One typed record a request streams: a message, reasoning, a tool output, a component, a status, an error, a state or resource change, a suspension, and a few more. See [Items](./streaming/items.md). | Content and a visibility setting |
-| **Block instance id** | contracts | The id of one step in one run, `requestId:path:attempt`. A step keeps the same id across retries and resumes. | The request id and the step's path |
+| **Block instance id** | contracts | The id of one attempt at one step in one run, `requestId:path:attempt`. A retry gets the next attempt number; a resumed request rebuilds the same id for the same attempt. | The request id and the step's path |
 | **Block** | core | A typed unit of work with an input schema and an output schema. You define it, and the framework runs it. See [Blocks](./fundamentals/blocks.md). | Zod schemas and a block context (`ctx`) |
 | **Block kind** | core | Exactly five: `handler` (plain code), `generator` (a model call), `evaluator` (a model judgment), `sequencer` (runs blocks in order) and `router` (picks one block to run). | Block |
 | **Sequencer** | core | A block that composes other blocks with `step`, `tap`, `sideChain`, `parallel`, `forEach`, `loopBack`, `rescue` and the rest. See [Composition](./sequencers/overview.md). | Blocks and connectors |
@@ -77,7 +77,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | **Task board** | orchestration | `taskBoard()`: drains a task collection with a pool of workers, holding back tasks whose dependencies aren't done. See [Task board](./orchestration/task-board.md). | Sequencer, task collection, capability |
 | **Board worker** | orchestration | A block that runs one claimed task. | Block |
 | **Assignee** | orchestration | A task's routing key into the board's workers. A task with no matching worker goes to the default worker, or fails. | None |
-| **Dispatcher** | orchestration | The rule that picks the next ready task: in order, by dependencies (the default), by priority, by a classifier, or by event. | Task collection |
+| **Dispatcher** | orchestration | The rule that picks the next ready task. By name: `topological` (the default), `fifo` or `priority`. You can also pass in a classifier or event dispatcher. | Task collection |
 | **Goal-seek loop** | orchestration | Drains a board, asks a judge whether the goal is met, replans, and drains again. See [Goal-seek loop](./orchestration/goal-seek-loop.md). | Task board, sequencer |
 | **Flow policy** | orchestration | Which earlier tasks' results a worker sees. See [Flow policy](./orchestration/flow-policy.md). | Capability |
 | **Skill** | orchestration | A `SKILL.md` folder, stored as a resource and loaded into a generator when needed. See [Skills](./skills/overview.md). | Resource collection, capability, tools |
@@ -100,8 +100,8 @@ These sit beside Orchestration on Core and don't use a task board.
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
-| **Worker** | workforce | One `WORKER.md`, hired into a flow instance with its own address. You open sessions against it like any flow. See [Workers on disk](./workforce/workers-on-disk.md). | Flow instance |
-| **Address** | workforce | A worker's id: `team.name` for a team worker, the bare name for an org worker. A worker hired while the app runs is addressed `<org>.<name>`. | None |
+| **Worker** | workforce | One worker record, usually from a `WORKER.md` and sometimes built in code, hired into a flow instance with its own address. You open sessions against it like any flow. See [Workers on disk](./workforce/workers-on-disk.md). | Flow instance |
+| **Address** | workforce | A worker's id: `team.name` for a team worker, the bare name for an org worker. A worker hired while the app runs is addressed `<org>.<name>`, or `<org>.~<user>.<name>` when one person owns it. | None |
 | **Team** | workforce | A folder of workers under `teams/<name>/`, with an optional `TEAM.md` whose body every worker on the team reads. A team is not a flow and has no address. | Workers |
 | **Org worker** | workforce | A worker under `org/workers/<name>/`. It belongs to no team. | Worker |
 | **Built-in worker** | workforce | The `agent` kind every worker runs on unless its file names another `flow:`. See [The built-in worker](./workforce/built-in-worker.md). | Flow (collection), generator, skills |
@@ -132,7 +132,7 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Team profile** | Shift Manager | A Lab config that ships with Shift Manager, opened with `--team`. `devteam` is the one that ships. | Lab |
 | **Shift Coordinator** | Shift Manager | The home screen: a summary of what is waiting and running, then your conversation with the Lab's chief of staff. | Chief of staff, session |
 | **Ask** | Shift Manager | An approval or a question a worker's run is suspended on, waiting for a person. | Suspension |
-| **Inbox** | Shift Manager | Every pending ask, oldest first. Inbox is not a mailbox. | Asks |
+| **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. Asks in another member's sessions aren't listed. Inbox is not a mailbox. | Asks |
 | **Tasks** | Shift Manager | Every task not done, on every mailbox board, grouped by state, worker or workstream. | Task, mailbox board |
 | **Roster** | Shift Manager | Every worker, grouped as on shift (running a task), on call (a parked task or a pending ask) or off shift. The grouping is worked out on each read, not stored. | Inventory, tasks, asks |
 | **Staff** | Shift Manager | The group that lists org workers, the ones on no team. | Org worker |

@@ -67,9 +67,9 @@
   <rect x="436" y="142" width="206" height="122" rx="10" class="card-proc"/>
   <text x="450" y="166" class="h">Dispatcher</text>
   <text x="450" y="186" class="p">Picks the next ready</text>
-  <text x="450" y="204" class="p">task: by dependencies</text>
-  <text x="450" y="222" class="p">(default), order, priority,</text>
-  <text x="450" y="240" class="p">a classifier, or event.</text>
+  <text x="450" y="204" class="p">task: topological</text>
+  <text x="450" y="222" class="p">(default), fifo, priority,</text>
+  <text x="450" y="240" class="p">or one you pass in.</text>
   <rect x="670" y="142" width="206" height="122" rx="10" class="card-proc"/>
   <text x="684" y="166" class="h">Board worker</text>
   <text x="684" y="186" class="p">Any block. Runs one</text>

@@ -48,7 +48,7 @@
   <rect x="28" y="80" width="864" height="72" rx="10" class="wall-warm"/>
   <text x="42" y="104" class="h">Shift Manager  ·  app, not published</text>
   <text x="42" y="124" class="p">Screens over a Lab: Shift Coordinator, Inbox, Tasks, Roster, workstreams, projects</text>
-  <text x="42" y="142" class="muted">uses workforce, engine, node, client, react, fsdev</text>
+  <text x="42" y="142" class="muted">uses workforce, engine, node, client, react, fsdev, store-sqlite, devtool, design-system</text>
   <rect x="28" y="168" width="204" height="112" rx="10" class="card"/>
   <text x="42" y="192" class="h">Hosts and stores</text>
   <text x="42" y="212" class="code">node · next · vercel</text>
@@ -75,10 +75,10 @@
   <text x="42" y="394" class="muted">uses core</text>
   <rect x="248" y="296" width="204" height="112" rx="10" class="card"/>
   <text x="262" y="320" class="h">Client · React</text>
-  <text x="262" y="340" class="p">Call actions, open</text>
-  <text x="262" y="358" class="p">sessions, read streams</text>
-  <text x="262" y="376" class="p">from the browser</text>
-  <text x="262" y="394" class="muted">use core, contracts</text>
+  <text x="262" y="340" class="p">Call actions, open sessions</text>
+  <text x="262" y="358" class="p">from the browser</text>
+  <text x="262" y="376" class="muted">use core, contracts;</text>
+  <text x="262" y="393" class="muted">react also uses client</text>
   <rect x="468" y="296" width="204" height="112" rx="10" class="wall-proc"/>
   <text x="482" y="320" class="h">Orchestration</text>
   <text x="482" y="340" class="p">Tasks, task boards,</text>
@@ -89,8 +89,8 @@
   <text x="702" y="320" class="h">Smaller packages</text>
   <text x="702" y="340" class="code">memory  tools</text>
   <text x="702" y="358" class="code">workspace</text>
-  <text x="702" y="376" class="p">tiers, tools, places</text>
-  <text x="702" y="394" class="muted">use core</text>
+  <text x="702" y="376" class="muted">use core;</text>
+  <text x="702" y="393" class="muted">tools also uses workspace</text>
   <rect x="28" y="424" width="864" height="80" rx="10" class="wall-sess"/>
   <text x="42" y="448" class="h">Core</text>
   <text x="42" y="468" class="p">Blocks (handler, generator, evaluator, sequencer, router), actions, flows and flow instances,</text>
