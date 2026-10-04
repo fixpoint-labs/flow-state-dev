@@ -44,3 +44,4 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-04 | 6f4abf95f (main b34d4339e) | openai/gpt-5.4-mini | FAIL | a1-a3, a5, b1, b3, b4, c1, c2, c4 PASS; a4, b2, c3 FAIL. Controls deny-fire, no-tool, no-cos, today's main all red as they must. J4 project half PASS, seat half FAIL (re-run on 1b5e64dd1 after a provider error, same result). P3: P3.4 it-ships-an-artifact FAIL; P3.2 and P3.3 passed standalone after provider errors in the full run. P4: ER-8 and ER-13 FAIL. Findings FIX-1752 to FIX-1758 |
