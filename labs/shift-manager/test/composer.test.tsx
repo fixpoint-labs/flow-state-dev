@@ -6,6 +6,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { TurnComposer } from "../src/components/TurnComposer";
+import { TurnNotDelivered } from "../src/lib/send";
 import { Composer } from "../src/surfaces/Stream";
 import type { BoardRow } from "../src/lib/reads";
 
@@ -57,6 +58,44 @@ describe("a slow send keeps the next line typed while it ran", () => {
       await delivered.done;
     });
     expect(input.value).toBe("the next message");
+  });
+});
+
+describe("a line leaves the draft once the worker's session holds it (FIX-1773)", () => {
+  it("clears before the send resolves, and puts the line back if it then fails", async () => {
+    const reply = gate();
+    const started = gate();
+    let held!: () => void;
+    render(
+      <TurnComposer
+        testId="t"
+        label="Message worker"
+        placeholder=""
+        blocked={null}
+        send={async (_message, onHeld) => {
+          held = onHeld;
+          started.open();
+          await reply.done;
+          throw new TurnNotDelivered("refused", "no thanks");
+        }}
+      />,
+    );
+    const input = screen.getByTestId("t-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "a line" } });
+    act(() => fireEvent.click(screen.getByTestId("t-send")));
+    await act(() => started.done);
+    // Sent, not yet held: the draft stays.
+    expect(input.value).toBe("a line");
+    act(() => held());
+    expect(input.value).toBe("");
+    expect(screen.getByTestId("t-status").getAttribute("data-state")).toBe("held");
+    await act(async () => {
+      reply.open();
+      await reply.done;
+    });
+    // The worker refused after the line left: it comes back, with the reason.
+    expect(input.value).toBe("a line");
+    expect(screen.getByTestId("t-error").textContent).toBe("no thanks");
   });
 });
 

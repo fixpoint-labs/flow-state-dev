@@ -33,6 +33,7 @@ import { mergeLines } from "../lib/transcript";
 import { projectsOf, seatStates, shiftCounts, talkFor, teamsOf, type ListedWorkstream, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure, type Project, type Workstream } from "../lib/reads";
+import { useFollowLatest } from "../lib/follow";
 import { navigate, NO_PROJECT, PROJECT_TABS, type ProjectTab } from "../lib/routes";
 import {
   asTranscriptLine,
@@ -327,6 +328,7 @@ export function RoomView({
   const reading = useRef<Promise<number> | undefined>(undefined);
   /** The view's one refresh loop, while it is mounted. */
   const refresh = useRef<{ wake(): void; stop(): void } | undefined>(undefined);
+  const feed = useFollowLatest();
 
   /**
    * Open the room at its end, or once it is open read up to
@@ -430,7 +432,7 @@ export function RoomView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="stream" data-talk-session={sessionId}>
-      <div className="min-h-0 flex-1 overflow-y-auto" data-testid="transcript">
+      <div ref={feed.ref} className="min-h-0 flex-1 overflow-y-auto" data-testid="transcript">
         {lines === undefined ? (
           failureView === null ? <p className="p-4 text-sm text-muted-foreground">Reading the room…</p> : <div className="p-4">{failureView}</div>
         ) : (

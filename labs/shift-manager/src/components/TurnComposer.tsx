@@ -6,12 +6,15 @@
  *
  * It only draws. Where the line goes, and whether it can go at all, is the
  * caller's; the send itself is {@link sendTurn}'s, the one send path. The
- * composer shows *sending* until that resolves, and *delivered* only when it
- * does (BR-4), noting Inbox when the worker stopped on a person's ask
+ * composer shows *sending* until the worker's session holds the line. Then the
+ * line leaves the draft, since the conversation now holds it, and the composer
+ * says the worker is on it until the send resolves. It shows *delivered* only
+ * when it does (BR-4), noting Inbox when the worker stopped on a person's ask
  * (a chief of staff's fire, say), or that it waits when it stopped on anything else. A refusal keeps the draft and shows the worker's reason
  * (BR-5). A line that never got there keeps the draft and offers Retry. A line
  * that may have arrived keeps the draft and offers no Retry, so it isn't sent
- * twice.
+ * twice. A line that failed after it left the draft is put back, unless the
+ * person has started another.
  *
  * Every composer draws through {@link ComposerShell}, v2's composer: one line,
  * sent with ⏎ (Enter). Most composers are a
@@ -26,6 +29,8 @@ import { TurnNotDelivered, type TurnStop } from "../lib/send";
 export type TurnSendState =
   | { kind: "idle" }
   | { kind: "sending" }
+  /** The session holds the line; the worker's turn on it hasn't ended. */
+  | { kind: "held" }
   /** `stopped`: what the worker's turn stopped on, as {@link sendTurn} says. */
   | { kind: "delivered"; stopped: TurnStop }
   | { kind: "refused"; reason: string }
@@ -35,16 +40,19 @@ export type TurnSendState =
 /**
  * The send state one composer keeps: run a send, and land on *delivered* or
  * on why not. `run` resolves `true` once the line is delivered. A send may
- * resolve `{ stopped }`, as {@link sendTurn} does, to say what the worker stopped on.
+ * resolve `{ stopped }`, as {@link sendTurn} does, to say what the worker stopped on,
+ * and may call the `held` it is handed once the session holds the line.
  */
 export function useTurnSend() {
   const [state, setState] = useState<TurnSendState>({ kind: "idle" });
   const mounted = useRef(true);
   useEffect(() => () => void (mounted.current = false), []);
-  const run = useCallback(async (send: () => Promise<void | { stopped: TurnStop }>): Promise<boolean> => {
+  const run = useCallback(async (send: (held: () => void) => Promise<void | { stopped: TurnStop }>): Promise<boolean> => {
     setState({ kind: "sending" });
     try {
-      const sent = await send();
+      const sent = await send(() => {
+        if (mounted.current) setState((s) => (s.kind === "sending" ? { kind: "held" } : s));
+      });
       if (mounted.current) setState({ kind: "delivered", stopped: sent?.stopped ?? null });
       return mounted.current;
     } catch (error) {
@@ -67,6 +75,7 @@ export function useTurnSend() {
 /** What a send's state says, with Retry only for a line that never got there. */
 export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendState; testId: string; onRetry: () => void }) {
   if (state.kind === "sending") return <>Sending… shown as delivered once the worker's session holds it.</>;
+  if (state.kind === "held") return <>Sent. Waiting on the worker's reply…</>;
   if (state.kind === "delivered") {
     if (state.stopped === "ask") return <>Delivered. The worker stopped to ask you something; it's in Inbox.</>;
     if (state.stopped === "wait") return <>Delivered. The worker is waiting on something before it carries on.</>;
@@ -212,6 +221,7 @@ export function TurnComposer({
   placeholder,
   blocked,
   send,
+  onHeld,
   onDelivered,
   extra,
   suggestions,
@@ -222,8 +232,13 @@ export function TurnComposer({
   placeholder: string;
   /** Why nothing can be sent right now, or `null` when it can. */
   blocked: string | null;
-  /** Send the line; resolves once it is delivered, with {@link sendTurn}'s `stopped` when it has it. */
-  send: (message: string) => Promise<void | { stopped: TurnStop }>;
+  /**
+   * Send the line; resolves once it is delivered, with {@link sendTurn}'s `stopped` when it has it.
+   * Call `held` once the worker's session holds the line ({@link sendTurn}'s `onHeld`).
+   */
+  send: (message: string, held: () => void) => Promise<void | { stopped: TurnStop }>;
+  /** The line has left the draft: the worker's session holds it, or it was delivered. */
+  onHeld?: (message: string) => void;
   onDelivered?: (message: string) => void;
   /** Controls drawn beside Send. */
   extra?: ReactNode;
@@ -238,7 +253,7 @@ export function TurnComposer({
   const [draft, setDraft] = useState("");
   const { state, run, reset } = useTurnSend();
 
-  const sending = state.kind === "sending";
+  const sending = state.kind === "sending" || state.kind === "held";
   const canSend = blocked === null && draft.trim().length > 0 && !sending;
 
   const submit = async (event?: FormEvent) => {
@@ -246,10 +261,24 @@ export function TurnComposer({
     if (!canSend) return;
     const submitted = draft;
     const message = draft.trim();
-    if (await run(() => send(message))) {
-      // Only the line that was sent goes: anything typed since stays.
+    let left = false;
+    // The line leaves the draft once the session holds it: only the line that
+    // was sent goes, and anything typed since stays.
+    const leave = () => {
+      if (left) return;
+      left = true;
       setDraft((current) => (current === submitted ? "" : current));
+      onHeld?.(message);
+    };
+    if (await run((held) => send(message, () => {
+      held();
+      leave();
+    }))) {
+      leave();
       onDelivered?.(message);
+    } else if (left) {
+      // It failed after it left: put it back, unless another line was started.
+      setDraft((current) => (current === "" ? submitted : current));
     }
   };
 

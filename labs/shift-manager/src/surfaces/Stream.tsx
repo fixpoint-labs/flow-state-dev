@@ -27,6 +27,7 @@ import { SectionFailure } from "../components/ui";
 import { addressedSeat, asksFor, doorOf, liveWorkers, mentionOf, messageableRows, rosterOf, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type BoardRow, type Failure, type Workstream } from "../lib/reads";
+import { useFollowLatest } from "../lib/follow";
 import { navigate } from "../lib/routes";
 import { resolveRunFlow } from "../lib/run";
 import { sendTurn, TurnNotDelivered, type TurnStop } from "../lib/send";
@@ -41,6 +42,7 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
   const [transcript, setTranscript] = useState<Transcript | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
+  const feed = useFollowLatest();
 
   // The newest page, then one live stream for this session, closed on leave.
   useEffect(() => {
@@ -127,7 +129,7 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="stream">
-      <div className="min-h-0 flex-1 overflow-y-auto" data-testid="transcript">
+      <div ref={feed.ref} className="min-h-0 flex-1 overflow-y-auto" data-testid="transcript">
         {failure !== undefined ? (
           <div className="p-4">
             <SectionFailure what="The transcript" failure={failure} onRetry={() => setAttempt((a) => a + 1)} />

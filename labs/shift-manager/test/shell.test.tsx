@@ -12,7 +12,7 @@ import type { BoardRow } from "../src/lib/reads";
 import { GAPS } from "../src/gaps";
 import { bootColorScheme } from "../src/lib/color-scheme";
 import { createLabClients } from "../src/lib/connection";
-import { ASKER_GATED_LINE, ASKER_REFUSED_LINE, heardLine, startProjectLine } from "./fixtures/ask-lab/asker.mts";
+import { ASKER_GATED_LINE, ASKER_REFUSED_LINE, ASKER_SLOW_LINE, heardLine, holdSlowLines, startProjectLine } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -312,6 +312,27 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     expect(screen.getByTestId("inbox-detail").textContent).toMatch(/Approve/);
   });
 
+  // FIX-1773: the same for a worker that isn't the coordinator.
+  it("clears a reply into the thread under the ask as soon as the worker's session holds it, before the worker answers", async () => {
+    const { clients } = await openOnAsk();
+    const input = screen.getByTestId("inbox-reply-input") as HTMLInputElement;
+    expect(input.getAttribute("aria-label")).toBe("Reply to ops.asker");
+    const release = holdSlowLines();
+    try {
+      fireEvent.change(input, { target: { value: ASKER_SLOW_LINE } });
+      fireEvent.click(screen.getByTestId("inbox-reply-send"));
+      await waitFor(() => expect(input.value).toBe(""), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getAllByTestId("inbox-reply-line-text").map((el) => el.textContent)).toEqual([ASKER_SLOW_LINE]), { timeout: 5_000 });
+      expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("held");
+      // The worker hasn't answered: its session holds no reply yet.
+      const state = await clients.sessions.getSessionState("s_ops_asker", { includeItems: true, itemTypes: ["message"] });
+      expect(JSON.stringify(state.items ?? [])).not.toContain(heardLine(ASKER_SLOW_LINE));
+    } finally {
+      release();
+    }
+    await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+  });
+
   it("says so when the ask's session holds more than one read returns, rather than dropping later replies unseen", async () => {
     // Every page of the session read says more remain, so the read stops at its cap.
     await openOnAsk({}, () => {
@@ -577,6 +598,32 @@ describe("Chief of Staff (FIX-1722)", () => {
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
     await waitFor(() => expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(sessionId));
     await waitFor(() => expect(screen.getAllByTestId("cos-item").map((el) => el.getAttribute("data-item-id"))).toContain(reply!.id));
+  });
+
+  // FIX-1773: the person follows the conversation, not the composer. A line the session holds
+  // is the conversation's, so it leaves the draft and is drawn while the reply is still coming.
+  it("names the coordinator on Send, clears a held line into the conversation at once, and shows it working until the reply", async () => {
+    await openCos("/", { chiefOfStaff: true });
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLInputElement;
+    // The seat's id stays chief-of-staff; what the person sees is its name.
+    expect(input.getAttribute("aria-label")).toBe("Message Shift Coordinator");
+    expect(input.placeholder).toBe("Message Shift Coordinator…");
+    const release = holdSlowLines();
+    try {
+      fireEvent.change(input, { target: { value: ASKER_SLOW_LINE } });
+      fireEvent.click(screen.getByTestId("cos-composer-send"));
+      // The reply is held: the line still leaves the draft and is drawn, read back from the session.
+      await waitFor(() => expect(input.value).toBe(""), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getAllByTestId("cos-item").map((el) => el.getAttribute("data-role"))).toEqual(["user"]), { timeout: 5_000 });
+      expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("held");
+      expect(screen.getByTestId("cos-working").textContent).toBe("Shift Coordinator is working on it…");
+      expect((screen.getByTestId("cos-composer-send") as HTMLButtonElement).disabled).toBe(true);
+    } finally {
+      release();
+    }
+    await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    await waitFor(() => expect(screen.getAllByTestId("cos-item").map((el) => el.getAttribute("data-role"))).toEqual(["user", "assistant"]));
+    expect(screen.queryByTestId("cos-working")).toBeNull();
   });
 
   // A finished turn raised no ask, but it may have changed the organization: a project it
