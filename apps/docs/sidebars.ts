@@ -334,6 +334,7 @@ const sidebars: SidebarsConfig = {
         "api/cli",
       ],
     },
+    "glossary",
   ],
 };
 
