@@ -30,6 +30,7 @@ The organization owns the projects. A project groups the workstreams that belong
 | `ownerUserId` | The person who created it |
 | `members` | Who can read and post in the room. Always includes the owner |
 | `workstreams` | Full mailbox ids of the declared mailboxes it groups, such as `eng.feature` and `ops.release` |
+| `repository` | The git remote the project's code lives in, such as `https://github.com/acme/storefront.git`, or `null` |
 | `sessions` | Each member's own talk session on the room, at most one per person |
 
 Everyone in the organization can list the rows. That a project exists isn't a secret. Its room is.
@@ -50,7 +51,7 @@ Its one option, `talk`, is the template every project's room is built from: the 
 
 ## Creating a project
 
-`defineProjectBlocks()` gives you two blocks, `createProject` and `setWorkstreams`, and the same two as an `actions` map to spread into a flow:
+`defineProjectBlocks()` gives you the project blocks, `createProject`, `setWorkstreams`, `setRepository` and `readProjectFiles`, and the same blocks as an `actions` map to spread into a flow:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -64,7 +65,7 @@ export const lab = defineFlow({
 });
 ```
 
-Call `createProject` with an id, a title, and optionally a brief, the other members, and the workstreams:
+Call `createProject` with an id, a title, and optionally a brief, the other members, the workstreams, and the [repository](#a-projects-code-and-files):
 
 ```ts
 {
@@ -73,6 +74,7 @@ Call `createProject` with an id, a title, and optionally a brief, the other memb
   brief: "Ship the new checkout.",
   members: ["bob"],
   workstreams: ["eng.feature", "ops.release"],
+  repository: "https://github.com/acme/storefront.git",
 }
 ```
 
@@ -150,6 +152,57 @@ A workstream belongs to at most one project. Each id must be a mailbox in the or
 A refused write leaves nothing behind. If one workstream is already claimed, the whole write fails, the refusal names that workstream, and any claims the write had already taken are released. Removing a workstream with `setWorkstreams` releases its claim.
 
 A workstream no project lists isn't lost. A UI shows it under **No project**.
+
+## A project's code and files
+
+A project can name the repository its code lives in. It's a remote, the address you'd pass to `git clone`, not a folder on some machine. Set it when you create the project, or later with `setRepository`. Send `null` to clear it:
+
+```ts
+// at create
+{ id: "storefront", title: "Storefront", repository: "https://github.com/acme/storefront.git" }
+
+// later, from a member's session
+{ projectId: "storefront", repository: "git@github.com:acme/storefront.git" }
+{ projectId: "storefront", repository: null }
+```
+
+`setRepository` returns `{ project }`, the row as written. It changes `repository` and nothing else on the row. Only members can call it; anyone else is refused with `not-a-member`, and an id no project holds with `no-such-project`. When two members set it at the same moment, one of the two values is kept whole.
+
+A value has to be a remote. Both writes refuse these with `invalid-repository`, and the refusal never repeats the value:
+
+| Refused | Example |
+|---------|---------|
+| A path | `/srv/git/storefront`, `./storefront`, `~/code/storefront`, `C:\code\storefront` |
+| A value starting with `-` | `--upload-pack=…` |
+| A control character | A newline or tab anywhere in the address |
+| A remote-helper address | `ext::…` |
+| A user or password on `http` or `https` | `https://alice:token@github.com/acme/storefront.git`, `https://token@github.com/…` |
+| A password on any other scheme | `ssh://git:secret@github.com/acme/storefront.git` |
+
+An SSH login name isn't a credential, so `git@github.com:acme/storefront.git` and `ssh://git@github.com/acme/storefront.git` are both accepted. So is `file:///srv/git/storefront.git`. Give the machine that clones the repository its credentials, rather than putting them in the address.
+
+Stored rows aren't re-parsed when they're read, so a row saved without a `repository` key reads without one. Treat a missing value as `null`, or read rows through `projectRowSchema.parse(row)`, which fills it in.
+
+### The project's own files
+
+Notes, memory and anything else kept for a project live in the organization's `project-files` collection, under the project's id: `project-files/<projectId>/<path>`. Declare it with `defineProjectFilesCollection()`. Like `defineProjectsCollection()`, every call returns the same declaration. It's org-scoped, shared across flows, and loaded only when read.
+
+Only the project's members can read the files, with `readProjectFiles`:
+
+```ts
+// input
+{ projectId: "storefront" }
+
+// output: each file's path under the project, and its body
+{
+  files: [
+    { path: "notes.md", content: "# Notes" },
+    { path: "src/index.ts", content: "export {};" },
+  ],
+}
+```
+
+It returns that project's files, never another project's. A non-member is refused with `not-a-member`, and an unknown id with `no-such-project`. The collection has no browser read: a request for it through the collection route gets a 403.
 
 ## The room and talk sessions
 
