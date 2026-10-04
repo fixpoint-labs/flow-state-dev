@@ -58,7 +58,8 @@ server checks it on reads and on execution alongside the user.
 It comes from one of two places, and never from the caller:
 
 - **A configured resolver** returns the organization it verified. If it
-  returns none, a blank one, or the reserved default below, the request is
+  returns none, a blank one, one that isn't well-formed Unicode, or the
+  reserved default below, the request is
   refused with 401. Returning `null` is refused too: `defaultUserId` fills in
   a user, never an organization.
 - **No configured resolver at all**, which is the development case. The

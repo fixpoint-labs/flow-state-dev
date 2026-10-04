@@ -40,7 +40,8 @@ export const DEFAULT_ORG_ID = "__fsd_default_org__";
 /**
  * Whether `value` is usable as an organization id.
  *
- * Organization ids are opaque nonempty strings. A whitespace-only id is
+ * Organization ids are opaque strings: not empty, not whitespace-only, and
+ * well-formed Unicode (see below). A whitespace-only id is
  * rejected rather than trimmed, and a valid id is never rewritten — the
  * framework stores exactly what the trusted source supplied, so a stored id
  * and the identity that produced it compare equal.
@@ -112,8 +113,9 @@ export interface PrincipalResolutionContext {
  * `defaultUserId` and enforce `requireUser`), or `null`.
  *
  * Whatever shape it returns, the framework requires a verified organization
- * before any effect: a resolver that yields no `orgId`, a whitespace-only one,
- * or the reserved {@link DEFAULT_ORG_ID} is refused at principal resolution
+ * before any effect: a resolver that yields no `orgId`, one {@link isValidOrgId}
+ * rejects (empty, whitespace-only, a lone surrogate), or the reserved
+ * {@link DEFAULT_ORG_ID} is refused at principal resolution
  * (FIX-1442). `null` is refused for the same reason — it cannot be repaired by
  * the `defaultUserId` fallback, which supplies a user and never an
  * organization. A machine transport returns `{ orgId }` and lets

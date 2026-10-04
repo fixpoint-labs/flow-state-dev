@@ -862,7 +862,7 @@ When a template is in place, any code that creates a project inside a flow turn 
 
 A room's lines aren't in any session's history. Read them with `read` on a member's talk session.
 
-`channelInstances` checks templates along with your channels and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or one that isn't `projects`, a seat that isn't a seat id or is listed twice, seats on a kind that can't wake them, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `CHANNEL.md`.
+`channelInstances` checks templates along with your channels and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or names something other than the projects collection, a seat that isn't a seat id or is listed twice, seats on a kind that can't wake them, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `CHANNEL.md`.
 
 ## Registering a kind of your own
 
