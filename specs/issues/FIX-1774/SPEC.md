@@ -82,8 +82,9 @@ Top is today: two dead ends. Bottom is after: one post, one task, one run.
 **The EM's post door** (`goals/devforce-lab/lab/workforce/flows/workers/em.mts`):
 
 ```diff
-- [POST_ENTRY]: { block: fileFromPost, … }
-+ [POST_ENTRY]: { block: fileFromPost, then run the board when a new row was filed, … }
+- [POST_ENTRY]: { block: fileFromPost, … }                 // a handler: files, nothing more
++ [POST_ENTRY]: { block: postToFile, … }                   // composed like askToFile: file, then
++                                                          // board.drain only when the row is new
 ```
 
 ## How a coding ask moves

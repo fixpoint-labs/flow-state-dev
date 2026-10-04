@@ -42,5 +42,5 @@ locally (not committed) to run the board after a new row, the same post led to a
 the hand-off to `eng.coder`, and `harness-manager` building the prompt *"# Your task — a simple
 React hello-world app, Vite and TypeScript"*. The scripted harness ran.
 
-The premises [D1](../../DECISIONS.md#d1) and [D3](../../DECISIONS.md#d3) rest on are settled by
-2–4; see [DECISIONS.md → Settled](../../DECISIONS.md#settled).
+Findings 2–4 settle the premises [D1](../../DECISIONS.md#d1) and the post-door change rest on;
+see [DECISIONS.md → Settled](../../DECISIONS.md#settled).

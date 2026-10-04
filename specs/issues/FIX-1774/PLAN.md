@@ -104,4 +104,8 @@ design assumes.
 
 ## Notes from review
 
-None yet.
+Recorded verbatim for the implementer, from cursor[bot] on #2747 (round 1):
+
+- PLAN V1: "V1 overlaps `goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board`, which today calls `lab.drain` while the row is still `pending` precisely because the post door does not drain. After S2, consider **tightening that existing goal** (pass without external drain) instead of adding a third post-focused runner — unless you want a deliberately narrow BR-10 file separate from FIX-1667's \"where the row lives\" story."
+- PLAN controls: "`main-instructions` may not need a full scratch copy of the workforce tree. `openLab` already supports `root` and `documentOverrides` (see `host.mts`, used in `it-wakes-the-seat-a-file-declared`). Swapping only `chief-of-staff/WORKER.md` from `main` via override + `GOAL_CONTROL` in a goal-local `fsdev.config.mts` is less machinery than \"another tree\" env — *if* that still changes exactly one thing for the control." Also: "`file-only` as named `openLab` EM option (sibling to `fileBeforeAsking`)."
+- PLAN sketch: "treat `if filed is new` as **`filed: true` from `!existed`** in `addRow` output (same idempotency gate as BR-11), and wire drain on the **`onPosted` delivery** request — not inside the CoS tool return path (mailbox fan-out is already async)."
