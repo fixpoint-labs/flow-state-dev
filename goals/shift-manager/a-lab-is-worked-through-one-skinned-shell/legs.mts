@@ -172,6 +172,10 @@ export async function walkSurfaces(
       if (!(await visible(page, "tasks-empty", 3_000))) reach("no open row and Tasks' empty state is not named");
       continue;
     }
+    // Tasks hides queued rows until Queued is on; every open row is wanted, so turn it on.
+    const queued = page.getByTestId("tasks-queued-toggle");
+    if ((await queued.getAttribute("aria-pressed")) !== "true") await queued.click();
+    if ((await queued.getAttribute("aria-pressed")) !== "true") reach(`Tasks by ${grouping}: Queued does not turn on`);
     const shown = (await page.getByTestId("task-row").evaluateAll((els) => els.map((e) => `${e.getAttribute("data-board-ref")}/${e.getAttribute("data-task-id")}`))) as string[];
     if (!same(shown, open_)) reach(`Tasks by ${grouping}: ${diff(open_, shown)}`);
   }
@@ -473,8 +477,7 @@ async function taskJourney(page: Page, api: LabApi, row: StoredRow, devtool: str
  * Leg a. DevForce as the DevTeam profile on the real harness. a1 the Inbox
  * journey, a4 the `@worker` turn into the running task session (the one step
  * graded on the model), a2 the task journey from Tasks and from the Board,
- * a3 every surface. Also b's org step on this tree: the switcher names the
- * store's org.
+ * a3 every surface. b's org step on this tree runs in leg b.
  */
 export async function legA(ctx: LegCtx): Promise<void> {
   const { report } = ctx;
@@ -554,8 +557,6 @@ export async function legA(ctx: LegCtx): Promise<void> {
     // a3: every surface, against the store as it stands now.
     const store = await readStore(api, tree, userId);
     const { orgShown } = await walkSurfaces(page, served.origin, store, tree, { reach: "a3", teams: "a3" }, report);
-    if (store.orgs.length !== 1) report.fail("b:org", `[devforce] the person's sessions sit in ${store.orgs.length} orgs (${store.orgs.join(", ")})`);
-    else if (orgShown !== store.orgs[0]) report.fail("b:org", `[devforce] the org switcher names "${orgShown}", the store's org is ${store.orgs[0]}`);
     if (errors.length > 0) report.fail("a3", `the page threw: ${errors.join(" | ")}`);
     const rows = Object.values(store.rows).flat();
     report.note(`a3: ${store.seats.length} seats [${store.seats.join(", ")}], ${store.channels.length} workstream(s), ${rows.length} row(s) [${rows.map((r) => r.status).join(", ")}], ${store.asks.length} ask(s) pending; org switcher "${orgShown}"`);
@@ -596,7 +597,7 @@ function shiftManagerFiles(): string[] {
   return out;
 }
 
-/** Leg b: the same reach on the pentest tree, its post, the fence, and the org step. */
+/** Leg b: the same reach on the pentest tree, its post, the fence, and the org step on the pentest, no-resolver and DevForce Labs. */
 export async function legB(ctx: LegCtx): Promise<void> {
   const { report } = ctx;
   const tree = await readTree(TREES.pentest);
@@ -674,6 +675,23 @@ export async function legB(ctx: LegCtx): Promise<void> {
   } finally {
     await second.page.close();
     await askLab.stop();
+  }
+
+  // DevForce opens under the org its store names too, on the scripted harness.
+  const devforceTree = await readTree(TREES.devforce);
+  const devforce = await startDevTeam(ctx, "b-devforce-org", "stub");
+  const third = await newPage(ctx.browser);
+  try {
+    await open(third.page, devforce.origin, "/");
+    const { userId, bearer } = await injected(third.page);
+    const store = await readStore(labApi(devforce.origin, bearer), devforceTree, userId);
+    const shown = ((await third.page.getByTestId("org-switcher").locator("span.truncate").first().textContent().catch(() => null)) ?? "").trim();
+    if (store.orgs.length !== 1) report.fail("b:org", `[devforce] the person's sessions sit in ${store.orgs.length} orgs (${store.orgs.join(", ")})`);
+    else if (shown !== store.orgs[0]) report.fail("b:org", `[devforce] the org switcher names "${shown}", the store's org is ${store.orgs[0]}`);
+    report.note(`b:org [devforce]: --team devteam on the scripted harness; store org ${store.orgs.join(", ")}, switcher "${shown}"`);
+  } finally {
+    await third.page.close();
+    await devforce.stop();
   }
 }
 

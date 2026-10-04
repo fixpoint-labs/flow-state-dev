@@ -23,8 +23,8 @@
  * Every verdict is printed as `VERDICT <id>: …` with the commit it ran on.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/run.mts
- * Parts:    GOAL_PART=a,b0,b,c,d,controls,part2,part3,part4 (default: all, in that order)
- * Controls: GOAL_CONTROLS=hardcoded-accent,… (default: all of them)
+ * Parts:    GOAL_PART=a,b0,b,c,d,controls,part2,part3,part4 (default: all, in that order; an unknown part, or a run with no verdict, fails)
+ * Controls: GOAL_CONTROLS=hardcoded-accent,… (default: all of them; an unknown name fails)
  * Needs:    a model key (leg a, and the real-model child checks), a signed-in
  *           Claude Code (a4's harness, and b0's writer through the `claude`
  *           CLI), Chromium, and `pnpm build:assets` for the devtool pages.
@@ -43,7 +43,9 @@ import { SHIFT_MANAGER, buildPages, injected, labApi, open, readStore, readTree,
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("shift-manager-closure");
-const PARTS = (process.env.GOAL_PART ?? "a,b0,b,c,d,controls,part2,part3,part4").split(",").map((s) => s.trim());
+/** Every part, in run order: GOAL_PART selects from these, and anything else is rejected. */
+const ALL_PARTS = ["a", "b0", "b", "c", "d", "controls", "part2", "part3", "part4"];
+const PARTS = (process.env.GOAL_PART ?? ALL_PARTS.join(",")).split(",").map((s) => s.trim());
 const git = (...args: string[]) => execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" }).trim();
 
 const COMMIT = git("rev-parse", "HEAD");
@@ -215,8 +217,10 @@ async function b0(report: Report): Promise<void> {
   }
   const written = join(room, "pentest-lab", "lab", "fsdev.config.mts");
   if (!existsSync(written)) return fail("the writer wrote no fsdev.config.mts");
-  const guesses = reply.split("\n").filter((l) => l.startsWith("GUESSED:")).map((l) => l.slice("GUESSED:".length).trim()).filter((g) => g !== "none");
-  for (const guess of guesses) fail(`the writer had to guess: ${guess}`);
+  // The declaration is the only evidence of a step the README left out: a reply without one is a finding, not "no guesses".
+  const declared = reply.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("GUESSED:")).map((l) => l.slice("GUESSED:".length).trim());
+  if (declared.length === 0) fail(`the writer declared no GUESSED line, not even "GUESSED: none"; its reply ends "${reply.trim().slice(-200)}"`);
+  for (const guess of declared.filter((g) => g !== "none")) fail(`the writer had to guess: ${guess}`);
   const text = readFileSync(written, "utf8");
   report.note(`b0: the writer's config (${text.split("\n").length} lines), kept at ${written}:\n${text.split("\n").map((l) => `      | ${l}`).join("\n")}`);
   const devteam = readFileSync(join(SHIFT_MANAGER, "teams", "devteam", "fsdev.config.mts"), "utf8");
@@ -292,61 +296,66 @@ type Control = {
   legs: Array<"a" | "b" | "c">;
 };
 
-async function controls(only: string[] | null): Promise<void> {
-  const devforceSeats = (await readDeclaredRoster(TREES.devforce)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }));
-  const all: Control[] = [
-    {
-      name: "hardcoded-accent",
-      build: async () => ({
-        themed: await buildPages(SCRATCH, "ctl-hardcoded-accent-themed", { patches: [HARDCODED_ACCENT] }),
-        noTheme: await buildPages(SCRATCH, "ctl-hardcoded-accent-no-theme", { patches: [NO_THEME, HARDCODED_ACCENT] }),
-      }),
-      must: ["c:tool"],
-      legs: ["a", "b", "c"],
-    },
-    {
-      name: "static-names",
-      build: async () => {
-        const swap = swapOf("reads.ts", "it-opens-a-lab", "static-names.ts");
-        return { themed: await swapBuild("ctl-static-names", swap, false, devforceSeats), noTheme: await swapBuild("ctl-static-names-no-theme", swap, true, devforceSeats) };
-      },
-      must: ["b:teams"],
-      // Jump to's Workers list is the same written-in seat list TEAMS draws.
-      also: ["b:reach"],
-      legs: ["a", "b", "c"],
-    },
-    {
-      name: "optimistic-post",
-      build: async () => {
-        const swap = swapOf(["transcript.ts", "send.ts"], "it-opens-a-lab", "optimistic-post.ts");
-        return { themed: await swapBuild("ctl-optimistic-post", swap, false), noTheme: await swapBuild("ctl-optimistic-post-no-theme", swap, true) };
-      },
-      must: ["a4", "b:post"],
-      legs: ["a", "b", "c"],
-    },
-    {
-      name: "worker-session",
-      build: async () => {
-        const swap = swapOf("run.ts", "it-shows-and-stops-a-task-run", "worker-session.ts");
-        return { themed: await swapBuild("ctl-worker-session", swap, false), noTheme: await swapBuild("ctl-worker-session-no-theme", swap, true) };
-      },
-      must: ["a2"],
-      // Leg c draws its message, reasoning, tool and code block cards through
-      // the run-lab's task Session, which this control points elsewhere.
-      also: ["c:sweep"],
-      legs: ["a", "b", "c"],
-    },
-    {
-      name: "no-org",
-      build: async () => ({
-        themed: await buildPages(SCRATCH, "ctl-no-org-themed", { patches: [NO_ORG] }),
-        noTheme: await buildPages(SCRATCH, "ctl-no-org-no-theme", { patches: [NO_THEME, NO_ORG] }),
-      }),
-      must: ["b:org"],
-      legs: ["a", "b", "c"],
-    },
-  ];
+/** DevForce's declared seats, written into the static-names control's build. */
+const devforceSeats = async () => (await readDeclaredRoster(TREES.devforce)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }));
 
+const CONTROLS: Control[] = [
+  {
+    name: "hardcoded-accent",
+    build: async () => ({
+      themed: await buildPages(SCRATCH, "ctl-hardcoded-accent-themed", { patches: [HARDCODED_ACCENT] }),
+      noTheme: await buildPages(SCRATCH, "ctl-hardcoded-accent-no-theme", { patches: [NO_THEME, HARDCODED_ACCENT] }),
+    }),
+    must: ["c:tool"],
+    legs: ["a", "b", "c"],
+  },
+  {
+    name: "static-names",
+    build: async () => {
+      const swap = swapOf("reads.ts", "it-opens-a-lab", "static-names.ts");
+      const seats = await devforceSeats();
+      return { themed: await swapBuild("ctl-static-names", swap, false, seats), noTheme: await swapBuild("ctl-static-names-no-theme", swap, true, seats) };
+    },
+    must: ["b:teams"],
+    // Jump to's Workers list is the same written-in seat list TEAMS draws.
+    also: ["b:reach"],
+    legs: ["a", "b", "c"],
+  },
+  {
+    name: "optimistic-post",
+    build: async () => {
+      const swap = swapOf(["transcript.ts", "send.ts"], "it-opens-a-lab", "optimistic-post.ts");
+      return { themed: await swapBuild("ctl-optimistic-post", swap, false), noTheme: await swapBuild("ctl-optimistic-post-no-theme", swap, true) };
+    },
+    must: ["a4", "b:post"],
+    legs: ["a", "b", "c"],
+  },
+  {
+    name: "worker-session",
+    build: async () => {
+      const swap = swapOf("run.ts", "it-shows-and-stops-a-task-run", "worker-session.ts");
+      return { themed: await swapBuild("ctl-worker-session", swap, false), noTheme: await swapBuild("ctl-worker-session-no-theme", swap, true) };
+    },
+    must: ["a2"],
+    // Leg c draws its message, reasoning, tool and code block cards through
+    // the run-lab's task Session, which this control points elsewhere.
+    also: ["c:sweep"],
+    legs: ["a", "b", "c"],
+  },
+  {
+    name: "no-org",
+    build: async () => ({
+      themed: await buildPages(SCRATCH, "ctl-no-org-themed", { patches: [NO_ORG] }),
+      noTheme: await buildPages(SCRATCH, "ctl-no-org-no-theme", { patches: [NO_THEME, NO_ORG] }),
+    }),
+    must: ["b:org"],
+    legs: ["a", "b", "c"],
+  },
+];
+/** Every name GOAL_CONTROLS may select: today's main, then each control. */
+const CONTROL_NAMES = ["todays-main", ...CONTROLS.map((c) => c.name)];
+
+async function controls(only: string[] | null): Promise<void> {
   // Today's main: Shift Manager is absent, so legs a and b can't start; c's static half stays green.
   if (only === null || only.includes("todays-main")) {
     const absent = ["labs/shift-manager/package.json", "labs/app-lab/package.json"].every((p) => {
@@ -372,8 +381,15 @@ async function controls(only: string[] | null): Promise<void> {
     );
   }
 
-  for (const control of all) {
+  for (const control of CONTROLS) {
     if (only !== null && !only.includes(control.name)) continue;
+    // GOAL_CONTROL_LEGS narrows a rerun to some legs; only their signals are expected red (a signal's first letter is its leg).
+    const legs = control.legs.filter((l) => process.env.GOAL_CONTROL_LEGS === undefined || process.env.GOAL_CONTROL_LEGS.split(",").map((s) => s.trim()).includes(l));
+    const must = control.must.filter((s) => legs.includes(s[0] as "a" | "b" | "c"));
+    if (must.length === 0) {
+      verdict(`control ${control.name}`, false, `WRONG: GOAL_CONTROL_LEGS=${process.env.GOAL_CONTROL_LEGS} selects none of the legs its signals ${control.must.join(", ")} sit on`);
+      continue;
+    }
     const report = collector();
     let built: { themed: Built; noTheme: Built };
     try {
@@ -385,7 +401,7 @@ async function controls(only: string[] | null): Promise<void> {
     const browser = await launchChromium();
     try {
       const ctx = (pages: string): LegCtx => ({ scratch: join(SCRATCH, `ctl-${control.name}`), pages, browser, report });
-      for (const leg of control.legs.filter((l) => process.env.GOAL_CONTROL_LEGS === undefined || process.env.GOAL_CONTROL_LEGS.split(",").includes(l))) {
+      for (const leg of legs) {
         try {
           if (leg === "a") await legA(ctx(built.themed.pages));
           if (leg === "b") await legB(ctx(built.themed.pages));
@@ -399,13 +415,13 @@ async function controls(only: string[] | null): Promise<void> {
       await browser.close();
     }
     const red = new Set(report.failures.map((f) => f.signal));
-    const missing = control.must.filter((s) => !red.has(s));
-    const stray = [...red].filter((s) => !control.must.includes(s) && !(control.also ?? []).includes(s));
+    const missing = must.filter((s) => !red.has(s));
+    const stray = [...red].filter((s) => !must.includes(s) && !(control.also ?? []).includes(s));
     const ok = missing.length === 0 && stray.length === 0;
     verdict(
       `control ${control.name}`,
       ok,
-      ok ? `FAIL (expected) at ${control.must.join(" + ")} only` : `WRONG: ${missing.length > 0 ? `stayed green at ${missing.join(", ")}` : ""}${missing.length > 0 && stray.length > 0 ? "; " : ""}${stray.length > 0 ? `also red at ${stray.join(", ")}` : ""}`,
+      ok ? `FAIL (expected) at ${must.join(" + ")} only${legs.length < control.legs.length ? ` (legs ${legs.join(", ")})` : ""}` : `WRONG: ${missing.length > 0 ? `stayed green at ${missing.join(", ")}` : ""}${missing.length > 0 && stray.length > 0 ? "; " : ""}${stray.length > 0 ? `also red at ${stray.join(", ")}` : ""}`,
       [
         ...report.failures.map((f) => `✗ [${f.signal}] ${f.why}`),
         ...[built.themed.diff, built.noTheme.diff].filter(Boolean).map((d) => `patch:\n${d}`),
@@ -563,6 +579,11 @@ async function legD(): Promise<void> {
 let PAGES: Built | undefined;
 
 await runGoal(async () => {
+  const unknownParts = PARTS.filter((p) => !ALL_PARTS.includes(p));
+  if (unknownParts.length > 0) throw new Error(`GOAL_PART names no part: ${unknownParts.map((p) => JSON.stringify(p)).join(", ")} (known: ${ALL_PARTS.join(", ")})`);
+  const only = process.env.GOAL_CONTROLS?.split(",").map((s) => s.trim()) ?? null;
+  const unknownControls = (only ?? []).filter((c) => !CONTROL_NAMES.includes(c));
+  if (unknownControls.length > 0) throw new Error(`GOAL_CONTROLS names no control: ${unknownControls.map((c) => JSON.stringify(c)).join(", ")} (known: ${CONTROL_NAMES.join(", ")})`);
   console.log(`closure run on ${COMMIT}${DIRTY ? " (with uncommitted changes outside this goal)" : ""}; today's main is ${TODAYS_MAIN}`);
   const want = (part: string) => PARTS.includes(part);
   if (["a", "b0", "b", "c", "part2"].some(want)) {
@@ -595,10 +616,7 @@ await runGoal(async () => {
   } finally {
     await browser.close();
   }
-  if (want("controls")) {
-    const only = process.env.GOAL_CONTROLS?.split(",").map((s) => s.trim()) ?? null;
-    await controls(only);
-  }
+  if (want("controls")) await controls(only);
   if (want("part3")) await part3();
   if (want("part4")) {
     const p4 = collector();
@@ -608,7 +626,8 @@ await runGoal(async () => {
 
   const bad = verdicts.filter((v) => !v.ok);
   return {
-    failures: bad.map((v) => `${v.id}: ${v.line}`),
+    // A run that checked nothing certifies nothing.
+    failures: verdicts.length === 0 ? [`no verdict ran (GOAL_PART=${PARTS.join(",")}${only === null ? "" : `, GOAL_CONTROLS=${only.join(",")}`}${process.env.GOAL_CHILDREN === undefined ? "" : `, GOAL_CHILDREN=${process.env.GOAL_CHILDREN}`})`] : bad.map((v) => `${v.id}: ${v.line}`),
     evidence: `${verdicts.length} verdicts on ${AT}, all as expected: ${verdicts.map((v) => `${v.id} ${v.line.split(" — ")[0]}`).join("; ")}`,
   };
 });
