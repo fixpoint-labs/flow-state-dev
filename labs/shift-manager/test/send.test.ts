@@ -165,6 +165,11 @@ describe("sendTurn", () => {
       await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "ask" });
     });
 
+    it("a failed read of the suspensions, resumed meanwhile: the recheck says running, so plain delivered", async () => {
+      const { clients } = stubClients({ status: "suspended", later: ["completed"], items: [line, ask("s1")], suspensionsFail: true });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: null });
+    });
+
     it("a failed read of the suspensions is still delivered, as a wait that points nowhere", async () => {
       const { clients } = stubClients({ status: "suspended", items: [line, ask("s1")], suspensionsFail: true });
       await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "wait" });

@@ -118,13 +118,14 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
  * - none, because it was resumed between the status poll and this read: `null`,
  *   plain delivered.
  *
- * A resume marks the request running before it writes its resume item, so a
- * suspension can still read as pending after the resume won. The status is
- * polled once more after an `ask` or `wait`, and a request no longer
- * suspended is `null`.
+ * A read that fails is a `wait` candidate: the poll saw the request suspended,
+ * and `wait` points nowhere it might not be.
  *
- * The line is delivered whatever this says. A read that fails is `wait`: the
- * poll saw the request suspended, and `wait` points nowhere it might not be.
+ * Every `ask` or `wait` then goes through one status recheck before it is
+ * returned. A resume marks the request running before it writes its resume
+ * item, so a suspension can still read as pending after the resume won; a
+ * request no longer suspended is `null`. A recheck that fails returns the
+ * candidate. The line is delivered whatever this says.
  */
 async function stopOf(
   clients: LabClients,
@@ -132,19 +133,21 @@ async function stopOf(
   sessionId: string,
   requestId: string,
 ): Promise<TurnStop> {
-  let stop: "ask" | "wait" | null;
+  // The candidate: what the pending read says, or `wait` when it can't be read.
+  let candidate: TurnStop;
   try {
     const mine = (await readPendingSuspensions(clients, sessionId)).filter((view) => view.item.requestId === requestId);
-    stop = mine.some((view) => PERSON_REASONS.has(view.item.reason)) ? "ask" : mine.length > 0 ? "wait" : null;
+    candidate = mine.some((view) => PERSON_REASONS.has(view.item.reason)) ? "ask" : mine.length > 0 ? "wait" : null;
   } catch {
-    return "wait";
+    candidate = "wait";
   }
-  if (stop === null) return null;
+  if (candidate === null) return null;
+  // The one exit for a stop: it holds only while the request is still suspended.
   try {
-    return (await actions.getRequestStatus(requestId)).status === "suspended" ? stop : null;
+    return (await actions.getRequestStatus(requestId)).status === "suspended" ? candidate : null;
   } catch {
-    // The pending read just answered; a failed recheck doesn't undo it.
-    return stop;
+    // A recheck that fails doesn't undo what was read.
+    return candidate;
   }
 }
 
