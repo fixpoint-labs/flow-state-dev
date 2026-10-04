@@ -6,14 +6,18 @@
  * Tailwind runs as its Vite plugin, which inlines the stylesheet's imports and
  * rebases each one's `url()`s, so the font files the design-system package's
  * stylesheet pulls in are found and bundled.
+ *
+ * The build records the source files it was made from, so the start script can
+ * tell a build that is older than its source and rebuild it.
  */
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { recordBuildInputs } from "../../scripts/build-inputs.mjs";
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), recordBuildInputs({ repoRoot: fileURLToPath(new URL("../..", import.meta.url)) })],
   // The registry copies import `@/components/…` and `@/lib/utils`, as `components.json` names them.
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: {

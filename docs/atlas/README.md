@@ -23,7 +23,7 @@ issue identifiers; anything under `apps/docs/` is published and may not.
   system in `@flow-state-dev`, how they compose, and the open refactor
   questions. Its counts are measured against a commit rather than maintained,
   so read them as of the branch that last touched it.
-- `workforce.html` — the Layer 2 product: roster / teams + seats + channels +
+- `workforce.html` — the Layer 2 product: roster / teams + seats + mailboxes +
   thin helpers. Seats are flow instances from `WORKER.md`; workers are
   generators/flows with instructions + model + tools; hire needs a kinds
   map; skills and boards share one name → `BlockDefinition` list.

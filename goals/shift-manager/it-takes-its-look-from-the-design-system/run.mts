@@ -54,17 +54,15 @@
  * Run:     PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-takes-its-look-from-the-design-system/run.mts
  * Control: GOAL_CONTROL=hardcoded-accent PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-takes-its-look-from-the-design-system/run.mts
  */
-import { spawn, type ChildProcess } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import type { Browser, Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { declarations, hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
 import { stripImportsAndComments } from "../../../labs/design-system/test/theme.ts";
-import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
+import { buildShiftManagerCopy, startShiftManager, type Patch, type ServedShiftManager } from "../../lib/shift-manager.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["hardcoded-accent", "switch-ignored", "fonts-not-loaded"] as const;
@@ -77,8 +75,6 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
   process.exit(2);
 }
 
-const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
-const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const RUN_LAB = join(REPO_ROOT, "goals", "shift-manager", "it-shows-and-stops-a-task-run", "lab");
 const SCRATCH = goalTmpDir("shift-manager-theme");
 const THEME = readShiftManagerTheme();
@@ -108,80 +104,19 @@ const SWEPT: Record<string, string> = {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-// ---- building ----------------------------------------------------------------
-
-type Patch = { file: string; from: string | RegExp; to: string; why: string };
-
-/**
- * Shift Manager copied to scratch with `patches` applied, then built. Tailwind reads
- * class names off the files on disk, so a patch has to land in a copy rather
- * than in the bundler. A patch that matches nothing fails the setup: a build
- * that "removed" a line that was never there proves nothing.
- */
-async function build(name: string, patches: Patch[]): Promise<{ pages: string; diff: string[] }> {
-  const root = join(SCRATCH, name, "shift-manager");
-  cpSync(SHIFT_MANAGER, root, { recursive: true, filter: (src) => !/[/\\](node_modules|dist)$/.test(src) });
-  symlinkSync(join(SHIFT_MANAGER, "node_modules"), join(root, "node_modules"));
-  // The copy sits outside the workspace; its tsconfig still extends the workspace's.
-  const tsconfig = join(root, "tsconfig.json");
-  writeFileSync(tsconfig, readFileSync(tsconfig, "utf8").replace('"../../tsconfig.base.json"', JSON.stringify(join(REPO_ROOT, "tsconfig.base.json"))));
-  const diff: string[] = [];
-  for (const patch of patches) {
-    const path = join(root, patch.file);
-    const before = readFileSync(path, "utf8");
-    const after = before.replace(patch.from, patch.to);
-    if (after === before) throw new Error(`setup [${name}]: ${patch.why}, but ${patch.file} has nothing to patch (looked for ${String(patch.from)})`);
-    writeFileSync(path, after);
-    diff.push(`${patch.file}: ${patch.why}`);
-  }
-  const vite = (await import(pathToFileURL(createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite")).href)) as {
-    build(config: Record<string, unknown>): Promise<unknown>;
-  };
-  const pages = join(SCRATCH, name, "pages");
-  await vite.build({ root, configFile: join(root, "vite.config.ts"), logLevel: "error", build: { outDir: pages, emptyOutDir: true } });
-  return { pages, diff };
-}
-
 // ---- serving -----------------------------------------------------------------
 
-type Running = { origin: string; child: ChildProcess; exited: Promise<void> };
-
-async function startLab(pages: string): Promise<Running> {
-  mkdirSync(join(SCRATCH, "labs"), { recursive: true });
-  const workDir = mkdtempSync(join(SCRATCH, "labs", "run-lab-"));
-  let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", join(RUN_LAB, "fsdev.config.mts"), "--port", "0", "--assets", pages], {
-    cwd: workDir,
-    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "" }),
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  child.stdout!.on("data", (d) => (log += String(d)));
-  child.stderr!.on("data", (d) => (log += String(d)));
-  let gone = false;
-  const exited = new Promise<void>((resolve) =>
-    child.on("exit", () => {
-      gone = true;
-      resolve();
-    }),
-  );
-  for (let waited = 0; waited < 90_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, child, exited };
-    if (gone) break;
-    await sleep(250);
-  }
-  child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served the run-lab. Log tail:\n${log.slice(-2000)}`);
-}
+const startLab = (pages: string): Promise<ServedShiftManager> =>
+  startShiftManager({ scratch: SCRATCH, label: "run-lab", config: join(RUN_LAB, "fsdev.config.mts"), pages });
 
 /** A board row with a run, read through the Lab's own route. */
 async function rowWithRun(origin: string): Promise<string> {
   const roster = await readDeclaredRoster(join(RUN_LAB, "workforce"));
-  const channel = roster.channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0)!;
-  const board = `${channel.id}.${(channel.declared.boards as string[])[0]}`;
+  const mailbox = roster.mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0)!;
+  const board = `${mailbox.id}.${(mailbox.declared.boards as string[])[0]}`;
   const enc = encodeURIComponent;
   for (let waited = 0; waited < 30_000; waited += 250) {
-    const response = await fetch(`${origin}/api/flows/sessions/${enc(channel.id)}/resources/${enc(board)}?limit=200`);
+    const response = await fetch(`${origin}/api/flows/sessions/${enc(mailbox.id)}/resources/${enc(board)}?limit=200`);
     const body = (await response.json()) as { items?: Array<{ clientData?: { id?: string; status?: string; run?: unknown } }> };
     const row = (body.items ?? []).map((i) => i.clientData ?? {}).find((r) => r.status === "in_progress" && r.run != null);
     if (row?.id !== undefined) return row.id;
@@ -436,7 +371,7 @@ await runGoal(async () => {
     ["no-theme", [{ file: "src/styles.css", from: THEME_IMPORT, to: "", why: "the design-system import line removed" }, ...control]],
   ] as const) {
     try {
-      const built = await build(name, patches as Patch[]);
+      const built = await buildShiftManagerCopy(SCRATCH, name, patches as Patch[]);
       builds.push({ name, pages: built.pages });
       if (built.diff.length > 0) evidence.push(`${name} patches: ${built.diff.join("; ")}`);
     } catch (error) {

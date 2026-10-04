@@ -82,7 +82,7 @@ const symlinkMessage = (what: string, name: string): string =>
 /**
  * The main tree. Every place has a document and a module; every level that can
  * be symlinked is, somewhere; and `resources/` folders sit where the convention
- * does not look (the root, a channel, a folder nested inside a worker, a link
+ * does not look (the root, a mailbox, a folder nested inside a worker, a link
  * target outside `org/` and `teams/`).
  */
 function mainTree(slot: "resources" | "references"): string {
@@ -92,9 +92,9 @@ function mainTree(slot: "resources" | "references"): string {
       // Decoys: places the convention does not read.
       [`${s}/root-decoy.md`]: doc("root-decoy"),
       [`${s}/root-decoy.ts`]: MODULE,
-      [`org/channels/general/${s}/channel-decoy.md`]: doc("channel-decoy"),
+      [`org/mailboxes/general/${s}/mailbox-decoy.md`]: doc("mailbox-decoy"),
       [`org/workers/alpha/nested/${s}/nested-decoy.md`]: doc("nested-decoy"),
-      [`teams/eng/channels/standup/${s}/team-channel-decoy.ts`]: MODULE,
+      [`teams/eng/mailboxes/standup/${s}/team-mailbox-decoy.ts`]: MODULE,
       [`outside/worker/${s}/outside-doc.md`]: doc("outside-doc"),
       [`outside/worker/${s}/outside-mod.ts`]: MODULE,
       // The org place and its workers — including one named `resources`.

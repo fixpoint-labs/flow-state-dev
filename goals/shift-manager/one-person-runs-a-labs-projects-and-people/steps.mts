@@ -173,16 +173,16 @@ export type ProjectRow = {
   sessions: Array<{ sessionId: string; userId: string }>;
 };
 
-/** The `projects` rows and the inventoried channels, read through a channel's session. */
-export async function readProjects(routes: LabRoutes, channelSession: string): Promise<{ rows: ProjectRow[]; channels: string[] }> {
-  const rows = (await routes.collection(channelSession, "projects/*").catch(() => [])) as ProjectRow[];
-  const channels = (await routes.collection(channelSession, "inventory/channels/*").catch(() => [])).map((r) => String(r.id));
-  return { rows, channels };
+/** The `projects` rows and the inventoried mailboxes, read through a mailbox's session. */
+export async function readProjects(routes: LabRoutes, mailboxSession: string): Promise<{ rows: ProjectRow[]; mailboxes: string[] }> {
+  const rows = (await routes.collection(mailboxSession, "projects/*").catch(() => [])) as ProjectRow[];
+  const mailboxes = (await routes.collection(mailboxSession, "inventory/mailboxes/*").catch(() => [])).map((r) => String(r.id));
+  return { rows, mailboxes };
 }
 
-/** The seat inventory, read through a channel's session. */
-export async function readInventory(routes: LabRoutes, channelSession: string): Promise<Array<Record<string, any>>> {
-  return routes.collection(channelSession, "inventory/seats/*");
+/** The seat inventory, read through a mailbox's session. */
+export async function readInventory(routes: LabRoutes, mailboxSession: string): Promise<Array<Record<string, any>>> {
+  return routes.collection(mailboxSession, "inventory/seats/*");
 }
 
 /**
@@ -239,7 +239,7 @@ export async function projectsDrawn(page: Page): Promise<Array<{ id: string; str
     els.map((g) => ({
       id: g.getAttribute("data-project-id") ?? "",
       streams: [...g.querySelectorAll("[data-testid^=nav-workstream-]")].map((e) =>
-        e.getAttribute("data-testid") === "nav-workstream-gone" ? `gone:${e.getAttribute("data-channel-id")}` : e.getAttribute("data-testid")!.slice("nav-workstream-".length),
+        e.getAttribute("data-testid") === "nav-workstream-gone" ? `gone:${e.getAttribute("data-mailbox-id")}` : e.getAttribute("data-testid")!.slice("nav-workstream-".length),
       ),
     })),
   );

@@ -7,7 +7,7 @@
  * design-system package's one import.
  *
  * The tree names are read from the two goal trees themselves, so a seat or
- * channel added there is checked too. Each check is shown to reach the code
+ * mailbox added there is checked too. Each check is shown to reach the code
  * it covers by planting a violation and seeing it caught.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -46,11 +46,11 @@ async function treeNames(): Promise<Set<string>> {
       names.add(worker.id).add(team!).add(rest.join("."));
       if (typeof worker.declared.flow === "string") names.add(worker.declared.flow);
     }
-    for (const channel of roster.channels) {
-      const [team, ...rest] = channel.id.split(".");
-      names.add(channel.id).add(team!).add(rest.join("."));
-      for (const board of (channel.declared.boards as string[] | undefined) ?? []) {
-        names.add(board).add(`${channel.id}.${board}`);
+    for (const mailbox of roster.mailboxes) {
+      const [team, ...rest] = mailbox.id.split(".");
+      names.add(mailbox.id).add(team!).add(rest.join("."));
+      for (const board of (mailbox.declared.boards as string[] | undefined) ?? []) {
+        names.add(board).add(`${mailbox.id}.${board}`);
       }
     }
   }
@@ -97,7 +97,7 @@ function literalColours(file: string, text: string): string[] {
 }
 
 describe("V8", () => {
-  it("names no seat, team, channel, board or kind from either goal tree (BR-5)", async () => {
+  it("names no seat, team, mailbox, board or kind from either goal tree (BR-5)", async () => {
     const names = await treeNames();
     expect(names.size).toBeGreaterThan(10);
     const hits = sources.flatMap((file) => namedIn(readFileSync(file, "utf8"), names).map((n) => `${relative(pkg, file)}: "${n}"`));
@@ -107,10 +107,10 @@ describe("V8", () => {
     expect(namedIn(`const seat = "${planted}";`, names)).toEqual([planted]);
   });
 
-  it("reaches project rooms on workforce's built-in channel kind", async () => {
-    const { CHANNEL_KIND } = await import("@flow-state-dev/workforce");
+  it("reaches project rooms on workforce's built-in mailbox kind", async () => {
+    const { MAILBOX_KIND } = await import("@flow-state-dev/workforce");
     const { ROOM_KIND } = await import("../src/lib/talk");
-    expect(ROOM_KIND).toBe(CHANNEL_KIND);
+    expect(ROOM_KIND).toBe(MAILBOX_KIND);
   });
 
   it("finds a room's end with the page size workforce's `read` answers in", async () => {
@@ -137,7 +137,7 @@ describe("V8", () => {
       files.filter((f) => read(f).split("\n").some((line) => SEND.test(line))).map((f) => relative(src, f)).sort();
     const read = (f: string) => readFileSync(f, "utf8");
     // A workstream post (`transcript.ts`) and a project room's talk entries
-    // (`talk.ts`) are the two channel actions; a line to a worker goes through `send.ts`.
+    // (`talk.ts`) are the two mailbox actions; a line to a worker goes through `send.ts`.
     expect(sites(code, read)).toEqual(["lib/send.ts", "lib/talk.ts", "lib/transcript.ts"]);
     // The door is the one the inventory names, never an action name of Shift Manager's own.
     const sendLines = read(join(src, "lib/send.ts")).split("\n").filter((line) => SEND.test(line));

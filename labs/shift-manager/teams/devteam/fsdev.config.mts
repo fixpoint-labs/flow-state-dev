@@ -11,8 +11,8 @@
  * tree the same way.
  * What a long-lived server asks of it that a check doesn't:
  *
- * - **The channel and the inventory.** The feature channel is opened with its
- *   post reaching the EM members, and the organization's seat and channel
+ * - **The mailbox and the inventory.** The feature mailbox is opened with its
+ *   post reaching the EM members, and the organization's seat and mailbox
  *   collections are registered, which Shift Manager's TEAMS and PROJECTS read.
  * - **One ask waiting.** The EM seat's approval for {@link ASK_FEATURE} is
  *   raised in its own session (which also turns durable execution on), so
@@ -34,7 +34,7 @@
  *   file for a fresh start.
  *
  * Which seat is the EM and which seat a row is handed to are read off the
- * tree, by the kind each `WORKER.md` names. No seat, channel or board is named
+ * tree, by the kind each `WORKER.md` names. No seat, mailbox or board is named
  * in this file.
  */
 import { mkdirSync, readFileSync } from "node:fs";
@@ -45,12 +45,12 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "../../../../goals/devforce-lab/lab/ask.mts";
 import { ASSIGNEE } from "../../../../goals/devforce-lab/lab/board.mts";
 import { selectHarness } from "../../../../goals/devforce-lab/lab/harness.mts";
-import { boardChannelOf, LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "../../../../goals/devforce-lab/lab/host.mts";
+import { boardMailboxOf, LAB_CROWD, LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "../../../../goals/devforce-lab/lab/host.mts";
 import { createNotifyLog } from "../../../../goals/devforce-lab/lab/notify.mts";
 import { BASE_REF, createScratchRepo } from "../../../../goals/devforce-lab/lab/scratch-repo.mts";
 import { CODER_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/coder.mts";
 import { EM_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/em.mts";
-import { setAsideLegacyOrgStore } from "./legacy-org-store.mts";
+import { setAsideLegacyOrgStore, setAsidePreRenameStore } from "./legacy-org-store.mts";
 
 /**
  * The feature the EM seat asks a person to approve when the server opens: the
@@ -72,7 +72,7 @@ const ASK_FEATURE = (
  * workstream from each of the two teams. The second holds none yet. Each team
  * keeps one more workstream that no default project lists, so a project
  * created later (by the chief of staff, say) has one from each team to take.
- * Those are the only channel ids written here: which workstreams a project
+ * Those are the only mailbox ids written here: which workstreams a project
  * holds is the app's data, not the tree's.
  */
 const DEFAULT_PROJECTS = [
@@ -92,13 +92,13 @@ const DEFAULT_PROJECTS = [
 ];
 
 // The app's addresses, read off the tree: the coder seat whose name is the
-// board's assignee, and the EM seats among the members of the channel that
+// board's assignee, and the EM seats among the members of the mailbox that
 // holds the board.
 const roster = await readDeclaredRoster(LAB_TREE);
 const kindOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const coderSeatId = roster.workers.find((w) => w.declared.flow === CODER_KIND && w.id.endsWith(`.${ASSIGNEE}`))?.id;
 if (coderSeatId === undefined) throw new Error("the DevTeam tree declares no coder seat the board's rows are handed to");
-const members = (boardChannelOf(roster).declared.members as string[] | undefined) ?? [];
+const members = (boardMailboxOf(roster).declared.members as string[] | undefined) ?? [];
 const addresses = Object.fromEntries(members.filter((m) => kindOf(m) === EM_KIND).map((m) => [m, m]));
 
 /** Where this Lab keeps what it was told, across restarts. */
@@ -106,6 +106,8 @@ const STORE = process.env.DEVTEAM_STORE ?? fileURLToPath(new URL("../../.fsdev/d
 mkdirSync(dirname(STORE), { recursive: true });
 // A store from before the lab's org id changed is set aside, loudly, not reused.
 await setAsideLegacyOrgStore(STORE);
+// So is one from before mailboxes were renamed.
+await setAsidePreRenameStore(STORE, { mailboxIds: roster.mailboxes.map((m) => m.id), orgIds: [LAB_ORG_ID] });
 
 const scratch = createScratchRepo("shift-manager");
 const harness = selectHarness();
@@ -116,7 +118,7 @@ const lab = await openLab({
   runTimeoutMs: harness.runTimeoutMs,
   workspace: { root: scratch.root, sourceRepo: scratch.sourceRepo, baseRef: BASE_REF },
   coderSeatId,
-  channels: { addresses, log: createNotifyLog() },
+  mailboxes: { addresses, log: createNotifyLog() },
   inventory: true,
   ask: ASK_FEATURE,
   devtool: true,

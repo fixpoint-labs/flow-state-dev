@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 600" role="img" aria-labelledby="title desc">
+  <title id="title">Core: how a block becomes a running flow</title>
+  <desc id="desc">Top row, left to right: a block, a sequencer that runs blocks, an action that wraps one root block, a flow that declares actions, scopes, resources and capabilities, and a flow instance, the flow called with an id and settings. Second row, run by the Engine: FlowState registers instances by id, a session is opened against an instance, a request runs one action on the session, and items stream back. Bottom row: a tool is a block, a capability bundles resources, state, context, tools and helpers, a resource collection is resources keyed by a pattern, and there are four scopes.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
+    </marker>
+    <style>
+      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
+              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
+              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
+              --faint:#94a3b8; --warm-fill:#fff7ed; --warm:#c2410c; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
+                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
+                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
+                --faint:#64748b; --warm-fill:#2a1608; --warm:#fb923c; } }
+      .bg { fill: var(--bg); }
+      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
+      .wall-proc { fill: var(--proc-fill); stroke: var(--proc); stroke-width: 2; }
+      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
+      .wall-warm { fill: var(--warm-fill); stroke: var(--warm); stroke-width: 2; }
+      .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 2; }
+      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.5; }
+      .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.5; }
+      .card-proc { fill: var(--card); stroke: var(--proc); stroke-width: 1.5; }
+      .card-org { fill: var(--card); stroke: var(--org); stroke-width: 1.5; }
+      .card-warm { fill: var(--card); stroke: var(--warm); stroke-width: 1.5; }
+      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
+      .dash { fill: none; stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
+      .tag-sess { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--sess); letter-spacing: .04em; }
+      .tag-proc { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--proc); letter-spacing: .04em; }
+      .tag-org { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--org); letter-spacing: .04em; }
+      .tag-warm { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--warm); letter-spacing: .04em; }
+      .tag-ink { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); letter-spacing: .04em; }
+      .edge { stroke: var(--card-line); stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="600" rx="16" class="bg"/>
+  <text x="28" y="36" class="title">Core: from a block to a running flow</text>
+  <text x="28" y="58" class="muted">The top row builds left to right. The Engine row runs what it defines.</text>
+  <text x="28" y="92" class="tag-sess">DEFINE  ·  @flow-state-dev/core</text>
+  <rect x="28" y="104" width="160" height="130" rx="10" class="card-sess"/>
+  <text x="42" y="128" class="h">Block</text>
+  <text x="42" y="148" class="p">A typed unit of work.</text>
+  <text x="42" y="166" class="p">Five kinds:</text>
+  <text x="42" y="184" class="code">handler  generator</text>
+  <text x="42" y="202" class="code">evaluator  router</text>
+  <text x="42" y="220" class="code">sequencer</text>
+  <rect x="204" y="104" width="160" height="130" rx="10" class="card-sess"/>
+  <text x="218" y="128" class="h">Sequencer</text>
+  <text x="218" y="148" class="p">A block that runs</text>
+  <text x="218" y="166" class="p">blocks in order.</text>
+  <text x="218" y="184" class="code">.step  .tap</text>
+  <text x="218" y="202" class="code">.sideChain  .rescue</text>
+  <rect x="380" y="104" width="160" height="130" rx="10" class="card-sess"/>
+  <text x="394" y="128" class="h">Action</text>
+  <text x="394" y="148" class="p">A name on one root</text>
+  <text x="394" y="166" class="p">block, plus an input</text>
+  <text x="394" y="184" class="p">schema and hooks.</text>
+  <rect x="556" y="104" width="160" height="130" rx="10" class="card-sess"/>
+  <text x="570" y="128" class="h">Flow</text>
+  <text x="570" y="148" class="code">defineFlow({kind})</text>
+  <text x="570" y="166" class="p">Declares actions,</text>
+  <text x="570" y="184" class="p">scopes, resources</text>
+  <text x="570" y="202" class="p">and capabilities.</text>
+  <rect x="732" y="104" width="160" height="130" rx="10" class="card-sess"/>
+  <text x="746" y="128" class="h">Flow instance</text>
+  <text x="746" y="148" class="code">flow({id, config})</text>
+  <text x="746" y="166" class="p">The flow with an id</text>
+  <text x="746" y="184" class="p">and settings. The id</text>
+  <text x="746" y="202" class="p">is its address.</text>
+  <path d="M188 169 L202 169" class="edge"/>
+  <path d="M364 169 L378 169" class="edge"/>
+  <path d="M540 169 L554 169" class="edge"/>
+  <path d="M716 169 L730 169" class="edge"/>
+  <text x="28" y="276" class="tag-ink">RUN  ·  @flow-state-dev/engine</text>
+  <rect x="732" y="288" width="160" height="110" rx="10" class="card"/>
+  <text x="746" y="312" class="h">FlowState</text>
+  <text x="746" y="332" class="p">Registers each</text>
+  <text x="746" y="350" class="p">instance at its id</text>
+  <text x="746" y="368" class="p">and serves routes.</text>
+  <rect x="556" y="288" width="160" height="110" rx="10" class="card"/>
+  <text x="570" y="312" class="h">Session</text>
+  <text x="570" y="332" class="p">One conversation,</text>
+  <text x="570" y="350" class="p">opened against an</text>
+  <text x="570" y="368" class="p">instance.</text>
+  <rect x="380" y="288" width="160" height="110" rx="10" class="card"/>
+  <text x="394" y="312" class="h">Request</text>
+  <text x="394" y="332" class="p">Runs one action</text>
+  <text x="394" y="350" class="p">on a session.</text>
+  <rect x="204" y="288" width="160" height="110" rx="10" class="card"/>
+  <text x="218" y="312" class="h">Items</text>
+  <text x="218" y="332" class="p">Streamed as the</text>
+  <text x="218" y="350" class="p">request runs.</text>
+  <text x="218" y="368" class="p">Resumable.</text>
+  <rect x="28" y="288" width="160" height="110" rx="10" class="card"/>
+  <text x="42" y="312" class="h">Stores</text>
+  <text x="42" y="332" class="p">Keep sessions, state,</text>
+  <text x="42" y="350" class="p">resources, requests.</text>
+  <text x="42" y="368" class="p">Memory, SQLite,</text>
+  <text x="42" y="386" class="p">or Postgres.</text>
+  <path d="M812.0 234 L812.0 286" class="edge"/>
+  <path d="M732 343 L718 343" class="edge"/>
+  <path d="M556 343 L542 343" class="edge"/>
+  <path d="M380 343 L366 343" class="edge"/>
+  <text x="28" y="440" class="tag-sess">BESIDE THE CHAIN  ·  @flow-state-dev/core</text>
+  <rect x="28" y="452" width="204" height="124" rx="10" class="card"/>
+  <text x="42" y="476" class="h">Tool</text>
+  <text x="42" y="496" class="p">A block listed in a</text>
+  <text x="42" y="514" class="p">generator's tools.</text>
+  <text x="42" y="532" class="p">No separate type.</text>
+  <rect x="248" y="452" width="204" height="124" rx="10" class="card"/>
+  <text x="262" y="476" class="h">Capability</text>
+  <text x="262" y="496" class="p">Resources, state, context,</text>
+  <text x="262" y="514" class="p">tools and helpers in one</text>
+  <text x="262" y="532" class="p">bundle. A block or flow</text>
+  <text x="262" y="550" class="p">pulls it in with uses.</text>
+  <rect x="468" y="452" width="204" height="124" rx="10" class="card"/>
+  <text x="482" y="476" class="h">Resource collection</text>
+  <text x="482" y="496" class="p">A family of resources</text>
+  <text x="482" y="514" class="p">keyed by a pattern,</text>
+  <text x="482" y="532" class="code">files/*  projects/*</text>
+  <rect x="688" y="452" width="204" height="124" rx="10" class="card"/>
+  <text x="702" y="476" class="h">Scopes</text>
+  <text x="702" y="496" class="p">Where state lives:</text>
+  <text x="702" y="514" class="code">request  session</text>
+  <text x="702" y="532" class="code">user     org</text>
+  <text x="702" y="550" class="muted">Resources: session, user, org</text>
+</svg>

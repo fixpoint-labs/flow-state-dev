@@ -596,8 +596,8 @@ describe("hireWorkforce", () => {
 /**
  * The worker door's reading of `flow:`, one row per shape a value can take.
  *
- * Characterization: every row is what the door does today, and the channel
- * door's twin table in `channel-binder.test.ts` runs the same values. The two
+ * Characterization: every row is what the door does today, and the mailbox
+ * door's twin table in `mailbox-binder.test.ts` runs the same values. The two
  * doors share one rule for "absent, blank, or not a string", so a change to
  * that rule turns rows red on both tables at once. Only a record with no `flow`
  * key at all gets the built-in; an own key holding `null` or `undefined` is

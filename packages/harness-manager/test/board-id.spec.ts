@@ -9,7 +9,7 @@
  *    comparison is against `derivation-snapshot.json`, which was written by the
  *    code as it stood before the grammar widened — not re-derived here, which
  *    would only prove the function agrees with itself.
- * 2. **A channel's board is used as is.** `eng.feature.work` is accepted, and
+ * 2. **A mailbox's board is used as is.** `eng.feature.work` is accepted, and
  *    because nothing is translated it never shares a checkout or a branch with
  *    `eng-feature-work`, a name a board may already have. Ids that differ only
  *    in case shared before and still do: the derivation folds case, because a
@@ -85,7 +85,7 @@ describe("every board id accepted before derives what it did", () => {
   });
 });
 
-describe("a channel's board id, used as is", () => {
+describe("a mailbox's board id, used as is", () => {
   it("is accepted, and git accepts the branch it derives", () => {
     const { checkout, branch } = derive("eng.feature.work");
     expect(checkout).toContain("/eng.feature.work/");
@@ -160,7 +160,7 @@ describe("an id git cannot carry is refused when the manager is built", () => {
     }
   });
 
-  it("builds for a channel's board id and for an id accepted before", () => {
+  it("builds for a mailbox's board id and for an id accepted before", () => {
     expect(() => build("eng.feature.work")).not.toThrow();
     expect(() => build("devforce-tasks--t0--feature")).not.toThrow();
     // `.lock` is refused as an ending only, which is git's rule too.

@@ -1,6 +1,6 @@
 # Shift Manager
 
-Shift Manager is the browser app you run a Workforce team through. A team is served as a Lab: a set of Workforce seats and channels from one `fsdev.config.mts`. You point Shift Manager at a Lab's config, or open one of the [team profiles](#team-profiles) this package ships, and it shows what that Lab holds. It opens on Shift Coordinator: a summary of what's waiting on you and what's running, and a conversation with the Lab's chief-of-staff seat. From there it shows the teams and their seats, the workstreams, each channel's board, the asks waiting on you, and each channel's transcript, which you can post to.
+Shift Manager is the browser app you run a Workforce team through. A team is served as a Lab: a set of Workforce seats and mailboxes from one `fsdev.config.mts`. You point Shift Manager at a Lab's config, or open one of the [team profiles](#team-profiles) this package ships, and it shows what that Lab holds. It opens on Shift Coordinator: a summary of what's waiting on you and what's running, and a conversation with the Lab's chief-of-staff seat. From there it shows the teams and their seats, the workstreams, each mailbox's board, the asks waiting on you, and each mailbox's transcript, which you can post to.
 
 A task shows one worker's run as it happens, and lets you stop it. The panel on the right follows along, with the team and its tasks at a workstream and the task's details at a task.
 
@@ -10,15 +10,16 @@ It is research software. Several screens are drawn as placeholders that name wha
 
 ## Run it
 
-Build the pages once, then start Shift Manager over a team profile or a Lab's config:
+Start Shift Manager over a team profile or a Lab's config:
 
 ```bash
-pnpm --filter @flow-state-dev/shift-manager build
 pnpm --filter @flow-state-dev/shift-manager start --team devteam
 pnpm --filter @flow-state-dev/shift-manager start --config <path to a Lab's fsdev.config.mts>
 ```
 
 It prints the address, `http://127.0.0.1:4300` by default. One process serves the Lab's API under `/api/flows` and Shift Manager's pages beside it. It also serves the devtool over the same Lab, on a port of its own, and prints that address too. The Lab's config is loaded as-is. Nothing in it is edited or wrapped.
+
+Start builds the pages first when they aren't built yet, or when any source file they were built from has changed since. A page built from older source can look for data under names the Lab no longer uses, and then shows empty screens as if the Lab had nothing in it. Each build records the files it was made from in `dist/build-inputs.json`, and start compares them with the files as they are now.
 
 | Option | Default | What it does |
 |--------|---------|--------------|
@@ -26,7 +27,7 @@ It prints the address, `http://127.0.0.1:4300` by default. One process serves th
 | `--team <name>` | | A team profile from `teams/`, by folder name. Give `--team` or `--config`, not both. |
 | `--port <n>` | `4300` | `0` picks a free port. |
 | `--host <host>` | `127.0.0.1` | A non-loopback host is refused unless the Lab authenticates requests. |
-| `--assets <dir>` | `dist/` | Serve a different build of the pages. |
+| `--assets <dir>` | `dist/` | Serve a different build of the pages. Start serves it as it is, without checking or rebuilding it. |
 | `--devtool <url>` | the devtool Shift Manager serves | Point a task's *Open trace* link at a devtool you run yourself instead. Must be an `http(s)` address. Shift Manager then serves no devtool of its own. |
 | `--devtool-assets <dir>` | the `@flow-state-dev/devtool` build | Serve a different build of the devtool's pages. |
 | `--shift <day\|night>` | `SHIFT_MANAGER_SHIFT`, else unset | Start on the light (`day`) or dark (`night`) look, whatever the OS setting. Unset, the page follows the OS. A shift picked in the sidebar's switch wins over the flag and the variable. See [How it looks](#how-it-looks). |
@@ -66,12 +67,12 @@ const lab = await openLab({ /* the Lab's own options */ });
 export default lab.state;
 ```
 
-A host module can do some of this setup for you. When its options say they open the inventory or hand the page the Lab's user, turn them on and leave the matching `openInventory` call and `devtool` setting out of the config. The same goes for the organization and the channels when the host names its own `resolvePrincipal` and calls `openChannels` itself. The config then only picks the store and the options, and default-exports the `FlowState` the host returns. The [`devteam`](#team-profiles) profile's config works this way:
+A host module can do some of this setup for you. When its options say they open the inventory or hand the page the Lab's user, turn them on and leave the matching `openInventory` call and `devtool` setting out of the config. The same goes for the organization and the mailboxes when the host names its own `resolvePrincipal` and calls `openMailboxes` itself. The config then only picks the store and the options, and default-exports the `FlowState` the host returns. The [`devteam`](#team-profiles) profile's config works this way:
 
 ```ts title="teams/devteam/fsdev.config.mts (excerpt)"
 const lab = await openLab({
-  stores: inMemoryStores(),
-  inventory: true, // its host opens the channels, then the inventory
+  stores: sqliteStores({ filename: STORE }),
+  inventory: true, // its host opens the mailboxes, then the inventory
   devtool: true, // its host hands the page the Lab's user
   // ...options of its own
 });
@@ -103,20 +104,20 @@ const state = createFlowState({
 
 A Lab with no resolver runs in the framework's development organization, `DEFAULT_ORG_ID` from `@flow-state-dev/core`, and Shift Manager shows that id. Anything the boot writes under an organization, such as the inventory below, has to use the same one.
 
-**Open channels.** Call `openChannels` at boot with the same `userId` you give Shift Manager in `devtool: { userId }` (below). Each channel is a workstream. Shift Manager reads the organization off that user's sessions, so a Lab that holds none for them opens to a screen saying it names no organization, in place of the Lab.
+**Open mailboxes.** Call `openMailboxes` at boot with the same `userId` you give Shift Manager in `devtool: { userId }` (below). Each mailbox is a workstream. Shift Manager reads the organization off the person's sessions. Someone the Lab holds no session for yet, such as a project's second member on their first visit, gets one opened on the mailbox kind, and the Lab records in it the organization its resolver puts them in. So anyone your resolver verifies can open Shift Manager, see the organization's projects, and join the ones they're a member of. Only a Lab that holds no session for the person and serves no mailbox kind to open one on shows a screen saying it names no organization, in place of the Lab.
 
-**An open inventory.** The [inventory](../../apps/docs/docs/workforce/inventory.md) is the organization's record of its seats and channels. TEAMS and PROJECTS list it, and Inbox and the boards find seats and workstreams through it. It takes two steps:
+**An open inventory.** The [inventory](../../apps/docs/docs/workforce/inventory.md) is the organization's record of its seats and mailboxes. TEAMS and PROJECTS list it, and Inbox and the boards find seats and workstreams through it. It takes two steps:
 
-1. Build the channel flow with the actions that write the inventory: `defineChannelFlow({ notify, inventory: true })` for a channel kind of your own, or `channelInstances(channels, { inventory: true })` for the built-in one.
-2. Call `openInventory` once `openChannels` has returned, under the organization your resolver names.
+1. Build the mailbox flow with the actions that write the inventory: `defineMailboxFlow({ notify, inventory: true })` for a mailbox kind of your own, or `mailboxInstances(mailboxes, { inventory: true })` for the built-in one.
+2. Call `openInventory` once `openMailboxes` has returned, under the organization your resolver names.
 
 ```ts
 // `roster` is the tree read with `readDeclaredRoster`, `hired` the seats
-// `hireWorkforce` returned, and `client` the session client `openChannels` takes.
-await openChannels(roster.channels, { client, userId: "u_lab" });
+// `hireWorkforce` returned, and `client` the session client `openMailboxes` takes.
+await openMailboxes(roster.mailboxes, { client, userId: "u_lab" });
 const opened = await openInventory(
-  { seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })), channels: roster.channels },
-  { run, seatWriter: { flowKind: "channel" }, userId: "u_lab", orgId: "org_lab" },
+  { seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })), mailboxes: roster.mailboxes },
+  { run, seatWriter: { flowKind: "mailbox" }, userId: "u_lab", orgId: "org_lab" },
 );
 if (opened.problems.length > 0) throw new Error(opened.problems.join("; "));
 ```
@@ -130,7 +131,7 @@ import type { InventoryActionRequest } from "@flow-state-dev/workforce";
 const runtime = await state.getRuntime();
 const run = async (request: InventoryActionRequest) => {
   const result = await runAction({
-    flow: flowsByKind[request.flowKind], // the channel flow and each seat, by kind or id
+    flow: flowsByKind[request.flowKind], // the mailbox flow and each seat, by kind or id
     actionName: request.action,
     input: request.input,
     userId: request.userId,
@@ -162,16 +163,18 @@ client:
 
 It's listed once a session whose flow serves it exists. A document without that line stays out of Jump to.
 
-**A chief of staff, if you want one.** On the Shift Coordinator screen, Shift Manager talks to the seat named `chief-of-staff`, whether it's an org seat or a team's worker. Declare it like any other worker, on the built-in `agent` kind, with instructions that say what it should do for the person running the Lab:
+**A chief of staff, if you want one.** On the Shift Coordinator screen, Shift Manager talks to the seat named `chief-of-staff`. Declare it as an org seat, under `org/workers/` beside `teams/`, on the built-in `agent` kind, with instructions that say what it should do for the person running the Lab:
 
-```md title="workforce/teams/<team>/workers/chief-of-staff/WORKER.md"
+```md title="workforce/org/workers/chief-of-staff/WORKER.md"
 ---
 description: The person's one point of contact.
 flow: agent
 model: openai/gpt-5.4-mini
 ---
-You are the chief of staff for this team. Answer questions about who is working on what.
+You are the chief of staff for this Lab. Answer questions about who is working on what.
 ```
+
+A Lab that already declares it as a team's worker, at `teams/<team>/workers/chief-of-staff/`, keeps working: Shift Manager talks to that seat too.
 
 What it can do is up to its instructions and the tools you give it. Shift Manager only carries your lines to it and shows what it answers. A Lab with two seats of that name gets a line naming both, and Shift Manager talks to neither.
 
@@ -181,24 +184,24 @@ A Lab with no chief of staff needs nothing in its config. Every screen works, an
 
 ## What you see
 
-- **Shift Coordinator.** Where Shift Manager opens, at `/` or `/cos`. The top of the screen is Shift Manager's own summary of the shift: how many asks wait on you, each one with the same Approve and Reject you'd get in Inbox, and how many runs are going across how many workstreams. The numbers are the ones Inbox and Tasks show. Below it is your conversation with the Lab's chief-of-staff seat. A line goes through the seat's door, like any other line you send to a worker, and shows *delivered* once the seat's session holds it. The reply is what the seat wrote in that session. Come back later and the same conversation is there. The panel on the right lists each workstream with its running tasks and the asks its members have raised, and the workers on call, as Roster counts them.
+- **Shift Coordinator.** Where Shift Manager opens, at `/` or `/cos`. The top of the screen is Shift Manager's own summary of the shift: how many asks wait on you, each one with the same Approve and Reject you'd get in Inbox, and how many runs are going across how many workstreams. The numbers are the ones Inbox and Tasks show. Below it is your conversation with the Lab's chief-of-staff seat. A line goes through the seat's door, like any other line you send to a worker, and shows *delivered* once the seat's session holds it. The reply is what the seat wrote in that session, with the time it was written. While the seat works on a line you sent from this tab, a blue square says so under the conversation and on the sidebar's Shift Coordinator entry. Above the message box sit suggested lines you can click to fill the box: `Who's on call?`, and `What's blocking #<workstream>?`. The workstream named is one with an ask waiting on you, or, if none has one, one with a task running. Nothing goes out until you send it. Come back later and the same conversation is there. The panel on the right lists each workstream with its running tasks and the asks its members have raised, and the workers on call, as Roster counts them.
 
   A Lab with no chief-of-staff seat still opens here. You get the summary, and in place of the conversation a line saying how to add one.
-- **Sidebar.** The organization, Jump to (⌘K), Shift Coordinator, Inbox and Tasks with their counts, Roster with how many workers are on shift and on call, PROJECTS (each project with its workstreams, then No project), and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on shift and a square for each worker. Organization-level workers, such as a chief of staff, sit in one Staff row at the top. A worker hired while the Lab runs is listed only while the organization's roster has its row, so a fired worker leaves the list, including one fired before Workforce removed inventory rows on a fire. When no flow the person uses lets Shift Manager read the roster, hired workers aren't listed and TEAMS says how many were left out. Hover a square for the worker and its status. Click a team to open Roster for that team. The footer repeats the on-shift and on-call counts.
+- **Sidebar.** The organization, Jump to (⌘K), Shift Coordinator, Inbox and Tasks with their counts (Inbox's count is highlighted while anything waits on you), Roster with how many workers are on shift and on call, PROJECTS (each project with its workstreams, then No project), and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on shift and a square for each worker. A workstream under PROJECTS shows a yellow square while one of its workers' asks waits on you, otherwise a blue one while one of its tasks runs. Organization-level workers, such as a chief of staff, sit in one Staff row at the top. A worker hired while the Lab runs is listed only while the organization's roster has its row, so a fired worker leaves the list, including one fired before Workforce removed inventory rows on a fire. When no flow the person uses lets Shift Manager read the roster, hired workers aren't listed and TEAMS says how many were left out. Hover a square for the worker and its status. Click a team to open Roster for that team. The footer repeats the on-shift and on-call counts, followed by your initials.
 - **Jump to (⌘K).** Finds Shift Coordinator, workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A seat opens Roster. A document opens read-only.
-- **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card, and can reply to the worker under it. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
-- **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
+- **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card, and can reply to the worker under it. An ask from a run the Lab started by itself, such as a seat woken by a mailbox post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside. Under the ask, *From the session* lists the last three tool calls the worker made before it asked. Replies you send appear below that list once the worker's session has stored them.
+- **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream. Each row shows its id and, while it runs, how long it has been running. Queued tasks, blocked ones included, stay hidden until you turn on the Queued toggle, which shows how many there are.
 - **Roster.** Every worker in the Lab, grouped by whether it's on shift, on call or off shift. Pick a team at the top to see only its workers. See [Roster](#roster).
 - **PROJECTS.** Each of the Lab's projects by title, with the workstreams its record lists beneath it. A project with no workstreams is still listed. Workstreams no project lists sit under **No project**, which shows only when there is one. Clicking the PROJECTS heading opens No project.
 - **A project.** Four tabs. **Stream** is the project's room: one conversation its members share with the project's seats. You read and post through your own talk session on the project. A member who has none gets Join, and someone who isn't a member is told the room is for its members and sees none of it. The room opens at its newest lines, and **Load earlier** reads the page before them. Every read is a small recorded request on your talk session, so the room reads only at set times: when you open it, when the window gets focus, when you come back to the tab, and after you post. Each of those starts a short run of reads, about a second apart while lines are arriving and further apart as it goes quiet. After about 45 quiet seconds the room stops reading. That is how the seats' answers to your post show up. A room left open and idle doesn't fetch anything new. Other members' lines appear the next time you open the room, focus the window, come back to the tab, or post. **Board** draws a lane for each of its workstreams that holds a board. **Workstreams** lists the workstreams the project holds, and **Brief** is the project's brief. No project has no room and no brief, and says so.
-- **A workstream.** One channel and the boards attached to it. It has four tabs: Stream (the transcript, the composer, and its members' asks), Board (five columns: QUEUED, RUNNING, NEEDS YOU, IN REVIEW, DONE), Brief (the channel's charter) and Results. The right panel lists the channel's members with their status, and its rows by column.
+- **A workstream.** One mailbox and the boards attached to it. It has four tabs: Stream (the transcript and the composer), Board (five columns: QUEUED, RUNNING, IN REVIEW, NEEDS YOU, DONE; a done task is one line, its id and title), Brief (the mailbox's charter) and Results. A member's ask shows up in the transcript at the time it was raised, marked NEEDS YOU. Answering it there clears it from Inbox. The right panel lists the mailbox's members with their status, and its rows by column.
 - **A task.** One task's run, live, with Interrupt. See [A task](#a-task).
 
-A post appears in the transcript only once the channel has kept it. Until then the composer keeps your draft and says it's posting. If the post is refused, the draft stays and the reason is shown.
+A post appears in the transcript only once the mailbox has kept it. Until then the composer keeps your draft and says it's posting. If the post is refused, the draft stays and the reason is shown.
 
-**Talking to a worker.** Start a line with `@` and a worker's name to send it to that worker's task in this workstream instead of the channel. If it has several, the composer asks which. If it has none, Send is off and says so. In a task, the composer sends to that task's run. From Inbox, the reply box sends to the worker that asked, if its kind takes messages. A worker whose kind takes no message gets a reply box that says so.
+**Talking to a worker.** Start a line with `@` and a worker's name to send it to that worker's task in this workstream instead of the mailbox. If it has several, the composer asks which. If it has none, Send is off and says so. In a task, the composer sends to that task's run. From Inbox, the reply box sends to the worker that asked, if its kind takes messages. A worker whose kind takes no message gets a reply box that says so.
 
-A running coding run stops where it is and carries on in the same session with your message. The composer says *delivered* once the run's session holds your line, not before. If the worker refuses it, your draft stays and its reason is shown. If the line never reached the Lab, Retry sends it again. If it may have arrived but Shift Manager can't confirm it, the draft stays and there's no Retry, so it isn't sent twice. A finished task takes no message.
+A running coding run stops where it is and carries on in the same session with your message. The composer says *delivered* once the run's session holds your line, not before. If the worker stops on an ask of its own, as a chief of staff does before it fires or retires a seat, the line is still delivered: the composer says so and points you at Inbox, where the ask now waits, and offers no Retry. If it stops to wait on something other than you, the composer says it's waiting, again with no Retry. If the worker refuses it, your draft stays and its reason is shown. If the line never reached the Lab, Retry sends it again. If it may have arrived but Shift Manager can't confirm it, the draft stays and there's no Retry, so it isn't sent twice. A finished task takes no message.
 
 To make your own worker kind take messages, give it one public action that declares `userMessage` and takes `{ message }`. Shift Manager sends lines there, using the `door` on the seat's inventory row.
 
@@ -208,13 +211,15 @@ Each section loads on its own. If one read fails, that section says what the Lab
 
 Open a task from Tasks or from a card on a board. The Session tab is that task's own run: every step the worker takes, the tool calls and edits as they happen, and earlier attempts above them when they ran in the same place. It isn't the worker's chat, so what you read is what the task did. If the worker keeps one session for several tasks, the tab shows only this task's steps and says the session is shared. A task handed off a moment ago shows its run once the run starts. The screen checks for it every 2 seconds for up to a minute, then offers Retry.
 
-**Interrupt** stops the run (Esc does the same while the Session has focus). The screen says *interrupted* once the run has actually stopped. What happens to the task afterwards, whether it's retried or left, is up to the board, not Shift Manager.
+**Interrupt** stops the run (Esc does the same while the Session has focus). The line above the composer names the worker and the run's state: *running*, then *interrupted* once the run has actually stopped. What happens to the task afterwards, whether it's retried or left, is up to the board, not Shift Manager.
+
+When the run stops to ask you something, the ask appears in the Session where the run stopped, on the same card Inbox uses, and you can answer it there. The panel on the right shows it too, with how long it has waited and a link to it in Inbox.
 
 The panel on the right shows who is on it and when it started. If the harness records its plan and the files it touched, as Claude Code does, they're listed. Otherwise the panel says so. *Open trace* opens the run's session in the devtool, for the full detail, with the session id beside the link.
 
 The devtool it opens is the one Shift Manager serves: the same pages `fsdev dev` serves, over the same Lab, in the same process. That matters because the devtool can only show a run from the store the run is in. A Lab whose stores are in memory lives only in Shift Manager's process, so a devtool started separately has its own empty store. The link adds `?session=<id>`, and the devtool opens the session under the flow that owns it.
 
-The devtool's pages ship prebuilt in the published `@flow-state-dev/devtool` package. In this repository, build them once with `pnpm build:assets`. Without them Shift Manager still starts, says so, and the link is off.
+The devtool's pages ship prebuilt in the published `@flow-state-dev/devtool` package. In this repository, build them once with `pnpm build:assets`. Without them Shift Manager still starts, says so, and the link is off. When they were built from source that has changed since, Shift Manager warns and serves them anyway. Rebuild them with `pnpm --filter @flow-state-dev/devtool build:assets`.
 
 To use a devtool you run yourself, pass its address. It has to read the same store as Shift Manager, as the same user, so this suits a Lab with a persistent store, such as SQLite:
 
@@ -260,7 +265,7 @@ Each worker shows its team and kind, how many slots it has in use (one square pe
 
 The same status appears in the sidebar and in a workstream's panel, so a worker reads the same everywhere. If the Lab's asks didn't load, each of those places marks its status *partial*: a worker waiting on you only through an ask would read off shift.
 
-Roster is read with the rest of the screen, when Shift Manager starts, on Retry and after you answer an ask. It says when it was read. It doesn't refresh on its own.
+Roster is read with the rest of the screen, when Shift Manager starts, on Retry, after you answer an ask, and after each message the chief of staff takes (so a hire, or a project it starts for you, shows up at once). It says when it was read. It doesn't refresh on its own.
 
 Slots count what a worker holds now. Nothing in a Lab limits how many tasks a worker takes, so Roster shows no capacity and no free slots.
 
@@ -269,11 +274,11 @@ Slots count what a worker holds now. Nothing in a Lab limits how many tasks a wo
 Each of these is drawn as a named empty state or a disabled control:
 
 - **Parts of the task screen.** Listed under [A task](#not-there-yet).
-- **Posting a task's message to its workstream too.** Sending to the worker and posting to the channel are two separate things for now.
-- **Worker detail.** A seat's harness, and the NOW, TIME and COST columns on Tasks.
+- **Posting a task's message to its workstream too.** Sending to the worker and posting to the mailbox are two separate things for now.
+- **Worker detail.** A seat's harness, and the NOW and COST columns on Tasks.
 - **IN REVIEW.** The column is drawn empty, because no row status means "in review" yet.
 - **What a worker is on call for, beyond you.** Webhooks, schedules and other standing watches arrive with the standing routines work. Until then on call means waiting on you, and a worker that only waits for a webhook reads off shift.
-- **A declared map from a task's assignee to its worker.** Shift Manager matches the assignee to a worker by id, then by a unique name, then by who is in the channel. A task whose assignee matches no single worker counts for no one, so that worker can read off shift while it works.
+- **A declared map from a task's assignee to its worker.** Shift Manager matches the assignee to a worker by id, then by a unique name, then by who is in the mailbox. A task whose assignee matches no single worker counts for no one, so that worker can read off shift while it works.
 
 ## How it looks
 
@@ -320,4 +325,10 @@ A fifth sends a line to a Lab's chief-of-staff seat, which runs a real model, an
 
 ```bash
 PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff/run.mts
+```
+
+A sixth compares what Chromium paints with v2, the reference design the [design-system](../design-system) package is drawn from. It walks every screen in both shifts, at a wide and a narrow window. On every screen it checks that v2's two fonts actually loaded, that no corner is rounded, and that the highlight marks only what waits on you. On the sidebar, Shift Coordinator and the parts every screen shares, it also checks each element's typeface and size, surface and border, and the column widths. On the sidebar and Shift Coordinator, the counts, the workstream squares and the suggested lines must match what the Lab holds. A failure names the element, the screen, the shift and width, and in most cases the line of v2 it departs from. Its Labs run on scripted models, so it needs no model key:
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts
 ```

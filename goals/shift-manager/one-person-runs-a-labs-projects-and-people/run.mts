@@ -64,8 +64,8 @@ interface LegsRun {
   stores: Array<{ file: string; steps: string }>;
 }
 
-/** The DevTeam tree's channels: the board's (where b4 posts) and the one projects are read through. */
-const BOARD_CHANNEL = "eng.feature";
+/** The DevTeam tree's mailboxes: the board's (where b4 posts) and the one projects are read through. */
+const BOARD_MAILBOX = "eng.feature";
 
 async function runLegs(
   label: string,
@@ -88,20 +88,20 @@ async function runLegs(
       };
       if (opts.legs.includes("a")) {
         say(`${label}: leg a`);
-        const a = await legA(world, BOARD_CHANNEL);
+        const a = await legA(world, BOARD_MAILBOX);
         if (a !== undefined) {
           // a5: the rows as they stand now (the member joined at a4), on a new process.
-          const now = (await readProjects(world.routes.owner, BOARD_CHANNEL)).rows;
+          const now = (await readProjects(world.routes.owner, BOARD_MAILBOX)).rows;
           a.p1 = now.find((r) => r.id === a.p1.id) ?? a.p1;
           a.p2 = now.find((r) => r.id === a.p2.id) ?? a.p2;
           await restart("a5 restart");
           say(`${label}: a5`);
-          await readBack(world, BOARD_CHANNEL, a, true);
+          await readBack(world, BOARD_MAILBOX, a, true);
         }
       }
       if (opts.legs.includes("b")) {
         say(`${label}: leg b`);
-        await legB(world, BOARD_CHANNEL, BOARD_CHANNEL, restart, opts.deny);
+        await legB(world, BOARD_MAILBOX, BOARD_MAILBOX, restart, opts.deny);
       }
       if (world.pageErrors.length > 0) record.saw("page", `the page threw: ${world.pageErrors.join(" | ")}`);
     } catch (error) {
@@ -121,7 +121,7 @@ async function runLegs(
     run.patches.push(patched.diff);
     const world = new World(browser, people, { config: opts.config, pages, scratch: SCRATCH, store }, record);
     try {
-      await legC(world, BOARD_CHANNEL, { seat: `helper-${hex()}`, kind, patchedConfig: patched.config, shippedConfig: opts.config });
+      await legC(world, BOARD_MAILBOX, { seat: `helper-${hex()}`, kind, patchedConfig: patched.config, shippedConfig: opts.config });
     } catch (error) {
       record.fail("reach", (error as Error).stack?.slice(0, 1500) ?? String(error));
       await world.stop().catch(() => undefined);
@@ -211,7 +211,7 @@ await runGoal(async () => {
       const world = new World(browser, people, { config: lab.config, pages, scratch: SCRATCH, store }, record);
       try {
         await world.boot("no-cos boot");
-        await hireWithoutCos(world, BOARD_CHANNEL, BOARD_CHANNEL);
+        await hireWithoutCos(world, BOARD_MAILBOX, BOARD_MAILBOX);
       } catch (error) {
         record.fail("setup", `the control failed at setup: ${(error as Error).message.slice(0, 1500)}`);
       } finally {

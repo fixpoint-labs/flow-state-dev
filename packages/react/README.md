@@ -398,7 +398,7 @@ import { FlowNavigator } from "@flow-state-dev/react";
 
 <FlowNavigator
   sections={[
-    { label: "Channels", kinds: ["channel"] },
+    { label: "Mailboxes", kinds: ["mailbox"] },
     { label: "Seats",    kinds: ["agent"] },
   ]}
   selectedSessionId={sessionId}
@@ -406,7 +406,7 @@ import { FlowNavigator } from "@flow-state-dev/react";
 />
 ```
 
-If your app declares a channel kind of its own, add its name to the Channels section's `kinds`.
+If your app declares a mailbox kind of its own, add its name to the Mailboxes section's `kinds`.
 
 How deep the tree goes comes from each flow's declared `cardinality`. A flow declared `singleton` is a single instance and sits as one row. A flow declared `collection` has many addressable copies, and its row expands into them. Depth comes from the flow, not from a prop.
 
@@ -480,7 +480,7 @@ import { BoardColumns } from "@flow-state-dev/react";
 <BoardColumns sessionId={sessionId} boardRef="eng.feature.triage" />
 ```
 
-`boardRef` is the key the session's flow declares that board's ledger under, which for a channel board is the minted `<channelId>.<boardName>`. Like the roster's ref it is one path segment.
+`boardRef` is the key the session's flow declares that board's ledger under, which for a mailbox board is the minted `<mailboxId>.<boardName>`. Like the roster's ref it is one path segment.
 
 The columns are the task statuses, in the order work moves through them: `pending`, `in_progress`, `blocked`, `parked`, `completed`, `errored`, `cancelled`. The package exports that list as `BOARD_STATUS_COLUMNS`. A row whose status the component does not recognise gets a column of its own at the end rather than vanishing.
 

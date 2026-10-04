@@ -1,20 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 528" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 558" role="img" aria-labelledby="title desc">
   <title id="title">Definition, instance and session: what each is and where it lives</title>
-  <desc id="desc">defineFlow returns a definition in your code: its kind, what a copy's settings may carry, and the webhooks, schedules and MCP entry points every copy serves. Calling it makes an instance with its own id and settings, which you register; the settings stay in the process and are never stored. Requests address an instance by its id. Sessions live in the store and are owned by the instance that created them; they record the kind only as a label. A session named through a different instance is refused.</desc>
+  <desc id="desc">Definition, instance and session, and where each lives. defineFlow returns a definition in your code: its kind, its cardinality, the configSchema a copy's settings must match, the webhooks, schedules and MCP entry points every copy serves, and the entries only the flow can call; it answers no request itself. Calling it makes an instance with its own id, settings and resources, and its own isolated state when set, such as review-east and review-west of kind review, which you register; a singleton's id is its kind, and the settings stay in the process, never listed or stored. Requests name an instance id, and the kind is never a fallback. Sessions live in the store: session chat-1 records flowId review-east as its owner and flowKind review only as a label for listings. Named through review-west, it is refused with 409 wrong-instance-session before anything runs.</desc>
   <defs>
     <style>
       :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
-              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
-              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
-              --faint:#94a3b8; --no:#b91c1c; }
+              --sess-fill:#eff6ff; --sess:#1d4ed8; --org-fill:#f0fdf4; --org:#15803d;
+              --user-fill:#faf5ff; --user:#7e22ce; --req:#94a3b8;
+              --card:#ffffff; --card-line:#334155; --box:#f8fafc; }
       @media (prefers-color-scheme: dark) {
         :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
-                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
-                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
-                --faint:#64748b; --no:#f87171; } }
+                --sess-fill:#0f1a33; --sess:#60a5fa; --org-fill:#0b2016; --org:#4ade80;
+                --user-fill:#1d1030; --user:#c084fc; --req:#64748b;
+                --card:#14141c; --card-line:#64748b; --box:#181822; } }
       .bg { fill: var(--bg); }
       .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
       .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
+      .wall-req { fill: var(--box); stroke: var(--req); stroke-width: 2; stroke-dasharray: 6 4; }
+      .wall-user { fill: var(--user-fill); stroke: var(--user); stroke-width: 2; }
       .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 2; }
       .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.5; }
       .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.5; }
@@ -28,13 +30,13 @@
     </style>
   </defs>
 
-  <rect x="0" y="0" width="920" height="528" rx="16" class="bg"/>
+  <rect x="0" y="0" width="920" height="558" rx="16" class="bg"/>
 
   <text x="28" y="36" class="title">Definition, instance, session: where each lives</text>
   <text x="28" y="58" class="muted">The definition describes. The instance answers. The session remembers.</text>
 
   <!-- Code -->
-  <rect x="28" y="84" width="264" height="300" rx="14" class="wall-file"/>
+  <rect x="28" y="84" width="264" height="330" rx="14" class="wall-file"/>
   <text x="44" y="108" class="h">Your code</text>
   <text x="44" y="126" class="muted">The definition</text>
 
@@ -50,25 +52,28 @@
   <text x="58" y="342" class="muted">the kind is never a fallback.</text>
 
   <!-- Process -->
-  <rect x="312" y="84" width="280" height="300" rx="14" class="wall-sess"/>
+  <rect x="312" y="84" width="280" height="330" rx="14" class="wall-sess"/>
   <text x="328" y="108" class="h">Registered instances</text>
   <text x="328" y="126" class="muted">In the process. Requests name the id.</text>
 
-  <rect x="328" y="142" width="248" height="104" rx="10" class="card-sess"/>
+  <rect x="328" y="142" width="248" height="130" rx="10" class="card-sess"/>
   <text x="342" y="166" class="h">review-east</text>
   <text x="342" y="186" class="code">config: { region: "east" }</text>
-  <text x="342" y="210" class="muted">Settings stay in the process.</text>
-  <text x="342" y="226" class="muted">Never listed, never stored.</text>
+  <text x="342" y="204" class="code">resources: { rubric: east }</text>
+  <text x="342" y="226" class="muted">Its own isolated state, when set.</text>
+  <text x="342" y="244" class="muted">Settings stay in the process.</text>
+  <text x="342" y="260" class="muted">Never listed, never stored.</text>
 
-  <rect x="328" y="258" width="248" height="56" rx="10" class="card-sess"/>
-  <text x="342" y="282" class="h">review-west</text>
-  <text x="342" y="300" class="muted">Same kind, its own id and settings</text>
+  <rect x="328" y="282" width="248" height="64" rx="10" class="card-sess"/>
+  <text x="342" y="306" class="h">review-west</text>
+  <text x="342" y="324" class="muted">Same kind, its own id, settings,</text>
+  <text x="342" y="340" class="muted">resources and isolated state</text>
 
-  <rect x="328" y="326" width="248" height="42" rx="10" class="box"/>
-  <text x="342" y="352" class="muted">A singleton's id is its kind</text>
+  <rect x="328" y="356" width="248" height="42" rx="10" class="box"/>
+  <text x="342" y="382" class="muted">A singleton's id is its kind</text>
 
   <!-- Store -->
-  <rect x="612" y="84" width="280" height="300" rx="14" class="wall-org"/>
+  <rect x="612" y="84" width="280" height="330" rx="14" class="wall-org"/>
   <text x="628" y="108" class="h">Your store</text>
   <text x="628" y="126" class="muted">Kept across restarts when persistent</text>
 
@@ -80,14 +85,14 @@
   <text x="642" y="248" class="muted">A label for listings. Not an address.</text>
   <text x="642" y="276" class="p">Its state and its requests</text>
 
-  <text x="628" y="322" class="p">Named through review-west:</text>
-  <text x="628" y="342" class="code">409 wrong-instance-session</text>
-  <text x="628" y="362" class="muted">refused before anything runs</text>
+  <text x="628" y="352" class="p">Named through review-west:</text>
+  <text x="628" y="372" class="code">409 wrong-instance-session</text>
+  <text x="628" y="392" class="muted">refused before anything runs</text>
 
   <!-- Not a copy -->
-  <rect x="28" y="404" width="864" height="104" rx="12" class="box"/>
-  <text x="44" y="428" class="h">Not a copy</text>
-  <text x="44" y="452" class="p">An instance is the definition plus an id and settings. The definition is unchanged and shared.</text>
-  <text x="44" y="472" class="p">A session belongs to one instance. Two instances of one kind never share a session.</text>
-  <text x="44" y="492" class="p">Settings are not stored. A request resumed after a deploy runs on the settings the new process started with.</text>
+  <rect x="28" y="434" width="864" height="104" rx="12" class="box"/>
+  <text x="44" y="458" class="h">Not a copy</text>
+  <text x="44" y="482" class="p">An instance is the definition plus an id and settings. The definition is unchanged and shared.</text>
+  <text x="44" y="502" class="p">A session belongs to one instance. Two instances of one kind never share a session.</text>
+  <text x="44" y="522" class="p">Settings are not stored. A request resumed after a deploy runs on the settings the new process started with.</text>
 </svg>

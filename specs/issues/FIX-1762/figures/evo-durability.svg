@@ -1,0 +1,99 @@
+<svg viewBox="0 0 940 342" role="img" aria-label="Durability table: where uncommitted work can live and what each survives. The live place survives only a parked turn. A provider snapshot survives a stop, a crash only as of the last stop, and only in its own region and provider, until the provider TTL. The FSD overlay survives everything up to the last checkpoint, moves across hosts, regions and providers, and FSD controls it until the run is retired. A pushed branch survives everything and is controlled by the user's git host."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --panel:#FFFFFF; --fg:#1B2125; --muted:#5A656D; --line:#C7CDD0; --fsd:#2C6AA8; --ext:#A85D17; --eph:#6A7680; --new:#0E7C6B; --bad:#B23A3A; }
+    @media (prefers-color-scheme: dark) {
+      :root { --panel:#1A1F23; --fg:#E3E7E9; --muted:#9BA6AE; --line:#343D43; --fsd:#6EA6DE; --ext:#DE9A56; --eph:#8F9BA4; --new:#3DBBA6; --bad:#E07070; } }
+    .bg { fill:var(--panel); }
+    text { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-size:12.5px; fill:var(--fg); }
+    .t-b { font-weight:600; }
+    .t-m { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+    .t-s { font-size:11px; fill:var(--muted); }
+    .ln { stroke:var(--fg); stroke-width:1.3; fill:none; }
+    .ln-new { stroke:var(--new); stroke-width:1.6; fill:none; }
+    .ln-d { stroke:var(--fg); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+    .box { fill:var(--panel); stroke:var(--line); stroke-width:1.2; }
+    .box-new { fill:var(--panel); stroke:var(--new); stroke-width:1.6; }
+    .z-fsd { fill:var(--fsd); fill-opacity:.07; stroke:var(--fsd); stroke-width:1.2; }
+    .z-ext { fill:var(--ext); fill-opacity:.08; stroke:var(--ext); stroke-width:1.2; }
+    .z-eph { fill:var(--eph); fill-opacity:.07; stroke:var(--eph); stroke-width:1.2; stroke-dasharray:5 4; }
+    .c-fsd { fill:var(--fsd); } .c-ext { fill:var(--ext); } .c-eph { fill:var(--eph); }
+    .c-new { fill:var(--new); } .c-bad { fill:var(--bad); }
+    .st { fill:var(--panel); stroke:var(--fg); stroke-width:1.2; }
+    .st-bad { fill:var(--panel); stroke:var(--bad); stroke-width:1.4; }
+    .st-new { fill:var(--panel); stroke:var(--new); stroke-width:1.6; }
+    .ah { fill:var(--fg); } .ah-new { fill:var(--new); }
+      .y { fill:var(--new); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; }
+    .n { fill:var(--bad); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; }
+    .p { fill:var(--ext); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; }
+    .hd { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; fill:var(--muted); letter-spacing:.06em; }
+    .rl { stroke:var(--line); stroke-width:1; }
+    .col { fill:var(--new); fill-opacity:.07; }
+</style>
+  <rect class="bg" x="0" y="0" width="940" height="342"/>
+  <rect class="col" x="608" y="20" width="150" height="302" rx="4"/>
+  <g id="head">
+    <text class="hd" x="24" y="44">IF THIS HAPPENS</text>
+    <text class="hd" x="300" y="44">LIVE PLACE</text>
+    <text class="hd" x="460" y="44">PROVIDER SNAPSHOT</text>
+    <text class="hd" x="620" y="44">FSD OVERLAY</text>
+    <text class="hd" x="780" y="44">PUSHED BRANCH</text>
+    <line class="rl" x1="20" y1="56" x2="920" y2="56"/>
+  </g>
+  <g id="row-0">
+    <text x="24" y="79">Turn ends, question parked</text>
+    <text class="y" x="300" y="79">kept</text>
+    <text class="y" x="460" y="79">kept</text>
+    <text class="y" x="620" y="79">kept</text>
+    <text class="y" x="780" y="79">kept</text>
+    <line class="rl" x1="20" y1="92" x2="920" y2="92"/>
+  </g>
+  <g id="row-1">
+    <text x="24" y="115">Sandbox stops or times out</text>
+    <text class="n" x="300" y="115">gone</text>
+    <text class="y" x="460" y="115">kept</text>
+    <text class="y" x="620" y="115">kept</text>
+    <text class="y" x="780" y="115">kept</text>
+    <line class="rl" x1="20" y1="128" x2="920" y2="128"/>
+  </g>
+  <g id="row-2">
+    <text x="24" y="151">Host or sandbox crashes mid-turn</text>
+    <text class="n" x="300" y="151">gone</text>
+    <text class="p" x="460" y="151">last stop only</text>
+    <text class="y" x="620" y="151">last checkpoint</text>
+    <text class="y" x="780" y="151">kept</text>
+    <line class="rl" x1="20" y1="164" x2="920" y2="164"/>
+  </g>
+  <g id="row-3">
+    <text x="24" y="187">Run moves to another host or region</text>
+    <text class="n" x="300" y="187">no</text>
+    <text class="p" x="460" y="187">same region</text>
+    <text class="y" x="620" y="187">yes</text>
+    <text class="y" x="780" y="187">yes</text>
+    <line class="rl" x1="20" y1="200" x2="920" y2="200"/>
+  </g>
+  <g id="row-4">
+    <text x="24" y="223">Idle for 30+ days</text>
+    <text class="n" x="300" y="223">gone</text>
+    <text class="p" x="460" y="223">provider TTL</text>
+    <text class="y" x="620" y="223">until retired</text>
+    <text class="y" x="780" y="223">yes</text>
+    <line class="rl" x1="20" y1="236" x2="920" y2="236"/>
+  </g>
+  <g id="row-5">
+    <text x="24" y="259">Switching sandbox provider</text>
+    <text class="n" x="300" y="259">no</text>
+    <text class="n" x="460" y="259">no</text>
+    <text class="y" x="620" y="259">yes</text>
+    <text class="y" x="780" y="259">yes</text>
+    <line class="rl" x1="20" y1="272" x2="920" y2="272"/>
+  </g>
+  <g id="row-6">
+    <text x="24" y="295">Who controls it</text>
+    <text class="p" x="300" y="295">host</text>
+    <text class="p" x="460" y="295">provider</text>
+    <text class="y" x="620" y="295">FSD</text>
+    <text class="p" x="780" y="295">user&#x27;s git host</text>
+    <line class="rl" x1="20" y1="308" x2="920" y2="308"/>
+  </g>
+</svg>

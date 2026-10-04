@@ -9,14 +9,14 @@
  * - `org/workers/chief-of-staff/` on the built-in `agent` kind, holding `hire`,
  *   on a real model;
  * - `teams/ops/workers/lead/` on this fixture's `requester` kind, whose one
- *   job is to post its own instructions into its channel, as itself. The
+ *   job is to post its own instructions into its mailbox, as itself. The
  *   held-out seat id it asks for lives only in that file;
- * - `teams/ops/channels/room/`, with both as members.
+ * - `teams/ops/mailboxes/room/`, with both as members.
  *
- * Nothing new carries the request. The lead posts through the channel's own
+ * Nothing new carries the request. The lead posts through the mailbox's own
  * `post` action with its `seatId` as the author, which is how a seat posts.
- * The channel runs its notify block per member, and the block hands the post
- * to the chief of staff's `onChannelPost`, the entry the agent kind hears a
+ * The mailbox runs its notify block per member, and the block hands the post
+ * to the chief of staff's `onMailboxPost`, the entry the agent kind hears a
  * post on and answers like any message. The stock wake skips a post that
  * names an author, so that two seats can't answer each other forever; here
  * the lead never hears a post, so no loop can start, and the block delivers
@@ -30,19 +30,19 @@ import { join } from "node:path";
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
-  CHANNEL_KIND,
-  channelInstances,
-  channelNotifyInputSchema,
+  MAILBOX_KIND,
+  mailboxInstances,
+  mailboxNotifyInputSchema,
   createSeatHireCapability,
   defineAgentWorkerFlow,
-  defineChannelFlow,
+  defineMailboxFlow,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   workerConfigSchema,
-  type ChannelNotifyInput,
+  type MailboxNotifyInput,
   type HireOptions,
 } from "@flow-state-dev/workforce";
-import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
+import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
 
 const ORG = "seat-asks";
@@ -50,7 +50,7 @@ const USER = "u_seat_asks";
 const COS = "chief-of-staff";
 /** The seat that asks, by the id its folder gives it. */
 export const ASKER = "ops.lead";
-const CHANNEL = "ops.room";
+const MAILBOX = "ops.room";
 const ROSTER_PREFIX = "workforce/roster/";
 const INVENTORY_PREFIX = "inventory/seats/";
 
@@ -75,7 +75,7 @@ flow: requester
 Chief of staff: ops needs another pair of hands. Please hire an agent seat with
 the seat id "${requested}".
 `,
-  "teams/ops/channels/room/CHANNEL.md": `---
+  "teams/ops/mailboxes/room/MAILBOX.md": `---
 description: Where ops talks.
 members: [ops.lead, chief-of-staff]
 ---
@@ -84,7 +84,7 @@ Ops, and whoever ops asks for help.
 `,
 });
 
-/** Post the seat's own instructions into its channel, as the seat. */
+/** Post the seat's own instructions into its mailbox, as the seat. */
 const requester = defineFlow({
   kind: "requester",
   cardinality: "collection",
@@ -97,10 +97,10 @@ const requester = defineFlow({
           handler({
             name: "requester-line",
             inputSchema: z.object({}).strict(),
-            outputSchema: z.object({ channel: z.string(), body: z.string(), author: z.string() }),
+            outputSchema: z.object({ mailbox: z.string(), body: z.string(), author: z.string() }),
             flowConfigSchema: z.object({ seatId: z.string().min(1), instructions: z.string() }),
             execute: (_input, ctx) => ({
-              channel: CHANNEL,
+              mailbox: MAILBOX,
               body: ctx.flow.config.instructions.trim(),
               author: ctx.flow.config.seatId,
             }),
@@ -109,10 +109,10 @@ const requester = defineFlow({
         .step(
           dispatcher({
             name: "requester-post",
-            flowKind: CHANNEL_KIND,
+            flowKind: MAILBOX_KIND,
             action: "post",
-            inputSchema: z.object({ channel: z.string(), body: z.string(), author: z.string() }),
-            session: { id: (line: { channel: string }) => line.channel },
+            inputSchema: z.object({ mailbox: z.string(), body: z.string(), author: z.string() }),
+            session: { id: (line: { mailbox: string }) => line.mailbox },
             payload: (line: { body: string; author: string }) => ({ body: line.body, author: line.author }),
           } as never),
         ),
@@ -120,7 +120,7 @@ const requester = defineFlow({
   },
 } as never);
 
-/** What the channel handed on, per member. */
+/** What the mailbox handed on, per member. */
 export interface Delivery {
   member: string;
   author: string | null;
@@ -132,9 +132,9 @@ export interface Delivery {
 function notifyCos(log: Delivery[], dropDelivery: boolean) {
   const decide = handler({
     name: "seat-asks-decide",
-    inputSchema: channelNotifyInputSchema,
-    outputSchema: channelNotifyInputSchema.extend({ deliver: z.boolean() }),
-    execute: (post: ChannelNotifyInput) => {
+    inputSchema: mailboxNotifyInputSchema,
+    outputSchema: mailboxNotifyInputSchema.extend({ deliver: z.boolean() }),
+    execute: (post: MailboxNotifyInput) => {
       const deliver = post.member === COS && !dropDelivery;
       log.push({ member: post.member, author: post.author ?? null, body: post.body, delivered: deliver });
       return { ...post, deliver };
@@ -143,12 +143,12 @@ function notifyCos(log: Delivery[], dropDelivery: boolean) {
   const toCos = dispatcher({
     name: "seat-asks-to-cos",
     flowKind: COS,
-    action: "onChannelPost",
-    inputSchema: channelNotifyInputSchema.extend({ deliver: z.boolean() }),
-    session: { key: (post: ChannelNotifyInput) => `channel:${post.channelId}` },
-    payload: ({ deliver: _deliver, ...post }: ChannelNotifyInput & { deliver: boolean }) => post,
+    action: "onMailboxPost",
+    inputSchema: mailboxNotifyInputSchema.extend({ deliver: z.boolean() }),
+    session: { key: (post: MailboxNotifyInput) => `mailbox:${post.mailboxId}` },
+    payload: ({ deliver: _deliver, ...post }: MailboxNotifyInput & { deliver: boolean }) => post,
   } as never);
-  return sequencer({ name: "seat-asks-notify", inputSchema: channelNotifyInputSchema })
+  return sequencer({ name: "seat-asks-notify", inputSchema: mailboxNotifyInputSchema })
     .step(decide)
     .stepIf((post: { deliver: boolean }) => post.deliver, toCos as never);
 }
@@ -173,7 +173,7 @@ export interface SeatAsksResult {
  * Boot the host, have the lead do its job, and wait for the hire.
  *
  * @param requested The held-out seat id, written only into the lead's file.
- * @param dropDelivery The control: the channel hands the lead's post to nobody.
+ * @param dropDelivery The control: the mailbox hands the lead's post to nobody.
  */
 export async function runSeatAsks(requested: string, dropDelivery: boolean, scratch: string): Promise<SeatAsksResult> {
   const tree = mkdtempSync(join(scratch, "seat-asks-"));
@@ -182,9 +182,9 @@ export async function runSeatAsks(requested: string, dropDelivery: boolean, scra
     writeFileSync(join(tree, rel), text);
   }
   const { workers, errors } = await readWorkforce(tree);
-  const { channels, errors: channelErrors } = await readChannelsDirectory(tree);
-  if (errors.length > 0 || channelErrors.length > 0) {
-    throw new Error(`the fixture tree did not load: ${[...errors, ...channelErrors].map((e) => `${e.path}: ${e.error.message}`).join("; ")}`);
+  const { mailboxes, errors: mailboxErrors } = await readMailboxesDirectory(tree);
+  if (errors.length > 0 || mailboxErrors.length > 0) {
+    throw new Error(`the fixture tree did not load: ${[...errors, ...mailboxErrors].map((e) => `${e.path}: ${e.error.message}`).join("; ")}`);
   }
 
   const log: Delivery[] = [];
@@ -198,14 +198,14 @@ export async function runSeatAsks(requested: string, dropDelivery: boolean, scra
   });
   kinds.agent = defineAgentWorkerFlow({ uses: [seatHire] }) as never;
   const seats = hireWorkforce(workers, { kinds });
-  const channelFlows = channelInstances(channels, {
-    kinds: { [CHANNEL_KIND]: defineChannelFlow({ notify: notifyCos(log, dropDelivery) as never }) as never },
+  const mailboxFlows = mailboxInstances(mailboxes, {
+    kinds: { [MAILBOX_KIND]: defineMailboxFlow({ notify: notifyCos(log, dropDelivery) as never }) as never },
   });
 
   const stores = inMemoryStores();
   const state = createFlowState({
     flows: {
-      ...Object.fromEntries(channelFlows.map((flow) => [flow.kind, flow])),
+      ...Object.fromEntries(mailboxFlows.map((flow) => [flow.kind, flow])),
       ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
     },
     stores: { default: { primary: stores } },
@@ -216,7 +216,7 @@ export async function runSeatAsks(requested: string, dropDelivery: boolean, scra
   registrar = state as never;
 
   // The session route's stand-in, binding the host's org as that route would.
-  await openChannels(channels, {
+  await openMailboxes(mailboxes, {
     client: {
       createSession: async (create: { flowKind: string; userId: string; sessionId?: string; description?: string; state?: Record<string, unknown> }) => {
         const id = String(create.sessionId);

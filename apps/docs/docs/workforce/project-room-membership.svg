@@ -85,8 +85,8 @@
   <text x="664" y="318" class="p">Trust the session’s state.</text>
   <text x="664" y="335" class="muted">resourceId only picks which</text>
   <text x="664" y="351" class="muted">row to check</text>
-  <text x="664" y="375" class="p">Bind a channel’s own session</text>
-  <text x="664" y="392" class="code">talk-on-a-channel</text>
+  <text x="664" y="375" class="p">Bind a mailbox’s own session</text>
+  <text x="664" y="392" class="code">talk-on-a-mailbox</text>
   <text x="664" y="416" class="p">Rebind a session that is</text>
   <text x="664" y="433" class="p">already on another project</text>
   <text x="664" y="450" class="code">talk-bound-elsewhere</text>

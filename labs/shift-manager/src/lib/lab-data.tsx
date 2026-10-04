@@ -2,9 +2,11 @@
  * The one snapshot every surface draws from, and when it is read again.
  *
  * S3's contract: a refresh on boot, on an organization switch, after a
- * successful answer to an ask, and on Retry. Never on a route or tab change,
- * so moving around the app costs no reads. Inbox, the Stream's asks, the
- * sidebar counts and the Tasks list all come from the same snapshot.
+ * successful answer to an ask, after each line the chief of staff takes (its
+ * turn may have created a project or hired a seat), and on Retry. Never on a
+ * route or tab change, so moving around the app costs no reads. Inbox, the
+ * Stream's asks, the sidebar counts and the Tasks list all come from the same
+ * snapshot.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ResumeAction } from "@flow-state-dev/core/types";

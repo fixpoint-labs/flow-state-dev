@@ -4,7 +4,7 @@
  * The lab's org id was `org_devforce_lab`; it is `devforce-lab` now, because a
  * hired seat's address starts with the org and an address segment is
  * lowercase and hyphenated. A default store from before the change still holds
- * the channel's session, the ask's session and the org's rows under the old
+ * the mailbox's session, the ask's session and the org's rows under the old
  * id, and a boot that reuses them fails on the org binding. The store is a
  * lab's dev store, and the old id never had a hired seat (no address could be
  * built for one), so boot sets the old file aside, says so, and starts fresh.
@@ -35,13 +35,13 @@ describe("DevTeam over a store written under the old org id", () => {
     store = join(dir, "devteam.sqlite");
     const old = createSQLiteStores({ filename: store });
     const now = Date.now();
-    // What the earlier version opened: the feature channel's session, bound to the old org.
+    // What the earlier version opened: the feature mailbox's session, bound to the old org.
     await old.session.set(
       "eng.feature",
       {
         id: "eng.feature",
-        flowKind: "channel",
-        flowId: "channel",
+        flowKind: "mailbox",
+        flowId: "mailbox",
         userId: LAB_USER_ID,
         orgId: OLD_ORG,
         state: { members: ["eng.em"], instructions: "old" },
@@ -92,10 +92,10 @@ describe("DevTeam over a store written under the old org id", () => {
     const reread = createSQLiteStores({ filename: store });
     const stale = (await reread.session.list()).filter((s) => (s as { orgId?: string }).orgId === OLD_ORG);
     const rows = await reread.resourceState.getByPrefix("org", OLD_ORG, "");
-    const channel = await reread.session.get("eng.feature");
+    const mailbox = await reread.session.get("eng.feature");
     reread.close();
     expect(stale).toEqual([]);
     expect(Object.keys(rows)).toEqual([]);
-    expect((channel as { orgId?: string } | undefined)?.orgId).toBe(LAB_ORG_ID);
+    expect((mailbox as { orgId?: string } | undefined)?.orgId).toBe(LAB_ORG_ID);
   });
 });

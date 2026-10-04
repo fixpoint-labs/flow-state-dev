@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="Ownership map: FSD durable store on the left holds the project row, run record, project files and worktree overlay; the ephemeral place in the middle holds checkout, project and .fsdev directories; outside FSD on the right are the git remote and the sandbox provider's snapshots."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --panel:#FFFFFF; --fg:#1B2125; --muted:#5A656D; --line:#C7CDD0; --fsd:#2C6AA8; --ext:#A85D17; --eph:#6A7680; --new:#0E7C6B; --bad:#B23A3A; }
+    @media (prefers-color-scheme: dark) {
+      :root { --panel:#1A1F23; --fg:#E3E7E9; --muted:#9BA6AE; --line:#343D43; --fsd:#6EA6DE; --ext:#DE9A56; --eph:#8F9BA4; --new:#3DBBA6; --bad:#E07070; } }
+    .bg { fill:var(--panel); }
+    text { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-size:12.5px; fill:var(--fg); }
+    .t-b { font-weight:600; }
+    .t-m { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+    .t-s { font-size:11px; fill:var(--muted); }
+    .ln { stroke:var(--fg); stroke-width:1.3; fill:none; }
+    .ln-new { stroke:var(--new); stroke-width:1.6; fill:none; }
+    .ln-d { stroke:var(--fg); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+    .box { fill:var(--panel); stroke:var(--line); stroke-width:1.2; }
+    .box-new { fill:var(--panel); stroke:var(--new); stroke-width:1.6; }
+    .z-fsd { fill:var(--fsd); fill-opacity:.07; stroke:var(--fsd); stroke-width:1.2; }
+    .z-ext { fill:var(--ext); fill-opacity:.08; stroke:var(--ext); stroke-width:1.2; }
+    .z-eph { fill:var(--eph); fill-opacity:.07; stroke:var(--eph); stroke-width:1.2; stroke-dasharray:5 4; }
+    .c-fsd { fill:var(--fsd); } .c-ext { fill:var(--ext); } .c-eph { fill:var(--eph); }
+    .c-new { fill:var(--new); } .c-bad { fill:var(--bad); }
+    .st { fill:var(--panel); stroke:var(--fg); stroke-width:1.2; }
+    .st-bad { fill:var(--panel); stroke:var(--bad); stroke-width:1.4; }
+    .st-new { fill:var(--panel); stroke:var(--new); stroke-width:1.6; }
+    .ah { fill:var(--fg); } .ah-new { fill:var(--new); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+  <g transform="translate(20,20)">
+  <defs>
+    <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+    <marker id="a1n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-new"/></marker>
+  </defs>
+  <rect x="20" y="30" width="280" height="385" rx="6" class="z-fsd"/>
+  <rect x="330" y="30" width="260" height="385" rx="6" class="z-eph"/>
+  <rect x="620" y="30" width="260" height="385" rx="6" class="z-ext"/>
+  <text x="36" y="54" class="t-b c-fsd">FSD durable store</text>
+  <text x="346" y="54" class="t-b c-eph">Working place (ephemeral)</text>
+  <text x="636" y="54" class="t-b c-ext">Outside FSD</text>
+
+  <rect x="40" y="72" width="240" height="86" rx="4" class="box"/>
+  <text x="54" y="94" class="t-b">Project row</text>
+  <text x="54" y="114" class="t-m">id · title · members</text>
+  <text x="54" y="132" class="t-m">workstreams</text>
+  <text x="54" y="150" class="t-m c-new">repository: remote | null</text>
+
+  <rect x="40" y="186" width="240" height="60" rx="4" class="box-new"/>
+  <text x="54" y="208" class="t-b t-m">worktree-overlay/&lt;runId&gt;</text>
+  <text x="54" y="228" class="t-s">dirty files, unpushed commits</text>
+
+  <rect x="40" y="264" width="240" height="56" rx="4" class="box-new"/>
+  <text x="54" y="286" class="t-b t-m">project-files/&lt;projectId&gt;</text>
+  <text x="54" y="306" class="t-s">memory, notes, files agents keep</text>
+
+  <rect x="40" y="338" width="240" height="60" rx="4" class="box"/>
+  <text x="54" y="360" class="t-b">Run record (one per row)</text>
+  <text x="54" y="380" class="t-m">branch · baseSha · headSha</text>
+  <text x="54" y="394" class="t-m c-new">place · snapshotId · checkpoint</text>
+
+  <rect x="350" y="150" width="220" height="250" rx="4" class="box"/>
+  <text x="364" y="172" class="t-s">a directory or a sandbox, per run</text>
+  <rect x="368" y="186" width="184" height="60" rx="4" class="box"/>
+  <text x="382" y="208" class="t-b t-m">checkout/</text>
+  <text x="382" y="228" class="t-s">worktree on the row branch</text>
+  <rect x="368" y="264" width="184" height="56" rx="4" class="box-new"/>
+  <text x="382" y="286" class="t-b t-m">project/</text>
+  <text x="382" y="306" class="t-s">hydrated project files</text>
+  <rect x="368" y="338" width="184" height="44" rx="4" class="box"/>
+  <text x="382" y="364" class="t-m">.fsdev/  asks, markers</text>
+
+  <rect x="640" y="72" width="220" height="86" rx="4" class="box"/>
+  <text x="654" y="94" class="t-b">Git remote</text>
+  <text x="654" y="114" class="t-m">github.com/acme/app</text>
+  <text x="654" y="134" class="t-s">the record for code: commits,</text>
+  <text x="654" y="150" class="t-s">branches, PRs</text>
+
+  <rect x="640" y="264" width="220" height="74" rx="4" class="box"/>
+  <text x="654" y="286" class="t-b">Sandbox provider</text>
+  <text x="654" y="306" class="t-s">snapshots, paused sandboxes</text>
+  <text x="654" y="324" class="t-s">a cache, never the record</text>
+
+  <!-- project row -> remote reference -->
+  <line x1="280" y1="100" x2="638" y2="100" class="ln-d" marker-end="url(#a1)"/>
+  <text x="459" y="92" text-anchor="middle" class="t-s">repository is a reference</text>
+  <!-- remote <-> checkout -->
+  <line x1="554" y1="206" x2="646" y2="160" class="ln" marker-start="url(#a1)" marker-end="url(#a1)"/>
+  <text x="640" y="196" class="t-s">clone · fetch ↓</text>
+  <text x="640" y="212" class="t-s">push branch ↑</text>
+  <!-- checkout -> overlay -->
+  <line x1="366" y1="216" x2="283" y2="216" class="ln-new" marker-end="url(#a1n)"/>
+  <text x="324" y="208" text-anchor="middle" class="t-s">checkpoint</text>
+  <!-- project-files <-> project/ -->
+  <line x1="283" y1="292" x2="366" y2="292" class="ln-new" marker-start="url(#a1n)" marker-end="url(#a1n)"/>
+  <text x="324" y="284" text-anchor="middle" class="t-s">hydrate</text>
+  <text x="324" y="308" text-anchor="middle" class="t-s">flush</text>
+  <!-- run record -> place -->
+  <line x1="280" y1="366" x2="366" y2="360" class="ln" marker-end="url(#a1)"/>
+  <text x="300" y="388" text-anchor="middle" class="t-s">names</text>
+  <!-- place <-> provider -->
+  <line x1="572" y1="300" x2="638" y2="300" class="ln-d" marker-start="url(#a1)" marker-end="url(#a1)"/>
+  <text x="654" y="356" class="t-s">snapshot on stop, resume later</text>
+
+  </g>
+</svg>

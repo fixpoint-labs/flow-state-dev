@@ -8,7 +8,7 @@
  * byte-identically, which is the shape of a missing export.
  *
  * This is a JOIN over `readWorkforce`, `readResourcesDirectory` and
- * `readChannelsDirectory`. It walks nothing itself: a fourth walk would be a
+ * `readMailboxesDirectory`. It walks nothing itself: a fourth walk would be a
  * fourth answer to "what is in this tree", and the readers are the answer.
  *
  * **It collects; it does not set your boot policy.** Every reader under it says
@@ -25,12 +25,12 @@
  */
 
 import path from "node:path";
-import { readChannelsDirectory } from "./read-channels-directory";
+import { readMailboxesDirectory } from "./read-mailboxes-directory";
 import { readReferencesDirectory, readResourcesDirectory } from "./read-resources-directory";
 import { readWorkforce } from "./read-workforce";
 import { REFERENCES_SLOT, RESOURCES_SLOT, siblingSlotPath } from "./resource-convention";
 import type {
-  ChannelManifest,
+  MailboxManifest,
   ResourceDoc,
   TeamManifest,
   WorkerManifest,
@@ -55,8 +55,8 @@ export type DeclaredProblemLayer =
   | "document"
   /** A reference under `org/references/` or a team's or worker's `references/`. */
   | "reference"
-  /** A channel folder under `teams/<id>/channels/`. */
-  | "channel"
+  /** A mailbox folder under `teams/<id>/mailboxes/`. */
+  | "mailbox"
   /** A package under `org/packages/`, a team's `packages/`, or a worker's own. */
   | "package";
 
@@ -114,13 +114,13 @@ export interface DeclaredRoster {
    */
   references: ResourceDoc[];
   /**
-   * One record per channel that loaded, in walk order.
+   * One record per mailbox that loaded, in walk order.
    *
-   * This inherits `readChannelsDirectory` exactly, including that it walks
-   * `teams/<id>/channels/` and there is no `org/channels/` level the way there
+   * This inherits `readMailboxesDirectory` exactly, including that it walks
+   * `teams/<id>/mailboxes/` and there is no `org/mailboxes/` level the way there
    * is for resources. The composer widens no reader.
    */
-  channels: ChannelManifest[];
+  mailboxes: MailboxManifest[];
   /**
    * Everything that did not load, from every reader's error channel, each entry
    * tagged with the layer it came from.
@@ -158,7 +158,7 @@ export async function readDeclaredRoster(root: string): Promise<DeclaredRoster> 
   const workforce = await readWorkforce(root);
   const resources = await readResourcesDirectory(root);
   const references = await readReferencesDirectory(root);
-  const channels = await readChannelsDirectory(root);
+  const mailboxes = await readMailboxesDirectory(root);
 
   const problems: DeclaredProblem[] = [
     ...workforce.errors.map((e) => ({ layer: "worker" as const, path: e.path, error: e.error })),
@@ -174,7 +174,7 @@ export async function readDeclaredRoster(root: string): Promise<DeclaredRoster> 
     ...workforce.packageErrors.map((e) => ({ layer: "package" as const, path: e.path, error: e.error })),
     ...resources.errors.map((e) => ({ layer: "document" as const, path: e.path, error: e.error })),
     ...references.errors.map((e) => ({ layer: "reference" as const, path: e.path, error: e.error })),
-    ...channels.errors.map((e) => ({ layer: "channel" as const, path: e.path, error: e.error })),
+    ...mailboxes.errors.map((e) => ({ layer: "mailbox" as const, path: e.path, error: e.error })),
     ...collidingRefs(resources.documents, references.documents),
   ];
 
@@ -183,7 +183,7 @@ export async function readDeclaredRoster(root: string): Promise<DeclaredRoster> 
     teams: workforce.teams,
     documents: resources.documents,
     references: references.documents,
-    channels: channels.channels,
+    mailboxes: mailboxes.mailboxes,
     problems,
   };
 }

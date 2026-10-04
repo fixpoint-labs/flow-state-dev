@@ -1,7 +1,7 @@
 /**
  * Talking to a run — the manager's door (FIX-1690).
  *
- * Driven end to end, in process, like `channel-board.spec.ts`: a real
+ * Driven end to end, in process, like `mailbox-board.spec.ts`: a real
  * `createFlowState`, a real board and its same-flow hand-off, real fenced
  * settlement and a real git checkout. Only the harness is a stub, and it
  * records what each attempt was handed: the prompt, and the session it was

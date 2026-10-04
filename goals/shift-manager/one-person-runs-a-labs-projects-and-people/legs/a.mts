@@ -28,18 +28,18 @@ export interface LegA {
   answer: string | undefined;
 }
 
-const teamOf = (channelId: string) => channelId.split(".")[0]!;
+const teamOf = (mailboxId: string) => mailboxId.split(".")[0]!;
 const rowKey = (r: ProjectRow) => JSON.stringify({ t: r.title, b: r.brief ?? null, o: r.ownerUserId, m: [...r.members].sort(), w: r.workstreams, s: r.sessions.map((s) => `${s.userId}=${s.sessionId}`).sort() });
 
 /**
  * When Shift Manager refuses a person who holds no session (the refusal is
- * graded first), make them one session over HTTP on the flow `channelSession`
+ * graded first), make them one session over HTTP on the flow `mailboxSession`
  * runs, and open `url` again, so the rest of a4 is still graded.
  */
-async function openWithSession(world: World, who: "member" | "outsider", page: Page, url: string, channelSession: string): Promise<{ ok: true; madeSession?: string } | { ok: false; why: string }> {
+async function openWithSession(world: World, who: "member" | "outsider", page: Page, url: string, mailboxSession: string): Promise<{ ok: true; madeSession?: string } | { ok: false; why: string }> {
   const first = await openAs(page, url);
   if (first.ok) return first;
-  const kind = String((await world.routes.owner.get(`/sessions/${encodeURIComponent(channelSession)}`)).session?.flowKind ?? "");
+  const kind = String((await world.routes.owner.get(`/sessions/${encodeURIComponent(mailboxSession)}`)).session?.flowKind ?? "");
   const made = await world.routes[who].call("POST", `/${encodeURIComponent(kind)}/sessions`, { userId: world.routes[who].user.userId });
   if (made.status >= 400) return first;
   const again = await openAs(page, url);
@@ -47,14 +47,14 @@ async function openWithSession(world: World, who: "member" | "outsider", page: P
 }
 
 /** a1 and a2 to a4: ask, then read. Returns undefined when a1 left nothing to grade. */
-export async function legA(world: World, channelSession: string): Promise<LegA | undefined> {
+export async function legA(world: World, mailboxSession: string): Promise<LegA | undefined> {
   const r = world.record;
   const { owner, member } = world.people;
 
   // ---- a1 · ask for two projects ---------------------------------------------
-  const boot = await readProjects(world.routes.owner, channelSession);
+  const boot = await readProjects(world.routes.owner, mailboxSession);
   const claimed = new Set(boot.rows.flatMap((row) => row.workstreams));
-  const free = boot.channels.filter((c) => !claimed.has(c));
+  const free = boot.mailboxes.filter((c) => !claimed.has(c));
   const teams = [...new Set(free.map(teamOf))].sort();
   // D1: one workstream on each of two teams that no default project holds.
   const picked = teams.slice(0, 2).map((t) => free.find((c) => teamOf(c) === t)!);
@@ -73,7 +73,7 @@ export async function legA(world: World, channelSession: string): Promise<LegA |
   }
   const creates = callsTo(turn, "createProject");
   if (creates.length !== 2 || creates.some((c) => !c.ok)) r.fail("a1", `CoS's session holds ${creates.length} createProject call(s), ${creates.filter((c) => c.ok).length} ok, not two ok: ${quote(turn)}`);
-  const after = await readProjects(world.routes.owner, channelSession);
+  const after = await readProjects(world.routes.owner, mailboxSession);
   const before = new Set(boot.rows.map((row) => row.id));
   const created = after.rows.filter((row) => !before.has(row.id));
   const p1 = created.find((row) => row.title.trim().toLowerCase() === titles[0]!.toLowerCase());
@@ -99,7 +99,7 @@ export async function legA(world: World, channelSession: string): Promise<LegA |
   r.saw("a1", `asked "${words}"; CoS: ${quote(turn)}; new rows ${p1.id} {owner ${p1.ownerUserId}, members [${p1.members}], workstreams [${p1.workstreams}]} and ${p2.id} {owner ${p2.ownerUserId}, members [${p2.members}], workstreams [${p2.workstreams}]}`);
 
   const state: LegA = { p1, p2, defaults: boot.rows, token: `room-${hex(4)}`, answer: undefined };
-  await readBack(world, channelSession, state, false);
+  await readBack(world, mailboxSession, state, false);
   return state;
 }
 
@@ -107,12 +107,12 @@ export async function legA(world: World, channelSession: string): Promise<LegA |
  * a2 to a4 (and, after a restart, a5: the same reads on a new process). The
  * first time, a3 posts the token into P1's room; after a restart it only reads.
  */
-export async function readBack(world: World, channelSession: string, state: LegA, restarted: boolean): Promise<void> {
+export async function readBack(world: World, mailboxSession: string, state: LegA, restarted: boolean): Promise<void> {
   const r = world.record;
   const tag = (step: string) => (restarted ? "a5" : step);
   const { owner } = world.people;
   const { p1, p2 } = state;
-  const store = await readProjects(world.routes.owner, channelSession);
+  const store = await readProjects(world.routes.owner, mailboxSession);
   const row1 = store.rows.find((x) => x.id === p1.id);
   const row2 = store.rows.find((x) => x.id === p2.id);
   if (row1 === undefined || row2 === undefined) {
@@ -167,12 +167,12 @@ export async function readBack(world: World, channelSession: string, state: LegA
       if (!(await visible(world.page, "project-workstreams-none"))) r.fail(tabs, `${row.id} lists no workstream and its Workstreams doesn't say so`);
     } else {
       await visible(world.page, "project-workstream");
-      const listed = await world.page.locator("[data-testid=project-workstream]").evaluateAll((els) => els.map((e) => e.getAttribute("data-channel-id") ?? ""));
+      const listed = await world.page.locator("[data-testid=project-workstream]").evaluateAll((els) => els.map((e) => e.getAttribute("data-mailbox-id") ?? ""));
       if (!same(listed, row.workstreams)) r.fail(tabs, `${row.id}'s Workstreams lists [${listed}], its row [${row.workstreams}]`);
       // Each entry opens its workstream: click it, as a person would, and read where the page went.
       for (const id of listed) {
         await world.open(`/p/${encodeURIComponent(row.id)}/workstreams`);
-        await world.page.locator(`[data-testid=project-workstream][data-channel-id="${id}"] button`).click({ timeout: 10_000 }).catch(() => undefined);
+        await world.page.locator(`[data-testid=project-workstream][data-mailbox-id="${id}"] button`).click({ timeout: 10_000 }).catch(() => undefined);
         await sleep(300);
         const path = new URL(world.page.url()).pathname;
         if (!path.startsWith(`/w/${encodeURIComponent(id)}`)) r.fail(tabs, `${row.id}'s Workstreams entry ${id} opens ${path}, not its workstream`);
@@ -231,7 +231,7 @@ export async function readBack(world: World, channelSession: string, state: LegA
     const url = `${world.served.origin}/p/${encodeURIComponent(row1.id)}/stream`;
     const refused = await openAs(memberView.page, url);
     if (!refused.ok) r.fail(a4, `the second member can't open Shift Manager: "${refused.why}"`);
-    const opened = refused.ok ? refused : await openWithSession(world, "member", memberView.page, url, channelSession);
+    const opened = refused.ok ? refused : await openWithSession(world, "member", memberView.page, url, mailboxSession);
     if (!refused.ok && opened.ok) r.saw(a4, `the rest of a4's member checks ran after the check made the member a session over HTTP (${(opened as { madeSession?: string }).madeSession})`);
     if (opened.ok) {
       if (await visible(memberView.page, "project-join", 8_000)) await memberView.page.getByTestId("project-join").click();
@@ -252,7 +252,7 @@ export async function readBack(world: World, channelSession: string, state: LegA
     const url = `${world.served.origin}/cos`;
     const refused = await openAs(outsiderView.page, url);
     if (!refused.ok) r.fail(a4, `the outsider can't open Shift Manager: "${refused.why}"`);
-    const opened = refused.ok ? refused : await openWithSession(world, "outsider", outsiderView.page, url, channelSession);
+    const opened = refused.ok ? refused : await openWithSession(world, "outsider", outsiderView.page, url, mailboxSession);
     if (!opened.ok) {
       await r.shot(outsiderView.page, restarted ? "a5-outsider" : "a4-outsider");
       return;

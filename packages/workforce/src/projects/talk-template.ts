@@ -3,16 +3,16 @@
  * mints a creator's talk session when a row is created.
  *
  * A template names the seats a post in a project's room wakes and the room's
- * charter. Talk sessions run on the built-in channel kind. It is declared at one of
- * two sites, and the channel binder (`channelInstances`) reads both:
+ * charter. Talk sessions run on the built-in mailbox kind. It is declared at one of
+ * two sites, and the mailbox binder (`mailboxInstances`) reads both:
  *
  * - **The org-level default**, beside the collection in
  *   `org/resources/projects.ts`:
  *   `export default defineProjectsCollection({ talk: { seats, charter } })`.
- * - **A team's**, in a `CHANNEL.md` marked `mintFor: projects`, whose
+ * - **A team's**, in a `MAILBOX.md` marked `mintFor: projects`, whose
  *   `members:` are the seats and whose body is the charter.
  *
- * A template is not a channel: it is never opened and never registered in the
+ * A template is not a mailbox: it is never opened and never registered in the
  * inventory. Its seats and charter are built onto the kind at every boot and
  * never written into a session, so an edit reaches every project's room at the
  * next restart.
@@ -21,10 +21,10 @@
  * declaration (a flow refuses two declarations under one ref), so the org
  * template recorded on it and the reaction installed on it are the process's
  * too: the last `defineProjectsCollection({ talk })` call names the org
- * template, and the first `channelInstances` call that finds a template
- * registers it and installs the reaction. Every later call builds the channel
+ * template, and the first `mailboxInstances` call that finds a template
+ * registers it and installs the reaction. Every later call builds the mailbox
  * kind from that registration, and nothing removes it. One process serves one
- * organization's tree, with its rooms on the built-in channel kind.
+ * organization's tree, with its rooms on the built-in mailbox kind.
  */
 
 import { dispatcher, handler, resourceChangeSchema, type ResourceChange } from "@flow-state-dev/core";
@@ -44,7 +44,7 @@ export type TalkTemplate = {
   charter?: string;
 };
 
-/** What a channel kind is built holding: the template's seats and charter. */
+/** What a mailbox kind is built holding: the template's seats and charter. */
 export type TalkTemplateFacts = { seats: readonly string[]; charter: string };
 
 /** The talk kind's internal entry that binds a session to a project. */
@@ -139,12 +139,12 @@ export function templateSeatsProblem(seats: readonly unknown[]): string | undefi
 
 /**
  * One registered template: where it was declared, what it holds, the reaction
- * it installed, and the ids of the `CHANNEL.md` files that declared it, which
- * are never channels in this process ({@link isTemplateChannel}).
+ * it installed, and the ids of the `MAILBOX.md` files that declared it, which
+ * are never mailboxes in this process ({@link isTemplateMailbox}).
  */
-type Registration = { site: string; facts: TalkTemplateFacts; reactTo: object; channelIds: Set<string> };
+type Registration = { site: string; facts: TalkTemplateFacts; reactTo: object; mailboxIds: Set<string> };
 
-/** The process's one talk template per collection, set by the first `channelInstances` call that finds one. */
+/** The process's one talk template per collection, set by the first `mailboxInstances` call that finds one. */
 const registrations = new WeakMap<object, Registration>();
 
 /**
@@ -157,8 +157,8 @@ const registrations = new WeakMap<object, Registration>();
  * owner's `join` or a re-sent create.
  *
  * **Set once, read by every call.** The collection is process-wide, so its
- * reaction is too, and the template lives beside it: every `channelInstances`
- * call builds its channel kind from {@link registeredTalkTemplate}, whether or
+ * reaction is too, and the template lives beside it: every `mailboxInstances`
+ * call builds its mailbox kind from {@link registeredTalkTemplate}, whether or
  * not that call was handed the template's site. Registering the same template
  * again (the same collection and facts, under any ref, as a host that binds
  * one roster per flow does) is a no-op. Nothing here ever removes a registration.
@@ -169,13 +169,13 @@ export function registerTalkTemplate(
   collection: object,
   template: { site: string; facts: TalkTemplateFacts },
   kind: string,
-  channelIds: readonly string[] = []
+  mailboxIds: readonly string[] = []
 ): void {
   const conflict = talkTemplateConflict(collection, template);
-  if (conflict !== undefined) throw new Error(`channelInstances: ${conflict}`);
+  if (conflict !== undefined) throw new Error(`mailboxInstances: ${conflict}`);
   const existing = registrations.get(collection);
   if (existing !== undefined) {
-    for (const id of channelIds) existing.channelIds.add(id);
+    for (const id of mailboxIds) existing.mailboxIds.add(id);
     return;
   }
   const mint = dispatcher({
@@ -193,7 +193,7 @@ export function registerTalkTemplate(
     site: template.site,
     facts: { seats: [...template.facts.seats], charter: template.facts.charter },
     reactTo,
-    channelIds: new Set(channelIds)
+    mailboxIds: new Set(mailboxIds)
   });
   (collection as { reactTo?: object }).reactTo = reactTo;
 }
@@ -221,12 +221,12 @@ export function talkTemplateConflict(
 }
 
 /**
- * Is `id` a `CHANNEL.md` that declares `collection`'s talk template in this
- * process? Such an id is never a channel, even when a session it had as one
- * survives in the store: the channel kind refuses its channel actions.
+ * Is `id` a `MAILBOX.md` that declares `collection`'s talk template in this
+ * process? Such an id is never a mailbox, even when a session it had as one
+ * survives in the store: the mailbox kind refuses its mailbox actions.
  */
-export function isTemplateChannel(collection: object, id: string): boolean {
-  return registrations.get(collection)?.channelIds.has(id) ?? false;
+export function isTemplateMailbox(collection: object, id: string): boolean {
+  return registrations.get(collection)?.mailboxIds.has(id) ?? false;
 }
 
 /** The talk template registered for `collection` in this process, or `undefined`. */

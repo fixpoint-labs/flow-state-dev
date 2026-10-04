@@ -1,12 +1,13 @@
 /**
- * The workstream level (S7, S8): a declared channel and the boards attached
- * to it (D2). Four tabs, each mounted only when opened: Stream, Board, Brief
- * (the channel's charter) and Results. The right panel shows Progress, the
- * channel's members with their status, and its rows by column.
+ * The workstream level (S7, S8): a declared mailbox and the boards attached
+ * to it (D2). A header as design v2 draws it (v2:215): `#`, the name and a
+ * boxed WORKSTREAM tag. Four tabs, each mounted only when opened: Stream,
+ * Board, Brief (the mailbox's charter) and Results. The right panel shows
+ * Progress, the mailbox's members with their status, and its rows by column.
  */
 import { useEffect, useState } from "react";
 import { Board } from "../components/Board";
-import { EmptyState, PartialMark, SectionFailure, StatusWord, Tabs } from "../components/ui";
+import { EmptyState, PartialMark, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare, StatusWord, Tabs } from "../components/ui";
 import { COLUMNS } from "../lib/columns";
 import { byColumn, seatStates, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
@@ -16,8 +17,8 @@ import type { Gaps } from "../gaps";
 import { Stream } from "./Stream";
 
 /** The workstream a route names, or why there is none. */
-export function findWorkstream(snapshot: LoadedSnapshot, channelId: string): Workstream | undefined {
-  return snapshot.inventory.ok ? snapshot.inventory.value.workstreams.find((w) => w.id === channelId) : undefined;
+export function findWorkstream(snapshot: LoadedSnapshot, mailboxId: string): Workstream | undefined {
+  return snapshot.inventory.ok ? snapshot.inventory.value.workstreams.find((w) => w.id === mailboxId) : undefined;
 }
 
 export function WorkstreamView({
@@ -32,16 +33,22 @@ export function WorkstreamView({
   gaps: Gaps;
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="workstream" data-channel-id={workstream.id}>
-      <header className="px-4 pt-3">
-        <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">WORKSTREAM</p>
-        <h1 className="text-base font-semibold">{workstream.id}</h1>
+    <div className="flex h-full min-h-0 flex-col" data-testid="workstream" data-mailbox-id={workstream.id}>
+      <header className="flex items-baseline gap-2 px-[22px] pt-3.5 pb-3" data-testid="workstream-header">
+        <span className="font-mono text-[15px] font-medium text-muted-foreground" data-look="title-hash">
+          #
+        </span>
+        <ScreenTitle>{workstream.id}</ScreenTitle>
+        <span className="border border-foreground/40 px-[5px] py-px font-mono text-[10px] font-medium tracking-[0.12em]" data-look="screen-tag">
+          WORKSTREAM
+        </span>
       </header>
       <Tabs
         label="Workstream"
         tabs={WORKSTREAM_TABS}
         selected={tab}
-        onSelect={(next) => navigate({ level: "workstream", channelId: workstream.id, tab: next })}
+        onSelect={(next) => navigate({ level: "workstream", mailboxId: workstream.id, tab: next })}
+        counts={boardCount(snapshot, workstream)}
       />
       <div className="flex min-h-0 flex-1 flex-col" role="tabpanel" data-tabpanel={tab}>
         {tab === "stream" ? <Stream workstream={workstream} snapshot={snapshot} gaps={gaps} /> : null}
@@ -51,6 +58,12 @@ export function WorkstreamView({
       </div>
     </div>
   );
+}
+
+/** The Board tab's count: every row on the workstream's boards (v2:222), once they loaded. */
+function boardCount(snapshot: LoadedSnapshot, workstream: Workstream): { board: number } | undefined {
+  const boards = snapshot.boards[workstream.id];
+  return boards?.ok === true && boards.value.refs.length > 0 ? { board: boards.value.rows.length } : undefined;
 }
 
 function BoardTab({ snapshot, workstream, gaps }: { snapshot: LoadedSnapshot; workstream: Workstream; gaps: Gaps }) {
@@ -67,7 +80,7 @@ function BoardTab({ snapshot, workstream, gaps }: { snapshot: LoadedSnapshot; wo
   if (boards.value.refs.length === 0) {
     return (
       <EmptyState title="No board" testId="board-none">
-        This workstream's channel attaches no board, so it has no tasks to show.
+        This workstream's mailbox attaches no board, so it has no tasks to show.
       </EmptyState>
     );
   }
@@ -81,7 +94,7 @@ function BoardTab({ snapshot, workstream, gaps }: { snapshot: LoadedSnapshot; wo
   );
 }
 
-/** The channel's charter: its `CHANNEL.md` body, as the channel session holds it. Read when the tab opens. */
+/** The mailbox's charter: its `MAILBOX.md` body, as the mailbox session holds it. Read when the tab opens. */
 function Brief({ workstream }: { workstream: Workstream }) {
   const { clients } = useLab();
   const [charter, setCharter] = useState<{ text: string } | { failure: Failure } | undefined>(undefined);
@@ -110,7 +123,7 @@ function Brief({ workstream }: { workstream: Workstream }) {
     );
   }
   return charter.text.trim().length === 0 ? (
-    <EmptyState title="No charter">This workstream's channel declares no charter.</EmptyState>
+    <EmptyState title="No charter">This workstream's mailbox declares no charter.</EmptyState>
   ) : (
     <article className="mx-auto w-full max-w-3xl overflow-y-auto whitespace-pre-wrap p-6 text-sm" data-testid="brief">
       {charter.text}
@@ -159,7 +172,7 @@ export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: Load
           <SectionFailure what="Tasks" failure={boards.failure} onRetry={() => void refresh()} />
         ) : boards.value.refs.length === 0 ? (
           <p className="text-xs text-muted-foreground" data-testid="panel-tasks-none">
-            This workstream's channel attaches no board, so it has no tasks.
+            This workstream's mailbox attaches no board, so it has no tasks.
           </p>
         ) : (
           COLUMNS.map((column) => {
@@ -174,10 +187,11 @@ export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: Load
                     <li key={`${row.boardRef}/${row.id}`}>
                       <button
                         type="button"
-                        className="truncate text-left text-xs hover:underline"
+                        className="flex max-w-full items-center gap-1.5 text-left text-xs hover:underline"
                         onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
                       >
-                        {row.title} <span className="text-muted-foreground">({row.status})</span>
+                        <StateSquare state={STATE_OF_COLUMN[column]} />
+                        <span className="truncate">{row.title}</span> <span className="text-muted-foreground">({row.status})</span>
                       </button>
                     </li>
                   ))}

@@ -4,9 +4,9 @@
  *
  * Neither goal tree raises an ask on `main` today, so this is the tree the
  * ask paths (Inbox, a workstream Stream's asks, the shared resume) are proved
- * on. It is an ordinary Lab config: read the tree, hire, build the channel
+ * on. It is an ordinary Lab config: read the tree, hire, build the mailbox
  * kind with the framework's own member wake and the inventory writer, open the
- * channels and then the inventory, default-export the `FlowState`. In-memory
+ * mailboxes and then the inventory, default-export the `FlowState`. In-memory
  * stores, so every load is a fresh Lab.
  *
  * `fsdev.config.mts` beside this file is the config Shift Manager's start script
@@ -22,19 +22,19 @@ import {
 } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
-  CHANNEL_KIND,
-  channelBoardIds,
-  channelInstances,
-  defineChannelFlow,
+  MAILBOX_KIND,
+  mailboxBoardIds,
+  mailboxInstances,
+  defineMailboxFlow,
   hireWorkforce,
   resourcesFromDocs,
   defineProjectBlocks,
-  openChannels,
+  openMailboxes,
   openInventory,
   wakeMemberSeats,
   type CreateProjectInput,
   type InventoryActionRequest,
-  type OpenChannelsOptions,
+  type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
@@ -86,11 +86,11 @@ function bearerOnly(secret: string, orgId: string): PrincipalResolver {
 /** How to open the ask-lab. */
 export type AskLabOptions = {
   /**
-   * Open the channels at boot. Default true. `false` opens nothing, so the
+   * Open the mailboxes at boot. Default true. `false` opens nothing, so the
    * person holds no session: a Lab with nothing to say which organization
-   * they are in. The inventory, which needs the channels, stays shut too.
+   * they are in. The inventory, which needs the mailboxes, stays shut too.
    */
-  channels?: boolean;
+  mailboxes?: boolean;
   /** Open the inventory at boot. Default true. */
   inventory?: boolean;
   /**
@@ -100,7 +100,7 @@ export type AskLabOptions = {
    */
   doors?: boolean;
   /**
-   * Build the channel kind with the inventory's collections. Default true.
+   * Build the mailbox kind with the inventory's collections. Default true.
    * `false` is a Lab whose flows never declare an inventory, so no session it
    * serves lists one. The inventory is not opened either.
    */
@@ -118,11 +118,13 @@ export type AskLabOptions = {
   orgId?: string;
   /** Add a seat named `chief-of-staff` to the ops team, on the asker kind. Default false. */
   chiefOfStaff?: boolean;
+  /** Let the asker kind's `message` door start projects (`startProjectLine`). Default false. */
+  seatsStartProjects?: boolean;
   /**
    * Projects to create once the inventory is open, each as `owner` (default
    * the Lab's person) through the project writes' own `createProject`.
    * `unbound` creates it through a second host on the same store that serves
-   * no channel kind, so its owner's talk session is never minted: the row a
+   * no mailbox kind, so its owner's talk session is never minted: the row a
    * failed mint leaves behind.
    */
   projects?: Array<CreateProjectInput & { owner?: string; unbound?: boolean }>;
@@ -137,14 +139,14 @@ export async function openAskLab(options: AskLabOptions = {}) {
   const tree = await readAskLabTree();
   if (options.chiefOfStaff === true) tree.workers.push(...(await readAskLabTree(CHIEF_OF_STAFF_TREE)).workers);
   const seats = hireWorkforce(tree.workers, {
-    kinds: { [ASKER_KIND]: defineAskerFlow(resourcesFromDocs(tree.documents)) as never },
-    channelBoards: channelBoardIds(tree.channels),
+    kinds: { [ASKER_KIND]: defineAskerFlow(resourcesFromDocs(tree.documents), { projects: options.seatsStartProjects }) as never },
+    mailboxBoards: mailboxBoardIds(tree.mailboxes),
   });
   const declared = options.inventoryDeclared !== false;
-  const channelKind = defineChannelFlow({ notify: wakeMemberSeats(seats), inventory: declared });
+  const mailboxKind = defineMailboxFlow({ notify: wakeMemberSeats(seats), inventory: declared });
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(
-      channelInstances(tree.channels, { kinds: { [CHANNEL_KIND]: channelKind as never } }).map((i) => [i.kind, i]),
+      mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } }).map((i) => [i.kind, i]),
     ),
     ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
     ...(options.projects === undefined
@@ -178,7 +180,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
     const text = await response.text();
     return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
   };
-  const client: OpenChannelsOptions["client"] = {
+  const client: OpenMailboxesOptions["client"] = {
     createSession: async (create) => {
       const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
       if (status >= 400) throw Object.assign(new Error(`create session: ${status}`), { status });
@@ -193,8 +195,8 @@ export async function openAskLab(options: AskLabOptions = {}) {
       await call("DELETE", ["sessions", sessionId]);
     },
   };
-  if (options.channels === false) return { flowState, tree, flows };
-  await openChannels(tree.channels, { client, userId: ASK_LAB_USER_ID });
+  if (options.mailboxes === false) return { flowState, tree, flows };
+  await openMailboxes(tree.mailboxes, { client, userId: ASK_LAB_USER_ID });
 
   if (declared && options.inventory !== false) {
     const runtime = await flowState.getRuntime();
@@ -218,13 +220,13 @@ export async function openAskLab(options: AskLabOptions = {}) {
     const binding = await openInventory(
       {
         seats: options.doors === false ? seats.map((seat) => ({ id: seat.id, kind: seat.kind, actions: {} })) : seats,
-        channels: tree.channels,
+        mailboxes: tree.mailboxes,
       },
-      { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: ASK_LAB_USER_ID, orgId },
+      { run, seatWriter: { flowKind: MAILBOX_KIND }, userId: ASK_LAB_USER_ID, orgId },
     );
     if (binding.problems.length > 0) throw new Error(binding.problems.join("; "));
 
-    // A host on the same store that serves no channel kind: a create there
+    // A host on the same store that serves no mailbox kind: a create there
     // commits its row, and its bind of the owner is refused.
     const unboundFlow = defineFlow({ kind: PROJECTS_KIND, actions: defineProjectBlocks().actions } as never)();
     const unboundRuntime = (options.projects ?? []).some((p) => p.unbound === true)

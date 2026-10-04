@@ -22,7 +22,7 @@ const flows: FlowListEntry[] = [
 ];
 
 const sections = [
-  { label: "Channels", kinds: ["chat"] },
+  { label: "Mailboxes", kinds: ["chat"] },
   { label: "Seats", kinds: ["agent"] },
 ];
 
@@ -41,8 +41,8 @@ describe("groupFlowsIntoSections", () => {
   });
 
   it("draws no instance level under a singleton kind, and makes the kind row the leaf", () => {
-    const [channels] = groupFlowsIntoSections(flows, sections);
-    const group = channels!.kinds[0]!;
+    const [mailboxes] = groupFlowsIntoSections(flows, sections);
+    const group = mailboxes!.kinds[0]!;
 
     expect(group.cardinality).toBe("singleton");
     expect(group.instances).toEqual([]);
@@ -62,7 +62,7 @@ describe("groupFlowsIntoSections", () => {
 
   it("renders a section whose kinds the server does not have as empty, leaving the others alone", () => {
     const views = groupFlowsIntoSections(flows, [
-      { label: "Channels", kinds: ["chat"] },
+      { label: "Mailboxes", kinds: ["chat"] },
       { label: "Warehouses", kinds: ["warehouse"] },
     ]);
 
@@ -75,7 +75,7 @@ describe("groupFlowsIntoSections", () => {
     // flow. Nothing in the section said which shape to expect.
     const asCollection = groupFlowsIntoSections(
       [entry("chat", "chat", "collection")],
-      [{ label: "Channels", kinds: ["chat"] }]
+      [{ label: "Mailboxes", kinds: ["chat"] }]
     );
 
     expect(asCollection[0]!.kinds[0]!.leaf).toBeNull();
@@ -84,7 +84,7 @@ describe("groupFlowsIntoSections", () => {
 
   it("keeps a kind in one section out of another", () => {
     const views = groupFlowsIntoSections(flows, [
-      { label: "Channels", kinds: ["chat"] },
+      { label: "Mailboxes", kinds: ["chat"] },
       { label: "Seats", kinds: ["agent"] },
     ]);
 

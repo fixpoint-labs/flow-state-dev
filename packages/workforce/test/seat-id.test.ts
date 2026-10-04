@@ -6,7 +6,7 @@
  * block can read, and only the hire step writes them, so the hire step stamps
  * the record's id there, on every record, from every mint path.
  *
- * Why it matters: a seat that files onto a board or posts to a channel signs
+ * Why it matters: a seat that files onto a board or posts to a mailbox signs
  * with this value. A seat hired without it would file unattributed; a record
  * that could author it could sign as any other seat.
  */
@@ -21,7 +21,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, executeBlock, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createTestContext } from "@flow-state-dev/testing";
-import { channelInstances, openChannels, type ChannelManifest } from "../src/index";
+import { mailboxInstances, openMailboxes, type MailboxManifest } from "../src/index";
 import { hireWorkforce } from "../src/hire";
 import { readWorkforceDirectory } from "../src/loader/read-workforce-directory";
 import type { WorkerManifest } from "../src/manifest";
@@ -32,7 +32,7 @@ import { defineSeatInventoryCollection } from "../src/inventory/collections";
 import { createSeatHireBlocks } from "../src/seat-hire-blocks";
 import { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "../src/seat-hire-capability";
 import { workerConfigSchema } from "../src/worker-config";
-import { postedLines } from "./channel-post-lines";
+import { postedLines } from "./mailbox-post-lines";
 
 const inputSchema = z.object({ note: z.string() });
 const work = handler({
@@ -102,7 +102,7 @@ describe("every hired seat carries its own id as `seatId`", () => {
     });
     expect(result.error).toBeUndefined();
     // Registered at its org-qualified address, signing with the id a
-    // channel's `members:` lists.
+    // mailbox's `members:` lists.
     expect(registered.map((seat) => [seat.id, seat.config[SEAT_ID_KEY]])).toEqual([
       ["acme.support.otto", "support.otto"],
     ]);
@@ -128,7 +128,7 @@ describe("every hired seat carries its own id as `seatId`", () => {
   });
 });
 
-/** `openChannels`'s session API over a test's own stores. */
+/** `openMailboxes`'s session API over a test's own stores. */
 function sessionApi(stores: StoreRegistry) {
   return {
     createSession: async (options: { flowKind: string; userId: string; sessionId?: string; orgId?: string; state?: Record<string, unknown> }) => {
@@ -169,14 +169,14 @@ function sessionApi(stores: StoreRegistry) {
   };
 }
 
-describe("a runtime-hired seat signs as the member its channel lists", () => {
+describe("a runtime-hired seat signs as the member its mailbox lists", () => {
   /**
-   * The reason the key exists: a channel checks an author against its
+   * The reason the key exists: a mailbox checks an author against its
    * `members:`, which name seats by their logical id. A runtime-hired seat is
    * registered at its org-qualified address, and a `seatId` taken from that
    * address would be refused as `author-not-a-member`.
    */
-  it("posts to a channel that lists it, signed with its `seatId`", async () => {
+  it("posts to a mailbox that lists it, signed with its `seatId`", async () => {
     const registered: FlowInstance[] = [];
     const { hire } = createSeatHireBlocks({
       kinds,
@@ -197,19 +197,19 @@ describe("a runtime-hired seat signs as the member its channel lists", () => {
     expect(hired.error).toBeUndefined();
     const author = registered[0]!.config[SEAT_ID_KEY];
 
-    const roster: ChannelManifest[] = [
+    const roster: MailboxManifest[] = [
       { id: "support.desk", declared: { members: ["support.ada", "support.otto"] }, body: "Charter." },
     ];
-    const [channel] = channelInstances(roster);
+    const [mailbox] = mailboxInstances(roster);
     const state = createFlowState({
-      flows: { [channel!.kind]: channel! },
+      flows: { [mailbox!.kind]: mailbox! },
       stores: { default: { primary: inMemoryStores() } },
     } as never);
     try {
       const runtime = await state.getRuntime();
-      await openChannels(roster, { client: sessionApi(runtime.stores), userId: "u_seat" });
+      await openMailboxes(roster, { client: sessionApi(runtime.stores), userId: "u_seat" });
       const posted = (await runAction({
-        flow: channel!,
+        flow: mailbox!,
         actionName: "post",
         input: { body: "on it", author },
         userId: "u_seat",

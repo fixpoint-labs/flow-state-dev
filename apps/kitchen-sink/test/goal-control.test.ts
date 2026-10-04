@@ -16,7 +16,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handler } from "@flow-state-dev/core";
-import { channelPostCapability, type ChannelManifest } from "@flow-state-dev/workforce";
+import { mailboxPostCapability, type MailboxManifest } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 import { goalControl, pageGoalControl } from "@/lib/goal-control";
@@ -80,15 +80,15 @@ describe("V4 · every control is read through the gate, and only in this app (BR
   /** Each control, off and on: what it hands back outside test mode, and in it. */
   const wake = handler({ name: "a-wake", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => null });
   const catalog = { escalate: handler({ name: "escalate", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => null }) };
-  const routed = [{ id: "support.help", declared: { routing: { fallback: "support.general" } } }] as unknown as ChannelManifest[];
+  const routed = [{ id: "support.help", declared: { routing: { fallback: "support.general" } } }] as unknown as MailboxManifest[];
 
   const controls: Array<[name: string, apply: () => Promise<{ swapped: boolean }>]> = [
-    ["no-landing", async () => ({ swapped: (await import("@/lib/channel-landing-control")).channelLandingControl(catalog, channelPostCapability) !== undefined })],
+    ["no-landing", async () => ({ swapped: (await import("@/lib/mailbox-landing-control")).mailboxLandingControl(catalog, mailboxPostCapability) !== undefined })],
     ["no-filing", async () => ({ swapped: (await import("@/lib/escalate-control")).escalateControl(catalog) !== undefined })],
-    ["no-route", async () => ({ swapped: (await import("@/lib/channel-route-control")).withChannelRouteControl(routed) !== routed })],
-    ["name-only-notify", async () => ({ swapped: (await import("@/lib/channel-wake-control")).withChannelWakeControl(wake) !== wake })],
-    ["no-author-filter", async () => ({ swapped: (await import("@/lib/channel-wake-control")).withChannelWakeControl(wake) !== wake })],
-    ["post-without-author", async () => ({ swapped: (await import("@/lib/channel-post-control")).channelPostControl() !== undefined })],
+    ["no-route", async () => ({ swapped: (await import("@/lib/mailbox-route-control")).withMailboxRouteControl(routed) !== routed })],
+    ["name-only-notify", async () => ({ swapped: (await import("@/lib/mailbox-wake-control")).withMailboxWakeControl(wake) !== wake })],
+    ["no-author-filter", async () => ({ swapped: (await import("@/lib/mailbox-wake-control")).withMailboxWakeControl(wake) !== wake })],
+    ["post-without-author", async () => ({ swapped: (await import("@/lib/mailbox-post-control")).mailboxPostControl() !== undefined })],
   ];
 
   it.each(controls)("%s: inert outside test mode, and swapped in under it", async (name, apply) => {

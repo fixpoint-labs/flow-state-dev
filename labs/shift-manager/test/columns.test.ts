@@ -24,6 +24,10 @@ const EXPECTED: Record<string, (typeof COLUMNS)[number]> = {
 };
 
 describe("BR-12: a row's column", () => {
+  it("draws the five columns in v2's order: IN REVIEW before NEEDS YOU (v2:1327)", () => {
+    expect([...COLUMNS]).toEqual(["QUEUED", "RUNNING", "IN REVIEW", "NEEDS YOU", "DONE"]);
+  });
+
   it("places every shipped status", () => {
     const shipped = taskStatusSchema.options;
     expect([...shipped].sort()).toEqual(Object.keys(EXPECTED).sort());
@@ -53,17 +57,17 @@ const row = (status: string, assignee: string | null, id = status): BoardRow =>
 describe("which seat holds a row, when a bare name is in more than one team", () => {
   const ops = toSeat({ id: "ops.builder", kind: "worker" }, "acme")!;
   const eng = toSeat({ id: "eng.builder", kind: "worker" }, "acme")!;
-  const onChannel = (channelId: string, members: string[]) => toWorkstream({ id: channelId, kind: "channel", members })!;
-  const rowOn = (channelId: string, assignee: string) =>
-    toBoardRow(`${channelId}.work`, channelId, "r", { id: "r", title: "r", status: "in_progress", assignee });
+  const onMailbox = (mailboxId: string, members: string[]) => toWorkstream({ id: mailboxId, kind: "mailbox", members })!;
+  const rowOn = (mailboxId: string, assignee: string) =>
+    toBoardRow(`${mailboxId}.work`, mailboxId, "r", { id: "r", title: "r", status: "in_progress", assignee });
 
-  it("resolves the name through the row's channel's members", () => {
-    const roster: Roster = { seats: [ops, eng], workstreams: [onChannel("eng.feature", ["eng.builder"])] };
+  it("resolves the name through the row's mailbox's members", () => {
+    const roster: Roster = { seats: [ops, eng], workstreams: [onMailbox("eng.feature", ["eng.builder"])] };
     expect(seatFor(roster, rowOn("eng.feature", "builder"))?.id).toBe("eng.builder");
   });
 
-  it("attributes the row to no seat when the channel doesn't settle it, never to several", () => {
-    const both: Roster = { seats: [ops, eng], workstreams: [onChannel("x.shared", ["ops.builder", "eng.builder"])] };
+  it("attributes the row to no seat when the mailbox doesn't settle it, never to several", () => {
+    const both: Roster = { seats: [ops, eng], workstreams: [onMailbox("x.shared", ["ops.builder", "eng.builder"])] };
     expect(seatFor(both, rowOn("x.shared", "builder"))).toBeUndefined();
     const neither: Roster = { seats: [ops, eng], workstreams: [] };
     expect(seatFor(neither, rowOn("x.other", "builder"))).toBeUndefined();

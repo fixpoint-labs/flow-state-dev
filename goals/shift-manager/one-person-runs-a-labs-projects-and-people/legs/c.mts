@@ -12,7 +12,7 @@ import { answerInInbox, askCos, asksOf, callsTo, quote, readInventory, readRoste
 
 export async function legC(
   world: World,
-  channelSession: string,
+  mailboxSession: string,
   opts: { seat: string; kind: string; patchedConfig: string; shippedConfig: string },
 ): Promise<void> {
   const r = world.record;
@@ -32,7 +32,7 @@ export async function legC(
     const hires = callsTo(hire, "hire");
     if (hires.length !== 1 || !hires[0]!.ok) r.fail("c1", `CoS's session holds ${hires.length} hire call(s), ${hires.filter((h) => h.ok).length} ok: ${quote(hire)}`);
     const teams = await teamsSeats(world);
-    const row = rowOf(await readInventory(world.routes.owner, channelSession));
+    const row = rowOf(await readInventory(world.routes.owner, mailboxSession));
     if (row === undefined || !teams.includes(String(row.id))) r.fail("c1", `TEAMS doesn't list "${seat}" (inventory row ${String(row?.id)}, TEAMS [${teams.join(", ")}])`);
     else if (row.kind !== kind) r.fail("c1", `"${seat}" was hired on ${row.kind}, not ${kind}`);
     else r.saw("c1", `CoS: ${quote(hire)}; TEAMS lists ${row.id} on ${row.kind}`);
@@ -83,7 +83,7 @@ export async function legC(
     if (problems.length > 0) r.fail("c4", `boot 3 names problems: ${problems.join(" | ")}`);
     const teams = await teamsSeats(world);
     if (teams.some((t) => t === seat || t.endsWith(`.${seat}`))) r.fail("c4", `TEAMS still lists "${seat}"`);
-    const inv = rowOf(await readInventory(world.routes.owner, channelSession));
+    const inv = rowOf(await readInventory(world.routes.owner, mailboxSession));
     const ros = rowOf(((await readRoster(world.routes.owner, cosSession)) ?? []).map((x) => ({ ...x, id: x.seatId })));
     if (inv !== undefined || ros !== undefined) r.fail("c4", `"${seat}" still has ${inv !== undefined ? "an inventory row" : ""} ${ros !== undefined ? "a roster row" : ""}`);
     if (r.verdict("c4") !== "FAIL") r.saw("c4", `boot 3 named no problem; TEAMS [${teams.join(", ")}]; no inventory or roster row for "${seat}"`);

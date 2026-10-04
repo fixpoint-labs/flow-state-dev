@@ -127,8 +127,8 @@ export function seams(base: string): SeamRow[] {
       return m === null ? [] : m[1]!.split(",").map((t) => t.trim()).filter(Boolean);
     };
     const cos = toolsOf(join(tree, "org/workers/chief-of-staff/WORKER.md"));
-    // PLAN's six, plus `post-to-channel`: FIX-1719's S6 gives CoS "discover, post to channels".
-    const want = ["hire", "fire", "rehire", "brokenSeats", "createProject", "setWorkstreams", "post-to-channel"];
+    // PLAN's six, plus `post-to-mailbox`: FIX-1719's S6 gives CoS "discover, post to mailboxes".
+    const want = ["hire", "fire", "rehire", "brokenSeats", "createProject", "setWorkstreams", "post-to-mailbox"];
     out.push(`CoS tools: [${cos.join(", ")}]`);
     const cosOk = JSON.stringify([...cos].sort()) === JSON.stringify([...want].sort());
     if (!cosOk) out.push(`FAIL: wanted [${want.join(", ")}]`);
@@ -189,30 +189,33 @@ export function seams(base: string): SeamRow[] {
     const addedPaths = git("diff", "--name-only", "--diff-filter=A", base, "HEAD").split("\n").filter(Boolean);
     // A Lab tree's `workforce/projects/` or `workforce/agents/` folder; `packages/workforce/src/projects/`
     // is the package's own source module, not a tree folder.
-    const all = addedPaths.filter((p) => (/(^|\/)workforce\/(projects|agents)\//.test(p) && !p.startsWith("packages/")) || /(^|\/)CHANNELS\.md$/.test(p));
-    out.push(`$ added paths under a tree's workforce/projects/ or workforce/agents/, or named CHANNELS.md: ${all.length}`);
+    const all = addedPaths.filter((p) => (/(^|\/)workforce\/(projects|agents)\//.test(p) && !p.startsWith("packages/")) || /(^|\/)MAILBOXES\.md$/.test(p));
+    out.push(`$ added paths under a tree's workforce/projects/ or workforce/agents/, or named MAILBOXES.md: ${all.length}`);
     for (const p of all) out.push(`  ${p}`);
     const keysOf = (text: string) => {
       const m = /const DECLARABLE_KEYS = \[([\s\S]*?)\] as const;/.exec(text);
-      return m === null ? undefined : m[1]!.split(",").map((k) => k.trim()).filter(Boolean);
+      // The boards key's constant was renamed with the mailbox; it is the same key.
+      return m === null ? undefined : m[1]!.split(",").map((k) => k.trim().replace(/^\w+_BOARDS_KEY$/, "BOARDS_KEY")).filter(Boolean);
     };
-    const binder = "packages/workforce/src/channel/channel-binder.ts";
-    const before = keysOf(git("show", `${base}:${binder}`));
+    // The binder moved with the mailbox rename: the base's is found by name, not spelled.
+    const baseBinder = git("ls-tree", "-r", "--name-only", base, "packages/workforce/src").split("\n").find((p) => /\/\w+-binder\.ts$/.test(p));
+    const binder = "packages/workforce/src/mailbox/mailbox-binder.ts";
+    const before = baseBinder === undefined ? undefined : keysOf(git("show", `${base}:${baseBinder}`));
     const after = keysOf(readFileSync(join(REPO_ROOT, binder), "utf8"));
     const gained = (after ?? []).filter((k) => !(before ?? []).includes(k));
     const lost = (before ?? []).filter((k) => !(after ?? []).includes(k));
-    out.push(`$ CHANNEL.md DECLARABLE_KEYS ${base.slice(0, 9)} → commit: [${before?.join(", ")}] → [${after?.join(", ")}]; gained [${gained.join(", ")}], lost [${lost.join(", ")}]`);
+    out.push(`$ MAILBOX.md DECLARABLE_KEYS ${base.slice(0, 9)} → commit: [${before?.join(", ")}] → [${after?.join(", ")}]; gained [${gained.join(", ")}], lost [${lost.join(", ")}]`);
     const keysOk = before !== undefined && after !== undefined && JSON.stringify(gained) === JSON.stringify(["MINT_FOR_KEY"]) && lost.length === 0;
     if (naming.length > 0) out.push("FAIL: core or engine gained a Project, Workstream, CoS or admin-seat name");
-    if (all.length > 0) out.push("FAIL: a forbidden tree folder or CHANNELS.md was added");
-    if (!keysOk) out.push("FAIL: CHANNEL.md's key list gained something other than mintFor");
+    if (all.length > 0) out.push("FAIL: a forbidden tree folder or MAILBOXES.md was added");
+    if (!keysOk) out.push("FAIL: MAILBOX.md's key list gained something other than mintFor");
     return naming.length === 0 && all.length === 0 && keysOk;
   });
 
   // ---- Vocabulary (ER-13) ---------------------------------------------------------------
   const PAGES = [
     "apps/docs/docs/workforce/overview.md",
-    "apps/docs/docs/workforce/channels.md",
+    "apps/docs/docs/workforce/mailboxes.md",
     "apps/docs/docs/workforce/projects.md",
     "apps/docs/docs/workforce/chief-of-staff.md",
     "apps/docs/docs/workforce/durable-hire.md",
@@ -264,8 +267,8 @@ export function seams(base: string): SeamRow[] {
     const has = (page: string, re: RegExp) => existsSync(join(REPO_ROOT, page)) && re.test(readFileSync(join(REPO_ROOT, page), "utf8"));
     const owned: Array<[string, string, RegExp]> = [
       ["the shared section, projects and workstreams (FIX-1718)", "apps/docs/docs/workforce/overview.md", /^## Projects, workstreams, and the seats that run them\n[\s\S]*?\bproject groups workstreams\b/im],
-      ["the shared section, org seat and channel (FIX-1719)", "apps/docs/docs/workforce/overview.md", /^## Projects, workstreams, and the seats that run them\n[\s\S]*?chief of staff[\s\S]*?(approve)/im],
-      ["A room per project (FIX-1718)", "apps/docs/docs/workforce/channels.md", /^## A room per project$/m],
+      ["the shared section, org seat and mailbox (FIX-1719)", "apps/docs/docs/workforce/overview.md", /^## Projects, workstreams, and the seats that run them\n[\s\S]*?chief of staff[\s\S]*?(approve)/im],
+      ["A room per project (FIX-1718)", "apps/docs/docs/workforce/mailboxes.md", /^## A room per project$/m],
       ["Asking CoS for a project (FIX-1718)", "apps/docs/docs/workforce/projects.md", /^# Projects$[\s\S]*chief of staff/m],
       ["Shift Manager's PROJECTS (FIX-1718)", "labs/shift-manager/README.md", /^## What you see$[\s\S]*?PROJECTS/m],
       ["The CoS page (FIX-1719)", "apps/docs/docs/workforce/chief-of-staff.md", /^# The chief of staff$[\s\S]*?^## Adding one$[\s\S]*?askBefore/m],

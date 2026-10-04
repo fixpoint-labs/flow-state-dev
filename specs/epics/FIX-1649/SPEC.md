@@ -28,6 +28,13 @@ screen with v2, which the closure runs as leg d. Rows waiting on FIX-1650 to 165
 structure kept above, and the registry parts stay out. What moved:
 [EVOLUTION.md](EVOLUTION.md#amendment--2026-10-02--v2s-look).
 
+**Amended 2026-10-04, at wrap: leg c as the closure checks it.** The closure (FIX-1663,
+[#2709](https://github.com/fixpoint-labs/flow-state-dev/pull/2709)) passed on `01444863c` with
+every control right. Legs a to c now point at its goal check for their mechanics, as leg d does, and the
+calls made during closure (Inbox's workstreams, ER-15's room writes) are recorded:
+[EVOLUTION.md](EVOLUTION.md#amendment--2026-10-04--wrap). [The path](PLAN.md#the-path) is
+redrawn as it shipped.
+
 ## Four teams, before and after
 
 | A team that… | Today | After this epic |
@@ -64,8 +71,8 @@ flowchart LR
   L2 --> P
   L3 -->|"no App Lab value on any swept part"| P
   L4 -->|"every element matches its v2 row"| P
-  C["control · one reused part with a hardcoded accent"] -.-> L3
-  L3 -.->|"under the control"| F["must FAIL · names the part"]
+  C["control · a reused card's copy with a hardcoded accent"] -.-> L3
+  L3 -.->|"under the control"| F["must FAIL at that card, and only there"]
 ```
 
 Leg c makes "not baked in" checkable; its control plants the failure it exists to catch. Leg d
@@ -74,15 +81,13 @@ makes "v2's look" checkable, with FIX-1737's controls.
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's goal check ([FIX-1663](https://linear.app/fixpoint-labs/issue/FIX-1663)), in a browser, on one `main` commit after every other child merges ([ER-12](BUSINESS-RULES.md#how-the-set-is-run)) |
-| **Signal** | Leg a lands on Chief of Staff, App Lab's first screen, and walks the design's two journeys from there: **Inbox → an approval → Approve & run**, and it leaves Inbox and its card in the workstream's stream together; **Tasks or the project board → a task → its Session**, with the task inspector beside it. Then every sidebar section, every tab at the three levels, the right panel at a workstream and at a task, and resources from Jump to are reached; a message to `@worker` in a workstream's composer arrives in that worker's session as a turn. Where FIX-1650 hasn't shipped projects, the project level passes on its named empty state and the second journey starts from Tasks or the workstream's Board. Leg b: the second tree opens through FIX-1662's load path and reaches the same surfaces, with no shell code of its own. Leg c: with no App Lab theme loaded, computed styles on every swept part carry no App Lab value, and a static check finds none under `packages/`. Leg d (amended 2026-10-02): FIX-1737's goal check (`goals/shift-manager/it-draws-v2s-look/`) on the same commit over the DevForce tree and its own keyless desk Lab, day and night: both fonts loaded, every look-table row rendered, and every visible element matches its row in a v2 look table that cites v2's lines, outside the rows that wait on a sibling and the registry parts it lists |
+| **Signal** | One line per leg; the mechanics live in the closure's [`goal.md`](../../../goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/goal.md) and its `legs.mts`.<br>· **Leg a:** from Chief of Staff, the design's two journeys (Inbox → an approval → Approve & run; Tasks or the Board → a task → its Session), every surface the shell promises, and an `@worker` turn arriving in that worker's session. Which workstreams an ask belongs to is read per FIX-1662's BR-18 ([decided at closure](EVOLUTION.md#amendment--2026-10-04--wrap))<br>· **Leg b:** the second tree reaches the same surfaces through FIX-1662's load path, with no shell code of its own<br>· **Leg c:** with no Shift Manager theme loaded, no swept part carries a theme value, day or night, and none sits under `packages/` ([`goal.md`](../../../goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/goal.md))<br>· **Leg d:** FIX-1737's goal check, [`goals/shift-manager/it-draws-v2s-look/`](../../../goals/shift-manager/it-draws-v2s-look/goal.md), on the same commit |
 | **Input** | The DevForce lab's tree (`goals/devforce-lab/lab/workforce/`) with a real model, under a real org; for leg b, the pentest lab's tree (`goals/pentest-lab/lab/workforce/`), the nearest to CyberForce in the repo. Kitchen-sink's tree stands in for neither |
 | **Anti-game** | No asserting on a child's own tests. No App Lab code that names the second tree. No swept part left out, and no copy out of sync with its source |
-| **Control that must fail** | One reused component given a hardcoded App Lab colour: leg c must FAIL naming it. FIX-1737's three controls, each must FAIL leg d where it names: `drift` (one row rounded, one ID column in sans), `unclassified` (an element no row covers), `missing` (the Tasks ID column removed). Today's `main`: legs a, b and d fail |
+| **Control that must fail** | Leg c's `hardcoded-accent`, a literal accent on a reused card's copy, and leg d's `drift`, `unclassified` and `missing`, each failing where its goal check names. On a commit before Shift Manager's first merge, the `today's main` control fails legs a and b. The full list: [`goal.md`](../../../goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/goal.md) |
 
-**Leg c's sweep, pinned once:** the `@flow-state-dev/react` chrome App Lab mounts (navigator,
-roster, board panels, seat detail), every `@flow-state-dev/ui` registry component App Lab copies
-in (the stream's cards, tool calls and diffs among them), and the devtool page the trace link
-opens. FIX-1663's QA plan lists them by name.
+**Leg c's sweep** is what Shift Manager draws: the registry cards and the devtool page, not react
+chrome it never mounts ([amended at wrap](EVOLUTION.md#amendment--2026-10-04--wrap); the parts by name in [`goal.md`](../../../goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/goal.md)).
 
 ## What's in the box
 

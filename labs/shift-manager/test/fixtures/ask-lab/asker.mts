@@ -5,28 +5,32 @@
  * Two doors, both durable, both ending in the framework's stock
  * `human_approval` suspension:
  *
- * - `onChannelPost` — the internal entry `wakeMemberSeats` dispatches a
- *   channel's post to, with `session: { key }`. So an ask raised here lives in
+ * - `onMailboxPost` — the internal entry `wakeMemberSeats` dispatches a
+ *   mailbox's post to, with `session: { key }`. So an ask raised here lives in
  *   a dispatch-run session, which is what Shift Manager's listing has to ask for.
  * - `ask` — a public action a test calls directly, for a seat that sits in no
- *   channel.
+ *   mailbox.
  *
  * And a door, `message`: a person's line into the seat's session, which the
  * engine writes as a user item before the block runs. It says it heard, as an
- * assistant item of its own ({@link heardLine}), or refuses a line that asks to
- * be refused, so a test can see both.
+ * assistant item of its own ({@link heardLine}), refuses a line that asks to
+ * be refused, or stops on a stock approval for a line that asks for one, the
+ * way a chief of staff's gated change does, so a test can see each. Built
+ * with `projects`, a line `start project <id>` also creates that project
+ * through the project writes' own `createProject`, the way a chief of staff's
+ * tool does, so the turn writes the organization's `projects` collection.
  *
  * No model anywhere: the ask is the point, not what the seat would do.
  */
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
-import { workerConfigSchema } from "@flow-state-dev/workforce";
+import { defineProjectBlocks, workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /** The kind a `WORKER.md` names in its `flow:` line. */
 export const ASKER_KIND = "asker";
 
 const postSchema = z
-  .object({ member: z.string(), channelId: z.string(), body: z.string() })
+  .object({ member: z.string(), mailboxId: z.string(), body: z.string() })
   .passthrough();
 
 const askSchema = z.object({ what: z.string().min(1) });
@@ -38,6 +42,13 @@ const messageSchema = z.object({ message: z.string() });
 /** The line a test sends to be refused. */
 export const ASKER_REFUSED_LINE = "refuse me";
 
+/** The line a test sends to have the seat stop on a person's approval before it answers. */
+export const ASKER_GATED_LINE = "ask me first";
+
+/** The line that starts project `<id>`, on a kind built with `projects`. */
+export const startProjectLine = (id: string) => `start project ${id}`;
+const START_PROJECT = /^start project (\S+)$/;
+
 /** What the seat says when it hears `message`. */
 export const heardLine = (message: string) => `Heard: ${message}`;
 
@@ -45,8 +56,9 @@ const hear = handler({
   name: "asker-hear",
   inputSchema: messageSchema,
   outputSchema: z.object({ heard: z.string() }),
-  execute: (input, ctx) => {
+  execute: async (input, ctx) => {
     if (input.message === ASKER_REFUSED_LINE) throw new Error("This seat won't take that line.");
+    if (input.message === ASKER_GATED_LINE) await ctx.suspend!({ reason: "human_approval", message: `Approve: ${input.message}` });
     ctx.emit.message(heardLine(input.message));
     return { heard: input.message };
   },
@@ -75,7 +87,21 @@ const fromPost = handler({
   execute: (input) => ({ what: input.body }),
 });
 
-const onChannelPost = sequencer({ name: "asker-on-post", inputSchema: postSchema }).step(fromPost).step(gate);
+/** `hear`, then, for a {@link startProjectLine}, `createProject` with that id. */
+function hearAndStartProjects() {
+  return sequencer({ name: "asker-hear-and-start", inputSchema: messageSchema })
+    .step(hear)
+    .stepIf(
+      (out) => START_PROJECT.test(out.heard),
+      (out) => {
+        const id = START_PROJECT.exec(out.heard)![1]!;
+        return { id, title: `Project ${id}` };
+      },
+      defineProjectBlocks().createProject,
+    );
+}
+
+const onMailboxPost = sequencer({ name: "asker-on-post", inputSchema: postSchema }).step(fromPost).step(gate);
 const ask = sequencer({ name: "asker-ask", inputSchema: askSchema }).step(gate);
 
 /**
@@ -83,8 +109,9 @@ const ask = sequencer({ name: "asker-ask", inputSchema: askSchema }).step(gate);
  *
  * @param resources The tree's declared documents, as `resourcesFromDocs`
  *   built them, so a document that opts in to browser reads is served.
+ * @param options.projects Let the `message` door start projects ({@link startProjectLine}).
  */
-export function defineAskerFlow(resources: Record<string, unknown> = {}) {
+export function defineAskerFlow(resources: Record<string, unknown> = {}, options: { projects?: boolean } = {}) {
   return defineFlow({
     kind: ASKER_KIND,
     resources,
@@ -93,7 +120,7 @@ export function defineAskerFlow(resources: Record<string, unknown> = {}) {
     actions: {
       ask: { block: ask, durable: true, description: "Ask a person to approve something." },
       message: {
-        block: hear,
+        block: options.projects === true ? hearAndStartProjects() : hear,
         inputSchema: messageSchema,
         userMessage: (input: { message: string }) => input.message,
         description: "A person's line into this seat's session.",
@@ -101,7 +128,7 @@ export function defineAskerFlow(resources: Record<string, unknown> = {}) {
     },
     internal: {
       actions: {
-        onChannelPost: { block: onChannelPost, durable: true },
+        onMailboxPost: { block: onMailboxPost, durable: true },
       },
     },
   } as never);

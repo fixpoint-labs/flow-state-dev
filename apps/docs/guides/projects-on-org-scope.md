@@ -113,9 +113,9 @@ const flow = defineFlow({
 });
 ```
 
-An `orgId` posted in the request body, query or metadata is ignored, so a caller cannot name someone else's organization. A resolver that returns no organization, a blank one, or `DEFAULT_ORG_ID` is refused with `401`.
+An `orgId` posted in the request body, query or metadata is ignored, so a caller cannot name someone else's organization. A resolver that returns no organization, a blank one, one that is not well-formed Unicode (a lone UTF-16 surrogate), or `DEFAULT_ORG_ID` is refused with `401`.
 
-Organization ids are opaque nonempty strings, app-owned like `userId`. [Authentication](/docs/server/authentication#every-request-runs-in-an-organization) covers the resolver in full.
+Organization ids are opaque strings, app-owned like `userId`: any string that is not empty, whitespace-only, or not well-formed Unicode (a lone UTF-16 surrogate). [Authentication](/docs/server/authentication#every-request-runs-in-an-organization) covers the resolver in full.
 
 ## Switching projects mid-conversation
 

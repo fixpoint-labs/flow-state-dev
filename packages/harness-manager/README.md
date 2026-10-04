@@ -34,17 +34,17 @@ const manager = harnessManager({
 
 Mount it as the block behind a board seat that hands off, and rows filed on that board become supervised runs.
 
-## Running a channel's board
+## Running a mailbox's board
 
-A channel can hold a board (see `@flow-state-dev/workforce` → "Holding a board"). To run its
+A mailbox can hold a board (see `@flow-state-dev/workforce` → "Holding a board"). To run its
 rows as supervised coding runs, hand the manager that board and its id:
 
 ```ts
-import { channelBoard } from "@flow-state-dev/workforce";
+import { mailboxBoard } from "@flow-state-dev/workforce";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { harnessManager, runOwnerDispatcher } from "@flow-state-dev/harness-manager";
 
-const work = channelBoard("eng.feature", "work");
+const work = mailboxBoard("eng.feature", "work");
 
 const manager = harnessManager({
   boardCollectionId: work.id,   // "eng.feature.work"
@@ -52,13 +52,13 @@ const manager = harnessManager({
   // ...the rest as above
 });
 
-// On the board that drains the channel's rows:
+// On the board that drains the mailbox's rows:
 taskBoard({ collection: work, dispatcher: runOwnerDispatcher(), /* ... */ });
 ```
 
 The manager builds each run's checkout folder and git branch from the board's id, used as is. A
-channel's board id contains dots, which the manager accepts. It refuses, when you build it, an id
-git can't use as a branch name, such as one ending in `.lock`; a channel can't name a board
+mailbox's board id contains dots, which the manager accepts. It refuses, when you build it, an id
+git can't use as a branch name, such as one ending in `.lock`; a mailbox can't name a board
 `lock`. Two boards whose ids differ other than in letter case never share a checkout. Board ids
 that worked before keep the same folders and branches, so an upgrade moves nobody's work.
 

@@ -27,8 +27,8 @@ import type { StoredItem } from "../../../lib/shift-manager.mts";
 const hiredAs = (rows: Array<Record<string, any>>, seat: string) => rows.find((r) => typeof r.id === "string" && (r.id === seat || (r.id as string).endsWith(`.${seat}`)));
 
 /** What the seat looks like in each place it can be read. */
-async function where(world: World, channelSession: string, cosSession: string | null, seat: string) {
-  const inventory = await readInventory(world.routes.owner, channelSession);
+async function where(world: World, mailboxSession: string, cosSession: string | null, seat: string) {
+  const inventory = await readInventory(world.routes.owner, mailboxSession);
   const roster = await readRoster(world.routes.owner, cosSession);
   const row = hiredAs(inventory, seat);
   const teams = await teamsSeats(world);
@@ -46,7 +46,7 @@ async function where(world: World, channelSession: string, cosSession: string | 
  * workstream composer (as b4 asks it). Fails at "seat appears" when no seat
  * appears.
  */
-export async function hireWithoutCos(world: World, channelSession: string, boardChannel: string): Promise<void> {
+export async function hireWithoutCos(world: World, mailboxSession: string, boardMailbox: string): Promise<void> {
   const r = world.record;
   const seat = `coder-${hex()}`;
   await world.open("/cos");
@@ -55,15 +55,15 @@ export async function hireWithoutCos(world: World, channelSession: string, board
     return;
   }
   r.saw("setup", "the Chief of Staff view draws its no-CoS state");
-  await postInWorkstream(world, boardChannel, `Please hire one more coder for the team, with the seat id "${seat}".`);
+  await postInWorkstream(world, boardMailbox, `Please hire one more coder for the team, with the seat id "${seat}".`);
   await sleep(20_000);
-  const seen = await where(world, channelSession, null, seat);
+  const seen = await where(world, mailboxSession, null, seat);
   if (seen.inventoryRow === undefined && !seen.inTeams) r.fail("b1", `seat appears: asked of the EM seat with no chief of staff, no seat "${seat}" is in the inventory or TEAMS`);
   else r.saw("b1", `"${seat}" appeared: inventory ${String(seen.inventoryRow?.id)}, TEAMS ${seen.inTeams}`);
 }
 
-async function postInWorkstream(world: World, channel: string, line: string): Promise<string> {
-  await world.open(`/w/${encodeURIComponent(channel)}/stream`);
+async function postInWorkstream(world: World, mailbox: string, line: string): Promise<string> {
+  await world.open(`/w/${encodeURIComponent(mailbox)}/stream`);
   await world.page.getByTestId("composer-input").waitFor({ timeout: 15_000 });
   await world.page.getByTestId("composer-input").fill(line);
   await world.page.getByTestId("composer-send").click();
@@ -76,7 +76,7 @@ async function postInWorkstream(world: World, channel: string, line: string): Pr
 }
 
 /** b1 to b4. `restart` stops and starts the Lab on the same store. */
-export async function legB(world: World, channelSession: string, boardChannel: string, restart: (label: string) => Promise<void>, deny: boolean): Promise<void> {
+export async function legB(world: World, mailboxSession: string, boardMailbox: string, restart: (label: string) => Promise<void>, deny: boolean): Promise<void> {
   const r = world.record;
   const seat = `coder-${hex()}`;
 
@@ -92,7 +92,7 @@ export async function legB(world: World, channelSession: string, boardChannel: s
   const raised = cosSession === null || hire.requestId === null ? [] : (await asksOf(world.routes.owner, cosSession, hire.requestId)).filter((a) => a.reason === "human_approval");
   if (raised.length > 0) r.fail("b1", `the hire raised ${raised.length} human_approval ask(s)`);
   if (hire.status !== "completed") r.fail("b1", `the hire turn ended ${hire.status}`);
-  const hired = await where(world, channelSession, cosSession, seat);
+  const hired = await where(world, mailboxSession, cosSession, seat);
   if (hired.inventoryRow === undefined) r.fail("b1", `seat appears: no inventory row for "${seat}"`);
   if (hired.rosterRow === undefined) r.fail("b1", `seat appears: no roster row for "${seat}"${hired.rosterReadable ? "" : " (no session reads the roster)"}`);
   if (!hired.inTeams) r.fail("b1", `seat appears: TEAMS doesn't list "${seat}"`);
@@ -124,10 +124,10 @@ export async function legB(world: World, channelSession: string, boardChannel: s
       r.saw("b2", `Inbox card: "${text.replace(/\s+/g, " ").slice(0, 200)}"; stored ask ${JSON.stringify(data)}`);
     }
   }
-  const waiting = await where(world, channelSession, cosSession, seat);
+  const waiting = await where(world, mailboxSession, cosSession, seat);
   if (waiting.inventoryRow === undefined || waiting.rosterRow === undefined || !waiting.inTeams) r.fail("b2", `"${seat}" changed before anyone answered: inventory ${waiting.inventoryRow !== undefined}, roster ${waiting.rosterRow !== undefined}, TEAMS ${waiting.inTeams}`);
   await restart("b2-restart");
-  const still = await where(world, channelSession, cosSession, seat);
+  const still = await where(world, mailboxSession, cosSession, seat);
   if (still.inventoryRow === undefined || still.rosterRow === undefined || !still.inTeams) r.fail("b2", `after a restart "${seat}" is inventory ${still.inventoryRow !== undefined}, roster ${still.rosterRow !== undefined}, TEAMS ${still.inTeams}`);
   const inboxAfter = await inboxAsks(world);
   if (ask?.suspensionId !== undefined && !inboxAfter.includes(ask.suspensionId)) r.fail("b2", `after a restart Inbox no longer lists the ask ${ask.suspensionId}`);
@@ -139,7 +139,7 @@ export async function legB(world: World, channelSession: string, boardChannel: s
     if (!answered.clicked) r.fail("b3", `Inbox draws no card for ${ask.suspensionId} to answer`);
     const settled = await world.routes.owner.settle("chief-of-staff", fire.requestId, 180_000, true);
     r.saw("b3", `${deny ? "Reject" : "Approve"} clicked in Inbox; the fire's turn ended ${settled}`);
-    const gone = await where(world, channelSession, cosSession, seat);
+    const gone = await where(world, mailboxSession, cosSession, seat);
     const checkGone = (label: string, g: typeof gone) => {
       if (g.inventoryRow !== undefined || g.rosterRow !== undefined || g.inTeams) {
         r.fail("b3", `seat gone: ${label} "${seat}" is inventory ${g.inventoryRow !== undefined}, roster ${g.rosterRow !== undefined}, TEAMS ${g.inTeams}`);
@@ -149,7 +149,7 @@ export async function legB(world: World, channelSession: string, boardChannel: s
     };
     if (checkGone(`after ${deny ? "Reject" : "Approve"}`, gone)) r.saw("b3", `"${seat}" left TEAMS, the inventory and the roster`);
     await restart("b3-restart");
-    if (checkGone("after a restart", await where(world, channelSession, cosSession, seat))) r.saw("b3", "still gone after a restart");
+    if (checkGone("after a restart", await where(world, mailboxSession, cosSession, seat))) r.saw("b3", "still gone after a restart");
   } else {
     r.fail("b3", "seat gone: no ask to answer");
   }
@@ -157,10 +157,10 @@ export async function legB(world: World, channelSession: string, boardChannel: s
   // ---- b4 · no other seat hires ---------------------------------------------------
   const other = `coder-${hex()}`;
   const rosterBefore = (await readRoster(world.routes.owner, cosSession))?.length;
-  const delivered = await postInWorkstream(world, boardChannel, `EM, please hire another coder seat for this team yourself, with the seat id "${other}".`);
+  const delivered = await postInWorkstream(world, boardMailbox, `EM, please hire another coder seat for this team yourself, with the seat id "${other}".`);
   // The EM answers in its own time; give it the turn a person would wait for.
   await sleep(30_000);
-  const after = await where(world, channelSession, cosSession, other);
+  const after = await where(world, mailboxSession, cosSession, other);
   if (after.rosterRow !== undefined || after.inventoryRow !== undefined || after.inTeams) r.fail("b4", `asked of the EM seat, "${other}" was hired: roster ${after.rosterRow !== undefined}, inventory ${after.inventoryRow !== undefined}`);
   else r.saw("b4", `the line went ${delivered}; no roster row for "${other}" (roster ${rosterBefore} rows before, ${(await readRoster(world.routes.owner, cosSession))?.length} after)`);
 }
