@@ -188,7 +188,7 @@ Asking also needs a model with the single-step methods: `generateStep`, and `str
 
 ## What it can't do
 
-- **Fire itself, or any declared seat.** `fire` answers that a seat declared in a worker file is removed by editing its folder.
+- **Fire itself, or any declared seat.** `fire` answers that a seat declared in a `WORKER.md` file is removed by editing its folder.
 - **Hire under a declared seat's id.** A hire that reuses one is refused, naming the kind already there.
 - **Hire a kind outside `allowKinds`.** The refusal lists the kinds it may hire.
 - **Hire another seat that can hire, when `refuseRosterAdmin` is on.** A hire or re-hire whose settings name `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or pick the `seat-hire` capability under `capabilities:`, is refused, whatever the kind. Roster admin stays with the seats your app declares.
