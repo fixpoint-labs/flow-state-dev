@@ -83,6 +83,23 @@ export interface Mount {
    */
   collectionId: string;
   /**
+   * Narrow the mount to one key prefix of its collection: `"a"` addresses the
+   * keys under `a/…` and nothing else.
+   *
+   * Inside the place the scope does not appear — the collection's `a/notes.md`
+   * sits at `<prefix>/notes.md` — so the agent sees one owner's files as if
+   * they were the whole collection. Every list, read, write and delete the
+   * projection makes through this mount is keyed under the scope, and the
+   * listing is filtered by the collection itself rather than after the fact:
+   * a mount that listed every key and dropped the rest would still have read
+   * every owner's rows.
+   *
+   * A key prefix, not a path: no leading or trailing `/`, no empty, `.` or
+   * `..` segment. Omit it and the mount addresses the whole collection, as
+   * before.
+   */
+  scope?: string;
+  /**
    * Whether a flush may write back. A read-only mount is hydrated and then
    * left alone — its paths are skipped, never reported as orphans.
    */

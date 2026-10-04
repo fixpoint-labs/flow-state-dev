@@ -33,6 +33,7 @@
  * property that made persisting it a follow-up rather than a requirement.
  */
 import { createHash } from "node:crypto";
+import { getPatternPrefix } from "@flow-state-dev/core/types";
 import type { FlushOutcome, FlushReport, Mount, Place, ProjectedEntryState } from "./types";
 import { PlaceUnreadableError } from "./types";
 import { isMetadataKey, normalizePath, routePath } from "./routing";
@@ -130,6 +131,10 @@ export function createProjection({
     byCollection.set(mount.collectionId, mount.prefix);
   }
 
+  for (const mount of mounts) {
+    if (mount.scope !== undefined) assertScope(mount.scope);
+  }
+
   const prefixes = mounts.map((m) => normalizePath(m.prefix));
 
   /**
@@ -143,6 +148,44 @@ export function createProjection({
   const placePath = (mount: Mount, key: string): string =>
     normalizePath(key === "" ? mount.prefix : `${mount.prefix}/${key}`);
 
+  /**
+   * The collection's own key for a key routed inside `mount`.
+   *
+   * Routing answers relative to the mount's prefix in the place; a scoped
+   * mount's rows live one prefix deeper in the collection. Every collection
+   * call and every claim goes through here, so a scoped mount cannot reach a
+   * key outside its scope by any path.
+   */
+  const entryKey = (mount: Mount, key: string): string =>
+    mount.scope === undefined ? key : `${mount.scope}/${key}`;
+
+  /**
+   * The rows a mount addresses, as `[key inside the mount, ref]`.
+   *
+   * A scoped mount asks the collection for its scope and nothing wider — the
+   * filter is applied where the rows are read (BP-033). The trailing `/` is
+   * what bounds it: the collection's filter is a bare string prefix, so `a`
+   * alone would return `ab/…` too. Each key is checked again on the way out,
+   * so a store whose filter is looser than asked still cannot hand this mount
+   * another scope's row.
+   */
+  async function rowsOf(mount: Mount) {
+    if (mount.scope === undefined) {
+      return (await mount.collection.list()).map(
+        (entry) => [stripPrefix(entry.path, normalizePath(mount.prefix)), entry] as const,
+      );
+    }
+    const within = `${mount.scope}/`;
+    const patternPrefix = getPatternPrefix(mount.collection.pattern);
+    const rows = [];
+    for (const entry of await mount.collection.list(within)) {
+      const key = stripPrefix(entry.path, patternPrefix);
+      if (!key.startsWith(within)) continue;
+      rows.push([key.slice(within.length), entry] as const);
+    }
+    return rows;
+  }
+
   /** What the collection holds at `key`, or `null`. */
   async function theirContent(mount: Mount, key: string): Promise<string | null> {
     const existing = await mount.collection.getOptional(key);
@@ -152,12 +195,11 @@ export function createProjection({
 
   async function hydrate(): Promise<void> {
     for (const mount of mounts) {
-      for (const entry of await mount.collection.list()) {
-        // The ref's own storage path, not `state.path`. State is the
-        // application's — a collection written by anything other than a
-        // projection may carry no `path` field at all, and hydrating off it
-        // would silently lay down nothing.
-        const key = stripPrefix(entry.path, normalizePath(mount.prefix));
+      // Keyed off the ref's own storage path, not `state.path`. State is the
+      // application's — a collection written by anything other than a
+      // projection may carry no `path` field at all, and hydrating off it
+      // would silently lay down nothing.
+      for (const [key, entry] of await rowsOf(mount)) {
         if (isMetadataKey(key)) continue;
         const content = await entry.readContent();
         if (content === null) continue;
@@ -270,16 +312,16 @@ export function createProjection({
       const { mount, key } = routed;
 
       // A delete is a write. Same claim, same refusal.
-      if (claims.claim(claimKey(mount.collectionId, key), holder) !== holder) {
+      if (claims.claim(claimKey(mount.collectionId, entryKey(mount, key)), holder) !== holder) {
         outcomes.push({ kind: "contested", path });
         continue;
       }
 
-      const theirs = await theirContent(mount, key);
+      const theirs = await theirContent(mount, entryKey(mount, key));
       const theirHash = theirs === null ? undefined : hashContent(theirs);
 
       if (theirHash === base) {
-        await mount.collection.delete(key);
+        await mount.collection.delete(entryKey(mount, key));
         baseline.delete(path);
         outcomes.push({ kind: "deleted", path });
         continue;
@@ -348,20 +390,21 @@ export function createProjection({
     // that predates it, is granted a claim proving nothing, and overwrites
     // work it never saw — with both writers told they succeeded. The claim
     // has to cover the read-compare-write, not just the write.
-    if (claims.claim(claimKey(mount.collectionId, key), holder) !== holder) {
+    const entry = entryKey(mount, key);
+    if (claims.claim(claimKey(mount.collectionId, entry), holder) !== holder) {
       return { kind: "contested", path };
     }
 
-    const theirs = await theirContent(mount, key);
+    const theirs = await theirContent(mount, entry);
     const theirHash = theirs === null ? undefined : hashContent(theirs);
 
     if (base === undefined && theirHash === undefined) {
-      await commit(mount, key, local, now);
+      await commit(mount, entry, local, now);
       baseline.set(path, now);
       return { kind: "created", path };
     }
     if (theirHash === base) {
-      await commit(mount, key, local, now);
+      await commit(mount, entry, local, now);
       baseline.set(path, now);
       return { kind: "written", path };
     }
@@ -404,7 +447,12 @@ export function createProjection({
     return await claiming((holder) => decide(mount, key, path, content, holder));
   }
 
-  /** Write content back to the collection, keeping its state in step. */
+  /**
+   * Write content back to the collection, keeping its state in step.
+   *
+   * `key` is the collection's own key — scope included — and so is the
+   * `path` it records.
+   */
   async function commit(
     mount: Mount,
     key: string,
@@ -430,4 +478,22 @@ export function createProjection({
     put,
     ownedPaths: () => [...baseline.keys()],
   };
+}
+
+/**
+ * Refuse a scope that is not a plain key prefix.
+ *
+ * The scope is joined onto every key the mount touches, so anything that is
+ * not a clean relative prefix is a way to address keys outside it: `..`
+ * walks up, an empty segment or a stray `/` spells a different key than the
+ * one compared against.
+ */
+function assertScope(scope: string): void {
+  const segments = scope.split("/");
+  if (scope === "" || segments.some((s) => s === "" || s === "." || s === ".." || s.includes("\\"))) {
+    throw new Error(
+      `a mount scope must be a key prefix like "a" or "a/b" — no leading, trailing or ` +
+        `repeated "/", and no "." or ".." segment. Got ${JSON.stringify(scope)}.`,
+    );
+  }
 }
