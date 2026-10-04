@@ -26,6 +26,7 @@ import type {
   Skill,
   SkillState,
 } from "@flow-state-dev/core";
+import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import {
   parseFrontmatterYaml,
   parseInlineMapping,
@@ -166,6 +167,13 @@ export function validateSkillName(name: string): void {
       `Skill name "${name}" must be lowercase letters, digits, and single hyphens ` +
         `(not at the start or end)`,
     );
+  }
+  // A skill folder named after a Windows device loads on macOS and Linux, and
+  // then the repository cannot be checked out on Windows. The list is the
+  // shared one, which folds case; it runs after the pattern so `CON` keeps
+  // the lowercase message and only a lowercase device name reaches this one.
+  if (isWindowsReservedName(name)) {
+    throw new Error(`Skill name "${name}" is a reserved device name on Windows`);
   }
 }
 

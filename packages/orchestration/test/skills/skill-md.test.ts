@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import {
   parseSkillMd,
   serializeSkillMd,
@@ -355,6 +356,36 @@ describe("validateSkillName", () => {
     expect(() => validateSkillName("pdf-")).toThrow();
     expect(() => validateSkillName("pdf--processing")).toThrow();
     expect(() => validateSkillName("pdf-processing")).not.toThrow();
+  });
+
+  // A skill folder named after a Windows device loads on macOS and Linux and
+  // then makes the repository impossible to check out on Windows, so the
+  // skills tree refuses the same names the rest of the Workforce tree does.
+  //
+  // The device list lives once, in the shared helper, and its own test pins
+  // which names are on it. What this pins is that skill names apply every one
+  // of them: the names are found by asking the helper about every lowercase
+  // three- and four-character name, so a device the helper reserves and this
+  // validator lets through fails here without the list being spelled twice.
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const shortNames = (length: number): string[] =>
+    length === 0 ? [""] : shortNames(length - 1).flatMap((stem) => [...alphabet].map((c) => stem + c));
+  const deviceNames = [...shortNames(3), ...shortNames(4)].filter(isWindowsReservedName);
+  it("finds the 22 Windows device names to check", () => {
+    expect(deviceNames).toHaveLength(22);
+  });
+  it.each(deviceNames)("rejects the Windows device name %s", (name) => {
+    expect(() => validateSkillName(name)).toThrow(/reserved device name on Windows/);
+  });
+  // The shared check folds case, but the name pattern runs first and already
+  // refuses every non-lowercase spelling, so `CON` is told it is not lowercase.
+  it("tells an uppercase device name it is not lowercase", () => {
+    expect(() => validateSkillName("CON")).toThrow(/must be lowercase letters/);
+  });
+  // Numbered devices run 1-9 only: com0 and lpt0 are ordinary names on
+  // Windows, and a device name as a prefix is not a device name.
+  it.each(["com0", "lpt0", "console"])("accepts %s, which is not a device name", (name) => {
+    expect(() => validateSkillName(name)).not.toThrow();
   });
 });
 
