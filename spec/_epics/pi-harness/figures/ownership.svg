@@ -1,0 +1,118 @@
+<svg viewBox="0 0 940 340" role="img"
+     aria-label="Who owns what: seven cross-cutting rules by three columns, the epic LAB-162 and its two issues LAB-163 and LAB-164. LAB-163 builds dispatch and observation, cancellation, and same-session resume; LAB-164 consumes them. LAB-164 decides the trusted question handoff and LAB-163 co-specifies it, the one row with two authors. LAB-164 builds durable parking and decides what counts as a real question; LAB-163 consumes both. The epic itself decides that a harness-contract or question-intake change returns to it, and both issues consume that."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .band  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .band2 { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .joint { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .cons  { fill:none; stroke:var(--rule); stroke-width:1; }
+    .hdr   { stroke:var(--ink-3); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-id  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-own { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-jnt { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-con { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+
+  <g id="header">
+    <text class="t-lbl" x="32" y="26">CROSS-CUTTING RULE</text>
+    <text class="t-lbl" x="620" y="26">LAB-162</text>
+    <text class="t-lbl" x="724" y="26">LAB-163</text>
+    <text class="t-lbl" x="828" y="26">LAB-164</text>
+    <path class="hdr" d="M16 36 H924"/>
+  </g>
+
+  <g id="er1">
+    <rect class="band" x="16" y="40" width="908" height="40"/>
+    <text class="t-id" x="32" y="65">ER-1</text>
+    <text class="t-b" x="76" y="65">Dispatch, observe and cancel OMP on the shipped contract</text>
+    <rect class="cons" x="616" y="50" width="88" height="20" rx="3"/>
+    <text class="t-con" x="660" y="64" text-anchor="middle">—</text>
+    <rect class="own" x="720" y="50" width="88" height="20" rx="3"/>
+    <text class="t-own" x="764" y="64" text-anchor="middle">builds</text>
+    <rect class="cons" x="824" y="50" width="88" height="20" rx="3"/>
+    <text class="t-con" x="868" y="64" text-anchor="middle">consumes</text>
+  </g>
+
+  <g id="er2">
+    <rect class="band2" x="16" y="80" width="908" height="40"/>
+    <text class="t-id" x="32" y="105">ER-2</text>
+    <text class="t-b" x="76" y="105">Cancellation stays cancellation, never relabelled as parking</text>
+    <rect class="cons" x="616" y="90" width="88" height="20" rx="3"/>
+    <text class="t-con" x="660" y="104" text-anchor="middle">—</text>
+    <rect class="own" x="720" y="90" width="88" height="20" rx="3"/>
+    <text class="t-own" x="764" y="104" text-anchor="middle">builds</text>
+    <rect class="cons" x="824" y="90" width="88" height="20" rx="3"/>
+    <text class="t-con" x="868" y="104" text-anchor="middle">consumes</text>
+  </g>
+
+  <g id="er3">
+    <rect class="band" x="16" y="120" width="908" height="40"/>
+    <text class="t-id" x="32" y="145">ER-3</text>
+    <text class="t-b" x="76" y="145">The same saved session continues; resume fails closed</text>
+    <rect class="cons" x="616" y="130" width="88" height="20" rx="3"/>
+    <text class="t-con" x="660" y="144" text-anchor="middle">—</text>
+    <rect class="own" x="720" y="130" width="88" height="20" rx="3"/>
+    <text class="t-own" x="764" y="144" text-anchor="middle">builds</text>
+    <rect class="cons" x="824" y="130" width="88" height="20" rx="3"/>
+    <text class="t-con" x="868" y="144" text-anchor="middle">consumes</text>
+  </g>
+
+  <g id="er4">
+    <rect class="band2" x="16" y="160" width="908" height="40"/>
+    <text class="t-id" x="32" y="185">ER-4</text>
+    <text class="t-b" x="76" y="185">One trusted, attempt-correlated question handoff</text>
+    <rect class="cons" x="616" y="170" width="88" height="20" rx="3"/>
+    <text class="t-con" x="660" y="184" text-anchor="middle">—</text>
+    <rect class="joint" x="720" y="170" width="88" height="20" rx="3"/>
+    <text class="t-jnt" x="764" y="184" text-anchor="middle">co-specs</text>
+    <rect class="own" x="824" y="170" width="88" height="20" rx="3"/>
+    <text class="t-own" x="868" y="184" text-anchor="middle">decides</text>
+  </g>
+
+  <g id="er5">
+    <rect class="band" x="16" y="200" width="908" height="40"/>
+    <text class="t-id" x="32" y="225">ER-5</text>
+    <text class="t-b" x="76" y="225">Park is durable: the attempt and the request end, nothing is held</text>
+    <rect class="cons" x="616" y="210" width="88" height="20" rx="3"/>
+    <text class="t-con" x="660" y="224" text-anchor="middle">—</text>
+    <rect class="cons" x="720" y="210" width="88" height="20" rx="3"/>
+    <text class="t-con" x="764" y="224" text-anchor="middle">consumes</text>
+    <rect class="own" x="824" y="210" width="88" height="20" rx="3"/>
+    <text class="t-own" x="868" y="224" text-anchor="middle">builds</text>
+  </g>
+
+  <g id="er6">
+    <rect class="band2" x="16" y="240" width="908" height="40"/>
+    <text class="t-id" x="32" y="265">ER-6</text>
+    <text class="t-b" x="76" y="265">A real question, not a permission or extension dialog</text>
+    <rect class="cons" x="616" y="250" width="88" height="20" rx="3"/>
+    <text class="t-con" x="660" y="264" text-anchor="middle">—</text>
+    <rect class="cons" x="720" y="250" width="88" height="20" rx="3"/>
+    <text class="t-con" x="764" y="264" text-anchor="middle">consumes</text>
+    <rect class="own" x="824" y="250" width="88" height="20" rx="3"/>
+    <text class="t-own" x="868" y="264" text-anchor="middle">decides</text>
+  </g>
+
+  <g id="er7">
+    <rect class="band" x="16" y="280" width="908" height="40"/>
+    <text class="t-id" x="32" y="305">ER-7</text>
+    <text class="t-b" x="76" y="305">A harness-contract or question-intake change returns to the epic</text>
+    <rect class="own" x="616" y="290" width="88" height="20" rx="3"/>
+    <text class="t-own" x="660" y="304" text-anchor="middle">decides</text>
+    <rect class="cons" x="720" y="290" width="88" height="20" rx="3"/>
+    <text class="t-con" x="764" y="304" text-anchor="middle">consumes</text>
+    <rect class="cons" x="824" y="290" width="88" height="20" rx="3"/>
+    <text class="t-con" x="868" y="304" text-anchor="middle">consumes</text>
+  </g>
+</svg>
