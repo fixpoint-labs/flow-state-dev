@@ -66,6 +66,9 @@ export const chatAssistantRenderers: RendererRegistry = {
     // registry does not name falls through to the raw-JSON dev fallback —
     // `itemVisibility` cannot suppress it, since structural items ignore it.
     "task-board-recorder-failure": false,
+    // goalSeekLoop's stop reason and drain count, emitted once as the loop
+    // exits. It is for tests and tooling reading the stream, not for a reader.
+    "goal-seek-loop-termination": false,
     // A routed channel's record of who each post went to. The channel's lines
     // are `channel-post` items; the record is bookkeeping, never a line.
     "channel-route": false,
