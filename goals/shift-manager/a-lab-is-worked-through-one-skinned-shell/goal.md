@@ -19,7 +19,7 @@
 - **J3.** In a fresh host, `fsdev ui add tool approval` from the commit's registry gives byte-identical copies; with the docs' token block applied as written, changing `--success` repaints both.
 - **J4.** Every surface in the epic's ownership table opens by its address on a fresh load and shows rows or its named empty state; none blank, none refused.
 - **Part 3.** Every child's goal check with its controls, the goal labs the set touched, the design-system and registry tests, `pnpm typecheck` and `pnpm test`.
-- **Part 4.** No literal colour in Shift Manager's source; the pinned routes; Shift Manager's only session writes; one ask card; the layer fence; the final visuals after the hand-back; the docs smoke.
+- **Part 4.** No literal colour in Shift Manager's source; the pinned routes; Shift Manager's only session writes (ER-15's doors, plus the project room's read, post and join and the person's room session, each pinned to the room kind); one ask card; the layer fence; the final visuals after the hand-back; the docs smoke.
 
 **Anti-game:** a hollow pass would be a shell that draws its own rows, a no-theme build that removed more than the theme, or a control that never reaches the code it names. So no assertion reads Shift Manager's own state or a child's output: rows are compared by id with the store, read through the Lab's HTTP routes with the bearer the page was handed. Every scratch patch is printed in full. Each control must fail at its own signal and leave the rest green, or the run says WRONG.
 
