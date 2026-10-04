@@ -47,9 +47,16 @@ function scripted(call: { toolName: string; args: Record<string, unknown> }): Mo
 
 type ToolCall = { toolName: string; args: Record<string, unknown> };
 
+/**
+ * The model the next request resolves, set by {@link run}. Handed to the Lab
+ * once, so the resume route answers with it too.
+ */
+let model: ModelResolver | undefined;
+
 async function open(): Promise<Lab> {
   const harness = selectHarness();
   opened = await openLab({
+    modelResolver: Object.assign((...args: Parameters<ModelResolver>) => model!(...args), { resolveId: (id: string) => id }),
     stores: inMemoryStores(),
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
@@ -65,7 +72,7 @@ async function open(): Promise<Lab> {
 /** Ask the chief of staff, as the Lab's owner, with a model that makes `call`. */
 async function run(lab: Lab, call: ToolCall, message: string) {
   const runtime = await lab.state.getRuntime();
-  (runtime.runtimeConfig as { modelResolver?: ModelResolver }).modelResolver = scripted(call);
+  model = scripted(call);
   return await runAction({
     orgId: LAB_ORG_ID,
     flow: runtime.registry.get(COS) as FlowInstance,

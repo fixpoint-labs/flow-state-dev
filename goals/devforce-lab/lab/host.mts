@@ -56,7 +56,7 @@ import {
   type PrincipalResolver,
 } from "@flow-state-dev/engine";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
+import type { BlockContext, FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
 import type { WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, redactRemote, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
@@ -397,6 +397,12 @@ export interface OpenLabOptions {
   coderSeatId: string;
   /** Wall-clock budget for one harness run. Default 60s. */
   runTimeoutMs?: number;
+  /**
+   * The models the lab's flows resolve. For a check that scripts the model: it
+   * reaches every path a request takes, the HTTP door's resume included.
+   * Absent, the environment's.
+   */
+  modelResolver?: ModelResolver;
   /** The tree to read. Defaults to the lab's own. */
   root?: string;
   /** Silence the engine's own logging. */
@@ -909,6 +915,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // A configured resolver, so the development-organization fallback does
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
     resolvePrincipal: resolveLabPrincipal,
+    ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
     // When something can wait for a person: the EM's ask, or a seat holding a
     // roster tool that asks first (`fire`, `rehire`). Trees with neither run
