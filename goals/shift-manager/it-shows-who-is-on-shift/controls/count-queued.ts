@@ -7,7 +7,7 @@
  * them. The goal must fail at "slots equal held rows" on the worker with a
  * queued row.
  */
-import { readStatus } from "../../../../labs/shift-manager/src/lib/columns.ts";
+import { readStatus } from "../../../../packages/shift-manager/src/lib/columns.ts";
 import {
   allRows,
   rosterOf,
@@ -15,9 +15,9 @@ import {
   seatStates as asWritten,
   type LoadedSnapshot,
   type SeatStates,
-} from "../../../../labs/shift-manager/src/lib/derive.ts";
+} from "../../../../packages/shift-manager/src/lib/derive.ts";
 
-export * from "../../../../labs/shift-manager/src/lib/derive.ts";
+export * from "../../../../packages/shift-manager/src/lib/derive.ts";
 
 const computed = new WeakMap<LoadedSnapshot, SeatStates>();
 

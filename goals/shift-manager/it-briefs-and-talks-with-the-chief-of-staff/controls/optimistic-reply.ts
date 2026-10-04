@@ -8,7 +8,7 @@
  * reply while the seat's session holds neither. The goal must fail at "talk".
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
-export { conversationSession, currentConversation, newConversationId } from "../../../../labs/shift-manager/src/lib/cos.ts";
+export { conversationSession, currentConversation, newConversationId } from "../../../../packages/shift-manager/src/lib/cos.ts";
 
 const typed: string[] = [];
 

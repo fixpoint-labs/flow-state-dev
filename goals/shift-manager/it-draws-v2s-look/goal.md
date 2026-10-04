@@ -4,8 +4,8 @@
 
 **Outcome:** Every screen of Shift Manager is drawn in design v2's look, in the day and night shifts, at a wide and a narrow window. That covers both typefaces loaded, mono on meta text, the title scale, v2's surfaces, square corners, the state squares, the tabs' underline, the highlighter only where something waits on a person, and the frame's widths. Each drawable value equals the Lab's store. The moment a screen drifts from v2, the check names the element, the screen state and the v2 line it broke.
 
-**Input:** Shift Manager as checked out, copied to scratch and built with Vite. Two keyless Labs serve it, each through Shift Manager's own start script:
-- **DevTeam** (`labs/shift-manager/teams/devteam`). Before the sweep, the check posts one filing line (`fixtures/input.json`) and drains it through the EM seat, so one row is running and one ask is pending, as the audit rendered it.
+**Input:** Shift Manager as checked out, copied to scratch and built with Vite. Two keyless Labs serve it, each through Shift Manager's own command:
+- **DevTeam** (`packages/shift-manager/teams/devteam`). Before the sweep, the check posts one filing line (`fixtures/input.json`) and drains it through the EM seat, so one row is running and one ask is pending, as the audit rendered it.
 - **This check's desk Lab** (`lab/`). One `chief-of-staff` seat whose model is `@flow-state-dev/testing`'s mock resolver with one scripted reply. One line is sent through its door before the sweep.
 
 The look table is read against v2 itself (`specs/epics/FIX-1649/assets/design/v2/shift-manager-v2.dc.html`).
@@ -30,7 +30,7 @@ Which regions are graded whole grows with each slice's screens: Chief of Staff's
 
 **Model:** n/a (the desk's chief of staff is a scripted mock; DevTeam's runs are scripted).
 
-**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts` (`GOAL_SHOTS=<dir>` saves one screenshot per screen state). DevTeam runs on a fresh `DEVTEAM_STORE` in the run's scratch directory, never the checkout's `labs/shift-manager/.fsdev/devteam.sqlite`.
+**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts` (`GOAL_SHOTS=<dir>` saves one screenshot per screen state). DevTeam runs on a fresh `DEVTEAM_STORE` in the run's scratch directory, never the checkout's `packages/shift-manager/.fsdev/devteam.sqlite`.
 
 **Controls** (scratch patches to the copy, never the checkout):
 - `GOAL_CONTROL=drift`: the sidebar's team row is rounded, and its Roster count and Tasks' ID cells are set in the sans (Inbox's and Tasks' sidebar counts are drawn by their own marks since slice B). Must FAIL at **surface** on that row and **type** on that count and those cells, in both shifts, at both widths, and nowhere else.

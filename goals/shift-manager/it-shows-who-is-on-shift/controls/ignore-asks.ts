@@ -7,10 +7,10 @@
  * listed. The goal must fail at "status equals the store's" on the asking
  * worker.
  */
-import { readStatus } from "../../../../labs/shift-manager/src/lib/columns.ts";
-import { seatStates as asWritten, type LoadedSnapshot, type SeatStates } from "../../../../labs/shift-manager/src/lib/derive.ts";
+import { readStatus } from "../../../../packages/shift-manager/src/lib/columns.ts";
+import { seatStates as asWritten, type LoadedSnapshot, type SeatStates } from "../../../../packages/shift-manager/src/lib/derive.ts";
 
-export * from "../../../../labs/shift-manager/src/lib/derive.ts";
+export * from "../../../../packages/shift-manager/src/lib/derive.ts";
 
 const computed = new WeakMap<LoadedSnapshot, SeatStates>();
 

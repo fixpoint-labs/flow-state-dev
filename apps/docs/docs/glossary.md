@@ -129,7 +129,7 @@ These sit beside Orchestration on Core and don't use a task board.
 | Term | Where | What it is | Built from |
 |---|---|---|---|
 | **Lab** | Shift Manager | The server one `fsdev.config.mts` default-exports, which Shift Manager serves and reads. | FlowState |
-| **Team profile** | Shift Manager | A Lab config that ships with Shift Manager, opened with `--team`. `devteam` is the one that ships. | Lab |
+| **Team profile** | Shift Manager | A Lab config kept beside Shift Manager in this repository, which its `start` and `dev` scripts open. `devteam` is the one there. It isn't in the published package. | Lab |
 | **Shift Coordinator** | Shift Manager | The home screen: a summary of what is waiting and running, then your conversation with the Lab's chief of staff. | Chief of staff, session |
 | **Ask** | Shift Manager | An approval or a question a worker's run is suspended on, waiting for a person. | Suspension |
 | **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. Asks in another member's sessions aren't listed. Inbox is not a mailbox. | Asks |
