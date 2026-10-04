@@ -89,19 +89,16 @@ const fromPost = handler({
 
 /** `hear`, then, for a {@link startProjectLine}, `createProject` with that id. */
 function hearAndStartProjects() {
-  const { createProject } = defineProjectBlocks();
-  const toProject = handler({
-    name: "asker-to-project",
-    inputSchema: z.object({ heard: z.string() }),
-    outputSchema: z.object({ id: z.string(), title: z.string() }),
-    execute: (input) => {
-      const id = START_PROJECT.exec(input.heard)![1]!;
-      return { id, title: `Project ${id}` };
-    },
-  });
   return sequencer({ name: "asker-hear-and-start", inputSchema: messageSchema })
     .step(hear)
-    .stepIf((out: { heard: string }) => START_PROJECT.test(out.heard), sequencer({ name: "asker-start-project", inputSchema: z.object({ heard: z.string() }) }).step(toProject).step(createProject as never));
+    .stepIf(
+      (out) => START_PROJECT.test(out.heard),
+      (out) => {
+        const id = START_PROJECT.exec(out.heard)![1]!;
+        return { id, title: `Project ${id}` };
+      },
+      defineProjectBlocks().createProject,
+    );
 }
 
 const onMailboxPost = sequencer({ name: "asker-on-post", inputSchema: postSchema }).step(fromPost).step(gate);
