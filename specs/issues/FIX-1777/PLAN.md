@@ -8,85 +8,102 @@ Directional. Shape and sequence are fixed; names and local structure are the imp
 
 | ID | Where | What | Rules |
 |---|---|---|---|
-| S1 | `goals/devforce-lab/lab/workforce/flows/workers/em.mts` | The post door becomes a sequencer: file from the line through `addRow` (as `fileFromPost` does), then `board.drain` only when the row is new. Same `tapIf` shape as `askToFile`. The module header and the `POST_ENTRY` doc say the door runs the board | BR-1–BR-5, BR-8 |
-| S2 | same file + `goals/devforce-lab/lab/host.mts` | An EM option that keeps the post door from running the board (the `file-only` control), off by default, beside `fileBeforeAsking`; `openLab` passes it through | BR-9 |
-| S3 | `goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/` | Remove the check's own `drain`; add legs 6, 7 and 8 and the `file-only` control, per [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met). `goal.md` gains the legs, the control and the verdict rows | goal |
-| S4 | `goals/devforce-lab/lab/README.md` | The ask section and the board-check row: a post now runs the board | — |
-| S5 | Docs, per [DOCS.md](DOCS.md) | Shift Manager README and the Shift Manager overview: posting starts the run, and costs one with a real harness | — |
+| S1 | `packages/orchestration` (`defineTaskCollection`) | Pass a collection's `reactTo` through to the resource declaration, so a task list can be watched for adds. No behaviour change for a collection that sets none | BR-1 |
+| S2 | `packages/orchestration` (the task ledger's add) | Record the filer on a new task from the request's resolved identity, beside the task's own fields, never from input. A claim with an owner policy reads it | BR-8–BR-10 |
+| S3 | `packages/workforce` (the mailbox's task-list ledger) | Bind `reactTo.created` on the one ledger every route writes: today the per-list declaration `mailboxBoard` mints; after FIX-1779, the mailbox kind's single collection. On an add, hand off a "run this list" request to the mailbox's own session, rescued so the add never fails | BR-1, BR-2, BR-6, BR-7, BR-11 |
+| S4 | `packages/workforce` (the mailbox kind) | An internal entry that runs one pass over the named list, as the filer: claims only that filer's tasks (and unowned legacy ones), and hands each to its worker through FIX-1778's routing, with `taskListWorkers(ctx, mailboxId, list)[0]` for an unassigned task. Takes the app's claim policy (DevTeam passes `runOwnerDispatcher`) | BR-3–BR-5, BR-9, BR-13, BR-17 |
+| S5 | `packages/workforce` (`fileTask` and the board tools' answer) | Say when no worker works the list, or the named one doesn't exist, in the filing's answer | BR-5 |
+| S6 | `packages/workforce` (hire) | The unattended-board warning reads `taskListWorkers` instead of "who declares the ledger" | BR-5 |
+| S7 | `goals/devforce-lab/lab/` | The EM files on Approve and on post and drains nowhere; its `coordinatorBoard` is dropped for the mailbox's run. The coder keeps its task door. Header comments say so | BR-15–BR-17 |
+| S8 | `goals/workforce-conventions/a-filed-task-starts-its-worker/` (new) | Legs a and b, the `no-wake` control | goal |
+| S9 | `goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/` and the other checks that drain by hand | Remove the hand drains; add leg c | goal |
+| S10 | Docs, per [DOCS.md](DOCS.md) | Mailboxes page, Workforce README, Shift Manager README and overview | — |
 
-**Removed:** the board check's outside `drain` call. **Not touched:** any package under
-`packages/`; `it-ships-an-artifact-a-person-can-open` (its outside drain becomes a harmless race, BR-6).
+**Removed:** the docs' "the mailbox runs nothing; a worker declares the board and drains it"; the
+EM's two drains and its coordinator board; the hand drains in the checks that file on a mailbox list.
 
-## Sequence
+## Sequence and PR plan
 
 ```mermaid
 flowchart LR
-  S1["S1 · post door runs the board"] --> S3["S3 · board check tightened"]
-  S2["S2 · file-only control"] --> S3
-  S1 --> S4["S4 · lab README"]
-  S3 --> S5["S5 · docs"]
+  F["FIX-1778 · routing by worker name"] --> P1["PR 1 · S1 to S6 · packages"]
+  P1 --> P2["PR 2 · S7 to S10 · DevTeam, checks, docs"]
+  P1 -.->|"no dependency"| X["FIX-1779 · run-time lists use the same ledger"]
 ```
 
-One PR. No stack.
+| PR | Deliverables | Depends on |
+|---|---|---|
+| PR 1 | S1–S6, with Workforce and orchestration unit tests for BR-5–BR-11 | FIX-1778's routing (stacked on its PR if still open) |
+| PR 2 | S7–S10, the goal checks with their control | PR 1, as a GitHub stack |
+
+If FIX-1779's single collection lands first, S3 binds there; if after, FIX-1779 moves the binding
+with the ledger. Either way the goal check's four routes prove it.
 
 ## Checks
 
 | ID | What | Pass |
 |---|---|---|
-| VG | The tightened board check, legs 0 to 8, then `GOAL_CONTROL=file-only` | Green on the branch; red under `file-only` on leg 6 (row *pending*); red against `origin/main`'s lab on leg 6. The leg-7 control is a one-off local edit that runs the board on every post: leg 7 must go red (the parked row is claimed). Recorded in the verdict log, not shipped |
-| V1 | `it-waits-for-a-person-before-it-files`, `it-wakes-the-seat-a-file-declared`, `it-ships-an-artifact-a-person-can-open`, `it-commits-from-the-seats-own-file` (the last needs a model; run it if a key is set, else say so) | Green |
-| V2 | `goals/workforce-conventions/a-mailbox-holds-the-work-a-seat-drains` and `goals/shift-manager/a-lab-is-worked-through-one-skinned-shell` | Green |
-| V3 | `pnpm typecheck` on the touched workspace, and `pnpm --filter @flow-state-dev/shift-manager test` | Green |
+| VG | `a-filed-task-starts-its-worker` legs a and b, then `GOAL_CONTROL=no-wake`; the DevTeam board check with leg c | Green on the branch; red under `no-wake` (tasks *pending*); red against `origin/main` |
+| V1 | Workforce and orchestration unit tests for BR-5, BR-6, BR-7, BR-10, BR-11 | Green; each red with S3 removed |
+| V2 | `it-waits-for-a-person-before-it-files`, `it-wakes-the-seat-a-file-declared`, `it-ships-an-artifact-a-person-can-open`, `goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds`, `a-mailbox-holds-the-work-a-seat-drains` (each with its hand drain removed) | Green |
+| V3 | `pnpm typecheck`, `pnpm --filter @flow-state-dev/workforce test`, `… orchestration test`, `… harness-manager test`, `… shift-manager test` | Green |
 
 ## Pinned
 
-- The control's name: `GOAL_CONTROL=file-only`. FIX-1774's goal check names the same one.
-- The line shape stays `<slug>: <what>` (`POST_SHAPE`).
+- The control's name: `GOAL_CONTROL=no-wake`.
+- The read: `taskListWorkers(ctx, mailboxId, list)` (FIX-1779); the default worker is its first entry.
+- The new check's folder: `goals/workforce-conventions/a-filed-task-starts-its-worker/`.
 
 ## Guardrails
 
-- **One row writer.** The post door files through `addRow`, because a second copy is how two doors
-  come to file different rows.
-- **Run the board only for a row the post just filed.** Because a repeat must not start a second
-  paid run, or someone's other waiting rows.
-- **Workforce stays as it is.** Because who works a mailbox's board is the worker flow's
-  declaration, and a mailbox kind holding that policy is the layer leak the project's rules forbid.
-- **The control changes one thing.** Because a control that also changes filing proves nothing
-  about the run.
-- **Write "worker", never "seat", in any sentence added**, docs and comments alike. Existing
-  wording stays.
+- **One convergence point.** The start hangs off the ledger every route writes, not off any door,
+  because four doors with their own "file, then maybe run" is the incoherence this issue exists to
+  remove. A route that writes a mailbox list some other way is a bug the goal check must catch.
+- **Never in the filer's turn.** Hand off before running, because a coding run inside a tool call
+  holds the coordinator for its whole length.
+- **The add never fails because the start did.** Rescue the hand-off, because a stored task that
+  reports failure invites a second filing.
+- **Owner from identity only.** Because the owner decides whose run and whose bill (BP-031).
+- **Core and Engine untouched.** Because what a mailbox does with its list is Workforce policy.
+- **Write "worker", never "seat", in any sentence added.**
 
 ## Sketch
 
 ```text
-post door:
-  filed = file the row from the line          // as today, through addRow
-  if filed is new and not file-only:
-    run the board                             // the block Approve runs
-  return filed                                // same output shape as today
+on a task added to a mailbox's list (any writer):
+  hand off "run list L" to the mailbox, as the filer          // own request
+run list L, as P:
+  for each claimable task filed by P (or unowned):
+    worker = assignee ? lookup(assignee) : taskListWorkers(L)[0]
+    hand the task to worker                                    // FIX-1778's hand-off
 ```
 
 ## POC
 
-None of its own. The premises rest on the FIX-1774 POC, findings 3 and 4
-([DECISIONS.md → Settled](DECISIONS.md#settled)).
+None of its own. The premises rest on the FIX-1774 POC (findings 3 and 4) and this spec's
+research ([DECISIONS.md → Settled](DECISIONS.md#settled)). The one premise worth a spike at
+implement time: `reactTo.created` firing for a task list written from another flow's capability.
+If it doesn't, stop and raise it; don't add per-door hooks.
 
 ## At implement time
 
-- Confirm the output the post door returns keeps its shape (`filed`, `taskId`, `reason`), since
-  the delivery and any caller read it.
-- With a real harness, the delivery request stays open for the run's length, as the Approve request
-  does. Check that nothing in the mailbox delivery cuts it short; if something does, raise it
-  before working around it.
-- BR-8: decide whether a lab-level test or a note in the goal is the cheaper proof that a thrown
-  board run leaves the row *pending* and the delivery recorded as refused.
+- Confirm the hand-off from the hook lands as its own request under the filer's identity
+  (dispatch inherits the sender's principal).
+- Confirm a run started by the hook doesn't re-trigger itself on its own writes beyond the adds it
+  makes (re-pend is an update, not an add).
+- With a real harness the run's request stays open for the run's length, as Approve's does today.
 
 ## Follow-ups
 
-- **Workforce's `fileTask` on a mailbox board starts nothing.** Open as [O1](DECISIONS.md#o1); if Jake picks (b), it joins this issue as a second PR stacked on this one.
-- **A failed attempt waits for the next board run, on every door.** Nothing retries it on its own.
-  Worth an issue once real-harness posts are common.
+- **A failed attempt waits for the next run of its list.** Nothing retries it on its own. Telling
+  the coordinator a task settled is [FIX-1780](https://linear.app/fixpoint-labs/issue/FIX-1780).
 
 ## Notes from review
 
-None yet.
+Recorded from round 1 on [#2753](https://github.com/fixpoint-labs/flow-state-dev/pull/2753), for the first draft's scope; kept where they still apply:
+
+- cursor[bot]: "Approve runs `board.drain` on **every** approval … The post door is **stricter**." (Now moot: neither door drains.)
+- cursor[bot]: "pick one proof artifact for a thrown board run." (BR-11 names a unit test.)
+- cursor[bot]: "consider a shipped negative control." (The `no-wake` control ships.)
+- Codex: "Put failure reporting on an observable request … an accepted task dispatch returns before the child runs." (BR-11 now records the failure on the run's own request, not the filer's.)
+- Codex: "Bind each new row to its poster before draining." (Folded: D-level, BR-8–BR-10, S2.)

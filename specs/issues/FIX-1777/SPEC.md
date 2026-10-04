@@ -1,105 +1,112 @@
-# FIX-1777 · A post that files a task on a mailbox's board starts the worker it's for
+# FIX-1777 · A task filed on a mailbox's task list starts the worker it's for
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-## Four people, before and after
+## Five people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
-| **posts `slug: what to build` on the DevTeam feature workstream** | A task is filed and sits in *pending* for good | The coder starts on it in the same delivery, and the run shows under Tasks |
-| **posts the same slug again** | Nothing new | Nothing new: no second task, no second run, and no other waiting task is started |
-| **posts a line that doesn't name a feature** | Nothing filed | The same |
-| **approves a feature in Inbox** | Filed and started | The same |
+| **files a task on a mailbox's task list**, by any route: a post a worker turns into a task, `fileTask`, a board tool, or a worker adding to its own list | The task waits in *pending* until something runs the list by hand | The worker it's for starts on it, in a request of its own, and the run shows under Tasks |
+| **is a coordinator handing work to a worker it just hired** (FIX-1778, FIX-1779) | Filing the task starts nothing | Filing the task is the hand-off: the worker starts |
+| **files the same task twice, or adds nothing** | Nothing new | Nothing new: no second run |
+| **files a task while a colleague's task is waiting on the same list** | Whoever runs the list next can end up running the colleague's task as their own | Each run belongs to whoever filed its task; a filing never starts someone else's |
+| **approves a feature in DevTeam's Inbox** | Filed and started | The same, through the same rule as every other filing |
 
 ## The goal, and how we'll know it's met
 
-**A line posted on the feature workstream that files a new task ends with the coder's run on that
-task, with nobody running the board by hand; a line that files nothing starts nothing.**
+**A task added to any mailbox's task list, by any route, ends with the worker it's for running it,
+as the person who filed it, with nobody running the list by hand.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | "When a post files a new task, the board runs in the same delivery and the task reaches its worker. A repeated slug files nothing and runs nothing. An unshaped line still files nothing" ([FIX-1777](https://linear.app/fixpoint-labs/issue/FIX-1777)). It unblocks [FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774), where the chief of staff hands coding work over by exactly this post |
-| **Smaller, and rejected** | "The task reaches the board." It already does; that is the bug. The goal is graded on the run, not the row |
-| **Where the boundary sits** | "Starts" means the board hands the task to `eng.coder` and its run opens and settles, on whatever harness the Lab runs. A failed attempt waiting for another board run is today's behaviour on every door, and stays so ([follow-up](PLAN.md#follow-ups)) |
-| **Bigger, and open** | Any mailbox board in Workforce starting the worker that drains it when a task is filed through the mailbox's own `fileTask`: [O1](DECISIONS.md#o1), put to Jake. The chief of staff routing coding work ([FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774)) |
-| **Not done if** | The posted task is still *pending* until something else runs the board · a repeat post starts a second run, or starts some other waiting task · an unshaped line files or runs anything · the Inbox ask changes |
+| **The real need** | Jake: "The coordinator has a responsibility to route work, hire the workforce as needed, setup mailboxes, and get the work flowing to the right places … Imagine other use cases, not just this very specific flow" (FIX-1774 thread, 2026-10-04). And: "the coordinator should be able to setup the mailbox and subscribe the appropriate workers so that it can create the task in the mailbox's task list" ([FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779)). Filing is the hand-off, so filing has to start the work |
+| **Smaller, and rejected** | "A post on DevTeam's feature workstream starts the coder" (this spec's first draft). It leaves `fileTask`, the board tools and every run-time mailbox starting nothing, so the coordinator's hand-off in FIX-1774 and FIX-1779 would still stop at a pending task |
+| **Where the boundary sits** | This issue owns the start: a task added to a list makes the list run, and each task reaches its worker. Who a task is for (assignee name to worker) is [FIX-1778](https://linear.app/fixpoint-labs/issue/FIX-1778). Mailboxes made at run time and a list's default worker are [FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779). A failed attempt waiting for the next run is today's behaviour and stays ([follow-up](PLAN.md#follow-ups)) |
+| **Not done if** | A task filed by any of the four routes is still *pending* with no hand drain · the filer's own turn waits for the run · one person's filing starts another person's task · a repeat filing starts a second run · DevTeam's Approve or post needs its own drain to start work |
 
 ```mermaid
 flowchart LR
-  A["DevTeam lab · scripted harness · no model"] --> L1["leg 6 · post a shaped line · the check never runs the board"]
-  L1 -->|"row completed by eng.coder"| L2["leg 7 · park a second row · post the same line"]
-  L2 -->|"no new row · parked row still pending"| L3["leg 8 · post an unshaped line"]
-  L3 -->|"nothing filed · parked row still pending"| P["PASS · goal met"]
-  C["control file-only · the post files but does not run"] -.-> L1
-  L1 -.->|"under file-only"| F["must FAIL · the row stays pending"]
+  A["fixture org · one mailbox with a task list · a scripted worker"] --> L1["leg a · four routes each file one task"]
+  L1 -->|"four tasks completed by their worker · no drain call"| L2["leg b · two members file at once"]
+  L2 -->|"each run owned by its filer"| L3["leg c · DevTeam post on eng.feature"]
+  L3 -->|"the coder's run completes · no drain call"| P["PASS · goal met"]
+  C["control no-wake · adding a task does not run the list"] -.-> L1
+  L1 -.->|"under no-wake"| F["must FAIL · tasks stay pending"]
 ```
 
-The check posts and then only reads. It never calls `drain`, so a row that completes was run by
-the post. Under the control the same post must leave the row *pending*.
+The checks file and then only read. They never call a drain, so a completed task was started by
+the filing. Under the control the same filings must leave every task *pending*.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/`, tightened: its own `drain` call removed and three legs added · no model · run by the implementer · verdict in the implementation PR |
-| **Signal** | Leg 6: within the settle budget the posted row is `completed`, assignee `coder`, and the check called no `drain`. Leg 7: after a row is filed through `file` and left *pending*, the same line posted again leaves one row for the slug and that parked row still *pending* once the delivery has settled. Leg 8: an unshaped line adds no row and the parked row is still *pending*. Legs 0 to 5 as today |
-| **Input** | The DevTeam tree as it stands, scripted harness. Run: `pnpm tsx goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts` |
-| **Anti-game** | No `drain` from the check, no row seeded for leg 6. Rows read where Shift Manager reads them. Leg 7 waits for the delivery to finish, not a bare sleep, so "nothing ran" is not "nothing ran yet" |
-| **Control that must fail** | `GOAL_CONTROL=file-only` turns off the post's board run and nothing else: leg 6 FAILS, the row stays *pending*. Against `origin/main`'s lab the check FAILS the same way |
+| **Goal check** | `goals/workforce-conventions/a-filed-task-starts-its-worker/` (new, legs a and b) and `goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/` tightened (leg c: its own `drain` call removed) · no model · run by the implementer · verdicts in the implementation PRs |
+| **Signal** | Leg a: one task each through a post door, the mailbox's `fileTask`, the mailbox's board action, and a worker's own board tool; within the settle budget all four are `completed` by the named worker and the check called no drain; the filer's call returned before the run finished. Leg b: two members each file a task on the same list at once; each task's run is recorded as its filer's, and neither member's request claimed the other's task. Leg c: DevTeam's shaped post ends as a completed row, assignee the coder |
+| **Input** | A fixture worker tree with one mailbox, one task list and one scripted worker that completes a task; DevTeam as it stands for leg c. Run: `pnpm tsx goals/workforce-conventions/a-filed-task-starts-its-worker/run.mts` and the board check's `run.mts` |
+| **Anti-game** | No drain from either check, no task seeded. Tasks read through the mailbox's `readBoard`, where Shift Manager reads them. Leg b reads the run owner off the stored task, not off the worker's output |
+| **Control that must fail** | `GOAL_CONTROL=no-wake` turns off only the start on add: leg a FAILS, all four tasks stay *pending*; leg c FAILS the same way. Against `origin/main` both checks FAIL leg a / leg c |
 
 ## What changes
 
-![What changes: today a shaped post files a task and stops, so the task waits in pending; after, the post files the task and runs the board in the same delivery, so the coder's run starts, and a repeat or unshaped line still runs nothing](figures/what-changes.svg)
+![What changes: today a filed task waits in pending until someone runs the list by hand, and the route decides whether anything starts; after, any add to a mailbox's task list makes the list run in a request of its own, each task goes to the worker it's for, and the run belongs to whoever filed it](figures/what-changes.svg)
 
-Top is today: the post stops at the row. Bottom is after: the post runs the board when the row is new.
+Top is today: four routes in, one manual drain out. Bottom is after: four routes in, the list runs itself.
 
-**The EM's post door** (`goals/devforce-lab/lab/workforce/flows/workers/em.mts`):
+**A worker's file stops wiring a drain.** Today the docs tell a worker that claims rows to declare
+the board and drain it. After, the mailbox does that:
 
 ```diff
-- [POST_ENTRY]: { block: fileFromPost, … }     // files the row, nothing more
-+ [POST_ENTRY]: { block: postToFile, … }       // files the row, then runs the board
-+                                              // only when the row is new, as Approve does
+  // a worker that works a mailbox's task list
+  defineFlow({
+    kind: "builder",
+-   resources: { [board.id]: board },
+-   actions: { drain: { block: board.drain } },   // someone has to call this
+    task: { work: { block: doTheWork } },         // the task door (FIX-1778)
+  });
 ```
 
-**What a person sees.** Nothing new to write: the post they already make now starts the work.
-With `DEVFORCE_LAB_HARNESS=claude-code`, that means **a post now spends model time on its own,
-with no approval card first.** The Inbox ask stays the door that asks first.
+**DevTeam's EM files and stops.** Approve and the post door both just file; the list runs itself.
 
-## How a post moves
+```diff
+  askToFile:  prepare → gate → file
+-             → board.drain                          // removed: one rule for every door
+  onPost:     file from "slug: what"                 // starts the coder now
+```
+
+## How a filed task moves
 
 ```mermaid
 flowchart LR
-  P["person or chief of staff"] -->|"slug and what"| M["eng.feature"]
-  M -->|"delivery, its own request"| E["eng.em · post door"]
-  E -->|"files the row"| B["eng.feature.work"]
-  E -->|"new row only · runs the board"| B
-  B -->|"hand-off"| K["eng.coder · coding run"]
+  R["any route · post door, fileTask, board tool, own board"] -->|"adds a task"| T["mailbox task list"]
+  T -->|"add seen · hand-off to its own request"| W["run the list · as the filer"]
+  W -->|"FIX-1778 lookup · or the list's default worker"| K["the worker · its run"]
 ```
 
-The delivery is already its own request, so the poster's post returns at once. The run belongs to
-whoever posted, as runs started from Inbox belong to whoever approved.
+The filer gets their answer as soon as the task is stored. The run happens in a separate request,
+under the filer's identity, so it is theirs and is charged to them.
 
 ## What stays as it is
 
-- **Workforce, core and engine.** No package change. The mailbox, its delivery and the board are
-  used as they are.
-- **The Inbox ask.** Still asks first; Approve files and runs; Deny files nothing.
-- **The `file` and `drain` actions.** `file` still files only. A check or host that files directly
-  still runs the board itself.
-- **The line shape.** `<slug>: <what>`, as today.
-- **Retries.** A failed attempt goes back to *pending* and waits for the board to run again, on
-  every door, as today.
+- **Core and Engine.** No change. The add is seen through the resource layer's existing
+  `reactTo` hook, which Workforce binds on the mailbox's task list. Orchestration passes it through.
+- **Task lists that are not a mailbox's.** A worker's private board behaves as today.
+- **The Inbox ask.** Still asks first. Approve files; Deny files nothing.
+- **Retries.** A failed attempt goes back to *pending* and waits for the next run of the list.
+- **Which harness runs.** Still the operator's setting.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** a new task posted on the
-workstream ends in the coder's run; anything else posted starts nothing.
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** filing on any mailbox's task list is the
+hand-off, and the work starts as the filer's.
 
-1. **[D1](DECISIONS.md#d1) · A shaped post starts the coding run at once, with no approval
-   first.** If wrong: a stray or mistaken post spends a paid run before anyone sees it.
+1. **[D1](DECISIONS.md#d1) · The mailbox hands out its own tasks; a worker no longer runs a list.**
+   If wrong: Labs that wanted a worker to batch or pace its own list lose that control.
+2. **[D2](DECISIONS.md#d2) · A filed task starts at once, with no approval first.** If wrong: a stray
+   or mistaken filing spends a paid run before anyone sees it.
 
-**Open: [O1](DECISIONS.md#o1)** · does a task filed through a mailbox's own `fileTask` also start
-the worker that drains that board, or does the coordinator always post? Put to Jake. The calls made without asking, and what was dropped, are in
+**Open: none.** The calls made without asking, and what was dropped, are in
 [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Enhancement · DevTeam Lab (`goals/devforce-lab/lab/`) + Shift Manager docs · small · 1 PR · epic
-[FIX-1763](https://linear.app/fixpoint-labs/issue/FIX-1763) · blocks
-[FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774)
+Enhancement · `@flow-state-dev/workforce` + `@flow-state-dev/orchestration` + DevTeam Lab + docs ·
+medium · 2 PRs, stacked on FIX-1778's routing · epic [FIX-1763](https://linear.app/fixpoint-labs/issue/FIX-1763) ·
+blocks [FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774) · composes with
+[FIX-1778](https://linear.app/fixpoint-labs/issue/FIX-1778), [FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779)

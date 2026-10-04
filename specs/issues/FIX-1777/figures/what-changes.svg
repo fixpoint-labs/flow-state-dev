@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 300" role="img" aria-label="What changes. Today a line shaped slug and what, posted on the feature workstream, reaches the EM's post door, which files the task and stops; the task stays pending because nothing runs the board. After: the post door files the task and, when the task is new, runs the board in the same delivery, so the coder's run starts. A repeated slug or an unshaped line still files nothing new and runs nothing."
+<svg viewBox="0 0 940 330" role="img" aria-label="What changes. Today four routes can add a task to a mailbox task list: a post door, fileTask, a board tool, or a worker's own board. The task waits in pending until someone runs the list by hand, and only DevTeam's Approve does. After: any add to the list makes the mailbox run the list in a request of its own, as the person who filed it, and hand the task to the worker it names or the list's first worker. The filer gets an answer at once."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -22,47 +22,47 @@
     .t-x { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:12px; }
     .t-v { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:700; font-size:12px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="300"/>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
   <g id="today">
-    <rect class="lane" x="12" y="12" width="916" height="106" rx="6"/>
+    <rect class="lane" x="12" y="12" width="916" height="140" rx="6"/>
     <text class="t-lane" x="28" y="32">TODAY</text>
-    <rect class="n-box" x="28" y="44" width="200" height="58" rx="5"/>
-    <text class="t-lbl" x="40" y="61">POST ON ENG.FEATURE</text>
-    <text class="t-b" x="40" y="79">slug: what to build</text>
-    <text class="t-s" x="40" y="94">a person or the chief of staff</text>
-    <line class="arr" x1="228" y1="73" x2="250" y2="73"/><path class="arr-h" d="M249,69 L256,73 L249,77 Z"/>
-    <rect class="n-box" x="256" y="44" width="220" height="58" rx="5"/>
-    <text class="t-lbl" x="268" y="61">EM · POST DOOR</text>
-    <text class="t-b" x="268" y="79">files the task</text>
-    <text class="t-s" x="268" y="94">and stops</text>
-    <line class="arr" x1="476" y1="73" x2="498" y2="73"/><path class="arr-h" d="M497,69 L504,73 L497,77 Z"/>
-    <rect class="dead" x="504" y="44" width="200" height="58" rx="5"/>
-    <text class="t-lbl" x="516" y="61">TASK</text>
-    <text class="t-b" x="516" y="79">pending, for good</text>
-    <text class="t-s" x="516" y="94">nothing runs the board</text>
-    <text class="t-x" x="722" y="78">✕ the coder never starts</text>
+    <rect class="n-box" x="28" y="44" width="220" height="58" rx="5"/>
+    <text class="t-lbl" x="40" y="61">ANY OF FOUR ROUTES</text>
+    <text class="t-b" x="40" y="79">post · fileTask</text>
+    <text class="t-s" x="40" y="94">board tool · own board</text>
+    <line class="arr" x1="248" y1="73" x2="270" y2="73"/><path class="arr-h" d="M269,69 L276,73 L269,77 Z"/>
+    <rect class="dead" x="276" y="44" width="220" height="58" rx="5"/>
+    <text class="t-lbl" x="288" y="61">MAILBOX TASK LIST</text>
+    <text class="t-b" x="288" y="79">pending, for good</text>
+    <text class="t-s" x="288" y="94">the mailbox runs nothing</text>
+    <line class="arr" x1="496" y1="73" x2="518" y2="73"/><path class="arr-h" d="M517,69 L524,73 L517,77 Z"/>
+    <rect class="n-box" x="524" y="44" width="200" height="58" rx="5"/>
+    <text class="t-lbl" x="536" y="61">SOMEONE, BY HAND</text>
+    <text class="t-b" x="536" y="79">drain</text>
+    <text class="t-s" x="536" y="94">only Approve does</text>
+
+    <text class="t-x" x="28" y="132">✕ the route decides whether anything starts</text>
   </g>
   <g id="after">
-    <rect class="lane" x="12" y="130" width="916" height="158" rx="6"/>
-    <text class="t-lane" x="28" y="150">AFTER</text>
-    <rect class="n-box" x="28" y="162" width="200" height="58" rx="5"/>
-    <text class="t-lbl" x="40" y="179">POST ON ENG.FEATURE</text>
-    <text class="t-b" x="40" y="197">slug: what to build</text>
-    <text class="t-s" x="40" y="212">a person or the chief of staff</text>
-    <line class="arr" x1="228" y1="191" x2="250" y2="191"/><path class="arr-h" d="M249,187 L256,191 L249,195 Z"/>
-    <rect class="ok" x="256" y="162" width="220" height="58" rx="5"/>
-    <text class="t-lbl" x="268" y="179">EM · POST DOOR</text>
-    <text class="t-b" x="268" y="197">files, then runs the board</text>
-    <text class="t-s" x="268" y="212">new task only, same delivery</text>
-    <line class="arr" x1="476" y1="191" x2="498" y2="191"/><path class="arr-h" d="M497,187 L504,191 L497,195 Z"/>
-    <rect class="ok" x="504" y="162" width="200" height="58" rx="5"/>
-    <text class="t-lbl" x="516" y="179">ENG.CODER</text>
-    <text class="t-b" x="516" y="197">coding run starts</text>
-    <text class="t-s" x="516" y="212">shows under Tasks</text>
-    <text class="t-v" x="722" y="196">✓ one run per new slug</text>
-    <rect class="n-box" x="28" y="232" width="448" height="44" rx="5"/>
-    <text class="t-lbl" x="40" y="249">SAME SLUG AGAIN · OR AN UNSHAPED LINE</text>
-    <text class="t-b" x="40" y="267">nothing new filed, nothing run</text>
-    <text class="t-s" x="504" y="258">other waiting tasks stay as they are</text>
+    <rect class="lane" x="12" y="164" width="916" height="154" rx="6"/>
+    <text class="t-lane" x="28" y="184">AFTER</text>
+    <rect class="n-box" x="28" y="196" width="220" height="58" rx="5"/>
+    <text class="t-lbl" x="40" y="213">ANY OF FOUR ROUTES</text>
+    <text class="t-b" x="40" y="231">post · fileTask</text>
+    <text class="t-s" x="40" y="246">board tool · own board</text>
+    <line class="arr" x1="248" y1="225" x2="270" y2="225"/><path class="arr-h" d="M269,221 L276,225 L269,229 Z"/>
+    <rect class="ok" x="276" y="196" width="220" height="58" rx="5"/>
+    <text class="t-lbl" x="288" y="213">MAILBOX TASK LIST</text>
+    <text class="t-b" x="288" y="231">sees the add</text>
+    <text class="t-s" x="288" y="246">hands off, as the filer</text>
+    <line class="arr" x1="496" y1="225" x2="518" y2="225"/><path class="arr-h" d="M517,221 L524,225 L517,229 Z"/>
+    <rect class="ok" x="524" y="196" width="200" height="58" rx="5"/>
+    <text class="t-lbl" x="536" y="213">THE WORKER IT'S FOR</text>
+    <text class="t-b" x="536" y="231">its run starts</text>
+    <text class="t-s" x="536" y="246">named, or the list's first</text>
+
+    <text class="t-v" x="742" y="230">✓ one rule</text>
+    <text class="t-s" x="28" y="284">the filer's call returns at once · a repeat adds nothing, so starts nothing</text>
+    <text class="t-s" x="28" y="302">one person's filing never starts another person's task</text>
   </g>
 </svg>

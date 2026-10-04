@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1: what happens when a shaped post files a new task. Chosen: start the coding run at once. Instead of: raise an Inbox card and start on Approve. It comes down to the first row: whether a hand-off from the chief of staff finishes in one turn; a card would stop it again, which FIX-1774 removes. The price: a post spends a run, with a real harness, before anyone sees a card. A person who wants to approve first still uses the Inbox ask. Locks in: anyone who can post on the workstream can start a run, one per slug. Flips if: posts start arriving from people or agents who should not spend runs."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2: what happens when a task is filed on a mailbox list. Chosen: start the run at once. Instead of: raise an Inbox card and start on Approve. It comes down to the first row: whether a hand-off from the coordinator finishes in one turn; a card would stop it again, which FIX-1774 removes. The price: a filing spends a run, with a real harness, before anyone sees a card. A person who wants to approve first still uses an approval step. Locks in: anyone who can file on a list can start a run, one per task, owned by the filer. Flips if: filers appear who should not spend runs."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -34,8 +34,8 @@
   <rect class="bg" x="0" y="0" width="940" height="420"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">A shaped post files a new task. Does the coding run start at once, or ask first?</text>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">A task is filed on a list. Does the run start at once, or ask first?</text>
   </g>
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
@@ -52,7 +52,7 @@
     <text class="t-lbl" x="32" y="169">ONE TURN</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Yes: post, and it runs</text>
+    <text class="t-b" x="248" y="161">Yes: file, and it runs</text>
     <text class="t-s" x="248" y="179">what FIX-1774 needs</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">No: it waits on a card</text>
@@ -60,10 +60,10 @@
   </g>
   <g id="row-1">
     <text class="t-lbl" x="32" y="222">COST OF A</text>
-    <text class="t-lbl" x="32" y="235">STRAY POST</text>
+    <text class="t-lbl" x="32" y="235">STRAY FILING</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">One paid run</text>
-    <text class="t-s" x="248" y="241">with a real harness, one per slug</text>
+    <text class="t-s" x="248" y="241">with a real harness, one per task</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Nothing until approved</text>
     <text class="t-s" x="612" y="241">a person reads the card first</text>
@@ -83,13 +83,13 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Anyone who can post can start a run</text>
-    <text class="t-s" x="32" y="389">one run per new slug, owned by the poster</text>
+    <text class="t-b" x="32" y="371">Anyone who can file can start a run</text>
+    <text class="t-s" x="32" y="389">one run per new task, owned by the filer</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">Posters arrive who shouldn't spend runs</text>
-    <text class="t-s" x="494" y="389">then a post asks first, as Inbox does</text>
+    <text class="t-b" x="494" y="371">Filers appear who shouldn't spend runs</text>
+    <text class="t-s" x="494" y="389">then filing asks first, as Inbox does</text>
   </g>
 </svg>

@@ -2,42 +2,52 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-## The post door
+## A task is added
 
 | | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | A line shaped `<slug>: <what>` lands on `eng.feature` and files a new row | The board runs in the same delivery and hands the row to `eng.coder`; the row settles without anyone else running the board | Goal leg 6 |
-| BR-2 | The slug already has a row | Nothing filed, the board is not run, and another row left *pending* stays *pending* | Goal leg 7 |
-| BR-3 | The line doesn't name a feature | Nothing filed, nothing run | Goal leg 8 |
-| BR-4 | A person posts the line, or the chief of staff posts it in a person's session | The same as BR-1. The run belongs to that person, as an Approve's does | Goal leg 6 (the lab's person posts) |
-| BR-5 | The poster has other rows of their own waiting on the board when a new row is filed | The board run starts those too, as Approve's board run does today. Another member's waiting rows are refused before claim and keep their status ([FIX-1667 D3](../FIX-1667/DECISIONS.md#d3)) | Existing: `packages/harness-manager/test/run-owner-dispatcher.spec.ts` |
-| BR-6 | The board is already running when the post's board run starts (another delivery, an Approve, a host's `drain`) | One run per row: a claimed row is not claimed twice | Existing: `packages/orchestration/test/task-board/task-board-concurrent-drains.test.ts`; the sibling `it-ships-an-artifact-a-person-can-open` still drains from outside and must stay green |
+| BR-1 | A task is added to a mailbox's task list by a post door, `fileTask`, the board action, a worker's board tool, or a worker's own board | The list runs in a request of its own, and the task goes to the worker it's for, with nobody running the list by hand | Goal leg a (four routes) · leg c (DevTeam post) |
+| BR-2 | The filer is a coordinator mid-turn | Its filing returns as soon as the task is stored. The turn does not wait for the run | Goal leg a (call returns before the task completes) |
+| BR-3 | The task names a worker (assignee) | It goes to that worker, through FIX-1778's lookup; a board alias wins over the lookup | FIX-1778's checks; leg a's assigned route |
+| BR-4 | The task names no worker | It goes to the list's first worker from `taskListWorkers` (FIX-1779) | Leg a's unassigned route |
+| BR-5 | No worker works the list, or the named worker doesn't exist | The task is filed and waits, and the filing's answer says why. Nothing errors in the filer's turn | Workforce unit test |
+| BR-6 | A filing adds nothing (the task already existed, or the write was an update) | Nothing runs | Workforce unit test; DevTeam board check, repeat post |
+| BR-7 | The list is a worker's private board, not a mailbox's | As today: nothing runs on add | Workforce unit test (negative) |
+
+## Whose run it is
+
+| | When | Then | Proved by |
+|---|---|---|---|
+| BR-8 | A task is filed | Its owner is the filer's resolved identity, recorded at filing, never taken from input (BP-031). A coordinator filing in a person's session files as that person | Goal leg b |
+| BR-9 | Two members file on one list at once | Each run is its filer's; a run started by one member's filing claims none of the other's tasks | Goal leg b |
+| BR-10 | A task filed before this change has no owner | It is claimed by the next run of its list, as today, and owned from its first run (BP-030, the old shape tolerated) | Workforce unit test, legacy row |
 
 ## Failures
 
 | | When | Then | Proved by |
 |---|---|---|---|
-| BR-7 | The row's attempt fails | The row goes back to *pending* with its reason, or *errored* once its attempts are spent, and waits for the next board run, as on every door today | Unchanged; existing controls in `it-ships-an-artifact-a-person-can-open` |
-| BR-8 | The board run itself throws (a refused hand-off, a missing harness) | The row stays *pending*, and the failure shows on the EM's post request, as any failed delivery's does. A repeat post does not retry it (BR-2); the next board run does | Lab test or goal note at implement time |
-| BR-9 | The control `file-only` is set | The post door files exactly as today and runs nothing. Off by default, and nothing else changes | Goal control |
+| BR-11 | Starting the run fails (the hand-off is refused) | The task stays *pending* and the next run of the list picks it up. The filing itself still succeeds; the failure is recorded on the run's own request, not the filer's | Workforce unit test |
+| BR-12 | The run's attempt fails | Back to *pending*, or *errored* once its attempts are spent, as today. Nothing retries it on its own | Unchanged |
+| BR-13 | Two runs of one list overlap (two filings, or a host's manual drain) | One run per task: a claimed task is not claimed twice | `packages/orchestration/test/task-board/task-board-concurrent-drains.test.ts`, existing |
+| BR-14 | The control `no-wake` is set | Adding a task runs nothing, and nothing else changes | Goal control |
 
-## Unchanged doors
+## DevTeam
 
 | | When | Then | Proved by |
 |---|---|---|---|
-| BR-10 | The EM's Inbox ask is approved or denied | Approve files and runs; Deny files nothing | `goals/devforce-lab/it-waits-for-a-person-before-it-files` |
-| BR-11 | A host calls `file` directly | Files only, runs nothing | `goals/devforce-lab/it-wakes-the-seat-a-file-declared` |
-| BR-12 | A line is posted in a project's room | Answered into the room, files nothing | `goals/shift-manager/a-lab-is-worked-through-one-skinned-shell`, unchanged |
+| BR-15 | A `slug: what` line is posted on `eng.feature` | The EM files it and the coder's run completes, with no drain from the EM | Goal leg c |
+| BR-16 | Inbox Approve | Files; the run starts by BR-1. Deny files nothing | `goals/devforce-lab/it-waits-for-a-person-before-it-files` |
+| BR-17 | The coding run belongs to the filer | The harness manager's existing run-owner refusal still holds, now with the owner known at filing | `packages/harness-manager/test/run-owner-dispatcher.spec.ts` + leg b |
 
 ## What this issue owns
 
-- The feature workstream's post door starting the run it files (BR-1 to BR-9).
-- Not owned: the chief of staff posting coding work ([FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774));
-  failed attempts retrying on their own ([follow-ups](PLAN.md#follow-ups)). Workforce's `fileTask`
-  starting a board's worker is open ([O1](DECISIONS.md#o1)).
+- BR-1, BR-2, BR-5 to BR-17: the start on add, ownership at filing, and DevTeam's doors moving to the one rule.
+- Not owned: resolving an assignee to a worker (FIX-1778, BR-3); a run-time mailbox, its list and
+  `taskListWorkers` (FIX-1779, BR-4); retries on their own and telling the coordinator a task
+  settled (FIX-1780).
 
 ## Acceptance
 
-- A shaped post on `eng.feature` ends as a completed row with no outside board run (BR-1).
-- A repeat or an unshaped line starts nothing (BR-2, BR-3).
-- The four existing DevTeam checks still pass (BR-6, BR-10, BR-11).
+- A task added by any of the four routes runs with no hand drain, as its filer (BR-1, BR-8).
+- One member's filing never starts another member's task (BR-9).
+- DevTeam's post and Approve start the coder with no drain of their own (BR-15, BR-16).
