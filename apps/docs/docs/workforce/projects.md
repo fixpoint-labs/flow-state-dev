@@ -11,7 +11,7 @@ A workstream is a mailbox you declare in a `MAILBOX.md`, with the boards it hold
 
 A project is data, not a file. You don't write a folder or a `MAILBOX.md` for one. It's a row in the organization's `projects` collection, created while the app runs, by your own code or by a seat acting for a person. It belongs to the organization rather than to a team, so one project usually gathers workstreams from several teams.
 
-Each project also has a **room**: one conversation its members share. Everyone on the project reads and posts in the same room, each through a session of their own.
+Each project also has a **room**: one conversation its members share. [A room or a mailbox](#a-room-or-a-mailbox) shows how it differs from a mailbox.
 
 ## How it fits together
 
