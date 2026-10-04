@@ -29,7 +29,7 @@ import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type BoardRow, type Failure, type Workstream } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { resolveRunFlow } from "../lib/run";
-import { sendTurn, TurnNotDelivered } from "../lib/send";
+import { sendTurn, TurnNotDelivered, type TurnStop } from "../lib/send";
 import { ComposerShell, TurnSendStatus, useTurnSend } from "../components/TurnComposer";
 import { lineLabel, lineOf, mergeLines, postLine, readTranscriptPage } from "../lib/transcript";
 import type { Gaps } from "../gaps";
@@ -114,12 +114,15 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
           });
           const door = doorOf(roster.seats, flowId);
           if (door === null) throw new TurnNotDelivered("refused", `${seat.id} ${gaps.turn.noDoor}`);
-          await sendTurn(clients, { sessionId: link.sessionId, flowId, door }, message);
+          const sent = await sendTurn(clients, { sessionId: link.sessionId, flowId, door }, message);
           setReceipts((held) => [...held, { id: held.length, row }]);
+          // It stopped short, maybe on a new ask: read the Lab again so this Stream and Inbox list whatever it raised.
+          if (sent.suspended) void refresh();
+          return sent;
         },
       };
     },
-    [clients, gaps, snapshot, workstream],
+    [clients, gaps, refresh, snapshot, workstream],
   );
 
   return (
@@ -271,7 +274,7 @@ function FeedAsk({ ask }: { ask: Ask }) {
 /** Where an `@name` line goes, or why it can't. */
 export type Addressing =
   | { blocked: string }
-  | { blocked: null; rows: BoardRow[]; send: (row: BoardRow, message: string) => Promise<void> };
+  | { blocked: null; rows: BoardRow[]; send: (row: BoardRow, message: string) => Promise<{ suspended: boolean; stopped: TurnStop }> };
 
 /** `@name rest` → the name and the line, or `undefined` for a line to the mailbox. */
 function parseAddress(draft: string): { name: string; message: string } | undefined {

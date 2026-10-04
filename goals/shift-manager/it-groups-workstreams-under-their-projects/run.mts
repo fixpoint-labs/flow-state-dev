@@ -850,9 +850,7 @@ await runGoal(async () => {
       const before = await whatIsHeld(apis.owner, host);
       const roomKinds = new Set(before.map((k) => k.kind));
       const talkBefore = await talkSessionsOf(apis.owner, roomKinds);
-      // The count reaches the sessions it guards: every talk session a row lists
-      // for the owner is among them (they are dispatch-run children of the
-      // projects session, not top-level).
+      // Sanity: the owner's row-listed talk sessions are within `talkSessionsOf`.
       const unseen = before.map((k) => k.own).filter((id) => !talkBefore.includes(id));
       if (unseen.length > 0) {
         fail("a restart keeps the projects and their rooms", `the owner's talk sessions as listed miss ${unseen.length} the rows list (${unseen.join(", ")}), so a minted one would go unseen`);

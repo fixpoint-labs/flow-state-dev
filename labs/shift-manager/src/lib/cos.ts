@@ -18,7 +18,7 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import type { LabClients } from "./connection";
 import { newSessionId } from "./ids";
 import { readSessionItems, type SessionItems } from "./run";
-import { sendTurn } from "./send";
+import { sendTurn, type TurnStop } from "./send";
 
 /**
  * The id of the person's conversation with the seat `seatId`: their newest
@@ -58,12 +58,12 @@ export function readConversation(clients: LabClients, sessionId: string): Promis
 /**
  * Send a line to the chief of staff through its door, into `sessionId`: the
  * conversation's, or a {@link newConversationId} the door's request opens.
- * Resolves once the line is delivered; rejects as {@link sendTurn} does.
+ * Resolves as {@link sendTurn} does once the line is delivered; rejects as it does.
  */
 export async function sendToChiefOfStaff(
   clients: LabClients,
   target: { seatId: string; door: string; sessionId: string },
   message: string,
-): Promise<void> {
-  await sendTurn(clients, { sessionId: target.sessionId, flowId: target.seatId, door: target.door }, message);
+): Promise<{ requestId: string; suspended: boolean; stopped: TurnStop }> {
+  return sendTurn(clients, { sessionId: target.sessionId, flowId: target.seatId, door: target.door }, message);
 }

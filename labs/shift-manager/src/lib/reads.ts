@@ -314,8 +314,32 @@ const ASK_PAGE_SIZE = 200;
 /** How many seat sessions are read at once. */
 const ASK_READ_BATCH = 6;
 
-/** The reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
+/** The suspension reasons that are a person's ask: the only ones Inbox lists. */
+export const PERSON_REASONS: ReadonlySet<string> = new Set(["human_approval", "human_input"]);
+
+/** One still-pending suspension, as `deriveSuspensions` reduces it. */
+export type PendingSuspension = ReturnType<typeof deriveSuspensions>["pending"][number];
+
+/**
+ * The suspensions still pending in one session: every page of its suspension
+ * and resume items, reduced by `react`'s `deriveSuspensions`. Inbox lists its
+ * asks from this read.
+ */
+export async function readPendingSuspensions(clients: LabClients, sessionId: string): Promise<PendingSuspension[]> {
+  const items: OutputItem[] = [];
+  for (let offset = 0, page = 0; page < MAX_PAGES; page += 1) {
+    const state = await clients.sessions.getSessionState(sessionId, {
+      includeItems: true,
+      itemTypes: ["suspension", "suspension_resume"],
+      offset,
+      limit: ASK_PAGE_SIZE,
+    });
+    items.push(...(state.items ?? []));
+    if (state.pagination?.hasMore !== true) break;
+    offset = state.pagination.nextOffset ?? offset + ASK_PAGE_SIZE;
+  }
+  return deriveSuspensions(items).pending;
+}
 
 /** A failure, in the server's own words when it sent any. */
 export function describeFailure(error: unknown): Failure {
@@ -776,19 +800,7 @@ export function createLabReader(clients: LabClients): LabReader {
 
   /** The pending person-asks in one session. */
   const readAsks = async (session: SessionSummary, seatId: string | null): Promise<Ask[]> => {
-    const items: OutputItem[] = [];
-    for (let offset = 0, page = 0; page < MAX_PAGES; page += 1) {
-      const state = await clients.sessions.getSessionState(session.id, {
-        includeItems: true,
-        itemTypes: ["suspension", "suspension_resume"],
-        offset,
-        limit: ASK_PAGE_SIZE,
-      });
-      items.push(...(state.items ?? []));
-      if (state.pagination?.hasMore !== true) break;
-      offset = state.pagination.nextOffset ?? offset + ASK_PAGE_SIZE;
-    }
-    const pending = deriveSuspensions(items).pending.filter((view) => PERSON_REASONS.has(view.item.reason));
+    const pending = (await readPendingSuspensions(clients, session.id)).filter((view) => PERSON_REASONS.has(view.item.reason));
     if (pending.length === 0) return [];
     // Which transport each suspended request arrived on: that decides whether
     // the Lab will reopen it. Read only for a session that holds an ask.
