@@ -342,6 +342,8 @@ export function Composer({
     if (address !== undefined) {
       const to = target as Extract<Addressing, { blocked: null }>;
       setPostError(null);
+      // No `held` here: the line goes into the task's session, which this feed
+      // doesn't draw, so it keeps the draft until delivered.
       if (await turn.run(() => to.send(row!, address.message))) {
         clearSent();
         setChosen("");

@@ -35,13 +35,21 @@ export function useFollowLatest(options: { startAtEnd?: boolean } = {}) {
     const onChange = () => {
       if (following.current) toEnd();
     };
+    // Content that grows without changing the tree, such as an image loading:
+    // each of the feed's children, watched again as they are replaced.
+    const sizes = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(onChange);
+    const watchSizes = () => {
+      sizes?.disconnect();
+      for (const child of Array.from(node.children)) sizes?.observe(child);
+    };
+    watchSizes();
     onChange();
     node.addEventListener("scroll", onScroll, { passive: true });
-    const mutations = new MutationObserver(onChange);
+    const mutations = new MutationObserver((records) => {
+      if (records.some((record) => record.target === node)) watchSizes();
+      onChange();
+    });
     mutations.observe(node, { childList: true, subtree: true, characterData: true });
-    // Content that grows without changing the tree, such as an image loading.
-    const sizes = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(onChange);
-    for (const child of Array.from(node.children)) sizes?.observe(child);
     return () => {
       node.removeEventListener("scroll", onScroll);
       mutations.disconnect();

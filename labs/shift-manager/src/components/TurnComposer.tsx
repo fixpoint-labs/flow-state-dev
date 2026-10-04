@@ -74,7 +74,7 @@ export function useTurnSend() {
 
 /** What a send's state says, with Retry only for a line that never got there. */
 export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendState; testId: string; onRetry: () => void }) {
-  if (state.kind === "sending") return <>Sending… shown as delivered once the worker's session holds it.</>;
+  if (state.kind === "sending") return <>Sending…</>;
   if (state.kind === "held") return <>Sent. Waiting on the worker's reply…</>;
   if (state.kind === "delivered") {
     if (state.stopped === "ask") return <>Delivered. The worker stopped to ask you something; it's in Inbox.</>;
