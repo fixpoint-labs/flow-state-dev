@@ -19,7 +19,14 @@ vi.mock("../src/exec", async (importOriginal) => {
   return { ...actual, run: vi.fn(actual.run) };
 });
 
+// Every test here drives real git: twenty-odd processes for a fixture remote
+// and a provision. Alone each test takes well under a second, but process
+// spawns slow down sharply when the whole monorepo's suites run at once, and
+// the 5s default then fails tests that are slow, not wrong.
+vi.setConfig({ testTimeout: 30_000 });
+
 const spawned = vi.mocked(run);
+const { run: realRun } = await vi.importActual<typeof import("../src/exec")>("../src/exec");
 /** The git subcommand of every process the host started. */
 const gitCommands = () => spawned.mock.calls.map(([, args]) => args[0]);
 /** The error `attempt` rejected with; fails the test if it provisioned. */
@@ -39,6 +46,7 @@ beforeEach(() => {
   root = tempDir("host");
   remote = createRemote("marker A");
   spawned.mockClear();
+  spawned.mockImplementation(realRun);
 });
 
 afterEach(() => {
@@ -227,6 +235,24 @@ describe("a retry keeps its checkout and never fetches", () => {
     expect(gitCommands()).not.toContain("ls-remote");
   });
 
+  it("raises a clone it cannot ask about a branch, rather than reading that as no branch", async () => {
+    // Read as "no branch", a failed probe sends the run to fetch and cut a
+    // branch that already exists.
+    const h = host();
+    const first = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
+    rmSync(first.cwd, { recursive: true, force: true });
+    spawned.mockClear();
+    spawned.mockImplementation(async (file, args, options) => {
+      if (args[0] === "show-ref") throw Object.assign(new Error("fatal: the clone is unreadable"), { code: 128 });
+      return realRun(file, args, options);
+    });
+
+    await expect(
+      h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" }),
+    ).rejects.toThrow(/unreadable/);
+    expect(gitCommands()).not.toContain("fetch");
+  });
+
   it("gives two provisions of one place, at once, the one checkout", async () => {
     const h = host();
     const [a, b] = await Promise.all([
@@ -236,6 +262,35 @@ describe("a retry keeps its checkout and never fetches", () => {
 
     expect(a.cwd).toBe(b.cwd);
     expect([a.repo?.created, b.repo?.created].sort()).toEqual([false, true]);
+  });
+
+  it("makes a second host on the same root wait for the first, then hands it the checkout", async () => {
+    // Two processes sharing a root share no memory, so only a lock on disk
+    // keeps them from both reaching `worktree add -b` for one place.
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    let reached!: () => void;
+    const paused = new Promise<void>((resolve) => (reached = resolve));
+    let held = false;
+    spawned.mockImplementation(async (file, args, options) => {
+      if (!held && args[0] === "worktree" && args[1] === "add") {
+        held = true;
+        reached();
+        await gate;
+      }
+      return realRun(file, args, options);
+    });
+
+    const first = host().provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
+    await paused;
+    const second = host().provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
+    // Long enough for an unlocked second host to run its whole provision.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    open();
+
+    const [a, b] = await Promise.all([first, second]);
+    expect(a.cwd).toBe(b.cwd);
+    expect([a.repo?.created, b.repo?.created]).toEqual([true, false]);
   });
 
   it("refuses a checkout cut from another remote, and keeps it", async () => {
@@ -258,6 +313,83 @@ describe("a retry keeps its checkout and never fetches", () => {
       h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" }),
     ).rejects.toThrow(/elsewhere/);
     expect(git(first.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("elsewhere");
+  });
+});
+
+/**
+ * Stand in for the process timeout killing `git worktree add`: let git run,
+ * then leave the tree as `leave` says and reject the way a killed child does.
+ */
+function killWorktreeAdd(leave: (checkout: string) => void): void {
+  spawned.mockImplementation(async (file, args, options) => {
+    const result = await realRun(file, args, options);
+    if (args[0] === "worktree" && args[1] === "add") {
+      spawned.mockImplementation(realRun);
+      leave(join(root, "run-1", "checkout"));
+      throw Object.assign(new Error("git worktree add: killed"), { killed: true, signal: "SIGTERM" });
+    }
+    return result;
+  });
+}
+
+describe("a provision cut short is rebuilt, not handed back", () => {
+  // Measured in harness-manager: a killed `worktree add` can leave `.git`, the
+  // branch and the worktree registration in place with tracked files missing.
+  // Handed back, the run's first `git add -A` commits every missing file as a
+  // deletion.
+  it("rebuilds a checkout whose worktree add was killed part-way", async () => {
+    const h = host();
+    killWorktreeAdd((checkout) => rmSync(join(checkout, "marker.txt")));
+    await expect(h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" })).rejects.toThrow(
+      /killed/,
+    );
+
+    const retry = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(readFileSync(join(retry.cwd, "marker.txt"), "utf8")).toBe("marker A");
+    expect(git(retry.cwd, "status", "--porcelain")).toBe("");
+    expect(git(retry.cwd, "rev-parse", "--abbrev-ref", "HEAD")).toBe("fsd/run-1");
+  });
+
+  it("rebuilds one killed before git wrote .git", async () => {
+    const h = host();
+    killWorktreeAdd((checkout) => rmSync(join(checkout, ".git")));
+    await expect(h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" })).rejects.toThrow(
+      /killed/,
+    );
+
+    const retry = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(readFileSync(join(retry.cwd, "marker.txt"), "utf8")).toBe("marker A");
+    expect(git(retry.cwd, "status", "--porcelain")).toBe("");
+  });
+
+  it("hands back a checkout missing a tracked file when no provision was cut short — that is the run's work", async () => {
+    const h = host();
+    const first = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
+    rmSync(join(first.cwd, "marker.txt"));
+
+    const retry = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(git(retry.cwd, "status", "--porcelain")).toBe("D marker.txt");
+  });
+
+  it("refuses, and keeps, a cut-short checkout that shows anything but missing files", async () => {
+    // The record of an interrupted provision sits where an agent could write
+    // it, so it only clears a tree that agrees: one with work in it is kept.
+    const h = host();
+    killWorktreeAdd((checkout) => {
+      rmSync(join(checkout, "marker.txt"));
+      writeFileSync(join(checkout, "work.ts"), "real work");
+    });
+    await expect(h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" })).rejects.toThrow(
+      /killed/,
+    );
+
+    await expect(
+      h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" }),
+    ).rejects.toThrow(/interrupted/);
+    expect(readFileSync(join(root, "run-1", "checkout", "work.ts"), "utf8")).toBe("real work");
   });
 });
 
