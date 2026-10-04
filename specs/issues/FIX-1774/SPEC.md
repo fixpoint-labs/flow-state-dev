@@ -48,7 +48,7 @@ the model's words, except two reply reads: leg a's reply asks nothing, and leg c
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/shift-manager/it-hands-a-coding-ask-to-one-worker/` · `openai/gpt-5.4-mini` for the chief of staff, scripted harness for the run · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | Leg a: zero new roster rows; exactly one row on the feature board, filed from a post by `chief-of-staff`, whose goal contains the held-out word; within 120 seconds that row is claimed by `eng.coder` and a `harness-manager` run record exists for it; the turn did not suspend, and its reply holds no question mark and does not offer a spec. Leg b: still zero hires, still one row. Leg c: zero hires, zero new rows, and the reply names Platform and names `eng.feature` or Storefront as where coding work can go |
+| **Signal** | Leg a: zero new roster rows; exactly one row on the feature board, filed from a post by `chief-of-staff`, whose goal contains the held-out word; within 120 seconds that row is claimed by `eng.coder` and a `harness-manager` run record exists for it; the turn did not suspend, and its reply names `eng.feature` and Storefront, holds no question mark, offers no spec and does not say it can't route or hand off work. Leg b: still zero hires, still one row. Leg c: zero hires, zero new rows, and the reply names Platform and names `eng.feature` or Storefront as where coding work can go |
 | **Input** | Legs a then b in one chief of staff session; leg c in a fresh one. Leg a: "Build a simple hello-world React app that shows the word `<held-out>`. Use Claude Code. Hire a worker if you need to. Just do it, I don't care how." Leg b: "Just do it." Leg c: "Build a hello-world page that shows the word `<held-out>` in the Platform project. Just do it." The word is random hex picked at run time. Run: `pnpm tsx goals/shift-manager/it-hands-a-coding-ask-to-one-worker/run.mts`, with a model key set |
 | **Anti-game** | No hire, file or drain block called by the check. No row seeded. Grades read off the stores through routes |
 | **Control that must fail** | `GOAL_CONTROL=main-instructions` (the chief of staff's file as on `main`): leg a FAILS: the roster gains a hire, or no row is filed. `GOAL_CONTROL=file-only` (the post door files without running the board): leg a FAILS: the row stays *pending* and no run record exists. Today's `main` FAILS leg a, as the [POC](poc/the-dogfood-turn/README.md) recorded |
@@ -98,7 +98,13 @@ flowchart LR
   B -->|"hand-off"| K["eng.coder · coding run"]
 ```
 
-Every arrow already exists except the last step of the post door. No new tool, noun or kind.
+Every arrow already exists except the last step of the post door. No new write tool, noun or
+kind.
+
+**The chief of staff also sees the projects.** To name the project a task lands on, or to say that
+Platform has no coding workstream, it has to know which project holds which workstream. Today it
+can't: `discover` has no projects, and its project tools only write. The Lab gives it a read of
+the organization's projects and their workstreams, from the stored rows, each turn.
 
 ## What stays as it is
 
@@ -106,6 +112,8 @@ Every arrow already exists except the last step of the post door. No new tool, n
 - **An explicit hire.** "Hire a coder named X" still hires, at once.
 - **The EM's Inbox ask.** Still asks first; Approve still files and runs.
 - **A line that doesn't name a feature.** Still files nothing.
+- **Projects as data.** Which project holds which workstream stays in the stored rows. The
+  chief of staff's file names no project.
 - **Which harness runs.** Still the Lab operator's choice. The chief of staff promises none.
 
 ## Sign off

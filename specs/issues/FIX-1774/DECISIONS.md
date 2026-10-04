@@ -58,6 +58,9 @@ It comes down to which project the task lands on: elsewhere is the wrong project
   mailboxes but not which board a worker drains or the line shape a workstream files from, so the
   file states `eng.coder`, `eng.feature` and the `slug: what` shape. The file is the Lab's own,
   beside the folders it names.
+- **The chief of staff reads the projects each turn.** It needs which project holds which
+  workstream for BR-4 and BR-5, and today it can only write projects. A read from the stored rows,
+  not a list in its file, because projects are the app's data and change at run time.
 - **"With Claude Code" picks no harness.** Which harness a run uses is the Lab operator's
   setting. The chief of staff neither hires a worker named for a harness nor claims one.
 - **The reply after a hand-off names the task, not a run result.** `post-to-mailbox` reports a
@@ -93,3 +96,5 @@ None.
 - **Draft** — The dogfood failure is two gaps, not one: the chief of staff was never told how to
   hand off coding work, and the hand-off it should use files a task nobody runs. One PR fixes
   both in the DevTeam Lab, with no package change.
+- **Round 1** — Codex found the chief of staff can't read projects, so it could not name Storefront
+  or the Platform gap without guessing. Added a read of the stored projects (S6).

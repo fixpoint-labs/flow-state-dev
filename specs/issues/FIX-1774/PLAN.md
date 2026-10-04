@@ -12,6 +12,7 @@ Written for the implementing agent. Directional: shape and sequence, not finishe
 | S2 | `goals/devforce-lab/lab/workforce/flows/workers/em.mts` | The post door files, then runs the board when the row is new. Reuse `board.drain`, as `askToFile` does. The module header and the `POST_ENTRY` doc say so | BR-10–BR-13 |
 | S3 | `goals/devforce-lab/lab/README.md` | *The ask* and the board-check row: a posted line now starts the coder | — |
 | S4 | `goals/shift-manager/it-hands-a-coding-ask-to-one-worker/` | The goal check, `goal.md` + `run.mts`, per [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met). Reuse `goals/lib/shift-manager.mts` | goal |
+| S6 | `goals/devforce-lab/lab/host.mts` (the `agent` kind's `uses`) | A read of the organization's projects (id, title, workstreams) from the stored `projects` collection, for the chief of staff each turn. A context entry on a small lab capability, or a read-only tool; the implementer picks. Never a project id or workstream written in a file | BR-4 BR-5 |
 | S5 | Docs, per [DOCS.md](DOCS.md) | Shift Manager README, the chief of staff page, the Shift Manager overview | — |
 
 **Removed:** nothing. **Not touched:** any package under `packages/`.
@@ -22,6 +23,7 @@ Written for the implementing agent. Directional: shape and sequence, not finishe
 flowchart LR
   S2["S2 · post door runs the board"] --> S4["S4 · goal check"]
   S1["S1 · chief of staff file"] --> S4
+  S6["S6 · project read"] --> S4
   S2 --> S3["S3 · lab README"]
   S4 --> S5["S5 · docs"]
 ```
@@ -34,7 +36,7 @@ red, and the docs.
 | ID | What | Pass |
 |---|---|---|
 | VG | The goal check, all three legs, plus both controls | Legs green on the branch; `main-instructions` red on leg a (a hire or no row); `file-only` red on leg a (*pending*) |
-| V1 | Lab test on the post door: shaped line → row filed and claimed by the coder; same slug again → no new row, no second claim; unshaped line → nothing | Red on `main` for the first case (row stays *pending*) |
+| V1 | Lab test on the post door: shaped line → row filed and claimed by the coder; same slug again, with another row left *pending* on the board → no new row, and that other row is still *pending* (so an extra board run is seen); unshaped line → nothing | Red on `main` for the first case (row stays *pending*) |
 | V2 | The existing DevForce checks still pass: `it-keeps-its-rows-on-the-mailboxes-board`, `it-waits-for-a-person-before-it-files`, `it-wakes-the-seat-a-file-declared` | Green |
 | V3 | `goals/org-seats/cos-changes-the-roster` still passes (explicit hire, fire, discover) | Green |
 | V4 | `pnpm --filter @flow-state-dev/shift-manager test` and typecheck | Green |
@@ -57,12 +59,15 @@ convenience in a way that changes default behaviour.
 - **No package change.** Because the fix is the Lab's wiring and its coordinator's file
   (Architect fence: "behavior and instructions on the existing coordinator path"; Jake's layer
   rule keeps Workforce policy out of core and engine).
-- **No new tool, noun or kind.** Because routing exists, and a dispatch verb is invent-killed.
+- **No new write or routing tool, noun or kind.** Because routing exists, and a dispatch verb is
+  invent-killed. S6's project read is the one addition, and it only reads.
 - **Say "worker", never "seat", in every line of prose you write**, including the chief of
   staff's file, the README, docs and the PR. Code names like `seatId` stay. Because Jake is
   retiring the word.
-- **Grade on stores, not words.** Because a model can say "I handed it over" without doing it;
-  only leg c reads the reply, and only for the project's name.
+- **Grade on stores first, then the reply.** Because a model can say "I handed it over" without
+  doing it. The reply checks are on top of the store checks, never instead: leg a's reply names
+  `eng.feature` and Storefront, holds no question mark, offers no spec and doesn't say it can't
+  route or hand off work; leg c's names Platform and where coding work can go.
 - **The post door runs the board only for a row it just filed.** Because a repeated line must
   not start a second coding run, and a run may cost money under a real harness.
 
