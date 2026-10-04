@@ -8,7 +8,16 @@ and [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n).
 
 ## The path
 
-![The path as it shipped, 30 September to 4 October 2026, one lane per issue or group, each bar from filed or the gate to merged. FIX-1655, FIX-1662 and FIX-1664, with the DevForce lab prerequisites FIX-1666 to 1668, specced and built on 30 September. Closure run 1's findings, FIX-1684 and FIX-1688 to 1696, merged overnight, and FIX-1690's door into a running session on 1 October. Design v2 landed that evening, followed by FIX-1725, FIX-1722 and FIX-1723. The late fixes FIX-1730 to 1735, FIX-1747 and FIX-1749 landed on 2 and 3 October. The v2-look audit filed FIX-1736, merged 2 October, and FIX-1737, whose four slices landed early on 4 October beside FIX-1650's FIX-1718 and FIX-1752 as inputs. The closure ran until one run was clean, on 01444863c, and PR 2709 merged on 4 October. The critical path is outlined: design v2, FIX-1736, FIX-1737 and the clean closure run](figures/path.svg)
+![The as-shipped path, 30 September to 4 October 2026; the detail is in the prose below](figures/path.svg)
+
+Each bar runs from filed (or the gate) to merged. FIX-1655, FIX-1662 and FIX-1664, with the DevForce
+lab prerequisites FIX-1666 to 1668, specced and built on 30 September. Closure run 1's findings
+(FIX-1684, FIX-1688 to 1696) merged overnight, and FIX-1690's door into a running session on 1
+October. Design v2 landed that evening, then FIX-1725, FIX-1722 and FIX-1723. The late fixes,
+FIX-1730 to 1735, FIX-1747 and FIX-1749, landed on 2 and 3 October. The v2-look audit filed
+FIX-1736, merged on 2 October, and FIX-1737, whose four slices landed early on 4 October beside
+FIX-1650's FIX-1718 and FIX-1752. The closure ran until one run was clean, on `01444863c`, and
+[#2709](https://github.com/fixpoint-labs/flow-state-dev/pull/2709) merged that day.
 
 The long pole was v2's look, not the shell: the structure the 30 September plan named merged on
 the first day, and the last three went to design v2, the look it set
