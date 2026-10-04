@@ -10,7 +10,7 @@ import type { LabClients } from "../src/lib/connection";
 
 const TARGET = { sessionId: "s_run", flowId: "eng.coder", door: "message" };
 
-type Item = { requestId: string; role?: string; type: string; reason?: string };
+type Item = { requestId: string; role?: string; type: string; reason?: string; suspensionId?: string };
 
 /** Clients whose door request ends `status`, and whose session holds `items`, paged by offset and limit. */
 function stubClients(options: {
@@ -84,7 +84,7 @@ describe("sendTurn", () => {
       status: "suspended",
       items: [
         { requestId: "req_door", role: "user", type: "message" },
-        { requestId: "req_door", type: "suspension", reason: "human_approval" },
+        { requestId: "req_door", type: "suspension", reason: "human_approval", suspensionId: "susp_fire" },
       ],
     });
     await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "ask" });
@@ -96,11 +96,25 @@ describe("sendTurn", () => {
       status: "suspended",
       items: [
         { requestId: "req_door", role: "user", type: "message" },
-        { requestId: "req_other", type: "suspension", reason: "human_approval" },
-        { requestId: "req_door", type: "suspension", reason: "external_event" },
+        { requestId: "req_other", type: "suspension", reason: "human_approval", suspensionId: "susp_other" },
+        { requestId: "req_door", type: "suspension", reason: "external_event", suspensionId: "susp_deploy" },
       ],
     });
     await expect(sendTurn(clients, TARGET, "wait for the deploy", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "wait" });
+  });
+
+  // An ask someone already answered is not in Inbox any more: only the still-pending stop counts.
+  it("is stopped on a wait when the request's ask was answered and it then stopped on something else", async () => {
+    const { clients } = stubClients({
+      status: "suspended",
+      items: [
+        { requestId: "req_door", role: "user", type: "message" },
+        { requestId: "req_door", type: "suspension", reason: "human_approval", suspensionId: "susp_fire" },
+        { requestId: "req_door", type: "suspension_resume", suspensionId: "susp_fire" },
+        { requestId: "req_door", type: "suspension", reason: "external_event", suspensionId: "susp_deploy" },
+      ],
+    });
+    await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "wait" });
   });
 
   it("is unconfirmed, not not-sent, when the request suspended but the session doesn't show the line", async () => {

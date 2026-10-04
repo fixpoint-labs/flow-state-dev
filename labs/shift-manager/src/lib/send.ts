@@ -31,6 +31,7 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { LabClients } from "./connection";
+import { deriveSuspensions } from "@flow-state-dev/react";
 import { describeFailure, PERSON_REASONS } from "./reads";
 
 /**
@@ -108,19 +109,22 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
 }
 
 /**
- * What a suspended request stopped on: `ask` when a suspension it raised is a
- * person's ask, read from the session's newest suspension items. The line is
- * delivered either way, so a read that fails is `wait`, which promises nothing.
+ * What a suspended request stopped on: `ask` when its still-pending suspension
+ * is a person's ask, by the same derivation Inbox lists asks with
+ * (`deriveSuspensions`), read from the session's newest suspension and resume
+ * items. An ask already answered doesn't count, so a request that resumed and
+ * stopped again on something else is `wait`. The line is delivered either way,
+ * so a read that fails is `wait`, which promises nothing.
  */
 async function stopOf(clients: LabClients, sessionId: string, requestId: string): Promise<"ask" | "wait"> {
   const read = (offset: number) =>
-    clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["suspension"], offset, limit: ITEM_PAGE });
+    clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["suspension", "suspension_resume"], offset, limit: ITEM_PAGE });
   try {
     let page = await read(0);
     const total = page.pagination?.total ?? 0;
     if (total > ITEM_PAGE) page = await read(total - ITEM_PAGE);
-    const raised = ((page.items ?? []) as Array<OutputItem & { reason?: string }>).filter((item) => item.requestId === requestId);
-    return raised.some((item) => item.reason !== undefined && PERSON_REASONS.has(item.reason)) ? "ask" : "wait";
+    const pending = deriveSuspensions((page.items ?? []) as OutputItem[]).pending;
+    return pending.some((view) => view.item.requestId === requestId && PERSON_REASONS.has(view.item.reason)) ? "ask" : "wait";
   } catch {
     return "wait";
   }
