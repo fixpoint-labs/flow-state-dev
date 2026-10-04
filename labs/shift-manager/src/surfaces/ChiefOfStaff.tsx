@@ -309,8 +309,9 @@ function Talk({
         try {
           const sent = await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
           setOpened(target);
-          // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
-          if (sent.suspended) void refresh();
+          // Read the Lab again either way. Stopped short, it may have raised an ask Inbox should
+          // list; finished, it may have changed the organization, such as a project it created.
+          void refresh();
           return sent;
         } catch (error) {
           // The Lab may have opened the session before the line failed. The

@@ -12,7 +12,7 @@ import type { BoardRow } from "../src/lib/reads";
 import { GAPS } from "../src/gaps";
 import { bootColorScheme } from "../src/lib/color-scheme";
 import { createLabClients } from "../src/lib/connection";
-import { ASKER_GATED_LINE, ASKER_REFUSED_LINE, heardLine } from "./fixtures/ask-lab/asker.mts";
+import { ASKER_GATED_LINE, ASKER_REFUSED_LINE, heardLine, startProjectLine } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -577,6 +577,19 @@ describe("Chief of Staff (FIX-1722)", () => {
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
     await waitFor(() => expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(sessionId));
     await waitFor(() => expect(screen.getAllByTestId("cos-item").map((el) => el.getAttribute("data-item-id"))).toContain(reply!.id));
+  });
+
+  // A finished turn raised no ask, but it may have changed the organization: a project it
+  // created is listed without a reload.
+  it("lists a project the chief of staff's turn created, without a reload", async () => {
+    await openCos("/", { chiefOfStaff: true, seatsStartProjects: true });
+    await screen.findByTestId("nav-project-unassigned");
+    expect(screen.queryByTestId("nav-project-launch")).toBeNull();
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: startProjectLine("launch") } });
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    expect((await screen.findByTestId("nav-project-launch", undefined, { timeout: 5_000 })).textContent).toContain("Project launch");
   });
 
   it("keeps the draft and shows the seat's reason when its door refuses (BR-15)", async () => {
