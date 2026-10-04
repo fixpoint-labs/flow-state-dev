@@ -216,7 +216,7 @@ describe("the composer's @mentions", () => {
         send={async () => {}}
         onKept={async () => {}}
         mentions={["coder"]}
-        addressing={() => ({ blocked: null, rows: [row], send: async () => {} })}
+        addressing={() => ({ blocked: null, rows: [row], send: async () => ({ stopped: null }) })}
       />,
     );
     fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "@coder first line" } });
@@ -527,6 +527,7 @@ describe("Chief of Staff (FIX-1722)", () => {
   // is delivered and the ask waits in Inbox: Retry would send it, and raise the ask, twice.
   it("reads a line whose turn stopped on an approval as delivered, pointing at Inbox, with no Retry", async () => {
     const { clients } = await openCos("/", { chiefOfStaff: true });
+    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
     fireEvent.click(screen.getByTestId("cos-composer-send"));
@@ -536,6 +537,8 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.queryByTestId("cos-composer-retry")).toBeNull();
     expect(screen.queryByTestId("cos-composer-error")).toBeNull();
     expect(input.value).toBe("");
+    // The Lab is read again, so the ask the composer points at is listed: here, and in Inbox.
+    await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
     // The session holds the line once, with the one ask it raised.
     const sessionId = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
     const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message", "suspension"] });

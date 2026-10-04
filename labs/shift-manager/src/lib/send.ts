@@ -11,9 +11,10 @@
  * followed until it ends or stops. A line counts as delivered only when that
  * request is `completed` or `suspended` **and** the target session holds the
  * request's user item. The HTTP answer alone never says so: it only says the
- * request started. A `suspended` request stopped on an ask the worker raised,
- * such as a chief of staff's approval to fire a seat: the line is in, and the
- * ask waits in Inbox, so the send resolves with `waiting` set.
+ * request started. A `suspended` request stopped short of finishing, with the
+ * line in: the send resolves with `stopped` saying on what. `ask` is a
+ * person's ask Inbox lists, such as a chief of staff's approval to fire a
+ * seat; `wait` is any other suspension, which Inbox doesn't list.
  *
  * Three ways a line can fail to be delivered, and the caller keeps the draft
  * for each:
@@ -30,7 +31,13 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { LabClients } from "./connection";
-import { describeFailure } from "./reads";
+import { describeFailure, PERSON_REASONS } from "./reads";
+
+/**
+ * Why a delivered line's request stopped short of finishing: on a person's ask
+ * that Inbox lists (`ask`), on anything else (`wait`), or not at all (`null`).
+ */
+export type TurnStop = "ask" | "wait" | null;
 
 /** Where a line goes: the session, the flow that owns it, and that flow's door. */
 export type TurnTarget = { sessionId: string; flowId: string; door: string };
@@ -100,6 +107,25 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
   return undefined;
 }
 
+/**
+ * What a suspended request stopped on: `ask` when a suspension it raised is a
+ * person's ask, read from the session's newest suspension items. The line is
+ * delivered either way, so a read that fails is `wait`, which promises nothing.
+ */
+async function stopOf(clients: LabClients, sessionId: string, requestId: string): Promise<"ask" | "wait"> {
+  const read = (offset: number) =>
+    clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["suspension"], offset, limit: ITEM_PAGE });
+  try {
+    let page = await read(0);
+    const total = page.pagination?.total ?? 0;
+    if (total > ITEM_PAGE) page = await read(total - ITEM_PAGE);
+    const raised = ((page.items ?? []) as Array<OutputItem & { reason?: string }>).filter((item) => item.requestId === requestId);
+    return raised.some((item) => item.reason !== undefined && PERSON_REASONS.has(item.reason)) ? "ask" : "wait";
+  } catch {
+    return "wait";
+  }
+}
+
 /** The door's own reason for a failed request, in its words. */
 async function refusalOf(clients: LabClients, sessionId: string, requestId: string): Promise<string> {
   const failed = await call(() => clients.sessions.listSessionRequests(sessionId, { status: "failed" }));
@@ -111,15 +137,14 @@ async function refusalOf(clients: LabClients, sessionId: string, requestId: stri
  * Send `message` through the target's door, and resolve only once it is
  * delivered (BR-4). Rejects with {@link TurnNotDelivered} otherwise.
  *
- * @returns the door's request, and `waiting`: whether that request stopped on
- * an ask the worker raised rather than finishing.
+ * @returns the door's request, and what it `stopped` on ({@link TurnStop}).
  */
 export async function sendTurn(
   clients: LabClients,
   target: TurnTarget,
   message: string,
   options: { timeoutMs?: number; pollMs?: number } = {},
-): Promise<{ requestId: string; waiting: boolean }> {
+): Promise<{ requestId: string; stopped: TurnStop }> {
   const actions = clients.actions(target.flowId);
   let requestId: string;
   try {
@@ -130,14 +155,13 @@ export async function sendTurn(
   }
 
   const until = Date.now() + (options.timeoutMs ?? SEND_TIMEOUT_MS);
-  let waiting = false;
+  let suspended = false;
   const unconfirmed = (why: string) => new TurnNotDelivered("unconfirmed", `${why} Check the worker's session before sending it again.`);
   try {
     for (;;) {
       const { status } = await call(() => actions.getRequestStatus(requestId));
-      if (status === "completed") break;
-      if (status === "suspended") {
-        waiting = true;
+      if (status === "completed" || status === "suspended") {
+        suspended = status === "suspended";
         break;
       }
       if (status === "failed") throw new TurnNotDelivered("refused", await refusalOf(clients, target.sessionId, requestId));
@@ -152,5 +176,5 @@ export async function sendTurn(
     if (error instanceof ClientCallFailed) throw unconfirmed(`Couldn't read back whether the message arrived: ${error.message}.`);
     throw error;
   }
-  return { requestId, waiting };
+  return { requestId, stopped: suspended ? await stopOf(clients, target.sessionId, requestId) : null };
 }

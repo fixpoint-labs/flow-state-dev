@@ -7,8 +7,8 @@
  * It only draws. Where the line goes, and whether it can go at all, is the
  * caller's; the send itself is {@link sendTurn}'s, the one send path. The
  * composer shows *sending* until that resolves, and *delivered* only when it
- * does (BR-4), noting Inbox when the worker stopped on an ask it raised
- * (a chief of staff's fire, say). A refusal keeps the draft and shows the worker's reason
+ * does (BR-4), noting Inbox when the worker stopped on a person's ask
+ * (a chief of staff's fire, say), or that it waits when it stopped on anything else. A refusal keeps the draft and shows the worker's reason
  * (BR-5). A line that never got there keeps the draft and offers Retry. A line
  * that may have arrived keeps the draft and offers no Retry, so it isn't sent
  * twice.
@@ -20,14 +20,14 @@
  * 1.5px ink box with ⏎ beside it and the send state under it (v2:175-178).
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { TurnNotDelivered } from "../lib/send";
+import { TurnNotDelivered, type TurnStop } from "../lib/send";
 
 /** Where the last send stands. */
 export type TurnSendState =
   | { kind: "idle" }
   | { kind: "sending" }
-  /** `waiting`: the worker stopped on an ask it raised, which waits in Inbox. */
-  | { kind: "delivered"; waiting: boolean }
+  /** `stopped`: what the worker's turn stopped on, as {@link sendTurn} says. */
+  | { kind: "delivered"; stopped: TurnStop }
   | { kind: "refused"; reason: string }
   | { kind: "not-sent"; reason: string }
   | { kind: "unconfirmed"; reason: string };
@@ -35,17 +35,17 @@ export type TurnSendState =
 /**
  * The send state one composer keeps: run a send, and land on *delivered* or
  * on why not. `run` resolves `true` once the line is delivered. A send may
- * resolve `{ waiting }`, as {@link sendTurn} does, to say the worker stopped on an ask.
+ * resolve `{ stopped }`, as {@link sendTurn} does, to say what the worker stopped on.
  */
 export function useTurnSend() {
   const [state, setState] = useState<TurnSendState>({ kind: "idle" });
   const mounted = useRef(true);
   useEffect(() => () => void (mounted.current = false), []);
-  const run = useCallback(async (send: () => Promise<void | { waiting: boolean }>): Promise<boolean> => {
+  const run = useCallback(async (send: () => Promise<void | { stopped: TurnStop }>): Promise<boolean> => {
     setState({ kind: "sending" });
     try {
       const sent = await send();
-      if (mounted.current) setState({ kind: "delivered", waiting: sent?.waiting === true });
+      if (mounted.current) setState({ kind: "delivered", stopped: sent?.stopped ?? null });
       return mounted.current;
     } catch (error) {
       if (!mounted.current) return false;
@@ -67,7 +67,11 @@ export function useTurnSend() {
 /** What a send's state says, with Retry only for a line that never got there. */
 export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendState; testId: string; onRetry: () => void }) {
   if (state.kind === "sending") return <>Sending… shown as delivered once the worker's session holds it.</>;
-  if (state.kind === "delivered") return state.waiting ? <>Delivered. The worker stopped to ask you something; it's in Inbox.</> : <>Delivered.</>;
+  if (state.kind === "delivered") {
+    if (state.stopped === "ask") return <>Delivered. The worker stopped to ask you something; it's in Inbox.</>;
+    if (state.stopped === "wait") return <>Delivered. The worker is waiting on something before it carries on.</>;
+    return <>Delivered.</>;
+  }
   if (state.kind === "idle") return null;
   return (
     <span role="alert" className="text-destructive" data-testid={`${testId}-error`}>
@@ -218,8 +222,8 @@ export function TurnComposer({
   placeholder: string;
   /** Why nothing can be sent right now, or `null` when it can. */
   blocked: string | null;
-  /** Send the line; resolves once it is delivered, with {@link sendTurn}'s `waiting` when it has it. */
-  send: (message: string) => Promise<void | { waiting: boolean }>;
+  /** Send the line; resolves once it is delivered, with {@link sendTurn}'s `stopped` when it has it. */
+  send: (message: string) => Promise<void | { stopped: TurnStop }>;
   onDelivered?: (message: string) => void;
   /** Controls drawn beside Send. */
   extra?: ReactNode;
