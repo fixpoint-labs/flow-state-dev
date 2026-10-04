@@ -198,6 +198,14 @@ describe("sendTurn", () => {
       expect(reads).toEqual({ sessionSuspensions: 0, suspendedRequests: 1 });
     });
 
+    // The listing reads the request's row and its items apart, and a resume marks the row running
+    // before its resume item lands: a stale suspended row can pair with a stale ask.
+    it("listed suspended with its ask pending, then running by the recheck: plain delivered", async () => {
+      const { clients, reads } = stubClients({ status: "suspended", later: ["suspended", "in_progress"], items: [line, ask("s1")] });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: null });
+      expect(reads.suspendedRequests).toBe(1);
+    });
+
     // Whatever the words say, a turn the poll saw suspended tells the caller to read the Lab again.
     it("nothing pending when its stop is read: plain delivered words, still reported suspended", async () => {
       const { clients } = stubClients({ status: "suspended", items: [line, ask("s1"), resume("s1")] });

@@ -114,8 +114,7 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
 /**
  * What a suspended request is still stopped on, read from that request alone:
  * the session's suspended requests with their own item logs, so the read is
- * one call however much history the session holds, and the request's status
- * and its items come back together. Only its still-pending suspensions count
+ * one call however much history the session holds. Only its still-pending suspensions count
  * (`deriveSuspensions`, as Inbox derives them):
  *
  * - one whose reason is a person's ask: `ask`.
@@ -124,9 +123,9 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
  * - none, or the request no longer listed as suspended (resumed since the
  *   poll): `null`, plain delivered.
  *
- * A read that fails is checked against the request's status once: still
- * suspended is `wait`, otherwise `null`; a status that can't be read either
- * is `wait`. The label only picks the composer's words: callers read the Lab
+ * A listing that fails is a `wait`. Any `ask` or `wait` then goes through one
+ * status recheck: not suspended any more is `null`, and a recheck that fails
+ * keeps it. The label only picks the composer's words: callers read the Lab
  * again on the send's `suspended`, whatever this says.
  */
 async function stopOf(
@@ -135,21 +134,28 @@ async function stopOf(
   sessionId: string,
   requestId: string,
 ): Promise<TurnStop> {
-  let suspended: Array<{ id: string; items?: unknown }>;
+  // The candidate, from the listing; a listing that fails is a `wait` candidate.
+  let candidate: TurnStop = "wait";
   try {
-    suspended = await clients.sessions.listSessionRequests(sessionId, { status: "suspended", includeItems: true });
+    const request = (await clients.sessions.listSessionRequests(sessionId, { status: "suspended", includeItems: true })).find(
+      (r) => r.id === requestId,
+    ) as { items?: unknown } | undefined;
+    if (request === undefined) return null;
+    const pending = deriveSuspensions((Array.isArray(request.items) ? request.items : []) as OutputItem[]).pending;
+    candidate = pending.some((view) => PERSON_REASONS.has(view.item.reason)) ? "ask" : pending.length > 0 ? "wait" : null;
   } catch {
-    try {
-      return (await actions.getRequestStatus(requestId)).status === "suspended" ? "wait" : null;
-    } catch {
-      return "wait";
-    }
+    // Fall through to the recheck with `wait`.
   }
-  const request = suspended.find((r) => r.id === requestId);
-  if (request === undefined) return null;
-  const pending = deriveSuspensions((Array.isArray(request.items) ? request.items : []) as OutputItem[]).pending;
-  if (pending.some((view) => PERSON_REASONS.has(view.item.reason))) return "ask";
-  return pending.length > 0 ? "wait" : null;
+  if (candidate === null) return null;
+  // The one exit for a stop. The listing reads the request's row and its items
+  // separately, and a resume marks the row running before it writes its resume
+  // item, so a stale row and a stale ask can pair up: the stop holds only while
+  // the request is still suspended. A recheck that fails keeps the candidate.
+  try {
+    return (await actions.getRequestStatus(requestId)).status === "suspended" ? candidate : null;
+  } catch {
+    return candidate;
+  }
 }
 
 /**
