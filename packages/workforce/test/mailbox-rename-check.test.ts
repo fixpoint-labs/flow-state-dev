@@ -110,6 +110,12 @@ describe("check-mailbox-rename", () => {
     ]);
   });
 
+  it("holds a docs-site survivor phrase to the one page it covers, so a pipe sentence elsewhere that shares it still counts", () => {
+    const line = "A mailbox gives every writer a channel back in.";
+    const result = scan({ ...GREEN, "apps/docs/docs/workforce/overview.md": `${line}\n` });
+    expect(result.productHits).toEqual([{ path: "apps/docs/docs/workforce/overview.md", line: 1, text: line }]);
+  });
+
   it("lets the mailboxes page name the old words only in its upgrade section and the lines that point there", () => {
     expect(scan({ ...GREEN, ...DOCS })).toMatchObject({ ok: true, productHits: [], pathHits: [], unclassified: [] });
 

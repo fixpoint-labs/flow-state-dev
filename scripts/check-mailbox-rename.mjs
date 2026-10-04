@@ -51,9 +51,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-/** Whether the docs site is in scope. It is, since the docs half of the rename. */
-export const SITE_IN_SCOPE = true;
-
 /** Paths that must spell the old words: the refusals, their proofs, this guard. */
 const LEGACY_PATHS = [
   "packages/workforce/src/mailbox/pre-rename.ts",
@@ -115,8 +112,8 @@ export function groupsFor(published) {
 }
 
 /** Groups the rename covers. History, process and the allowlist are classified but kept. */
-export function inScopeGroups(site = SITE_IN_SCOPE) {
-  return new Set(["api", "ui", "goals", "tests", "changesets", "readmes", ...(site ? ["site"] : [])]);
+export function inScopeGroups() {
+  return new Set(["api", "ui", "goals", "tests", "changesets", "readmes", "site"]);
 }
 
 /** A path whose own name uses the word for something else. */
@@ -152,20 +149,14 @@ export const SURVIVOR_LINE = new RegExp(
     "framework's standard channel", "the channel `readWorkforce` itself fills", "loader's own channel",
     "within 1 per channel", "leak through a third channel", "either alone leaves a channel",
     "Their own channel (rather|for the reason)", "five channels are one list",
-    // The docs site: the trace/production split, a run's question path, and
-    // the ways an approval or a message reaches the process docs' readers.
-    "\\| Channel \\| Item types \\|", "a channel back in\\.", "travels the channel a mutation",
-    "any of three channels in any order", "The reverse channel is one entry", "cross-worker wake channel",
-    "No channel to steer a background run", "Cache is the cost channel", "this channel never lets an agent approve",
-    "approval is a human channel", "channel off, or giving agents a second GitHub identity",
-    "the channel is a board of handle PRs", "the \\*\\*event\\*\\* channel", "or to the comment channel",
   ].join("|"),
   "i",
 );
 
 /**
- * Another meaning spelled in code, pinned to its one file and kept narrow: a
- * product line planted into any of these files still counts.
+ * Another meaning spelled in code, or a phrase only one page uses, pinned to
+ * its one file and kept narrow: a product line planted into any of these files
+ * still counts, and so does the same phrase anywhere else.
  */
 export const FILE_SURVIVORS = {
   "packages/bullmq/src/stream-bridge.ts":
@@ -183,8 +174,17 @@ export const FILE_SURVIVORS = {
   // A Slack channel, in the guide whose subject is Slack's Events API.
   "apps/docs/guides/webhooks-slack-events.md":
     /posts in a channel our bot is in|^reply channel; the webhook transport|^\s*channel\?: string;$|channel: e\.payload\.event\.channel,|`channel-\$\{e\.payload\.event\.channel\}`|`message\.channels`|out, keyed per channel\.$/,
-  // The atlas's "Questions, in and out" section anchor: a run's question path.
-  "docs/atlas/conductor.html": /^\s*<a href="#channel">06 &middot; Questions, in and out<\/a>$|^<section id="channel">$/,
+  // The atlas's "Questions, in and out" section, its anchor and its prose: a run's question path.
+  "docs/atlas/conductor.html":
+    /^\s*<a href="#channel">06 &middot; Questions, in and out<\/a>$|^<section id="channel">$|a channel back in\.|travels the channel a mutation|any of three channels in any order|The reverse channel is one entry|cross-worker wake channel|No channel to steer a background run/,
+  // The trace/production split of the stream.
+  "apps/docs/docs/streaming/trace-channel.md": /^\| Channel \| Item types \| Who sees them \|$/,
+  // Cache and the ledger as two ways information travels.
+  "docs/contributing/best-practices/resources.md": /Cache is the cost channel/,
+  // The ways an approval, an event or a message reaches the process.
+  "docs/contributing/orchestration.md":
+    /this channel never lets an agent approve|approval is a human channel|channel off, or giving agents a second GitHub identity|the channel is a board of handle PRs|the \*\*event\*\* channel/,
+  "docs/contributing/spec-figures.md": /or to the comment channel/,
 };
 
 /** Whether a line says the word about something other than the pipe. */
@@ -210,12 +210,12 @@ export function productLines(path, text) {
 
 /**
  * Scan a tree. Pure over its inputs, so a test can hand it a fixture.
- * @param {{ files: Map<string, string>; paths: string[]; published: Set<string>; site?: boolean }} tree
+ * @param {{ files: Map<string, string>; paths: string[]; published: Set<string> }} tree
  */
-export function scanTree({ files, paths, published, site = SITE_IN_SCOPE }) {
+export function scanTree({ files, paths, published }) {
   const groups = groupsFor(published);
   const groupOf = (p) => groups.find(([, test]) => test(p))?.[0] ?? "UNCLASSIFIED";
-  const scope = inScopeGroups(site);
+  const scope = inScopeGroups();
   const unclassified = [];
   const productHits = [];
   for (const [p, text] of files) {
