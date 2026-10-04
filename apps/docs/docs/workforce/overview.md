@@ -115,7 +115,6 @@ The chief of staff reads workstream channels; it never opens, closes, or renames
 
 ## Related pages
 
-- [Glossary](./glossary) — vocabulary review: what each workforce word means today, and which ones are overloaded or only code identifiers.
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, and `hireWorkforce`.
 - [The built-in worker](./built-in-worker) — the `agent` kind a record with no `flow:` runs on: its settings, tools, skills, and memory.
 - [Channels](./channels) — several agents on one topic, with one durable transcript and nobody owning a row, optionally routing each post to one member.

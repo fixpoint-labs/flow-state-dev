@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Workforce vocabulary inventory</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0 auto; padding: 3rem 1.5rem 4rem; max-width: 52rem;
+        font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      h1 { font-size: 1.4rem; margin: 0 0 .35rem; }
+      .lede { margin: 0 0 1.5rem; opacity: .8; }
+      p { margin: 0 0 1rem; }
+      table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+      th, td { text-align: left; vertical-align: top; padding: .55rem .5rem .55rem 0; border-top: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
+      th { font-size: 0.78rem; letter-spacing: .03em; text-transform: uppercase; opacity: .7; }
+      td:first-child { font-weight: 600; white-space: nowrap; padding-right: 1rem; width: 11rem; }
+      code { font-size: 0.88em; }
+      .note { margin-top: 2rem; opacity: .75; font-size: 0.92rem; }
+      a { color: inherit; }
+    </style>
+  </head>
+  <body>
+    <h1>Workforce vocabulary inventory</h1>
+    <p class="lede">
+      Review notes. How each word is used in this repo today, including where
+      two uses sit on one word. It does not settle names, and it is not the
+      published Workforce glossary.
+    </p>
+    <p>
+      Read it to see bloat before changing anything.
+      <code>seat</code> and <code>role</code> are an open review, not a settled kill.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Word</th>
+          <th>Used today as</th>
+          <th>Where uses collide</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>worker</td>
+          <td>A <code>WORKER.md</code> on a team, hired into an addressable flow copy. Hiring that file is how the worker becomes addressable. A later session is more work for the same worker, not another hire.</td>
+          <td>Orchestration also calls a board block, tool, or skill agent a worker. A task <code>assignee</code> names that board worker, never a hired workforce worker.</td>
+        </tr>
+        <tr>
+          <td>session</td>
+          <td>A piece of work opened against an already-hired worker, the same way you open one against any flow.</td>
+          <td>A channel is also “a session on the channel kind.” Same Layer 1 word, two product places.</td>
+        </tr>
+        <tr>
+          <td>hire</td>
+          <td><code>hireWorkforce</code> turns a worker record into a flow copy. A runtime hire writes a roster row so the worker survives a restart.</td>
+          <td>Easy to treat a new session as a second hire. Today it is not.</td>
+        </tr>
+        <tr>
+          <td>fire</td>
+          <td>Removes a runtime-hired worker. File-declared workers leave when their folder is deleted. A fire can wait for a person’s approval.</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>seat</td>
+          <td>Published docs: “a hired worker is a seat.” Atlas: a roster slot / flow instance from <code>WORKER.md</code>. Code still uses the word in <code>seatPost</code>, <code>seatAuthored</code>, <code>wakeMemberSeats</code>, the seat pane, <code>SeatDetail</code>, <code>seat-hire</code>, and <code>seatId</code>.</td>
+          <td>Product noun and code identifier share one word. Whether seat stays a product noun is an open review.</td>
+        </tr>
+        <tr>
+          <td>role</td>
+          <td>Not a <code>WORKER.md</code> field. Chat messages use <code>role</code> (user / assistant / system). Some prompt templates say <code>state.role</code>. The atlas calls worker roles kinds / opinions.</td>
+          <td>Chat shape, prompt state, and “what job this worker does” share one word. Whether role is a product noun is an open review.</td>
+        </tr>
+        <tr>
+          <td>agent</td>
+          <td>The built-in flow kind named <code>agent</code> (what a <code>WORKER.md</code> with no <code>flow:</code> runs on). Atlas also uses agent as a later opinionated worker, not a Layer 1 type.</td>
+          <td>Also an orchestration skill agent: a persona plus tools that claims board tasks. Three live uses.</td>
+        </tr>
+        <tr>
+          <td>member</td>
+          <td>On a channel: a name on that channel’s member list. Listing someone does not make them hear a post. The listener is a hired worker whose kind declares <code>onChannelPost</code>.</td>
+          <td>On a project: a person (<code>userId</code>) who may read and post in the project’s room. Two lists, two kinds of thing.</td>
+        </tr>
+        <tr>
+          <td>persona</td>
+          <td>A <code>WORKER.md</code> that declares <code>persona:</code> is refused. Orchestration still uses persona for a skill agent’s prompt.</td>
+          <td>Refused as a workforce setting, live as an orchestration noun.</td>
+        </tr>
+        <tr>
+          <td>channel</td>
+          <td>Docs, folders, and code: a named session on the <code>channel</code> kind, declared as <code>teams/&lt;team&gt;/channels/&lt;name&gt;/CHANNEL.md</code>, with members, a charter, and a transcript.</td>
+          <td>Product talk and an in-flight rename also call this a mailbox. Same pipe, two names.</td>
+        </tr>
+        <tr>
+          <td>mailbox</td>
+          <td>The name used in the in-flight channel rename, and in some product copy, for that same pipe. Shift Manager and FIX-1748 treat a workstream’s conversation as a mailbox.</td>
+          <td>Collides with channel. Also collides with the agent-mailbox board (open PRs as handles for agents outside this repo), which is a different pipe.</td>
+        </tr>
+        <tr>
+          <td>inbox</td>
+          <td>Shift Manager’s list of asks (approvals and questions) across many channels / mailboxes. Never one channel.</td>
+          <td>Knowledge Hub has a different capture inbox. Easy to treat inbox as a synonym for one mailbox.</td>
+        </tr>
+        <tr>
+          <td>room</td>
+          <td>The shared conversation for one project. Project members read and post there. Anyone in the org can see the project exists; only members read the room.</td>
+          <td>Sits next to channel / mailbox. One is a worker pipe, one is a project’s shared place.</td>
+        </tr>
+        <tr>
+          <td>workstream</td>
+          <td>A mailbox (today: a channel) plus the boards it holds, under a project. Shift Manager’s sidebar and headings use this word. The conversation part is the mailbox; the boards sit beside it, not inside it.</td>
+          <td>Collides with mailbox and room. Two words for “the talk” and “the talk plus its boards.”</td>
+        </tr>
+        <tr>
+          <td>project</td>
+          <td>An organization row: title, brief, owner, members, the workstreams it groups. Not a file. Each project has one room.</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>org</td>
+          <td>The tenant every request runs in. Organization-level workers live under <code>workforce/org/workers/</code> and hire by folder name alone (<code>chief-of-staff</code>).</td>
+          <td><code>org</code> the folder vs organization the tenant. Two spellings, one tenant.</td>
+        </tr>
+        <tr>
+          <td>team</td>
+          <td>A folder of workers, optional <code>TEAM.md</code>, under <code>workforce/teams/&lt;name&gt;/</code>. Shift Manager’s TEAMS list is this grouping. Workforce opinion, not a Layer 1 type.</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>staff</td>
+          <td>Shift Manager sidebar row for organization-level workers (anyone under <code>org/workers/</code>, including the chief of staff).</td>
+          <td>Reads as a third grouping beside team and org. It is a chrome row, not a type.</td>
+        </tr>
+        <tr>
+          <td>lab</td>
+          <td>A served workforce from one <code>fsdev.config</code>. Shift Manager opens a Lab. Today’s chrome still says seats and channels.</td>
+          <td>Not an org, not a team, not a project.</td>
+        </tr>
+        <tr>
+          <td>desk</td>
+          <td>Informal name for a support team, plus leftover ids (<code>support.desk</code>, <code>desk-clerk</code>).</td>
+          <td>Not a type. Easy to teach as one.</td>
+        </tr>
+        <tr>
+          <td>roster</td>
+          <td>The set of worker records you hire, and the stored collection of runtime hires (<code>workforce/roster/*</code>).</td>
+          <td>“Who did we declare?” and “who is hired right now?” are different questions on one word.</td>
+        </tr>
+        <tr>
+          <td>inventory</td>
+          <td>Org-scoped rows that a seat or channel was registered. A row is not “open” or “working now.”</td>
+          <td>Easy to mix with roster.</td>
+        </tr>
+        <tr>
+          <td>ask</td>
+          <td>A question or approval waiting on a person. Inbox lists asks across channels / mailboxes.</td>
+          <td>Not a mailbox, not a session.</td>
+        </tr>
+        <tr>
+          <td>Shift Coordinator</td>
+          <td>Shift Manager’s opening chrome (<code>/</code> / <code>/cos</code>): asks, runs, and the conversation with the Lab’s <code>chief-of-staff</code> worker. The empty state says “This Lab declares no shift coordinator.”</td>
+          <td>Chrome name and worker id are different words for one worker.</td>
+        </tr>
+        <tr>
+          <td>chief of staff</td>
+          <td>The worker id and folder: <code>org/workers/chief-of-staff/</code>.</td>
+          <td>Chrome says Shift Coordinator. Same worker, two names.</td>
+        </tr>
+        <tr>
+          <td>board worker / assignee</td>
+          <td>Orchestration: the block, tool, or skill agent that claims a task. A task’s <code>assignee</code> never names a hired workforce worker.</td>
+          <td>The worker collision above.</td>
+        </tr>
+        <tr>
+          <td><code>seatPost</code></td>
+          <td>Channel action that posts a line as that worker’s own. Sets <code>seatAuthored</code>. A client or dispatched <code>post</code> is a different action and does not.</td>
+          <td>The name says seat. See seat.</td>
+        </tr>
+        <tr>
+          <td><code>seatAuthored</code></td>
+          <td>Flag on a transcript line: it arrived through that worker’s own <code>seatPost</code> or its answer. Other members are not woken. A claimed <code>author</code> field does not set it.</td>
+          <td>The name says seat. See seat.</td>
+        </tr>
+        <tr>
+          <td><code>wakeMemberSeats</code></td>
+          <td>Notify block for a channel post. On an unrouted post it wakes each member whose hired worker declares <code>onChannelPost</code>, once. On a routed post it wakes only the chosen member. Skips the wake when <code>seatAuthored</code> is set.</td>
+          <td>The name says seat. See seat.</td>
+        </tr>
+        <tr>
+          <td><code>onChannelPost</code></td>
+          <td>Internal entry a kind declares to hear a channel post. Built-in <code>agent</code> declares it. A member list name without this entry hears nothing.</td>
+          <td>The name says channel. See channel / mailbox.</td>
+        </tr>
+        <tr>
+          <td>seat pane / <code>SeatDetail</code></td>
+          <td>UI for one hired worker’s kind and instructions. Kitchen-sink draws it in the rail. The component is <code>SeatDetail</code>.</td>
+          <td>The name says seat. See seat.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="note">
+      Atlas listing: <a href="index.html">index.html</a>.
+      Published how-tos stay under <code>apps/docs/docs/workforce/</code> and are unchanged.
+      Identifiers are not renamed here.
+    </p>
+  </body>
+</html>

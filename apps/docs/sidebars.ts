@@ -242,7 +242,6 @@ const sidebars: SidebarsConfig = {
         "workforce/durable-hire",
         "workforce/chief-of-staff",
         "workforce/ui",
-        "workforce/glossary",
       ],
     },
     {

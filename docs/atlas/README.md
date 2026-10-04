@@ -23,6 +23,9 @@ issue identifiers; anything under `apps/docs/` is published and may not.
   system in `@flow-state-dev`, how they compose, and the open refactor
   questions. Its counts are measured against a commit rather than maintained,
   so read them as of the branch that last touched it.
+- `workforce-vocabulary.html` — review inventory of workforce words as they
+  are used today, including collisions. Does not settle names. Not the
+  published Workforce glossary.
 - `workforce.html` — the Layer 2 product: roster / teams + seats + channels +
   thin helpers. Seats are flow instances from `WORKER.md`; workers are
   generators/flows with instructions + model + tools; hire needs a kinds
