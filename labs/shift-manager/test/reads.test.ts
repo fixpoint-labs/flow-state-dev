@@ -13,6 +13,7 @@ import {
   createLabReader,
   DISPATCHED_RUN_UNANSWERABLE,
   REOPENED_SOURCES,
+  roomSessionId,
   UNOWNED_SESSION_UNANSWERABLE,
   type LabSnapshot,
 } from "../src/lib/reads";
@@ -127,6 +128,27 @@ describe("the refusal (V2, BR-3)", () => {
     for (const snapshot of [a, b, c, d]) expect(loaded(snapshot).orgId).toBe(DEFAULT_ORG_ID);
     expect((await page.sessions.listSessions({ userId: ASK_LAB_USER_ID })).map((s) => s.flowKind)).toEqual(["channel"]);
     expect((await tab().sessions.listSessions({ userId: "u_two_tabs" })).map((s) => s.flowKind)).toEqual(["channel"]);
+  });
+
+  // Session ids aren't scoped by organization. A person whose room id is already held in
+  // another of their organizations must still reach this one, not be locked out of it.
+  it("opens the room session under a fresh id when its one id is held where this organization can't list it", async () => {
+    const { baseUrl } = await lab({ channels: false });
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      // The other organization's session under the same id: a conflict, which this listing never shows.
+      if (/\/api\/flows\/channel\/sessions$/.test(url) && String(init?.body ?? "").includes(roomSessionId(ASK_LAB_USER_ID))) {
+        return new Response(JSON.stringify({ error: "Session already exists" }), { status: 409 });
+      }
+      return real(input, init);
+    });
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    const snapshot = loaded(await createLabReader(clients).read());
+    expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
+    const rooms = (await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).filter((s) => s.flowKind === "channel");
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0]!.id).not.toBe(roomSessionId(ASK_LAB_USER_ID));
   });
 
   it("a person with no session whose room session is refused gets the Lab's refusal, and nothing else is read", async () => {

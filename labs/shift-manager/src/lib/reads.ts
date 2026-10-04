@@ -745,12 +745,20 @@ export function createLabReader(clients: LabClients): LabReader {
     }
   };
 
-  /** Open the person's room session under its one id; a 409 is another page that opened it first. */
+  /**
+   * Open the person's room session under its one id. A 409 is usually another
+   * page that opened it first, and the listing then holds it. Session ids are
+   * not scoped by organization, so a 409 the listing doesn't explain is that id
+   * held in another of the person's organizations: open one under a fresh id.
+   */
   const openRoomSession = async (): Promise<void> => {
     try {
       await clients.sessions.createSession({ flowKind: ROOM_KIND, userId: clients.userId, sessionId: roomSessionId(clients.userId) });
     } catch (error) {
       if (describeFailure(error).httpStatus !== 409) throw error;
+      const listed = await clients.sessions.listSessions({ userId: clients.userId });
+      if (listed.some((s) => s.parentSessionId == null && s.flowKind === ROOM_KIND)) return;
+      await clients.sessions.createSession({ flowKind: ROOM_KIND, userId: clients.userId });
     }
   };
 
