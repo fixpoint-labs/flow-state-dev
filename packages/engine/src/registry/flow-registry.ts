@@ -440,15 +440,15 @@ function emptySchemaMap<T>(): Record<string, T> {
  * expose one shared resource under any accessor it likes, and may reuse an
  * accessor for a different `ref`.
  *
- * Two rules, each taken from the path that actually writes the cell — NOT from
- * core's build-time `effectiveStorageTuple`, which disagrees on both counts
- * (see the divergence note below):
+ * Two rules, each taken from the path that actually writes the cell. Both come
+ * from core's `types/storage-identity.ts`, which `defineFlow`'s build-time
+ * collision check applies too, so the two checks key a declaration alike:
  *
  *   - **Collections key on `pattern`, always.** Every instance key is
  *     `resolveCollectionKey(config.pattern, key)` — see `resource-registry.ts`
  *     (`:1018`, `:1046`, `:1196`) and every route in `resource-routes.ts`.
  *     `resourceStorageKeys` short-circuits collections before it reads `ref`
- *     (`storage-keys.ts:49-52`), and nothing in the engine reads `ref` off a
+ *     (`storage-identity.ts`), and nothing in the engine reads `ref` off a
  *     collection anywhere. So an incidental `ref` on a collection changes no
  *     storage key: honouring it here would index two same-pattern collections
  *     apart while they read and write the same durable cells.
@@ -459,12 +459,12 @@ function emptySchemaMap<T>(): Record<string, T> {
  *     indexing an alias under its own name would invent a cell the flow never
  *     writes.
  *
- * The collection test is `isCollectionConfig` — the same **structural** check
- * (`typeof pattern === "string"`) the persistence path branches on, not core's
- * `__brand` test. The two disagree for a `defineResource` carrying an
- * incidental `pattern`: core treats it as a single resource, the engine routes
- * it down the collection branch. That divergence is real and pre-existing;
- * this check follows the engine, because the engine is what writes the data.
+ * The collection test is `isCollectionConfig` — the **structural** check
+ * (`typeof pattern === "string"`) the persistence path branches on, not the
+ * `__brand` test `isDefinedResourceCollection` applies. The two disagree for a
+ * `defineResource` carrying an incidental `pattern`, which the engine routes
+ * down the collection branch; storage identity follows the engine, because the
+ * engine is what writes the data.
  */
 function storageRef(
   entry: DeclaredResourceEntry,
@@ -550,9 +550,10 @@ function collectScopeDeclaration(
     const cellKey = JSON.stringify([isolated, ref]);
     const priors = cellsInFlow.get(cellKey);
     if (priors !== undefined) {
-      // Two of THIS flow's declarations resolve to one durable cell — most
-      // reachably two collections sharing a `pattern` while core's build-time
-      // check keys them apart on an incidental `ref`.
+      // Two of THIS flow's declarations resolve to one durable cell — for
+      // instance two collections sharing a `pattern`. `defineFlow` refuses
+      // that flow at build time, so this is a backstop for a flow assembled
+      // outside it.
       //
       // Aliases of a single definition reach here too, and are skipped by
       // reference: the same schema object adds nothing to compare against, and
