@@ -381,7 +381,7 @@ async function inboxJourney(page: Page, api: LabApi, store: Store, tree: Tree, s
   const detailText = ((await detailCard.textContent()) ?? "").trim();
   if (workstream !== undefined) {
     await page.getByTestId(`nav-workstream-${workstream}`).click();
-    const streamCard = page.locator(`[data-testid=stream-asks] [data-testid=ask-card][data-suspension-id="${ask.suspensionId}"]`);
+    const streamCard = page.locator(`[data-testid=feed-ask] [data-testid=ask-card][data-suspension-id="${ask.suspensionId}"]`);
     if (!(await streamCard.waitFor({ timeout: 10_000 }).then(() => true, () => false))) fail(`${workstream}'s stream shows no card for the ask`);
     else if (((await streamCard.textContent()) ?? "").trim() !== detailText) fail("the detail pane's card and the stream's card differ");
     await page.getByTestId("nav-inbox").click();
@@ -398,9 +398,9 @@ async function inboxJourney(page: Page, api: LabApi, store: Store, tree: Tree, s
   if (!gone) fail("after Approve the ask is still listed in Inbox");
   if (workstream !== undefined) {
     await page.getByTestId(`nav-workstream-${workstream}`).click();
-    await page.getByTestId("stream-asks").waitFor({ timeout: 10_000 }).catch(() => undefined);
+    await page.locator(`[data-testid=workstream][data-channel-id="${workstream}"] [data-testid=stream]`).waitFor({ timeout: 10_000 }).catch(() => undefined);
     await sleep(500);
-    if ((await page.locator(`[data-testid=stream-asks] [data-testid=ask-card][data-suspension-id="${ask.suspensionId}"] button:not([disabled])`).count()) > 0) {
+    if ((await page.locator(`[data-testid=feed-ask] [data-testid=ask-card][data-suspension-id="${ask.suspensionId}"] button:not([disabled])`).count()) > 0) {
       fail(`${workstream}'s stream still offers an answer on the approved ask`);
     }
   }
@@ -736,8 +736,8 @@ export async function legC(ctx: LegCtx): Promise<void> {
         await sweep(page, { ask: `[data-testid=inbox-detail] ${SWEPT.ask}` }, tally);
         const workstream = tree.channels.find((c) => c.members.includes(ask.seat))!.id;
         await page.getByTestId(`nav-workstream-${workstream}`).click();
-        await page.locator("[data-testid=stream-asks] [data-testid=ask-card]").waitFor().catch(() => undefined);
-        await sweep(page, { ask: `[data-testid=stream-asks] ${SWEPT.ask}` }, tally);
+        await page.locator("[data-testid=feed-ask] [data-testid=ask-card]").waitFor().catch(() => undefined);
+        await sweep(page, { ask: `[data-testid=feed-ask] ${SWEPT.ask}` }, tally);
         // Approve, so a run's Session and its trace page can be read.
         await page.getByTestId("nav-inbox").click();
         await page.locator(`[data-testid=inbox-item][data-suspension-id="${ask.suspensionId}"]`).click();
