@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 414" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 30 September 2026, in phases rather than dates because Cycle PM has not scheduled the build. Now is this epic spec in review, before the gate. An input lane for the design: Claude Design's hand-back v1 came back during review, and design pass 2 runs from the gate to the final hand-back, a vertical line that gates final visuals only. An input lane for the sibling epics FIX-1650 to 1652, which nothing waits on. FIX-1655: its spec, then the token contract with neutral defaults, skin fixes and the re-sync check, then the light and dark App Lab values after the final hand-back. FIX-1662: its spec, then the frame and the project and workstream levels, then its final visual pass. FIX-1664: its spec beside FIX-1662's, then the task level once FIX-1662's frame has merged, then its final visual pass. FIX-1663: its QA plan written beside them, then its run after all three merge. The critical path runs the gate, design pass 2, the final passes and the closure run.">
+<svg viewBox="0 0 940 600" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path as it shipped, 30 September to 4 October 2026, one lane per issue or group, each bar from filed (or the gate) to merged, spec phase light and build solid. The epic spec merged early on 30 September and was amended for workstream owners, the Shift Manager rename, design v2 on 1 October, v2's look on 2 October, and this wrap. FIX-1655, FIX-1662 and FIX-1664 specced and built on 30 September, beside the DevForce lab prerequisites FIX-1666 to 1668. Closure run 1 found FIX-1684 and FIX-1688 to 1696, fixed overnight, and FIX-1690's door into a running session landed on 1 October. Design v2, Jake's final hand-back, landed on the evening of 1 October; FIX-1725 the Day/Night switch, FIX-1722 Chief of Staff and FIX-1723 Roster followed by early 2 October. Closure runs on 2 October filed the late fixes FIX-1730 to 1735, then FIX-1747 and FIX-1749. The v2-look audit filed FIX-1736, fonts, merged 2 October, and FIX-1737, whose spec merged that evening and whose four slices A to D landed just after midnight on 4 October. FIX-1650's FIX-1718 projects and FIX-1752 landed beside them as inputs. The closure ran repeatedly and came back clean on 01444863c; PR 2709 merged on 4 October. The critical path, outlined, runs design v2, FIX-1736, FIX-1737 and the closure's clean run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -8,88 +8,110 @@
       :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
               --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
-    .bg     { fill:var(--surface); }
-    .flight { fill:var(--accent); stroke:none; }
-    .todo   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
-    .input  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; stroke-dasharray:4 3; }
-    .axis   { stroke:var(--rule); stroke-width:1; }
-    .hand   { stroke:var(--prose); stroke-width:1.4; stroke-dasharray:5 3; }
-    .now    { stroke:var(--gone); stroke-width:1.4; }
-    .crit   { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
-    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
-    .t-ln   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
-    .t-in   { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
-    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
-    .t-w    { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
-    .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
-    .done   { fill:var(--prose); stroke:none; }
-    .t-g    { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .bg    { fill:var(--surface); }
+    .done  { fill:var(--code); stroke:none; }
+    .spec  { fill:var(--code-soft); stroke:var(--code); stroke-width:1; }
+    .runs  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .input { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; stroke-dasharray:4 3; }
+    .tin   { fill:var(--prose); }
+    .tick  { fill:var(--ink-2); }
+    .red   { fill:var(--gone); }
+    .ok    { fill:var(--code); }
+    .cp    { fill:none; stroke:var(--gone); stroke-width:1.6; }
+    .axis  { stroke:var(--rule); stroke-width:1; }
+    .day   { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
+    .hand  { stroke:var(--prose); stroke-width:1.4; stroke-dasharray:5 3; }
+    .now   { stroke:var(--gone); stroke-width:1.4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-ln  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-in  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-w   { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="414"/>
+  <rect class="bg" x="0" y="0" width="940" height="600"/>
 
-  <text class="t-lbl" x="16" y="18">THE PATH &#8212; PHASES, NOT DATES &#183; CYCLE 2 CANDIDATE, NOT SCHEDULED</text>
-  <path class="axis" d="M200 44 L924 44"/>
-  <text class="t-now" x="206" y="36">now &#183; review</text>
-  <text class="t-s" x="292" y="36">gate</text>
-  <text class="t-s" x="420" y="36">build, in parallel</text>
-  <text class="t-in" x="580" y="36">final hand-back</text>
-  <text class="t-s" x="690" y="36">final visuals</text>
-  <text class="t-s" x="806" y="36">closure run</text>
-  <path class="now" d="M280 44 L280 342"/>
-  <path class="hand" d="M640 44 L640 342"/>
+  <text class="t-lbl" x="16" y="18">THE PATH AS IT SHIPPED &#183; 30 SEP &#8211; 4 OCT 2026 &#183; FILED (OR THE GATE) TO MERGED</text>
+  <g id="axis">
+    <path class="axis" d="M236 44 L920 44"/>
+    <text class="t-s" x="238" y="38">Sep 30</text><text class="t-s" x="382" y="38">Oct 1</text>
+    <text class="t-s" x="526" y="38">Oct 2</text><text class="t-s" x="670" y="38">Oct 3</text>
+    <text class="t-s" x="814" y="38">Oct 4</text>
+    <path class="day" d="M380 44 L380 512 M524 44 L524 512 M668 44 L668 512 M812 44 L812 512"/>
+    <path class="hand" d="M499.5 44 L499.5 512"/><text class="t-in" x="484" y="38">v2</text>
+    <path class="now" d="M896 44 L896 512"/><text class="t-now" x="880" y="38">now</text>
+  </g>
 
-  <g id="design">
-    <text class="t-in" x="16" y="72">Claude Design &#183; input</text>
-    <rect class="done" x="206" y="58" width="70" height="22" rx="3"/>
-    <text class="t-w" x="212" y="73">v1 &#183; in</text>
-    <rect class="input" x="296" y="58" width="336" height="22" rx="3"/>
-    <text class="t-s" x="304" y="73">design pass 2 &#8594; the final hand-back, with Jake</text>
+  <g id="design"><text class="t-in" x="16" y="62">Claude Design &#183; input</text>
+    <rect class="done" x="236" y="50" width="6" height="16" rx="2"/><text class="t-s" x="248" y="62">v1 in</text>
+    <rect class="input" x="376" y="50" width="123.5" height="16" rx="2"/><rect class="cp" x="376" y="50" width="123.5" height="16" rx="2"/>
+    <text class="t-s" x="382" y="62">pass 2 &#8594; v2 &#183; #2605</text></g>
+  <g id="siblings"><text class="t-in" x="16" y="90">FIX-1650 epic &#183; input</text>
+    <text class="t-in" x="630" y="90" text-anchor="end">FIX-1718 &#183; FIX-1752</text>
+    <rect class="tin" x="637" y="78" width="3" height="16"/><rect class="tin" x="744" y="78" width="3" height="16"/>
+    <rect class="tin" x="802" y="78" width="3" height="16"/><rect class="tin" x="815" y="78" width="3" height="16"/></g>
+  <g id="epic"><text class="t-ln" x="16" y="118">FIX-1649 &#183; epic spec</text>
+    <rect class="done" x="244" y="106" width="4" height="16"/><text class="t-s" x="252" y="118">merged</text>
+    <rect class="tick" x="336" y="106" width="3" height="16"/><text class="t-s" x="343" y="118">owners</text>
+    <rect class="tick" x="485" y="106" width="3" height="16"/><rect class="tick" x="496" y="106" width="3" height="16"/>
+    <text class="t-s" x="503" y="118">rename &#183; v2</text>
+    <rect class="tick" x="646" y="106" width="3" height="16"/><text class="t-s" x="653" y="118">v2 look</text>
+    <rect class="tick" x="894" y="106" width="4" height="16"/><text class="t-s" x="852" y="118">wrap</text></g>
+  <g id="ds"><text class="t-ln" x="16" y="146">FIX-1655 &#183; design system</text>
+    <rect class="spec" x="245" y="134" width="92" height="16" rx="2"/><rect class="done" x="337" y="134" width="22" height="16" rx="2"/>
+    <text class="t-s" x="367" y="146">spec &#183; build</text></g>
+  <g id="shell"><text class="t-ln" x="16" y="174">FIX-1662 &#183; the shell</text>
+    <rect class="spec" x="245" y="162" width="93" height="16" rx="2"/><rect class="done" x="338" y="162" width="20" height="16" rx="2"/>
+    <text class="t-s" x="366" y="174">frame &#183; two levels</text></g>
+  <g id="task"><text class="t-ln" x="16" y="202">FIX-1664 &#183; task view</text>
+    <rect class="spec" x="245" y="190" width="91" height="16" rx="2"/><rect class="done" x="336" y="190" width="37" height="16" rx="2"/>
+    <text class="t-s" x="381" y="202">task level</text></g>
+  <g id="prereq"><text class="t-ln" x="16" y="230">FIX-1666&#8211;1668 &#183; DevForce lab</text>
+    <rect class="done" x="336" y="218" width="20" height="16" rx="2"/>
+    <text class="t-s" x="364" y="230">ask &#183; board &#183; run link</text></g>
+  <g id="run1"><text class="t-ln" x="16" y="258">FIX-1684, 1688&#8211;96 &#183; run 1</text>
+    <rect class="done" x="376" y="246" width="16" height="16" rx="2"/>
+    <text class="t-s" x="398" y="258">skin &#183; trace</text></g>
+  <g id="worker"><text class="t-ln" x="16" y="286">FIX-1690 &#183; @worker turn</text>
+    <rect class="spec" x="376" y="274" width="6" height="16" rx="2"/><rect class="done" x="382" y="274" width="93" height="16" rx="2"/>
+    <text class="t-w" x="390" y="286">door &#183; live run</text></g>
+  <g id="switch"><text class="t-ln" x="16" y="314">FIX-1725 &#183; Day/Night</text>
+    <rect class="done" x="492" y="302" width="6" height="16" rx="2"/><text class="t-s" x="506" y="314">direct</text></g>
+  <g id="cos"><text class="t-ln" x="16" y="342">FIX-1722 &#183; Chief of Staff</text>
+    <rect class="spec" x="492" y="330" width="5" height="16" rx="2"/><rect class="done" x="497" y="330" width="36" height="16" rx="2"/>
+    <text class="t-s" x="541" y="342">the landing view</text></g>
+  <g id="roster"><text class="t-ln" x="16" y="370">FIX-1723 &#183; Roster</text>
+    <rect class="spec" x="492" y="358" width="5" height="16" rx="2"/><rect class="done" x="497" y="358" width="38" height="16" rx="2"/>
+    <text class="t-s" x="543" y="370">on shift &#183; on call &#183; off shift</text></g>
+  <g id="late"><text class="t-ln" x="16" y="398">FIX-1730&#8211;35, 1747, 1749</text>
+    <rect class="done" x="553" y="386" width="127" height="16" rx="2"/>
+    <text class="t-w" x="559" y="398">late fixes &#183; 4 PRs</text></g>
+  <g id="fonts"><text class="t-ln" x="16" y="426">FIX-1736 &#183; fonts</text>
+    <rect class="done" x="598" y="414" width="29" height="16" rx="2"/><rect class="cp" x="598" y="414" width="29" height="16" rx="2"/>
+    <text class="t-s" x="635" y="426">direct</text></g>
+  <g id="look"><text class="t-ln" x="16" y="454">FIX-1737 &#183; v2's look</text>
+    <rect class="spec" x="598" y="442" width="50" height="16" rx="2"/><rect class="done" x="648" y="442" width="169" height="16" rx="2"/>
+    <rect class="cp" x="598" y="442" width="219" height="16" rx="2"/>
+    <text class="t-s" x="604" y="454">spec</text><text class="t-w" x="656" y="454">slices A, B, C, D &#183; Oct 4</text></g>
+  <g id="closure"><text class="t-ln" x="16" y="482">FIX-1663 &#183; closure</text>
+    <rect class="spec" x="245" y="470" width="91.5" height="16" rx="2"/><text class="t-s" x="251" y="482">QA plan</text>
+    <rect class="runs" x="374" y="470" width="504" height="16" rx="2"/><rect class="cp" x="817" y="470" width="61" height="16" rx="2"/><rect class="tick" x="487" y="470" width="3" height="16"/>
+    <rect class="red" x="374" y="470" width="3" height="16"/><rect class="red" x="550" y="470" width="3" height="16"/>
+    <rect class="red" x="622" y="470" width="3" height="16"/><rect class="red" x="840" y="470" width="3" height="16"/>
+    <rect class="red" x="854" y="470" width="3" height="16"/><rect class="ok" x="861" y="470" width="3" height="16"/>
+    <rect class="ok" x="870" y="470" width="3" height="16"/><rect class="done" x="875" y="470" width="4" height="16"/>
+    <text class="t-s" x="384" y="482">runs until clean</text>
+    <text class="t-s" x="811" y="482" text-anchor="end">clean on 01444863c &#183; #2709 &#9656;</text></g>
+
+  <g id="key">
+    <rect class="spec" x="16" y="520" width="14" height="10" rx="2"/><text class="t-s" x="36" y="529">spec</text>
+    <rect class="done" x="76" y="520" width="14" height="10" rx="2"/><text class="t-s" x="96" y="529">build, merged</text>
+    <rect class="red" x="180" y="520" width="3" height="10"/><rect class="ok" x="186" y="520" width="3" height="10"/>
+    <text class="t-s" x="196" y="529">closure run, red / clean</text>
+    <rect class="input" x="340" y="520" width="14" height="10" rx="2"/><text class="t-s" x="360" y="529">input from outside the set</text>
+    <rect class="cp" x="520" y="520" width="14" height="10" rx="2"/><text class="t-s" x="540" y="529">the critical path</text>
   </g>
-  <g id="siblings">
-    <text class="t-in" x="16" y="108">FIX-1650&#8211;1652 &#183; input</text>
-    <text class="t-s" x="296" y="108">meaning for the empty states &#183; nothing here waits on it</text>
-  </g>
-  <g id="epic">
-    <text class="t-ln" x="16" y="144">FIX-1649 &#183; this spec</text>
-    <rect class="flight" x="206" y="130" width="70" height="22" rx="3"/>
-    <text class="t-w" x="212" y="145">in review</text>
-  </g>
-  <g id="ds">
-    <text class="t-ln" x="16" y="186">FIX-1655 &#183; design system</text>
-    <rect class="todo" x="296" y="172" width="80" height="22" rx="3"/>
-    <text class="t-s" x="304" y="187">spec</text>
-    <rect class="todo" x="384" y="172" width="248" height="22" rx="3"/>
-    <text class="t-s" x="392" y="187">contract &#183; defaults &#183; fixes &#183; re-sync</text>
-    <rect class="todo" x="648" y="172" width="130" height="22" rx="3"/>
-    <text class="t-s" x="656" y="187">light, dark values</text>
-  </g>
-  <g id="shell">
-    <text class="t-ln" x="16" y="228">FIX-1662 &#183; App Lab shell</text>
-    <rect class="todo" x="296" y="214" width="80" height="22" rx="3"/>
-    <text class="t-s" x="304" y="229">spec</text>
-    <rect class="todo" x="384" y="214" width="136" height="22" rx="3"/>
-    <text class="t-s" x="392" y="229">frame &#183; two levels</text>
-    <rect class="todo" x="648" y="214" width="130" height="22" rx="3"/>
-    <text class="t-s" x="656" y="229">final visual pass</text>
-  </g>
-  <g id="task">
-    <text class="t-ln" x="16" y="270">FIX-1664 &#183; task view</text>
-    <rect class="todo" x="296" y="256" width="80" height="22" rx="3"/>
-    <text class="t-s" x="304" y="271">spec</text>
-    <rect class="todo" x="528" y="256" width="104" height="22" rx="3"/>
-    <text class="t-s" x="536" y="271">task level</text>
-    <rect class="todo" x="648" y="256" width="130" height="22" rx="3"/>
-    <text class="t-s" x="656" y="271">final visual pass</text>
-    <path class="crit" d="M520 225 L528 267"/>
-  </g>
-  <g id="closure">
-    <text class="t-ln" x="16" y="312">FIX-1663 &#183; closure</text>
-    <rect class="todo" x="384" y="298" width="120" height="22" rx="3"/>
-    <text class="t-s" x="392" y="313">QA plan</text>
-    <rect class="todo" x="794" y="298" width="120" height="22" rx="3"/>
-    <text class="t-s" x="802" y="313">run, one commit</text>
-  </g>
-  <path class="crit" d="M276 141 L296 69 M632 69 L648 267 M778 267 L794 309"/>
-  <text class="t-g" x="16" y="372">Critical path: gate &#8594; design pass 2 &#8594; the final passes &#8594; the closure run. The task level waits on the frame, not on design.</text>
-  <text class="t-s" x="16" y="392">Bars are phases, not durations; widths are not estimates. Linear and the implementation PRs hold live state.</text>
+  <text class="t-g" x="16" y="556">Critical path, as shipped: design v2 &#8594; the v2-look audit &#8594; FIX-1736 &#8594; FIX-1737's spec and four slices &#8594; the clean closure run.</text>
+  <text class="t-s" x="16" y="576">Filed under the epic but not on the path: FIX-1671, 1673, 1675, 1705. Linear and the implementation PRs hold live state.</text>
 </svg>
