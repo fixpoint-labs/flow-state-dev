@@ -17,10 +17,13 @@
  *
  * Twice a survivor rule absorbed a product line: once a planted one, once
  * wire-shaped fields (`channels: z.array`, `input.channels`), because the
- * product pipe is spelled that way too. So {@link SURVIVOR_LINE} holds English
- * phrases only, and the few other meanings spelled in code (Redis pub/sub,
- * Postgres `LISTEN`, a colour channel) are pinned to their one file in
- * {@link FILE_SURVIVORS}. Never widen either to go green: rename the line.
+ * product pipe is spelled that way too. So survivors are English phrases, each
+ * pinned to the files whose lines it covers ({@link PHRASE_SURVIVORS}), since a
+ * stale sentence about the pipe can share a phrase; only a subsystem's own name
+ * applies everywhere ({@link SURVIVOR_LINE}). The few other meanings spelled in
+ * code (Redis pub/sub, Postgres `LISTEN`, a colour channel) are pinned to their
+ * one file in {@link FILE_SURVIVORS}. Never widen any of them to go green:
+ * rename the line.
  *
  * ## What is allowlisted, by path
  *
@@ -69,19 +72,18 @@ const LEGACY_SECTIONS = [
 
 /**
  * Single lines outside such a section that must name the old words, by file and
- * the whole line. Anchored at both ends, so any other line in the file still
+ * the whole line, compared after trimming. Any other line in the file still
  * counts, and so does an edit to one of these.
  */
 const LEGACY_LINES = [
   {
     path: "apps/docs/docs/workforce/mailboxes.md",
-    line: /^\| `pre-rename-record` \| A `CHANNEL\.md`, or a team's `channels\/` folder, from before mailboxes were renamed\. One entry per old file, or one for a folder holding none, and the message names where it belongs now\. Nothing in it is read\. See \[Upgrading from channels\]\(#upgrading-from-channels\)\. \|$/,
+    line: "| `pre-rename-record` | A `CHANNEL.md`, or a team's `channels/` folder, from before mailboxes were renamed. One entry per old file, or one for a folder holding none, and the message names where it belongs now. Nothing in it is read. See [Upgrading from channels](#upgrading-from-channels). |",
   },
-  { path: "apps/docs/docusaurus.config.ts", line: /^\s*\/\/ The Workforce channels page became the mailboxes page\.$/ },
-  { path: "apps/docs/docusaurus.config.ts", line: /^\s*from: "\/docs\/workforce\/channels",$/ },
+  { path: "apps/docs/docusaurus.config.ts", line: 'from: "/docs/workforce/channels",' },
 ];
 
-const isLegacyLine = (path, line) => LEGACY_LINES.some((entry) => entry.path === path && entry.line.test(line));
+const isLegacyLine = (path, line) => LEGACY_LINES.some((entry) => entry.path === path && entry.line === line.trim());
 
 const isLegacyPath = (p) => LEGACY_PATHS.some((entry) => (entry.endsWith("/") ? p.startsWith(entry) : p === entry));
 
@@ -120,38 +122,179 @@ export function inScopeGroups() {
 const PATH_SURVIVOR = /(^|\/)trace-channel\.md$/;
 
 /**
- * The ordinary English word, not the pipe. Line-level, because files mix the
- * two. English phrases ONLY — nothing here may match an identifier, a field or
- * a string literal.
+ * The ordinary English word, not the pipe, in every file. Only a phrase that
+ * names another subsystem by its own name earns a place here: one that a
+ * sentence about the mailbox could not contain. Everything else is pinned to
+ * the files it covers in {@link PHRASE_SURVIVORS}.
  */
-export const SURVIVOR_LINE = new RegExp(
+export const SURVIVOR_LINE = /trace[- ]channel/i;
+
+/**
+ * The ordinary English word, not the pipe, pinned to the files that use it:
+ * `[phrase, files]`, matched case-insensitively. English phrases ONLY — nothing
+ * here may match an identifier, a field or a string literal. A phrase is pinned
+ * because a stale sentence about the pipe can share it ("either channel", "a
+ * separate channel"); pinned, that sentence still counts in every other file.
+ * Add a file to a phrase only for a line the phrase must cover today.
+ */
+export const PHRASE_SURVIVORS = [
   [
-    "trace[- ]channel", "side[- ]?channel", "pub/sub", "channel pair", "slack",
-    "question channel", "label channel", "approval channel", "review channel", "scan channel",
-    "exec channel", "write channel", "intent channel", "notice channel", "recovery channel",
-    "trusted channel", "structured channel", "background channel", "failure channel",
-    "error channels?", "separate channels?", "content\\.delta` channel", "two channels, two meanings",
-    "third channel beside", "through a channel (the|a) ", "point of the channel", "its own channel rather",
-    "channel a cancellation", "either channel", "the channel does not matter", "a channel that does not require",
-    "the two channels are fed", "for the channel\\)", "Linear access\" for the channel",
-    "the channel\\)\\.", "cheaper channel", "live channel\\. Use", "has no channel to receive",
-    "alternative channel", "provenance` — a channel whose", "channel is used when available",
-    "channel a hand-off refusal", "self-bias channel", "SSE channel", "opens two channels",
-    "Four channels", "outbound channel", "no channel for a per-seat", "runtime channel", "public-channel item",
-    // Colour channels: a painted value compared component by component.
-    "within 3 per channel", "0 to 255 per channel", "channel, so no value sits",
-    // A way a value or a signal travels, in prose about one code path.
-    "`sessionStateSchema` through a channel", "Telegram-style channels",
-    "two channels never carry each other", "two channels carry each other", "The other channel, and it never carries",
-    "that channel still works", "one channel for the visit", "ONE channel\\. `error`", "were two channels",
-    "a second channel carrying it", "the channel by which one worker", "payload channel", "third channel: a dep",
-    "a back channel", "the channel a manager hands", "split-channel bug", "the only channel a caller has",
-    "framework's standard channel", "the channel `readWorkforce` itself fills", "loader's own channel",
-    "within 1 per channel", "leak through a third channel", "either alone leaves a channel",
-    "Their own channel (rather|for the reason)", "five channels are one list",
-  ].join("|"),
-  "i",
-);
+    "side[- ]?channel",
+    [
+      "apps/docs/docs/advanced/durable-execution.md",
+      "apps/docs/docs/sequencers/control-flow.md",
+      "docs/architecture/items.md",
+      "docs/atlas/framework.html",
+      "docs/atlas/workforce.html",
+      "packages/core/README.md",
+      "packages/orchestration/src/task-board/blocks/claim-task.ts",
+      "packages/react/README.md",
+      "packages/react/src/hooks/useResourceCollection.ts",
+    ],
+  ],
+  ["pub/sub", ["packages/bullmq/README.md", "packages/bullmq/src/flowstate-adapter.ts"]],
+  ["channel pair", ["packages/bullmq/README.md", "packages/bullmq/src/stream-bridge.ts"]],
+  ["a Slack channel", ["apps/docs/docs/server/webhooks.md"]],
+  [
+    "question channel",
+    [
+      "docs/atlas/conductor.html",
+      "docs/atlas/framework.html",
+      "packages/harness-manager/package.json",
+    ],
+  ],
+  ["label channel", ["docs/contributing/orchestration.md"]],
+  ["approval channel", ["docs/contributing/orchestration.md"]],
+  ["exec channel", ["packages/tools/src/bash/sandbox-place.ts"]],
+  [
+    "write channel",
+    [
+      "packages/workspace/README.md",
+      "packages/workspace/src/projection.ts",
+      "packages/workspace/test/projection.spec.ts",
+    ],
+  ],
+  ["intent channel", ["packages/tools/src/search/providers/parallel.ts"]],
+  ["notice channel", ["packages/react/src/hooks/useResourceCollection.ts", "packages/react/src/hooks/useSession.ts"]],
+  ["recovery channel", ["packages/engine/src/routes/stream-routes.ts"]],
+  ["trusted channel", ["packages/core/src/types/harness.ts"]],
+  [
+    "structured channel",
+    [
+      "goals/delegation/synthesizes-fanned-out-worker-results/goal.md",
+      "goals/delegation/synthesizes-fanned-out-worker-results/run.mts",
+      "packages/engine/src/stores/index.ts",
+      "packages/engine/src/stores/types.ts",
+    ],
+  ],
+  [
+    "background channel",
+    [
+      "packages/orchestration/src/tasks/helpers/dispatch-and-execute.ts",
+      "packages/orchestration/test/helpers/dispatch-and-execute.test.ts",
+    ],
+  ],
+  ["failure channel", ["packages/engine/src/errors/store-subscription-error.ts"]],
+  [
+    "error channels?",
+    [
+      "apps/kitchen-sink/workforce/hire.ts",
+      "packages/engine/src/stores/filesystem/trace-store.ts",
+      "packages/workforce/src/loader/read-declared-roster.ts",
+      "packages/workforce/test/read-declared-roster.test.ts",
+    ],
+  ],
+  [
+    "separate channels?",
+    [
+      "apps/docs/docs/cli/agent-dev-loop.md",
+      "docs/atlas/conductor.html",
+      "packages/bullmq/src/stream-bridge.ts",
+      "packages/engine/test/context/request-host-provenance.test.ts",
+    ],
+  ],
+  ["content\\.delta` channel", ["packages/contracts/src/items/types.ts"]],
+  ["two channels, two meanings", ["packages/harness-manager/src/manager.ts"]],
+  ["third channel beside", ["packages/harness-manager/src/manager.ts"]],
+  [
+    "through a channel (the|a) ",
+    [
+      "packages/claude-code/src/sdk/capability.ts",
+      "packages/claude-code/test/sdk/capability.spec.ts",
+    ],
+  ],
+  ["point of the channel", ["packages/core/src/types/harness.ts", "packages/harness-manager/src/manager.ts"]],
+  ["its own channel rather", ["packages/core/src/types/block.ts"]],
+  ["channel a cancellation", ["packages/engine/src/execution/abort-registry.ts"]],
+  ["either channel", ["packages/engine/src/execution/runAction.ts"]],
+  ["the channel does not matter", ["packages/orchestration/test/task-board/task-board-hand-off-config.test.ts"]],
+  ["a channel that does not require", ["packages/orchestration/test/skills/initial-skills-resolver.test.ts"]],
+  ["the two channels are fed", ["packages/orchestration/src/tasks/helpers/dispatch-and-execute.ts"]],
+  ["the channel\\)\\.", ["goals/workforce-mailboxes/a-routed-post-gets-one-answer/goal.md"]],
+  ["alternative channel", ["packages/harness-manager/src/ask.ts"]],
+  ["provenance` — a channel whose", ["packages/engine/src/context/create-request-host.ts"]],
+  ["channel is used when available", ["packages/engine/src/context/createExecutionContext.ts"]],
+  ["channel a hand-off refusal", ["packages/codex/src/capability.ts"]],
+  ["self-bias channel", ["apps/docs/docs/patterns/debate.md"]],
+  ["SSE channel", ["apps/docs/docs/streaming/overview.md"]],
+  ["opens two channels", ["apps/docs/docs/resources/client-access.md"]],
+  ["Four channels", ["docs/architecture/state-and-scopes.md"]],
+  ["outbound channel", ["docs/architecture/webhook-transport.md"]],
+  ["no channel for a per-seat", ["docs/architecture/workforce-default-worker-kind.md"]],
+  ["runtime channel", ["docs/architecture/capabilities.md"]],
+  ["public-channel item", ["docs/architecture/items.md"]],
+  [
+    "within 3 per channel",
+    [
+      "goals/lib/colour.mts",
+      "goals/shift-manager/it-takes-its-look-from-the-design-system/goal.md",
+      "labs/design-system/test/shift-manager.test.ts",
+    ],
+  ],
+  ["0 to 255 per channel", ["goals/lib/colour.mts", "labs/design-system/test/theme.ts"]],
+  ["channel, so no value sits", ["labs/design-system/shift-manager.css"]],
+  [
+    "`sessionStateSchema` through a channel",
+    [
+      "packages/claude-code/src/sdk/capability.ts",
+      "packages/claude-code/test/sdk/capability.spec.ts",
+      "packages/cursor/src/capability.ts",
+    ],
+  ],
+  ["Telegram-style channels", ["apps/kitchen-sink/skills/check-news/reference/world-events.md"]],
+  ["two channels never carry each other", ["labs/conductor/src/answer.ts"]],
+  ["two channels carry each other", ["labs/conductor/test/ask-and-answer.spec.ts"]],
+  ["The other channel, and it never carries", ["labs/conductor/src/implement.ts"]],
+  ["that channel still works", ["labs/conductor/test/ask-and-answer.spec.ts"]],
+  ["one channel for the visit", ["packages/devtool/src/react/hooks/use-continue-request.ts"]],
+  ["ONE channel\\. `error`", ["packages/devtool/src/react/hooks/use-dispatch-runs.ts"]],
+  ["were two channels", ["packages/devtool/src/react/hooks/use-dispatch-runs.ts"]],
+  ["a second channel carrying it", ["packages/devtool/src/react/hooks/use-request-stream.ts"]],
+  ["the channel by which one worker", ["goals/delegation/synthesizes-fanned-out-worker-results/run.mts"]],
+  ["payload channel", ["goals/delegation/synthesizes-fanned-out-worker-results/run.mts"]],
+  ["third channel: a dep", ["goals/delegation/synthesizes-fanned-out-worker-results/run.mts"]],
+  ["a back channel", ["goals/workforce-conventions/durable-hire-survives-redeploy/run.mts"]],
+  ["the channel a manager hands", ["packages/core/test/harness-resolver.test-d.ts"]],
+  ["split-channel bug", ["packages/devtool/test/use-dispatch-runs.test.ts"]],
+  ["the only channel a caller has", ["packages/engine/test/principal-org-spoofing.test.ts"]],
+  ["framework's standard channel", ["packages/harness-manager/test/slot.spec.ts"]],
+  ["the channel `readWorkforce` itself fills", ["packages/workforce/test/team-instructions-seam.test.ts"]],
+  ["loader's own channel", ["packages/workforce/test/team-instructions-seam.test.ts"]],
+  ["within 1 per channel", ["goals/design-system/skins-reused-components-from-one-token-set/goal.md"]],
+  ["leak through a third channel", ["goals/delegation/synthesizes-fanned-out-worker-results/goal.md"]],
+  ["either alone leaves a channel", ["goals/devforce-lab/lab/acceptance-check.mjs"]],
+  ["Their own channel (rather|for the reason)", ["packages/workforce/src/loader/read-workforce.ts"]],
+  ["five channels are one list", ["packages/workforce/src/loader/read-declared-roster.ts"]],
+];
+
+/** {@link PHRASE_SURVIVORS}, one pattern per file. */
+const PHRASES_BY_FILE = (() => {
+  const byFile = new Map();
+  for (const [phrase, files] of PHRASE_SURVIVORS) {
+    for (const file of files) byFile.set(file, [...(byFile.get(file) ?? []), phrase]);
+  }
+  return new Map([...byFile].map(([file, phrases]) => [file, new RegExp(phrases.join("|"), "i")]));
+})();
 
 /**
  * Another meaning spelled in code, or a phrase only one page uses, pinned to
@@ -189,7 +332,9 @@ export const FILE_SURVIVORS = {
 
 /** Whether a line says the word about something other than the pipe. */
 export function isSurvivor(path, line) {
-  return SURVIVOR_LINE.test(line) || (FILE_SURVIVORS[path]?.test(line) ?? false);
+  return (
+    SURVIVOR_LINE.test(line) || (FILE_SURVIVORS[path]?.test(line) ?? false) || (PHRASES_BY_FILE.get(path)?.test(line) ?? false)
+  );
 }
 
 /**

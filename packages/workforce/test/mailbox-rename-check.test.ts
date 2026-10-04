@@ -54,7 +54,6 @@ const DOCS: Record<string, string> = {
     "No join or leave.",
   ].join("\n"),
   "apps/docs/docusaurus.config.ts": [
-    "      // The Workforce channels page became the mailboxes page.",
     "          {",
     '            from: "/docs/workforce/channels",',
     '            to: "/docs/workforce/mailboxes",',
@@ -110,8 +109,14 @@ describe("check-mailbox-rename", () => {
     ]);
   });
 
-  it("holds a docs-site survivor phrase to the one page it covers, so a pipe sentence elsewhere that shares it still counts", () => {
-    const line = "A mailbox gives every writer a channel back in.";
+  it.each([
+    "A mailbox gives every writer a channel back in.",
+    "Post to the support channel from Slack.",
+    "Either channel wakes its members.",
+    "Each seat has a separate channel for its team.",
+    "The error channels collect the failed posts.",
+    "Open the runtime channel before the seats boot.",
+  ])("holds a survivor phrase to the files it covers, so a pipe sentence elsewhere that shares it still counts: %s", (line) => {
     const result = scan({ ...GREEN, "apps/docs/docs/workforce/overview.md": `${line}\n` });
     expect(result.productHits).toEqual([{ path: "apps/docs/docs/workforce/overview.md", line: 1, text: line }]);
   });
@@ -128,6 +133,13 @@ describe("check-mailbox-rename", () => {
     // An allowlisted line is held to its exact text, so an edit to it counts.
     const editedRow = DOCS[MAILBOXES_PAGE].replace("Nothing in it is read.", "Nothing in it is read; a channel still opens.");
     expect(scan({ ...GREEN, ...DOCS, [MAILBOXES_PAGE]: editedRow }).productHits.map((hit) => hit.line)).toEqual([5]);
+
+    // Only that line in the config: another line there that names the old page still counts.
+    const config = "apps/docs/docusaurus.config.ts";
+    const commented = `      // The Workforce channels page became the mailboxes page.\n${DOCS[config]}`;
+    expect(scan({ ...GREEN, ...DOCS, [config]: commented }).productHits).toEqual([
+      { path: config, line: 1, text: "// The Workforce channels page became the mailboxes page." },
+    ]);
 
     // The redirect's line is allowlisted in the config only, not on any page.
     const elsewhere = scan({ ...GREEN, "apps/docs/docs/workforce/overview.md": '            from: "/docs/workforce/channels",\n' });
