@@ -958,9 +958,14 @@ export function hireWorkforce(
   }
   // A kind with two doors is reported, not refused: the seat is hired, and
   // published with no door, so it takes no message until one is removed.
+  // Once per process per problem: keyed on the sentence, which names the seat,
+  // its kind and its doors, so a hot reload stays quiet while a changed problem
+  // still prints.
   for (const seat of seats) {
     const { problem } = seatDoorOf(seat);
-    if (problem !== undefined) console.warn(`[workforce] ${problem}`);
+    if (problem !== undefined && firstInProcess(`workforce/two-doors/${problem}`)) {
+      console.warn(`[workforce] ${problem}`);
+    }
   }
 
   return seats;
