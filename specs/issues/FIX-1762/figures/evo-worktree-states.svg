@@ -1,0 +1,61 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="Worktree state machine: requested, provisioning, ready, running, parked, lost, restoring, done, retired, refused."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --panel:#FFFFFF; --fg:#1B2125; --muted:#5A656D; --line:#C7CDD0; --fsd:#2C6AA8; --ext:#A85D17; --eph:#6A7680; --new:#0E7C6B; --bad:#B23A3A; }
+    @media (prefers-color-scheme: dark) {
+      :root { --panel:#1A1F23; --fg:#E3E7E9; --muted:#9BA6AE; --line:#343D43; --fsd:#6EA6DE; --ext:#DE9A56; --eph:#8F9BA4; --new:#3DBBA6; --bad:#E07070; } }
+    .bg { fill:var(--panel); }
+    text { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-size:12.5px; fill:var(--fg); }
+    .t-b { font-weight:600; }
+    .t-m { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+    .t-s { font-size:11px; fill:var(--muted); }
+    .ln { stroke:var(--fg); stroke-width:1.3; fill:none; }
+    .ln-new { stroke:var(--new); stroke-width:1.6; fill:none; }
+    .ln-d { stroke:var(--fg); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+    .box { fill:var(--panel); stroke:var(--line); stroke-width:1.2; }
+    .box-new { fill:var(--panel); stroke:var(--new); stroke-width:1.6; }
+    .z-fsd { fill:var(--fsd); fill-opacity:.07; stroke:var(--fsd); stroke-width:1.2; }
+    .z-ext { fill:var(--ext); fill-opacity:.08; stroke:var(--ext); stroke-width:1.2; }
+    .z-eph { fill:var(--eph); fill-opacity:.07; stroke:var(--eph); stroke-width:1.2; stroke-dasharray:5 4; }
+    .c-fsd { fill:var(--fsd); } .c-ext { fill:var(--ext); } .c-eph { fill:var(--eph); }
+    .c-new { fill:var(--new); } .c-bad { fill:var(--bad); }
+    .st { fill:var(--panel); stroke:var(--fg); stroke-width:1.2; }
+    .st-bad { fill:var(--panel); stroke:var(--bad); stroke-width:1.4; }
+    .st-new { fill:var(--panel); stroke:var(--new); stroke-width:1.6; }
+    .ah { fill:var(--fg); } .ah-new { fill:var(--new); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <g transform="translate(20,20)">
+  <defs>
+    <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+    <marker id="a4n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah-new"/></marker>
+  </defs>
+  <rect x="20" y="60" width="120" height="40" rx="20" class="st"/><text x="80" y="85" text-anchor="middle" class="t-b">Requested</text>
+  <rect x="190" y="60" width="130" height="40" rx="20" class="st"/><text x="255" y="85" text-anchor="middle" class="t-b">Provisioning</text>
+  <rect x="370" y="60" width="110" height="40" rx="20" class="st"/><text x="425" y="85" text-anchor="middle" class="t-b">Ready</text>
+  <rect x="530" y="60" width="120" height="40" rx="20" class="st"/><text x="590" y="85" text-anchor="middle" class="t-b">Running</text>
+  <rect x="740" y="60" width="130" height="40" rx="20" class="st"/><text x="805" y="85" text-anchor="middle" class="t-b">Parked</text>
+
+  <rect x="190" y="200" width="130" height="40" rx="20" class="st-bad"/><text x="255" y="225" text-anchor="middle" class="t-b c-bad">Refused</text>
+  <rect x="370" y="200" width="110" height="40" rx="20" class="st-new"/><text x="425" y="225" text-anchor="middle" class="t-b c-new">Restoring</text>
+  <rect x="530" y="200" width="120" height="40" rx="20" class="st-new"/><text x="590" y="225" text-anchor="middle" class="t-b c-new">Lost</text>
+  <rect x="740" y="200" width="130" height="40" rx="20" class="st-new"/><text x="805" y="225" text-anchor="middle" class="t-b c-new">Pushed</text>
+  <rect x="740" y="310" width="130" height="40" rx="20" class="st-new"/><text x="805" y="335" text-anchor="middle" class="t-b c-new">Retired</text>
+
+  <line x1="140" y1="80" x2="188" y2="80" class="ln" marker-end="url(#a4)"/><text x="164" y="72" text-anchor="middle" class="t-s">claim</text>
+  <line x1="320" y1="80" x2="368" y2="80" class="ln" marker-end="url(#a4)"/><text x="344" y="72" text-anchor="middle" class="t-s">ok</text>
+  <line x1="480" y1="80" x2="528" y2="80" class="ln" marker-end="url(#a4)"/><text x="504" y="72" text-anchor="middle" class="t-s">start</text>
+  <line x1="650" y1="74" x2="738" y2="74" class="ln" marker-end="url(#a4)"/><text x="694" y="66" text-anchor="middle" class="t-s">asks</text>
+  <line x1="740" y1="90" x2="652" y2="90" class="ln" marker-end="url(#a4)"/><text x="696" y="106" text-anchor="middle" class="t-s">answered</text>
+  <!-- self loop on running -->
+  <path d="M560,60 C560,22 620,22 620,58" class="ln-new" marker-end="url(#a4n)"/><text x="590" y="18" text-anchor="middle" class="t-s c-new">checkpoint each turn</text>
+
+  <line x1="255" y1="100" x2="255" y2="198" class="ln" marker-end="url(#a4)"/><text x="262" y="140" class="t-s">remote not allowed</text><text x="262" y="155" class="t-s">repo unreadable</text><text x="262" y="170" class="t-s">no project for the workstream</text>
+  <line x1="590" y1="100" x2="590" y2="198" class="ln-new" marker-end="url(#a4n)"/><text x="597" y="140" class="t-s c-new">host crash,</text><text x="597" y="155" class="t-s c-new">sandbox expired</text>
+  <line x1="530" y1="220" x2="482" y2="220" class="ln-new" marker-end="url(#a4n)"/><text x="506" y="258" text-anchor="middle" class="t-s c-new">next attempt</text>
+  <line x1="425" y1="200" x2="425" y2="102" class="ln-new" marker-end="url(#a4n)"/><text x="432" y="150" class="t-s c-new">resumed or</text><text x="432" y="165" class="t-s c-new">rebuilt</text>
+  <line x1="640" y1="100" x2="760" y2="198" class="ln-new" marker-end="url(#a4n)"/><text x="712" y="140" class="t-s c-new">done, push</text>
+  <line x1="805" y1="240" x2="805" y2="308" class="ln-new" marker-end="url(#a4n)"/><text x="796" y="270" text-anchor="end" class="t-s c-new">PR merged or row closed,</text><text x="796" y="285" text-anchor="end" class="t-s c-new">overlay dropped</text>
+
+  </g>
+</svg>
