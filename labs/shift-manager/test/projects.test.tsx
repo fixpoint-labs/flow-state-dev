@@ -42,7 +42,7 @@ async function lab(projects: NonNullable<Parameters<typeof openAskLab>[0]>["proj
   return s;
 }
 
-/** Give `userId` a session of their own in the Lab, so Shift Manager has an organization to open it under. */
+/** Give `userId` a session of their own in the Lab before Shift Manager first opens for them. */
 async function holdASession(baseUrl: string, userId: string) {
   const clients = createLabClients({ userId, baseUrl });
   await clients.actions("channel").sendAction("read", {}, {});
@@ -535,6 +535,38 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
     // And the Lab refuses the outsider's own talk session, whatever its state says.
     const outsider = createLabClients({ userId: OUTSIDER, baseUrl });
     await expect(joinAs(outsider, "desk")).rejects.toThrow(/not-a-member|members/);
+  });
+
+  // Projects are org-wide: a person the Lab verifies reaches them on their first visit,
+  // before the Lab holds any session of theirs to say which organization they are in.
+  describe("a person the Lab holds no session for yet", () => {
+    it("a project's member opens its Stream and gets Join, not the refusal", async () => {
+      const { baseUrl } = await lab();
+      openApp(baseUrl, "/p/desk/stream", OTHER);
+      await screen.findByTestId("project-join", undefined, { timeout: 10_000 });
+      expect(screen.queryByTestId("refusal")).toBeNull();
+      // The one session opened for them is their own, on the room kind, in the Lab's organization.
+      const mine = await createLabClients({ userId: OTHER, baseUrl }).sessions.listSessions({ userId: OTHER });
+      expect(mine.map((s) => s.flowKind)).toEqual(["channel"]);
+    });
+
+    it("an outsider sees the projects and the members-only state, and the room is never read", async () => {
+      const { baseUrl } = await lab();
+      const actions: string[] = [];
+      const real = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (/\/actions\//.test(url)) actions.push(url);
+        return real(input, init);
+      });
+      openApp(baseUrl, "/p/desk/stream", OUTSIDER);
+      await screen.findByTestId("project-stream-members-only", undefined, { timeout: 10_000 });
+      expect(screen.getByTestId("nav-project-desk")).toBeTruthy();
+      expect(screen.getByTestId("nav-project-empty")).toBeTruthy();
+      expect(screen.queryByTestId("composer")).toBeNull();
+      await new Promise((r) => setTimeout(r, 300));
+      expect(actions).toEqual([]);
+    });
   });
 
   it("the owner of a project whose mint failed is bound on open, once (BR-8a)", async () => {

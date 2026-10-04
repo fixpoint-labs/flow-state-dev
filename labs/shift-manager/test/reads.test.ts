@@ -85,14 +85,49 @@ describe("the refusal (V2, BR-3)", () => {
   });
 
   it("refuses a Lab that names no organization for the person, and reads nothing from the tree", async () => {
-    // The Lab opens nothing at boot, so the person holds no session and
-    // nothing the Lab serves says which organization they are in.
+    // The Lab opens nothing at boot and serves no room kind to open one on, so
+    // the person holds no session and nothing the Lab serves says which
+    // organization they are in.
     const { baseUrl } = await lab({ channels: false });
-    const seen = countRequests();
+    const seen: string[] = [];
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      seen.push(`${init?.method ?? "GET"} ${url.pathname}`);
+      if (url.pathname === "/api/flows/channel/sessions") return new Response(JSON.stringify({ error: "no flow" }), { status: 404 });
+      return real(input, init);
+    });
     const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused?.message).toMatch(/no organization/);
     expect(snapshot.refused?.message).toContain(ASK_LAB_USER_ID);
-    expect(seen).toEqual(["GET /api/flows/sessions"]);
+    expect(seen).toEqual(["GET /api/flows/sessions", "POST /api/flows/channel/sessions"]);
+  });
+
+  // FIX-1752: projects are org-wide, so a person the Lab verifies reaches them on a first
+  // visit. Their room session is opened first, and the Lab stamps it with their organization.
+  it("reads the organization off a room session it opens for a person who holds none", async () => {
+    // The Lab opens nothing at boot; its verified principal puts the person in `org_first_visit`.
+    const { baseUrl } = await lab({ channels: false, bearer: "ask-lab-secret", orgId: "org_first_visit" });
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" });
+    expect(await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).toEqual([]);
+    const snapshot = loaded(await createLabReader(clients).read());
+    expect(snapshot.orgId).toBe("org_first_visit");
+    expect(snapshot.sessions.map((s) => s.flowKind)).toEqual(["channel"]);
+  });
+
+  it("a person with no session whose room session is refused gets the Lab's refusal, and nothing else is read", async () => {
+    const { baseUrl } = await lab({ channels: false });
+    const seen: string[] = [];
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      seen.push(`${init?.method ?? "GET"} ${url.pathname}`);
+      if (url.pathname === "/api/flows/channel/sessions") return new Response(JSON.stringify({ error: "not in this Lab" }), { status: 403 });
+      return real(input, init);
+    });
+    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    expect(snapshot.refused).toMatchObject({ httpStatus: 403, message: "not in this Lab" });
+    expect(seen).toEqual(["GET /api/flows/sessions", "POST /api/flows/channel/sessions"]);
   });
 
   it("refuses when the person's session carries no organization", async () => {

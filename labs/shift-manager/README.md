@@ -103,7 +103,7 @@ const state = createFlowState({
 
 A Lab with no resolver runs in the framework's development organization, `DEFAULT_ORG_ID` from `@flow-state-dev/core`, and Shift Manager shows that id. Anything the boot writes under an organization, such as the inventory below, has to use the same one.
 
-**Open channels.** Call `openChannels` at boot with the same `userId` you give Shift Manager in `devtool: { userId }` (below). Each channel is a workstream. Shift Manager reads the organization off that user's sessions, so a Lab that holds none for them opens to a screen saying it names no organization, in place of the Lab.
+**Open channels.** Call `openChannels` at boot with the same `userId` you give Shift Manager in `devtool: { userId }` (below). Each channel is a workstream. Shift Manager reads the organization off the person's sessions. Someone the Lab holds no session for yet, such as a project's second member on their first visit, gets one opened on the channel kind, and the Lab records in it the organization its resolver puts them in. So anyone your resolver verifies can open Shift Manager, see the organization's projects, and join the ones they're a member of. Only a Lab that holds no session for the person and serves no channel kind to open one on shows a screen saying it names no organization, in place of the Lab.
 
 **An open inventory.** The [inventory](../../apps/docs/docs/workforce/inventory.md) is the organization's record of its seats and channels. TEAMS and PROJECTS list it, and Inbox and the boards find seats and workstreams through it. It takes two steps:
 
