@@ -71,7 +71,8 @@ identity above is still what that bucket is derived from, and an instance id
 is a storage coordinate, never an authorization.
 
 A custom resolver therefore owns the org boundary as well as the user one,
-and it may not decline it. Returning no `orgId`, a blank one, or the reserved
+and it may not decline it. Returning no `orgId`, a blank one, one that is not
+well-formed Unicode (a lone UTF-16 surrogate), or the reserved
 `DEFAULT_ORG_ID` is refused with `401` — organization is unconditional, so
 there is no configuration under which a configured resolver may omit it. Org
 binding is fixed at session creation and immutable after: a later request

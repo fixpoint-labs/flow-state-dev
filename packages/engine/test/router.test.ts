@@ -311,11 +311,15 @@ describe("parseFlowRoute (router-backed)", () => {
       expect(parseFlowRoute("GET", [])).toEqual({ kind: "list_flows" });
     });
 
-    it("strips empty / whitespace segments", () => {
-      expect(parseFlowRoute("GET", ["", "sessions", "  ", "sess_1"])).toEqual({
+    it("strips empty segments, but a whitespace-only segment is an id", () => {
+      expect(parseFlowRoute("GET", ["", "sessions", "", "sess_1"])).toEqual({
         kind: "get_session",
         sessionId: "sess_1"
       });
+      // Decoded content is never trimmed, so "  " is a session id here and
+      // the path has one segment too many for get_session.
+      expect(parseFlowRoute("GET", ["", "sessions", "  ", "sess_1"])).toEqual({ kind: "not_found" });
+      expect(parseFlowRoute("GET", ["sessions", "  "])).toEqual({ kind: "get_session", sessionId: "  " });
     });
   });
 
@@ -395,6 +399,24 @@ describe("parseFlowRoute — segments arrive decoded, and are decoded no further
     });
   });
 
+  it("keeps whitespace inside a decoded segment (a topic \" report \" is not \"report\")", () => {
+    expect(
+      parseFlowRoute("GET", ["sessions", " s1 ", "resources", "notes", " report ", "content"])
+    ).toEqual({
+      kind: "get_collection_item_content",
+      sessionId: " s1 ",
+      ref: "notes",
+      topic: " report "
+    });
+  });
+
+  it("still drops empty segments, as a catch-all can hand them over", () => {
+    expect(parseFlowRoute("GET", ["", "sessions", "abc", ""])).toEqual({
+      kind: "get_session",
+      sessionId: "abc"
+    });
+  });
+
   it("keeps a decoded slash inside its segment", () => {
     expect(parseFlowRoute("GET", ["sessions", "a/b"])).toEqual({
       kind: "get_session",
@@ -415,6 +437,11 @@ describe("decodePathSegments — the raw-URL host's half of the contract", () =>
 
   it("keeps a segment that is not valid percent-encoding as written", () => {
     expect(decodePathSegments("sessions/100%")).toEqual(["sessions", "100%"]);
+  });
+
+  it("round-trips a whitespace-bearing topic from the raw URL", () => {
+    const raw = `sessions/s1/resources/notes/${encodeURIComponent(" report ")}/content`;
+    expect(parseFlowRoute("GET", decodePathSegments(raw))).toMatchObject({ topic: " report " });
   });
 
   it("round-trips through parseFlowRoute to the kind the client encoded", () => {

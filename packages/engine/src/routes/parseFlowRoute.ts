@@ -50,7 +50,7 @@ export type ParsedFlowRoute =
 
 /**
  * Parses a catch-all method/path tuple into a typed flow route shape.
- * Empty / whitespace-only segments are dropped so request paths that come
+ * Empty segments are dropped so request paths that come
  * in as `["", "sessions", "abc"]` from a Next.js catch-all match the same
  * way as `["sessions", "abc"]`.
  *
@@ -65,9 +65,9 @@ export function parseFlowRoute(
   method: string,
   path: string[] | undefined
 ): ParsedFlowRoute {
-  const segments = (Array.isArray(path) ? path : [])
-    .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0);
+  // Empty segments are dropped, but a segment's content is never trimmed: it
+  // is already decoded, so its whitespace is part of the id.
+  const segments = (Array.isArray(path) ? path : []).filter((segment) => segment.length > 0);
   const pathname =
     segments.length === 0 ? "/" : `/${segments.map(encodeURIComponent).join("/")}`;
   return matchFlowRoute(method, pathname);

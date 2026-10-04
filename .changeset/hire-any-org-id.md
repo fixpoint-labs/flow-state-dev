@@ -7,4 +7,4 @@
 "@flow-state-dev/vercel": patch
 ---
 
-`seatAddress` accepts any well-formed organization id by percent-escaping it (ids of lowercase letters, digits and `-` keep their addresses), and `isValidOrgId` now refuses an id containing a lone UTF-16 surrogate. Route segments are now decoded exactly once on every host, so a seat or flow id carrying a literal `%XX` no longer 404s on Next and Vercel; `parseFlowRoute`'s input contract changed to already-decoded segments (it no longer decodes them), and the new `decodePathSegments` builds those from a raw URL path.
+`seatAddress` accepts any well-formed organization id by percent-escaping it (ids of lowercase letters, digits and `-` keep their addresses), and `isValidOrgId` now refuses an id containing a lone UTF-16 surrogate. Route segments are now decoded exactly once on every host, so a seat or flow id carrying a literal `%XX` no longer 404s on Next and Vercel; `parseFlowRoute`'s input contract changed to already-decoded segments (it no longer decodes or trims them), and the new `decodePathSegments` builds those from a raw URL path.
