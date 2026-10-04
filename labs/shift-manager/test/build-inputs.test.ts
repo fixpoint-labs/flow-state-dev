@@ -39,7 +39,7 @@ describe("a page build's record of its source", () => {
 
   it("names an imported source file that changed since the build, the way a rename leaves the old key in the bundle", async () => {
     const { dist, keys } = await builtApp();
-    writeFileSync(keys, 'export const MAILBOXES = "inventory/channels/*";\n');
+    writeFileSync(keys, 'export const MAILBOXES = "inventory/renamed/*";\n');
     expect(staleBuildInputs(dist, repo)).toBe("app/src/keys.ts changed since it was built");
   });
 
