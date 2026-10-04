@@ -17,6 +17,7 @@
  *     `support.desk` beside it.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { __resetDeprecationWarningsForTests } from "@flow-state-dev/core";
 import type { FlowState } from "@flow-state-dev/engine";
 import { createSessionClient } from "@flow-state-dev/client";
 
@@ -31,6 +32,9 @@ afterEach(async () => {
 });
 
 async function boot() {
+  // Each boot is a fresh server start. Boot diagnostics print once per process
+  // and their claims survive `vi.resetModules()`, so forget them here too.
+  __resetDeprecationWarningsForTests();
   vi.resetModules();
   vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
   vi.stubEnv("STORE_TYPE", "memory");

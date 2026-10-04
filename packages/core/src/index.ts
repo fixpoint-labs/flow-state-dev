@@ -202,6 +202,7 @@ export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
 export { resolveTracingLevel } from "./helpers/tracing-level";
 export type { TracingLevel } from "./helpers/tracing-level";
 export { transientSlot } from "./helpers/transient-slot";
+export { firstInProcess } from "./helpers/once-per-process";
 export {
   warnOnceDev,
   __resetDeprecationWarningsForTests,

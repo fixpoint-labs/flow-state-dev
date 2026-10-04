@@ -267,6 +267,9 @@ Forwarding is direct-only: inner capabilities used by `myCap` do not propagate t
 - `xmlTag(name, content)`, `renderTaggedContext(tagged, order)` — XML tag rendering used by object-form generator context
 - `validateTagName(name)`, `RESERVED_TAG_NAMES` — Reserved-tag list and validator for object-form context keys
 
+**Once per process** (`@flow-state-dev/core`):
+- `firstInProcess(key)` — returns `true` the first time `key` is claimed in the process and `false` on every later call. Use it to print a boot diagnostic once per server start. The record is process-global and lasts for the life of the process: it lives on `globalThis`, so it survives a dev server re-evaluating modules on each edit, and it is never cleared. Every caller shares one set, so namespace keys by package (`"my-pkg/unattended-board"`). It only answers "first time?". It is not dev-only and ignores `FSD_QUIET_WARNINGS`; the caller decides what to print.
+
 **Object-form generator context:**
 
 `generator({ context: { ... } })` accepts an object whose keys become XML tag names. Multiple sources (the generator itself plus capabilities installed via `uses`) that contribute to the same key aggregate inside a single tag, instead of producing scattered sections.

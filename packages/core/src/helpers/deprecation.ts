@@ -8,7 +8,7 @@
  * the path runs.
  */
 
-const warned = new Set<string>();
+import { claimedKeys, firstInProcess } from "./once-per-process";
 
 /**
  * Emit a non-fatal dev warning at most once per process per `key`. Skipped
@@ -19,13 +19,12 @@ const warned = new Set<string>();
 export function warnOnceDev(key: string, message: string): void {
   if (process.env.NODE_ENV === "production") return;
   if (process.env.FSD_QUIET_WARNINGS === "1") return;
-  if (warned.has(key)) return;
-  warned.add(key);
+  if (!firstInProcess(`warnOnceDev/${key}`)) return;
   // eslint-disable-next-line no-console
   console.warn(`[flow-state-dev] ${message}`);
 }
 
-/** Test-only: forget all warned keys so a fresh process can be simulated. */
+/** Test-only: forget all claimed keys so a fresh process can be simulated. */
 export function __resetDeprecationWarningsForTests(): void {
-  warned.clear();
+  claimedKeys().clear();
 }
