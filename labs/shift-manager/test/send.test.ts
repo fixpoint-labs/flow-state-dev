@@ -22,6 +22,8 @@ function stubClients(options: {
   stateFails?: unknown;
   /** The session read answers this instead of a page. */
   stateAnswers?: unknown;
+  /** Only the read of suspension items rejects; the line's read-back still answers. */
+  suspensionsFail?: boolean;
 }): { clients: LabClients; sent: unknown[] } {
   const sent: unknown[] = [];
   const items = options.items ?? [];
@@ -38,6 +40,9 @@ function stubClients(options: {
       getSessionState: async (_id: string, read: { offset?: number; limit?: number; itemTypes?: string[] } = {}) => {
         if (options.stateFails !== undefined) throw options.stateFails;
         if (options.stateAnswers !== undefined) return options.stateAnswers;
+        if (options.suspensionsFail === true && read.itemTypes?.includes("suspension") === true) {
+          throw new ClientHttpError("Request failed (503)", { status: 503, body: null });
+        }
         const typed = items.filter((item) => read.itemTypes === undefined || read.itemTypes.includes(item.type));
         const offset = read.offset ?? 0;
         const limit = read.limit ?? 50;
@@ -115,6 +120,30 @@ describe("sendTurn", () => {
       ],
     });
     await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "wait" });
+  });
+
+  // Every state a suspended poll can be followed by, and what the composer is told for each.
+  describe("what a suspended turn is still stopped on, once the session is read", () => {
+    const line = { requestId: "req_door", role: "user", type: "message" };
+    const ask = (id: string, reason = "human_approval") => ({ requestId: "req_door", type: "suspension", reason, suspensionId: id });
+    const resume = (id: string) => ({ requestId: "req_door", type: "suspension_resume", suspensionId: id });
+    const cases: Array<[string, Item[], "ask" | "wait" | null]> = [
+      ["answered between the poll and the read, nothing pending: plain delivered", [line, ask("s1"), resume("s1")], null],
+      ["a wait answered, then a person's ask pending: in Inbox", [line, ask("s1", "external_event"), resume("s1"), ask("s2")], "ask"],
+      ["a person's input pending: in Inbox", [line, ask("s1", "human_input")], "ask"],
+      ["another request's ask pending, this one's answered: not this line's", [line, ask("s1"), resume("s1"), { ...ask("s9"), requestId: "req_other" }], null],
+    ];
+    for (const [what, items, stopped] of cases) {
+      it(what, async () => {
+        const { clients } = stubClients({ status: "suspended", items });
+        await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped });
+      });
+    }
+
+    it("a failed read of the suspensions is still delivered, as a wait that points nowhere", async () => {
+      const { clients } = stubClients({ status: "suspended", items: [line, ask("s1")], suspensionsFail: true });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "wait" });
+    });
   });
 
   it("is unconfirmed, not not-sent, when the request suspended but the session doesn't show the line", async () => {

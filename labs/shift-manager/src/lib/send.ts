@@ -109,22 +109,29 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
 }
 
 /**
- * What a suspended request stopped on: `ask` when its still-pending suspension
- * is a person's ask, by the same derivation Inbox lists asks with
- * (`deriveSuspensions`), read from the session's newest suspension and resume
- * items. An ask already answered doesn't count, so a request that resumed and
- * stopped again on something else is `wait`. The line is delivered either way,
- * so a read that fails is `wait`, which promises nothing.
+ * What a suspended request is still stopped on, by the derivation Inbox lists
+ * asks with (`deriveSuspensions`), over the session's newest suspension and
+ * resume items. Only this request's still-pending suspensions count:
+ *
+ * - one whose reason is a person's ask: `ask`.
+ * - any other pending one, such as a stop on something else after an ask
+ *   that was answered: `wait`.
+ * - none, because it was resumed between the status poll and this read: `null`,
+ *   plain delivered.
+ *
+ * The line is delivered whatever this says. A read that fails is `wait`: the
+ * poll saw the request suspended, and `wait` points nowhere it might not be.
  */
-async function stopOf(clients: LabClients, sessionId: string, requestId: string): Promise<"ask" | "wait"> {
+async function stopOf(clients: LabClients, sessionId: string, requestId: string): Promise<TurnStop> {
   const read = (offset: number) =>
     clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["suspension", "suspension_resume"], offset, limit: ITEM_PAGE });
   try {
     let page = await read(0);
     const total = page.pagination?.total ?? 0;
     if (total > ITEM_PAGE) page = await read(total - ITEM_PAGE);
-    const pending = deriveSuspensions((page.items ?? []) as OutputItem[]).pending;
-    return pending.some((view) => view.item.requestId === requestId && PERSON_REASONS.has(view.item.reason)) ? "ask" : "wait";
+    const mine = deriveSuspensions((page.items ?? []) as OutputItem[]).pending.filter((view) => view.item.requestId === requestId);
+    if (mine.some((view) => PERSON_REASONS.has(view.item.reason))) return "ask";
+    return mine.length > 0 ? "wait" : null;
   } catch {
     return "wait";
   }
