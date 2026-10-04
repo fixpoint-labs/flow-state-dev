@@ -378,12 +378,22 @@ async function inboxJourney(page: Page, api: LabApi, store: Store, tree: Tree, s
     fail("the detail pane draws no ask card for the selected ask");
     return false;
   }
-  const detailText = ((await detailCard.textContent()) ?? "").trim();
+  // Inbox's detail draws the ask's question as its heading and the card without it (FIX-1737 D);
+  // the stream's card carries the question itself. Together they must say the same.
+  const squash = (t: string | null) => (t ?? "").replace(/\s+/g, "");
+  const detailTitle = squash(await page.getByTestId("inbox-detail-title").textContent().catch(() => null));
+  const detailText = squash(await detailCard.textContent());
   if (workstream !== undefined) {
     await page.getByTestId(`nav-workstream-${workstream}`).click();
     const streamCard = page.locator(`[data-testid=feed-ask] [data-testid=ask-card][data-suspension-id="${ask.suspensionId}"]`);
     if (!(await streamCard.waitFor({ timeout: 10_000 }).then(() => true, () => false))) fail(`${workstream}'s stream shows no card for the ask`);
-    else if (((await streamCard.textContent()) ?? "").trim() !== detailText) fail("the detail pane's card and the stream's card differ");
+    else {
+      const streamText = squash(await streamCard.textContent());
+      const at = detailTitle === "" ? -1 : streamText.indexOf(detailTitle);
+      const rest = at < 0 ? streamText : streamText.slice(0, at) + streamText.slice(at + detailTitle.length);
+      if (at < 0) fail(`the stream's card does not say the detail pane's question "${detailTitle.slice(0, 80)}"`);
+      else if (rest !== detailText) fail(`the detail pane's card and the stream's card differ: "${detailText.slice(0, 120)}" / "${rest.slice(0, 120)}"`);
+    }
     await page.getByTestId("nav-inbox").click();
     await item.click();
   }
