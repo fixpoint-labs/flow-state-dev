@@ -51,9 +51,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-/** Whether the docs site is in scope. It is, since the docs half of the rename. */
-export const SITE_IN_SCOPE = true;
-
 /** Paths that must spell the old words: the refusals, their proofs, this guard. */
 const LEGACY_PATHS = [
   "packages/workforce/src/mailbox/pre-rename.ts",
@@ -70,21 +67,15 @@ const LEGACY_SECTIONS = [
   { path: "apps/docs/docs/workforce/mailboxes.md", heading: /^#+ Upgrading from channels$/ },
 ];
 
-/**
- * Single lines outside such a section that must name the old words, by file and
- * the whole line. Anchored at both ends, so any other line in the file still
- * counts, and so does an edit to one of these.
- */
-const LEGACY_LINES = [
-  {
-    path: "apps/docs/docs/workforce/mailboxes.md",
-    line: /^\| `pre-rename-record` \| A `CHANNEL\.md`, or a team's `channels\/` folder, from before mailboxes were renamed\. One entry per old file, or one for a folder holding none, and the message names where it belongs now\. Nothing in it is read\. See \[Upgrading from channels\]\(#upgrading-from-channels\)\. \|$/,
-  },
-  { path: "apps/docs/docusaurus.config.ts", line: /^\s*\/\/ The Workforce channels page became the mailboxes page\.$/ },
-  { path: "apps/docs/docusaurus.config.ts", line: /^\s*from: "\/docs\/workforce\/channels",$/ },
-];
+/** Exact lines, outside an upgrade section, that still name the old word. */
+const LEGACY_LINES = {
+  "apps/docs/docs/workforce/mailboxes.md": [
+    "| `pre-rename-record` | A `CHANNEL.md`, or a team's `channels/` folder, from before mailboxes were renamed. One entry per old file, or one for a folder holding none, and the message names where it belongs now. Nothing in it is read. See [Upgrading from channels](#upgrading-from-channels). |",
+  ],
+  "apps/docs/docusaurus.config.ts": ['            from: "/docs/workforce/channels",'],
+};
 
-const isLegacyLine = (path, line) => LEGACY_LINES.some((entry) => entry.path === path && entry.line.test(line));
+const isLegacyLine = (path, line) => LEGACY_LINES[path]?.includes(line) ?? false;
 
 const isLegacyPath = (p) => LEGACY_PATHS.some((entry) => (entry.endsWith("/") ? p.startsWith(entry) : p === entry));
 
@@ -115,8 +106,8 @@ export function groupsFor(published) {
 }
 
 /** Groups the rename covers. History, process and the allowlist are classified but kept. */
-export function inScopeGroups(site = SITE_IN_SCOPE) {
-  return new Set(["api", "ui", "goals", "tests", "changesets", "readmes", ...(site ? ["site"] : [])]);
+export function inScopeGroups() {
+  return new Set(["api", "ui", "goals", "tests", "changesets", "readmes", "site"]);
 }
 
 /** A path whose own name uses the word for something else. */
@@ -210,12 +201,12 @@ export function productLines(path, text) {
 
 /**
  * Scan a tree. Pure over its inputs, so a test can hand it a fixture.
- * @param {{ files: Map<string, string>; paths: string[]; published: Set<string>; site?: boolean }} tree
+ * @param {{ files: Map<string, string>; paths: string[]; published: Set<string> }} tree
  */
-export function scanTree({ files, paths, published, site = SITE_IN_SCOPE }) {
+export function scanTree({ files, paths, published }) {
   const groups = groupsFor(published);
   const groupOf = (p) => groups.find(([, test]) => test(p))?.[0] ?? "UNCLASSIFIED";
-  const scope = inScopeGroups(site);
+  const scope = inScopeGroups();
   const unclassified = [];
   const productHits = [];
   for (const [p, text] of files) {

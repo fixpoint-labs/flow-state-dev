@@ -54,7 +54,6 @@ const DOCS: Record<string, string> = {
     "No join or leave.",
   ].join("\n"),
   "apps/docs/docusaurus.config.ts": [
-    "      // The Workforce channels page became the mailboxes page.",
     "          {",
     '            from: "/docs/workforce/channels",',
     '            to: "/docs/workforce/mailboxes",',
