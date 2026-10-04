@@ -19,6 +19,12 @@ The organization owns the projects. A project groups the workstreams that belong
 
 ![A project groups work and gives its people one private room](./project-overview.svg)
 
+## A room or a mailbox
+
+![A mailbox and a room compared. Both run on the same mailbox flow kind; they differ in what the session is and where the talk is kept. A mailbox is declared in a MAILBOX.md in a team folder and opened at boot, and it is listed in the inventory. The mailbox is one session on the mailbox kind, such as support.desk. Its transcript is mailbox-post items in that one session. Its members are seats named in the file, fixed until the mailbox is opened again; a post wakes them. It can hold a board and route a post to one member. A room belongs to one project, created while the app runs; there is no file and it is not in the inventory. No session is the room: each member of the project has their own talk session on the mailbox kind, and every one reaches the same room. The room's lines are organization data, the room-lines collection, and a member's view reads them; they are not pushed. Its members are the people on the project row, checked on every call. A post wakes the seats in the organization's talk template, which are not members. A room holds no board and routes nothing. Use a mailbox for a standing topic a team owns, set in files, with a board or routing. Use a room for the people on a project talking together, private to them. In Shift Manager a workstream is a team's mailbox with its boards, and a project groups workstreams and has one room](./mailbox-or-room.svg)
+
+A room and a mailbox both run on the mailbox kind, but a mailbox is one declared session that holds its own transcript, and a room is the project's lines in organization data, reached through each member's own talk session. Use a mailbox for a standing topic a team owns. Use the project's room when the people on a piece of work need to talk among themselves.
+
 ## The row
 
 | Field | What it holds |
