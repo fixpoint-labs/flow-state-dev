@@ -27,15 +27,17 @@
  * The old words have to live somewhere until 1.0, so a stale tree or store is
  * refused by name rather than misread: the one legacy module, its test, the
  * goal that proves the refusal, this guard and its test, and this rename's own
- * changeset. Plus the README's upgrade section, by heading. Nothing else.
+ * changeset. Plus the upgrade section of the README and of the mailboxes docs
+ * page, by heading, and a few exact lines that point at it: the docs page's
+ * `pre-rename-record` row and the redirect from the old page's address.
+ * Nothing else, and never a whole page.
  *
  * ## Scope
  *
- * The docs site (`apps/docs/`, `docs/` outside `internal/`) is classified but
- * not yet in scope: its swap lands with the docs half of the rename, which
- * flips {@link SITE_IN_SCOPE} and drops {@link PAGE_NOT_YET_MOVED}. History
- * (retained specs, CHANGELOGs, `docs/internal/`) and process tooling (`.agents/`,
- * `.github/`, …) keep the old word by design and are never in scope.
+ * The docs site (`apps/docs/`, `docs/` outside `internal/`) is in scope like
+ * the code. History (retained specs, CHANGELOGs, `docs/internal/`) and process
+ * tooling (`.agents/`, `.github/`, …) keep the old word by design and are never
+ * in scope.
  *
  * Run: node scripts/check-mailbox-rename.mjs [--json]
  *      PLANT=product  plants a product line into a survivor-only file; the run
@@ -49,16 +51,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-/** Whether the docs site is renamed yet. Flipped by the docs half of the rename. */
-export const SITE_IN_SCOPE = false;
-
-/**
- * The docs page the docs half moves (`workforce/channels.md` → `mailboxes.md`).
- * Until it moves, a reference to it by path is a reference to a real file, so
- * the path token is stripped before a line is judged; the words around it still
- * count. Deleted with the move.
- */
-export const PAGE_NOT_YET_MOVED = /workforce(?:\/|", ")channels\.md(?:#[a-z0-9-]+)?/g;
+/** Whether the docs site is in scope. It is, since the docs half of the rename. */
+export const SITE_IN_SCOPE = true;
 
 /** Paths that must spell the old words: the refusals, their proofs, this guard. */
 const LEGACY_PATHS = [
@@ -71,7 +65,26 @@ const LEGACY_PATHS = [
 ];
 
 /** Sections that tell a reader what the old names were, by file and heading. */
-const LEGACY_SECTIONS = [{ path: "packages/workforce/README.md", heading: /^#+ Upgrading from channels$/ }];
+const LEGACY_SECTIONS = [
+  { path: "packages/workforce/README.md", heading: /^#+ Upgrading from channels$/ },
+  { path: "apps/docs/docs/workforce/mailboxes.md", heading: /^#+ Upgrading from channels$/ },
+];
+
+/**
+ * Single lines outside such a section that must name the old words, by file and
+ * the whole line. Anchored at both ends, so any other line in the file still
+ * counts, and so does an edit to one of these.
+ */
+const LEGACY_LINES = [
+  {
+    path: "apps/docs/docs/workforce/mailboxes.md",
+    line: /^\| `pre-rename-record` \| A `CHANNEL\.md`, or a team's `channels\/` folder, from before mailboxes were renamed\. One entry per old file, or one for a folder holding none, and the message names where it belongs now\. Nothing in it is read\. See \[Upgrading from channels\]\(#upgrading-from-channels\)\. \|$/,
+  },
+  { path: "apps/docs/docusaurus.config.ts", line: /^\s*\/\/ The Workforce channels page became the mailboxes page\.$/ },
+  { path: "apps/docs/docusaurus.config.ts", line: /^\s*from: "\/docs\/workforce\/channels",$/ },
+];
+
+const isLegacyLine = (path, line) => LEGACY_LINES.some((entry) => entry.path === path && entry.line.test(line));
 
 const isLegacyPath = (p) => LEGACY_PATHS.some((entry) => (entry.endsWith("/") ? p.startsWith(entry) : p === entry));
 
@@ -139,6 +152,13 @@ export const SURVIVOR_LINE = new RegExp(
     "framework's standard channel", "the channel `readWorkforce` itself fills", "loader's own channel",
     "within 1 per channel", "leak through a third channel", "either alone leaves a channel",
     "Their own channel (rather|for the reason)", "five channels are one list",
+    // The docs site: the trace/production split, a run's question path, and
+    // the ways an approval or a message reaches the process docs' readers.
+    "\\| Channel \\| Item types \\|", "a channel back in\\.", "travels the channel a mutation",
+    "any of three channels in any order", "The reverse channel is one entry", "cross-worker wake channel",
+    "No channel to steer a background run", "Cache is the cost channel", "this channel never lets an agent approve",
+    "approval is a human channel", "channel off, or giving agents a second GitHub identity",
+    "the channel is a board of handle PRs", "the \\*\\*event\\*\\* channel", "or to the comment channel",
   ].join("|"),
   "i",
 );
@@ -160,6 +180,11 @@ export const FILE_SURVIVORS = {
   "apps/docs/docs/advanced/sequencer-side-chains.md": /input\.channels\.map\(\(ch\) => \(\{ channel: ch/,
   "docs/architecture/sequencer-dsl.md": /\(input\) => input\.channels,/,
   "docs/architecture/dispatched-work.md": /^\s*channel\.$/,
+  // A Slack channel, in the guide whose subject is Slack's Events API.
+  "apps/docs/guides/webhooks-slack-events.md":
+    /posts in a channel our bot is in|^reply channel; the webhook transport|^\s*channel\?: string;$|channel: e\.payload\.event\.channel,|`channel-\$\{e\.payload\.event\.channel\}`|`message\.channels`|out, keyed per channel\.$/,
+  // The atlas's "Questions, in and out" section anchor: a run's question path.
+  "docs/atlas/conductor.html": /^\s*<a href="#channel">06 &middot; Questions, in and out<\/a>$|^<section id="channel">$/,
 };
 
 /** Whether a line says the word about something other than the pipe. */
@@ -177,9 +202,8 @@ export function productLines(path, text) {
   let inLegacySection = false;
   text.split("\n").forEach((raw, index) => {
     if (section !== undefined && /^#+ /.test(raw)) inLegacySection = section.heading.test(raw);
-    if (inLegacySection) return;
-    const line = raw.replace(PAGE_NOT_YET_MOVED, "");
-    if (/channel/i.test(line) && !isSurvivor(path, line)) hits.push({ line: index + 1, text: raw.trim() });
+    if (inLegacySection || isLegacyLine(path, raw)) return;
+    if (/channel/i.test(raw) && !isSurvivor(path, raw)) hits.push({ line: index + 1, text: raw.trim() });
   });
   return hits;
 }
