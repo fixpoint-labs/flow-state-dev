@@ -15,7 +15,7 @@ affected rows here and in [BUSINESS-RULES.md](BUSINESS-RULES.md) before building
 | [FIX-1778](https://linear.app/fixpoint-labs/issue/FIX-1778) | An assignee is a worker's name in the organization, found at hand-over, so a fresh hire gets its task. `agent` hires get a task door; any worker can claim from any mailbox's list | per its spec |
 | [FIX-1777](https://linear.app/fixpoint-labs/issue/FIX-1777) | A task that lands on any list starts the workers who work it, however it got there | per its spec (#2753) |
 | [FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779) | `createMailboxSetupCapability({ open })` with the tools `setUpMailbox`, `subscribeWorkers` (opt-in `worksTaskList`), `unsubscribeWorkers`, `fileTask`; the read `taskListWorkers(ctx, mailboxId, list)` | as listed |
-| [FIX-1780](https://linear.app/fixpoint-labs/issue/FIX-1780) | When a task completes, fails for good or parks, its list wakes the filing worker in the conversation it filed from (generic hook `onTaskSettled`). Reassign cancels the old task and files a copy for the new worker; a running task is refused; a task moves at most three times | `reassignTask`, `cancelTask`, `onTaskSettled` |
+| [FIX-1780](https://linear.app/fixpoint-labs/issue/FIX-1780) | When a task completes, fails for good or parks, its list wakes the filing worker in the conversation it filed from (generic hook `onTaskSettled`). Reassigning a task that hasn't ended moves it in place and keeps its id; a failed task is carried on by a new task for the new worker; a running task is refused; a task moves at most three times | `reassignTask`, `cancelTask`, `onTaskSettled` |
 
 ## Surfaces
 
