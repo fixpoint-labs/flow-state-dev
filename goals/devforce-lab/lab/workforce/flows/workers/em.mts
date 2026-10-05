@@ -21,7 +21,7 @@
  */
 
 import { defineFlow, dispatcher, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, TaskFlowTarget } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import { MAILBOX_KIND } from "@flow-state-dev/workforce";
@@ -196,6 +196,12 @@ export interface EmWorkerFlowOptions {
    */
   ledger: FeatureLedger;
   /**
+   * Which worker a row's assignee names, for every name the board does not
+   * route itself: the Workforce lookup's `flowKind`, which the host builds
+   * over its live registry.
+   */
+  findWorker?: TaskFlowTarget;
+  /**
    * **Control only.** The asking door files its row *before* it suspends, so
    * a row exists while the ask is still pending. The red state of "nothing is
    * filed until a person approves"; never set outside a goal control.
@@ -211,8 +217,9 @@ export interface EmWorkerFlowOptions {
  */
 export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   const board = coordinatorBoard({
-    collection: options.ledger.collection,
+    ledger: options.ledger,
     coderSeatId: options.coderSeatId,
+    ...(options.findWorker === undefined ? {} : { findWorker: options.findWorker }),
   });
 
   /**

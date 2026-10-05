@@ -66,6 +66,7 @@ import {
   mailboxPostCapability,
   createSeatHireCapability,
   createWorkforceCapability,
+  createWorkerLookup,
   defineAgentWorkerFlow,
   defineMailboxFlow,
   HIRED_ROSTER_RESOURCE,
@@ -629,6 +630,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   const emKind = defineEmWorkerFlow({
     coderSeatId: options.coderSeatId,
+    // Any other assignee is looked up per row, in the live registry, so a
+    // worker hired a moment ago is found and a fired one is not.
+    findWorker: createWorkerLookup({
+      instanceAt: (id) => registrar?.registry.get(id),
+      declared: roster.workers.map((worker) => worker.id),
+    }).flowKind,
     resources,
     ledger,
     ...(options.fileBeforeAsking === true ? { fileBeforeAsking: true } : {}),

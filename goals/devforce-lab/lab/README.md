@@ -86,13 +86,6 @@ supporting parts of those.
 
 ## What it works around
 
-**The `coder` kind declares the mailbox's board a second time, and never drains
-it.** Same board id, the same ledger, its own dispatcher. `defineFlow` refuses a
-flow that declares a task entry with no reachable board handing off to it, and
-the claim gate refuses a dispatch whose board id differs from the recipient's
-own. That cost is the framework's to remove. Where the board lives is settled:
-on the mailbox, as its file says.
-
 **The two older checks drive the EM seat through its own actions rather than
 through the feature mailbox, and still do.** For them the mailbox is declared,
 walked, and used as the positive half of "an unwalked folder loads as nothing" —
