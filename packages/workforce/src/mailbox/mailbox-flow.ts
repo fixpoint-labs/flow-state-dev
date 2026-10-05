@@ -47,7 +47,12 @@ import {
   resolveMailboxTaskList
 } from "./mailbox-board";
 import { emitMailboxPostLine, readMailboxPostLines } from "./mailbox-items";
-import { subscribedFields, unsubscribedFields, type MembershipFields } from "./mailbox-membership";
+import {
+  subscribedFields,
+  unsubscribedFields,
+  workersByListRecordSchema,
+  type MembershipFields
+} from "./mailbox-membership";
 import { incarnationOfRow } from "../roster/incarnation";
 import { seatAddress, splitSeatAddress } from "../roster/address";
 import { defineHiredRosterCollection } from "../roster/collections";
@@ -155,10 +160,7 @@ export const mailboxSessionStateSchema = z.object({
    * `null` until either entry first records one. Read through
    * `taskListWorkers`, never directly.
    */
-  workersByList: z
-    .record(z.string(), z.object({ added: z.array(z.string()), removed: z.array(z.string()) }))
-    .nullable()
-    .default(null)
+  workersByList: workersByListRecordSchema.nullable().default(null)
 });
 
 export type MailboxSessionState = z.infer<typeof mailboxSessionStateSchema>;
@@ -1060,7 +1062,8 @@ const subscribeInputSchema = z
 const unsubscribeInputSchema = z.object({ workers: z.array(z.string().min(1)).min(1) }).strict();
 
 /** What a membership change reports: the members it left. */
-const membershipChangedSchema = z.object({ members: z.array(z.string()) });
+/** What a membership entry returns: the members the mailbox now holds. */
+export const membershipChangedSchema = z.object({ members: z.array(z.string()) });
 
 /** Nothing a caller supplies reaches the mailbox's row. */
 const registerMailboxInputSchema = z.object({}).strict();
@@ -1535,6 +1538,8 @@ function membershipEntriesFor(kind: string, boardIds: readonly string[], invento
           };
         }
       )) ?? opened;
+    // Published even when nothing changed: a retry of a change whose rows never
+    // landed (the write committed, the request died before this line) repairs them.
     await publish(ctx, written, removed);
     return { members: written.members };
   };

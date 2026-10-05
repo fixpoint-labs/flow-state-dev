@@ -45,6 +45,7 @@ import {
   mailboxFlow,
   defineMailboxFlow,
   holdsBoards,
+  membershipChangedSchema,
   routeOf,
   wakesSeats,
   type MailboxSessionState
@@ -1300,10 +1301,7 @@ export function openMailboxAtRunTime(options: OpenMailboxAtRunTimeOptions): RunT
     }
   };
 
-  const changeOutput = (ran: unknown): { members: string[] } => {
-    const members = (ran as { members?: unknown } | undefined)?.members;
-    return { members: Array.isArray(members) ? (members as string[]) : [] };
-  };
+  const changeOutput = (ran: unknown): { members: string[] } => membershipChangedSchema.parse(ran);
 
   return {
     async setUp(request) {

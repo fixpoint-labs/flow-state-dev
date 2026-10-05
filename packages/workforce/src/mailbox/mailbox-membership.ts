@@ -103,14 +103,15 @@ export function unsubscribedFields(
   return { members, workersByList: byList ?? current.workersByList };
 }
 
+/** Per task list, the workers added to and removed from it. One shape for the session schema and the read below. */
+export const workersByListRecordSchema = z.record(
+  z.string(),
+  z.object({ added: z.array(z.string()), removed: z.array(z.string()) })
+);
+
 /** The one field {@link taskListWorkers} reads, parsed on its own so a mailbox without it reads as empty. */
 const workersByListSchema = z
-  .object({
-    workersByList: z
-      .record(z.string(), z.object({ added: z.array(z.string()), removed: z.array(z.string()) }))
-      .nullable()
-      .optional()
-  })
+  .object({ workersByList: workersByListRecordSchema.nullable().optional() })
   .passthrough();
 
 /**
