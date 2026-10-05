@@ -307,26 +307,22 @@ Your app supplies the addresses. The `notify` slot takes any block, so to reach 
 ### Waking agent seats
 
 Most apps want a post to reach the agents in the mailbox and nobody else. Workforce ships that as
-one call. Hand `wakeMemberSeats` the seats you hired, and put what it returns in the notify slot:
+one call. Hand `wakeMemberSeats` the workers your app has registered, and put what it returns in the notify slot:
 
 ```ts
-import {
-  mailboxInstances,
-  defineMailboxFlow,
-  hireWorkforce,
-  wakeMemberSeats,
-} from "@flow-state-dev/workforce";
+import { mailboxInstances, defineMailboxFlow, wakeMemberSeats } from "@flow-state-dev/workforce";
 
-const hired = hireWorkforce(workers, { kinds });   // register these in your flow registry
+// `registry` is your FlowState's flow registry, where your hired workers are registered.
 const mailboxFlows = mailboxInstances(mailboxes, {
   kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(() => registry.list()) }) },
 });
 ```
 
 Pass a function that returns the workers your app has registered right now, usually your flow
-registry's `list`. The wake calls it once per post, not once per member, so a worker hired while the
-app runs is woken from its next post on, and a fired worker stops being woken. A fixed list still
-works, and it never changes.
+registry's `list` ([Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate) shows how a
+flow gets at it). It's read on every post, so a worker hired while the app runs is woken from its
+next post on, and a fired worker stops being woken. You can also pass a fixed list, such as what
+`hireWorkforce` returned. That list never changes.
 
 For each post, it decides per member whether that member runs:
 
@@ -805,7 +801,12 @@ Install the capability on the kind your coordinator runs. Give it a way to open 
 app, and the same list of workers your wake reads:
 
 ```ts
-import { createMailboxSetupCapability, openMailboxAtRunTime } from "@flow-state-dev/workforce";
+import {
+  createMailboxSetupCapability,
+  defineAgentWorkerFlow,
+  openMailboxAtRunTime,
+  type RunTimeMailboxOpener,
+} from "@flow-state-dev/workforce";
 
 const mailboxSetup = createMailboxSetupCapability({
   open: openMailboxAtRunTime({
@@ -816,13 +817,25 @@ const mailboxSetup = createMailboxSetupCapability({
   }),
   workers: () => registry.list(),
 });
-const agent = defineAgentWorkerFlow({ uses: [seatHire, mailboxSetup] });
+const agent = defineAgentWorkerFlow({ uses: [mailboxSetup] });
 ```
 
 `run` is the same kind of function `openInventory` takes: it calls `runAction` with
 `source: "internal"` and returns the action's output. Your registry and session client usually
 exist only after the app has started, so if your kinds are built before that, pass `open` an
-object whose methods forward to the opener once you've built it.
+object whose four methods forward to the opener once you've built it:
+
+```ts
+let opener: RunTimeMailboxOpener | undefined;
+const open: RunTimeMailboxOpener = {
+  setUp: (request) => opener!.setUp(request),
+  subscribe: (request) => opener!.subscribe(request),
+  unsubscribe: (request) => opener!.unsubscribe(request),
+  fileTask: (request) => opener!.fileTask(request),
+};
+// After the app starts:
+opener = openMailboxAtRunTime({ client: sessionClient, userId: "u_42", run: runInternalAction, teams: ["platform", "support"] });
+```
 
 Then name the tools in the coordinator's `WORKER.md`. A worker that doesn't name them can't call
 them:
@@ -842,7 +855,8 @@ A worker hired a moment ago can be added straight away, and the next post wakes 
 new mailbox one of a project's workstreams, call `setWorkstreams` as you would for any other.
 
 Every worker name `setUpMailbox`, `subscribeWorkers` and `fileTask` take must belong to exactly
-one worker in the organization, declared or hired, or the call is refused by name. A name two
+one worker the coordinator can reach, declared or hired: a shared worker, one of its
+organization's, or one of its user's own. Otherwise the call is refused by name. A name two
 workers hold is refused too, naming both. `unsubscribeWorkers` takes names as the mailbox lists
 them, so a worker you fired can still be taken off. An id that is already a mailbox is refused.
 The organization is always the coordinator's own; an `orgId` in a tool's input is ignored.

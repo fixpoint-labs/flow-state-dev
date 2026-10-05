@@ -1354,8 +1354,8 @@ client `post` wakes each hearing member whether or not it sets `author`. Members
 hear a post get `fallback`, or nothing, including on a seat's line. The fallback is not sent to a
 member who would have been woken. Pass a function returning the workers your app has registered
 right now, usually `() => registry.list()`: it is read once per post, so a worker hired while the
-app runs is woken from its next post on. A fixed list (the workers `hireWorkforce` returned) still
-works, and never changes. `routeByPurpose` takes the same list or function. The built-in `agent` kind declares
+app runs is woken from its next post on. A fixed list, such as the workers `hireWorkforce` returned,
+also works and never changes. `routeByPurpose` takes the same list or function. The built-in `agent` kind declares
 `onMailboxPost`; a kind of your own hears posts by declaring it too. See the mailboxes guide,
 "Waking agent seats".
 
@@ -1454,8 +1454,8 @@ const agent = defineAgentWorkerFlow({ uses: [seatHire, mailboxSetup] });
   worker's own name.
 
 Worker names, and `fileTask`'s assignee, are looked up with `findWorkerByName(workers, name, {
-orgId, userId })`: the one worker holding that name among the caller's organization's workers and
-the caller's own. A name no worker holds, and a name two workers hold, are refused by name.
+orgId, userId })`: the one worker holding that name among shared workers, the caller's organization's
+and the caller's own. A name no worker holds, and a name two workers hold, are refused by name.
 `unsubscribeWorkers` takes names as the mailbox lists them, so a fired worker can be taken off.
 The organization is always the caller's; an `orgId` in a tool's input is ignored.
 
