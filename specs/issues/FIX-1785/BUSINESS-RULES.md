@@ -26,16 +26,17 @@ entry says, never whether it is listed.
 | BR-9 | A row written before `members` or `openedAt` existed (BP-030) | `members: []` as today; `openedAt` left out of `facts` when unrecorded | CI |
 | BR-10 | A mailbox set up while the app runs (FIX-1779, if it has landed) | Same `facts` as a file mailbox | CI, after rebase |
 | BR-11 | `detail: "full"` | `contract` says how it is addressed and that listed means registered, not open. It no longer lists members or the open time | CI |
-| BR-12 | A large mailbox | Every member, no cap. A mailbox's member list is bounded by the org's workers | — |
+| BR-12 | A large mailbox | Every member, no cap, because the call is on demand and a partial list is a guess ([why](DECISIONS.md#decided-not-asked)). FIX-1774's view caps; it is ambient and does not carry membership | V7 records the size |
 
 ## Workers (Workforce)
 
 | ID | When | Then | Proved by |
 |---|---|---|---|
 | BR-13 | A listed worker, declared by file or hired at run time, any detail | `facts.workerKind` is the kind its inventory row records | CI + goal (held-out hire) |
-| BR-14 | A worker row with an empty or missing kind | No `workerKind`. Never a default | CI |
+| BR-14 | A worker row with no kind | Cannot be listed today (the seat inventory schema requires `kind`). The `"agent"` fallback is removed rather than carried into `facts` | Existing test updated |
 | BR-15 | `detail: "full"` | `contract` is "Hand it work by its id." with no kind in it | CI |
 | BR-16 | A worker whose file narrows `discover:` to some domains | Sees `facts` on the domains it sees; narrowing is unchanged | Existing suite |
+| BR-17 | A hire with a `description` (FIX-1774 S4) | It is the worker's `purpose`, never a fact | CI, after rebase |
 
 ## Failure taxonomy
 

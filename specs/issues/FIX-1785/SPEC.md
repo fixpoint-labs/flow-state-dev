@@ -93,6 +93,7 @@ Core passes `facts` through untouched. Only Workforce knows the words `members` 
 - **Which mailboxes and workers are listed.** Today's rules, FIX-1779's included.
 - **Entry `kind: "seat"` and the domain name `seats`.** Pinned model-facing strings; renaming them is the Architect's vocabulary work.
 - **The chief of staff's `WORKER.md`.** No new prompt lines. That is the point.
+- **Who works each task list** stays the coordinator's per-turn view ([FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774), #2747). That is a different set: a member does not work a list just by being a member. `discover` answers *who is on the mailbox* (`facts.members`); the view answers *who works each list*, and does not repeat the members. One place per fact.
 
 ## Sign off
 

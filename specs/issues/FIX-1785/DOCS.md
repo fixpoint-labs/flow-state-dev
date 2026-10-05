@@ -43,9 +43,11 @@ through "…only need to choose." with:
 After "Outside a workforce, build the door yourself…" and its code block, add:
 
 > A source you write fills the same fields. Put anything the agent must not miss in `facts`,
-> as flat values: a string, number, boolean or list of strings. Keep it short, since every call
-> that lists the entry pays for it. Put advice in `contract`. A value of any other type makes
-> that domain report a problem, and the other domains still answer.
+> as flat values: a string, number, boolean or list of strings. A fact is a value read from a
+> stored record that someone could ask the agent to report as it is. Keep it short, since every
+> call that lists the entry pays for it; past about 1 KB on one entry, make it a resource the
+> agent reads instead. Put advice in `contract`. A value of any other type makes that domain
+> report a problem, and the other domains still answer.
 
 ## 3 · `packages/contracts/README.md` → "Agent discovery" (update)
 

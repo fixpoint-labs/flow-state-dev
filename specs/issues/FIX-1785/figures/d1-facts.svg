@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a mailbox's members go so a short listing can't miss them. Chosen: facts on the entry, returned at every detail level. Instead of: dropping the short listing so the contract always comes back, or writing members into the purpose line. Decides it: a reader can rely on the data without parsing; facts is an array on every call, the other two are sentences. Second row: a short listing of skills and resources stays cheap with facts and with the purpose line, and pays every advice line if the short listing is dropped. Price: the shared entry shape grows a field any source could stuff, where the other two leave it unchanged. Locks in: data a model must not miss goes in facts, for every domain. Flips if: a source needs large or nested data there."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a mailbox's members go so a short listing can't miss them. Chosen: facts on the entry, returned at every detail level. Instead of: dropping the short listing so the contract always comes back, or writing members into the purpose line. Decides it: a reader can rely on the data without parsing; facts is an array on every call, the other two are sentences. Second row: a short listing of skills and resources stays cheap with facts and with the purpose line, and pays every advice line if the short listing is dropped. Price: the shared entry shape grows a field any source could stuff, where the other two leave it unchanged. Locks in: data a model must not miss goes in facts, for every domain. Flips if: a fact needs nesting, or more than about 1 KB on one entry."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -101,7 +101,7 @@
   <g id="flips-if">
     <rect class="foot" x="478" y="334" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="355">FLIPS IF</text>
-    <text class="t-b" x="494" y="375">A source needs large or nested data there</text>
+    <text class="t-b" x="494" y="375">A fact needs nesting, or over ~1 KB per entry</text>
     <text class="t-s" x="494" y="393">then it is a resource to read by uri</text>
   </g>
 </svg>
