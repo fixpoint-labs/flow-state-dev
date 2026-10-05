@@ -30,6 +30,7 @@ import {
   hireWorkforce,
   routeByPurpose,
   type MailboxManifest,
+  type MailboxWorkerSource,
   type HireOptions,
 } from "@flow-state-dev/workforce";
 import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
@@ -130,16 +131,28 @@ export interface HiredWorkforce {
   errors: string[];
 }
 
+/** Options for {@link hireKitchenSinkWorkforce}. */
+export interface HireKitchenSinkWorkforceOptions {
+  /**
+   * The workers the app has registered right now, or `undefined` before the
+   * registry exists. The mailbox's wake and route read it once per post, so a
+   * worker hired while the app runs, or reloaded from the roster at boot, is
+   * reached. Until it answers, the seats hired here stand in for it.
+   */
+  liveWorkers?: () => readonly FlowInstance[] | undefined;
+}
+
 /**
  * Read the team's files and hire every seat they describe.
  *
  * The `kinds` map is generated, not written: a seat's `flow:` names a kind that
  * is on it because a file with that basename exists, and for no other reason.
  *
+ * @param options `liveWorkers`, the registry the mailbox's wake reads per post.
  * @returns The hired seats, ordered by id, and any folder the loader reported.
  * @throws If any record cannot be hired; the message names every bad worker.
  */
-export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
+export async function hireKitchenSinkWorkforce(options: HireKitchenSinkWorkforceOptions = {}): Promise<HiredWorkforce> {
   const { workers, errors, skillErrors, teamErrors, packageErrors } = await readWorkforce(workforceRoot);
   const read = await readMailboxesDirectory(workforceRoot);
   const mailboxErrors = read.errors;
@@ -182,14 +195,19 @@ export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
   // which is the silence this app ships to make visible.
   //
   // Hired before the mailboxes are built, because the fan-out block wakes these
-  // seats: its addresses are the seats hired here, never a mailbox's stored
-  // members.
+  // seats until the registry is up: its addresses are registered workers,
+  // never a mailbox's stored members.
   const seats = hireWorkforce(workers, {
     kinds: kitchenSinkKinds,
     seatBlocks,
     packageBlocks,
     mailboxBoards: mailboxBoardIds(mailboxes),
   });
+
+  // One getter for the wake and the route, so a post's one read serves both.
+  // The seats hired here answer until the registry exists, which is also
+  // when the binder checks the route's fallback below.
+  const reachable: MailboxWorkerSource = () => options.liveWorkers?.() ?? seats;
 
   // The generated map, plus the built-in under the key the binder seeds. No
   // kind of this app's own is named here: `mailboxKinds` carries whatever
@@ -200,8 +218,8 @@ export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
     kinds: {
       ...mailboxKinds,
       mailbox: defineMailboxFlow({
-        notify: notifyFor(seats),
-        route: routeByPurpose(seats, { model: ROUTE_MODEL }),
+        notify: notifyFor(reachable),
+        route: routeByPurpose(reachable, { model: ROUTE_MODEL }),
       }),
     },
   });

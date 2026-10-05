@@ -95,7 +95,12 @@ setScheduleIndexImpl(pgStores.scheduleIndex);
 //
 // Both the Next.js route handlers and the `fsdev` CLI import this module, so
 // both serve the same seats from the same files.
-const workforce = await hireKitchenSinkWorkforce();
+//
+// The mailbox's wake reads the live registry once the runtime exists (bound
+// below), so a worker hired while the app runs, or reloaded from the roster,
+// is woken by the next post that names it.
+let liveRegistry: { list(): FlowInstance[] } | undefined;
+const workforce = await hireKitchenSinkWorkforce({ liveWorkers: () => liveRegistry?.list() });
 
 // A folder the loader could not read is a seat this app does not have. Report
 // it once at boot rather than letting the roster come up quietly short.
@@ -255,6 +260,7 @@ const flowstate = createFlowState({
 // so the eager open is the price of the feature rather than an oversight.
 // ---------------------------------------------------------------------------
 const runtime = await flowstate.getRuntime();
+liveRegistry = runtime.registry;
 
 // Install the admission door behind the proxy the admin flow imports. Before
 // the reload, so the two go through one seam rather than two.

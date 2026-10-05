@@ -9,7 +9,7 @@
  * `workforce/` is not walked, so a block that belongs to the built-in lives
  * here and stays off that map.
  *
- * The wake is Workforce's `wakeMemberSeats`, over the seats hired at boot,
+ * The wake is Workforce's `wakeMemberSeats`, over the app's live registry,
  * with nothing of this app's added: every member of `support.help` is an agent
  * seat that hears posts, so there is no member to stand in for. On a routed
  * mailbox the route has already picked who hears a post, and the wake runs
@@ -18,8 +18,7 @@
  * the package.
  */
 import type { BlockDefinition } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
-import { wakeMemberSeats } from "@flow-state-dev/workforce";
+import { wakeMemberSeats, type MailboxWorkerSource } from "@flow-state-dev/workforce";
 
 import { withMailboxWakeControl } from "../lib/mailbox-wake-control";
 
@@ -27,9 +26,10 @@ import { withMailboxWakeControl } from "../lib/mailbox-wake-control";
  * The notify block for the hired roster: the wake for each member whose seat
  * can hear a post.
  *
- * @param seats The seats hired at boot.
+ * @param seats The workers to wake: a getter over the registry, read once per
+ *   post so a worker hired while the app runs is woken, or a fixed list.
  * @returns The block `defineMailboxFlow({ notify })` runs once per member per post.
  */
-export function notifyFor(seats: readonly FlowInstance[]): BlockDefinition<any, any> {
+export function notifyFor(seats: MailboxWorkerSource): BlockDefinition<any, any> {
   return withMailboxWakeControl(wakeMemberSeats(seats));
 }
