@@ -1352,8 +1352,10 @@ It wakes each member whose hired seat declares the internal `onMailboxPost` entr
 in one conversation per seat per mailbox. A seat's line (`seatAuthored: true`) wakes nobody. A
 client `post` wakes each hearing member whether or not it sets `author`. Members whose seat can't
 hear a post get `fallback`, or nothing, including on a seat's line. The fallback is not sent to a
-member who would have been woken. Pass the seats
-`hireWorkforce` returned, and hire before you build mailboxes. The built-in `agent` kind declares
+member who would have been woken. Pass a function returning the workers your app has registered
+right now, usually `() => registry.list()`: it is read once per post, so a worker hired while the
+app runs is woken from its next post on. A fixed list (the workers `hireWorkforce` returned) still
+works, and never changes. `routeByPurpose` takes the same list or function. The built-in `agent` kind declares
 `onMailboxPost`; a kind of your own hears posts by declaring it too. See the mailboxes guide,
 "Waking agent seats".
 
@@ -1425,11 +1427,43 @@ Your factory carries the same contract the built-in does: `cardinality: "singlet
 `flow.id === flow.kind`. A `flow:` naming a kind you did not pass refuses by name and never falls
 back to the built-in. The `kinds` map is the whole registration surface; there is no second API.
 
+### Changing mailboxes while the app runs
+
+`createMailboxSetupCapability({ open, workers })` gives a coordinator worker four catalog tools:
+`setUpMailbox`, `subscribeWorkers`, `unsubscribeWorkers` and `fileTask`. A worker reaches them
+only by naming them in `tools:`. `open` is the host's opener, `openMailboxAtRunTime({ client,
+userId, run, teams })`; `workers` is the same list or function the wake reads.
+
+```ts
+const mailboxSetup = createMailboxSetupCapability({
+  open: openMailboxAtRunTime({ client: sessionClient, userId: "u_42", run, teams: ["platform"] }),
+  workers: () => registry.list(),
+});
+const agent = defineAgentWorkerFlow({ uses: [seatHire, mailboxSetup] });
+```
+
+- `setUpMailbox` opens `<team>.<name>` with a description, a charter, members and one task list,
+  `tasks`. The id follows a `MAILBOX.md`'s rules, its team must be in `teams`, and an id already
+  taken is refused. The mailbox lives in the organization's data, its session and inventory row,
+  and survives a restart; nothing is written to a file.
+- `subscribeWorkers` and `unsubscribeWorkers` change any mailbox on the built-in kind, a file's
+  included. With `worksTaskList: true`, a subscribed worker also works the mailbox's task lists.
+  An unsubscribed worker stops working them, including a list the file named it on.
+- `fileTask` files on `tasks`, or another list the mailbox holds. An `assignee` must be one of the
+  list's workers (`taskListWorkers`). The task's metadata records `filingWorker`, the calling
+  worker's own name.
+
+Worker names, and `fileTask`'s assignee, are looked up with `findWorkerByName(workers, name, {
+orgId, userId })`: the one worker holding that name among the caller's organization's workers and
+the caller's own. A name no worker holds, and a name two workers hold, are refused by name.
+`unsubscribeWorkers` takes names as the mailbox lists them, so a fired worker can be taken off.
+The organization is always the caller's; an `orgId` in a tool's input is ignored.
+
 ### What mailboxes do not do yet
 
-No join or leave verb, no delete or retirement, and no summary pass over a long transcript.
-Membership is the declared list and nothing else writes it, so changing who is in a mailbox means
-editing the record and opening a fresh mailbox. Re-running `openMailboxes` over an open mailbox
+No join or leave for a client (a coordinator adds and removes workers with
+`createMailboxSetupCapability`), no delete or retirement, and no summary pass over a long
+transcript. Re-running `openMailboxes` over an open mailbox
 finds it bound and leaves its session alone, so the three settings written at create — `members:`,
 the charter (a body or `instructions:`) and `description:` — keep whatever they were opened with.
 `flow:` is settled at create too, since it picks the session's kind. Re-opening is not a migration.
@@ -2180,7 +2214,7 @@ before fire removed inventory rows is left out that way.
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `SeatCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that seat wants. Read by the built-in `agent` kind; validated at the hire. |
 | `defineMailboxFlow(options?)` | Build a mailbox kind. `options.notify` is the per-member fan-out block. `options.route` is the route from `routeByPurpose`. |
-| `wakeMemberSeats(seats, options?)` | The notify block for `defineMailboxFlow({ notify })`. Wakes each member whose hired seat declares `onMailboxPost`, once per post, and never on a seat's line (`seatAuthored: true`). A client `post` wakes hearing members whether or not it sets `author`. `options.fallback` runs for members whose seat can't hear a post, including on a seat's line. |
+| `wakeMemberSeats(seats, options?)` | The notify block for `defineMailboxFlow({ notify })`. `seats` is a list, or a function over your registry read once per post. Wakes each member whose hired seat declares `onMailboxPost`, once per post, and never on a seat's line (`seatAuthored: true`). A client `post` wakes hearing members whether or not it sets `author`. `options.fallback` runs for members whose seat can't hear a post, including on a seat's line. |
 | `routeByPurpose(seats, { model })` | The route a mailbox kind takes as `defineMailboxFlow({ route })`. For a mailbox that declares `routing:`, each client `post` goes to one member: the member the last client `post` was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `mailbox-route`), else the declared fallback. A seat's line (`seatAuthored: true`) is not routed. A member of the built-in `agent` kind answers with the mailbox's last 20 lines in view, and its reply is posted into the mailbox as its line, once per post. Needs in-process dispatch or queue workers that share a lease backend. Throws without a `model`. |
 | `mailboxRouteRecordSchema` / `MailboxRouteRecord` / `MAILBOX_ROUTE_COMPONENT` / `MAILBOX_ROUTE_EVALUATOR` | One route decision as it is kept on the mailbox's session (`{ postId, by, member?, reason? }`, where `by` is `held`, `evaluated`, `fallback` or `failed`), the component name it is kept under, and the route evaluator's block name. Both names are `"mailbox-route"`. |
 | `MailboxRoute` / `MailboxRouting` | What `routeByPurpose` returns, and a mailbox file's `routing:` as read (`{ fallback }`). |
@@ -2190,6 +2224,10 @@ before fire removed inventory rows is left out that way.
 | `projectWritesMailboxInventory` | The mailbox inventory declaration the project writes read. A flow that installs the writes and reads the inventory itself declares that read with this object, under any accessor; its own `defineMailboxInventoryCollection()` there is a resource collision when the flow is built. |
 | `defineProjectBlocks()` | Returns `{ createProject, setWorkstreams, actions }`. See [Projects](#projects). A created project's `bind` is dispatched to the built-in `mailbox` kind. |
 | `openMailboxes(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
+| `openMailboxAtRunTime({ client, userId, run, teams })` | The host's opener for mailboxes changed while the app runs: `setUp`, `subscribe`, `unsubscribe` and `fileTask`, each run through the mailbox's internal entries as the app. `run` runs an internal action and must reject when it fails. See [Changing mailboxes while the app runs](#changing-mailboxes-while-the-app-runs). |
+| `createMailboxSetupCapability({ open, workers })` | Puts catalog tools `setUpMailbox`, `subscribeWorkers`, `unsubscribeWorkers` and `fileTask` on a worker kind. A worker calls them by naming them in `tools:`. The organization is the caller's; worker names are looked up over `workers`. See [Changing mailboxes while the app runs](#changing-mailboxes-while-the-app-runs). |
+| `findWorkerByName(workers, name, { orgId, userId? })` | The one worker holding `name` (the `seatId` a mailbox's `members:` lists) that the caller may reach: shared, the organization's, or the caller's own. `undefined` when none does; throws naming each worker when two or more do. |
+| `taskListWorkers(ctx, mailboxId, list)` | Who works one of a mailbox's task lists: those subscribed to it with `worksTaskList`, minus those unsubscribed since. Being a member does not count. Call it from a block running in the mailbox's session. |
 | `readMailboxesDirectory(root)` | Read a `teams/<id>/mailboxes/<name>/` tree into one `MailboxManifest` per mailbox. Ships from the `./loader` subpath (Node only). |
 | `MailboxManifest` | One mailbox record: `{ id, declared, body }`. |
 | `mailboxBoard(mailboxId, boardName)` | The one declaration for a mailbox's board, carrying its minted `id`. Pass it to `taskBoard({ collection })`, and to `mailboxBoardTaskTools`. Throws when the name is not a plain local name. |

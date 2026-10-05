@@ -44,7 +44,7 @@ Post what you finished, what you're on, and what's blocking you.
 
 No line says which kind it runs. An omitted `flow:` selects the built-in, which is the common case and the reason the first mailbox you write carries no configuration at all.
 
-`members` is the mailbox's roster. It decides who gets woken when somebody posts, and it is checked when a post claims to be from a particular member. It is the declared list and nothing else writes it: there is no join or leave verb yet, so changing who is in a mailbox means editing the record and opening a fresh mailbox. An edit to `members` does not reach a mailbox that is already open.
+`members` is the mailbox's starting roster. It decides who gets woken when somebody posts, and it is checked when a post claims to be from a particular member. The file is read when the mailbox first opens. After that the mailbox itself is the record: an edit to `members:` does not reach a mailbox that is already open, and a coordinator with the right tools can add and remove workers while the app runs (see [Changing mailboxes while the app runs](#changing-mailboxes-while-the-app-runs)). `discover` and the inventory show who is on a mailbox now.
 
 Eight keys are declarable: `flow`, `description`, `members`, `boards`, `instructions`, `routing`, `boardActions` and `mintFor`. [Routing a mailbox](#routing-a-mailbox) covers `routing`, [Holding a board](#holding-a-board) covers `boards` and `boardActions`, and [A room per project](#a-room-per-project) covers `mintFor`. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
 
@@ -317,11 +317,16 @@ import {
   wakeMemberSeats,
 } from "@flow-state-dev/workforce";
 
-const seats = hireWorkforce(workers, { kinds });   // hire first: the wake reaches these seats
+const hired = hireWorkforce(workers, { kinds });   // register these in your flow registry
 const mailboxFlows = mailboxInstances(mailboxes, {
-  kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) },
+  kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(() => registry.list()) }) },
 });
 ```
+
+Pass a function that returns the workers your app has registered right now, usually your flow
+registry's `list`. The wake calls it once per post, not once per member, so a worker hired while the
+app runs is woken from its next post on, and a fired worker stops being woken. A fixed list still
+works, and it never changes.
 
 For each post, it decides per member whether that member runs:
 
@@ -337,9 +342,8 @@ For each post, it decides per member whether that member runs:
   passed none. The fallback is not sent to a member who would have been woken. To have
   agents hear a seat's post, write your own notify block and run it when `seatAuthored`
   is `true`.
-- **Nobody runs** for a member whose kind can't hear a post, or who has no seat in the list you
-  passed. A seat hired while the app is running isn't in that list until the app restarts and
-  passes it in.
+- **Nobody runs** for a member whose kind can't hear a post, or who isn't among the workers
+  you passed.
 
 If the same seat id appears more than once (in several organizations, or owned by several users),
 the one the mailbox's caller can reach runs, in this order: their own, the organization's, a shared
@@ -791,6 +795,71 @@ Rename or move a mailbox's folder and its boards move with it, since a board's i
 
 The rows themselves are [task substrate](../orchestration/task-substrate.md) rows, with the same fields, statuses and transitions any other board's carry.
 
+## Changing mailboxes while the app runs
+
+Files describe the mailboxes a team always has. Some work needs one nobody wrote down: a launch,
+an outage, a feature that turned up this morning. A coordinator worker can set one up, put the
+right workers on it, and file the first task, without a deploy or a restart.
+
+Install the capability on the kind your coordinator runs. Give it a way to open mailboxes as your
+app, and the same list of workers your wake reads:
+
+```ts
+import { createMailboxSetupCapability, openMailboxAtRunTime } from "@flow-state-dev/workforce";
+
+const mailboxSetup = createMailboxSetupCapability({
+  open: openMailboxAtRunTime({
+    client: sessionClient,          // the session client you hand openMailboxes
+    userId: "u_42",
+    run: runInternalAction,         // runs an internal action as the app; rejects when it fails
+    teams: ["platform", "support"], // a new mailbox's team must be one of these
+  }),
+  workers: () => registry.list(),
+});
+const agent = defineAgentWorkerFlow({ uses: [seatHire, mailboxSetup] });
+```
+
+`run` is the same kind of function `openInventory` takes: it calls `runAction` with
+`source: "internal"` and returns the action's output. Your registry and session client usually
+exist only after the app has started, so if your kinds are built before that, pass `open` an
+object whose methods forward to the opener once you've built it.
+
+Then name the tools in the coordinator's `WORKER.md`. A worker that doesn't name them can't call
+them:
+
+```md
+tools: [hire, setUpMailbox, subscribeWorkers, unsubscribeWorkers, fileTask]
+```
+
+| Tool | What it does |
+|---|---|
+| `setUpMailbox` | Opens `<team>.<name>` with a description, a charter and members. It gets one task list, `tasks`. With `worksTaskList: true` those members also work it |
+| `subscribeWorkers` | Adds workers to any mailbox on the built-in kind, including one from a file. With `worksTaskList: true` they also work its task lists |
+| `unsubscribeWorkers` | Takes workers off the mailbox and off its task lists. Their open tasks stay on the list |
+| `fileTask` | Files a task on a mailbox's task list, `tasks` unless it names another. An `assignee` must be a worker who works that list. The task records the coordinator's name as `filingWorker` |
+
+A worker hired a moment ago can be added straight away, and the next post wakes it. To make the
+new mailbox one of a project's workstreams, call `setWorkstreams` as you would for any other.
+
+Every worker name `setUpMailbox`, `subscribeWorkers` and `fileTask` take must belong to exactly
+one worker in the organization, declared or hired, or the call is refused by name. A name two
+workers hold is refused too, naming both. `unsubscribeWorkers` takes names as the mailbox lists
+them, so a worker you fired can still be taken off. An id that is already a mailbox is refused.
+The organization is always the coordinator's own; an `orgId` in a tool's input is ignored.
+
+What these mailboxes are, and aren't:
+
+- **They last.** A restart keeps the mailbox, its members, its task list and its tasks. Nothing
+  is written to your source tree, so they aren't in your repository either. If a team needs one
+  for good, write its `MAILBOX.md`.
+- **A file is a starting list.** Adding a worker to `eng.feature` changes that mailbox, not
+  `teams/eng/mailboxes/feature/MAILBOX.md`. A later `MAILBOX.md` with the id of a mailbox a
+  coordinator set up is treated like an edit to an open mailbox: its members and tasks stay,
+  the file's task lists are added, and start-up names the clash.
+- **No routing and no `boardActions`.** Both are set when the app starts. A coordinator posts and
+  files without them.
+- **No delete or rename.** An emptied mailbox stays open.
+
 ## A room per project
 
 A [project](./projects.md) has one room, a conversation its members share. A room isn't a mailbox you declare. It's built from a **template**: the seats that answer in it and the charter they work under. Every project's room shares one template.
@@ -931,8 +1000,8 @@ await openMailboxes(mailboxes, { client: sessionClient, userId: "u_42" });
 
 ## What mailboxes do not do yet
 
-- No join or leave. Membership is the declared list; changing it means changing the record and opening a fresh mailbox.
+- No join or leave for a person's client. Workers are added and removed by a coordinator's tools.
 - No watching of a mailboxes tree. It is read once, at startup.
 - No delete, and no retirement.
 - No summary pass over a long transcript.
-- No resolution of member names. A `members:` entry naming a worker that does not exist is accepted, and a delivery to it fails like any other delivery.
+- No resolution of member names in a `MAILBOX.md`. A file entry naming a worker that does not exist is accepted, and a delivery to it fails like any other. The coordinator's tools refuse one.
