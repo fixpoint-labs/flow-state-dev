@@ -281,7 +281,7 @@ await runGoal(async () => {
     const env: Record<string, string> = { PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? "/opt/pw-browsers" };
     if ((process.env.ANTHROPIC_API_KEY ?? "") === "" && (process.env.MY_ANTHROPIC_API_KEY ?? "") !== "") env.ANTHROPIC_API_KEY = process.env.MY_ANTHROPIC_API_KEY!;
     p3 = await runManifest(manifest(), logs, env, Number(process.env.GOAL_PARALLEL ?? 3));
-    for (const r of p3) if (r.verdict === "FAIL" || r.verdict === "PASS (control NOT red)" || r.verdict === "BLOCKED") failures.push(`part 3 ${r.id} ${r.path}${r.control === null ? "" : ` GOAL_CONTROL=${r.control}`}${r.part === null ? "" : ` GOAL_PART=${r.part}`}: ${r.verdict}: ${r.tail.slice(0, 400)}`);
+    for (const r of p3) if (r.verdict === "FAIL" || r.verdict === "PASS (control NOT red)" || r.verdict === "BLOCKED") failures.push(`part 3 ${r.id} ${r.path}${r.control === null ? "" : ` GOAL_CONTROL=${r.control}`}: ${r.verdict}: ${r.tail.slice(0, 400)}`);
   }
 
   // ---- part 4 ---------------------------------------------------------------------------
@@ -352,7 +352,7 @@ function writeReport(r: {
     out.push("", "<details><summary>The writer's files (diff from the pentest Lab)</summary>", "", "```diff", r.j4Result.diff, "```", "", "</details>");
   }
   out.push("", "## 5. Parts 3 and 4", "", "| Entry | Check | Control | Verdict | Time |", "|---|---|---|---|---|");
-  for (const x of r.p3) out.push(`| ${x.id} | \`${x.path}\` | ${x.control ?? (x.part === null ? "green path" : `green path, GOAL_PART=${x.part}`)} | ${x.verdict} | ${Math.round(x.ms / 1000)} s |`);
+  for (const x of r.p3) out.push(`| ${x.id} | \`${x.path}\` | ${x.control ?? "green path"} | ${x.verdict} | ${Math.round(x.ms / 1000)} s |`);
   out.push("");
   for (const row of r.p4) out.push(`**${row.check}: ${row.ok ? "holds" : "FAILS"}**`, "", "```", ...row.output, "```", "");
   out.push("## 6. Findings", "", ...(r.failures.length === 0 ? ["None."] : r.failures.map((f) => `- ${f.replaceAll("\n", " ").slice(0, 800)}`)));

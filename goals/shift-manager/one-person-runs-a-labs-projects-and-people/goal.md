@@ -23,6 +23,7 @@
 - **c4** Boot 3 names no problem; TEAMS doesn't list the seat; neither store has its row.
 - **J4** A docs-only writer adds CoS, the hire capability with `askBefore: ["fire"]`, the projects collection and the project tools to a scratch copy of the pentest Lab; Shift Manager over it boots, PROJECTS lists the project CoS created with a room the person posts in, and TEAMS lists the seat CoS hired. Each step the writer logs as *doc silent* fails.
 - **P3.1 to P3.4** every child's check on its green path, with the controls part 1 hasn't already failed (`manifest.mts`).
+- `goals/shift-manager/a-lab-is-worked-through-one-skinned-shell` is excluded from P3.4: it is FIX-1737's closure goal, matched only because it serves DevTeam, and its part 3 reruns checks P3 already runs.
 - **Part 4** the seam rows, each a scripted assertion (`seams.mts`).
 - ER-13 (published prose never says "worker") is removed: FIX-1755 was dropped because the term "seat" is being retired.
 
