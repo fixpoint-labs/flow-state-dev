@@ -201,7 +201,7 @@ export function resolveWorkerSlots(config: {
  *
  * The assignee is a sound basis precisely because a hand-off board freezes it
  * while an attempt holds the task: `setAssignee` declines `immutable-assignee`
- * on an `in_progress` row, since the assignee is what the hand-off is addressed
+ * on an `in_progress` or `parked` row, since the assignee is what the hand-off is addressed
  * by. So for a row a child is running the value this reads cannot move under
  * it, and it survives a restart and a second drain with no run state to
  * rebuild. A waiting row can change hands (FIX-1780); this then answers for

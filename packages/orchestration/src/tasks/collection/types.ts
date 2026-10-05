@@ -22,8 +22,10 @@ import type { TaskWriteToken } from "../write-provenance";
  * messages for the same refusal.
  *
  * - `immutable-assignee` — the board hands off work, and an attempt holds the
- *   task (`in_progress`): its dispatch is keyed by the assignee it was claimed
- *   with. A pending, parked or blocked task can change hands (FIX-1780).
+ *   task (`in_progress` or `parked`): its dispatch is keyed by the assignee it
+ *   was claimed with, and a parked attempt can still settle. A pending or
+ *   blocked task can change hands, and a parked one once `unpark` has ended
+ *   its attempt (FIX-1780).
  * - `terminal` — the task had already reached `completed` / `errored` /
  *   `cancelled`. The majority of the exposure, but not all of it.
  * - `not-my-task` — the presented `claim` names a different board, a different
@@ -64,7 +66,7 @@ import type { TaskWriteToken } from "../write-provenance";
  * the same thing — do not redo the work — so the order is left where the guard
  * reads most simply rather than split to chase the rarer reason.
  *
- * **Where `immutable-assignee` sits.** It holds only for `in_progress`, and
+ * **Where `immutable-assignee` sits.** It holds only for `in_progress` and `parked`, and
  * `terminal` only for a settled task, so the two never compete and either order
  * reports the same reason. It reads the status inside the atomic write, like
  * `terminal`, so a claim that lands first is what the decline reports.
@@ -719,9 +721,10 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * key addresses is keyed the moment the work is dispatched. Changing it while
    * the attempt runs does not redirect anything: the work in flight keeps
    * running under the old coordinate, and the new one addresses a session
-   * nothing will ever wake. So an `in_progress` task is refused. A pending,
-   * parked or blocked task has no dispatch in flight; its next claim reads the
-   * new assignee, so it can change hands.
+   * nothing will ever wake. So an `in_progress` task is refused, and so is a
+   * `parked` one, whose attempt can still settle it. A pending or blocked task
+   * has no attempt; its next claim reads the new assignee, so it can change
+   * hands. `unpark` a parked task first to move it.
    */
   setAssignee(id: string, assignee: string): Promise<TaskWriteOutcome>;
   setPriority(id: string, priority: number): Promise<TaskWriteOutcome>;

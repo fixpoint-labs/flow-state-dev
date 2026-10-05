@@ -8,10 +8,11 @@
  * keeps running under the old key, and the new one addresses a session nothing
  * will ever wake.
  *
- * Only an *in progress* task has a dispatch in flight. A pending, parked or
- * blocked task is claimed afresh before it runs again, and that claim reads
- * whatever assignee the row then holds, so moving it strands nothing. Those
- * are the tasks a coordinator needs to move, so the freeze leaves them alone.
+ * Only a task an attempt holds is frozen: *in progress*, and *parked*, whose
+ * attempt can still settle it. A pending or blocked task is claimed afresh
+ * before it runs again, and that claim reads whatever assignee the row then
+ * holds, so moving it strands nothing. A parked task is moved once `unpark`
+ * has ended its attempt.
  *
  * **The failure it prevents is a successful write.** `setAssignee` returns, the
  * task row shows the new assignee, and the task simply never runs — no throw, no
@@ -30,11 +31,14 @@ import { z } from "zod";
 import {
   createResourceBackedTaskCollection,
   defineTaskCollection,
+  ticketForClaim,
   type TaskCollectionRef,
   type TaskWorker,
   type TaskWriteOutcome,
 } from "../../src/tasks";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
+import type { JsonObject } from "@flow-state-dev/core";
+import type { ResourceRef } from "@flow-state-dev/core/types";
 import { createFakeResourceCollection } from "../helpers";
 
 async function board(options: { immutableAssignee?: boolean } = {}): Promise<TaskCollectionRef> {
@@ -121,16 +125,35 @@ describe("setAssignee on a board that hands off", () => {
     expect(tasks.get(task.id)?.assignee).toBe("review");
   });
 
-  it("moves a parked task: its attempt ended when it parked", async () => {
-    // A parked task resumes through `unpark` → pending → a fresh claim, which
-    // dispatches by the assignee the row holds then. No dispatch is in flight.
+  it("declines a parked task: its attempt can still settle it", async () => {
+    // `parked → completed` is legal for the attempt that parked, so moving the
+    // row would let the old worker settle work now addressed to a new one.
     const tasks = await board({ immutableAssignee: true });
     const task = await running(tasks);
     await tasks.awaitReview(task.id, "which colour?");
     expect(tasks.get(task.id)?.status).toBe("parked");
 
+    expect(await tasks.setAssignee(task.id, "review")).toEqual({
+      outcome: "declined",
+      reason: "immutable-assignee",
+      status: "parked",
+    });
+    expect(tasks.get(task.id)?.assignee).toBe("implement");
+  });
+
+  it("moves a parked task once unpark ends its attempt, and the old claim can no longer settle it", async () => {
+    const tasks = await board({ immutableAssignee: true });
+    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const claimed = await tasks.claim("w1");
+    const oldClaim = ticketForClaim(tasks.collectionId, claimed!);
+    await tasks.awaitReview(task.id, "which colour?");
+
+    await tasks.unpark(task.id);
     expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
-    expect(tasks.get(task.id)?.status).toBe("parked");
+
+    const late = await tasks.complete(task.id, "done", { claim: oldClaim });
+    expect(late).toMatchObject({ outcome: "declined", reason: "lost-claim" });
+    expect(tasks.get(task.id)).toMatchObject({ status: "pending", assignee: "review" });
   });
 
   it("moves a blocked task", async () => {
@@ -191,6 +214,45 @@ describe("setAssignee on a board that hands off", () => {
 
     expect(await tasks.setPriority(task.id, 5)).toEqual({ outcome: "recorded" });
     expect(await tasks.addLabel(task.id, "urgent")).toEqual({ outcome: "recorded" });
+  });
+});
+
+describe("setAssignee judges the freeze against the committed row", () => {
+  // A request reads a resource as the snapshot it first took. A decline thrown
+  // from the updater skips the store's check of that snapshot, so without a
+  // re-read a task another request has since moved off `in_progress` would
+  // keep being refused. The fake below hands the updater one stale copy and
+  // propagates its throw, as the engine's CAS driver does.
+  it("moves a task whose cached copy is running but whose committed row is pending", async () => {
+    const backing = createFakeResourceCollection<JsonObject>();
+    const refs = new Map<string, ResourceRef<JsonObject>>();
+    const create = backing.create.bind(backing);
+    backing.create = async (key, initial) => {
+      const ref = await create(key, initial);
+      refs.set(ref.path, ref);
+      return ref;
+    };
+    const tasks = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: backing,
+      immutableAssignee: true,
+    });
+    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const ref = [...refs.values()][0]!;
+
+    const committed = ref.updateState.bind(ref);
+    let stale: JsonObject | undefined = { ...ref.state, status: "in_progress" };
+    ref.updateState = async (updater) => {
+      if (stale !== undefined) {
+        const snapshot = stale;
+        stale = undefined;
+        await updater(snapshot as never);
+      }
+      return committed(updater);
+    };
+
+    expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
+    expect(tasks.get(task.id)?.assignee).toBe("review");
   });
 });
 

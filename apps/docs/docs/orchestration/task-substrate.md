@@ -243,7 +243,7 @@ type TaskWriteOutcome =
 
 `recorded` means a field changed and a `task-change` item went out. `unchanged` means the task already held the state you asked for, so nothing was written and no item was emitted. `declined` means the write was refused: `status` is the status the task was in when it was refused, and `reason` says which condition stopped it.
 
-- `immutable-assignee` — the board hands work off to a dispatch run, and the task is *in progress*: the run was addressed by its assignee. A pending, parked or blocked task can still be reassigned.
+- `immutable-assignee` — the board hands work off to a dispatch run, and an attempt still holds the task (*in progress* or *parked*): the run was addressed by its assignee, and a parked attempt can still settle. A pending or blocked task can still be reassigned; `unpark` a parked one first.
 - `terminal` — the task had already reached `completed`, `errored`, or `cancelled`.
 - `not-my-task` — the `claim` you passed names a different task, a different collection, or an id that has since been reused for a new task.
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.

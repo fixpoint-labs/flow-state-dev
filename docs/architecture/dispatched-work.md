@@ -501,8 +501,8 @@ questions:
 
 `runsElsewhere` reads the row's `assignee` against the assignees that hand off,
 and that is sound only because a hand-off board freezes the assignee while an
-attempt holds the row (`setAssignee` on an `in_progress` row declines
-`immutable-assignee`): for a row a child is running the value cannot move under
+attempt holds the row (`setAssignee` on an `in_progress` or `parked` row
+declines `immutable-assignee`): for a row a child is running the value cannot move under
 the predicate, and it survives a restart with no run state to rebuild. A
 waiting row can change hands (FIX-1780); its next claim hands it to the new
 assignee.

@@ -486,8 +486,9 @@ state on the task.
 
 A board that hands anything off fixes a task's assignee while an attempt holds it:
 the worker name is what a running row is routed by, so `setAssignee` on an
-`in_progress` task declines with reason `immutable-assignee`. A pending, parked or
-blocked task can still change hands. The rule belongs to the collection rather than
+`in_progress` or `parked` task declines with reason `immutable-assignee`. A pending
+or blocked task can still change hands, and a parked one can once `unpark` has
+ended its attempt. The rule belongs to the collection rather than
 the board, so a second board over the same `defineTaskCollection` value declines too.
 
 A claim carries a lease (two minutes by default), and nothing renews it between the
