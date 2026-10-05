@@ -26,6 +26,11 @@
  * closed — closing removes the declaration, and the row alone no longer
  * qualifies.
  *
+ * Two kinds of record have no file and stand in for the declared half
+ * themselves: a runtime hire's roster row, and the inventory row of a mailbox
+ * set up while the app ran (`origin: "runtime"`), which carries its own
+ * description.
+ *
  * The direction of the error is deliberate. A partial roster (one boot's view
  * of a tree another process also writes to) under-reports rather than
  * over-reports, and a missing seat costs a planner one `discover` call while a
@@ -233,7 +238,14 @@ function seatsSource(
 }
 
 /**
- * The mailboxes domain: registered mailboxes that are still declared as mailboxes.
+ * The mailboxes domain: registered mailboxes that are still declared as
+ * mailboxes, and those set up while the app ran (`origin: "runtime"`), which
+ * have no file and are listed from their row alone, with its `description`.
+ *
+ * `members` is the row's, which each mailbox rewrites from its own session on
+ * every change to its members, before any membership row: a discover call
+ * cannot read another session, so the row is how the session's list reaches
+ * it, and a membership row that failed to land does not change what it shows.
  *
  * `members` and `openedAt` are `== null`-guarded rather than assumed: both
  * carry defaults for rows written before they existed (BP-030), and a row that
@@ -263,13 +275,19 @@ function mailboxesSource(roster: DeclaredWorkforce, key: string): BlockManifestS
         const id = row.state?.id;
         if (typeof id !== "string" || id === "") continue;
         const mailbox = declared.get(id);
-        if (mailbox === undefined) continue;
+        // A mailbox set up while the app ran has no file: its row is the
+        // declared half, as a hired roster row is for a runtime hire.
+        const runtime = mailbox === undefined && row.state.origin === "runtime";
+        if (mailbox === undefined && !runtime) continue;
         const members = row.state.members ?? [];
         const openedAt = row.state.openedAt;
         entries.push({
           id,
           kind: "mailbox",
-          purpose: purposeOf(mailbox.declared, id, "mailbox"),
+          purpose:
+            mailbox !== undefined
+              ? purposeOf(mailbox.declared, id, "mailbox")
+              : (row.state.description ?? "").trim() || `The mailbox "${id}", set up while the app ran. It records no description.`,
           contract:
             `${members.length} member${members.length === 1 ? "" : "s"}` +
             `${members.length > 0 ? `: ${members.join(", ")}` : ""}. ` +

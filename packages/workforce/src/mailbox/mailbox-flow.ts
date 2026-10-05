@@ -1065,6 +1065,9 @@ const membershipChangedSchema = z.object({ members: z.array(z.string()) });
 /** Nothing a caller supplies reaches the mailbox's row. */
 const registerMailboxInputSchema = z.object({}).strict();
 
+/** What setting a mailbox up adds to its row: the line saying what it is for, written once. */
+const setUpInputSchema = z.object({ description: z.string().min(1).optional() }).strict();
+
 /** What a registration reports back: the row it wrote, so a caller can read it without a second read. */
 export const inventoryMailboxRegisteredSchema = z.object({
   id: z.string(),
@@ -1237,6 +1240,9 @@ type InventoryWriteContext = {
  * Neither write is transactional with the other, so a failure partway leaves
  * whatever landed before it; the next change or boot writes it all again.
  *
+ * `description` is a run-time mailbox's purpose, from its setup; it is
+ * written when the row is created and never after.
+ *
  * Every member's key is built up front, before anything is written.
  * `membershipKey` throws on a member id that can never be one, and that
  * failure is permanent, not flaky, so it must not land after some rows are
@@ -1246,7 +1252,8 @@ async function publishMailboxRows(
   ctx: InventoryWriteContext,
   kind: string,
   mailbox: MailboxSessionState,
-  removed: readonly string[]
+  removed: readonly string[],
+  description?: string
 ) {
   const id = ctx.session.identity.id;
   const members = [...mailbox.members];
@@ -1256,7 +1263,12 @@ async function publishMailboxRows(
 
   // `openedAt` is create-only, so a second boot does not restamp a mailbox
   // that has been open since the first one.
-  await ctx.resources.mailboxes.upsert(id, { id, kind, members, origin }, { openedAt: new Date().toISOString() });
+  // `description`, when given, is create-only too: it is what the setup said.
+  await ctx.resources.mailboxes.upsert(
+    id,
+    { id, kind, members, origin },
+    { openedAt: new Date().toISOString(), ...(description === undefined ? {} : { description }) }
+  );
   for (let i = 0; i < members.length; i++) {
     await ctx.resources.memberships.upsert(membershipKeys[i]!, { seatId: members[i]!, mailboxId: id });
   }
@@ -1486,7 +1498,12 @@ function membershipEntriesFor(kind: string, boardIds: readonly string[], invento
   };
 
   /** Write the rows from the state the session now holds, on a kind carrying the inventory. */
-  const publish = async (ctx: BlockContext, mailbox: MailboxSessionState, removed: readonly string[]) => {
+  const publish = async (
+    ctx: BlockContext,
+    mailbox: MailboxSessionState,
+    removed: readonly string[],
+    description?: string
+  ) => {
     if (!inventory) return;
     if (ctx.org === undefined) {
       throw new Error(
@@ -1494,7 +1511,7 @@ function membershipEntriesFor(kind: string, boardIds: readonly string[], invento
           "organization, and the inventory is org-scoped storage."
       );
     }
-    await publishMailboxRows(ctx as unknown as InventoryWriteContext, kind, mailbox, removed);
+    await publishMailboxRows(ctx as unknown as InventoryWriteContext, kind, mailbox, removed, description);
   };
 
   /** One versioned membership write, then the rows. */
@@ -1517,10 +1534,10 @@ function membershipEntriesFor(kind: string, boardIds: readonly string[], invento
 
   const setUp = handler({
     name: "mailbox-set-up",
-    inputSchema: registerMailboxInputSchema,
+    inputSchema: setUpInputSchema,
     outputSchema: membershipChangedSchema,
     ...resources,
-    execute: async (_input, ctx) => {
+    execute: async (input: z.infer<typeof setUpInputSchema>, ctx) => {
       const mailbox = changeable(ctx as unknown as BlockContext);
       if (mailbox.origin !== "runtime") {
         throw new Error(
@@ -1528,7 +1545,7 @@ function membershipEntriesFor(kind: string, boardIds: readonly string[], invento
             "opened while the app runs; a file's mailbox registers through `openInventory`."
         );
       }
-      await publish(ctx as unknown as BlockContext, mailbox, []);
+      await publish(ctx as unknown as BlockContext, mailbox, [], input.description);
       return { members: mailbox.members };
     }
   });

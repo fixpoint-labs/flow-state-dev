@@ -146,6 +146,14 @@ export const mailboxInventoryRowSchema = z.object({
    * file to join it to.
    */
   origin: z.literal("runtime").nullable().default(null),
+  /**
+   * What a mailbox set up at run time is for, as its setup said it; `discover`
+   * reads it as the purpose a file's `description:` gives a file mailbox.
+   * Written when the row is created, never after. `null` for a file mailbox,
+   * whose purpose is in its file, and on a row written before the field
+   * (BP-023, BP-030).
+   */
+  description: z.string().nullable().default(null),
 });
 
 /** One row of the mailbox inventory. @see mailboxInventoryRowSchema */
@@ -194,7 +202,7 @@ const SHARED_ACROSS_FLOWS = false;
  */
 const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired", "incarnation"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
-const MAILBOX_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt", "origin"] as const;
+const MAILBOX_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt", "origin", "description"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
 const MEMBERSHIP_INDEX_CLIENT_FIELDS = ["seatId", "mailboxId"] as const;
 

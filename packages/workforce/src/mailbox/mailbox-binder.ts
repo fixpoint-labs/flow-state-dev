@@ -1348,7 +1348,7 @@ export function openMailboxAtRunTime(options: OpenMailboxAtRunTimeOptions): RunT
         throw new Error(`"${mailboxId}" is already a mailbox. Pick another name, or subscribe workers to it.`);
       }
 
-      await entry(request.orgId, mailboxId, MAILBOX_SET_UP_ACTION, {});
+      await entry(request.orgId, mailboxId, MAILBOX_SET_UP_ACTION, { description: request.description });
       return { mailboxId, taskList: RUN_TIME_TASK_LIST };
     },
 
