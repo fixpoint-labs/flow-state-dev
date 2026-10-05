@@ -48,6 +48,7 @@ export {
   harnessTaskInputSchema,
   HarnessAttemptFailed,
   HarnessAttemptSuperseded,
+  HarnessRunRefused,
   RUNS,
   type ManagerOptions,
   type HarnessSlot,

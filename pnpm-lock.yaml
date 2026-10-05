@@ -1279,6 +1279,9 @@ importers:
       '@flow-state-dev/orchestration':
         specifier: workspace:*
         version: link:../orchestration
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../workspace
       zod:
         specifier: ^3.25.76
         version: 3.25.76
