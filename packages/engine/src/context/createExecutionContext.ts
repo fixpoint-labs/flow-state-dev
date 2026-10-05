@@ -1682,9 +1682,8 @@ export async function createExecutionContext<
       async getByPrefix(keyPrefix: string): Promise<LazyLoadOutcome> {
         // FIX-735: the collection's prefix resolves to its isolation bucket.
         const scopeId = resolveResourceStorageScopeId(scope, keyPrefix)!;
-        if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) {
-          return { fetched: false, durationMs: 0 };
-        }
+        // A loaded ancestor prefix (the whole collection) already covers a sub-prefix.
+        if (isMissAuthoritative(scope, keyPrefix)) return { fetched: false, durationMs: 0 };
         let fetched = false;
         let durationMs = 0;
         await runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {

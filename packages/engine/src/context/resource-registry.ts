@@ -1893,11 +1893,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         const collectionKeyPrefix = nsPrefix === "" ? "" : `${nsPrefix}/`;
         const ensureInstance = (key: string | Record<string, string>): Promise<LazyLoadOutcome> =>
           lazyLoad.getInstance(resolveCollectionKey(nsConfig.pattern, key));
-        // `subPrefix` narrows the read to one key prefix under the collection's,
-        // so a `list(prefix)` loads that prefix's rows from the store and none of
-        // the rest. Without it, the whole collection is loaded.
-        const ensurePrefix = (subPrefix = ""): Promise<LazyLoadOutcome> =>
-          lazyLoad.getByPrefix(`${collectionKeyPrefix}${subPrefix}`);
+        // A scoped `list(prefix)` loads only that sub-tree, so one caller's read
+        // never pulls its siblings' rows and content into memory.
+        const ensurePrefix = (prefix?: string): Promise<LazyLoadOutcome> =>
+          lazyLoad.getByPrefix(`${collectionKeyPrefix}${prefix ?? ""}`);
         // FIX-701: record a lazy read — `cacheHit = !fetched` (true when the
         // ensure short-circuited on an already-loaded key/prefix), with the
         // store round-trip's wall time. The accessor that triggered it is the
