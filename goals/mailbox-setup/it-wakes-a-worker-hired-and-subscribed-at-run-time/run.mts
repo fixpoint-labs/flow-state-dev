@@ -21,6 +21,7 @@
  *   works     after the restart, a task for the hire lands on the file
  *             mailbox's board, and one for the member taken off is refused.
  *   discover  `discover` lists the new mailbox, with the hire on it.
+ *   project   `setWorkstreams` makes the new mailbox a project's workstream.
  *   tree      no file under the tree changed, and neither the hire nor the
  *             new mailbox is named in any file.
  *
@@ -263,6 +264,20 @@ await runGoal(async () => {
     if (listed === undefined) fail("discover", `discover lists ${entries.map((e) => e.id).join(", ")}, not ${mailboxId}`);
     else if (!String(listed.contract ?? "").includes(hire)) fail("discover", `discover lists ${mailboxId} without ${hire}: ${listed.contract}`);
     else evidence.push(`discover lists ${mailboxId} ("${listed.contract}")`);
+
+    // ---- project: the new mailbox can be a project's workstream -------------
+    const projectId = `launch-${run}`;
+    try {
+      await app.project("createProject", { id: projectId, title: "Launch" });
+      const set = (await app.project("setWorkstreams", { projectId, workstreams: [mailboxId] })) as {
+        project?: { workstreams?: string[] };
+      };
+      const workstreams = set.project?.workstreams ?? [];
+      if (!workstreams.includes(mailboxId)) fail("project", `setWorkstreams on ${projectId} returned workstreams ${workstreams.join(", ")}, not ${mailboxId}`);
+      else evidence.push(`setWorkstreams made ${mailboxId} a workstream of ${projectId}`);
+    } catch (error) {
+      fail("project", `setWorkstreams refused ${mailboxId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   } finally {
     await app.state.dispose();
   }

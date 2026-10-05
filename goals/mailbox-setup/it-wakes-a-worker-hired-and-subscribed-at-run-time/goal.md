@@ -6,13 +6,14 @@
 
 **Input:** `fixtures/workforce/`: one team, a coordinator (`ops.lead`, on the built-in `agent` kind, naming `hire`, `setUpMailbox`, `subscribeWorkers`, `unsubscribeWorkers` and `fileTask` in `tools:`), one agent member (`ops.kim`), and one mailbox (`ops.floor`) with that member and a `queue` board. The two workers share no mailbox. `host.mts` is the app: the tree, the published packages, a SQLite file, `wakeMemberSeats` over the registry, and hires reloaded at boot. Held-out: the hire's name and the new mailbox's name are fresh every run, so no file names them, and the coordinator, the member, the team and the board are read off the tree.
 
-**Signal:** one host over one SQLite file. The coordinator's own `run` turns call the tools; posts go through the mailbox's public `post`. Everything graded is read from the store after the run: each worker's conversations through the host's own routes, the lists through the mailbox's `readBoard`, and `discover` over the inventory rows.
+**Signal:** one host over one SQLite file. The coordinator's own `run` turns call the tools; posts go through the mailbox's public `post`. Everything graded is read from the store after the run: each worker's conversations through the host's own routes, the lists through the mailbox's `readBoard`, `discover` over the inventory rows, and the project write's own result.
 
 - **woken**: the hire heard each of four posts in exactly one turn: on the new mailbox and on `ops.floor`, before and after the restart.
 - **removed**: `ops.kim` heard the post on `ops.floor` before it was taken off, and none of the four after.
 - **task**: after the restart, the new mailbox's `tasks` list holds the task, for the hire, with `filingWorker` the coordinator.
 - **works**: after the restart, a task for the hire lands on `ops.floor`'s board, and one for `ops.kim` is refused, filing nothing.
 - **discover**: `discover` lists the new mailbox with the hire among its members.
+- **project**: `setWorkstreams` makes the new mailbox a workstream of a project created for the run. A mailbox with no inventory row is refused there (`unknown-workstream`), so the leg fails if the run-time mailbox's row is not one `setWorkstreams` accepts.
 - **tree**: `git status` is as it was before the run, no file under the goal changed, and no file names the hire or the new mailbox.
 
 **Anti-game:** no assertion on a tool's return value; a refusal only counts with the list read back empty of it. No worker is passed in a boot list after the hire; the hire's only way back after the restart is the roster reload any durable host runs. The restart does not set anything up again. No board name for the new mailbox is in any file. The wait before grading polls until every request has settled, then gives a wrongly woken worker 0.5s to run; none of it is graded.
@@ -30,3 +31,4 @@
 |------|--------|-------|---------|-------|
 | 2026-10-05 | `fix-1779-pr-b` on PR-A `972737eb8`, uncommitted | scripted | FAIL (control) | **`GOAL_CONTROL=boot-wake`, taken first.** Failed at **woken** only: `the hire ops.hire41163651 heard the newBefore post (launch-a-41163651) in 0 turns (want 1)`, and the same for the other three posts. |
 | 2026-10-05 | `fix-1779-pr-b` on PR-A `972737eb8`, uncommitted | scripted | **PASS** | First verdict. The hire heard each post once (newBefore=1, floorBefore=1, newAfter=1, floorAfter=1); `ops.kim` heard the post before its removal and none of the 4 after; the task is on the new mailbox's `tasks` list for the hire, `filingWorker ops.lead`; the hire works `ops.floor`'s `queue` and a task for `ops.kim` was refused (`assignee-not-a-list-worker`); `discover` lists the new mailbox with the hire; `git status` unchanged. |
+| 2026-10-05 | PR #2763 head, uncommitted review fixes | scripted | **PASS** | Adds the **project** leg: `setWorkstreams made ops.launch10e1f055 a workstream of launch-10e1f055`. Every other leg as before. Naming a mailbox with no row instead failed at **project** (`unknown-workstream`). `GOAL_CONTROL=boot-wake` still fails at **woken** only. |

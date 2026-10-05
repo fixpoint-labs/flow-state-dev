@@ -29,6 +29,7 @@
  */
 
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { z } from "zod";
 import { readDeclaredFlow } from "../declared-flow";
 import {
   INSTRUCTIONS_KEY,
@@ -1333,10 +1334,11 @@ export function openMailboxAtRunTime(options: OpenMailboxAtRunTimeOptions): RunT
   };
 
   // The entry's output, or a run result carrying it as `output` (what `runAction` returns).
-  const changeOutput = (ran: unknown): { members: string[] } => {
-    const direct = membershipChangedSchema.safeParse(ran);
-    return direct.success ? direct.data : membershipChangedSchema.parse((ran as { output?: unknown } | null | undefined)?.output);
+  const outputOf = <T extends z.ZodTypeAny>(schema: T, ran: unknown): z.infer<T> => {
+    const direct = schema.safeParse(ran);
+    return direct.success ? direct.data : schema.parse((ran as { output?: unknown } | null | undefined)?.output);
   };
+  const changeOutput = (ran: unknown): { members: string[] } => outputOf(membershipChangedSchema, ran);
 
   return {
     async setUp(request) {
@@ -1407,7 +1409,8 @@ export function openMailboxAtRunTime(options: OpenMailboxAtRunTimeOptions): RunT
     async fileTask(request) {
       await assertChangeable(request.mailboxId);
       const { orgId, mailboxId, labels, ...task } = request;
-      const filed = mailboxFileTaskOutputSchema.parse(
+      const filed = outputOf(
+        mailboxFileTaskOutputSchema,
         await entry(orgId, mailboxId, MAILBOX_FILE_TASK_FOR_WORKER_ACTION, {
           ...task,
           ...(labels === undefined ? {} : { labels: [...labels] })

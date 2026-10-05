@@ -948,13 +948,15 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     mailboxOpener = openMailboxAtRunTime({
       client: sessionClient,
       userId: LAB_USER_ID,
-      // The teams the tree declares: the first half of every `<team>.<name>` id.
+      // The teams the tree declares: every `TEAM.md`, and the first half of
+      // every `<team>.<name>` id.
       teams: [
-        ...new Set(
-          [...roster.mailboxes, ...roster.workers]
+        ...new Set([
+          ...roster.teams.map((team) => team.id),
+          ...[...roster.mailboxes, ...roster.workers]
             .filter((record) => record.id.includes("."))
             .map((record) => record.id.split(".")[0]!),
-        ),
+        ]),
       ],
       run: async (request) => {
         const result = (await runAction({

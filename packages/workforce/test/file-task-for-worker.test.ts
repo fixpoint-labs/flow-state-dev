@@ -73,6 +73,16 @@ describe("filing a task for a worker", () => {
     });
   });
 
+  it("files through a door that returns the run result rather than its output", async () => {
+    const h = await boot();
+    const run = async (request: Parameters<typeof h.run>[0]) => ({ output: await h.run(request) });
+    const open = openMailboxAtRunTime({ client: h.client, run, userId: USER_ID, teams: ["eng", "platform"] });
+    await open.setUp(LOGIN);
+    const filed = await open.fileTask({ orgId: ORG_ID, mailboxId: "platform.login", list: "tasks", goal: "g", filingWorker: "eng.lead" });
+    const tasks = await h.tasksOn("platform.login", "tasks");
+    expect(tasks.map((task) => task.id)).toEqual([filed.taskId]);
+  });
+
   it("files with no assignee", async () => {
     const h = await boot();
     await h.open.setUp(LOGIN);

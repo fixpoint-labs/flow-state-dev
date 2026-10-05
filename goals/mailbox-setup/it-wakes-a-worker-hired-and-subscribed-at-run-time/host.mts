@@ -17,7 +17,7 @@
  * workers the app declared at start and the registry's live list, it picks
  * which one the wake reads. An app passes nothing and gets the live list.
  */
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, runAction, type FlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
@@ -27,6 +27,7 @@ import {
   createSeatHireCapability,
   defineAgentWorkerFlow,
   defineMailboxFlow,
+  defineProjectBlocks,
   hireWorkforce,
   mailboxInstances,
   openMailboxAtRunTime,
@@ -83,7 +84,12 @@ export interface MailboxSetupHost {
   declared: FlowInstance[];
   /** One turn of a declared worker's `run`, with `message`. Resolves to the run's error, if any. */
   say(workerId: string, message: string): Promise<string | undefined>;
+  /** One project write (`createProject`, `setWorkstreams`) as a person calls it. Resolves to its output; rejects on a refusal. */
+  project(action: string, input: unknown): Promise<unknown>;
 }
+
+/** The flow kind the app's project writes run on. */
+const PROJECTS_KIND = "projects";
 
 /**
  * Read the team's files, hire its workers, reload earlier hires, build the
@@ -131,6 +137,7 @@ export async function startHost(
     kinds: { mailbox: defineMailboxFlow({ notify, inventory: true }) }
   });
   const flows: Record<string, FlowInstance> = {
+    [PROJECTS_KIND]: defineFlow({ kind: PROJECTS_KIND, actions: defineProjectBlocks().actions } as never)(),
     ...Object.fromEntries(mailboxFlows.map((flow) => [flow.kind, flow])),
     ...Object.fromEntries(declared.map((worker) => [worker.id, worker]))
   };
@@ -228,5 +235,21 @@ export async function startHost(
     return typeof result.error === "string" ? result.error : String(result.error.message);
   };
 
-  return { state, router, mailbox: mailboxFlows[0]!, mailboxes, declared, say };
+  const project = async (action: string, input: unknown) => {
+    const result = (await runAction({
+      orgId: ORG_ID,
+      flow: flows[PROJECTS_KIND],
+      actionName: action,
+      input,
+      userId: OWNER,
+      sessionId: PROJECTS_KIND,
+      source: "http",
+      stores: runtime.stores,
+      runtimeConfig: { ...runtime.runtimeConfig }
+    } as never)) as { output?: unknown; error?: unknown };
+    if (result.error !== undefined) throw result.error instanceof Error ? result.error : new Error(String(result.error));
+    return result.output;
+  };
+
+  return { state, router, mailbox: mailboxFlows[0]!, mailboxes, declared, say, project };
 }
