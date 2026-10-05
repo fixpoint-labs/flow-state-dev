@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3: which lists can a worker take tasks from? Chosen: any list in its organization, its claim checked against the list the task came from. Instead of: only lists its kind declares. It comes down to lists made at run time: a kind cannot declare a list that does not exist yet. The price: filing rules are the only fence on who gets a list's work. The claim checks are a tie. Locks in: any worker can be handed any list's task. Flips if: lists were only ever declared in files."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3: which lists can a worker take tasks from? Chosen: any list that names it, its claim checked against the list the task came from. Instead of: only lists its kind declares. It comes down to lists made at run time: a kind cannot declare a list that does not exist yet. The price: a hire is subscribed to the list first; the list's workers are the fence, and whether a task may name another worker is open, recommended no. The claim checks are a tie. Flips if: lists were only ever declared in files."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -40,7 +40,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Any list in its organization</text>
+    <text class="t-h c-code" x="228" y="112">Any list that names it</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Only lists its kind declares</text>
@@ -52,7 +52,7 @@
     <text class="t-lbl" x="32" y="169">AT RUN TIME</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Its tasks reach any worker</text>
+    <text class="t-b" x="248" y="161">Its tasks reach its workers</text>
     <text class="t-s" x="248" y="179">checked against that list</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">No kind can declare it</text>
@@ -62,10 +62,10 @@
     <text class="t-lbl" x="32" y="222">WHO CAN BE</text>
     <text class="t-lbl" x="32" y="235">HANDED WORK</text>
     <text class="mark minus" x="228" y="225">−</text>
-    <text class="t-b" x="248" y="224">Any worker in the org</text>
-    <text class="t-s" x="248" y="242">filing rules are the fence</text>
+    <text class="t-b" x="248" y="224">A hire is subscribed first</text>
+    <text class="t-s" x="248" y="242">the list's workers are the fence</text>
     <text class="mark plus" x="592" y="225">+</text>
-    <text class="t-b" x="612" y="224">Only declared kinds</text>
+    <text class="t-b" x="612" y="224">No step before filing</text>
     <text class="t-s" x="612" y="242">the kind is the fence</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
@@ -83,8 +83,8 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Any worker can be handed any list's task</text>
-    <text class="t-s" x="32" y="389">who files for whom is the only fence</text>
+    <text class="t-b" x="32" y="371">A worker takes a task from any list that names it</text>
+    <text class="t-s" x="32" y="389">the list's workers are FIX-1779's read</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>

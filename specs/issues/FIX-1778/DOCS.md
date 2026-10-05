@@ -15,7 +15,7 @@ worker hired a minute ago. When the task is handed over, Workforce looks the nam
 the task to that worker. The lookup sees a hire the moment it is made, so a coordinator can hire a
 worker and give it work in the same conversation.
 
-Every worker can take a task from any task list in your organization. A worker on the built-in
+A worker can take a task from any task list that names it as one of its workers. A worker on the built-in
 `agent` kind runs the task as one turn, with its own instructions and tools and the task's goal as
 the message; its answer becomes the task's result. A kind you write takes tasks when it declares a
 `work` task entry that reads its tasks from your mailboxes' lists:
@@ -30,13 +30,15 @@ defineFlow({
 ```
 
 The lookup finds your organization's workers, and the workers the member who filed the task hired
-for themselves. It never finds another member's own workers or another organization's. Filing a
+for themselves. It never finds another member's own workers or another organization's. If one of
+your organization's workers and one of your own share a name, the name is refused as ambiguous. Filing a
 task for a name nobody has is refused at once, naming the worker. A task whose worker was fired
 before it ran fails with the worker's name in the error, and no one else runs it. Once filed, a
 task's worker stays fixed.
 
-Who may file a task on a list, and for whom, is decided where tasks are filed. A worker takes any
-task its organization's lists hand it.
+A task can name only a worker the list names (its `workedBy:` workers and the ones subscribed to
+it). Subscribe a new hire to the list before you give it a task there. *(Pending the open call in
+D3; drop this paragraph under (i).)*
 
 ## UPDATE · `apps/docs/docs/workforce/overview.md` · "Workforce or orchestration"
 
@@ -57,7 +59,7 @@ finds the worker."*
 
 ## UPDATE · `apps/docs/docs/workforce/built-in-worker.md` · new section "Taking a task"
 
-An `agent` worker takes tasks from any task list in its organization. Each task runs as one turn in
+An `agent` worker takes tasks from any task list that names it. Each task runs as one turn in
 a session of its own: the worker's instructions and tools, the task's goal and context as the
 message. The answer is stored as the task's result and the task completes. If the turn fails, the
 attempt fails, and the task's attempt budget decides whether it runs again. A task never writes to

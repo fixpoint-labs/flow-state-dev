@@ -7,7 +7,7 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **hires a worker for a skill nobody has, then files it a task** ("audit our dependencies' licenses") | The hire lands and idles. An `agent` worker can't take a task at all, and no task list can reach a worker hired after start | The task reaches the new worker, which runs it as one turn. Its answer is the task's result |
-| **files a task for a worker the organization already has, on a list it was never wired to** | Only a worker the list's board names in code can be named. Any other name fails the task | That worker gets it. Any list, any worker, by name |
+| **files a task for a worker the organization already has, on a list it was never wired to** | Only a worker the list's board names in code can be named. Any other name fails the task | That worker gets it, by name, once it works the list (D3 (ii), open) |
 | **names a worker nobody has** | The task fails later, with a routing error | Refused when the task is filed, naming the worker |
 | **names a worker another member hired for themselves** | n/a | Not found, as if nobody had it. A member's own worker is theirs |
 | **names a worker that was fired after the task was filed** | n/a | The task fails, naming the worker. Nobody else runs it |
@@ -17,7 +17,7 @@
 
 **A task on any mailbox's task list can name any worker the organization has, by name, including
 one hired a moment ago; when the task is handed over, that worker receives that task and runs
-it.**
+it.** Under D3 (ii), still [open](DECISIONS.md#open), the worker must be one the list names.
 
 | Is it the right goal? | |
 |---|---|
@@ -43,7 +43,7 @@ one model-word read is the held-out word in the task's result.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/mailbox-boards/it-hands-a-task-to-a-fresh-hire/` · `openai/gpt-5.4-mini` for the worker · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | Leg a: an `agent` worker hired after start, named the word, is handed a task filed for it by name. The run's input holds the task's goal; the run is on the hire's flow (its flow id is the hire's address); the task settles `completed` with the word in its result; no other flow has a run for it. Leg b: the same, after a restart, for a worker hired before it. Leg c: a worker the files declare, on a list no code wired it to. Leg d: a name nobody has is refused at filing and no row exists |
+| **Signal** | Leg a: an `agent` worker hired after start, named the word, is handed a task filed for it by name. The run's input holds the task's goal; the run is on the hire's flow (its flow id is the hire's address); the task settles `completed` with the word in its result; no other flow has a run for it. Leg b: the same, after a restart, for a worker hired before it. Leg c: a worker the files declare, on a list no code wired it to. Under D3 (ii), legs a and c subscribe the worker to the list before filing. Leg d: a name nobody has is refused at filing and no row exists |
 | **Input** | A fixture app with one mailbox, one task list (`boards: [work]`), and no worker wired to it. Goal: "Reply with the word `<word>` and nothing else." The word is random lowercase hex picked at run time. Run: `pnpm tsx goals/mailbox-boards/it-hands-a-task-to-a-fresh-hire/run.mts` with a model key |
 | **Anti-game** | The check hires, files and runs the list through the blocks the coordinator's tools and FIX-1777's wake use, and nothing else. It never registers a flow, calls the lookup, or seeds a row. A run on any other flow, or a result without the word, fails |
 | **Control that must fail** | `GOAL_CONTROL=fixed-routes` (no lookup) and `GOAL_CONTROL=pinned-gate` (a worker takes only its own declared board's tasks). Each FAILS leg a on *a run on the hire's flow*, while the hire and the row still pass, so the failure is the routing. Today's `main` fails the same way |
@@ -110,11 +110,13 @@ coordinator hires, and the hire still idles for every skill but coding.
    may reach, and a bad name fails a task, not the boot.
 2. **[D2](DECISIONS.md#d2) · A task names its worker by the worker's name, refused at filing when
    nobody holds it.** If wrong: names are the routing key; a renamed worker's open tasks fail.
-3. **[D3](DECISIONS.md#d3) · Every worker takes tasks from any list in its organization, its claim
-   checked against the list the task came from.** If wrong: a list's filing rules are the only
-   fence on who can be handed its work.
+3. **[D3](DECISIONS.md#d3) · A worker takes tasks from any list that names it as one of its workers,
+   its claim checked against the list the task came from.** **Open, for Jake:** may a task name a
+   worker the list doesn't name? Recommended no (ii): a named worker must work the list, as
+   FIX-1777 and FIX-1779 already read a list's workers. If wrong: a fresh hire must be subscribed
+   to the list before it can be given a task there.
 
-**Open: none.** D3 is the one to weigh. The calls made without asking, and what was dropped, are
+**Open: D3's fence**, (i) or (ii), in [DECISIONS.md](DECISIONS.md#open). Build proceeds on (ii). The calls made without asking, and what was dropped, are
 in [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
 Enhancement · `core` + `orchestration` + `workforce` + DevTeam Lab · large · 2 PRs, stacked · epic

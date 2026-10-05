@@ -14,7 +14,7 @@ flowchart TD
   D1 -.->|"rejected"| X1["a fixed route per worker, added at hire<br/>a hire mid-conversation needs a restart"]
   I --> D2["D2 · the task carries the worker's name<br/>unknown names refused at filing"]
   D2 -.->|"rejected"| X2["the task carries the full address<br/>the coordinator does not know it"]
-  I --> D3["D3 · a worker takes tasks from any list<br/>its claim checked against the list the task came from"]
+  I --> D3["D3 · a worker takes tasks from any list that names it<br/>its claim checked against the list the task came from"]
   D3 -.->|"rejected"| X3["each worker kind declares the lists it serves<br/>no kind can know the lists made at run time"]
 ```
 
@@ -50,21 +50,20 @@ built at start, could list every worker, and nothing would need the lookup.
 It comes down to what the coordinator can write: it knows names, not addresses.
 
 <a name="d3"></a>
-## D3 · Every worker takes tasks from any list in its organization, and its claim is checked against the list the task came from
+## D3 · A worker takes tasks from any list that names it as one of its workers, and its claim is checked against the list the task came from
 
 | | |
 |---|---|
 | **Instead of** | Each worker kind declaring the lists it serves, as DevTeam's coder does today by re-declaring the feature board so its task door has a claim check to run |
 | **Because** | Mailboxes and their lists are made at run time (FIX-1779), and a hire can be named on any of them. A kind can't declare lists that don't exist yet. So the task door asks, per task, which list sent it, re-reads the task there, and runs the same claim checks as today. The `agent` kind, which most hires are, gets a task door: the task becomes one turn, and the answer is the result |
-| **Locks in** | Any worker in an organization can be handed a task from any of its lists. Who may file onto a list, and for whom, is the only fence, and it belongs to the filing door (FIX-1779, the mailbox's `fileTask`). A list that must reach only certain workers says so where tasks are filed |
+| **Locks in** | The task door takes a task from any list of its organization; which worker may be *named* on a list is the fence, and it is [open](#open). Either way the fence is checked where tasks are filed, against the list's workers as FIX-1779's read gives them (`workedBy:` plus `worksTaskList`, less removals). No second list-worker set is added here |
 
-![D3: which lists can a worker take tasks from? Chosen: any list in its organization, its claim checked against the list the task came from. Instead of: only lists its kind declares. It comes down to lists made at run time: a kind can't declare a list that doesn't exist yet. The price: filing rules are the only fence on who gets a list's work. The claim checks are a tie. Locks in: any worker can be handed any list's task. Flips if: lists were only ever declared in files.](figures/d3-any-list.svg)
+![D3: which lists can a worker take tasks from? Chosen: any list that names it, its claim checked against the list the task came from. Instead of: only lists its kind declares. It comes down to lists made at run time: a kind can't declare a list that doesn't exist yet. The price: a hire is subscribed to the list first; the list's workers are the fence, and whether a task may name another worker is open, recommended no. The claim checks are a tie. Flips if: lists were only ever declared in files.](figures/d3-any-list.svg)
 
 It comes down to lists made at run time: a kind can't declare a list that doesn't exist yet.
 
-**What would change my mind:** a list that must never reach some workers whatever is filed on it,
-such as a list with private data. Then the list, not the worker, would carry an allow-list, and D3
-would gain that check rather than reverse.
+The figure shows the mechanism (any list, checked per task). The fence on names is the open
+question below.
 
 ## Decided, not asked
 
@@ -85,6 +84,12 @@ would gain that check rather than reverse.
   and context as the message. It writes nothing to a mailbox unless its tools do.
 - **A member's own worker resolves only for that member**; the run's member is whoever filed the
   task (FIX-1777 stamps it).
+- **A name held by both an organization worker and the filer's own worker is ambiguous**, and is
+  refused naming both, at filing and at hand-over. No silent precedence: a later hire under the
+  same name can't quietly take another worker's tasks.
+- **A worker fired after a task was filed fails that task at hand-over** (BR-4), naming the
+  worker. It does not wait: nothing would wake it, and a failure is visible to the filer.
+  FIX-1777's "files and waits" applies only to a list with no worker for an unnamed task.
 - **DevTeam's coder drops its re-declared board.** The tax goes in the same change (tenet 3).
 - **The `<slug> @<name>: <what>` post line from the first draft is dropped.** The coordinator files
   through FIX-1779's tool, which takes the name.
@@ -119,5 +124,30 @@ would gain that check rather than reverse.
 - **Widened before review** — Jake, on FIX-1774: "Imagine other use cases." Any list and any
   worker: D3 added (every worker takes tasks from any list, `agent` included), the post line
   dropped for FIX-1779's filing tool, and the wake left to FIX-1777, which reuses D1's lookup.
+- **Spec review, round 1** — the Architect's sibling check found D3's "filing door is the only
+  fence" at odds with FIX-1777 and FIX-1779, which already name a list's workers. D3 narrowed to
+  "any list that names it" and the fence on names made [Open](#open). Added: ambiguous names
+  refused; a fired worker's task fails rather than waits.
 
-**Open: none.**
+<a name="open"></a>
+## Open · may a task name a worker the list doesn't name?
+
+FIX-1777 and FIX-1779 read a list's workers as the ones its mailbox names. This spec has to say
+how a named assignee relates to that read. Raised by the Architect on the spec PR; it is Jake's.
+
+| | (i) Any worker in the organization | **(ii) Only the list's workers · recommended** |
+|---|---|---|
+| **Plain terms** | A task can name any worker. The list's workers only decide who gets *unnamed* tasks | A task can name only a worker the list names. Anyone else is refused at filing, and the answer lists the list's workers |
+| **The coordinator** | Hires, files | Hires, subscribes the hire to the list, files. FIX-1779's goal already does this |
+| **Fence** | Who may file on the list | Who works the list, which the mailbox shows |
+| **Being wrong costs** | Any filer can point a list's task, and its goal text, at any worker and its tools | One more step per hand-off; a forgotten subscribe is refused by name, not silent |
+
+**Recommendation: (ii).** It matches Jake's rule for the coordinator (set up the mailbox,
+subscribe the right workers, file the task), keeps one answer to "who works this list", and the
+cost is one refused filing that says what to do. **What would change my mind:** coordinators
+routinely giving one-off tasks to workers that should not hear the list's posts.
+
+**Whichever wins:** the check sits in the filing door with FIX-1779's read, not in this issue's
+lookup. FIX-1777's BR-18 reads "unassigned" under (i). Build proceeds on (ii) until Jake answers.
+
+**Open: D3's fence only.**
