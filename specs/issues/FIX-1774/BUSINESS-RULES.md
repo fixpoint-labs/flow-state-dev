@@ -29,7 +29,7 @@ carry it.
 | BR-4 | The person waived choices | No question about them; defaults in the task, named in the reply | Legs a, d (no suspension, no question mark) |
 | BR-5 | The same ask again | No new task, hire or mailbox | Leg b |
 | BR-6 | A worker it hired or filed for doesn't start | No twin. The reply says the task is waiting | Stated |
-| BR-7 | A task it filed fails or blocks | Its next turn reassigns or cancels it, or tells the person, naming the task | Leg e |
+| BR-7 | A task it filed fails for good or parks | The notice wakes it in the conversation it filed from; that turn reassigns or cancels the task, or tells the person, naming the task. A task that has moved three times goes to the person | Leg e |
 | BR-8 | A person names a project | Work for it lands on that project's mailboxes, never another project's | Leg d |
 | BR-9 | The view, any turn | Lists the organization's projects and mailboxes, each mailbox's description, task lists and the workers who work them, and the status of tasks this coordinator filed. Nothing from another organization | Package test |
 | BR-10 | An app composes the capability with `presets({ job: false })` | The tools and the view stay; the job's instructions don't | Package test |

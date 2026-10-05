@@ -31,7 +31,8 @@ from FIX-1779 are as its spec pins them; reassign is FIX-1780's.
 > ---
 > flow: agent
 > tools: [hire, fire, rehire, brokenSeats, setUpMailbox, subscribeWorkers,
->         unsubscribeWorkers, fileTask, reassignTask, createProject, setWorkstreams]
+>         unsubscribeWorkers, fileTask, reassignTask, cancelTask, createProject,
+>         setWorkstreams]
 > ---
 >
 > You coordinate this organization. You may hire `coder` workers for code and
