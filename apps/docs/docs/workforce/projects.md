@@ -141,7 +141,7 @@ A second declaration of the inventory beside the writes fails when the flow is b
 Resource collision in flow "agent": accessor keys "mailboxInventory" and "project-writes-mailbox-inventory" resolve to the same effective storage key (scope=org, ref=inventory/mailboxes/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
 ```
 
-[The chief of staff](./chief-of-staff.md#starting-projects) is a seat set up this way.
+[The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way: its `mailbox-inventory` capability in [Adding one](./chief-of-staff.md#adding-one) is this same declaration, so the setup works with or without the project tools.
 
 ## One project per workstream
 

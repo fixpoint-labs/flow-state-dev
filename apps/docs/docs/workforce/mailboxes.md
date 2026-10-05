@@ -843,6 +843,8 @@ Rooms run on the built-in mailbox kind, and that kind has to be able to wake sea
 
 `wakeMemberSeats(seats)` wakes a member whose seat is in the `seats` list and whose kind hears mailbox posts, as the built-in `agent` kind does. A notify block you write yourself wakes only the members its own code wakes; `mailboxInstances` doesn't check that it reaches the template's seats. A seat hired after you built `wakeMemberSeats(seats)` isn't in its list and isn't woken.
 
+If your app already has a notify block, keep it by passing it as the fallback: `defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) })`. A chief of staff (the `agent` kind) in the template is then woken by a person's post in the room (a post from another worker wakes no worker), and your block handles every member whose worker can't hear posts. The table under [waking agent workers](#waking-agent-seats) shows which members the fallback gets.
+
 If your app calls `mailboxInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its mailbox kind with the same seats and charter. A call that finds a different template is refused.
 
 A team can declare the template in a `MAILBOX.md` instead, by marking it `mintFor: projects`. Its `members:` are the seats and its body is the charter:
