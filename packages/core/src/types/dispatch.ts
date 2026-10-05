@@ -85,10 +85,38 @@ export type TaskSessionPolicy<TPayload = unknown> =
   | { readonly key: (task: TPayload, ctx: BlockContext) => string };
 
 /**
- * Where a dispatcher sends. Static by construction: `(type, action, flowKind)`
- * is what the block declares, so its reachable set is declared rather than
+ * The task a `task` dispatcher's per-task target is asked about: who the row
+ * is assigned to, which row, and the worker input it was claimed with. All of
+ * it comes off the claim the board minted, never from a caller.
+ */
+export type TaskTargetQuery = {
+  /** The row's assignee, the name the board routed it by. */
+  readonly assignee: string;
+  readonly taskId: string;
+  /** The packed worker input the row was claimed with. */
+  readonly input: unknown;
+};
+
+/**
+ * A `task` dispatcher's flow, looked up per task: the id of the flow instance
+ * the entry lives on, or `undefined` when nothing answers for this task (the
+ * dispatch is then refused `flow-not-found`, naming the assignee). Resolved
+ * once per dispatch, before anything is dispatched.
+ */
+export type TaskFlowTarget = (
+  task: TaskTargetQuery,
+  ctx: BlockContext
+) => string | undefined | Promise<string | undefined>;
+
+/**
+ * Where a dispatcher sends. `(type, action)` is static by construction: it is
+ * what the block declares, so its reachable entries are declared rather than
  * computed at run time. An action chosen from data is a router over declared
- * dispatchers, not a dynamic address.
+ * dispatchers, not a dynamic address. The one per-task part is a `task`
+ * dispatcher's `flowKind`, which may be a {@link TaskFlowTarget}: the entry is
+ * still declared, and only which flow serves it is looked up when a task is
+ * handed over. Such a target is cross-flow, so nothing at definition time can
+ * list the flows it reaches.
  *
  * `defineFlow` verifies the same-flow pair. A cross-flow address is equally
  * static and equally declared — it is simply verified one layer later, by the
@@ -125,9 +153,10 @@ export type DispatchAddress =
       /**
        * The flow the entry lives on, when it is **not this one**. Same skip
        * as an `internal` cross-flow address: `defineFlow` cannot see the
-       * other flow's map, so the seam resolves it.
+       * other flow's map, so the seam resolves it. A function is looked up
+       * per task (see {@link TaskFlowTarget}) and is always cross-flow.
        */
-      readonly flowKind?: string;
+      readonly flowKind?: string | TaskFlowTarget;
     };
 
 /**
@@ -377,6 +406,34 @@ export class DispatchRefusedError extends Error {
 }
 
 /**
+ * The flow a `task` dispatch goes to: the address's string as declared, or
+ * its per-task target's answer for this task. `undefined` is same-flow for a
+ * string-less address.
+ *
+ * @throws {DispatchRefusedError} `flow-not-found`, naming the assignee, when a
+ *   per-task target answers nothing or an empty id. Decided before anything is
+ *   dispatched, like every refusal.
+ */
+export async function resolveTaskFlowKind(
+  blockName: string,
+  address: Extract<DispatchAddress, { type: "task" }>,
+  task: TaskTargetQuery,
+  ctx: BlockContext
+): Promise<string | undefined> {
+  const target = address.flowKind;
+  if (typeof target !== "function") return target;
+  const resolved = await target(task, ctx);
+  if (typeof resolved === "string" && resolved.length > 0) return resolved;
+  throw new DispatchRefusedError(
+    blockName,
+    address,
+    "flow-not-found",
+    `nothing answers for assignee "${task.assignee}" (task "${task.taskId}"): its per-task ` +
+      `target returned ${JSON.stringify(resolved)}.`
+  );
+}
+
+/**
  * Put a dispatch through the runtime's dispatch seam.
  *
  * Substrate-facing. Authored flows reach this through `dispatcher()`; a
@@ -425,6 +482,16 @@ export type InternalEntry = ActionCore;
  * never runs against a row nothing verified.
  */
 export type TaskEntry = ActionCore & {
+  /**
+   * Where this entry takes tasks from when no board in this flow hands off to
+   * it: a binding whose gate reads each task off the ledger its dispatch
+   * names, so one entry serves tasks from many ledgers, including ones made
+   * after the flow was defined. `defineFlow` applies this gate exactly as it
+   * applies a board's, so the entry still never runs against a row nothing
+   * verified. An entry a board in this flow also hands off to is refused: one
+   * entry runs behind one gate.
+   */
+  readonly from?: TaskBinding;
   /**
    * The binding whose gate fronts this entry, set by `defineFlow` when it
    * applies the gate. Read by the run-time routability check on a carried

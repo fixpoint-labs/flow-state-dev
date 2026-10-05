@@ -229,7 +229,8 @@ export type MailboxRefusalReason =
   | "author-not-a-member"
   | "board-not-declared"
   | "board-needs-an-org"
-  | "mailbox-is-a-template";
+  | "mailbox-is-a-template"
+  | "unknown-assignee";
 
 /**
  * A post refused on the mailbox's own terms, as opposed to by the substrate.
@@ -537,8 +538,9 @@ export const mailboxFileTaskInputSchema = z
     title: z.string().min(1).optional(),
     context: z.string().optional(),
     /**
-     * The board's routing key for this row. **Not a seat**: which seat it
-     * reaches is the seat-side board's wiring.
+     * The worker this task is for, by its name as `discover` lists it, or a
+     * name a board over this list declares as its own. Checked when the kind
+     * was built with `checkAssignee`.
      */
     assignee: z.string().min(1).optional(),
     priority: z.number().optional(),
@@ -710,7 +712,10 @@ async function ledgerNamed(
  * identity that would make it so does not exist on the mailbox session
  * contract.
  */
-const fileTaskFor = (boardIds: readonly string[]) =>
+const fileTaskFor = (
+  boardIds: readonly string[],
+  checkAssignee: DefineMailboxFlowOptions["checkAssignee"]
+) =>
   handler({
     name: "mailbox-file-task",
     inputSchema: mailboxFileTaskInputSchema,
@@ -727,6 +732,15 @@ const fileTaskFor = (boardIds: readonly string[]) =>
           `"${input.author}" is not a member of mailbox "${ctx.session.identity.id}". ` +
             `Members: ${mailbox.members.length > 0 ? mailbox.members.join(", ") : "(none)"}.`
         );
+      }
+
+      // A task for a worker nobody has is refused here, while the filer is
+      // still in the turn that can correct it, rather than failing at hand-over.
+      if (input.assignee !== undefined && checkAssignee !== undefined) {
+        const refused = checkAssignee(input.assignee, boardId, ctx);
+        if (refused !== undefined) {
+          throw new MailboxPostRefusedError("unknown-assignee", refused);
+        }
       }
 
       // The row id is minted, never supplied — the same call `addTask` makes.
@@ -1398,6 +1412,15 @@ export interface DefineMailboxFlowOptions {
   boardActions?: readonly string[];
 
   /**
+   * Checked before `fileTask` files a task that names an assignee: answer
+   * `undefined` to file it, or the sentence to refuse with. Pass the worker
+   * lookup's check — `createWorkerLookup(...).filingCheck(aliases)` — so a
+   * task can't be filed for a worker nobody has. Absent, any assignee is
+   * filed as written.
+   */
+  checkAssignee?: (assignee: string, listId: string, ctx: BlockContext) => string | undefined;
+
+  /**
    * Carry the live inventory's writer half — the two actions
    * {@link inventoryWriterActions} builds, and the collections they write.
    *
@@ -1536,7 +1559,7 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
   // board: with no board there is nothing to file onto and nothing to read, so
   // there is no action rather than an action that always refuses.
   const readMailbox = readMailboxFor(boardIds);
-  const fileTask = boardIds.length === 0 ? undefined : fileTaskFor(boardIds);
+  const fileTask = boardIds.length === 0 ? undefined : fileTaskFor(boardIds, options.checkAssignee);
   const readBoard = boardIds.length === 0 ? undefined : readBoardFor(boardIds);
 
   // Only for the boards of mailboxes that opted in. Built from the minted ids,

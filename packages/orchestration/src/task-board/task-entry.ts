@@ -170,7 +170,118 @@ export interface TaskGateOptions {
  * entry's own execution policy (`concurrency`, hooks) rides through untouched.
  */
 export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
-  const { name, boardId, collection: collectionFactory, uses, onError } = options;
+  const { boardId, collection } = options;
+  return buildTaskGate({
+    ...options,
+    // One board, one ledger: every dispatch this entry accepts names this
+    // board (the input schema below refuses any other before the tap reads),
+    // so the ledger does not depend on the dispatch.
+    ledger: { kind: "board", boardId, collection },
+  });
+}
+
+export interface TaskLedgersOptions {
+  /** Names the assembled blocks and the binding, so a refusal says which entry it came from. */
+  name: string;
+  /**
+   * The ledger a dispatch's tasks are read from, by the id the dispatch
+   * carries (`boardId` on the envelope), or `undefined` when this entry takes
+   * no tasks from it.
+   *
+   * **The id is untrusted.** It travels on the envelope, so the resolver must
+   * answer only for ledgers the running context may read: resolve against
+   * `ctx`, never a process-wide map of every ledger. The row re-read on the
+   * returned ledger is what authorizes the run, exactly as on a board's gate.
+   */
+  resolve: (ledgerId: string, ctx: BlockContext) => Promise<TaskCollectionRef | undefined>;
+  /** Declarations the resolved ledgers need in scope (their resources). */
+  uses?: readonly DefinedCapability[];
+  /** The worker-failure policy, as on a board. Default `"skip"`. */
+  onError?: "skip" | "fail";
+  /**
+   * Accept an entry whose blocks keep session state. Refused by default, as
+   * on a board's entry, because a hand-off under a shared session policy
+   * (`per-worker`, a `key`) runs several rows in one child session. Set it
+   * when the entry is handed tasks one session per task, or when its session
+   * state is the entry's own, the same shape for every task.
+   */
+  allowSessionState?: boolean;
+}
+
+/**
+ * A task entry's own source: take tasks from any ledger `resolve` answers
+ * for, read per dispatch, instead of from the one board that hands off to it.
+ *
+ * Pass the result as the entry's `from` (`task: { actions: { work: { block,
+ * from: taskLedgers({ name, resolve }) } } }`). `defineFlow` then gates the
+ * entry with no board in the flow: each dispatch's ledger id is resolved, an
+ * id the resolver does not answer for is refused before any row is read, and
+ * then every check a board's gate runs (row, attempt, identity, status,
+ * assignee, lease, run link) runs on that ledger. A sender's board hands off
+ * under its `boardId`, so a board over a shared ledger hands off under the
+ * ledger's id for a resolver keyed on ledger ids to find it.
+ */
+export function taskLedgers(options: TaskLedgersOptions): TaskBinding {
+  const { name, resolve } = options;
+  const boardId = `${name} (by ledger)`;
+  return {
+    boardId,
+    gate: buildTaskGate({
+      name,
+      boardId,
+      ...(options.uses !== undefined ? { uses: options.uses } : {}),
+      onError: options.onError ?? "skip",
+      allowSessionState: options.allowSessionState === true,
+      ledger: { kind: "by-id", resolve },
+    }),
+  };
+}
+
+/** Where a gate reads each dispatch's row: one board's ledger, or one resolved per dispatch. */
+type GateLedger =
+  | { kind: "board"; boardId: string; collection: (ctx: BlockContext) => Promise<TaskCollectionRef> }
+  | { kind: "by-id"; resolve: TaskLedgersOptions["resolve"] };
+
+/**
+ * The one gate, over either ledger source. The checks and their order are the
+ * same for both; only where the row is read from differs.
+ */
+function buildTaskGate(options: {
+  name: string;
+  boardId: string;
+  ledger: GateLedger;
+  uses?: readonly DefinedCapability[];
+  onError: "skip" | "fail";
+  allowSessionState?: boolean;
+}): TaskBinding["gate"] {
+  const { name, boardId, ledger, uses, onError } = options;
+
+  // The ledger a dispatch's row lives on. A resolver that does not answer is
+  // a refusal decided before any row is read.
+  const ledgerFor = async (ctx: BlockContext, dispatch: TaskDispatchInput): Promise<TaskCollectionRef> => {
+    if (ledger.kind === "board") return ledger.collection(ctx);
+    const resolved = await ledger.resolve(dispatch.boardId, ctx);
+    if (resolved === undefined) {
+      throw new UnknownTaskLedgerError(name, dispatch.taskId, dispatch.boardId);
+    }
+    return resolved;
+  };
+
+  // The recorders run after the tap, inside the same gate, and settle the
+  // claim the tap put on state. A board's ledger is constant; a resolved one is
+  // re-resolved from the ledger id the tap recorded beside the claim.
+  const collectionFactory = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
+    if (ledger.kind === "board") return ledger.collection(ctx);
+    const ledgerId = ctx.sequencer!.state.currentLedger as string | undefined;
+    const resolved = ledgerId === undefined ? undefined : await ledger.resolve(ledgerId, ctx);
+    if (resolved === undefined) {
+      throw new Error(
+        `[task-board] "${name}" cannot settle its claim: the ledger it was read from ` +
+          `(${ledgerId === undefined ? "none recorded" : `"${ledgerId}"`}) no longer resolves.`
+      );
+    }
+    return resolved;
+  };
 
   // The same recorders the inline drain composes, bound to this board's
   // collection. Reused rather than reimplemented: they own the ticket-fenced
@@ -202,7 +313,7 @@ export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
 
   return (entry: ActionCore, target: string): ActionCore => {
     const worker = entry.block as TaskWorker;
-    assertHandOffBlockSupported({ name, target, block: worker });
+    if (options.allowSessionState !== true) assertHandOffBlockSupported({ name, target, block: worker });
 
     const block = sequencer({
       name: `${name}-${target}-gate`,
@@ -214,7 +325,7 @@ export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
         // driver is installed into; past the first `await` it would land on a
         // continuation scope that dies with this tap.
         withLeaseRenewalScope(async () => {
-          const board = await collectionFactory(ctx);
+          const board = await ledgerFor(ctx, dispatch);
           const row = board.get(dispatch.taskId) as Task | undefined;
 
           // THE START GATE. Each arm closes a different window.
@@ -292,7 +403,10 @@ export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
           // recorder settles only a claim it finds on state.
           await writeRunLink(board, held, ticket, ctx);
 
-          await ctx.sequencer!.patchState({ currentClaim: ticket });
+          await ctx.sequencer!.patchState({
+            currentClaim: ticket,
+            ...(ledger.kind === "by-id" ? { currentLedger: dispatch.boardId } : {}),
+          });
 
           ctx._markTaskScope?.(held.id);
           stampCurrentClaim(ticket);
@@ -330,8 +444,36 @@ export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
       .tap(recordSuccess)
       .rescue([{ block: recordError }]);
 
-    return { ...entry, block, inputSchema: boardScopedSchema(boardId) };
+    return {
+      ...entry,
+      block,
+      // A board's entry accepts only its own board's dispatches; an entry
+      // served by many ledgers accepts any id and refuses an unknown one in
+      // the tap, before any read.
+      inputSchema: ledger.kind === "board" ? boardScopedSchema(boardId) : taskDispatchInputSchema,
+    };
   };
+}
+
+/**
+ * Thrown by a gate served by many ledgers when a dispatch names a ledger its
+ * resolver does not answer for. Decided before any row is read, so nothing
+ * was written; the sender's attempt fails through its ordinary error path.
+ */
+export class UnknownTaskLedgerError extends Error {
+  readonly code = "unknown-task-ledger";
+
+  constructor(
+    readonly entry: string,
+    readonly taskId: string,
+    readonly ledgerId: string
+  ) {
+    super(
+      `[task-board] "${entry}" takes no tasks from ledger "${ledgerId}" (task "${taskId}"). ` +
+        `It resolves only ledgers the running organization holds and this flow declares.`
+    );
+    this.name = "UnknownTaskLedgerError";
+  }
 }
 
 /**

@@ -325,6 +325,53 @@ describe("dispatcher — the body", () => {
     expect(calls[0]?.action).toBe("charge");
   });
 
+  it("looks a task's flow up per task, sync or async, and sends to the id it returns", async () => {
+    const { calls, ctx } = seamRecording();
+    const envelope = { boardId: "work", seat: "alice", taskId: "t1", attempt: 1, createdAt: 1, payload: { goal: "g" } };
+    const asked: unknown[] = [];
+    const sync = dispatcher({
+      name: "per-task-sync",
+      action: "work",
+      session: "per-task",
+      flowKind: (task) => {
+        asked.push(task);
+        return `flow-of-${task.assignee}`;
+      }
+    });
+    await runForTest(sync, envelope, ctx);
+    const async_ = dispatcher({
+      name: "per-task-async",
+      action: "work",
+      session: "per-task",
+      flowKind: async (task) => `async-${task.taskId}`
+    });
+    await runForTest(async_, envelope, ctx);
+    expect(calls.map((c) => c.flowKind)).toEqual(["flow-of-alice", "async-t1"]);
+    expect(asked).toEqual([{ assignee: "alice", taskId: "t1", input: { goal: "g" } }]);
+    // The address carries the function: always cross-flow, never a same-flow entry.
+    expect(typeof sync.dispatch?.flowKind).toBe("function");
+  });
+
+  it("refuses flow-not-found naming the assignee when a per-task target answers nothing, before the seam", async () => {
+    const { calls, ctx } = seamRecording();
+    const seat = dispatcher({ name: "per-task-none", action: "work", session: "per-task", flowKind: () => undefined });
+    const error = await runForTest(
+      seat,
+      { boardId: "work", seat: "ghost", taskId: "t9", attempt: 1, createdAt: 1, payload: {} },
+      ctx
+    ).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DispatchRefusedError);
+    expect((error as DispatchRefusedError).refused).toBe("flow-not-found");
+    expect(String((error as Error).message)).toMatch(/assignee "ghost"/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a computed flowKind on an internal dispatcher", () => {
+    expect(() =>
+      dispatcher({ name: "internal-fn", action: "wake", session: { id: () => "s" }, flowKind: (() => "x") as never })
+    ).toThrow(/computed flowKind on an internal dispatcher/);
+  });
+
   it("refuses an empty computed session key, naming the block", async () => {
     const { calls, ctx } = seamRecording();
     const block = dispatcher({

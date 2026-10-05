@@ -69,6 +69,12 @@ export interface TaskClaimTicket {
    * not match".
    */
   readonly incarnationId?: string;
+  /**
+   * `task.assignee` as of the claim. Server-derived like the rest: a board
+   * whose fallback hands rows off addresses the hand-over by it, and the
+   * receiving gate checks the row still names it. Not part of the write fence.
+   */
+  readonly assignee?: string;
 }
 
 /**
@@ -88,6 +94,8 @@ export const taskClaimTicketSchema = z.object({
   // ticket onto its worker-body state. Optional because the row it is copied
   // from may not carry one (BP-030).
   incarnationId: z.string().optional(),
+  /** The claimed row's assignee, when it has one. See {@link TaskClaimTicket.assignee}. */
+  assignee: z.string().optional(),
 });
 
 /**
@@ -110,6 +118,7 @@ export function ticketForClaim(collectionId: string, claimed: Task): TaskClaimTi
     ...(claimed.incarnationId !== undefined
       ? { incarnationId: claimed.incarnationId }
       : {}),
+    ...(claimed.assignee !== undefined ? { assignee: claimed.assignee } : {}),
   };
 }
 

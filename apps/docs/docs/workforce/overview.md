@@ -15,18 +15,18 @@ A hired worker is a **seat**: a flow instance with its own id. You open a sessio
 
 Reach for Workforce when you want a named roster you address by opening a session.
 
-Reach for [Orchestration](../orchestration/overview) when you want to coordinate units of work on a task board. A board worker is a block that claims tasks. A task's `assignee` never names a hired worker.
+Reach for [Orchestration](../orchestration/overview) when you want to coordinate units of work on a task board. A board worker is a block that claims tasks. A task's `assignee` can also name any of your hired workers, including one hired while the app runs. See [Giving a task to a worker](#giving-a-task-to-a-worker).
 
 ## What a Workforce app looks like
 
-![A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, hireWorkforce turns each record into a seat, a configured copy of a flow kind with its own id, and your app registers the seats. Sessions, state and resources a seat writes live in your store. A seat hired while the app runs is also written to the store as a roster row. A task board's assignee names a board worker, never a seat.](./workforce-overview.svg)
+![A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, hireWorkforce turns each record into a worker, a configured copy of a flow kind with its own id, and your app registers the workers. Sessions, state and resources a worker writes live in your store. A worker hired while the app runs is also written to the store as a roster row. A task's assignee can name any worker that takes tasks: the board runs the list, and Workforce finds the worker.](./workforce-overview.svg)
 
 Workforce reads your files and hires them. Each `WORKER.md` becomes a flow copy with its own address. Each `MAILBOX.md` becomes a named session on a mailbox kind, the built-in one unless the file names another. Sessions, resources and boards work as they do on any flow, and live where they always do.
 
 - **The roster outlives the process.** A team you hire while the app is running is still there after a restart or a redeploy, because the hire is written to the store your app uses. See [Hiring while the app runs](./durable-hire).
 - **A mailbox is what a reader opens.** A mailbox is a named session on a kind the framework ships, and its transcript is the part of that conversation a person or another agent should read. A routed mailbox sends each post to the one member whose job fits it. See [Mailboxes](./mailboxes).
 - **The screens are importable.** One navigator browses the whole workforce, and the roster and a board, as columns or as a live list, ship beside it as components from `@flow-state-dev/react`. See [Workforce components](./ui).
-- **It does not staff a task board.** A task's `assignee` names a board worker, never a seat.
+- **It does not run your task boards.** A board drains its rows. Workforce tells the board which worker a task's `assignee` means, and gives workers a way to take a task.
 - **It adds to flows, sessions and resources, and replaces none of them.** Hiring at runtime adds to the roster in your files, and doesn't replace the tree.
 
 For a working example, the [kitchen-sink reference app](https://github.com/fixpoint-labs/flow-state-dev/tree/main/apps/kitchen-sink) is a support desk built this way: four specialists and one routed mailbox, declared under its `workforce/` folder, with a board for cases that need a person.
@@ -107,9 +107,19 @@ One seat helps a person run an organization. The chief of staff is who you ask w
 
 The chief of staff reads workstream mailboxes; it never opens, closes, or renames one.
 
+## Giving a task to a worker
+
+A task on a mailbox's board can name any of your workers that takes tasks, by the name `discover` lists: `engineering.lead`, or `frontend`, a worker hired a minute ago. When the board hands the task over, Workforce's worker lookup finds the worker of that name and the task runs on it, one run per task. The lookup reads the live registry, so a coordinator can hire a worker and give it work in the same conversation.
+
+A worker on the built-in `agent` kind runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A kind you write takes tasks when it declares a `work` task entry.
+
+The name reaches your organization's workers, the ones your files declare, and the ones the member whose request is running hired for themselves. It never reaches another member's own workers or another organization's. A name two of those workers share is refused as ambiguous. With the mailbox's filing check on, a task for a name nobody holds is refused when it is filed, naming it. A task whose worker was fired before it ran fails with the worker's name. No other worker picks it up.
+
+[Handing a row to the worker it names](./mailboxes.md#handing-a-row-to-the-worker-it-names) has the wiring: the lookup, the filing check, and the board that hands tasks over.
+
 ## What it will not do
 
-- Workforce does not staff a task board. A task's `assignee` names a board worker, never a seat.
+- It does not run your task boards. A board drains its rows. Workforce tells the board which worker a name means, and gives workers a way to take a task.
 - It does not replace flows, sessions, or resources. Sessions and resources live on the seat you hired.
 - Hiring at runtime writes no files. It stores the new seat as a row in the hired roster, which the app reads back at start alongside the seats your files declare, and the tree stays as you wrote it. See [Hiring while the app runs](./durable-hire.md).
 

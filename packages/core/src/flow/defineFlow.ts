@@ -891,6 +891,13 @@ function resolveDispatchTargets(
                 `ledger; declare a second entry for the second board.`
         );
       }
+      if (entry.from !== undefined) {
+        throw new Error(
+          `Flow "${kind}" task entry "${address.action}" declares where it takes tasks from ` +
+            `(\`from\`), and board "${binding.boardId}" in the same flow also hands off to it. ` +
+            `One entry runs behind one gate; drop \`from\`, or declare a second entry for the board.`
+        );
+      }
       if (holder === undefined) {
         gatedBy.set(address.action, binding);
         gated[address.action] = { ...binding.gate(entry, address.action), gatedBy: binding };
@@ -913,14 +920,20 @@ function resolveDispatchTargets(
       gated[target] = { ...entry, concurrency: "queue" };
     }
   }
-  for (const name of Object.keys(tasks)) {
+  for (const [name, entry] of Object.entries(tasks)) {
     if (gatedBy.has(name)) continue;
+    // An entry that names its own source is gated by it: reached from other
+    // flows, it reads each task off the ledger the dispatch names.
+    if (entry.from !== undefined) {
+      gated[name] = { ...entry.from.gate(entry, name), gatedBy: entry.from };
+      continue;
+    }
     throw new Error(
       `Flow "${kind}" declares task entry "${name}", but no task board reachable from the ` +
         `flow hands off to it. Only a board can dispatch a task — it mints the claim the entry ` +
         `runs under — so an entry without one could never be reached. Add a ` +
         `\`dispatcher({ action: "${name}", session })\` to the \`workers\` of a board the flow ` +
-        `reaches, or remove the entry.`
+        `reaches, declare where the entry takes tasks from (\`from\`), or remove the entry.`
     );
   }
   return gated;

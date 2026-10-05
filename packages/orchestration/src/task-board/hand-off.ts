@@ -191,6 +191,10 @@ export function resolveWorkerSlots(config: {
  * Build the board's "this row's work runs in a child session" test for its
  * dispatcher seats, or `undefined` when the board holds none.
  *
+ * When the fallback hands off, every row naming an assignee the board does
+ * not run inline is handed off too, so `inline` (the names of the seats that
+ * run in the drain) is what the test excludes.
+ *
  * **Derived from the board's own declarations plus the row's `assignee`, and
  * that is the durable part.** The tempting alternative is to read the row's
  * `claimedBy.sessionId` and call it handed off when it differs from the drain's
@@ -204,16 +208,24 @@ export function resolveWorkerSlots(config: {
  * the hand-off is addressed by. So the value this reads cannot move under it,
  * and it survives a restart and a second drain with no run state to rebuild.
  *
- * Only a named seat can hand off — see {@link assertHandOffBoardSupported} —
- * so the floor case the old coordinate walk kept every slot for cannot arise.
- * An undeclared or missing assignee is this drain's.
+ * A named seat or the fallback can hand off — see
+ * {@link assertHandOffBoardSupported}. With no fallback hand-off, an undeclared
+ * or missing assignee is this drain's.
  */
 export function handedOffTaskPredicate(
-  handedOff: readonly HandOffSeat[]
+  handedOff: readonly HandOffSeat[],
+  inline: readonly string[] = []
 ): ((task: Task) => boolean) | undefined {
   const names = new Set<string>();
   for (const seat of handedOff) {
     if (seat.name.length > 0) names.add(seat.name);
+  }
+  if (handedOff.some((seat) => seat.label === "floor")) {
+    const runsHere = new Set(inline);
+    // An assignee no inline seat holds reaches the fallback, which hands it
+    // off. A row with no assignee is refused there and fails in the drain.
+    return (task: Task): boolean =>
+      task.assignee !== undefined && !runsHere.has(task.assignee);
   }
   if (names.size === 0) return undefined;
 
@@ -302,14 +314,16 @@ export function assertHandOffBoardSupported(options: {
 
   const declared = handedOff.map((seat) => seat.label).join(", ");
 
-  // A hand-off is addressed by its seat NAME — the row's assignee — so a seat
-  // with no name has no address. Uniform and floor workers run inline.
-  const unnamed = handedOff.filter((seat) => seat.name.length === 0);
+  // A hand-off is addressed by the row's assignee: a named seat's name, or,
+  // for the fallback, the assignee the row was claimed with. A uniform worker
+  // stands in for every row whatever it names, so it has no address.
+  const unnamed = handedOff.filter((seat) => seat.label === "uniform");
   if (unnamed.length > 0) {
     throw new Error(
       `[task-board] "${name}" holds a task dispatcher at ${unnamed.map((s) => s.label).join(", ")}, ` +
-        `but only a named seat can hand off — its name is the assignee the row is routed by. ` +
-        `Declare it under \`workers: { <name>: dispatcher({ action, session }) }\`.`
+        `but a uniform worker cannot hand off — a hand-off is addressed by the row's assignee. ` +
+        `Declare it under \`workers: { <name>: dispatcher({ action, session }) }\`, or as the ` +
+        `\`defaultWorker\`, which hands each row over under the assignee it names.`
     );
   }
 
