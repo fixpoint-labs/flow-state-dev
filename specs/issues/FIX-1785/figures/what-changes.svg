@@ -1,0 +1,72 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today, on the left: a short discover listing of a mailbox returns id, kind and purpose; the member list, open time and worker kind sit in the contract sentence, which only a full listing returns, so a short listing carries no members. After, on the right: the entry also carries facts, with the members array and openedAt, returned on every listing; the contract keeps only advice and still waits for detail full. Core passes facts through without naming a key; Workforce fills it."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+      .card { fill:var(--surface-2); }
+    .t-m  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; white-space:pre; }
+    .ink  { fill:var(--ink); }
+    .add  { fill:var(--code); font-weight:600; }
+    .hid  { fill:var(--gone); }
+    .dim  { fill:var(--ink-3); }
+    .sep  { stroke:var(--rule); stroke-width:1; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+  <text class="t-lbl" x="24" y="30">TODAY · discover({ domain: "mailboxes" })</text>
+  <text class="t-lbl" x="496" y="30">AFTER · THE SAME CALL</text>
+  <line class="sep" x1="470" y1="16" x2="470" y2="384"/>
+    <rect class="card" x="24" y="44" width="420" height="100" rx="5"/>
+    <text class="t-lbl" x="38" y="62">WHAT COMES BACK</text>
+    <text class="t-m ink" x="38" y="84">id: "eng.feature"</text>
+    <text class="t-m ink" x="38" y="106">kind: "mailbox"</text>
+    <text class="t-m ink" x="38" y="128">purpose: "Where this team talks…"</text>
+    <rect class="card" x="24" y="170" width="420" height="100" rx="5"/>
+    <text class="t-lbl" x="38" y="188">WITHHELD · ONLY ON detail: "full"</text>
+    <text class="t-m hid" x="38" y="210">contract: "4 members: eng.em, eng.coder,</text>
+    <text class="t-m hid" x="38" y="232">  eng.reviewer, chief-of-staff.</text>
+    <text class="t-m hid" x="38" y="254">  Opened 2026-10-05…. Addressed by its id."</text>
+  <text class="t-b" x="24" y="300">A short listing has no members in it at all.</text>
+  <text class="t-s" x="24" y="320">The model answers anyway: 1 run in 12 left out a member</text>
+  <text class="t-s" x="24" y="338">and gave another the wrong kind.</text>
+    <rect class="card" x="496" y="44" width="420" height="166" rx="5"/>
+    <text class="t-lbl" x="510" y="62">WHAT COMES BACK, EVERY CALL</text>
+    <text class="t-m ink" x="510" y="84">id: "eng.feature"</text>
+    <text class="t-m ink" x="510" y="106">kind: "mailbox"</text>
+    <text class="t-m ink" x="510" y="128">purpose: "Where this team talks…"</text>
+    <text class="t-m add" x="510" y="150">facts: { members: ["eng.em", "eng.coder",</text>
+    <text class="t-m add" x="510" y="172">  "eng.reviewer", "chief-of-staff"],</text>
+    <text class="t-m add" x="510" y="194">  openedAt: "2026-10-05…" }</text>
+    <rect class="card" x="496" y="236" width="420" height="78" rx="5"/>
+    <text class="t-lbl" x="510" y="254">ONLY ON detail: "full"</text>
+    <text class="t-m dim" x="510" y="276">contract: "Addressed by its id. Listed</text>
+    <text class="t-m dim" x="510" y="298">  here means registered, not open."</text>
+  <text class="t-b" x="496" y="344">Core passes facts through and names no key.</text>
+  <text class="t-s" x="496" y="364">Workforce fills members and workerKind.</text>
+</svg>
