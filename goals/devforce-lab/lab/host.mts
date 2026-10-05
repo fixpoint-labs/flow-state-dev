@@ -34,7 +34,9 @@
  * 4. **The mailbox's address map** (`notify.mts`), and whether a mailbox is
  *    opened at all. The framework keeps the member walk and runs a notify block
  *    once per declared member; which member resolves to which seat is the app's,
- *    because the dispatch seam refuses a target read out of stored data.
+ *    because the dispatch seam refuses a target read out of stored data. A
+ *    worker the tree does not declare (hired while the Lab runs, or reloaded
+ *    at boot) is woken by Workforce's wake over the live registry instead.
  * 5. **The host `resolvePrincipal`.** FSD does not provide login. After
  *    FIX-1442 an unconfigured host runs under the development organization,
  *    which is not a refusal. The lab wires a fail-closed bearer check so an
@@ -64,6 +66,7 @@ import {
   mailboxBoardIds,
   mailboxInstances,
   mailboxPostCapability,
+  createMailboxSetupCapability,
   createSeatHireCapability,
   createWorkforceCapability,
   defineAgentWorkerFlow,
@@ -75,12 +78,14 @@ import {
   defineProjectBlocks,
   projectWritesMailboxInventory,
   mergeSeatFlows,
+  openMailboxAtRunTime,
   openMailboxes,
   openInventory,
   reloadHiredSeats,
   resourcesFromDocs,
   SEAT_INVENTORY_RESOURCE,
   splitResourceModules,
+  wakeMemberSeats,
   type MailboxTranscriptLine,
   type CreateProjectInput,
   type CreateProjectOutput,
@@ -89,6 +94,7 @@ import {
   setWorkstreamsOutputSchema,
   type InventoryActionRequest,
   type ProjectBlocks,
+  type RunTimeMailboxOpener,
 } from "@flow-state-dev/workforce";
 import { discoverWorkforceCode } from "@flow-state-dev/workforce/codegen";
 import {
@@ -676,7 +682,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     [EM_KIND]: emKind as never,
     [CODER_KIND]: coderKind as never,
   };
-  let registrar: { state: FlowState; registry: { get(id: string): FlowInstance | undefined } } | undefined;
+  let registrar:
+    | { state: FlowState; registry: { get(id: string): FlowInstance | undefined; list(): FlowInstance[] } }
+    | undefined;
   const seatHire = createSeatHireCapability({
     kinds,
     register: (seat, pin) => registrar!.state.register(seat, { pin }),
@@ -691,6 +699,31 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     askBefore: [...ASKS_BEFORE],
     // Roster admin stays with the chief of staff: a hired seat can't be given it.
     refuseRosterAdmin: true,
+  });
+  // The workers the Lab has registered right now: declared, reloaded and
+  // hired while it runs. Read per call, so a hire is there the moment it
+  // registers. Bound once the flow state exists, like the register above.
+  const registered = (): FlowInstance[] => registrar?.registry.list() ?? [];
+  // The coordinator's mailbox tools: set up a mailbox, put workers on it or
+  // take them off, file a task. A seat reaches them only by naming them in
+  // `tools:`. Their opener needs the session client and the action door, which
+  // exist only once the flow state does, so it is bound below; until then, and
+  // in a Lab that opens no mailboxes, every call is refused by name.
+  let mailboxOpener: RunTimeMailboxOpener | undefined;
+  const opener = (): RunTimeMailboxOpener => {
+    if (mailboxOpener === undefined) {
+      throw new Error("this Lab opened no mailboxes, so there is none to set up or change. Nothing was changed.");
+    }
+    return mailboxOpener;
+  };
+  const mailboxSetup = createMailboxSetupCapability({
+    open: {
+      setUp: (request) => opener().setUp(request),
+      subscribe: (request) => opener().subscribe(request),
+      unsubscribe: (request) => opener().unsubscribe(request),
+      fileTask: (request) => opener().fileTask(request),
+    },
+    workers: registered,
   });
   // A declared seat holding a tool that waits for a person (`rehire` always
   // does) needs durable execution, whatever else the caller asked for.
@@ -714,6 +747,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       }),
       mailboxPostCapability,
       seatHire,
+      mailboxSetup,
     ],
   }) as never;
 
@@ -738,11 +772,18 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (options.inventory === true && options.mailboxes === undefined) {
     throw new Error("openLab: `inventory` needs `mailboxes`, whose kind writes the inventory");
   }
+  // The wake. A declared seat is reached through the lab's own address map
+  // (`labNotify`), as every check here grades it. Any other worker the
+  // registry holds when a post arrives — one hired while the Lab runs, or
+  // reloaded from the roster at boot — is woken by Workforce's wake when its
+  // kind hears posts, and its posts fall to the address map otherwise.
+  const declaredIds = new Set(hired.map((seat) => seat.id));
+  const notHired = (): FlowInstance[] => registered().filter((seat) => !declaredIds.has(seat.id));
   const mailboxKind =
     options.mailboxes === undefined
       ? undefined
       : defineMailboxFlow({
-          notify: labNotify(options.mailboxes) as never,
+          notify: wakeMemberSeats(notHired, { fallback: labNotify(options.mailboxes) as never }) as never,
           ...(options.inventory === true ? { inventory: true } : {}),
         });
   // The org's resource modules: where the projects collection and its talk
@@ -907,6 +948,35 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   if (mailboxKind !== undefined) {
     await openMailboxes(roster.mailboxes, { client: sessionClient, userId: LAB_USER_ID });
+    // The coordinator's opener, as the app: the same session client, and an
+    // action door that hands back the entry's output and rejects on a refusal.
+    mailboxOpener = openMailboxAtRunTime({
+      client: sessionClient,
+      userId: LAB_USER_ID,
+      // The teams the tree declares: the first half of every `<team>.<name>` id.
+      teams: [
+        ...new Set(
+          [...roster.mailboxes, ...roster.workers]
+            .filter((record) => record.id.includes("."))
+            .map((record) => record.id.split(".")[0]!),
+        ),
+      ],
+      run: async (request) => {
+        const result = (await runAction({
+          flow: flows[request.flowKind],
+          actionName: request.action,
+          input: request.input,
+          userId: request.userId,
+          orgId: request.orgId,
+          sessionId: request.sessionId,
+          source: request.source,
+          stores: runtime.stores,
+          runtimeConfig: runtime.runtimeConfig,
+        } as never)) as { output?: unknown; error?: unknown };
+        if (result?.error !== undefined) throw new Error(messageOf(result.error));
+        return result.output;
+      },
+    });
   }
 
   // The inventory, in-process, under the lab's organization, once the mailbox
