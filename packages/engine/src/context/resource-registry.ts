@@ -1893,7 +1893,11 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         const collectionKeyPrefix = nsPrefix === "" ? "" : `${nsPrefix}/`;
         const ensureInstance = (key: string | Record<string, string>): Promise<LazyLoadOutcome> =>
           lazyLoad.getInstance(resolveCollectionKey(nsConfig.pattern, key));
-        const ensurePrefix = (): Promise<LazyLoadOutcome> => lazyLoad.getByPrefix(collectionKeyPrefix);
+        // `subPrefix` narrows the read to one key prefix under the collection's,
+        // so a `list(prefix)` loads that prefix's rows from the store and none of
+        // the rest. Without it, the whole collection is loaded.
+        const ensurePrefix = (subPrefix = ""): Promise<LazyLoadOutcome> =>
+          lazyLoad.getByPrefix(`${collectionKeyPrefix}${subPrefix}`);
         // FIX-701: record a lazy read — `cacheHit = !fetched` (true when the
         // ensure short-circuited on an already-loaded key/prefix), with the
         // store round-trip's wall time. The accessor that triggered it is the
@@ -1931,8 +1935,8 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             return nsHandle.getOptional(key);
           },
           async list(prefix?: string): Promise<ResourceRef<JsonObject>[]> {
-            const outcome = await ensurePrefix();
-            recordLazyRead("list", collectionKeyPrefix, outcome);
+            const outcome = await ensurePrefix(prefix);
+            recordLazyRead("list", `${collectionKeyPrefix}${prefix ?? ""}`, outcome);
             return nsHandle.list(prefix);
           },
           async count(): Promise<number> {

@@ -119,6 +119,24 @@ describe("FIX-688: lazy collection accessor", () => {
     expect(get.mock.calls.filter((c) => c[2] === "lz/a").length).toBe(0); // served from warmed cache
   });
 
+  it("list(prefix) reads only that prefix from the store, never the whole collection", async () => {
+    // Many ledgers share one lazy collection, each under its own key prefix. A
+    // read of one must not load every other ledger's rows.
+    const { stores, getByPrefix } = spyStores();
+    await stores.resourceState.set("session", "s1", "lz/a/1", { n: 1 }, "any");
+    await stores.resourceState.set("session", "s1", "lz/b/1", { n: 2 }, "any");
+    const ctx = await ctxFor(stores);
+    getByPrefix.mockClear();
+
+    const listed = await coll(ctx).list("a/");
+    expect(listed.map((r) => r.state.n)).toEqual([1]);
+    expect(getByPrefix.mock.calls.map((c) => c[2])).toEqual(["lz/a/"]);
+
+    // The whole collection is still one read when it is asked for.
+    expect((await coll(ctx).list()).map((r) => r.state.n).sort()).toEqual([1, 2]);
+    expect(getByPrefix.mock.calls.map((c) => c[2])).toEqual(["lz/a/", "lz/"]);
+  });
+
   it("does not resurrect a key deleted while the prefix read was in flight", async () => {
     const { stores } = spyStores();
     await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");

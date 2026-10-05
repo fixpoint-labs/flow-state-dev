@@ -202,6 +202,18 @@ export interface ResourceBackedOptions {
    * is durable, so no other backing can host one.
    */
   immutableAssignee?: boolean;
+  /**
+   * Hold only the tasks under this key prefix of the collection, so many
+   * ledgers can share one declared collection and never see each other's
+   * tasks. A task is stored at `<keyPrefix>/<taskId>`, and the ledger reads
+   * the collection with `list("<keyPrefix>/")`, so the bound is applied where
+   * the collection is asked rather than after a full listing. The trailing
+   * slash is what keeps `a` apart from `ab`.
+   *
+   * One or more key segments, with no leading or trailing `/`. Omitted, the
+   * ledger is the whole collection, keyed by task id, as before.
+   */
+  keyPrefix?: string;
 }
 
 /**
@@ -237,7 +249,8 @@ function readTaskState<TInput, TOutput>(
  * per-request and per-scope-instance isolation for free — two sessions,
  * users, or orgs holding a same-named board get separate records. A string
  * key would merge them. Same keying as `skills/seeding.ts` and
- * `skills/internal/delegation-memo.ts`.
+ * `skills/internal/delegation-memo.ts`. Within one instance, a record per
+ * `keyPrefix`: two prefixes of one collection are two ledgers.
  *
  * A `WeakMap` because the record's lifetime is the collection handle's: when
  * the execution context is collected, so is the record. Nothing to clear on
@@ -246,18 +259,46 @@ function readTaskState<TInput, TOutput>(
  */
 const taskSets = new WeakMap<
   ResourceCollectionRef<JsonObject>,
-  Map<string, ResourceRef<JsonObject>>
+  Map<string, Map<string, ResourceRef<JsonObject>>>
 >();
 
-/** Get (or create) the task-set record shared across resolutions of `collection`. */
+/**
+ * Get (or create) the task-set record shared across resolutions of
+ * `collection` at one key prefix (`""` for the whole collection). Two prefixes
+ * of one collection are two ledgers, so they hold two records.
+ */
 function sharedTaskSet(
-  collection: ResourceCollectionRef<JsonObject>
+  collection: ResourceCollectionRef<JsonObject>,
+  keyPrefix: string
 ): Map<string, ResourceRef<JsonObject>> {
-  const existing = taskSets.get(collection);
+  let byPrefix = taskSets.get(collection);
+  if (byPrefix === undefined) {
+    byPrefix = new Map();
+    taskSets.set(collection, byPrefix);
+  }
+  const existing = byPrefix.get(keyPrefix);
   if (existing !== undefined) return existing;
   const created = new Map<string, ResourceRef<JsonObject>>();
-  taskSets.set(collection, created);
+  byPrefix.set(keyPrefix, created);
   return created;
+}
+
+/**
+ * The listing prefix and the key builder for a ledger's `keyPrefix`, after
+ * refusing one that cannot be a run of key segments.
+ */
+function keyPrefixOf(keyPrefix: string | undefined): {
+  listPrefix: string | undefined;
+  keyOf: (taskId: string) => string;
+} {
+  if (keyPrefix === undefined) return { listPrefix: undefined, keyOf: (taskId) => taskId };
+  if (keyPrefix.length === 0 || keyPrefix.startsWith("/") || keyPrefix.endsWith("/")) {
+    throw new Error(
+      `[tasks] keyPrefix "${keyPrefix}" must be one or more key segments with no leading ` +
+        `or trailing "/" — tasks are stored at "<keyPrefix>/<taskId>".`
+    );
+  }
+  return { listPrefix: `${keyPrefix}/`, keyOf: (taskId) => `${keyPrefix}/${taskId}` };
 }
 
 /**
@@ -348,11 +389,12 @@ function sharedTaskSet(
  */
 async function reconcileTaskSet(
   mirror: Map<string, ResourceRef<JsonObject>>,
-  collection: ResourceCollectionRef<JsonObject>
+  collection: ResourceCollectionRef<JsonObject>,
+  listPrefix: string | undefined
 ): Promise<void> {
   // The exact entries this pass is allowed to retire, captured before the read.
   const retirable = new Map(mirror);
-  const listed = await collection.list();
+  const listed = await (listPrefix === undefined ? collection.list() : collection.list(listPrefix));
 
   const stored = new Set<string>();
   for (const ref of listed) {
@@ -397,8 +439,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   // Construction still hydrates (the only async step) and reconciles the
   // record against the store in both directions — see `reconcileTaskSet` for
   // why a plain merge and a plain replace are each wrong.
-  const mirror = sharedTaskSet(options.collection);
-  await reconcileTaskSet(mirror, options.collection);
+  const { listPrefix, keyOf } = keyPrefixOf(options.keyPrefix);
+  const mirror = sharedTaskSet(options.collection, options.keyPrefix ?? "");
+  await reconcileTaskSet(mirror, options.collection, listPrefix);
 
   const emit = createTaskChangeEmitter<TInput, TOutput>(
     options.collectionId,
@@ -564,7 +607,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     async addTask(init) {
       const task = buildInitialTask<TInput, TOutput>(init, now());
       const created = await options.collection.create(
-        task.id,
+        keyOf(task.id),
         task as unknown as JsonObject
       );
       mirror.set(task.id, created);
@@ -577,7 +620,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       for (const init of inits) {
         const task = buildInitialTask<TInput, TOutput>(init, now());
         const createdRef = await options.collection.create(
-          task.id,
+          keyOf(task.id),
           task as unknown as JsonObject
         );
         mirror.set(task.id, createdRef);

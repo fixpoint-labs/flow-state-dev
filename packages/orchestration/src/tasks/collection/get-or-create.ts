@@ -95,6 +95,12 @@ export interface ResourceBackingSpec extends CommonOptions {
    * construction on any other.
    */
   immutableAssignee?: boolean;
+  /**
+   * Hold only the tasks under this key prefix of `collection`, so several
+   * ledgers share one declared collection without seeing each other's tasks.
+   * See `ResourceBackedOptions.keyPrefix`.
+   */
+  keyPrefix?: string;
 }
 
 export type GetOrCreateTaskCollectionOptions =
@@ -196,6 +202,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     now: options.now,
     claimIdentity,
     immutableAssignee: options.immutableAssignee,
+    keyPrefix: options.keyPrefix,
   });
 }
 
