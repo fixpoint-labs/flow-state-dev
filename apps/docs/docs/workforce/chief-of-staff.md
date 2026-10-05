@@ -49,8 +49,8 @@ import {
   createSeatHireCapability,
   createWorkforceCapability,
   defineAgentWorkerFlow,
-  defineMailboxInventoryCollection,
   HIRED_ROSTER_RESOURCE,
+  projectWritesMailboxInventory,
   SEAT_INVENTORY_RESOURCE,
   type HireOptions,
 } from "@flow-state-dev/workforce";
@@ -74,11 +74,12 @@ const seatHire = createSeatHireCapability({
   refuseRosterAdmin: true,
 });
 
+// `roster.mailboxes` must already be final here (see the order below).
 kinds.agent = defineAgentWorkerFlow({
   uses: [
     defineCapability({
       name: "mailbox-inventory",
-      resources: { mailboxInventory: defineMailboxInventoryCollection() },
+      resources: { mailboxInventory: projectWritesMailboxInventory },
     }),
     createWorkforceCapability({
       roster: { workers: roster.workers, mailboxes: roster.mailboxes },
@@ -115,7 +116,9 @@ useFlowState(app);
 await useRegistry(app);
 ```
 
-`createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. The small `mailbox-inventory` capability declares the mailbox inventory as a resource on the kind, and passing its key, `mailboxInventory` here, as `inventory.mailboxes` lets `discover` answer who is in a mailbox too. `mailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can answer in a mailbox it is a member of. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
+`createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. The small `mailbox-inventory` capability declares the mailbox inventory as a resource on the kind. It uses `projectWritesMailboxInventory`, the same declaration the [project tools](#starting-projects) use, so you can add them without touching it. Passing its key, `mailboxInventory` here, as `inventory.mailboxes` lets `discover` answer who is in a mailbox too. `mailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can answer in a mailbox it is a member of. A mailbox counts it as a member only when its `MAILBOX.md` `members:` lists it, by its own name for an org-level worker, as in `members: [eng.em, eng.coder, chief-of-staff]`. A post from a worker the mailbox doesn't list is refused with `author-not-a-member`. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
+
+Build in this order: (1) finish any edits or additions to the mailbox records, (2) the `agent` kind above, which `hireWorkforce(workers, { kinds })` hires the chief of staff onto, (3) the mailbox kind with `wakeMemberSeats(seats)`, after `hireWorkforce` because it takes the hired workers, (4) `mailboxInstances`, last. `createWorkforceCapability` keeps the mailbox records it is given, so a record changed after step 2 never reaches `discover`. Pass `createWorkforceCapability` the same mailbox records you pass `mailboxInstances`, so `discover` answers from the mailboxes the app actually opens.
 
 `hire` asks the model for a kind, a seat id, and `settings`, but doesn't say which kinds require which settings. The chief of staff learns that from its `WORKER.md` body, so name each required setting and its value there, as the example file does for a `coder`. A hire missing a required setting is refused with the setting named and nothing written, so the model can call `hire` again with it.
 
@@ -149,7 +152,7 @@ member; put anyone else they name in `members`. Add workstreams only when they
 name them, by full mailbox id.
 ```
 
-If the kind's `discover` reads mailboxes too, declare its mailbox inventory with `projectWritesMailboxInventory`, as that section shows. The project tools read the same collection, and the kind refuses a second declaration of it.
+The `mailbox-inventory` capability from [Adding one](#adding-one) already declares the inventory with `projectWritesMailboxInventory`. The project tools read that same collection, and the kind refuses a second declaration of it, such as a `defineMailboxInventoryCollection()` of your own.
 
 A workstream belongs to one project at most. When the person asks for one another project holds, the tool is refused, and the chief of staff can tell them which project has it.
 
