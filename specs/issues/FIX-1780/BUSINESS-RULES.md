@@ -6,10 +6,10 @@
 
 | | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | A worker files a task through its `fileTask` tool | The task carries FIX-1779's `filingWorker` and, beside it, the conversation the request was dispatched from, read from the runtime's dispatch record. The owner FIX-1777 records plays no part | Goal leg a |
-| BR-2 | A client, a post door or a host files a task (no dispatch record) | No filer is recorded. The task runs as today and nobody is woken when it ends | Goal leg e |
-| BR-3 | A request body carries a field that looks like a filer or a dispatch record | It is ignored. Only the runtime's own record counts (BP-031) | Unit test on the filer read |
-| BR-4a | The mailbox refuses a worker's filing (not a member, a list it doesn't hold, a name nobody holds) | One notice: `refused`, with the reason, into the conversation the filing came from. No task exists | Goal leg f |
+| BR-1 | A worker files a task through its `fileTask` tool | The task carries FIX-1779's `filingWorker` and, beside it, the conversation it filed from (`filingSession`, with its lineage), recorded at the same point and from the same runtime context as `filingWorker`. The owner FIX-1777 records plays no part | Goal leg a |
+| BR-2 | A client, a post door or a host files a task (not a worker's tool) | No filer is recorded. The task runs as today and nobody is woken when it ends | Goal leg e |
+| BR-3 | A tool input or a request body carries a field that looks like a filer or a conversation | It is ignored. Only the runtime context of the filing turn counts (BP-031) | Unit test on the filer record |
+| BR-4a | A worker's filing is refused (a list the mailbox doesn't hold, a name nobody holds, a worker the list doesn't name) | No notice. The refusal is `fileTask`'s tool error in the same turn (FIX-1779 BR-16, FIX-1778 BR-11 and BR-11a). No task exists, so there is nothing to follow | FIX-1779's tests |
 | BR-4 | A task stored before this shipped, or with no filer | Read through one `== null` guard: no notice (BP-030) | Unit test |
 
 ## When the filer is woken
@@ -18,7 +18,7 @@
 |---|---|---|---|
 | BR-5 | An attempt completes | One notice: the task, `completed`, the worker that ran it, and its output summary | Goal leg a |
 | BR-6 | An attempt fails and attempts are left | No notice. The task goes back to *pending* as today | Goal leg b (no notice after attempt 1) |
-| BR-6a | A task went back to *pending* after a failed attempt | The list runs again, so the next attempt happens without anyone else running it. Without this a retry would wait for good and the filer would never hear | Goal leg b reaches attempt 2 |
+| BR-6a | A task went back to *pending* after a failed attempt | The list runs again, so the next attempt happens without anyone else running it. Without this a retry would wait for good and the filer would never hear. This issue owns it: FIX-1777 leaves a re-pend waiting (its BR-12). A refused hand-over spends an attempt (FIX-1778 BR-4) and re-runs the same way | Goal legs b and f reach attempt 2 |
 | BR-7 | The last attempt fails, or the hand-over is refused on every attempt | One notice: `errored`, with the error or the refusal | Goal legs b and f |
 | BR-8 | The worker parks the task on a question or a review (`awaitReview`) and returns | One notice: `parked`, with the question. A park answered and then completed gives a second notice, `completed`. A later park of the same task is a new notice | Goal leg c |
 | BR-8b | The run stops on an approval (`ctx.suspend`), or the harness door parks it for a person's turn | No notice. Those are not covered here ([follow-ups](PLAN.md#follow-ups)) | Unit test |
@@ -45,10 +45,10 @@
 | BR-16b | Anyone moves a *pending* or *parked* task on a list that hands tasks over, through `assignTask` | Allowed. The freeze on such a list holds only while an attempt holds the task: an *in progress* task still declines `immutable-assignee` | Orchestration test |
 | BR-17 | `reassignTask` or `cancelTask` names a task that is *in progress* | Refused, `task-running`. Nothing changes | Unit test |
 | BR-18 | It names a task that is *completed* or *cancelled* | Refused with the status. Nothing changes | Unit test |
-| BR-19 | `reassignTask` names a worker nobody holds | Refused by FIX-1778's lookup. The task is not touched | Unit test |
+| BR-19 | `reassignTask` names a worker nobody holds or two workers hold, or (under FIX-1778's D3 option (ii)) a worker the list doesn't name | Refused through FIX-1778's filing check (its BR-12a), naming the worker, or the list's workers. The task is not touched. If Jake picks option (i), the list check goes and the rest stay | Unit test |
 | BR-20 | The same work has been reassigned three times | The fourth `reassignTask` is refused, `reassign-limit`. The coordinator must tell the person | Unit test |
 | BR-21 | `cancelTask` names a *pending*, *parked* or *blocked* task | It is cancelled with the given reason, through the board's own cancel verb. No notice (BR-9) | Unit test |
-| BR-22 | Two reassigns of one task race | On a waiting task the board's guarded write lets one land, and the other sees the new assignee. On an *errored* task a revision-guarded mark on the old row lets one file, and the other files nothing. The move cap holds under the same race | Unit test |
+| BR-22 | Two reassigns of one task race | On a waiting task the board's guarded write lets one land, and the other sees the new assignee. On an *errored* task a revision-guarded mark on the old row lets one file, and the other files nothing. The move cap holds under the same race. Each move re-checks the status in its guarded write, so a claim that lands first makes the move refuse `task-running`; an errored task's copy is filed only after its mark lands | Unit test |
 
 ## What this issue owns
 

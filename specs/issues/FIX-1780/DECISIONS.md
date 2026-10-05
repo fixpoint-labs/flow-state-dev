@@ -16,7 +16,7 @@ flowchart TD
   I --> D3["D3 · completed, failed for good, parked"]
   D3 -.->|"rejected"| X3["every status change<br/>a turn per retry"]
   I --> E1["generic settle hook on the task list"]
-  I --> E2["filer read from the runtime's dispatch record"]
+  I --> E2["filer recorded from the filing turn"]
   I --> E3["running tasks are refused"]
 ```
 
@@ -67,9 +67,10 @@ It comes down to having a next step: a retry already has one, so a turn spends m
   run after an attempt's result is recorded, inline or handed off. It names no worker. Workforce
   passes the step that wakes the filer (Jake's layer rule; tenet 5: the hook sits where every
   attempt's end already passes).
-- **Who filed is read from the runtime's record of the dispatch.** The request host gains one
-  read, the session that dispatched this request, taken from the stamp the runtime writes and
-  never from a request body (BP-031). A task filed by a client has no such stamp and no filer.
+- **Who filed is recorded from the filing turn.** `fileTask` answers in the same turn (FIX-1779
+  returns its refusals as tool errors), so the turn that files knows its own session and lineage.
+  They are recorded beside `filingWorker`, from the runtime context, never from tool input
+  (BP-031). A task filed by a client has no filing turn and no filer. No engine change.
 - **The filer is recorded on the task when it is filed**, as a coordination record: FIX-1779's
   `filingWorker` (the worker's name) and, added here, the conversation it filed from. It is not the
   task's owner, which FIX-1777 records for the claim and the bill; the notice never reads the owner. The delivery
@@ -79,14 +80,16 @@ It comes down to having a next step: a retry already has one, so a turn spends m
   same entry.
 - **A retry is run again.** Under FIX-1777 a task that goes back to *pending* waits for the next run
   of its list, so a failure with attempts left would never reach its last attempt and the filer
-  would never hear. The same step that sends notices asks the list to run again on a retry, unless
-  FIX-1777 covers it first.
-- **A refused filing is a notice too.** The issue's "a refusal isn't reported": when the mailbox
-  refuses a worker's filing after the dispatch, the worker is told in the same way, with ending
-  `refused`. No task exists, so nothing else changes.
+  would never hear. The same step that sends notices asks the list to run again on a retry. FIX-1777
+  leaves a re-pend waiting, so this issue owns it. A refused hand-over spends an attempt
+  (FIX-1778 BR-4) and re-runs the same way.
+- **A refused filing is the tool's answer, not a notice.** FIX-1779 and FIX-1778 return every
+  filing refusal as a tool error in the same turn, so the worker already hears it. No task exists,
+  so there is nothing to follow.
 - **Reassign and cancel act only on a task that is not running.** A running task is refused with
   its status; stopping one is FIX-1659's. Both go through the board's own `assignTask` and
-  `cancelTask`, not a parallel write.
+  `cancelTask`, not a parallel write. The new worker passes the same check as a filing (FIX-1778
+  BR-12a), so a move can't name a worker the list wouldn't take.
 - **Reassign is capped at three moves for one piece of work.** The fourth is refused, so a
   coordinator that keeps failing must tell the person. A loop of paid runs is the failure a cap
   prevents.
@@ -114,9 +117,6 @@ None.
   worker that parks through `awaitReview` and returns is seen there as `parked`. A run that stops on
   `ctx.suspend`, or the harness door's turn park, does not pass the recorders.
 - **Task change items reach only the writer's session.** Read off `tasks/collection/get-or-create.ts`.
-- **The runtime already keeps a trusted record of who dispatched a request**, used today only for
-  `{ from: true }` replies (`engine/src/execution/dispatch-metadata.ts`). It holds the sender's
-  session and lineage, not its flow.
 - **A notice can cross flows.** A `{ id }` dispatch into another flow's session is supported when
   user, tenant and organization agree (`engine/src/context/create-request-host.ts`).
 
@@ -129,3 +129,7 @@ None.
   `assignTask`, with the hand-over freeze narrowed to tasks under an attempt; only a failed task
   gets a copy. Because the FSD Architect showed cancel-and-recreate is what FIX-949 removes and the
   board already has the verb ([#2758](https://github.com/fixpoint-labs/flow-state-dev/pull/2758)).
+- **Aligned with the siblings** — a refused filing is `fileTask`'s tool error, as FIX-1779 and
+  FIX-1778 have it, so the `refused` notice and the engine read for the sender went; the filing
+  turn records its own session. The re-run on a retry is this issue's outright, and a move passes
+  FIX-1778's filing check. From the FSD Architect's sibling check on #2758.

@@ -32,8 +32,9 @@ goes after FIX-1779's text and assumes it.
 > turn, the way a mailbox post does, so it is never dropped.
 >
 > Only a worker's filing is followed. A task filed by a client, a post, or your own host code has
-> no filer, and nobody hears when it ends. Who filed is taken from the runtime's own record of
-> the call, so a request can't name somebody else's conversation.
+> no filer, and nobody hears when it ends. Who filed is recorded by the runtime when the tool
+> runs, so a tool call can't name somebody else's conversation. A filing that is refused never
+> becomes a task: the tool says why in the same turn.
 >
 > The built-in `agent` kind hears these turns.
 >
@@ -47,8 +48,9 @@ goes after FIX-1779's text and assumes it.
 > - `reassignTask` gives a task to another worker. A task that hasn't ended keeps its id and
 >   moves to the new worker (a parked one goes back to waiting, and its question is withdrawn). A
 >   task that failed stays failed, and a new task that names it is filed for the new worker. Either
->   way the list starts it. After three moves of the same work the tool refuses, so a worker that
->   keeps failing has to say so instead.
+>   way the list starts it. The new worker must be one the list would take a filing for. After
+>   three moves of the same work the tool refuses, so a worker that keeps failing has to say so
+>   instead.
 > - `cancelTask` cancels a task with a reason, on any list. A worker that works one list already
 >   has that list's own cancel tool; this one is for a worker that files across lists.
 >
@@ -108,6 +110,5 @@ The page does not mention mailbox posts today. Add one paragraph:
 
 ## Not changed
 
-- The request host's new read (S2) is an engine contract, documented in
-  `docs/architecture/dispatched-work.md` beside `parentTask()`, not on the site.
+- No engine contract changes, so `docs/architecture/dispatched-work.md` stays as it is.
 - "What mailboxes do not do yet" has no line this removes.
