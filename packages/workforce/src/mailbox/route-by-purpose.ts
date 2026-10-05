@@ -39,7 +39,7 @@
  */
 
 import { choice, evaluator, handler, sequencer } from "@flow-state-dev/core";
-import type { EvaluationModel, FlowInstance } from "@flow-state-dev/core/types";
+import type { EvaluationModel } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { seatDescription } from "../seat-description";
 import { boundMailbox } from "./mailbox-flow";
@@ -56,7 +56,7 @@ import {
   type MailboxRouteRecord,
   type RouteDecision
 } from "./mailbox-route";
-import { hearingSeatsById, reachableSeat } from "./wake-member-seats";
+import { hearingPerPost, hearingSeatsById, reachableSeat, type MailboxWorkerSource } from "./wake-member-seats";
 
 /** Options for {@link routeByPurpose}. */
 export interface RouteByPurposeOptions {
@@ -110,20 +110,22 @@ function said(line: { author?: string; principal: string; body: string }) {
 /**
  * Build a mailbox kind's route from the seats the host hired.
  *
- * @param seats The seats `hireWorkforce` returned, the same ones passed to
- *   `wakeMemberSeats`. Only those that hear posts can be routed to.
+ * @param seats The seats `hireWorkforce` returned, the same list or getter
+ *   passed to `wakeMemberSeats`. Only those that hear posts can be routed to.
+ *   A getter is read once per post, the same read the wake makes for it, and
+ *   the route's `members` reads it again each time they are asked for.
  * @param options `model`: the evaluation model the one call runs on. Required;
  *   the package names no default.
  * @returns The route, for `defineMailboxFlow({ route })`.
  */
-export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByPurposeOptions): MailboxRoute {
+export function routeByPurpose(seats: MailboxWorkerSource, options: RouteByPurposeOptions): MailboxRoute {
   if (options?.model === undefined) {
     throw new Error(
       "routeByPurpose needs a `model`: the evaluation model the route's one call runs on. " +
         "The package names no default."
     );
   }
-  const hearing = hearingSeatsById(seats);
+  const hearingFor = hearingPerPost(seats);
 
   /** The members this caller can route to, the options, and whether the post's holder is one of them. */
   const readCase = handler({
@@ -136,6 +138,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
       // seat hired at runtime has none to pick by.
       const reachable: string[] = [];
       const options: Record<string, string> = {};
+      const hearing = hearingFor(ctx);
       for (const member of boundMailbox(ctx.session.state)?.members ?? []) {
         const seat = reachableSeat(hearing.get(member) ?? [], ctx);
         if (seat === undefined) continue;
@@ -233,7 +236,14 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
     .step(readCase)
     .step(decide);
 
-  return { members: [...hearing.keys()].sort(), [ROUTE_BLOCK]: resolve };
+  // A list's members are fixed now; a getter's are read when asked for.
+  const fixed = typeof seats === "function" ? undefined : [...hearingSeatsById(seats).keys()].sort();
+  return {
+    get members() {
+      return fixed ?? [...hearingSeatsById(typeof seats === "function" ? seats() : seats).keys()].sort();
+    },
+    [ROUTE_BLOCK]: resolve
+  };
 }
 
 /** Where the post goes, given the case and what the evaluator step left. */

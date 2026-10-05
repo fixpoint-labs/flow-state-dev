@@ -54,7 +54,7 @@ export {
 
 export { taskListWorkers } from "./mailbox-membership";
 
-export { wakeMemberSeats, type WakeMemberSeatsOptions } from "./wake-member-seats";
+export { wakeMemberSeats, type MailboxWorkerSource, type WakeMemberSeatsOptions } from "./wake-member-seats";
 
 export { routeByPurpose, type RouteByPurposeOptions } from "./route-by-purpose";
 
