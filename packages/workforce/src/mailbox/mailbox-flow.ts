@@ -1520,14 +1520,21 @@ function membershipEntriesFor(kind: string, boardIds: readonly string[], invento
     next: (current: MailboxSessionState, lists: readonly string[]) => MembershipFields | undefined,
     removed: readonly string[]
   ) => {
-    let written = changeable(ctx);
-    await ctx.session.atomicState((state) => {
-      // Fresh on every run, including the re-run a version conflict makes.
-      const current = boundMailbox(state) ?? written;
-      const fields = next(current, listsHeld(mailboxBoardNamesFor(ctx.session.identity.id, boardIds), current));
-      written = fields === undefined ? current : { ...current, ...fields };
-      return fields ?? {};
-    });
+    const opened = changeable(ctx);
+    const written =
+      (await withOutcome(
+        (mutator: (state: Readonly<Record<string, unknown>>) => Partial<Record<string, unknown>>) =>
+          ctx.session.atomicState(mutator),
+        (state: Readonly<Record<string, unknown>>) => {
+          // Fresh on every run, including the re-run a version conflict makes.
+          const current = boundMailbox(state) ?? opened;
+          const fields = next(current, listsHeld(mailboxBoardNamesFor(ctx.session.identity.id, boardIds), current));
+          return {
+            state: fields ?? {},
+            result: fields === undefined ? current : { ...current, ...fields }
+          };
+        }
+      )) ?? opened;
     await publish(ctx, written, removed);
     return { members: written.members };
   };
