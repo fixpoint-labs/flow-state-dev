@@ -34,7 +34,7 @@ flowchart LR
 
 | PR | Deliverables | Depends on |
 |---|---|---|
-| PR 1 | S1–S6 and S11, with Workforce and orchestration unit tests for BR-5–BR-11, BR-18, BR-19 | FIX-1778's routing, FIX-1779's `taskListWorkers`, and FIX-1780's S5a (BR-16b) (stacked on their PRs if still open) |
+| PR 1 | S1–S6 and S11, with Workforce and orchestration unit tests for BR-5–BR-11, BR-18, BR-19 | FIX-1778's routing ([#2769](https://github.com/fixpoint-labs/flow-state-dev/pull/2769)), FIX-1779's `taskListWorkers`, and FIX-1780's S5a (BR-16b) (stacked on their PRs if still open) |
 | PR 2 | S7–S10, the goal checks with their control | PR 1, as a GitHub stack |
 
 **Order with FIX-1779 for who works a list.** FIX-1779 lands `taskListWorkers` first, returning
@@ -98,7 +98,7 @@ If it doesn't, stop and raise it; don't add per-door hooks.
 
 ## At implement time
 
-- Route through FIX-1778's pins ([#2757](https://github.com/fixpoint-labs/flow-state-dev/pull/2757)): its one worker lookup (name to flow id, board aliases win), the `task` dispatcher's per-task `flowKind` at `defaultWorker`, and the task door `work`. Whichever of the two PRs lands first builds the lookup.
+- Route through FIX-1778's pins ([#2769](https://github.com/fixpoint-labs/flow-state-dev/pull/2769), which supersedes [#2757](https://github.com/fixpoint-labs/flow-state-dev/pull/2757)): the wake resolves a task's worker with `createWorkerLookup({ instanceAt, declared }).find` (name to flow id, board aliases win), the `task` dispatcher's per-task `flowKind` at `defaultWorker`, and the task door `WORKER_TASK_ENTRY` (`work`). PR 1 stacks on #2769 if it is still open.
 - Confirm the hand-off from the hook lands as its own request under the filer's identity
   (dispatch inherits the sender's principal).
 - Confirm a run started by the hook doesn't re-trigger itself on its own writes beyond the adds it
