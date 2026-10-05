@@ -81,6 +81,7 @@ session written before this change.
 | Read | `taskListWorkers(ctx, mailboxId, list)` | FIX-1777's wake and FIX-1774's view call it |
 | Run-time list name | `tasks` | The coordinator files on it without asking |
 | Inventory field | `origin: "runtime"` | Persisted, and `discover` reads it |
+| Task metadata | `filingWorker` | FIX-1780 reads it to report back; distinct from FIX-1777's owner |
 
 Everything else is yours to name.
 
