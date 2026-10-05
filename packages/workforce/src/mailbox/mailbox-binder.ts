@@ -898,9 +898,11 @@ function talkKindProblem(kinds: Record<string, MailboxKind>, facts: TalkTemplate
  * Built from named keys only, which is why an undeclared key cannot reach
  * state even though the session route would not refuse one: there is nowhere
  * for it to go. `resourceId` is a talk session's alone, and a declared
- * mailbox's state carries no such key.
+ * mailbox's state carries no such key. Nor does it carry `origin`,
+ * `taskLists` or `workersByList`: a file's mailbox reads them as `null`
+ * until a membership change writes them.
  */
-function stateFor(manifest: MailboxManifest): Omit<MailboxSessionState, "resourceId"> {
+function stateFor(manifest: MailboxManifest): Pick<MailboxSessionState, "members" | "instructions" | "transcript"> {
   const declared = manifest.declared;
   const charter =
     manifest.body.trim().length > 0
