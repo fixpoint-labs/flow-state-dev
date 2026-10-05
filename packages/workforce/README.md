@@ -1432,7 +1432,8 @@ back to the built-in. The `kinds` map is the whole registration surface; there i
 `createMailboxSetupCapability({ open, workers })` gives a coordinator worker four catalog tools:
 `setUpMailbox`, `subscribeWorkers`, `unsubscribeWorkers` and `fileTask`. A worker reaches them
 only by naming them in `tools:`. `open` is the host's opener, `openMailboxAtRunTime({ client,
-userId, run, teams })`; `workers` is the same list or function the wake reads.
+userId, run, teams })`, or a function returning it when the opener is built after the kinds;
+`workers` is the same list or function the wake reads.
 
 ```ts
 const mailboxSetup = createMailboxSetupCapability({
