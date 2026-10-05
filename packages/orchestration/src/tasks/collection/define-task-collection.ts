@@ -123,7 +123,8 @@ export function defineTaskCollection<
 }
 
 /**
- * Ledgers whose assignee is frozen, keyed by the declaration itself (FIX-982).
+ * Ledgers whose assignee is frozen while an attempt holds a task, keyed by the
+ * declaration itself (FIX-982; narrowed to `in_progress` by FIX-1780).
  *
  * The policy belongs to the **ledger**, not to a ref. `getOrCreateTaskCollection`
  * builds a fresh wrapper per resolution, so an `immutableAssignee` passed as one

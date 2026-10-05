@@ -404,7 +404,7 @@ The in-process dispatcher applies that policy, and so do queue workers that shar
 
 `defineFlow()` throws for a dispatcher seat whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board hands off to, for a task dispatcher reachable from an action without sitting on a board, for two boards handing off to the same entry, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a handed-off worker's state on the task.
 
-A board with any seat that hands off fixes each task's assignee at admission: `setAssignee` declines with reason `immutable-assignee`. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value declines too.
+A board that hands tasks off fixes a task's assignee while an attempt holds it: `setAssignee` on an *in progress* task declines with reason `immutable-assignee`. A pending, parked or blocked task can change hands. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value follows it too.
 
 ### What the drain reports
 

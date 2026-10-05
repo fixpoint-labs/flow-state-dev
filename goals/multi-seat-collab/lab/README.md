@@ -46,7 +46,7 @@ against what the ledger holds.
 
 - **The two kinds and their bodies.** The worker body parks while the row carries no answer, and
   in finishing files the next desk's row naming the one it finished. A handoff here is that second
-  row — not a status and not a reassignment (the board freezes the assignee, and the body tries
+  row — not a status and not a reassignment (the board freezes the assignee of a running row, and the body tries
   once to move it so a board that ever allowed it would be caught).
 - **The desk → seat map.** The app's, written in the config. Each seat's own `answersFor` line is
   what the check grades against, so the two sources can disagree — which is what `swapped-desks`

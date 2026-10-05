@@ -89,9 +89,9 @@ export interface ResourceBackingSpec extends CommonOptions {
   /** The parameterized resource collection ref. Pattern: `someTopic/{id}`. */
   collection: ResourceCollectionRef<JsonObject>;
   /**
-   * Refuse every `setAssignee` on this collection (FIX-982). Set by a task
-   * board with dispatcher seats, whose child's routing key is derived from the
-   * assignee. Only this backing carries it — a handed-off board is refused at
+   * Refuse `setAssignee` on an `in_progress` task in this collection (FIX-982,
+   * narrowed by FIX-1780). Set by a task board with dispatcher seats, whose
+   * child's routing key is derived from the assignee. Only this backing carries it — a handed-off board is refused at
    * construction on any other.
    */
   immutableAssignee?: boolean;

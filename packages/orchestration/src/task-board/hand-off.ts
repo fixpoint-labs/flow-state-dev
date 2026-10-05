@@ -199,10 +199,13 @@ export function resolveWorkerSlots(config: {
  * row it verified. So a handed-off row still carries the session of the PARENT
  * that claimed it.
  *
- * The assignee is a sound basis precisely because a hand-off board freezes it:
- * `setAssignee` declines `immutable-assignee` there, since the assignee is what
- * the hand-off is addressed by. So the value this reads cannot move under it,
- * and it survives a restart and a second drain with no run state to rebuild.
+ * The assignee is a sound basis precisely because a hand-off board freezes it
+ * while an attempt holds the task: `setAssignee` declines `immutable-assignee`
+ * on an `in_progress` row, since the assignee is what the hand-off is addressed
+ * by. So for a row a child is running the value this reads cannot move under
+ * it, and it survives a restart and a second drain with no run state to
+ * rebuild. A waiting row can change hands (FIX-1780); this then answers for
+ * the new assignee, which is the worker its next claim hands it to.
  *
  * Only a named seat can hand off — see {@link assertHandOffBoardSupported} —
  * so the floor case the old coordinate walk kept every slot for cannot arise.

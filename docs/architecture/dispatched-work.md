@@ -500,9 +500,12 @@ questions:
 | Liveness conjunct | **yes** — the lease | **no** |
 
 `runsElsewhere` reads the row's `assignee` against the assignees that hand off,
-and that is sound only because a hand-off board freezes the assignee at
-admission (`setAssignee` declines `immutable-assignee`): the value cannot move
-under the predicate, and it survives a restart with no run state to rebuild.
+and that is sound only because a hand-off board freezes the assignee while an
+attempt holds the row (`setAssignee` on an `in_progress` row declines
+`immutable-assignee`): for a row a child is running the value cannot move under
+the predicate, and it survives a restart with no run state to rebuild. A
+waiting row can change hands (FIX-1780); its next claim hands it to the new
+assignee.
 `claimedBy` would not do — the child never claims, so a handed-off row still
 carries the session of the parent that claimed it.
 The run's own coordinate is `run`, which the claim gate writes from inside the
