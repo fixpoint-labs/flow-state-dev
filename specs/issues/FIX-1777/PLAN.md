@@ -103,6 +103,12 @@ If it doesn't, stop and raise it; don't add per-door hooks.
   makes (re-pend is an update, not an add).
 - With a real harness the run's request stays open for the run's length, as Approve's does today.
 
+## Waiting on FIX-1778's open question
+
+FIX-1778 asks Jake whether a task may name a worker the list doesn't name. Under (ii), the
+recommended answer, BR-18 stands as written. Under (i), BR-18's rule and test read "an
+**unassigned** task" goes only to the list's workers, while a named worker anywhere can take one.
+
 ## Follow-ups
 
 - **A failed attempt waits for the next run of its list.** Nothing retries it on its own. Telling

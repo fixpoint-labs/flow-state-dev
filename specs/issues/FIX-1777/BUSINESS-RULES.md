@@ -10,7 +10,7 @@
 | BR-2 | The filer is a coordinator mid-turn | Its filing returns as soon as the task is stored. The turn does not wait for the run | Goal leg a (call returns before the task completes) |
 | BR-3 | The task names a worker (assignee) | It goes to that worker, through FIX-1778's lookup; a board alias wins over the lookup | FIX-1778's checks; leg a's assigned route |
 | BR-4 | The task names no worker, and exactly one worker works the list (BR-18) | It goes to that worker | Leg a's unassigned route |
-| BR-5 | The task names no worker and no worker works the list | The task is filed and waits, and the filing's answer says why. Nothing errors in the filer's turn. A task that names a worker no one holds, or two hold, is refused at filing, and one whose worker was let go after filing fails at hand-over; both are FIX-1778's rules, not this one | Workforce unit test |
+| BR-5 | The task names no worker and no worker works the list | The task is filed and waits, and the filing's answer says why. Nothing errors in the filer's turn. A task that names a worker no one holds, or two hold, is refused at filing, and one whose worker was let go after filing fails at hand-over; both are FIX-1778's rules (its BR-11 and BR-4), not this one | Workforce unit test |
 | BR-6 | A filing adds nothing (the task already existed, or the write was an update) | Nothing runs | Workforce unit test; DevTeam board check, repeat post |
 | BR-7 | The list is a worker's private board, not a mailbox's | As today: nothing runs on add | Workforce unit test (negative) |
 
