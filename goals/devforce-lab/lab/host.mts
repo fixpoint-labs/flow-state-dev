@@ -777,8 +777,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // registry holds when a post arrives — one hired while the Lab runs, or
   // reloaded from the roster at boot — is woken by Workforce's wake when its
   // kind hears posts, and its posts fall to the address map otherwise.
-  const declaredIds = new Set(hired.map((seat) => seat.id));
-  const notHired = (): FlowInstance[] => registered().filter((seat) => !declaredIds.has(seat.id));
+  const declaredIds = new Set(hired.map((worker) => worker.id));
+  const notHired = (): FlowInstance[] => registered().filter((worker) => !declaredIds.has(worker.id));
   const mailboxKind =
     options.mailboxes === undefined
       ? undefined

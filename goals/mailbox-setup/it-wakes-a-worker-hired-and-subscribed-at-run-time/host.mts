@@ -112,9 +112,9 @@ export async function startHost(
   let opener: RunTimeMailboxOpener | undefined;
 
   const kinds: NonNullable<HireOptions["kinds"]> = {};
-  const seatHire = createSeatHireCapability({
+  const hireTools = createSeatHireCapability({
     kinds,
-    register: (seat, pin) => state!.register(seat, { pin }),
+    register: (worker, pin) => state!.register(worker, { pin }),
     unregister: (id) => state!.unregister(id),
     kindAt: (id) => registry?.get(id)?.kind
   });
@@ -128,7 +128,7 @@ export async function startHost(
     },
     workers: live
   });
-  kinds.agent = defineAgentWorkerFlow({ uses: [seatHire, mailboxSetup] });
+  kinds.agent = defineAgentWorkerFlow({ uses: [hireTools, mailboxSetup] });
 
   const declared = hireWorkforce(workers, { kinds });
   const notify = wakeMemberSeats(wake === undefined ? live : wake(declared, live));
@@ -151,7 +151,7 @@ export async function startHost(
   // The hires an earlier run made, back at their addresses.
   const reload = await reloadHiredSeats({ stores: runtime.stores, orgIds: [ORG_ID], kinds });
   if (reload.problems.length > 0) throw new Error(`hires did not reload: ${reload.problems.join("; ")}`);
-  for (const seat of reload.seats) state.register(seat, { pin: seat.ownerPin ?? { orgId: ORG_ID } });
+  for (const worker of reload.seats) state.register(worker, { pin: worker.ownerPin ?? { orgId: ORG_ID } });
 
   const router = await state.getRouter();
 
