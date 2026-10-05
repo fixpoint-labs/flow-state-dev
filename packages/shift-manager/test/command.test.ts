@@ -205,6 +205,15 @@ describe("the shift-manager command", () => {
     expect((await fetch(`${origin}/api/flows`)).status).toBe(200);
   }, 180_000);
 
+  it("refuses --dev on a network host before it listens, whatever pages it serves", async () => {
+    for (const pages of [[], ["--assets", assets]]) {
+      const app = run(["--config", lab, "--port", "0", "--no-open", "--dev", "--host", "0.0.0.0", ...pages], { bare: true });
+      expect(await app.exited).toBe(3);
+      expect(app.output()).toMatch(/Refusing --watch on 0\.0\.0\.0/);
+      expect(app.output()).not.toMatch(/App:\s+http/);
+    }
+  }, 60_000);
+
   it("closes both servers on SIGTERM and exits 0, leaving nothing in its temp directory (BR-26)", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "sm-cmd-tmp-"));
     const app = run(["--config", lab, "--shift", "night"], { env: { TMPDIR: tmp, TMP: tmp, TEMP: tmp } });

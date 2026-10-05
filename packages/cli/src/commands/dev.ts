@@ -465,6 +465,13 @@ const WATCH_SHUTDOWN_GRACE_MS = 1_000;
  * The runtime waits up to its drain budget (30 s by default) for runs still
  * going, and a held run would hold every restart that long. A restart is a new
  * process either way; a run cut off here is left as a killed process leaves it.
+ *
+ * A ceiling on the exit rather than a smaller drain budget, because the budget
+ * (`dispatchDrainTimeoutMs`) is fixed when the config builds its FlowState and
+ * `dispose()` takes none. Exiting before the stores close is what a kill does:
+ * a committed SQLite write survives an unclosed connection, and the run left
+ * `in_progress` is marked interrupted by the restarted child's recovery sweep
+ * (`detectInterruptedRequests`) once its heartbeat goes stale.
  */
 const WATCH_SHUTDOWN_CEILING_MS = 3_000;
 

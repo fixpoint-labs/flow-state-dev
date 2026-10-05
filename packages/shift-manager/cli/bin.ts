@@ -12,7 +12,13 @@
  * Everything about serving, the network-bind guards and `--dev`'s restarts is
  * fsdev's. What is Shift Manager's own: the default port, and the shift
  * profile, whose scheme goes to the page as the `shift-manager-color-scheme`
- * meta.
+ * meta. `--assets <dir>` is fsdev's `--app <dir>` under the name this command
+ * has always had: it serves another build of the pages (the tests' stand-in
+ * build, or a person's own) in place of the package's.
+ *
+ * `scripts/checkout.mts` (the repository's `start` and `dev`) reads `--dev`,
+ * `--assets` and `--config` from the same arguments before it hands them here,
+ * so a change to how one of those is spelled is a change to both.
  *
  * Paths resolve from the directory the command was typed in (`INIT_CWD`,
  * which npm and pnpm set for a script, else the working directory), and the
