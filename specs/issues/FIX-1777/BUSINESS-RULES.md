@@ -25,7 +25,7 @@
 
 | | When | Then | Proved by |
 |---|---|---|---|
-| BR-8 | A task is filed | Its owner is the filer's resolved identity, recorded at filing, never taken from input (BP-031). A coordinator filing in a person's session files as that person | Goal leg b |
+| BR-8 | A task is filed | Its owner is the filer's resolved identity, recorded at filing, never taken from input (BP-031). A coordinator filing in a person's session files as that person. The task also carries `filingWorker` (FIX-1779 BR-15), the calling worker's name from the runtime; only the owner decides the claim and the bill | Goal leg b |
 | BR-9 | Two members file on one list at once | Each run is its filer's; a run started by one member's filing claims none of the other's tasks | Goal leg b |
 | BR-10 | A task filed before this change has no owner | It is claimed by the next run of its list, as today, and owned from its first run (BP-030, the old shape tolerated) | Workforce unit test, legacy row |
 
