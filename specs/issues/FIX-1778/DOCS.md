@@ -34,7 +34,7 @@ for themselves. It never finds another member's own workers or another organizat
 your organization's workers and one of your own share a name, the name is refused as ambiguous. Filing a
 task for a name nobody has is refused at once, naming the worker. A task whose worker was fired
 before it ran fails with the worker's name in the error, and no one else runs it. Once filed, a
-task's worker stays fixed.
+task's worker stays fixed while it runs.
 
 A task can name only a worker the list names (its `workedBy:` workers and the ones subscribed to
 it). Subscribe a new hire to the list before you give it a task there. *(Pending the open call in

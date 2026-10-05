@@ -24,7 +24,7 @@ it.** Under D3 (ii), still [open](DECISIONS.md#open), the worker must be one the
 | **The real need** | Jake, on [FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774): "If that means hiring and then routing a task to that new hire, thats what it should do." Then: "The coordinator has a responsibility to route work, hire the workforce as needed, setup mailboxes, and get the work flowing to the right places … Imagine other use cases." The issue's outcome: the worker "is handed the task and starts on it" ([FIX-1778](https://linear.app/fixpoint-labs/issue/FIX-1778)) |
 | **Smaller, and rejected** | "The DevTeam feature board can hand a task to a hired coder." That serves one list and one kind. A hire for any other skill is an `agent` worker, which takes no task today, and every other list would still need its workers wired in code |
 | **Where the boundary sits** | This issue makes a name on a task reach its worker, and makes every worker able to take a task. The coordinator's filing tool is [FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779). Starting the hand-over when a task lands is [FIX-1777](https://linear.app/fixpoint-labs/issue/FIX-1777), which uses this issue's lookup. Whom the coordinator picks, and when it hires, is [FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774) |
-| **Bigger, and not this issue's** | Moving a filed task to another worker ([FIX-1659](https://linear.app/fixpoint-labs/issue/FIX-1659), [FIX-949](https://linear.app/fixpoint-labs/issue/FIX-949)). The coordinator hearing that a task settled ([FIX-1780](https://linear.app/fixpoint-labs/issue/FIX-1780)) |
+| **Bigger, and not this issue's** | Moving a filed task to another worker ([FIX-1780](https://linear.app/fixpoint-labs/issue/FIX-1780) for a waiting task, [FIX-949](https://linear.app/fixpoint-labs/issue/FIX-949)). The coordinator hearing that a task settled (FIX-1780) |
 | **Not done if** | The task names the hire but another worker runs it · the hire's run opens without this task's goal · the run opens and fails at once, and "a run exists" passes · only `coder`-kind workers, or only DevTeam's feature list, can take tasks · a hire works only after a restart, or only if hired before start · a worker kind must re-declare a list to take its tasks · Core or Engine learn the words worker, hire or roster |
 
 ```mermaid
@@ -94,7 +94,7 @@ from. Core and Orchestration carry the questions; Workforce answers both.
 
 - **A list's own names win.** DevTeam's `coder` still reaches `eng.coder` without the lookup.
 - **The hire tool**, and what it registers. Nothing is attached at hire.
-- **A filed task's worker** stays fixed. Moving it is FIX-1659 and FIX-949.
+- **A running task's worker** stays fixed. A waiting task may be moved (FIX-1780); it goes to the new name at its next hand-over, looked up then.
 - **The claim check.** The same attempt, row, status and assignee checks run; only where the row
   is read from changes.
 - **Boards with no fallback** fail an unknown name, as today.

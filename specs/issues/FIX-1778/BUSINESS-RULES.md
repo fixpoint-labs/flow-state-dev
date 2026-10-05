@@ -27,6 +27,7 @@ The cases, written as rules. Each says what a person or the system does and what
 | BR-10 | A door files a task for a name the organization has, or a name a board over that list declares (`coder`) | Filed, as today. A declared name is not looked up | CI · DevTeam `fileTask` |
 | BR-11 | A door files a task for a name nobody holds (for the filer) | Nothing is filed. The answer names the worker and says no worker has that name. Every door asks the same check: FIX-1779's tool and the mailbox's `fileTask` | CI · goal check leg d |
 | BR-11a | Under D3 (ii): a door files a task for a worker the list does not name ([Open](DECISIONS.md#open)) | Nothing is filed. The answer names the list's workers. Checked in the filing door against FIX-1779's read of the list's workers, not in this issue's lookup | CI · FIX-1779 |
+| BR-12a | A waiting task (pending, parked or blocked) is moved to another worker (FIX-1780) | The move goes through the same filing check (BR-10, BR-11, BR-11a). At its next hand-over the new name is looked up; the claim carries the name the row held when it was claimed, and a running task can't be moved (FIX-982) | CI · FIX-1780 |
 | BR-12 | A worker is renamed, fired, or re-hired under the same name after a task was filed | Fired: BR-4. Re-hired under the same name: the new worker gets the task (D2) | CI |
 
 ## Taking a task from any list
