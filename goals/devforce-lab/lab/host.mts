@@ -629,7 +629,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   // Any assignee but the board's own `coder` is looked up per row, in the live
   // registry, so a worker hired a moment ago is found and a fired one is not.
-  // The mailbox's `fileTask` asks the same lookup before it files.
+  // The mailbox's `fileTask` asks the same lookup before it files. `registrar`
+  // is bound further down, before anything files or drains.
   const workerLookup = createWorkerLookup({
     instanceAt: (id) => registrar?.registry.get(id),
     declared: roster.workers.map((worker) => worker.id),

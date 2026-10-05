@@ -26,6 +26,7 @@ import { defineCapability, dispatcher } from "@flow-state-dev/core";
 import type { TaskBinding, TaskFlowTarget } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
+  hasFrozenLedgerAssignee,
   resolveResourceCollection,
   type DefinedTaskCollection,
   type TaskWorkerInput,
@@ -157,7 +158,15 @@ export function ledgerDoor(ledger: FeatureLedger): TaskBinding {
       const collection = resolveResourceCollection(ctx, id);
       return collection === undefined
         ? undefined
-        : getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: id, collection });
+        : getOrCreateTaskCollection({
+            ctx,
+            backing: "resource",
+            collectionId: id,
+            collection,
+            // The EM's board hands rows off, which freezes their assignee; the
+            // door must agree, as every board-mediated path to the ledger does.
+            immutableAssignee: hasFrozenLedgerAssignee(ledger.collection),
+          });
     },
     uses: [defineCapability({ name: `${BOARD_ID}-ledger`, resources: { [ledger.id]: ledger.collection } })],
   });
