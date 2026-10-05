@@ -38,6 +38,9 @@ import {
 } from "../manifest";
 import {
   MAILBOX_KIND,
+  MAILBOX_SET_UP_ACTION,
+  MAILBOX_SUBSCRIBE_ACTION,
+  MAILBOX_UNSUBSCRIBE_ACTION,
   boundMailbox,
   mailboxFlow,
   defineMailboxFlow,
@@ -48,13 +51,17 @@ import {
 } from "./mailbox-flow";
 import {
   MAILBOX_BOARDS_KEY,
+  RUN_TIME_TASK_LIST,
   mailboxBoardId,
   mailboxBoardNameProblem
 } from "./mailbox-board";
+import { validateSegment } from "../loader/segments";
+import type { InventoryActionRequest } from "../inventory/open-inventory";
 import type { MailboxRouting } from "./mailbox-route";
 import { PRE_RENAME_NAMES, preRenameKindNameProblem, preRenameOccupantProblem } from "./pre-rename";
 import { PROJECTS_COLLECTION } from "../projects/collections";
 import {
+  isTemplateMailbox,
   orgTalkTemplateOf,
   registeredTalkTemplate,
   registerTalkTemplate,
@@ -931,7 +938,10 @@ function stateFor(manifest: MailboxManifest): Omit<MailboxSessionState, "resourc
  *   an operator error worth failing loudly on, and state that will not parse is
  *   data rather than an empty slot. Neither is repaired by deleting it.
  */
-type MailboxOccupant = { status: "open" | "empty" } | { problem: string };
+type MailboxOccupant =
+  | { status: "open"; origin: MailboxSessionState["origin"] }
+  | { status: "empty" }
+  | { problem: string };
 
 async function occupantOf(
   client: OpenMailboxesOptions["client"],
@@ -973,7 +983,8 @@ async function occupantOf(
   }
 
   const state = session.state;
-  if (state !== undefined && boundMailbox(state) !== undefined) {
+  const bound = state === undefined ? undefined : boundMailbox(state);
+  if (bound !== undefined) {
     // The binder used to compare the open mailbox's org against one this run
     // asked for. It no longer asks for one (FIX-1442): the organization is the
     // server's to decide from the verified principal, and re-opening is a
@@ -982,7 +993,7 @@ async function occupantOf(
     // out of a client's view of the session — and a client that omits `orgId`
     // from `getSession` would read as "no org" and make the check pass. The
     // user, flow and state checks stay: those are the binder's own.
-    return { status: "open" };
+    return { status: "open", origin: bound.origin };
   }
   if (state === undefined || Object.keys(state).length === 0) return { status: "empty" };
 
@@ -1026,7 +1037,9 @@ const REPAIR_ATTEMPTS = 3;
  *   does reach a mailbox that is already open. The one case not silently left
  *   behind is an open mailbox this principal cannot reach: the same reasoning
  *   makes that unfixable here, so it refuses rather than reporting the mailbox
- *   opened.
+ *   opened. A mailbox set up at run time (`origin: "runtime"`) at a file's id
+ *   is left the same way, and the clash is reported with a `console.warn`
+ *   naming the mailbox, since the file's members never reach it.
  * - **This kind's own empty session** — one the action path minted when
  *   something posted to or read the id before this ran — is adopted: the id is
  *   released and re-created carrying the mailbox's state. Such a session holds
@@ -1067,69 +1080,293 @@ export async function openMailboxes(
     }
 
     const declaredDescription = manifest.declared.description;
-    const open = async (): Promise<void> => {
-      await options.client.createSession({
-        flowKind: selected.kind,
-        userId: options.userId,
-        sessionId: manifest.id,
-        ...(typeof declaredDescription === "string" ? { description: declaredDescription } : {}),
-        state: stateFor(manifest)
-      });
-    };
+    const opened = await openOne(options, {
+      id: manifest.id,
+      kind: selected.kind,
+      description: typeof declaredDescription === "string" ? declaredDescription : undefined,
+      state: stateFor(manifest)
+    });
 
-    const failed = (error: unknown): Error =>
-      new Error(`mailbox "${manifest.id}" could not be opened — ${messageOf(error)}`, {
-        cause: error
-      });
-
-    try {
-      await open();
-    } catch (error) {
-      if (!isAlreadyOpen(error)) throw failed(error);
-
-      let settled = false;
-      for (let attempt = 0; attempt < REPAIR_ATTEMPTS && !settled; attempt += 1) {
-        let occupant: MailboxOccupant;
-        try {
-          occupant = await occupantOf(
-            options.client,
-            manifest.id,
-            selected.kind,
-            options.userId
-          );
-        } catch (readError) {
-          throw failed(readError);
-        }
-
-        if ("problem" in occupant) throw failed(new Error(occupant.problem));
-        if (occupant.status === "open") {
-          // A bound mailbox — theirs or a previous run's — is left exactly as
-          // it is, which is where an unraced 409 lands too.
-          settled = true;
-          break;
-        }
-
-        try {
-          await options.client.deleteSession(manifest.id);
-          await open();
-          settled = true;
-        } catch (repairError) {
-          // A second 409: the id was retaken between the read and the create.
-          // The retaker may be the action path rather than another binder, so
-          // the next round asks who holds it now — swallowing this is how a
-          // mailbox is left unbound with `openMailboxes` reporting success.
-          if (!isAlreadyOpen(repairError)) throw failed(repairError);
-        }
-      }
-
-      if (!settled) {
-        throw failed(
-          new Error(
-            `the id was taken again by an unbound session on each of ${REPAIR_ATTEMPTS} attempts ` +
-              `to open it. Something is racing this binder for the mailbox's session id.`
-          )
-        );
-      }
+    // A file whose id a mailbox set up at run time already holds is an edit
+    // that does not reach it, like any edit to an open mailbox: its members,
+    // charter and tasks stay, and the file's boards are on the kind already.
+    // Reported rather than refused, so one org's data never stops the app.
+    if (opened.status === "open" && opened.origin === "runtime") {
+      console.warn(
+        `[workforce] mailbox "${manifest.id}" has a MAILBOX.md, and a mailbox with that id was set up while ` +
+          "the app ran. The open mailbox is kept as it is: the file's members and charter do not apply to " +
+          "it, and its boards are added. Subscribe the file's members, or rename the file."
+      );
     }
   }
+}
+
+/** One mailbox to open: its id, the kind it runs on, and what its session starts with. */
+interface MailboxToOpen {
+  id: string;
+  kind: string;
+  description: string | undefined;
+  state: Record<string, unknown>;
+}
+
+/**
+ * Open one mailbox's session, or find one already open at its id.
+ *
+ * The 409 handling {@link openMailboxes} documents, written once so a mailbox
+ * set up at run time meets exactly the refusals a file's does: a bound mailbox
+ * is left as it is, this kind's own empty session is adopted, and anything
+ * else holding the id is refused by name.
+ *
+ * @returns `opened` when this call opened it; `open`, with the open mailbox's
+ *   origin, when a mailbox was already open at the id.
+ * @throws With the mailbox named, on anything this cannot answer.
+ */
+async function openOne(
+  options: OpenMailboxesOptions,
+  mailbox: MailboxToOpen
+): Promise<{ status: "opened" } | { status: "open"; origin: MailboxSessionState["origin"] }> {
+  const open = async (): Promise<void> => {
+    await options.client.createSession({
+      flowKind: mailbox.kind,
+      userId: options.userId,
+      sessionId: mailbox.id,
+      ...(mailbox.description === undefined ? {} : { description: mailbox.description }),
+      state: mailbox.state
+    });
+  };
+
+  const failed = (error: unknown): Error =>
+    new Error(`mailbox "${mailbox.id}" could not be opened — ${messageOf(error)}`, {
+      cause: error
+    });
+
+  try {
+    await open();
+    return { status: "opened" };
+  } catch (error) {
+    if (!isAlreadyOpen(error)) throw failed(error);
+  }
+
+  for (let attempt = 0; attempt < REPAIR_ATTEMPTS; attempt += 1) {
+    let occupant: MailboxOccupant;
+    try {
+      occupant = await occupantOf(options.client, mailbox.id, mailbox.kind, options.userId);
+    } catch (readError) {
+      throw failed(readError);
+    }
+
+    if ("problem" in occupant) throw failed(new Error(occupant.problem));
+    // A bound mailbox — theirs or a previous run's — is left exactly as it
+    // is, which is where an unraced 409 lands too.
+    if (occupant.status === "open") return occupant;
+
+    try {
+      await options.client.deleteSession(mailbox.id);
+      await open();
+      return { status: "opened" };
+    } catch (repairError) {
+      // A second 409: the id was retaken between the read and the create.
+      // The retaker may be the action path rather than another binder, so
+      // the next round asks who holds it now — swallowing this is how a
+      // mailbox is left unbound with `openMailboxes` reporting success.
+      if (!isAlreadyOpen(repairError)) throw failed(repairError);
+    }
+  }
+
+  throw failed(
+    new Error(
+      `the id was taken again by an unbound session on each of ${REPAIR_ATTEMPTS} attempts ` +
+        `to open it. Something is racing this binder for the mailbox's session id.`
+    )
+  );
+}
+
+/** What {@link openMailboxAtRunTime} needs: the session API and user `openMailboxes` takes, and two more. */
+export interface OpenMailboxAtRunTimeOptions extends OpenMailboxesOptions {
+  /**
+   * The action door the mailbox's internal entries are run through, as the
+   * app: the same door `openInventory` takes, forwarding `source` into
+   * `runAction`. **It must reject when the action fails**, or a refused
+   * change reads as a done one.
+   */
+  run: (request: InventoryActionRequest) => Promise<unknown>;
+  /**
+   * The organization's teams, by id. A mailbox's id is `<team>.<name>`, as a
+   * file's is, and a team not listed here is refused.
+   */
+  teams: readonly string[];
+}
+
+/** What setting a mailbox up takes. The org is the caller's, never a tool's input. */
+export interface RunTimeMailboxSetUp {
+  /** The organization the mailbox's rows are written in: the calling worker's. */
+  orgId: string;
+  /** The team it belongs to: the first half of its id. */
+  team: string;
+  /** Its name in the team: the second half of its id. Follows a mailbox folder's naming rule. */
+  name: string;
+  /** One line saying what it is for, as a file's `description:`. */
+  description: string;
+  /** Its charter, as a file's body. */
+  charter: string;
+  /** Its first members, already resolved to worker names. */
+  members: readonly string[];
+  /** Record the first members as working its task list. Off by default. */
+  worksTaskList?: boolean;
+}
+
+/** What changing an open mailbox's members takes. */
+export interface RunTimeMembershipChange {
+  /** The organization the rows are written in: the calling worker's. */
+  orgId: string;
+  /** The mailbox, by id. Any mailbox on the built-in kind, a file's included. */
+  mailboxId: string;
+  /** Worker names, already resolved. */
+  workers: readonly string[];
+}
+
+/** The host's door to opening and changing mailboxes while the app runs. */
+export interface RunTimeMailboxOpener {
+  /**
+   * Open `<team>.<name>` with its members and charter, one task list named
+   * `tasks`, and an inventory row marked `origin: "runtime"`.
+   *
+   * @throws Naming the problem, opening nothing, when the team does not exist,
+   *   the name breaks the naming rule, or the id is already a mailbox. A
+   *   mailbox set up at run time whose inventory row is missing gets the row
+   *   written before that refusal, so a retried setup makes it findable.
+   */
+  setUp(request: RunTimeMailboxSetUp): Promise<{ mailboxId: string; taskList: string }>;
+  /** Add workers to a mailbox; with `worksTaskList`, also to its task lists. Twice is a no-op. */
+  subscribe(request: RunTimeMembershipChange & { worksTaskList?: boolean }): Promise<{ members: string[] }>;
+  /** Take workers off a mailbox and its task lists. Their open tasks stay. An emptied mailbox stays open. */
+  unsubscribe(request: RunTimeMembershipChange): Promise<{ members: string[] }>;
+}
+
+/**
+ * The host's opener for mailboxes set up while the app runs, beside
+ * {@link openMailboxes}, and the door to every mailbox's membership entries.
+ *
+ * A mailbox opened here meets a file's rules: its id is `<team>.<name>`, its
+ * team must exist, its name follows a mailbox folder's rule, and an id that is
+ * already a mailbox is refused. It runs on the built-in kind and lives in the
+ * org's data, its session and its inventory row; nothing is written to a file.
+ *
+ * Every change goes through the mailbox's own internal entries, run as the app
+ * through `run`, so the session stays the one record and the rows follow it.
+ * A mailbox whose `MAILBOX.md` picks a custom kind owns its own state, and is
+ * refused by name.
+ *
+ * Worker names arrive already resolved: checking them against the org's
+ * workers is the caller's, which holds the live list.
+ *
+ * @param options `client` and `userId`, as `openMailboxes` takes them; `run`,
+ *   the action door; `teams`, the organization's team ids.
+ * @returns The opener.
+ */
+export function openMailboxAtRunTime(options: OpenMailboxAtRunTimeOptions): RunTimeMailboxOpener {
+  const teams = new Set(options.teams);
+
+  /** Run one internal entry on a mailbox, as the app, in the caller's org. */
+  const entry = (orgId: string, mailboxId: string, action: string, input: unknown) =>
+    options.run({
+      action,
+      input,
+      userId: options.userId,
+      orgId,
+      flowKind: MAILBOX_KIND,
+      sessionId: mailboxId,
+      source: "internal"
+    });
+
+  /** Refuse a mailbox these entries cannot change, naming why. */
+  const assertChangeable = async (mailboxId: string): Promise<void> => {
+    let session: Awaited<ReturnType<OpenMailboxesOptions["client"]["getSession"]>>;
+    try {
+      session = await options.client.getSession(mailboxId);
+    } catch (error) {
+      throw new Error(`mailbox "${mailboxId}" could not be read — ${messageOf(error)}`, { cause: error });
+    }
+    if (session.flowKind !== MAILBOX_KIND) {
+      throw new Error(
+        `mailbox "${mailboxId}" runs on mailbox kind "${session.flowKind}", which owns its own state and ` +
+          "actions. Only a mailbox on the built-in kind can have its workers changed here."
+      );
+    }
+    if (session.state === undefined || boundMailbox(session.state) === undefined) {
+      throw new Error(`"${mailboxId}" is not an open mailbox. Set it up, or open its file, first.`);
+    }
+  };
+
+  const changeOutput = (ran: unknown): { members: string[] } => {
+    const members = (ran as { members?: unknown } | undefined)?.members;
+    return { members: Array.isArray(members) ? (members as string[]) : [] };
+  };
+
+  return {
+    async setUp(request) {
+      try {
+        validateSegment(request.team, "Team");
+        validateSegment(request.name, "Mailbox");
+      } catch (error) {
+        throw new Error(`a mailbox cannot be set up as "${request.team}.${request.name}" — ${messageOf(error)}`);
+      }
+      if (!teams.has(request.team)) {
+        throw new Error(
+          `a mailbox cannot be set up in team "${request.team}": the organization has no such team. ` +
+            `Teams: ${[...teams].sort().join(", ") || "(none)"}.`
+        );
+      }
+      const mailboxId = `${request.team}.${request.name}`;
+      if (isTemplateMailbox(PROJECTS_COLLECTION, mailboxId)) {
+        throw new Error(`"${mailboxId}" is a project talk template's id, not one a mailbox can take.`);
+      }
+
+      const members = [...new Set(request.members)];
+      const state: Omit<MailboxSessionState, "resourceId"> = {
+        members,
+        instructions: request.charter,
+        transcript: [],
+        origin: "runtime",
+        taskLists: [RUN_TIME_TASK_LIST],
+        workersByList:
+          request.worksTaskList === true && members.length > 0
+            ? { [RUN_TIME_TASK_LIST]: { added: members, removed: [] } }
+            : null
+      };
+      const opened = await openOne(options, {
+        id: mailboxId,
+        kind: MAILBOX_KIND,
+        description: request.description,
+        state
+      });
+
+      if (opened.status === "open") {
+        // The one repair a refusal makes: a mailbox set up at run time writes
+        // its own row again, so one whose row never landed becomes findable.
+        if (opened.origin === "runtime") await entry(request.orgId, mailboxId, MAILBOX_SET_UP_ACTION, {});
+        throw new Error(`"${mailboxId}" is already a mailbox. Pick another name, or subscribe workers to it.`);
+      }
+
+      await entry(request.orgId, mailboxId, MAILBOX_SET_UP_ACTION, {});
+      return { mailboxId, taskList: RUN_TIME_TASK_LIST };
+    },
+
+    async subscribe(request) {
+      await assertChangeable(request.mailboxId);
+      return changeOutput(
+        await entry(request.orgId, request.mailboxId, MAILBOX_SUBSCRIBE_ACTION, {
+          workers: [...request.workers],
+          ...(request.worksTaskList === true ? { worksTaskList: true } : {})
+        })
+      );
+    },
+
+    async unsubscribe(request) {
+      await assertChangeable(request.mailboxId);
+      return changeOutput(
+        await entry(request.orgId, request.mailboxId, MAILBOX_UNSUBSCRIBE_ACTION, { workers: [...request.workers] })
+      );
+    }
+  };
 }

@@ -5,12 +5,12 @@
  *
  * Every door goes through a registered flow and a real `runAction`, never a
  * block called by hand, so a refusal or a write is the one an app would get.
- * Pass the same `stores` to a second host to restart on the same store.
+ * Pass a second adapter over the same file as `stores` to restart on the same store.
  */
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import type { StoreRegistry } from "@flow-state-dev/engine";
+import type { StoreAdapter, StoreRegistry } from "@flow-state-dev/engine";
 import {
   MAILBOX_KIND,
   mailboxInstances,
@@ -74,8 +74,8 @@ export function sessionApi(stores: StoreRegistry) {
 }
 
 export interface HostOptions extends MailboxInstancesOptions {
-  /** Shared storage, so a second host reads what the first wrote. */
-  stores?: StoreRegistry;
+  /** The storage adapter; one over a durable file lets a second host read what the first wrote. */
+  stores?: StoreAdapter;
   /** Flows registered beside the mailbox kinds, by id. */
   flows?: Record<string, FlowInstance>;
   /** The file mailboxes opened at boot. Defaults to the whole roster. */
@@ -97,10 +97,9 @@ export async function host(roster: MailboxManifest[], options: HostOptions = {})
   const { stores: given, flows: extra, open, ...instanceOptions } = options;
   const instances = mailboxInstances(roster, instanceOptions);
   const byKind: Record<string, FlowInstance> = Object.fromEntries(instances.map((i) => [i.kind, i]));
-  const stores = given ?? inMemoryStores();
   const state = createFlowState({
     flows: { ...byKind, ...(extra ?? {}) },
-    stores: { default: { primary: stores } }
+    stores: { default: { primary: given ?? inMemoryStores() } }
   } as never);
   const runtime = await state.getRuntime();
   const client = sessionApi(runtime.stores);

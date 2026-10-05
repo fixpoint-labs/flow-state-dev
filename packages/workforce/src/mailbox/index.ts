@@ -70,10 +70,15 @@ export {
 export {
   mailboxBoardIds,
   mailboxInstances,
+  openMailboxAtRunTime,
   openMailboxes,
   type MailboxInstancesOptions,
   type MailboxKind,
-  type OpenMailboxesOptions
+  type OpenMailboxAtRunTimeOptions,
+  type OpenMailboxesOptions,
+  type RunTimeMailboxOpener,
+  type RunTimeMailboxSetUp,
+  type RunTimeMembershipChange
 } from "./mailbox-binder";
 
 export {
