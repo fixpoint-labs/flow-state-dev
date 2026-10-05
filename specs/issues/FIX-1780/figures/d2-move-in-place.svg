@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="D2: what reassigning does. Chosen: cancel the task and file a new one. Instead of: change the assignee on the same task. It comes down to a failed task, which is final and cannot move. Also: a list that hands tasks over keeps the assignee fixed. The price: two rows for one piece of work. Locks in a new task id on every reassign; flips if tasks become movable after they fail."
+<svg viewBox="0 0 940 422" role="img" aria-label="D2: what reassigning does. Chosen: move a task that hasn&#x27;t ended in place, and carry a failed one on with a new task. Instead of: cancel and file a copy every time. It comes down to whether a waiting task keeps its id, dependencies and history. A failed task is a tie: both file a new task. The price: the freeze on a hand-over list&#x27;s assignee is narrowed to tasks under an attempt. Locks in one row per waiting task; flips if a waiting task turns out to carry hand-over state."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -41,56 +41,56 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Cancel it and file a new one</text>
+    <text class="t-h c-code" x="228" y="112">Move it; a failed one gets a new task</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Change the assignee on the same task</text>
+    <text class="t-h c-lost" x="592" y="112">Cancel and file a copy every time</text>
   </g>
   <g id="row-0">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">A TASK THAT</text>
-    <text class="t-lbl" x="32" y="169">FAILED</text>
+    <text class="t-lbl" x="32" y="156">A WAITING TASK</text>
+    <text class="t-lbl" x="32" y="169">KEEPS ITSELF</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Works: the copy carries it on</text>
-    <text class="t-s" x="248" y="179">the failed row stays failed</text>
+    <text class="t-b" x="248" y="161">Same id, deps and history</text>
+    <text class="t-s" x="248" y="179">through the board&#x27;s assignTask</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Can&#x27;t: a failed task is final</text>
-    <text class="t-s" x="612" y="179">it cannot go back to pending</text>
+    <text class="t-b" x="612" y="161">New id, history split</text>
+    <text class="t-s" x="612" y="179">what FIX-949 removes</text>
   </g>
   <g id="row-1">
-    <text class="t-lbl" x="32" y="222">A LIST THAT</text>
-    <text class="t-lbl" x="32" y="235">HANDS OVER</text>
-    <text class="mark plus" x="228" y="224">+</text>
-    <text class="t-b" x="248" y="223">Works: a new row, a new hand-over</text>
-    <text class="t-s" x="248" y="241">nothing fixed is changed</text>
-    <text class="mark minus" x="592" y="224">−</text>
-    <text class="t-b" x="612" y="223">Refused: assignee is fixed</text>
-    <text class="t-s" x="612" y="241">the hand-over checks it</text>
+    <text class="t-lbl" x="32" y="222">A TASK THAT</text>
+    <text class="t-lbl" x="32" y="235">FAILED</text>
+    <text class="mark tie" x="228" y="224">=</text>
+    <text class="t-b" x="248" y="223">A new task names it</text>
+    <text class="t-s" x="248" y="241">a failed task is final</text>
+    <text class="mark tie" x="592" y="224">=</text>
+    <text class="t-b" x="612" y="223">A new task names it</text>
+    <text class="t-s" x="612" y="241">a failed task is final</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="282">WHAT A</text>
-    <text class="t-lbl" x="32" y="295">PERSON SEES</text>
+    <text class="t-lbl" x="32" y="282">THE HAND-OVER</text>
+    <text class="t-lbl" x="32" y="295">FREEZE</text>
     <text class="mark minus" x="228" y="284">−</text>
-    <text class="t-b" x="248" y="283">Two rows for one piece of work</text>
-    <text class="t-s" x="248" y="301">the new row names the old</text>
+    <text class="t-b" x="248" y="283">Narrowed to running tasks</text>
+    <text class="t-s" x="248" y="301">a waiting task may change hands</text>
     <text class="mark plus" x="592" y="284">+</text>
-    <text class="t-b" x="612" y="283">One row</text>
-    <text class="t-s" x="612" y="301">its assignee changes</text>
+    <text class="t-b" x="612" y="283">Untouched</text>
+    <text class="t-s" x="612" y="301">a copy needs no change</text>
     <line class="row" x1="16" y1="316" x2="924" y2="316"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="353">LOCKS IN</text>
-    <text class="t-b" x="32" y="373">A new task id on every reassign</text>
-    <text class="t-s" x="32" y="391">old row cancelled or left failed</text>
+    <text class="t-b" x="32" y="373">One row per waiting task</text>
+    <text class="t-s" x="32" y="391">the freeze holds only under an attempt</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="353">FLIPS IF</text>
-    <text class="t-b" x="494" y="373">Tasks become movable after they fail</text>
-    <text class="t-s" x="494" y="391">then moving the same row is simpler</text>
+    <text class="t-b" x="494" y="373">A waiting task carries hand-over state</text>
+    <text class="t-s" x="494" y="391">then the freeze must hold, and a copy wins</text>
   </g>
 </svg>

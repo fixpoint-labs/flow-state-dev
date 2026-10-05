@@ -26,7 +26,8 @@ board per list), re-draft S3 here before building.
 | S2 | `core` request host type + `engine` request host | One read: the session that dispatched this request and its lineage, from the trusted dispatch stamp, or `null`. The stamp does not carry the sender's flow; the worker comes from `filingWorker`. Generic, no Workforce term. Documented beside `parentTask()` | BR-1–BR-3 |
 | S3 | `workforce` · mailbox `fileTask` and the list's board | On filing: FIX-1779 already records `filingWorker` (the calling worker's name, as the runtime knows it). Record the conversation it filed from beside it (`filingSession`, with its lineage): the filer's own session when its tool writes the list directly, or S2's sender when the tool dispatches into the mailbox. Pin which with FIX-1779's tool. On a `retrying` ending, ask the mailbox to run the list again, the request FIX-1777 makes on an add, unless FIX-1777 already does that for a re-pend (BR-6a). The owner FIX-1777 records is never read here: it is for the claim and the bill. When the mailbox refuses a filing that has a sender, send the same notice with ending `refused` (BR-4a). Pass S1's hook to the board Workforce builds per list: a router over the live worker list (one dispatcher per worker, as the mailbox wake does), that, when the row has a filer, dispatches the task-notice entry into its conversation and checks the lineage | BR-1 BR-2 BR-4 BR-4a BR-12 BR-14 BR-15 |
 | S4 | `workforce` · the built-in `agent` kind | Declare the internal task-notice entry beside `onMailboxPost`; it runs the ordinary answer with the notice as the turn (`task <title> on <mailbox>/<list> ended: <status>` plus the error, question or output summary). Concurrency: the default, as `onMailboxPost` uses, because a queued request can be refused after the engine's wait and a notice must not be dropped. Drop a notice whose task id, attempt and ending it already answered | BR-8a BR-12 BR-13 |
-| S5 | `workforce` · mailbox actions + coordinator tools | `reassignTask` and `cancelTask` as mailbox actions, and as dispatcher tools beside FIX-1779's in its capability. Reassign: mark the old row as reassigned through a revision-guarded write first, so a racing reassign or a race on the cap loses (an errored row cannot change status, so the cancel is no guard); refuse running/completed/cancelled and the fourth move; resolve the worker through FIX-1778's lookup first; cancel the old row if pending or parked (reason *reassigned to &lt;worker&gt;*), leave an errored one; file the copy for the new worker with the old id and the move count on its metadata and this filer recorded; then the list runs as on any filing | BR-16–BR-22 |
+| S5 | `workforce` · mailbox actions + coordinator tools | `reassignTask` and `cancelTask` as mailbox actions, and as dispatcher tools beside FIX-1779's in its capability, both writing through the board's existing verbs (`assignTask`, `cancelTask`), never a parallel write. Reassign: refuse running/completed/cancelled and the fourth move; resolve the worker through FIX-1778's lookup first. *Pending*: `assignTask`. *Parked*: `assignTask`, then the fenced unpark to *pending* (withdrawing its question). *Errored*: mark the old row reassigned through a revision-guarded write, file the copy for the new worker with the old id, the move count and this filer. Then the list runs as on any filing | BR-16–BR-22 |
+| S5a | `orchestration` · the hand-over assignee freeze ([FIX-982](https://linear.app/fixpoint-labs/issue/FIX-982)) | Narrow it: `setAssignee` on a frozen ledger declines only while an attempt holds the task (*in progress*); *pending*, *parked* and *blocked* tasks may change hands. Update the module's doc comment and `docs/architecture` where it states the freeze | BR-16b |
 | S6 | `goals/workforce-conventions/a-filer-hears-how-its-task-ended/` | The goal check, `goal.md` + `run.mts`, per [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met), and its control | goal |
 | S7 | Docs, per [DOCS.md](DOCS.md) | Mailboxes, task board, built-in worker pages; workforce and orchestration READMEs | — |
 
@@ -42,6 +43,7 @@ flowchart LR
   S4["S4 · agent entry"] --> S6["S6 · goal check"]
   S3 --> S6
   S3 --> S5["S5 · reassign and cancel"]
+  S5a["S5a · narrow the freeze"] --> S5
   S5 --> S6
   S6 --> S7["S7 · docs"]
 ```
@@ -56,7 +58,7 @@ One PR. The control goes red before the legs go green.
 | V1 | S1 | Orchestration tests: the hook runs once for completed, once for the last failure, once per park, never for a retry or a recorder failure, inline and handed off (D3, BR-6, BR-11) |
 | V2 | S2 | Engine test: a request with a caller-written `metadata.dispatch` reads `null`; a dispatched one reads its sender (BR-3) |
 | V3 | S3 S4 | Workforce tests: BR-2, BR-4, BR-4a, BR-8a, BR-13, BR-14, BR-15 |
-| V4 | S5 | Workforce tests: BR-16 to BR-22, including the parked-task cancel (D2) and the race |
+| V4 | S5 S5a | Workforce tests: BR-16 to BR-22, including a parked task moved in place (D2) and both races. Orchestration test: BR-16b, and the existing FIX-982 tests still decline on an *in progress* task |
 | V5 | all | `goals/workforce-conventions/a-mailbox-holds-the-work-a-seat-drains`, FIX-1777's board check and FIX-1779's check stay green; `pnpm typecheck`; `pnpm --filter @flow-state-dev/orchestration test`, `workforce`, `engine` |
 
 ## Pinned
@@ -76,6 +78,7 @@ One PR. The control goes red before the legs go green.
 | The filer comes from the dispatch stamp, never a body field | BP-031. A forged filer would aim turns at someone's conversation |
 | A notice is one turn per ending, never per retry | D3; each turn spends model time |
 | Reassign never touches a running task | FIX-1659 is the claim problem; a moved running task forks the run |
+| Move and cancel through the board's verbs | FIX-1659's fence: no second assign surface. FIX-949 is the in-place direction this follows |
 | Write "worker", never "seat", in any sentence added | Jake is retiring the word. Code names stay |
 
 ## Sketch
@@ -92,8 +95,9 @@ Workforce's onTaskSettled:
 reassignTask(task, worker):
   refuse unless status in pending, parked, errored; refuse at the move cap
   check worker through the assignee lookup
-  cancel task as "reassigned to worker" unless errored
-  file copy for worker, noting the old task and this filer   // the list runs it
+  pending, parked: board assignTask(task, worker); unpark if parked   // same id
+  errored: mark task reassigned (guarded); file copy for worker       // new id
+  the list runs
 ```
 
 ## POC
@@ -115,6 +119,8 @@ None. The three premises it rests on were read off the code ([DECISIONS.md → S
 
 ## Follow-ups
 
+- [FIX-949](https://linear.app/fixpoint-labs/issue/FIX-949) (clear an assignee) shares S5a's narrowed freeze; link the two so it isn't built twice.
+- FIX-1777's BR-12 ("nothing retries it on its own") is out of date once BR-6a ships.
 - Stopping a running task ([FIX-1659](https://linear.app/fixpoint-labs/issue/FIX-1659)).
 - A person hearing about a task they filed by hand, in their own inbox.
 - A run that stops on `ctx.suspend` (an approval) or on the harness door's turn park wakes nobody here.

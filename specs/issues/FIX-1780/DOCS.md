@@ -44,10 +44,11 @@ goes after FIX-1779's text and assumes it.
 >
 > Two more tools let a worker act on what it heard:
 >
-> - `reassignTask` gives a task to another worker. The original is cancelled as *reassigned to
->   &lt;worker&gt;* (or left failed, if it had failed), and a copy is filed for the new worker on the
->   same list, where it starts. You get the new task's id. After three moves of the same work the
->   tool refuses, so a worker that keeps failing has to say so instead.
+> - `reassignTask` gives a task to another worker. A task that hasn't ended keeps its id and
+>   moves to the new worker (a parked one goes back to waiting, and its question is withdrawn). A
+>   task that failed stays failed, and a new task that names it is filed for the new worker. Either
+>   way the list starts it. After three moves of the same work the tool refuses, so a worker that
+>   keeps failing has to say so instead.
 > - `cancelTask` cancels a task with a reason, on any list. A worker that works one list already
 >   has that list's own cancel tool; this one is for a worker that files across lists.
 >
@@ -58,7 +59,17 @@ goes after FIX-1779's text and assumes it.
 > A kind hears the end of a task it filed the same way, by declaring an internal entry named
 > `onTaskSettled`. See [Hearing how a task ended](#hearing-how-a-task-ended).
 
-## 2 · Update `apps/docs/docs/orchestration/task-board.md` — *Concurrency and error handling*, a new short subsection
+## 2 · Update `apps/docs/docs/orchestration/task-board.md`
+
+In *What the board requires*, replace the sentence that begins "A board with any seat that hands
+off fixes each task's assignee at admission" with:
+
+> A board that hands tasks off fixes a task's assignee while an attempt holds it: `setAssignee`
+> on an *in progress* task declines with reason `immutable-assignee`. A pending, parked or
+> blocked task can change hands. The rule belongs to the collection, so a second board over the
+> same `defineTaskCollection` value follows it too.
+
+Then, in *Concurrency and error handling*, a new short subsection:
 
 > ### Running a step when a task ends
 >

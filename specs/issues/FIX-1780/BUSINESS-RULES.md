@@ -40,13 +40,15 @@
 
 | | When | Then | Proved by |
 |---|---|---|---|
-| BR-16 | `reassignTask` names a task that is *pending*, *parked* or *errored*, and a worker the lookup resolves | A *pending* or *parked* task is cancelled with reason *reassigned to &lt;worker&gt;*; an *errored* task stays *errored*, since it is final. A new task with the same goal, title, context and input is filed for that worker on the same list, recording the old task and this filer. The list runs it. The tool returns the new task id | Goal leg d |
+| BR-16 | `reassignTask` names a *pending* or *parked* task and a worker the lookup resolves | The task keeps its id and is moved through the board's `assignTask`; a parked task goes back to *pending* (its open question is withdrawn). The list runs it for the new worker. The tool returns the same id | Goal leg d |
+| BR-16a | `reassignTask` names an *errored* task and a worker the lookup resolves | It stays *errored*. A new task with the same goal, title, context and input is filed for that worker on the same list, naming the old task and this filer. The list runs it. The tool returns the new id | Goal leg d |
+| BR-16b | Anyone moves a *pending* or *parked* task on a list that hands tasks over, through `assignTask` | Allowed. The freeze on such a list holds only while an attempt holds the task: an *in progress* task still declines `immutable-assignee` | Orchestration test |
 | BR-17 | `reassignTask` or `cancelTask` names a task that is *in progress* | Refused, `task-running`. Nothing changes | Unit test |
 | BR-18 | It names a task that is *completed* or *cancelled* | Refused with the status. Nothing changes | Unit test |
-| BR-19 | `reassignTask` names a worker nobody holds | Refused by FIX-1778's lookup. The old task is not cancelled | Unit test |
+| BR-19 | `reassignTask` names a worker nobody holds | Refused by FIX-1778's lookup. The task is not touched | Unit test |
 | BR-20 | The same work has been reassigned three times | The fourth `reassignTask` is refused, `reassign-limit`. The coordinator must tell the person | Unit test |
-| BR-21 | `cancelTask` names a *pending*, *parked* or *blocked* task | It is cancelled with the given reason. No notice (BR-9) | Unit test |
-| BR-22 | Two reassigns of one task race, on any status including *errored* | One wins. The other is refused by a revision-guarded mark on the old row and files nothing. The move cap holds under the same race | Unit test |
+| BR-21 | `cancelTask` names a *pending*, *parked* or *blocked* task | It is cancelled with the given reason, through the board's own cancel verb. No notice (BR-9) | Unit test |
+| BR-22 | Two reassigns of one task race | On a waiting task the board's guarded write lets one land, and the other sees the new assignee. On an *errored* task a revision-guarded mark on the old row lets one file, and the other files nothing. The move cap holds under the same race | Unit test |
 
 ## What this issue owns
 

@@ -11,8 +11,8 @@ like, and how often it is woken. The rest follows from the issue and the layer r
 flowchart TD
   I["FIX-1780"] --> D1["D1 · notice lands in the conversation that filed"]
   D1 -.->|"rejected"| X1["a separate inbox session<br/>the person never reads it"]
-  I --> D2["D2 · reassign cancels and files afresh"]
-  D2 -.->|"rejected"| X2["move the same task to a new assignee<br/>running claims and frozen assignees"]
+  I --> D2["D2 · move in place, a failed task gets a new one"]
+  D2 -.->|"rejected"| X2["cancel and file a copy every time<br/>loses id, deps and history"]
   I --> D3["D3 · completed, failed for good, parked"]
   D3 -.->|"rejected"| X3["every status change<br/>a turn per retry"]
   I --> E1["generic settle hook on the task list"]
@@ -36,17 +36,17 @@ Solid edges are this spec's calls. Dashed edges lost, and the label says why.
 It comes down to the person hearing it: a separate session needs a second hop to reach them.
 
 <a name="d2"></a>
-## D2 · Reassigning cancels the task and files a new one
+## D2 · Reassigning moves a task that hasn't ended, in place; a failed task is carried on by a new one
 
 | | |
 |---|---|
-| **Instead of** | Changing the assignee on the same task and putting it back to *pending* |
-| **Because** | One rule works for every ending. A failed task is final and cannot go back to *pending*; a mailbox list keeps its assignee fixed once filed, because the hand-over checks it; and a running task cannot be moved safely ([FIX-1659](https://linear.app/fixpoint-labs/issue/FIX-1659)). Cancel-and-file works for *pending*, *parked* and *errored* alike, and leaves the old row's history honest (tenet 1) |
-| **Locks in** | A reassigned task has a new id. The old row is *cancelled* with the reason *reassigned to &lt;worker&gt;*, or stays *errored* if it had failed, and the new row names the old one. A list shows both. A running task is refused |
+| **Instead of** | Cancelling the task and filing a copy for every ending (this spec's first draft) |
+| **Because** | A task that hasn't ended should keep its id, its dependencies and its history; cancel-and-recreate is the workaround [FIX-949](https://linear.app/fixpoint-labs/issue/FIX-949) exists to remove, and the board already has the verb, `assignTask` (tenet 1: one way to do a thing; [FIX-1659](https://linear.app/fixpoint-labs/issue/FIX-1659)'s fence: no second assign surface). The wall the draft routed around is that a list that hands tasks over freezes every task's assignee ([FIX-982](https://linear.app/fixpoint-labs/issue/FIX-982)). That freeze protects a hand-over in flight, and a *pending* or *parked* task has none, so the fix is to narrow it at its owning layer (tenet 5): frozen while an attempt holds the task, free otherwise. A failed task is final, so only a new task can carry it on |
+| **Locks in** | On a list that hands tasks over, a waiting task can change hands; a running one still cannot. A reassigned *pending* or *parked* task keeps its id (a parked one goes back to *pending*). A reassigned *errored* task stays *errored*, and a new task names it |
 
-![D2: what reassigning does. Chosen: cancel the task and file a new one. Instead of: change the assignee on the same task. It comes down to a failed task, which is final and cannot move. The price: two rows for one piece of work. Locks in a new task id on every reassign; flips if tasks become movable after they fail](figures/d2-cancel-and-file.svg)
+![D2: what reassigning does. Chosen: move a task that hasn't ended in place, and carry a failed one on with a new task. Instead of: cancel and file a copy every time. It comes down to whether a waiting task keeps its id, dependencies and history. The price: the freeze on a hand-over list's assignee is narrowed to tasks under an attempt. Locks in one row per waiting task; flips if a waiting task turns out to carry hand-over state](figures/d2-move-in-place.svg)
 
-It comes down to a failed task: it is final, so only a new task can carry it on.
+It comes down to keeping the task: a copy loses its id, its dependencies and its history.
 
 <a name="d3"></a>
 ## D3 · Three endings wake the filer: completed, failed for good, parked
@@ -54,7 +54,7 @@ It comes down to a failed task: it is final, so only a new task can carry it on.
 | | |
 |---|---|
 | **Instead of** | Waking the filer on every status change, retries and cancels included |
-| **Because** | Those three are the moments a coordinator has a next step: report, reassign, or pass on a question. A retry has a next step already (the list runs it again), and a turn per retry costs model time for nothing. A cancel is usually the coordinator's own (D2), so waking it would echo its own act |
+| **Because** | Those three are the moments a coordinator has a next step: report, reassign, or pass on a question. A retry has a next step already (the list runs it again), and a turn per retry costs model time for nothing. A cancel is usually the coordinator's own, so waking it would echo its own act |
 | **Locks in** | One notice per attempt that completes, the last attempt that fails, and each park. A task somebody else cancels wakes nobody |
 
 ![D3: which endings wake the filer. Chosen: completed, failed for good, parked. Instead of: every status change. It comes down to whether the coordinator has a next step. The price: a task somebody else cancels wakes nobody. Locks in three endings; flips if people cancel coordinators' tasks often](figures/d3-three-endings.svg)
@@ -85,7 +85,8 @@ It comes down to having a next step: a retry already has one, so a turn spends m
   refuses a worker's filing after the dispatch, the worker is told in the same way, with ending
   `refused`. No task exists, so nothing else changes.
 - **Reassign and cancel act only on a task that is not running.** A running task is refused with
-  its status; stopping one is FIX-1659's.
+  its status; stopping one is FIX-1659's. Both go through the board's own `assignTask` and
+  `cancelTask`, not a parallel write.
 - **Reassign is capped at three moves for one piece of work.** The fourth is refused, so a
   coordinator that keeps failing must tell the person. A loop of paid runs is the failure a cap
   prevents.
@@ -124,3 +125,7 @@ None.
 - **Draft** — framed as the missing trip back from a task's end to whoever filed it; a generic
   settle hook on the task list, a Workforce step that wakes the filer in the conversation it filed
   from, and reassign as cancel-and-file. One PR after FIX-1778, FIX-1777 and FIX-1779.
+- **D2 reversed** — reassign moves a task that hasn't ended in place through the board's
+  `assignTask`, with the hand-over freeze narrowed to tasks under an attempt; only a failed task
+  gets a copy. Because the FSD Architect showed cancel-and-recreate is what FIX-949 removes and the
+  board already has the verb ([#2758](https://github.com/fixpoint-labs/flow-state-dev/pull/2758)).
