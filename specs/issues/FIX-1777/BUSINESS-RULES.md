@@ -33,8 +33,8 @@
 
 | | When | Then | Proved by |
 |---|---|---|---|
-| BR-11 | Starting the run fails (the hand-off is refused) | The task stays *pending* and the next run of the list picks it up. The filing itself still succeeds; the failure is recorded on the run's own request, not the filer's | Workforce unit test |
-| BR-12 | The run's attempt fails | Back to *pending*, or *errored* once its attempts are spent, as today. Nothing retries it on its own | Unchanged |
+| BR-11 | Starting the list's run fails (the "run this list" hand-off is refused, before any task is claimed) | The task stays *pending*, spends no attempt, and the next run of the list picks it up. A claimed task whose hand-over to its worker is refused is an attempt that failed: it spends an attempt, per BR-12, so one refused every time ends *errored* (FIX-1780 BR-7). The filing itself still succeeds; the failure is recorded on the run's own request, not the filer's | Workforce unit test |
+| BR-12 | The run's attempt fails, including a refused hand-over to the worker | Back to *pending*, or *errored* once its attempts are spent, as today. This issue starts no re-run; FIX-1780 BR-6a does | Unchanged |
 | BR-13 | Two runs of one list overlap (two filings, or a host's manual drain) | One run per task: a claimed task is not claimed twice | `packages/orchestration/test/task-board/task-board-concurrent-drains.test.ts`, existing |
 | BR-14 | The control `no-wake` is set | Adding a task runs nothing, and nothing else changes | Goal control |
 
