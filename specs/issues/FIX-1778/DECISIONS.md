@@ -89,7 +89,8 @@ question below.
   same name can't quietly take another worker's tasks.
 - **A worker fired after a task was filed fails that task at hand-over** (BR-4), naming the
   worker. It does not wait: nothing would wake it, and a failure is visible to the filer.
-  FIX-1777's "files and waits" applies only to a list with no worker for an unnamed task.
+  FIX-1777's "files and waits" applies only to an unnamed task on a list with no worker or several
+  (FIX-1777 BR-5, BR-19).
 - **DevTeam's coder drops its re-declared board.** The tax goes in the same change (tenet 3).
 - **The `<slug> @<name>: <what>` post line from the first draft is dropped.** The coordinator files
   through FIX-1779's tool, which takes the name.
