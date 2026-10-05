@@ -506,11 +506,6 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * failure-category audit and `cascadeSkipDependents`' `skipped` label). Making
    * this helper-wide would break both.
    *
-   * `declineWhileRunning` is the hand-off board's assignee rule (FIX-982,
-   * narrowed by FIX-1780): an `in_progress` task declines `immutable-assignee`.
-   * It reads the status inside the same write, so a claim that lands first
-   * refuses the move rather than racing it. Also `setAssignee`'s alone.
-   *
    * The decline throws `WriteDeclined` out of the updater rather than returning
    * `current`, for the reason documented on that class: on this backing
    * returning `current` still persists and still notifies.
@@ -519,7 +514,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     id: string,
     kind: TaskChangeKind,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined,
-    options?: { declineOnTerminal?: boolean; declineWhileRunning?: boolean }
+    options?: { declineOnTerminal?: boolean }
   ): Promise<TaskWriteOutcome> {
     const ref = mirror.get(id);
     if (ref === undefined) {
@@ -533,9 +528,6 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         const task = readTaskStateOf<TInput, TOutput>(current);
         if (options?.declineOnTerminal === true && isTerminalStatus(task.status)) {
           throw new WriteDeclined("terminal", task.status);
-        }
-        if (options?.declineWhileRunning === true && task.status === "in_progress") {
-          throw new WriteDeclined("immutable-assignee", task.status);
         }
         const update = patch(task);
         if (update === undefined) return { state: current, result: undefined };
@@ -937,8 +929,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       return patchRef(
         id,
         "assignee_changed",
-        (task) => (task.assignee === assignee ? undefined : { assignee }),
-        { declineOnTerminal: true, declineWhileRunning: options.immutableAssignee === true }
+        (task) => {
+          if (options.immutableAssignee === true && task.status === "in_progress") {
+            throw new WriteDeclined("immutable-assignee", task.status);
+          }
+          return task.assignee === assignee ? undefined : { assignee };
+        },
+        { declineOnTerminal: true }
       );
     },
 
