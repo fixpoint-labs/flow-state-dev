@@ -19,7 +19,7 @@
 | | When | Then | Proved by |
 |---|---|---|---|
 | BR-18 | Deciding who works a mailbox's list | The workers the mailbox names for it: `workedBy:` in its `MAILBOX.md`, plus those subscribed with `worksTaskList` at run time (FIX-1779), minus any worker unsubscribed from it since. Being a member, or declaring the list's ledger, counts for nothing | Workforce unit test: a member that declares the ledger and isn't named is not handed a task |
-| BR-19 | The task names no worker and more than one works the list | The task is filed and waits, and the filing's answer says to assign it. No order picks one | Workforce unit test |
+| BR-19 | The task names no worker and more than one works the list | The task is filed and waits, and the filing's answer says to assign it. No order picks one. Assigning it later needs FIX-1780 BR-16b, which lets `setAssignee` through the FIX-982 freeze on a hand-over list | Workforce unit test |
 
 ## Whose run it is
 

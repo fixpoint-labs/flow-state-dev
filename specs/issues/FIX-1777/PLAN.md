@@ -34,13 +34,15 @@ flowchart LR
 
 | PR | Deliverables | Depends on |
 |---|---|---|
-| PR 1 | S1–S6 and S11, with Workforce and orchestration unit tests for BR-5–BR-11, BR-18, BR-19 | FIX-1778's routing and FIX-1779's `taskListWorkers` (stacked on their PRs if still open) |
+| PR 1 | S1–S6 and S11, with Workforce and orchestration unit tests for BR-5–BR-11, BR-18, BR-19 | FIX-1778's routing, FIX-1779's `taskListWorkers`, and FIX-1780's S5a (BR-16b) (stacked on their PRs if still open) |
 | PR 2 | S7–S10, the goal checks with their control | PR 1, as a GitHub stack |
 
 **Order with FIX-1779 for who works a list.** FIX-1779 lands `taskListWorkers` first, returning
 run-time `worksTaskList` workers only, never the declarers. This issue's PR 1 then adds S11's
 `workedBy:` file field to that read and applies FIX-1779's recorded removals to it, so a worker the
-file names stops getting tasks once a coordinator unsubscribes it. PR 1 needs the read, so if FIX-1779 hasn't merged
+file names stops getting tasks once a coordinator unsubscribes it. PR 1 also needs FIX-1780's S5a (BR-16b, its own small PR, shipping first), because the FIX-982 freeze
+today declines every `setAssignee` on a hand-over list, and BR-19's "assign it" can't work without it.
+PR 1 needs the read, so if FIX-1779 hasn't merged
 when PR 1 opens, PR 1 stacks on it as well as on FIX-1778.
 
 If FIX-1779's single collection lands first, S3 binds there; if after, FIX-1779 moves the binding
