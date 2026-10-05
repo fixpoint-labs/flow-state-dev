@@ -64,7 +64,7 @@ tools: [hire, setUpMailbox, subscribeWorkers, unsubscribeWorkers, fileTask]
 
 | Tool | What it does |
 |---|---|
-| `setUpMailbox` | Opens `<team>.<name>` with a description, a charter and members. It gets one task list, `tasks`, worked by those members |
+| `setUpMailbox` | Opens `<team>.<name>` with a description, a charter and members. It gets one task list, `tasks`. With `worksTaskList: true` those members also work it |
 | `subscribeWorkers` | Adds workers to any mailbox on the built-in kind, including one from a file. With `worksTaskList: true` they also work its task list |
 | `unsubscribeWorkers` | Takes workers off the mailbox and off its task lists, a list the file's `workedBy` names them on included. Their open tasks stay on the list |
 | `fileTask` | Files a task on a mailbox's task list |

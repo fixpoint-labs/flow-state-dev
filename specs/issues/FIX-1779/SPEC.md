@@ -75,7 +75,8 @@ the post arrives.
 
 ```diff
 + setUpMailbox({ team: "platform", name: "login", description: "The login page.",
-+                charter: "Build and ship the login page.", members: ["platform.ada"] })
++                charter: "Build and ship the login page.", members: ["platform.ada"],
++                worksTaskList: true })
 + → { mailboxId: "platform.login", taskList: "tasks" }
 + subscribeWorkers({ mailboxId: "platform.login", workers: ["react-builder"],
 +                    worksTaskList: true })                  // the fresh hire, who works its list

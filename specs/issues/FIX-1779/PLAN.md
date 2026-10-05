@@ -105,10 +105,11 @@ Reconcile and publish [DOCS.md](DOCS.md) in PR-B, after VG passes.
 setUpMailbox(input), as the coordinator:
     names ← resolve input.members against the org's workers    (refuse unknown)
     host opener: validate id like a file → open session as the app
-        state: members, charter, origin runtime, taskLists [tasks, workedBy members]
+        state: members, charter, origin runtime, taskLists [tasks],
+               added[tasks] ← members only if input.worksTaskList
     mailbox registers its own inventory row
 subscribe(mailbox, workers, worksTaskList):
-    internal entry on that mailbox: versioned patch of members (+ workedBy) → re-register row
+    internal entry on that mailbox: versioned patch of members (+ added / − removed for the list) → re-register row
 a post: for each member in session state → wake(member)
 a post: workers ← the host's worker source, read once
 wake(member): worker ← workers, by logical id, reachable by caller → dispatch

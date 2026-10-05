@@ -9,7 +9,7 @@ The *proved by* column is the check the plan runs.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | A coordinator sets up `<team>.<name>` with a description, a charter and members | The mailbox opens with those members and that charter, one task list named `tasks` worked by those members, and an inventory row marked as set up at run time | CI · goal check |
+| BR-1 | A coordinator sets up `<team>.<name>` with a description, a charter and members | The mailbox opens with those members and that charter, one task list named `tasks`, and an inventory row. With `worksTaskList`, those members are also recorded as working it (as in BR-9); without it, nobody works it yet marked as set up at run time | CI · goal check |
 | BR-2 | The id is already a mailbox (from a file, or set up earlier) | Refused, naming the mailbox. Nothing is opened, and the mailbox is not changed. One repair only: a mailbox set up at run time whose inventory row is missing gets the row written first, so a retried setup makes it findable | CI |
 | BR-3 | The team does not exist, or the name breaks the file naming rule | Refused, naming the problem | CI |
 | BR-4 | A member names no worker in the caller's org (declared or hired) | Refused, naming the worker. Nothing is opened | CI |
