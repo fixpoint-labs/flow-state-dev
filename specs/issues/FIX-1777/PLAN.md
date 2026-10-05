@@ -116,6 +116,10 @@ recommended answer, BR-18 stands as written. Under (i), BR-18's rule and test re
 - **A failed attempt runs again: [FIX-1780](https://linear.app/fixpoint-labs/issue/FIX-1780) BR-6a owns it.**
   Here a re-pend is an update, not an add, so this issue's start doesn't fire on it. FIX-1780 also
   tells the coordinator when a task settles.
+- **FIX-1779's opener files as the app, so it refuses a worker a member hired for themselves.**
+  It checks the assignee with `find(assignee, ctx, null)`. Once PR 1 records the filer (BR-8), the
+  opener can file as the coordinator's member and check with that member instead. That is a small
+  change in FIX-1779's opener, made after PR 1 lands; this issue doesn't change the opener.
 
 ## Notes from review
 
