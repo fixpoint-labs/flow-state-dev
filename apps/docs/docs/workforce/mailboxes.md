@@ -363,11 +363,11 @@ defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) });
 
 | Member | Post from a client | Post from a worker (`seatAuthored: true`) |
 | --- | --- | --- |
-| Its worker can hear posts | The worker runs | Nothing |
+| Its worker can hear posts, and the mailbox's caller can reach it | The worker runs | Nothing |
 | Any other member | `fallback` | `fallback` |
 
 Your block runs only for members the wake skips. It never sees a member whose worker can hear
-posts, so logging, email or dispatch for those members has to happen somewhere else. To skip a
+posts and is reachable, so logging, email or dispatch for those members has to happen somewhere else. To skip a
 worker's line in your block, read `input.seatAuthored === true`, as the handler earlier on this
 page does. `author` is an unverified claim, so comparing it to `member` only skips
 a delivery when the caller claimed that name.
