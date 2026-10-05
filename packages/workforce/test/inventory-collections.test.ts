@@ -224,7 +224,8 @@ describe("a flow that did not write the rows", () => {
         id: "eng.standup",
         kind: "mailbox",
         members: ["eng.lead", "eng.analyst"],
-        openedAt: "2026-09-19T00:00:00.000Z"
+        openedAt: "2026-09-19T00:00:00.000Z",
+        origin: null
       }
     ]);
     // The third collection is asserted here too. The seed writes to all three,
@@ -341,7 +342,7 @@ describe("the row schemas", () => {
     expect(parsed).not.toHaveProperty("postCount");
   });
 
-  it("fills door, members and openedAt on a row written before they existed (BP-030)", () => {
+  it("fills door, members, openedAt and origin on a row written before they existed (BP-030)", () => {
     // The tolerance BP-030 asks for, at the schema. Were these required rather
     // than defaulted, the framework's read path would fail the parse and hand
     // back the collection's default — so an older row would lose its `id` too,
@@ -357,7 +358,8 @@ describe("the row schemas", () => {
       id: "eng.standup",
       kind: "mailbox",
       members: [],
-      openedAt: null
+      openedAt: null,
+      origin: null
     });
   });
 });

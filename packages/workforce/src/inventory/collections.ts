@@ -28,9 +28,10 @@
  *
  * These keys are a public surface. Moving one is a breaking change for any app
  * whose rows are already persisted. Nothing here deletes a row for going
- * missing. The two removals are `fire`'s, of a hired seat's own row in
- * `inventory/seats/`, and a mailbox row whose id became a project talk
- * template (see `open-inventory.ts`).
+ * missing. The three removals are `fire`'s, of a hired seat's own row in
+ * `inventory/seats/`, a mailbox row whose id became a project talk template
+ * (see `open-inventory.ts`), and the membership row of a worker a mailbox's
+ * unsubscribe entry took off it (see `mailbox-membership.ts`).
  *
  * ## The browser read
  *
@@ -116,11 +117,14 @@ export type SeatInventoryRow = z.infer<typeof seatInventoryRowSchema>;
 
 /**
  * One registered mailbox: its identity, the kind that minted it, who was in it
- * when it registered, and when it first registered.
+ * when it registered, when it first registered, and whether it was set up at
+ * run time.
  *
  * `members` is the live set — read from the mailbox's own session state by the
  * mailbox itself, never copied from the tree. A member list taken from the
- * declared record would be a file-time answer wearing a live name.
+ * declared record would be a file-time answer wearing a live name. The mailbox
+ * rewrites it from its session on every change to its members, so it is the
+ * session's list as of the last change; the session stays the record.
  *
  * `members` and `openedAt` carry defaults so a row written before either
  * existed still reads (BP-030); `openedAt` is nullable with a `null` default
@@ -135,6 +139,13 @@ export const mailboxInventoryRowSchema = z.object({
   members: z.array(z.string()).default([]),
   /** ISO timestamp of when the mailbox opened, or `null` on a row that predates the field. */
   openedAt: z.string().nullable().default(null),
+  /**
+   * `"runtime"` for a mailbox set up while the app ran, with no `MAILBOX.md`;
+   * `null` for one opened from a file, and on a row written before the field
+   * (BP-023, BP-030). **Pinned**: `discover` lists a row carrying it with no
+   * file to join it to.
+   */
+  origin: z.literal("runtime").nullable().default(null),
 });
 
 /** One row of the mailbox inventory. @see mailboxInventoryRowSchema */
@@ -183,7 +194,7 @@ const SHARED_ACROSS_FLOWS = false;
  */
 const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired", "incarnation"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
-const MAILBOX_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt"] as const;
+const MAILBOX_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt", "origin"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
 const MEMBERSHIP_INDEX_CLIENT_FIELDS = ["seatId", "mailboxId"] as const;
 

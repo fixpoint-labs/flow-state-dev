@@ -47,6 +47,7 @@ import {
   resolveMailboxTaskList
 } from "./mailbox-board";
 import { emitMailboxPostLine, readMailboxPostLines } from "./mailbox-items";
+import { subscribedFields, unsubscribedFields, type MembershipFields } from "./mailbox-membership";
 import { incarnationOfRow } from "../roster/incarnation";
 import { seatAddress, splitSeatAddress } from "../roster/address";
 import { defineHiredRosterCollection } from "../roster/collections";
@@ -1027,6 +1028,40 @@ export const INVENTORY_REGISTER_SEATS = "registerSeatsInInventory";
  */
 export const INVENTORY_RETIRE_MAILBOXES = "retireMailboxesInInventory";
 
+/**
+ * The internal entry the run-time opener runs once a mailbox it set up is
+ * open: the mailbox writes its own inventory row, marked `origin: "runtime"`,
+ * and its membership rows. Re-running it rewrites the same rows, which is how
+ * a retried setup repairs a row that never landed.
+ *
+ * Internal only, like the two below: the app reaches it, a client never does.
+ */
+export const MAILBOX_SET_UP_ACTION = "setUp";
+
+/**
+ * The internal entry that adds workers to a mailbox, and with `worksTaskList`
+ * records them as working its task lists. The one way members grow after a
+ * mailbox opens. A versioned write of the session, then the rows follow.
+ */
+export const MAILBOX_SUBSCRIBE_ACTION = "subscribe";
+
+/**
+ * The internal entry that takes workers off a mailbox and off its task lists,
+ * recording each removal. Their open tasks stay where they are.
+ */
+export const MAILBOX_UNSUBSCRIBE_ACTION = "unsubscribe";
+
+/** What subscribing takes: worker names, and whether they work the mailbox's lists. */
+const subscribeInputSchema = z
+  .object({ workers: z.array(z.string().min(1)).min(1), worksTaskList: z.boolean().optional() })
+  .strict();
+
+/** What unsubscribing takes: worker names. */
+const unsubscribeInputSchema = z.object({ workers: z.array(z.string().min(1)).min(1) }).strict();
+
+/** What a membership change reports: the members it left. */
+const membershipChangedSchema = z.object({ members: z.array(z.string()) });
+
 /** Nothing a caller supplies reaches the mailbox's row. */
 const registerMailboxInputSchema = z.object({}).strict();
 
@@ -1034,7 +1069,8 @@ const registerMailboxInputSchema = z.object({}).strict();
 export const inventoryMailboxRegisteredSchema = z.object({
   id: z.string(),
   kind: z.string(),
-  members: z.array(z.string())
+  members: z.array(z.string()),
+  origin: z.literal("runtime").nullable()
 });
 
 /** The roster's seats, as the binder holds them. */
@@ -1170,6 +1206,66 @@ async function publishBootSeatRow(
 }
 
 /**
+ * The two collections a mailbox writes its own rows to, declared once so every
+ * block of one flow that writes them declares the same object.
+ */
+const MAILBOX_ROW_COLLECTIONS = {
+  mailboxes: defineMailboxInventoryCollection(),
+  memberships: defineMembershipIndexCollection()
+};
+
+/** What {@link publishMailboxRows} needs of a block's context: the session, and the two collections. */
+type InventoryWriteContext = {
+  session: { identity: { id: string } };
+  resources: { mailboxes: ResourceCollectionRef; memberships: ResourceCollectionRef };
+};
+
+/**
+ * Write one mailbox's inventory rows from its own session state: its mailbox
+ * row, then a membership row per member, then delete the rows of `removed`.
+ *
+ * The mailbox's OWN session state, and nothing else. The binder carries no
+ * members, deliberately: a roster's `members:` is what a file said when it
+ * was last read, and an edit to it never reaches a session that is already
+ * open. Copying it here would republish that file-time answer under a live
+ * name.
+ *
+ * The mailbox row goes FIRST. It is what `discover` lists, so a membership
+ * row that fails to land leaves the mailbox listed with its session's
+ * members, never with the members of the change before. A membership row is
+ * an index of the same fact, rewritten from the session on the next change.
+ * Neither write is transactional with the other, so a failure partway leaves
+ * whatever landed before it; the next change or boot writes it all again.
+ *
+ * Every member's key is built up front, before anything is written.
+ * `membershipKey` throws on a member id that can never be one, and that
+ * failure is permanent, not flaky, so it must not land after some rows are
+ * already committed.
+ */
+async function publishMailboxRows(
+  ctx: InventoryWriteContext,
+  kind: string,
+  mailbox: MailboxSessionState,
+  removed: readonly string[]
+) {
+  const id = ctx.session.identity.id;
+  const members = [...mailbox.members];
+  const origin = mailbox.origin;
+  const membershipKeys = members.map((seatId) => membershipKey(seatId, id));
+  const removedKeys = removed.filter((seatId) => !members.includes(seatId)).map((seatId) => membershipKey(seatId, id));
+
+  // `openedAt` is create-only, so a second boot does not restamp a mailbox
+  // that has been open since the first one.
+  await ctx.resources.mailboxes.upsert(id, { id, kind, members, origin }, { openedAt: new Date().toISOString() });
+  for (let i = 0; i < members.length; i++) {
+    await ctx.resources.memberships.upsert(membershipKeys[i]!, { seatId: members[i]!, mailboxId: id });
+  }
+  for (const key of removedKeys) await ctx.resources.memberships.delete(key);
+
+  return { id, kind, members, origin };
+}
+
+/**
  * The two blocks that write the live inventory, built for one mailbox kind.
  *
  * Built per kind rather than once, because a mailbox row records **which kind
@@ -1212,12 +1308,12 @@ async function publishBootSeatRow(
  *   });
  */
 export function inventoryWriterActions(kind: string) {
-  // Fresh per call. Two collections declared from one factory share storage —
-  // a collection is addressed by its pattern and scope, never by object
-  // identity — so this costs nothing and keeps the declaration local to the
-  // flow that installs it.
-  const mailboxes = defineMailboxInventoryCollection();
-  const memberships = defineMembershipIndexCollection();
+  // Fresh per call, but for the two the membership entries also write. Two
+  // collections declared from one factory share storage — a collection is
+  // addressed by its pattern and scope, never by object identity — but one
+  // flow must declare one object per accessor key, and the built-in kind
+  // declares these two on both its registration and its membership entries.
+  const { mailboxes, memberships } = MAILBOX_ROW_COLLECTIONS;
   const seats = defineSeatInventoryCollection();
   // Read by the seat write only, to tell a fired hire's leftover row from a
   // newer hire's (see `bootMayReplace`). Lazy, so the row is read when the
@@ -1247,50 +1343,7 @@ export function inventoryWriterActions(kind: string) {
         );
       }
 
-      const id = ctx.session.identity.id;
-      // The mailbox's OWN session state, and nothing else. The binder carries
-      // no members, deliberately: a roster's `members:` is what a file said
-      // when it was last read, and an edit to it never reaches a session that
-      // is already open. Copying it here would republish that file-time answer
-      // under a live name.
-      const members = [...mailbox.members];
-
-      // Every member's key is built up front, before anything is written.
-      // `membershipKey` throws on a member id that can never be one — and
-      // that failure is permanent, not flaky, so it must not land after some
-      // rows are already committed: a caller that retries a boot gets the
-      // same throw on the same member every time, and a run that had already
-      // written part of itself before hitting it would keep re-adding to a
-      // half-written state instead of leaving nothing behind.
-      const membershipKeys = members.map((seatId) => membershipKey(seatId, id));
-
-      // The membership rows go FIRST, and the mailbox row that names them
-      // goes last. Neither write is transactional with the other — a store
-      // failure partway through the loop below still leaves whatever landed
-      // before it — so the ordering is what stops the mailbox row from ever
-      // claiming a member the index does not have: the row is only written
-      // once every membership row it will name already exists. What it does
-      // not buy: a membership row from an EARLIER successful run can still
-      // outlive this run's mailbox row if this run's own loop fails partway
-      // through. That row is stale, not contradictory, and nothing here
-      // prunes stale rows in the first place (see `inventoryWriterActions`'s
-      // header).
-      for (let i = 0; i < members.length; i++) {
-        await ctx.resources.memberships.upsert(membershipKeys[i], {
-          seatId: members[i],
-          mailboxId: id
-        });
-      }
-
-      // `openedAt` is create-only, so a second boot does not restamp a mailbox
-      // that has been open since the first one.
-      await ctx.resources.mailboxes.upsert(
-        id,
-        { id, kind, members },
-        { openedAt: new Date().toISOString() }
-      );
-
-      return { id, kind, members };
+      return publishMailboxRows(ctx as unknown as InventoryWriteContext, kind, mailbox, []);
     }
   });
 
@@ -1394,6 +1447,118 @@ export function inventoryWriterActions(kind: string) {
         "Remove the mailbox rows of ids the roster now declares as project talk templates. Boot " +
         "machinery, called once by `openInventory`."
     }
+  };
+}
+
+/**
+ * The three internal entries that change a mailbox after it opens, built for
+ * one kind: set up, subscribe and unsubscribe.
+ *
+ * Each changes the session with one versioned write (`atomicState`), which the
+ * runtime re-runs on the state a conflict hands back, so two changes at once
+ * both land and neither is lost. The change is computed from that fresh state
+ * every time (`mailbox-membership.ts`), never from what the request first read.
+ * Then, on a kind carrying the inventory, the rows follow the session.
+ *
+ * Internal only. Members, task lists and who works them are what a post's wake
+ * and a list's hand-off read, so the app reaches these entries and a client
+ * never does.
+ */
+function membershipEntriesFor(kind: string, boardIds: readonly string[], inventory: boolean) {
+  const resources = inventory ? { resources: MAILBOX_ROW_COLLECTIONS } : {};
+
+  /** The open mailbox this entry may change, or a refusal naming why not. */
+  const changeable = (ctx: BlockContext): MailboxSessionState => {
+    const mailbox = openMailboxOf(ctx);
+    if (mailbox === undefined) {
+      throw new MailboxPostRefusedError(
+        "mailbox-not-bound",
+        `session "${ctx.session.identity.id}" is not an open mailbox, so it has no members to change.`
+      );
+    }
+    if (talkProjectOf(ctx.session.state) !== undefined) {
+      throw new Error(
+        `session "${ctx.session.identity.id}" is a project's talk session. Its room's members are the ` +
+          "project's, changed on the project, not here."
+      );
+    }
+    return mailbox;
+  };
+
+  /** Write the rows from the state the session now holds, on a kind carrying the inventory. */
+  const publish = async (ctx: BlockContext, mailbox: MailboxSessionState, removed: readonly string[]) => {
+    if (!inventory) return;
+    if (ctx.org === undefined) {
+      throw new Error(
+        `mailbox "${ctx.session.identity.id}" cannot write its inventory rows: it is open without an ` +
+          "organization, and the inventory is org-scoped storage."
+      );
+    }
+    await publishMailboxRows(ctx as unknown as InventoryWriteContext, kind, mailbox, removed);
+  };
+
+  /** One versioned membership write, then the rows. */
+  const change = async (
+    ctx: BlockContext,
+    next: (current: MailboxSessionState, lists: readonly string[]) => MembershipFields | undefined,
+    removed: readonly string[]
+  ) => {
+    let written = changeable(ctx);
+    await ctx.session.atomicState((state) => {
+      // Fresh on every run, including the re-run a version conflict makes.
+      const current = boundMailbox(state) ?? written;
+      const fields = next(current, listsHeld(mailboxBoardNamesFor(ctx.session.identity.id, boardIds), current));
+      written = fields === undefined ? current : { ...current, ...fields };
+      return fields ?? {};
+    });
+    await publish(ctx, written, removed);
+    return { members: written.members };
+  };
+
+  const setUp = handler({
+    name: "mailbox-set-up",
+    inputSchema: registerMailboxInputSchema,
+    outputSchema: membershipChangedSchema,
+    ...resources,
+    execute: async (_input, ctx) => {
+      const mailbox = changeable(ctx as unknown as BlockContext);
+      if (mailbox.origin !== "runtime") {
+        throw new Error(
+          `mailbox "${ctx.session.identity.id}" was opened from a file. Setting up is for a mailbox ` +
+            "opened while the app runs; a file's mailbox registers through `openInventory`."
+        );
+      }
+      await publish(ctx as unknown as BlockContext, mailbox, []);
+      return { members: mailbox.members };
+    }
+  });
+
+  const subscribe = handler({
+    name: "mailbox-subscribe",
+    inputSchema: subscribeInputSchema,
+    outputSchema: membershipChangedSchema,
+    ...resources,
+    execute: (input: z.infer<typeof subscribeInputSchema>, ctx) =>
+      change(
+        ctx as unknown as BlockContext,
+        (current, lists) => subscribedFields(current, input.workers, input.worksTaskList === true, lists),
+        []
+      )
+  });
+
+  const unsubscribe = handler({
+    name: "mailbox-unsubscribe",
+    inputSchema: unsubscribeInputSchema,
+    outputSchema: membershipChangedSchema,
+    ...resources,
+    execute: (input: z.infer<typeof unsubscribeInputSchema>, ctx) =>
+      change(ctx as unknown as BlockContext, (current, lists) => unsubscribedFields(current, input.workers, lists), input.workers)
+  });
+
+  return {
+    [MAILBOX_SET_UP_ACTION]: { block: setUp },
+    [MAILBOX_SUBSCRIBE_ACTION]: { block: subscribe },
+    [MAILBOX_UNSUBSCRIBE_ACTION]: { block: unsubscribe }
   };
 }
 
@@ -1615,6 +1780,7 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
   // one. What decides whether the rows are written is whether the app asked.
   const inventoryActions =
     options.inventory === true ? inventoryWriterActions(MAILBOX_KIND) : undefined;
+  const membershipEntries = membershipEntriesFor(MAILBOX_KIND, boardIds, options.inventory === true);
 
   /**
    * This mailbox's `routing:` fallback, when the route places this post: a
@@ -2033,6 +2199,9 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
         // Beside `fileTask` and `readBoard`, so another flow's dispatch lands on
         // the same implementation a caller reaches.
         ...boardTaskActions,
+        // Here only, never in `actions`: who is on a mailbox decides who a post
+        // wakes, so the app changes it and a client never does.
+        ...membershipEntries,
         // `registerSeats` lives ONLY here, never in the public `actions` map
         // above. Unlike `registerMailbox`, it has no session state to derive
         // from — a seat has no session — so its whole input IS the row data,
