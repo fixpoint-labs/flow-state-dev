@@ -83,6 +83,7 @@ export {
 } from "./mailbox-post-capability";
 export { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
 export { mergeSeatFlows } from "./merge-seat-flows";
+export { findWorkerByName, type WorkerLookupCaller } from "./worker-by-name";
 export { seatDoorOf, type SeatDoor } from "./seat-door";
 export { resourcesFromDocs } from "./resources-from-docs";
 export { referencesFromDocs, referenceBody } from "./references-from-docs";
