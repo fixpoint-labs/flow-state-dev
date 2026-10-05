@@ -38,10 +38,13 @@ import { taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration";
 import { taskSchema } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import {
+  MAILBOX_TASK_LISTS_ID,
   mailboxBoardId,
   mailboxBoardLedger,
   mailboxBoardNamesFor,
-  resolveMailboxBoard
+  mailboxTaskListsCollection,
+  resolveMailboxBoard,
+  resolveMailboxTaskList
 } from "./mailbox-board";
 import { emitMailboxPostLine, readMailboxPostLines } from "./mailbox-items";
 import { incarnationOfRow } from "../roster/incarnation";
@@ -110,7 +113,11 @@ export { MAILBOX_POST_COMPONENT, mailboxTranscriptLineSchema, type MailboxTransc
  * on a refusal path.
  */
 export const mailboxSessionStateSchema = z.object({
-  /** The declared roster. Written once at open; read-only on the post path. */
+  /**
+   * Who is on the mailbox. Written at open, from the file or by the run-time
+   * opener, and changed after only by the internal subscribe and unsubscribe
+   * entries. Read-only on the post path.
+   */
   members: z.array(z.string()),
   /** The mailbox's charter — the `MAILBOX.md` body. */
   instructions: z.string(),
@@ -126,7 +133,31 @@ export const mailboxSessionStateSchema = z.object({
    * checks, and grants nothing on its own. Nullable with a `null` default
    * (BP-023, BP-030), so a mailbox opened before it existed still parses.
    */
-  resourceId: z.string().nullable().default(null)
+  resourceId: z.string().nullable().default(null),
+  /**
+   * `"runtime"` for a mailbox set up while the app ran, with no file; `null`
+   * for one opened from a `MAILBOX.md`, and on a session written before the
+   * field existed (BP-023, BP-030).
+   */
+  origin: z.literal("runtime").nullable().default(null),
+  /**
+   * The task lists this mailbox holds in its own session, beside the boards
+   * its file builds onto the kind. Each is a ledger over `<mailboxId>/<list>`
+   * of the one run-time collection (`mailbox-board.ts`). `null` when it holds
+   * none, which is every mailbox a file opened.
+   */
+  taskLists: z.array(z.string()).nullable().default(null),
+  /**
+   * Per task list, the workers the subscribe and unsubscribe entries added to
+   * and removed from it. A removal is kept even when nothing added the worker,
+   * so taking a worker off a list holds against the file's own say-so.
+   * `null` until either entry first records one. Read through
+   * `taskListWorkers`, never directly.
+   */
+  workersByList: z
+    .record(z.string(), z.object({ added: z.array(z.string()), removed: z.array(z.string()) }))
+    .nullable()
+    .default(null)
 });
 
 export type MailboxSessionState = z.infer<typeof mailboxSessionStateSchema>;
@@ -199,8 +230,9 @@ export const mailboxReadOutputSchema = z.object({
   description: z.string().optional(),
   members: z.array(z.string()),
   /**
-   * The board NAMES this mailbox declared — never the rows, which are a board
-   * read. **Absent, not `[]`, on a mailbox that declares none**, so a mailbox
+   * The board NAMES this mailbox declared, then the task lists its session
+   * holds — never the rows, which are a board read. **Absent, not `[]`, on a
+   * mailbox that holds none**, so a mailbox
    * without boards projects exactly what it projected before boards existed.
    */
   boards: z.array(z.string()).optional(),
@@ -509,7 +541,7 @@ const readMailboxFor = (boardIds: readonly string[]) =>
           `session "${ctx.session.identity.id}" is not an open mailbox.`
         );
       }
-      const boards = mailboxBoardNamesFor(ctx.session.identity.id, boardIds);
+      const boards = listsHeld(mailboxBoardNamesFor(ctx.session.identity.id, boardIds), mailbox);
       return {
         id: ctx.session.identity.id,
         ...(ctx.session.metadata.description === undefined
@@ -524,6 +556,15 @@ const readMailboxFor = (boardIds: readonly string[]) =>
       };
     }
   });
+
+/**
+ * Every list a mailbox holds: its file's boards, then the lists its session
+ * holds that are not also a board's name. A file board wins a shared name, so
+ * resolving a name and listing the names agree on which ledger it is.
+ */
+function listsHeld(boards: readonly string[], mailbox: MailboxSessionState): string[] {
+  return [...boards, ...(mailbox.taskLists ?? []).filter((list) => !boards.includes(list))];
+}
 
 /** The ledger shape the two board actions use: the substrate's ref. */
 type MailboxTaskLedger = Exclude<Awaited<ReturnType<typeof resolveMailboxBoard>>, undefined>;
@@ -653,7 +694,8 @@ async function ledgerNamed(
   }
 
   const mailboxId = ctx.session.identity.id;
-  const held = mailboxBoardNamesFor(mailboxId, boardIds);
+  const boards = mailboxBoardNamesFor(mailboxId, boardIds);
+  const held = listsHeld(boards, mailbox);
   if (!held.includes(name)) {
     throw new MailboxPostRefusedError(
       "board-not-declared",
@@ -682,9 +724,13 @@ async function ledgerNamed(
   // does not hold, so an `undefined` check alone is a branch that never runs
   // and a message nobody ever reads. Both outcomes land here and produce the
   // same refusal.
+  // A file board first, then the session's own list of that name: the same
+  // order `listsHeld` names them in.
   let ledger: MailboxTaskLedger | undefined;
   try {
-    ledger = await resolveMailboxBoard(ctx, boardId);
+    ledger = boards.includes(name)
+      ? await resolveMailboxBoard(ctx, boardId)
+      : await resolveMailboxTaskList(ctx, mailboxId, name);
   } catch {
     ledger = undefined;
   }
@@ -1532,12 +1578,12 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
     boardIds.map((id) => [id, mailboxBoardLedger(id)])
   );
 
-  // Built once per kind, not per request, and only when this kind holds a
-  // board: with no board there is nothing to file onto and nothing to read, so
-  // there is no action rather than an action that always refuses.
+  // Built once per kind, not per request. Present on every kind, board or no
+  // board: a mailbox can hold a task list in its own session, which no file
+  // declares and the kind cannot know about when it is built.
   const readMailbox = readMailboxFor(boardIds);
-  const fileTask = boardIds.length === 0 ? undefined : fileTaskFor(boardIds);
-  const readBoard = boardIds.length === 0 ? undefined : readBoardFor(boardIds);
+  const fileTask = fileTaskFor(boardIds);
+  const readBoard = readBoardFor(boardIds);
 
   // Only for the boards of mailboxes that opted in. Built from the minted ids,
   // so a mailbox with no board, or one that did not opt in, adds nothing.
@@ -1904,7 +1950,9 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
     // The ledgers, and nothing else: no board, no drain, no task entry. A
     // mailbox HOLDS rows; running them stays on the seat's side of the fence,
     // and `defineFlow` asks nothing of a flow that declares only a collection.
-    resources: boardResources,
+    // And the one collection every run-time task list lives in, on every kind,
+    // for the reason the two board actions are on every kind.
+    resources: { ...boardResources, [MAILBOX_TASK_LISTS_ID]: mailboxTaskListsCollection() },
     actions: {
       post: {
         block: postEntry,
@@ -1921,11 +1969,9 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
         // model is told the action does, and a boardless kind returns no
         // `boards` key at all.
         description:
-          boardIds.length === 0
-            ? "Read this mailbox's recent transcript lines, members and description; `after` is ignored. " +
-              "On a project's talk session, read the room's lines after `after`, members only."
-            : "Read this mailbox's recent transcript lines, members, description and declared board names; " +
-              "`after` is ignored. On a project's talk session, read the room's lines after `after`, members only."
+          "Read this mailbox's recent transcript lines, members, description and the names of the task " +
+          "lists it holds; `after` is ignored. On a project's talk session, read the room's lines after " +
+          "`after`, members only."
       },
       join: {
         block: talkJoin,
@@ -1933,20 +1979,16 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
           "Join a project's room. Members only. Returns your one talk session on the project: the one " +
           "the project already lists for you, or this session, now bound."
       },
-      ...(fileTask === undefined || readBoard === undefined
-        ? {}
-        : {
-            fileTask: {
-              block: fileTask,
-              description:
-                "File a row onto one of this mailbox's boards. `author` is an unverified claim, " +
-                "checked against the roster and never proof of who called."
-            },
-            readBoard: {
-              block: readBoard,
-              description: "Read the rows on one of this mailbox's boards."
-            }
-          }),
+      fileTask: {
+        block: fileTask,
+        description:
+          "File a row onto one of this mailbox's task lists. `author` is an unverified claim, " +
+          "checked against the roster and never proof of who called."
+      },
+      readBoard: {
+        block: readBoard,
+        description: "Read the rows on one of this mailbox's task lists."
+      },
       ...boardTaskActions,
       // `registerMailbox` only. It takes a closed, empty input and derives the
       // row entirely from `ctx.session.state` — the mailbox's own,
@@ -1986,9 +2028,8 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
         // that reach it are a project's create and the app's own code.
         bind: { block: talkBind },
         join: { block: talkJoin },
-        ...(fileTask === undefined || readBoard === undefined
-          ? {}
-          : { fileTask: { block: fileTask }, readBoard: { block: readBoard } }),
+        fileTask: { block: fileTask },
+        readBoard: { block: readBoard },
         // Beside `fileTask` and `readBoard`, so another flow's dispatch lands on
         // the same implementation a caller reaches.
         ...boardTaskActions,

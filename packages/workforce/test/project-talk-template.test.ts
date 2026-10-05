@@ -216,7 +216,13 @@ describe("declaring a talk template", () => {
   it("binds a roster with no template as today: no reaction, and a template file is never opened or registered", async () => {
     const plain = mailboxInstances([mailbox("eng.feature", { members: ["eng.em"] })], { resources: { projects } });
     expect((projects as { reactTo?: unknown }).reactTo).toBeUndefined();
-    expect(Object.keys((plain[0] as unknown as { actions: object }).actions)).toEqual(["post", "read", "join"]);
+    expect(Object.keys((plain[0] as unknown as { actions: object }).actions)).toEqual([
+      "post",
+      "read",
+      "join",
+      "fileTask",
+      "readBoard"
+    ]);
 
     const records = [mailbox("eng.feature", { members: ["eng.em"] }), mailbox("eng.room", { mintFor: "projects" })];
     const opened: string[] = [];

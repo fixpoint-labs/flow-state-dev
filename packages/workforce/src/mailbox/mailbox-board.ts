@@ -244,6 +244,69 @@ export function mailboxBoardLedger(id: string): MailboxBoardCollection {
 }
 
 /**
+ * The id of the one collection every mailbox's run-time task lists live in.
+ *
+ * A list a mailbox holds in its own session (`taskLists`) is not a board a
+ * file declared, so it has no declaration of its own: a resource is fixed when
+ * the kind is built, and a list is added while the app runs. Every list is a
+ * ledger over one key prefix of this collection instead, `<mailboxId>/<list>`,
+ * so a mailbox's `tasks` and another's never meet. No dot, so it can never be
+ * a minted board id, which always carries one.
+ */
+export const MAILBOX_TASK_LISTS_ID = "mailboxTaskLists";
+
+/**
+ * The name of the one task list a mailbox set up at run time holds.
+ * **Pinned**: a coordinator files on it without asking.
+ */
+export const RUN_TIME_TASK_LIST = "tasks";
+
+let taskListsMemo: MailboxBoardCollection | undefined;
+
+/**
+ * The declaration of the collection every run-time task list lives in, one
+ * object per process for the reason {@link mailboxBoardLedger} gives.
+ *
+ * Org-scoped and published to a browser on the same terms as a board. Lazy,
+ * where a board is eager: it holds every mailbox's lists, so a request loads
+ * only the list it reads, by its prefix, and never the whole collection.
+ */
+export function mailboxTaskListsCollection(): MailboxBoardCollection {
+  taskListsMemo ??= Object.assign(defineTaskCollection({ id: MAILBOX_TASK_LISTS_ID, scope: "org" as const }), {
+    id: MAILBOX_TASK_LISTS_ID,
+    prefetchMode: "lazy" as const,
+    client: { state: { read: true }, expose: MAILBOX_BOARD_CLIENT_FIELDS }
+  }) as MailboxBoardCollection;
+  return taskListsMemo;
+}
+
+/**
+ * Resolve one mailbox's run-time task list inside a running block, or
+ * `undefined` when the flow does not declare the collection.
+ *
+ * The ledger holds only the rows under `<mailboxId>/<list>`, and its id is
+ * minted the way a board's is, `<mailboxId>.<list>`, so a row's change event
+ * names the list it belongs to. The caller passes the session's own id, never
+ * a payload's (BP-031).
+ */
+export async function resolveMailboxTaskList<TInput = unknown, TOutput = unknown>(
+  ctx: BlockContext,
+  mailboxId: string,
+  list: string
+): Promise<TaskCollectionRef<TInput, TOutput> | undefined> {
+  const collection = resolveResourceCollection(ctx, MAILBOX_TASK_LISTS_ID);
+  if (collection === undefined) return undefined;
+  return getOrCreateTaskCollection<TInput, TOutput>({
+    ctx,
+    backing: "resource",
+    collectionId: mailboxBoardId(mailboxId, list),
+    collection,
+    keyPrefix: `${mailboxId}/${list}`,
+    immutableAssignee: hasFrozenLedgerAssignee(mailboxTaskListsCollection())
+  });
+}
+
+/**
  * The seat-side helper: the same ledger a mailbox holds, from the mailbox's id
  * and the board's local name.
  *

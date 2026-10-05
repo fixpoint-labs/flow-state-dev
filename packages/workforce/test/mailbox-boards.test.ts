@@ -46,9 +46,16 @@ describe("declaring a board", () => {
   it("holds none, and declares no board resource, when the file names no board", () => {
     const instances = mailboxInstances([record("eng.quiet")]);
     const resources = (instances[0]!.resources ?? {}) as Record<string, unknown>;
-    // Only the project-room collections every kind carries for its talk
-    // sessions; no board.
-    expect(Object.keys(resources).sort()).toEqual(["projects", "room-answers", "room-deliveries", "room-lines", "room-seq"]);
+    // Only the collections every kind carries: the project-room ones for its
+    // talk sessions, and the one its run-time task lists live in. No board.
+    expect(Object.keys(resources).sort()).toEqual([
+      "mailboxTaskLists",
+      "projects",
+      "room-answers",
+      "room-deliveries",
+      "room-lines",
+      "room-seq"
+    ]);
   });
 
   it("refuses a `boards:` that is not a list of plain names, naming the mailbox", () => {
@@ -170,9 +177,11 @@ describe("the roster's minted ids", () => {
 });
 
 describe("the built-in kind's own surface", () => {
-  it("adds the board actions only when it was built holding one", () => {
+  it("carries the two task-list actions whether or not it was built holding a board", () => {
+    // A mailbox can hold a task list in its own session, which no file
+    // declares, so a boardless kind still files and reads.
     const boardless = defineMailboxFlow()();
-    expect(Object.keys(boardless.actions)).toEqual(["post", "read", "join"]);
+    expect(Object.keys(boardless.actions)).toEqual(["post", "read", "join", "fileTask", "readBoard"]);
 
     const holding = defineMailboxFlow({ boards: ["eng.feature.triage"] })();
     expect(Object.keys(holding.actions)).toContain("fileTask");
