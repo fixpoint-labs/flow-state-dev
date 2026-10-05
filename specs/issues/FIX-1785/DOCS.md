@@ -31,7 +31,7 @@ through "…only need to choose." with:
 > actually does.
 >
 > `facts` come back on every call. Who is on a mailbox, or which kind a worker was hired into,
-> is a record, and an agent asked about it should quote the record, not guess. A workforce puts
+> is a record, and an agent asked about it should quote the record, not guess. Workforce puts
 > a mailbox's `members` and a worker's `workerKind` here.
 >
 > Entries can also carry an optional `contract`: advice on how to work with the thing, like the

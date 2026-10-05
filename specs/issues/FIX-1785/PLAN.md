@@ -106,4 +106,5 @@ Round 1 (Claude second look, FSD Architect, 2026-10-05). Folded: size policy and
 
 - "An entry will read `kind: \"seat\"` next to `facts.workerKind: \"agent\"`. This is deliberate and pinned, but a model reading both could confuse them. When the Architect's rename lands, `kind` and `workerKind` should be reviewed together."
 - "BR-14 is almost dead code. The seat inventory schema has `kind: z.string().min(1)`, required." (BR-14 now says so.)
+- Cursor (round 1, optional): "VD1 and the S7 goal both prove thin listings carry `facts` through the real `discover` tool… VG alone might suffice once the goal lands." Kept both: VD1 runs in CI, VG does not.
 - Resources' "you may read and write" is a fact by the rule in DECISIONS. Kept out to hold skills and resources byte for byte (BR-4); a follow-up issue.
