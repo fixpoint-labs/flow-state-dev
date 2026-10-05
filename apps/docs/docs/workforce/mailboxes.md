@@ -822,17 +822,12 @@ const agent = defineAgentWorkerFlow({ uses: [mailboxSetup] });
 
 `run` is the same kind of function `openInventory` takes: it calls `runAction` with
 `source: "internal"` and returns the action's output. Your registry and session client usually
-exist only after the app has started, so if your kinds are built before that, pass `open` an
-object whose four methods forward to the opener once you've built it:
+exist only after the app has started, so if your kinds are built before that, pass `open` a
+function that returns the opener. It's called each time a tool runs:
 
 ```ts
 let opener: RunTimeMailboxOpener | undefined;
-const open: RunTimeMailboxOpener = {
-  setUp: (request) => opener!.setUp(request),
-  subscribe: (request) => opener!.subscribe(request),
-  unsubscribe: (request) => opener!.unsubscribe(request),
-  fileTask: (request) => opener!.fileTask(request),
-};
+const mailboxSetup = createMailboxSetupCapability({ open: () => opener!, workers: () => registry.list() });
 // After the app starts:
 opener = openMailboxAtRunTime({ client: sessionClient, userId: "u_42", run: runInternalAction, teams: ["platform", "support"] });
 ```

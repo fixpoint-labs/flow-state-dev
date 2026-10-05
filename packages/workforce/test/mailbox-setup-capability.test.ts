@@ -96,23 +96,11 @@ function scriptedCoordinator(): MockGeneratorInstance {
 const FEATURE: MailboxManifest = { id: "eng.feature", declared: { members: ["eng.ivy"], boards: ["work"] }, body: "C." };
 const TOOLS = ["setUpMailbox", "subscribeWorkers", "unsubscribeWorkers", "fileTask"];
 
-/** The opener the capability is handed, bound once the host exists, the way an app binds `register`. */
-function lateOpener() {
-  let bound: RunTimeMailboxOpener | undefined;
-  const opener: RunTimeMailboxOpener = {
-    setUp: (request) => bound!.setUp(request),
-    subscribe: (request) => bound!.subscribe(request),
-    unsubscribe: (request) => bound!.unsubscribe(request),
-    fileTask: (request) => bound!.fileTask(request)
-  };
-  return { opener, bind: (to: RunTimeMailboxOpener) => (bound = to) };
-}
-
 async function boot(options: { leadTools?: string[] } = {}) {
   let registry: { list(): FlowInstance[] } | undefined;
   const live = () => registry?.list() ?? [];
-  const late = lateOpener();
-  const setup = createMailboxSetupCapability({ open: late.opener, workers: live });
+  let opener: RunTimeMailboxOpener | undefined;
+  const setup = createMailboxSetupCapability({ open: () => opener!, workers: live });
   const kinds = { agent: defineAgentWorkerFlow({ uses: [setup] }), listener } as never;
   const declared = hireWorkforce(
     [
@@ -129,7 +117,7 @@ async function boot(options: { leadTools?: string[] } = {}) {
   });
   hosts.push(h);
   registry = h.runtime.registry;
-  late.bind(openMailboxAtRunTime({ client: h.client, run: h.run, userId: USER_ID, teams: ["eng", "platform"] }));
+  opener = openMailboxAtRunTime({ client: h.client, run: h.run, userId: USER_ID, teams: ["eng", "platform"] });
 
   const lead = declared.find((worker) => worker.id === "eng.lead")!;
 

@@ -717,12 +717,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     return mailboxOpener;
   };
   const mailboxSetup = createMailboxSetupCapability({
-    open: {
-      setUp: (request) => opener().setUp(request),
-      subscribe: (request) => opener().subscribe(request),
-      unsubscribe: (request) => opener().unsubscribe(request),
-      fileTask: (request) => opener().fileTask(request),
-    },
+    open: opener,
     workers: registered,
   });
   // A declared seat holding a tool that waits for a person (`rehire` always
