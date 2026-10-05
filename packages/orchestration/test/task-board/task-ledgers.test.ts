@@ -129,6 +129,13 @@ describe("a task entry served by many ledgers", () => {
     expect(() => recipientFlow([], [])).not.toThrow();
   });
 
+  it("queues its runs, since this flow cannot see its senders' session policy", () => {
+    // A sender under a shared session policy would otherwise interleave two
+    // tasks in one child session.
+    const flow = recipientFlow([], []) as unknown as { task: { actions: Record<string, { concurrency?: string }> } };
+    expect(flow.task.actions.work!.concurrency).toBe("queue");
+  });
+
   it("refuses an entry that also has a same-flow board", () => {
     const board = taskBoard({
       name: "own-board",

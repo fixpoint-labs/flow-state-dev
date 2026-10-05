@@ -862,7 +862,7 @@ Register `followupsDesk` alongside the hired workers and mailbox kinds, and run 
 
 #### Who a name reaches
 
-The lookup finds a worker your files declare, a worker hired for the organization, or a worker the member hired for themselves. "The member" is whoever's request is running: the person filing the row when the filing check runs, and the person whose request runs the drain when the row is handed over. It never finds another organization's workers, or another member's own.
+The lookup finds a worker your files declare, a worker hired for the organization, or a worker the member hired for themselves. "The member" is always the person who filed the row. The list records who filed it, so when a teammate's drain hands the row over, it still reaches the filer's own worker and never the teammate's. It never finds another organization's workers, or another member's own.
 
 | The name | At `fileTask` | At hand-over |
 | --- | --- | --- |

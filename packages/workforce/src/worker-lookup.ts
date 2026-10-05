@@ -6,9 +6,11 @@
  * id a worker was hired under. The lookup answers with the flow id of the one
  * worker holding that name for the running request: a worker the files
  * declare, a worker hired for the organization, or one the running member
- * hired for themselves. The organization and the member come from the run,
- * never from the task, so a name cannot reach another organization's worker or
- * a teammate's own (BP-031).
+ * hired for themselves. The organization comes from the run, and the member
+ * is the one who filed the task: the session owner when a door checks a name,
+ * and the filer the ledger stamped on the row (`task.createdBy`) at hand-over,
+ * whoever runs the drain. Neither comes from the task's own fields, so a name
+ * cannot reach another organization's worker or a teammate's own (BP-031).
  *
  * **It reads the host's live registry, not the list it booted with.** A hire
  * registers its worker the moment it lands and a fire releases it, so a name
@@ -36,8 +38,10 @@ export interface WorkerLookupOptions {
    * The ids of the workers the files declare, as `hireWorkforce` registered
    * them. A declared worker is registered at its own id; this list is what
    * tells it apart from any other flow registered at that id (a mailbox, say).
+   * Pass a getter when the lookup is built before the workers are hired; it
+   * is read on every lookup.
    */
-  declared: Iterable<string>;
+  declared: Iterable<string> | (() => Iterable<string>);
 }
 
 /** What the lookup answers for one name. */
@@ -45,15 +49,28 @@ export type WorkerLookupAnswer =
   | { found: true; flowId: string }
   | {
       found: false;
-      reason: "not-found" | "ambiguous" | "takes-no-tasks";
+      reason: "not-found" | "ambiguous";
       /** One sentence naming the worker, for the refusal a door or a hand-over shows. */
+      message: string;
+    }
+  | {
+      found: false;
+      /** The name means exactly one worker, but its kind declares no task entry. */
+      reason: "takes-no-tasks";
+      /** The one worker the name means, for a caller that wants it for something other than a task. */
+      flowId: string;
       message: string;
     };
 
 /** The lookup, and the two shapes the framework plugs it in as. */
 export interface WorkerLookup {
-  /** Which worker `name` means for the request `ctx` runs. */
-  find(name: string, ctx: BlockContext): WorkerLookupAnswer;
+  /**
+   * Which worker `name` means for the request `ctx` runs.
+   *
+   * @param member Whose own workers count. Defaults to the session owner, the
+   *   filer when a door checks a name; pass `null` to count none.
+   */
+  find(name: string, ctx: BlockContext, member?: string | null): WorkerLookupAnswer;
   /**
    * The per-task target for a list's fallback:
    * `dispatcher({ action: "work", session: "per-task", flowKind: lookup.flowKind })`.
@@ -84,22 +101,28 @@ export interface WorkerLookup {
  * @returns `find` for the filing check and the wake, `flowKind` for a list's fallback.
  */
 export function createWorkerLookup(options: WorkerLookupOptions): WorkerLookup {
-  const declared = new Set(options.declared);
   const { instanceAt } = options;
+  const isDeclared = (id: string): boolean => {
+    const source = options.declared;
+    for (const declaredId of typeof source === "function" ? source() : source) {
+      if (declaredId === id) return true;
+    }
+    return false;
+  };
 
-  const find = (name: string, ctx: BlockContext): WorkerLookupAnswer => {
+  const find = (name: string, ctx: BlockContext, member?: string | null): WorkerLookupAnswer => {
     // Read exactly as the hire tool reads them when it mints the address, so
     // the address looked up is the one a hire registered: `identity.orgId`
     // first (`identity.id` is the org's storage key, which can carry the flow),
-    // and the session owner as the member.
+    // and the session owner as the member unless the caller names the filer.
     const orgId = ctx.org?.identity.orgId ?? ctx.org?.identity.id;
-    const userId = ctx.session.identity.userId;
+    const userId = member === undefined ? ctx.session.identity.userId : member ?? undefined;
 
     // Every worker this caller could mean by the name. The addresses carry the
     // organization and the owner, so another organization's hire and a
     // teammate's own are simply never asked about.
     const held: Array<{ id: string; whose: string }> = [];
-    if (declared.has(name) && instanceAt(name) !== undefined) {
+    if (isDeclared(name) && instanceAt(name) !== undefined) {
       held.push({ id: name, whose: "declared in the files" });
     }
     if (typeof orgId === "string" && orgId.length > 0) {
@@ -133,14 +156,18 @@ export function createWorkerLookup(options: WorkerLookupOptions): WorkerLookup {
       return {
         found: false,
         reason: "takes-no-tasks",
+        flowId: only!.id,
         message: `"${name}" takes no tasks: its kind "${flow.kind}" declares no \`${WORKER_TASK_ENTRY}\` task entry.`,
       };
     }
     return { found: true, flowId: only!.id };
   };
 
+  // At hand-over the run is the drain's, so the member is the filer the
+  // ledger recorded, never the drainer: a teammate's drain must not route a
+  // task to the teammate's own worker. No recorded filer counts no own worker.
   const flowKind: TaskFlowTarget = (task, ctx) => {
-    const answer = find(task.assignee, ctx);
+    const answer = find(task.assignee, ctx, task.filedBy ?? null);
     if (answer.found) return answer.flowId;
     if (answer.reason === "not-found") return undefined;
     throw new Error(`[workforce] task "${task.taskId}" could not be handed over: ${answer.message}`);

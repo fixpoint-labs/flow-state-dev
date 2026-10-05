@@ -924,8 +924,12 @@ function resolveDispatchTargets(
     if (gatedBy.has(name)) continue;
     // An entry that names its own source is gated by it: reached from other
     // flows, it reads each task off the ledger the dispatch names.
+    // Its senders are other flows, so this walk never sees their session
+    // policy: queue it unless the entry chose, as a shared-child entry is, so
+    // tasks that land in one child session never interleave.
     if (entry.from !== undefined) {
-      gated[name] = { ...entry.from.gate(entry, name), gatedBy: entry.from };
+      const fromGated = { ...entry.from.gate(entry, name), gatedBy: entry.from };
+      gated[name] = fromGated.concurrency === undefined ? { ...fromGated, concurrency: "queue" } : fromGated;
       continue;
     }
     throw new Error(

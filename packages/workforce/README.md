@@ -1368,14 +1368,16 @@ const board = taskBoard({
 const desk = defineFlow({ kind: "followups-desk", actions: { drain: { block: board.drain } } })();
 ```
 
-`createWorkerLookup({ instanceAt, declared })` returns `{ find(name, ctx), flowKind, filingCheck(aliases?) }`.
+`createWorkerLookup({ instanceAt, declared })` returns `{ find(name, ctx, member?), flowKind, filingCheck(aliases?) }`.
+`declared` may be a getter, read on every lookup, for a lookup built before the workers are hired.
 `find` answers `{ found: true, flowId }` or `{ found: false, reason, message }`, `reason` being
 `not-found`, `ambiguous` or `takes-no-tasks`. It finds a worker the files declare (an id in
 `declared` with a flow registered there), one hired for the request's organization, or one the
-request's member hired for themselves: the filer at filing, the member running the drain at
-hand-over. Another organization's workers and another member's own are never found. A name held
+member who filed the task hired for themselves: the session owner at filing (or the `member` passed
+to `find`), and at hand-over the filer the ledger recorded on the row, whoever runs the drain. A
+row with no recorded filer reaches no member's own worker. Another organization's workers and another member's own are never found. A name held
 by more than one of those is `ambiguous`, naming each; a worker whose kind declares no `work` task
-entry is `takes-no-tasks`.
+entry is `takes-no-tasks`, which still carries the `flowId` the name means.
 
 `flowKind` is the `TaskFlowTarget` for a board's `defaultWorker`: `not-found` answers nothing, which
 refuses the hand-over `flow-not-found` naming the assignee; `ambiguous` and `takes-no-tasks` throw

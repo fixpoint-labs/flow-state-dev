@@ -168,7 +168,12 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
       const flowKind = await resolveTaskFlowKind(
         name,
         address,
-        { assignee, taskId: claim.taskId, input: snapshot },
+        {
+          assignee,
+          taskId: claim.taskId,
+          input: snapshot,
+          ...(claim.createdBy !== undefined ? { filedBy: claim.createdBy } : {}),
+        },
         ctx
       );
 

@@ -113,7 +113,7 @@ A task on a mailbox's board can name any of your workers that takes tasks, by th
 
 A worker on the built-in `agent` kind runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A kind you write takes tasks when it declares a `work` task entry.
 
-The name reaches your organization's workers, the ones your files declare, and the ones the member whose request is running hired for themselves. It never reaches another member's own workers or another organization's. A name two of those workers share is refused as ambiguous. With the mailbox's filing check on, a task for a name nobody holds is refused when it is filed, naming it. A task whose worker was fired before it ran fails with the worker's name. No other worker picks it up.
+The name reaches your organization's workers, the ones your files declare, and the ones the member who filed the task hired for themselves, whoever later runs the list. It never reaches another member's own workers or another organization's. A name two of those workers share is refused as ambiguous. With the mailbox's filing check on, a task for a name nobody holds is refused when it is filed, naming it. A task whose worker was fired before it ran fails with the worker's name. No other worker picks it up.
 
 [Handing a row to the worker it names](./mailboxes.md#handing-a-row-to-the-worker-it-names) has the wiring: the lookup, the filing check, and the board that hands tasks over.
 

@@ -95,6 +95,13 @@ export type TaskTargetQuery = {
   readonly taskId: string;
   /** The packed worker input the row was claimed with. */
   readonly input: unknown;
+  /**
+   * The user whose request filed the row, as the ledger recorded it when the
+   * row was added. Supplied by a board's hand-over, which reads it off the
+   * row it claimed; absent when the ledger recorded none, or when a bare
+   * dispatcher is run with an envelope (which carries no filer).
+   */
+  readonly filedBy?: string;
 };
 
 /**

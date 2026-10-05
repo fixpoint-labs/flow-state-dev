@@ -75,6 +75,12 @@ export interface TaskClaimTicket {
    * receiving gate checks the row still names it. Not part of the write fence.
    */
   readonly assignee?: string;
+  /**
+   * `task.createdBy` as of the claim: the user whose request filed the task,
+   * as the substrate stamped it. A hand-over that looks its target up per
+   * task resolves "the filer's own" against it. Not part of the write fence.
+   */
+  readonly createdBy?: string;
 }
 
 /**
@@ -96,6 +102,8 @@ export const taskClaimTicketSchema = z.object({
   incarnationId: z.string().optional(),
   /** The claimed row's assignee, when it has one. See {@link TaskClaimTicket.assignee}. */
   assignee: z.string().optional(),
+  /** The claimed row's filer, when recorded. See {@link TaskClaimTicket.createdBy}. */
+  createdBy: z.string().optional(),
 });
 
 /**
@@ -119,6 +127,7 @@ export function ticketForClaim(collectionId: string, claimed: Task): TaskClaimTi
       ? { incarnationId: claimed.incarnationId }
       : {}),
     ...(claimed.assignee !== undefined ? { assignee: claimed.assignee } : {}),
+    ...(claimed.createdBy !== undefined ? { createdBy: claimed.createdBy } : {}),
   };
 }
 

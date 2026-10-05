@@ -64,6 +64,7 @@ function takerFlow(id: string, ran: Array<{ flow: string; taskId: string; sessio
 function senderFlow(options: {
   target: (task: { assignee: string; taskId: string }) => string | undefined | Promise<string | undefined>;
   asked: string[];
+  filers?: Array<string | undefined>;
   inlineRan: string[];
   tasks: Array<{ id: string; assignee?: string }>;
 }) {
@@ -88,6 +89,7 @@ function senderFlow(options: {
       session: "per-task",
       flowKind: (task) => {
         options.asked.push(task.assignee);
+        options.filers?.push(task.filedBy);
         return options.target(task);
       },
     }),
@@ -127,12 +129,14 @@ describe("a fallback that hands rows to a flow looked up per task", () => {
   it("sends each named row to the flow its name looks up, in a session of its own", async () => {
     const ran: Array<{ flow: string; taskId: string; session: string }> = [];
     const asked: string[] = [];
+    const filers: Array<string | undefined> = [];
     const inlineRan: string[] = [];
     const flows = { alice: "taker-alice", bob: "taker-bob" } as Record<string, string>;
     const sender = senderFlow({
       // Async on purpose: a lookup may read a store.
       target: async (task) => flows[task.assignee],
       asked,
+      filers,
       inlineRan,
       tasks: [
         { id: "t-alice-1", assignee: "alice" },
@@ -166,6 +170,10 @@ describe("a fallback that hands rows to a flow looked up per task", () => {
       expect(inlineRan).toEqual(["t-local"]);
       expect(asked).not.toContain("local");
       expect(asked.sort()).toEqual(["alice", "alice", "bob"]);
+      // Each lookup was told who filed the row: the user whose request added
+      // it, as the ledger stamped it, not a field the row's author supplied.
+      expect(filers).toEqual([USER_ID, USER_ID, USER_ID]);
+      expect((await row(runtime.stores, "t-bob"))?.createdBy).toBe(USER_ID);
 
       // A second drain hands nothing over twice.
       expect((await drain(runtime, sender)).error).toBeUndefined();

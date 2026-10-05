@@ -116,6 +116,20 @@ describe("which worker a name on a task means", () => {
     expect(lookup.find("scout", run("acme", "bob"))).toMatchObject({ found: false, reason: "not-found" });
   });
 
+  it("hands a task to the filer's own worker, whoever runs the drain", async () => {
+    // BR-7: the member is the one who filed the task. Bob draining the list
+    // must reach Alice's worker for her task, and never his own of that name.
+    const { hire, lookup } = registry();
+    const alices = hire("acme", "scout", "agent", "alice");
+    hire("acme", "scout", "agent", "bob");
+    const drainedByBob = run("acme", "bob");
+    expect(await lookup.flowKind({ assignee: "scout", taskId: "t1", input: {}, filedBy: "alice" }, drainedByBob)).toBe(
+      alices.id
+    );
+    // No filer on record: no member's own worker counts.
+    expect(await lookup.flowKind({ assignee: "scout", taskId: "t2", input: {} }, drainedByBob)).toBeUndefined();
+  });
+
   it("does not reach another organization's worker", () => {
     const { hire, lookup } = registry();
     hire("acme", "frontend");
@@ -135,10 +149,23 @@ describe("which worker a name on a task means", () => {
 
   it("refuses a worker whose kind takes no tasks", () => {
     const { hire, lookup } = registry();
-    hire("acme", "clerk", "desk-clerk");
+    const clerk = hire("acme", "clerk", "desk-clerk");
     const answer = lookup.find("clerk", run("acme"));
-    expect(answer).toMatchObject({ found: false, reason: "takes-no-tasks" });
+    // Still says which worker the name means: only taking tasks is refused.
+    expect(answer).toMatchObject({ found: false, reason: "takes-no-tasks", flowId: clerk.id });
     expect(!answer.found && answer.message).toMatch(/"clerk" takes no tasks: its kind "desk-clerk"/);
+  });
+
+  it("reads the declared list on every lookup when given a getter", () => {
+    const flows = new Map<string, FlowInstance>();
+    const declaredIds: string[] = [];
+    const lookup = createWorkerLookup({ instanceAt: (id) => flows.get(id), declared: () => declaredIds });
+    const [declared] = hireWorkforce([{ id: "eng.auditor", declared: {}, body: "You audit." }], { kinds });
+    flows.set(declared!.id, declared!);
+    expect(lookup.find("eng.auditor", run("acme")).found).toBe(false);
+    // Declared after the lookup was built, as a host that hires later does.
+    declaredIds.push("eng.auditor");
+    expect(lookup.find("eng.auditor", run("acme"))).toEqual({ found: true, flowId: "eng.auditor" });
   });
 
   it("does not take a flow registered at a name the files never declared for a worker", () => {

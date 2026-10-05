@@ -78,7 +78,8 @@ export function createTaskHandleWrapper<TInput, TOutput>(
  */
 export function buildInitialTask<TInput, TOutput>(
   init: TaskInit<TInput>,
-  now: number
+  now: number,
+  createdBy?: string
 ): Task<TInput, TOutput> {
   return {
     ...initialWriteProvenance(),
@@ -96,6 +97,7 @@ export function buildInitialTask<TInput, TOutput>(
     input: init.input,
     labels: init.labels,
     metadata: init.metadata,
+    ...(createdBy !== undefined ? { createdBy } : {}),
     createdAt: now,
     updatedAt: now,
   };
