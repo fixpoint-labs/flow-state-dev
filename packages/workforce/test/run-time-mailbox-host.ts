@@ -81,6 +81,8 @@ export interface HostOptions extends MailboxInstancesOptions {
   flows?: Record<string, FlowInstance>;
   /** The file mailboxes opened at boot. Defaults to the whole roster. */
   open?: MailboxManifest[];
+  /** The model resolver the host's generators run on; a scripted one keeps a case keyless. */
+  modelResolver?: unknown;
 }
 
 /** One request's action door: what `openInventory` and the run-time opener take as `run`. */
@@ -95,12 +97,13 @@ export interface RunRequest {
 }
 
 export async function host(roster: MailboxManifest[], options: HostOptions = {}) {
-  const { stores: given, flows: extra, open, ...instanceOptions } = options;
+  const { stores: given, flows: extra, open, modelResolver, ...instanceOptions } = options;
   const instances = mailboxInstances(roster, instanceOptions);
   const byKind: Record<string, FlowInstance> = Object.fromEntries(instances.map((i) => [i.kind, i]));
   const state = createFlowState({
     flows: { ...byKind, ...(extra ?? {}) },
-    stores: { default: { primary: given ?? inMemoryStores() } }
+    stores: { default: { primary: given ?? inMemoryStores() } },
+    ...(modelResolver === undefined ? {} : { modelResolver })
   } as never);
   const runtime = await state.getRuntime();
   const client = sessionApi(runtime.stores);

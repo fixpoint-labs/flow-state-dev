@@ -81,6 +81,11 @@ export {
   postToMailboxInputSchema,
   type PostToMailboxInput,
 } from "./mailbox-post-capability";
+export {
+  createMailboxSetupCapability,
+  MAILBOX_SETUP_CAPABILITY,
+  type MailboxSetupCapabilityOptions,
+} from "./mailbox-setup-capability";
 export { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
 export { mergeSeatFlows } from "./merge-seat-flows";
 export { findWorkerByName, type WorkerLookupCaller } from "./worker-by-name";
