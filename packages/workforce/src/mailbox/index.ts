@@ -52,6 +52,8 @@ export {
   type DefineMailboxFlowOptions
 } from "./mailbox-flow";
 
+export { taskListWorkers } from "./mailbox-membership";
+
 export { wakeMemberSeats, type WakeMemberSeatsOptions } from "./wake-member-seats";
 
 export { routeByPurpose, type RouteByPurposeOptions } from "./route-by-purpose";
