@@ -395,7 +395,7 @@ The in-process dispatcher applies that policy, and so do queue workers that shar
 
 ### Sending a task to a flow chosen per task
 
-A task dispatcher's `flowKind` can be a function instead of a string. The board calls it when it hands a task over, with the task's `assignee`, `taskId` and `input` and the running context, and sends the task to the flow id it returns. It may be async. Reach for it when the flow that should run a task is only known at that moment, such as a flow registered after the app started.
+A task dispatcher's `flowKind` can be a function instead of a string. The board calls it when it hands a task over, with the task's `assignee`, `taskId` and `input` and the running context, and sends the task to the flow id it returns. It may be async. Such a dispatcher must use `session: "per-task"`, so each task runs in a session of its own; any other policy throws when the dispatcher is built. Reach for it when the flow that should run a task is only known at that moment, such as a flow registered after the app started.
 
 Put such a dispatcher at `defaultWorker`. Assignees with an entry of their own in `workers` keep it, and every other task is handed over under the assignee it names:
 
@@ -484,7 +484,7 @@ A board with any seat that hands off fixes each task's assignee at admission: `s
 
 ### What the drain reports
 
-`board.handedOff` lists the dispatcher seats in declaration order, each with its `name`, `label` (`assignee:<name>`), and `dispatch` address. A `defaultWorker` dispatcher comes last, with an empty `name` and the label `floor`. The list is empty on a board with no dispatcher.
+`board.handedOff` lists the dispatcher seats in declaration order, each with its `name`, `kind` (`"named"`), `label` (`assignee:<name>`), and `dispatch` address. A `defaultWorker` dispatcher comes last, with an empty `name`, kind `"floor"` and the label `floor`. Branch on `kind`; `label` is for messages. The list is empty on a board with no dispatcher.
 
 The drain's final `task-board-meta` item reports `terminationReason: "handed-off"` when every outstanding task is running in a dispatch run, with `counts.in_progress` saying how many. The drain returned; the work did not finish. See [Termination](#termination-onidle-modes).
 

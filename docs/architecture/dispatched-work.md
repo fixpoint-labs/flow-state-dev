@@ -184,7 +184,8 @@ assignee, id and packed input. It is resolved once per hand-over, before
 anything is dispatched (`resolveTaskFlowKind`), and an empty answer is refused
 `flow-not-found` naming the assignee. Such an address is always cross-flow, so
 the reachability walk skips it like any other and the graph can only show it
-as looked up per task; the entry it names is still declared. Only `task`
+as looked up per task; the entry it names is still declared. A function target requires `session: "per-task"`: the entry it reaches may
+keep session state, so two tasks never share its child session. Only `task`
 dispatchers take a function — an `internal` address stays a string, refused at
 construction otherwise. The board's fallback (`defaultWorker`) may hold such a
 dispatcher: it hands every row its named seats do not route over under the

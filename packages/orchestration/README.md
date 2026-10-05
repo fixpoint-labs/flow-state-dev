@@ -447,7 +447,8 @@ doesn't name over under the task's own assignee, and refuses a task with none
 
 A task dispatcher's `flowKind` may be a function, `(task, ctx) => flowId | undefined`
 (sync or async; `task` is `{ assignee, taskId, input }`), called once per task at
-hand-over. Answering `undefined` refuses the dispatch `flow-not-found`, naming the
+hand-over, and only with `session: "per-task"` (any other policy throws when the
+dispatcher is built). Answering `undefined` refuses the dispatch `flow-not-found`, naming the
 assignee. Put it at `defaultWorker` to send every assignee without a seat of its own
 to a flow looked up at that moment:
 
@@ -464,7 +465,8 @@ defaultWorker: dispatcher({
 entry no board hands off to and no `from` serves, a task dispatcher no board holds,
 two boards handing off to one entry, and an entry with `from` that a board in the
 same flow also hands off to. `board.handedOff` lists the seats that hand off, in
-declaration order, with a `defaultWorker` dispatcher last under the label `floor`.
+declaration order, with a `defaultWorker` dispatcher last (`kind: "floor"`, label `floor`).
+Each entry carries `kind` (`"named"` or `"floor"`) to branch on; `label` is for messages.
 
 **An entry served by many boards.** `taskLedgers({ name, resolve, uses?, onError?,
 allowSessionState? })` returns a `TaskBinding` to pass as a task entry's `from`.

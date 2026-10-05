@@ -372,6 +372,17 @@ describe("dispatcher — the body", () => {
     ).toThrow(/computed flowKind on an internal dispatcher/);
   });
 
+  it("refuses a per-task target under a shared session policy", () => {
+    // The entry a looked-up target reaches may keep session state, so several
+    // tasks must never share its child session.
+    for (const session of ["per-worker", { key: () => "k" }] as const) {
+      expect(() =>
+        dispatcher({ name: "shared", action: "work", session: session as never, flowKind: () => "x" })
+      ).toThrow(/looks its flow up per task but declares session .*session: "per-task"/);
+    }
+    expect(() => dispatcher({ name: "own", action: "work", session: "per-task", flowKind: () => "x" })).not.toThrow();
+  });
+
   it("refuses an empty computed session key, naming the block", async () => {
     const { calls, ctx } = seamRecording();
     const block = dispatcher({

@@ -245,7 +245,7 @@ describe("the gate of a task entry served by many ledgers", () => {
     const entry = binding.gate({ block: worker } as unknown as ActionCore, "work");
     const flow = defineFlow({ kind: "door-gate", actions: { work: entry } } as never)({ id: "door-gate" });
     const runStores = createInMemoryStores();
-    const run = async (ledgerId: string, attemptOffset = 0) => {
+    const run = async (ledgerId: string, attemptOffset = 0, sessionId = `s_${ledgerId}_${attemptOffset}`) => {
       const row = (await ledgerOf(ledgerId === "b" ? "b" : "a")).get("t1") as Task;
       return runAction({
         orgId: DEFAULT_ORG_ID,
@@ -261,7 +261,7 @@ describe("the gate of a task entry served by many ledgers", () => {
           payload: { taskId: "t1", goal: row.goal, attempts: row.attempts, input: {} },
         },
         userId: USER_ID,
-        sessionId: `s_${ledgerId}_${attemptOffset}`,
+        sessionId,
         stores: runStores,
         runtimeConfig: { modelResolver: createMockModelResolver({}) },
       });
@@ -277,6 +277,17 @@ describe("the gate of a task entry served by many ledgers", () => {
     expect((await h.row("b")).status).toBe("completed");
     // The other ledger's row of the same id is untouched.
     expect((await h.row("a")).status).toBe("in_progress");
+  });
+
+  it("settles each of two rows in one session on its own ledger", async () => {
+    // A shared child session (the case `allowSessionState` admits): the
+    // ledger the first row settled on must not carry over to the second.
+    const h = await harness();
+    expect((await h.run("b", 0, "s_shared")).error).toBeUndefined();
+    expect((await h.run("a", 0, "s_shared")).error).toBeUndefined();
+    expect(h.ran).toEqual(["do it on b", "do it on a"]);
+    expect((await h.row("b")).status).toBe("completed");
+    expect((await h.row("a")).status).toBe("completed");
   });
 
   it("writes nothing when the claim on that ledger is stale", async () => {

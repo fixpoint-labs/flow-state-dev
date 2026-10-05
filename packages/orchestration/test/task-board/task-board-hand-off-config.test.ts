@@ -304,7 +304,7 @@ describe("hand-off dispatch — the uniform and floor seats", () => {
       workers: { summarize: worker("sum-floor") },
       defaultWorker: seat("floor-impl"),
     });
-    expect(board.handedOff.map((s) => s.label)).toEqual(["floor"]);
+    expect(board.handedOff.map((s) => [s.kind, s.label])).toEqual([["floor", "floor"]]);
   });
 });
 

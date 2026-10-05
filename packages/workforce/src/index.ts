@@ -82,8 +82,8 @@ export {
   type PostToMailboxInput,
 } from "./mailbox-post-capability";
 export { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
+export { WORKER_TASK_ENTRY } from "./worker-task-entry";
 export {
-  WORKER_TASK_ENTRY,
   createWorkerLookup,
   type WorkerLookup,
   type WorkerLookupAnswer,

@@ -275,6 +275,17 @@ export function dispatcher(
           `or { key: (task) => string }.`
       );
     }
+    // A target looked up per task runs each task in a session of its own. The
+    // entry it reaches may keep session state (an agent's conversation), and
+    // a shared policy would run several tasks, possibly for different
+    // workers, through one child session.
+    if (typeof flowKind === "function" && session !== "per-task") {
+      throw new Error(
+        `[dispatcher] "${name}" looks its flow up per task but declares session ` +
+          `${JSON.stringify(typeof session === "string" ? session : "{ key }")}. A per-task ` +
+          `target hands each task over in a session of its own: declare \`session: "per-task"\`.`
+      );
+    }
     const address: DispatchAddress = {
       type: "task",
       action,

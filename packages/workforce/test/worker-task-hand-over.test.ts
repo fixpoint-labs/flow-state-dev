@@ -43,7 +43,8 @@ const USER_ID = "u_coordinator";
 function run(orgId: string | undefined, userId?: string): BlockContext {
   return {
     ...(orgId === undefined ? {} : { org: { identity: { orgId } } }),
-    ...(userId === undefined ? {} : { user: { identity: { id: userId } } })
+    // The member is the session's owner, as the hire tool reads it.
+    session: { identity: userId === undefined ? {} : { userId } }
   } as unknown as BlockContext;
 }
 
@@ -174,6 +175,7 @@ describe("a task filed for a worker by name, on a real host", () => {
   async function host() {
     let lookup: WorkerLookup | undefined;
     const answered: string[] = [];
+    const heard: string[] = [];
     const agent = defineAgentWorkerFlow({ taskLists: [list.id] });
     const kinds = { agent } as never;
     const [auditor] = hireWorkforce([{ id: "eng.auditor", declared: {}, body: "You audit." }], { kinds });
@@ -215,6 +217,7 @@ describe("a task filed for a worker by name, on a real host", () => {
               {
                 when: (input: unknown) => {
                   const seen = JSON.stringify(input);
+                  heard.push(seen);
                   const match = /GOAL-([a-z0-9]+)/.exec(seen);
                   if (match) answered.push(match[1]!);
                   return match !== null;
@@ -259,10 +262,11 @@ describe("a task filed for a worker by name, on a real host", () => {
       state,
       runtime,
       answered,
+      heard,
       hire,
       fire: (id: string) => state.unregister(id),
-      file: (assignee: string, goal: string) =>
-        act(mailbox!, mailboxId, "fileTask", { board: "work", goal, assignee }),
+      file: (assignee: string, goal: string, extra: Record<string, unknown> = {}) =>
+        act(mailbox!, mailboxId, "fileTask", { board: "work", goal, assignee, ...extra }),
       drain: () => act(coordinator, "s_coordinator", "drain", {}),
       listed: async () =>
         (await act(mailbox!, mailboxId, "readBoard", { board: "work" })).output.tasks as unknown[],
@@ -280,6 +284,19 @@ describe("a task filed for a worker by name, on a real host", () => {
     }
     throw new Error(`timed out waiting for ${label}`);
   }
+
+  it("shows the worker the task's structured input, not only its goal", async () => {
+    const h = await host();
+    try {
+      const taskId = (await h.file("eng.auditor", "GOAL-input1 audit this", { input: { ticket: "TICKET-7Q2" } }))
+        .output.taskId as string;
+      expect((await h.drain()).error).toBeUndefined();
+      await until(async () => (await h.row(taskId))?.status === "completed", "the task to settle");
+      expect(h.heard.some((seen) => seen.includes("TICKET-7Q2"))).toBe(true);
+    } finally {
+      await h.state.dispose();
+    }
+  });
 
   it("refuses at filing a name nobody holds, then hands a task to a worker hired after start", async () => {
     const h = await host();

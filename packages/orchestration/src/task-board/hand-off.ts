@@ -75,11 +75,15 @@ export function isTaskDispatcher(block: unknown): block is TaskWorker & { dispat
 export interface HandOffSeat {
   /**
    * The seat's assignee name — the row's `assignee`, which the hand-off is
-   * addressed by. Empty when the dispatcher sat at a uniform or floor seat, so
-   * {@link assertHandOffBoardSupported} can refuse it by {@link label}.
+   * addressed by. Empty when the dispatcher sat at a uniform or floor seat.
    */
   name: string;
-  /** `assignee:<name>`, `uniform`, or `floor` — the readable form, for refusals. */
+  /**
+   * Where the dispatcher sat: an assignee seat, the uniform `workers` block,
+   * or the `defaultWorker` fallback. What every reader branches on.
+   */
+  kind: "named" | "uniform" | "floor";
+  /** `assignee:<name>`, `uniform`, or `floor` — the readable form, for refusals. Never branched on. */
   label: string;
   dispatch: TaskSeatAddress;
 }
@@ -147,28 +151,35 @@ export function resolveWorkerSlots(config: {
   workers: TaskWorker | TaskWorkerRegistry;
   defaultWorker?: TaskWorker;
   handedOff: HandOffSeat[];
+  /** The assignee seats that run in the drain: named, and not a dispatcher. */
+  inline: string[];
 } {
   const handedOff: HandOffSeat[] = [];
+  const inline: string[] = [];
   const take = (
     name: string,
+    kind: HandOffSeat["kind"],
     label: string,
     resolved: { block: TaskWorker; dispatch?: TaskSeatAddress }
   ) => {
-    if (resolved.dispatch === undefined) return;
-    handedOff.push({ name, label, dispatch: resolved.dispatch });
+    if (resolved.dispatch === undefined) {
+      if (kind === "named") inline.push(name);
+      return;
+    }
+    handedOff.push({ name, kind, label, dispatch: resolved.dispatch });
   };
 
   let workers: TaskWorker | TaskWorkerRegistry;
   if (typeof (config.workers as { run?: unknown }).run === "function") {
     const resolved = resolveWorkerSlot(config.workers, `"${config.name}" workers`);
     workers = resolved.block;
-    take("", "uniform", resolved);
+    take("", "uniform", "uniform", resolved);
   } else {
     const registry: TaskWorkerRegistry = {};
     for (const [assignee, slot] of Object.entries(config.workers as Record<string, unknown>)) {
       const resolved = resolveWorkerSlot(slot, `"${config.name}" seat "${assignee}"`);
       registry[assignee] = resolved.block;
-      take(assignee, `assignee:${assignee}`, resolved);
+      take(assignee, "named", `assignee:${assignee}`, resolved);
     }
     workers = registry;
   }
@@ -177,13 +188,14 @@ export function resolveWorkerSlots(config: {
   if (config.defaultWorker !== undefined) {
     const resolved = resolveWorkerSlot(config.defaultWorker, `"${config.name}" defaultWorker`);
     defaultWorker = resolved.block;
-    take("", "floor", resolved);
+    take("", "floor", "floor", resolved);
   }
 
   return {
     workers,
     ...(defaultWorker !== undefined ? { defaultWorker } : {}),
     handedOff,
+    inline,
   };
 }
 
@@ -220,7 +232,7 @@ export function handedOffTaskPredicate(
   for (const seat of handedOff) {
     if (seat.name.length > 0) names.add(seat.name);
   }
-  if (handedOff.some((seat) => seat.label === "floor")) {
+  if (handedOff.some((seat) => seat.kind === "floor")) {
     const runsHere = new Set(inline);
     // An assignee no inline seat holds reaches the fallback, which hands it
     // off. A row with no assignee is refused there and fails in the drain.
@@ -317,7 +329,7 @@ export function assertHandOffBoardSupported(options: {
   // A hand-off is addressed by the row's assignee: a named seat's name, or,
   // for the fallback, the assignee the row was claimed with. A uniform worker
   // stands in for every row whatever it names, so it has no address.
-  const unnamed = handedOff.filter((seat) => seat.label === "uniform");
+  const unnamed = handedOff.filter((seat) => seat.kind === "uniform");
   if (unnamed.length > 0) {
     throw new Error(
       `[task-board] "${name}" holds a task dispatcher at ${unnamed.map((s) => s.label).join(", ")}, ` +

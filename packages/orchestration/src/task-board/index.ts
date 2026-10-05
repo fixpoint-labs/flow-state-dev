@@ -769,6 +769,7 @@ export function taskBoard<
   const workers = resolvedWorkers.workers;
   const defaultWorker = resolvedWorkers.defaultWorker;
   const handedOff = resolvedWorkers.handedOff;
+  const inlineSeats = resolvedWorkers.inline;
 
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
@@ -834,12 +835,7 @@ export function taskBoard<
   // before; the completion meta is the third reader (FIX-1074), and it has to
   // agree with the other two — a board that exited because its work is running
   // elsewhere must not then report that exit as a failure.
-  const runsElsewhere = handedOffTaskPredicate(
-    handedOff,
-    typeof (workers as { run?: unknown }).run === "function"
-      ? []
-      : Object.keys(workers).filter((seat) => !handedOff.some((h) => h.name === seat))
-  );
+  const runsElsewhere = handedOffTaskPredicate(handedOff, inlineSeats);
 
   // FIX-1234: the second exclusion, threaded to the exit check and the wake
   // predicate from here — the same discipline `runsElsewhere` follows, and for
@@ -911,7 +907,7 @@ export function taskBoard<
       ...(drainUses !== undefined ? { uses: drainUses } : {}),
     });
     for (const seat of handedOff) {
-      if (seat.label === "floor") {
+      if (seat.kind === "floor") {
         // The fallback stands in for every assignee the board does not name,
         // so its hand-off carries no seat: each row goes over under its own.
         floorHandOff = createHandOff({
@@ -922,7 +918,7 @@ export function taskBoard<
         });
         continue;
       }
-      if (seat.name === "") continue;
+      if (seat.kind !== "named") continue;
       handOffBySeat.set(
         seat.name,
         createHandOff({

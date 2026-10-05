@@ -91,7 +91,7 @@ import {
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { WORKER_TASK_ENTRY } from "./worker-lookup";
+import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { mailboxTaskLists } from "./mailbox/mailbox-board";
 import {
   mailboxNotifyInputSchema,
@@ -1316,12 +1316,20 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
 
 /**
  * A task as an agent worker reads it: the title when there is one, the goal,
- * and the task's context below it.
+ * the task's context, and its structured input as JSON when it carries any.
  */
 function taskMessage(task: TaskWorkerInput): string {
   const lines = [task.title === undefined ? task.goal : `${task.title}\n\n${task.goal}`];
   if (task.context !== undefined && task.context.trim().length > 0) lines.push(`Context:\n${task.context}`);
+  if (hasInput(task.input)) lines.push(`Input:\n${JSON.stringify(task.input, null, 2)}`);
   return lines.join("\n\n");
+}
+
+/** True for a task input worth showing: present, and not an empty object. */
+function hasInput(input: unknown): boolean {
+  if (input === undefined || input === null) return false;
+  if (typeof input === "object" && !Array.isArray(input)) return Object.keys(input).length > 0;
+  return true;
 }
 
 /**

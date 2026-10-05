@@ -22,12 +22,8 @@
 
 import type { BlockContext, FlowInstance, TaskFlowTarget } from "@flow-state-dev/core/types";
 import { seatAddress } from "./roster/address";
+import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 
-/**
- * The task entry every worker kind takes tasks through. **Pinned**: a list's
- * fallback hands over to it, and so does the wake.
- */
-export const WORKER_TASK_ENTRY = "work";
 
 export interface WorkerLookupOptions {
   /**
@@ -92,8 +88,12 @@ export function createWorkerLookup(options: WorkerLookupOptions): WorkerLookup {
   const { instanceAt } = options;
 
   const find = (name: string, ctx: BlockContext): WorkerLookupAnswer => {
+    // Read exactly as the hire tool reads them when it mints the address, so
+    // the address looked up is the one a hire registered: `identity.orgId`
+    // first (`identity.id` is the org's storage key, which can carry the flow),
+    // and the session owner as the member.
     const orgId = ctx.org?.identity.orgId ?? ctx.org?.identity.id;
-    const userId = ctx.user?.identity.userId ?? ctx.user?.identity.id;
+    const userId = ctx.session.identity.userId;
 
     // Every worker this caller could mean by the name. The addresses carry the
     // organization and the owner, so another organization's hire and a
