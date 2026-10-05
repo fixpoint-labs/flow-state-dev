@@ -700,7 +700,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   // one helper.
   //
   // Exactly ONE of them refuses anything: `setAssignee`, which declines on a
-  // terminal task and — on a board that hands off — on every task.
+  // terminal task and — on a board that hands off — on a task an attempt holds.
   // The other four deliberately keep writing to terminal tasks — labelling,
   // re-prioritizing, or annotating a finished task is a real and used thing (a
   // post-drain failure audit, a cascade's `skipped` marker) — so they can only

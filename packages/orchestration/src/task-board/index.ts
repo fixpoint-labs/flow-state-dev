@@ -1254,7 +1254,7 @@ export function taskBoard<
     .tap(teardownFlowState)
     .rescue([{ block: teardownFlowState }]);
 
-  // A handed-off board's assignee is fixed at admission, because it is what
+  // A handed-off board's assignee is fixed while a task runs, because it is what
   // the child's routing key derives from. Recorded on the LEDGER declaration
   // rather than on the refs built from it: two boards may bind the same
   // durable collection and only one need declare a dispatcher seat, yet they

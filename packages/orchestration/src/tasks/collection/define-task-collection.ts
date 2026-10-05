@@ -176,8 +176,8 @@ export function defineTaskCollection<
 const immutableAssigneeLedgers = new WeakSet<DefinedTaskCollection>();
 
 /**
- * Freeze the assignee on every task in this ledger, for every ref that resolves
- * it. Called by `taskBoard` when a board binding this collection declares
+ * Freeze the assignee on every `in_progress` task in this ledger, for every ref
+ * that resolves it. Called by `taskBoard` when a board binding this collection declares
  * dispatcher seats, whose child's routing key is derived from the assignee.
  *
  * Idempotent, and deliberately one-way: two boards on one ledger, one handing
