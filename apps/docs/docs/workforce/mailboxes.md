@@ -330,16 +330,16 @@ For each post, it decides per member whether that member runs:
   built-in `agent` kind can hear a post. It runs its ordinary answer, with the post as its turn,
   `<writer> in <mailbox>: <body>`. The writer is the post's `author`, or its `principal` when there
   is no `author`: `support.lead in support.desk: can someone look at the refund queue?`.
-- **Nobody runs** when the line is a seat's (`seatAuthored: true`). A seat's `post-to-mailbox`
+- **No worker runs** when the line is a worker's (`seatAuthored: true`). A seat's `post-to-mailbox`
   call and a routed answer are that line. A post another flow dispatches with action `post` is not.
-  A member that would have run
-  gets nothing at all. Members whose seat can't hear a post get `fallback`, or nothing if you
-  passed none. The fallback is not sent to a member who would have been woken. To have
+  A member whose worker can hear posts
+  gets nothing at all, and `fallback` is not sent to them. To have
   agents hear a seat's post, write your own notify block and run it when `seatAuthored`
   is `true`.
-- **Nobody runs** for a member whose kind can't hear a post, or who has no seat in the list you
-  passed. A seat hired while the app is running isn't in that list until the app restarts and
-  passes it in.
+- **The `fallback` block runs**, or nothing if you passed none, for every other member: one whose
+  kind can't hear a post, one with no worker in the list you passed, or one the mailbox's caller
+  can't reach. A worker hired while the app is running isn't in that list until the app restarts
+  and passes it in. For these members the fallback runs on every post, including a worker's.
 
 If the same seat id appears more than once (in several organizations, or owned by several users),
 the one the mailbox's caller can reach runs, in this order: their own, the organization's, a shared
@@ -354,17 +354,23 @@ listing does not show it. List with dispatch runs included (`include: "dispatch-
 A busy mailbox keeps growing each seat's conversation, and a seat remembers only as far back as
 its history window reaches. Nothing summarizes older posts for it.
 
-Members whose seat can't hear a post get nothing, the same as a mailbox with no notify slot. To
-send them something else, pass a `fallback` block. It runs for those members on every post, and
-never for a member the wake would have run. It receives the same input a notify block does:
+Pass your own notify block as `fallback` to handle every member the wake doesn't run. It
+receives the same input a notify block does:
 
 ```ts
-defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: tellByEmail }) });
+defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) });
 ```
 
-On a seat's line, members whose seat can't hear a post get the fallback. To skip a seat's line in a block of your own, read
-`input.seatAuthored === true`, as the handler earlier on this page does. `author` is an unverified
-claim, so comparing it to `member` only skips a delivery when the caller claimed that name.
+| Member | Post from a client | Post from a worker (`seatAuthored: true`) |
+| --- | --- | --- |
+| Its worker can hear posts, and the mailbox's caller can reach it | The worker runs | Nothing |
+| Any other member | `fallback` | `fallback` |
+
+Your block runs only for members the wake skips. It never sees a member whose worker can hear
+posts and is reachable, so logging, email or dispatch for those members has to happen somewhere else. To skip a
+worker's line in your block, read `input.seatAuthored === true`, as the handler earlier on this
+page does. `author` is an unverified claim, so comparing it to `member` only skips
+a delivery when the caller claimed that name.
 
 #### Making a kind of your own hear posts
 
