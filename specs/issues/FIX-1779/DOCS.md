@@ -28,7 +28,7 @@ const mailboxFlows = mailboxInstances(mailboxes, {
 ```
 
 Pass a function that returns the workers your app has registered right now, usually your flow
-registry's `list`. The wake calls it on every post, so a worker hired while the app runs is
+registry's `list`. The wake calls it once per post, not once per member, so a worker hired while the app runs is
 woken from its next post on, and a fired worker stops being woken. A fixed list still works, and
 it never changes.
 
@@ -65,7 +65,7 @@ tools: [hire, setUpMailbox, subscribeWorkers, unsubscribeWorkers, fileTask]
 | Tool | What it does |
 |---|---|
 | `setUpMailbox` | Opens `<team>.<name>` with a description, a charter and members. It gets one task list, `tasks`, worked by those members |
-| `subscribeWorkers` | Adds workers to any mailbox, including one from a file. With `worksTaskList: true` they also work its task list |
+| `subscribeWorkers` | Adds workers to any mailbox on the built-in kind, including one from a file. With `worksTaskList: true` they also work its task list |
 | `unsubscribeWorkers` | Takes workers off the mailbox and off its task lists, a list the file's `workedBy` names them on included. Their open tasks stay on the list |
 | `fileTask` | Files a task on a mailbox's task list |
 

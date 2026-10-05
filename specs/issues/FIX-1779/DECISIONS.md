@@ -80,6 +80,7 @@ Then run-time ids get a reserved shape, and the clash can't happen.
 - **Ids follow the file convention**, `<team>.<name>`, and the team must exist. An id already taken, by a file or by the coordinator, is refused.
 - **Setting up does not attach to a project.** `setWorkstreams` already does that, and accepts the mailbox once its inventory row exists.
 - **The org comes from the caller's identity**, never from tool input.
+- **Custom mailbox kinds are out of D2.** A `MAILBOX.md` that picks a custom kind owns that kind's state and actions, so these tools refuse it by name. "Any mailbox" means any mailbox on the built-in kind.
 
 ## Considered and dropped
 
@@ -102,6 +103,6 @@ Then run-time ids get a reserved shape, and the clash can't happen.
 - **Draft** — framed as two start-up lists (mailboxes with their task lists, and workers a post can wake) that must become run-time and durable. The mailbox's own session carries members, its task list and who works it; the wake asks the host per post. Two stacked PRs.
 - **Scope widened before publishing** — Jake (2026-10-04) asked for the coordinator's whole job, not one flow. D2 moved from run-time mailboxes only to any mailbox, and removing a worker came in.
 
-- **Review round 1** — two findings moved the design. A refusal at start became D3 (treat a clashing file like an edit, and report it). Who works a list now follows the file's `workedBy` with recorded removals, so unsubscribing a worker takes it off a file's list too. The rest went to the plan: one worker source per post, members read from the session.
+- **Review round 1** — two findings moved the design. A refusal at start became D3 (treat a clashing file like an edit, and report it). Who works a list now follows the file's `workedBy` with recorded removals, so unsubscribing a worker takes it off a file's list too. Codex narrowed D2 to the built-in mailbox kind and made a retried setup repair a missing inventory row. The rest went to the plan: one worker source per post, members read from the session, prefix-bounded list reads.
 
 **Open: none.**

@@ -11,15 +11,15 @@ coordinator the tools and wires the hosts.
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `orchestration` · task ledger | A ledger over one key prefix of a declared task collection, so many lists share one collection and never see each other's tasks. Generic: no mailbox or worker word | BR-17 |
+| S1 | `orchestration` · task ledger | A ledger over one key prefix of a declared task collection, so many lists share one collection and never see each other's tasks. Reads are bounded by the prefix in the store, never a full-collection load filtered in memory. Generic: no mailbox or worker word | BR-17 |
 | S2 | `workforce` · mailbox kind | Always declares one org-scoped collection for run-time task lists. `fileTask`, `readBoard` and the ledger lookup resolve a list name against the file lists built onto the kind, then against the session's own `taskLists`. The two actions exist even when no file declares a board | BR-15 BR-16 BR-17 |
 | S3 | `workforce` · mailbox session state | New optional fields: `taskLists: [name]`, `origin: "runtime"`, and per list the workers added and removed by these tools. The removals are what let BR-11 hold against a file's `workedBy`. Nullable with defaults; old sessions read as today (BP-023, BP-030) | BR-1 BR-5 BR-9 BR-11 |
-| S4 | `workforce` · mailbox internal entries | `setUp`, `subscribe`, `unsubscribe`: internal, never client actions. Each is a versioned write of the session (the session store's `set` with `expectedVersion`), re-read and retried on conflict; then the inventory row and membership rows follow | BR-7 BR-10–BR-13 BR-23 |
+| S4 | `workforce` · mailbox internal entries | `setUp`, `subscribe`, `unsubscribe`: internal, never client actions. Each is a versioned write of the session (the session store's `set` with `expectedVersion`), re-read and retried on conflict; then the inventory row and membership rows follow. Custom-kind mailboxes are refused (BR-7). The retries contend with posts on the same session, so the bound and the conflict rate get a test | BR-2 BR-7 BR-10–BR-13 BR-23 |
 | S5 | `workforce` · run-time opener | A host helper beside `openMailboxes` that opens one mailbox at run time with the same validation, refusals and id rules, and reaches S4's entries as the app. The capability gets it as an option, the way `hire` gets `register`. `openMailboxes` reports, and does not refuse, a file whose id is held by a run-time mailbox (D3) | BR-1–BR-4 BR-6 |
 | S6 | `workforce` · inventory | The mailbox row carries `origin` and is a pointer: members are never read from it. Membership rows follow the session on each S4 write, and a removed member's row is deleted (today they are never pruned) | BR-7 BR-11 BR-19 |
 | S7 | `workforce` · `discover` | Lists inventory rows marked `origin: "runtime"` beside the declared ones; declared rows keep today's join. Members come from each mailbox's session | BR-19 |
-| S8 | `workforce` · the wake and the route | One shared worker-source type (a list or a getter) that `wakeMemberSeats` and `routeByPurpose` both accept, resolved once per post, never per member. No new `Seat*` name | BR-7 BR-8 BR-14 |
-| S9 | `workforce` · who works a list | One read, for any mailbox: the file's `workedBy` for the list (FIX-1777 adds that field), plus S3's added, minus S3's removed. Membership and board declarations don't count. FIX-1777's wake (#2753) and FIX-1774's view (#2747) consume it, which is why it is here rather than cut | BR-11 BR-18 |
+| S8 | `workforce` · the wake and the route | One shared worker-source type (a list or a getter) that `wakeMemberSeats` and `routeByPurpose` both accept, resolved once per post, never per member, and shared with that post's route cases. Matching a built dispatcher is a Map or Set lookup, not the POC's scan. No new `Seat*` name | BR-7 BR-8 BR-14 |
+| S9 | `workforce` · who works a list | One read, for any mailbox: the file's `workedBy` for the list (FIX-1777 adds that field), plus S3's added, minus S3's removed. Membership and board declarations don't count. The answer is a set with no order; FIX-1777 hands a task over only when it holds exactly one worker. FIX-1777's wake (#2753) and FIX-1774's view (#2747) consume it, which is why it is here rather than cut | BR-11 BR-18 |
 | S10 | `workforce` · capability | `createMailboxSetupCapability({ open, workers })`: catalog tools `setUpMailbox`, `subscribeWorkers`, `unsubscribeWorkers`, `fileTask`. Worker names, and `fileTask`'s assignee, are checked with FIX-1778's one name-to-flow lookup, over the same live list S8 reads. Org from the caller | BR-4 BR-15 BR-21 BR-22 |
 | S11 | DevTeam Lab host, kitchen-sink | Install S10 on the agent kind; pass the registry getter to the wake. This also wakes hires reloaded at restart. The chief of staff's `tools:` line is FIX-1774's | BR-8 |
 | S12 | Docs | Per [DOCS.md](DOCS.md). **Remove** "no join or leave verb yet" and its limits entries | — |
@@ -125,6 +125,12 @@ woken on the next post. The premise held; nothing changed.
 - FIX-1762's stack touches `projects/project-writes.ts`. Merge `main` before PR-B.
 - `openMailboxes` already leaves a bound mailbox at an id as it is (its doc comment in `mailbox/mailbox-binder.ts`). D3 relies on that; add the report there, and keep refusing an id held by a session of another kind.
 - Landing order (agreed with FIX-1777): this issue lands S9 first with the run-time side only, added minus removed, and records removals. FIX-1777's first PR adds the file's `workedBy` term to the same read, stacked on PR-A if it is still open, and must apply the recorded removals to it. V7's file-list half runs once that term exists.
+
+## Notes from review
+
+Recorded for the implementer, not folded into the design:
+
+- (Cursor, S4) One versioned internal entry with an operation field may replace the three entries, if it keeps BR-23 and the host opener boundary clear.
 
 ## Follow-ups
 

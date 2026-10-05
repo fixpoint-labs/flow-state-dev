@@ -10,7 +10,7 @@ The *proved by* column is the check the plan runs.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-1 | A coordinator sets up `<team>.<name>` with a description, a charter and members | The mailbox opens with those members and that charter, one task list named `tasks` worked by those members, and an inventory row marked as set up at run time | CI · goal check |
-| BR-2 | The id is already a mailbox (from a file, or set up earlier) | Refused, naming the mailbox. Nothing is opened or changed | CI |
+| BR-2 | The id is already a mailbox (from a file, or set up earlier) | Refused, naming the mailbox. Nothing is opened, and the mailbox is not changed. One repair only: a mailbox set up at run time whose inventory row is missing gets the row written first, so a retried setup makes it findable | CI |
 | BR-3 | The team does not exist, or the name breaks the file naming rule | Refused, naming the problem | CI |
 | BR-4 | A member names no worker in the caller's org (declared or hired) | Refused, naming the worker. Nothing is opened | CI |
 | BR-5 | The app restarts | The mailbox, its members, its task list, who works it and its tasks are all as they were. Opening the file mailboxes does not touch it | CI on a durable store · goal check |
@@ -20,7 +20,7 @@ The *proved by* column is the check the plan runs.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-7 | A coordinator subscribes workers to any mailbox, a file mailbox included | Each becomes a member. The next post wakes the ones whose kind hears posts. The inventory row follows | CI · goal check |
+| BR-7 | A coordinator subscribes workers to any mailbox on the built-in mailbox kind, a file mailbox included | Each becomes a member. The next post wakes the ones whose kind hears posts. The inventory row follows. A mailbox whose `MAILBOX.md` picks a custom kind owns its own state, so subscribe and unsubscribe refuse it, naming the kind | CI · goal check |
 | BR-8 | The worker was hired a moment ago | It is woken on the next post, with no restart | CI · goal check |
 | BR-9 | Subscribed with `worksTaskList` | The worker is also recorded as working the mailbox's task list. Without it, it is a member only. Being a member never makes a worker of the list | CI |
 | BR-10 | A worker is subscribed twice | Nothing changes the second time. Not an error | CI |
