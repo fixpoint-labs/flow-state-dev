@@ -171,7 +171,10 @@ check widens no delivery mode: a `{ key }` child is derived under the target
 instance, an `{ id }` or `{ from: true }` delivery must name a session that
 instance owns (`session-not-addressable` otherwise), and nothing else changes. A `task` address
 may take `flowKind` the same way — see [Dispatched Work](./dispatched-work.md) →
-*Dispatching into another flow*.
+*Dispatching into another flow*. A `task` address alone may also carry a
+function of the task in place of the string, resolved at hand-over: the one
+part of an address not known at definition, and always cross-flow, so the walk
+skips it and the graph shows it as looked up per task.
 
 **Three session targets, two delivery guards.** `{ key }` derives a child of the
 running session (`deriveDispatchRunSessionId`, with the key framed under its

@@ -85,6 +85,7 @@ export {
 export {
   mailboxBoard,
   mailboxBoardTaskTools,
+  mailboxTaskLists,
   type MailboxBoardCollection
 } from "./mailbox-board";
 

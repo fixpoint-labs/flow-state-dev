@@ -141,7 +141,7 @@ These sit beside Orchestration on Core and don't use a task board.
 
 A few words are used in two places. The package tells you which one you're reading.
 
-- **Worker.** In Workforce, a hired `WORKER.md`. On a task board, the block that runs a task. A task's assignee names a board worker, never a Workforce worker.
+- **Worker.** In Workforce, a hired `WORKER.md`. On a task board, the block that runs a task. A task's assignee names a board worker, or, on a board that asks Workforce's worker lookup, any Workforce worker. See [Giving a task to a worker](./workforce/overview.md#giving-a-task-to-a-worker).
 - **Member.** On a mailbox, a worker id. On a project, a person.
 - **Dispatcher.** Core's `dispatcher()` is a block that sends to another flow. A task board's dispatcher is the rule that picks the next task.
 - **Roster.** The Workforce roster is who is hired. Shift Manager's Roster is a screen over the inventory.

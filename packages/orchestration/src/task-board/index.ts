@@ -268,7 +268,14 @@ export type {
   TaskSeatRegistry,
 } from "./hand-off";
 export type { TaskSessionPolicy } from "@flow-state-dev/core/types";
-export { StaleTaskClaimError, createTaskGate, taskDispatchInputSchema } from "./task-entry";
+export {
+  StaleTaskClaimError,
+  UnknownTaskLedgerError,
+  createTaskGate,
+  taskDispatchInputSchema,
+  taskLedgers,
+  type TaskLedgersOptions,
+} from "./task-entry";
 export type { TaskGateOptions, TaskDispatchInput } from "./task-entry";
 export { createHandOff } from "./blocks/hand-off";
 export type { HandOffOptions } from "./blocks/hand-off";
@@ -762,6 +769,7 @@ export function taskBoard<
   const workers = resolvedWorkers.workers;
   const defaultWorker = resolvedWorkers.defaultWorker;
   const handedOff = resolvedWorkers.handedOff;
+  const inlineSeats = resolvedWorkers.inline;
 
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
@@ -827,7 +835,7 @@ export function taskBoard<
   // before; the completion meta is the third reader (FIX-1074), and it has to
   // agree with the other two — a board that exited because its work is running
   // elsewhere must not then report that exit as a failure.
-  const runsElsewhere = handedOffTaskPredicate(handedOff);
+  const runsElsewhere = handedOffTaskPredicate(handedOff, inlineSeats);
 
   // FIX-1234: the second exclusion, threaded to the exit check and the wake
   // predicate from here — the same discipline `runsElsewhere` follows, and for
@@ -885,6 +893,7 @@ export function taskBoard<
   // behind this board's gate. The gate is built once for the board: it is the
   // same ledger and the same failure policy whichever seat hands off.
   const handOffBySeat = new Map<string, TaskWorker>();
+  let floorHandOff: TaskWorker | undefined;
   if (boardId !== undefined && handedOff.length > 0) {
     const gate = createTaskGate({
       name,
@@ -898,7 +907,18 @@ export function taskBoard<
       ...(drainUses !== undefined ? { uses: drainUses } : {}),
     });
     for (const seat of handedOff) {
-      if (seat.name === "") continue;
+      if (seat.kind === "floor") {
+        // The fallback stands in for every assignee the board does not name,
+        // so its hand-off carries no seat: each row goes over under its own.
+        floorHandOff = createHandOff({
+          name: `${name}-hand-off-fallback`,
+          boardId,
+          address: seat.dispatch,
+          binding: { boardId, gate },
+        });
+        continue;
+      }
+      if (seat.kind !== "named") continue;
       handOffBySeat.set(
         seat.name,
         createHandOff({
@@ -921,7 +941,7 @@ export function taskBoard<
             handOffBySeat.get(assignee) ?? worker,
           ])
         );
-  const dispatchDefaultWorker = defaultWorker;
+  const dispatchDefaultWorker = floorHandOff ?? defaultWorker;
 
   const workerStep = buildWorkerStep({
     name,
