@@ -19,6 +19,7 @@ export { emitMailboxPostLine, readMailboxPostLines } from "./mailbox-items";
 export {
   MAILBOX_KIND,
   MAILBOX_SEAT_POST_ACTION,
+  MAILBOX_FILE_TASK_FOR_WORKER_ACTION,
   MAILBOX_POST_COMPONENT,
   MailboxPostRefusedError,
   INVENTORY_REGISTER_MAILBOX,
@@ -78,7 +79,8 @@ export {
   type OpenMailboxesOptions,
   type RunTimeMailboxOpener,
   type RunTimeMailboxSetUp,
-  type RunTimeMembershipChange
+  type RunTimeMembershipChange,
+  type RunTimeTaskFiling
 } from "./mailbox-binder";
 
 export {

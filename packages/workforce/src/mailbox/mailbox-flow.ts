@@ -49,6 +49,7 @@ import {
 import { emitMailboxPostLine, readMailboxPostLines } from "./mailbox-items";
 import {
   subscribedFields,
+  taskListWorkers,
   unsubscribedFields,
   workersByListRecordSchema,
   type MembershipFields
@@ -258,13 +259,17 @@ export type MailboxReadOutput = z.infer<typeof mailboxReadOutputSchema>;
  * the refusal says that rather than letting the resource registry report the
  * board as unregistered, which sends an author to check a registration that is
  * fine. Same shape as an org-scoped document read in an org-less mailbox.
+ *
+ * `assignee-not-a-list-worker` is a task filed for a worker who does not work
+ * the list it is filed on (`taskListWorkers`).
  */
 export type MailboxRefusalReason =
   | "mailbox-not-bound"
   | "author-not-a-member"
   | "board-not-declared"
   | "board-needs-an-org"
-  | "mailbox-is-a-template";
+  | "mailbox-is-a-template"
+  | "assignee-not-a-list-worker";
 
 /**
  * A post refused on the mailbox's own terms, as opposed to by the substrate.
@@ -800,6 +805,75 @@ const fileTaskFor = (boardIds: readonly string[]) =>
       });
 
       return { board: input.board, boardId, taskId: task.id, status: task.status };
+    }
+  });
+
+/**
+ * The internal entry a coordinator's `fileTask` tool files through, run as the
+ * app by the run-time opener: a task on one of the mailbox's lists, for a
+ * worker of that list, recording the worker who filed it.
+ *
+ * Internal only. `filingWorker` is the calling worker's name as the runtime
+ * knows it, which the tool reads off the worker's own settings; a client that
+ * could reach this entry could put any name there.
+ */
+export const MAILBOX_FILE_TASK_FOR_WORKER_ACTION = "fileTaskForWorker";
+
+/** What filing for a worker takes. Closed: the filer is named by the app, never claimed. */
+const fileTaskForWorkerInputSchema = z
+  .object({
+    /** The list's name, as the mailbox holds it: a file's board or a run-time list. */
+    list: z.string().min(1),
+    goal: z.string().min(1),
+    title: z.string().min(1).optional(),
+    context: z.string().optional(),
+    /** The worker the task is for, by name. Must be one of the list's workers. */
+    assignee: z.string().min(1).optional(),
+    priority: z.number().optional(),
+    labels: z.array(z.string()).optional(),
+    /** The worker who filed it, by name. Kept on the task's metadata to report back to; never its owner. */
+    filingWorker: z.string().min(1)
+  })
+  .strict();
+
+/**
+ * File one task for a worker: on a list the mailbox holds, for an assignee
+ * who works that list (`taskListWorkers`), with `filingWorker` on its
+ * metadata. A list the mailbox does not hold, and an assignee who does not
+ * work it, are refused by name and file nothing.
+ */
+const fileTaskForWorkerFor = (boardIds: readonly string[]) =>
+  handler({
+    name: "mailbox-file-task-for-worker",
+    inputSchema: fileTaskForWorkerInputSchema,
+    outputSchema: mailboxFileTaskOutputSchema,
+    execute: async (input: z.infer<typeof fileTaskForWorkerInputSchema>, ctx): Promise<MailboxFileTaskOutput> => {
+      const { boardId, ledger } = await ledgerNamed(ctx, boardIds, input.list);
+      const mailboxId = ctx.session.identity.id;
+
+      if (input.assignee !== undefined) {
+        const workers = [...taskListWorkers(ctx, mailboxId, input.list)].sort();
+        if (!workers.includes(input.assignee)) {
+          throw new MailboxPostRefusedError(
+            "assignee-not-a-list-worker",
+            `"${input.assignee}" does not work list "${input.list}" on mailbox "${mailboxId}", so a task there ` +
+              `can't be for them. Its workers: ${workers.length > 0 ? workers.join(", ") : "(none)"}. ` +
+              "Subscribe the worker with `worksTaskList`, or pick one of these."
+          );
+        }
+      }
+
+      const task = await ledger.addTask({
+        goal: input.goal,
+        ...(input.title === undefined ? {} : { title: input.title }),
+        ...(input.context === undefined ? {} : { context: input.context }),
+        ...(input.assignee === undefined ? {} : { assignee: input.assignee }),
+        ...(input.priority === undefined ? {} : { priority: input.priority }),
+        ...(input.labels === undefined ? {} : { labels: input.labels }),
+        metadata: { filingWorker: input.filingWorker }
+      });
+
+      return { board: input.list, boardId, taskId: task.id, status: task.status };
     }
   });
 
@@ -1802,6 +1876,7 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
   const readMailbox = readMailboxFor(boardIds);
   const fileTask = fileTaskFor(boardIds);
   const readBoard = readBoardFor(boardIds);
+  const fileTaskForWorker = fileTaskForWorkerFor(boardIds);
 
   // Only for the boards of mailboxes that opted in. Built from the minted ids,
   // so a mailbox with no board, or one that did not opt in, adds nothing.
@@ -2255,6 +2330,9 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
         // Here only, never in `actions`: who is on a mailbox decides who a post
         // wakes, so the app changes it and a client never does.
         ...membershipEntries,
+        // Here only, for the same reason: it records which worker filed the
+        // task, a name only the app can vouch for.
+        [MAILBOX_FILE_TASK_FOR_WORKER_ACTION]: { block: fileTaskForWorker },
         // `registerSeats` lives ONLY here, never in the public `actions` map
         // above. Unlike `registerMailbox`, it has no session state to derive
         // from — a seat has no session — so its whole input IS the row data,

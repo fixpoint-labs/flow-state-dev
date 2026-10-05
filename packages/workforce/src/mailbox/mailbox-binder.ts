@@ -40,11 +40,13 @@ import {
   MAILBOX_KIND,
   MAILBOX_SET_UP_ACTION,
   MAILBOX_SUBSCRIBE_ACTION,
+  MAILBOX_FILE_TASK_FOR_WORKER_ACTION,
   MAILBOX_UNSUBSCRIBE_ACTION,
   boundMailbox,
   mailboxFlow,
   defineMailboxFlow,
   holdsBoards,
+  mailboxFileTaskOutputSchema,
   membershipChangedSchema,
   routeOf,
   wakesSeats,
@@ -1228,6 +1230,26 @@ export interface RunTimeMembershipChange {
   workers: readonly string[];
 }
 
+/** What filing a task for a worker takes. The org and the filer are the caller's, never a tool's input. */
+export interface RunTimeTaskFiling {
+  /** The organization the list lives in: the calling worker's. */
+  orgId: string;
+  /** The mailbox, by id. */
+  mailboxId: string;
+  /** The list's name, as the mailbox holds it: `tasks` on a mailbox set up at run time, or a file's board. */
+  list: string;
+  /** What the task is for. */
+  goal: string;
+  title?: string;
+  context?: string;
+  /** The worker it is for, already resolved. Must be one of the list's workers. */
+  assignee?: string;
+  priority?: number;
+  labels?: readonly string[];
+  /** The calling worker's name as the runtime knows it. Kept on the task to report back to; never its owner. */
+  filingWorker: string;
+}
+
 /** The host's door to opening and changing mailboxes while the app runs. */
 export interface RunTimeMailboxOpener {
   /**
@@ -1244,6 +1266,15 @@ export interface RunTimeMailboxOpener {
   subscribe(request: RunTimeMembershipChange & { worksTaskList?: boolean }): Promise<{ members: string[] }>;
   /** Take workers off a mailbox and its task lists. Their open tasks stay. An emptied mailbox stays open. */
   unsubscribe(request: RunTimeMembershipChange): Promise<{ members: string[] }>;
+  /**
+   * File a task on one of a mailbox's lists, for a worker who works that
+   * list, recording the worker who filed it as `filingWorker`.
+   *
+   * @throws Naming the problem, filing nothing, when the mailbox can't be
+   *   changed here, the list is not one it holds, or the assignee does not
+   *   work the list.
+   */
+  fileTask(request: RunTimeTaskFiling): Promise<{ mailboxId: string; list: string; taskId: string }>;
 }
 
 /**
@@ -1371,6 +1402,18 @@ export function openMailboxAtRunTime(options: OpenMailboxAtRunTimeOptions): RunT
       return changeOutput(
         await entry(request.orgId, request.mailboxId, MAILBOX_UNSUBSCRIBE_ACTION, { workers: [...request.workers] })
       );
+    },
+
+    async fileTask(request) {
+      await assertChangeable(request.mailboxId);
+      const { orgId, mailboxId, labels, ...task } = request;
+      const filed = mailboxFileTaskOutputSchema.parse(
+        await entry(orgId, mailboxId, MAILBOX_FILE_TASK_FOR_WORKER_ACTION, {
+          ...task,
+          ...(labels === undefined ? {} : { labels: [...labels] })
+        })
+      );
+      return { mailboxId, list: filed.board, taskId: filed.taskId };
     }
   };
 }
