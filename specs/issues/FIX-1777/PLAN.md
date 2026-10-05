@@ -96,6 +96,7 @@ If it doesn't, stop and raise it; don't add per-door hooks.
 
 ## At implement time
 
+- Route through FIX-1778's pins ([#2757](https://github.com/fixpoint-labs/flow-state-dev/pull/2757)): its one worker lookup (name to flow id, board aliases win), the `task` dispatcher's per-task `flowKind` at `defaultWorker`, and the task door `work`. Whichever of the two PRs lands first builds the lookup.
 - Confirm the hand-off from the hook lands as its own request under the filer's identity
   (dispatch inherits the sender's principal).
 - Confirm a run started by the hook doesn't re-trigger itself on its own writes beyond the adds it
