@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-Four edits in three files, all **update**. No new page: this is one field on an entry the Discovery
+Five edits in four files, all **update**. No new page: this is one field on an entry the Discovery
 page already explains. New prose says worker, never seat; untouched sentences around it are
 left for the vocabulary rename.
 
@@ -63,6 +63,12 @@ Append to the row's description:
 
 > Each mailbox entry carries `facts.members` and each worker entry `facts.workerKind`, on every
 > `discover` call.
+
+## 5 · `packages/core/README.md` → "Agent discovery" (update)
+
+`(`{ id, kind, purpose, contract? }`)` becomes `(`{ id, kind, purpose, facts?, contract? }`)`, and add:
+
+> `facts` comes back on every call; `contract` only with `detail: "full"`.
 
 ## Voice notes for the implementer
 

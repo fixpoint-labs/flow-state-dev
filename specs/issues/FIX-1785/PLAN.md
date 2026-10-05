@@ -17,7 +17,7 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 | S6 | `workforce` · seats source | `facts: { workerKind }`; contract drops the kind and the `"agent"` fallback. Same test file | BR-13–BR-15 BR-17 |
 | S7 | `goals/agent-discovery/a-short-listing-says-who-is-on-a-mailbox/` | The goal check, no model, with `GOAL_CONTROL=thin-withholds-facts` | goal |
 | S8 | `goals/org-seats/cos-changes-the-roster` | If #2768 is on `main`: point its discover grader at `facts.members` / `facts.workerKind` instead of the contract sentence, and rerun 12 times. If not, this thread owns the rerun: it lands as a follow-up PR from `main` after #2768 merges, and FIX-1785 stays In Review until it has run | acceptance |
-| S9 | Docs, READMEs, changeset | Per [DOCS.md](DOCS.md). Changeset: `contracts`, `core`, `workforce` minor (a new optional field on a published type, and a changed contract string) | — |
+| S9 | Docs, READMEs, changeset | Per [DOCS.md](DOCS.md). Changeset: `contracts` and `core` patch (additive: an optional field and its pass-through); `workforce` minor (its `contract` strings change, which a reader can trip over) | — |
 
 **Removed:** the member list, open time and worker kind from the two Workforce `contract`
 strings; the `"agent"` fallback kind.
@@ -44,7 +44,7 @@ flowchart TD
 | V1 | S2 S3 | A stub source with `facts`: thin, default and no-domain calls return it without `contract`; full returns both (BR-1–BR-3). Red first: today's door drops it |
 | V2 | S3 | No `facts` or `{}` gives no key; the existing skills and resources suites pass unchanged (BR-4) |
 | V3 | S3 | A nested object in `facts` makes that domain a `problem`; another domain's answer is intact, and the call returns rather than throws (BR-5) |
-| V4 | S1–S3 | `grep -rwE 'members\|workerKind\|openedAt' packages/contracts/src/types/manifest.ts packages/core/src/manifest` prints nothing (BR-6) |
+| V4 | S1–S3 | `grep -rw -e members -e workerKind -e openedAt packages/contracts/src/types/manifest.ts packages/core/src/manifest` prints nothing (BR-6) |
 | V5 | S5 | Thin listing of a declared mailbox, an empty one, a legacy row, and (after rebase) a run-time one (BR-7–BR-11) |
 | V6 | S6 | Thin listing of a file worker, a runtime hire, and a row with no kind (BR-13–BR-15) |
 | V7 | S5 S6 | Bytes of a thin `{}` call on the DevTeam tree, before and after, recorded in the PR. The largest entry's `facts` is under the ~1 KB guide in D1 |

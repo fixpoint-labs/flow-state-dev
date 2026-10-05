@@ -46,5 +46,5 @@ a source that throws does today. Cancellation still propagates.
 ## Acceptance
 
 - The [goal](SPEC.md#the-goal-and-how-well-know-its-met) passes, and fails under `GOAL_CONTROL=thin-withholds-facts`.
-- `goals/org-seats/cos-changes-the-roster` **discover** leg, graded on tool output (#2768), green in 12 of 12 runs, the thin calls included.
+- `goals/org-seats/cos-changes-the-roster` **discover** leg, graded on tool output, green in 12 of 12 runs, the thin calls included. This needs #2768 on `main` (today's grader reads the answer text). If it is not there at implementation, the rerun is a follow-up PR from this thread and FIX-1785 is not Done until it passes (PLAN S8).
 - Every rule above has its check.
