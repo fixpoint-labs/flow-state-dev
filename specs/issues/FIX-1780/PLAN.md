@@ -5,7 +5,8 @@
 Written for the implementing agent. Directional: shape and sequence are fixed; names and local
 structure are the implementer's except the pins. IDs cross-reference
 [BUSINESS-RULES.md](BUSINESS-RULES.md) (BR-n) and [DECISIONS.md](DECISIONS.md) (Dn). `tdd`. One PR,
-built after FIX-1778, FIX-1777 and FIX-1779; if FIX-1779's PR is still open, stack on it.
+built after FIX-1778, FIX-1777 and FIX-1779; if FIX-1779's PR is still open, stack on it. S5a
+depends on none of them and ships first as its own small PR (see S5a).
 
 ## Depends on
 
@@ -26,7 +27,7 @@ board per list), re-draft S3 here before building.
 | S3 | `workforce` · mailbox `fileTask` and the list's board | On filing: FIX-1779 records `filingWorker` (the calling worker's name, as the runtime knows it). Record `filingSession` beside it, at the same point and from the same runtime context: the filing turn's own session and its lineage, never tool input. `fileTask` answers in the same turn (FIX-1779's refusals are tool errors), so the filing turn is where both are known and no engine read is needed. If FIX-1779 lands a filing that leaves the turn first, re-draft this row. The owner FIX-1777 records is never read here: it is for the claim and the bill. On a `retrying` ending, ask the mailbox to run the list again, the request FIX-1777 makes on an add (BR-6a). Pass S1's hook to the board Workforce builds per list: dispatchers built once when the board is built, over the live worker list as the mailbox wake does, and per notice one dispatch, to the row's `filingWorker` into its `filingSession`, after checking the session's lineage | BR-1–BR-4 BR-6a BR-12 BR-14 BR-15 |
 | S4 | `workforce` · the built-in `agent` kind | Declare the internal task-notice entry beside `onMailboxPost`; it runs the ordinary answer with the notice as the turn (`task <title> on <mailbox>/<list> ended: <status>` plus the error, question or output summary). Concurrency: the default, as `onMailboxPost` uses, because a queued request can be refused after the engine's wait and a notice must not be dropped. Drop a notice whose task id, attempt and ending it already answered | BR-8a BR-12 BR-13 |
 | S5 | `workforce` · mailbox actions + coordinator tools | `reassignTask` and `cancelTask` as mailbox actions, and as dispatcher tools beside FIX-1779's in its capability, both writing through the board's existing verbs (`assignTask`, `cancelTask`), never a parallel write. Reassign: refuse running/completed/cancelled and the fourth move; check the worker through FIX-1778's filing check first (its BR-12a: the lookup, plus the list's workers under its D3 option (ii)). Each move is one guarded write that re-checks the status. *Pending*: `assignTask`. *Parked*: `assignTask`, then the fenced unpark to *pending* (withdrawing its question). *Errored*: mark the old row reassigned through a revision-guarded write, file the copy for the new worker with the old id, the move count and this filer. Then the list runs as on any filing | BR-16–BR-22 |
-| S5a | `orchestration` · the hand-over assignee freeze ([FIX-982](https://linear.app/fixpoint-labs/issue/FIX-982)) | Narrow it: `setAssignee` on a frozen ledger declines only while an attempt holds the task (*in progress*); *pending*, *parked* and *blocked* tasks may change hands. Update the module's doc comment and `docs/architecture` where it states the freeze | BR-16b |
+| S5a | `orchestration` · the hand-over assignee freeze ([FIX-982](https://linear.app/fixpoint-labs/issue/FIX-982)) | Narrow it: `setAssignee` on a frozen ledger declines only while an attempt holds the task (*in progress*); *pending*, *parked* and *blocked* tasks may change hands. Update the module's doc comment and `docs/architecture` where it states the freeze. Today the freeze declines every `setAssignee`, an empty assignee included (`tasks/collection/resource-backed.ts`), so FIX-1777's "assign it" for an unnamed task on a hand-over list works only once this lands. It depends on nothing else here, so it goes first, as its own PR, ahead of FIX-1777's if that one needs it | BR-16b |
 | S6 | `goals/workforce-conventions/a-filer-hears-how-its-task-ended/` | The goal check, `goal.md` + `run.mts`, per [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met), and its control | goal |
 | S7 | Docs, per [DOCS.md](DOCS.md) | Mailboxes, task board, built-in worker pages; workforce and orchestration READMEs | — |
 
@@ -46,7 +47,7 @@ flowchart LR
   S6 --> S7["S7 · docs"]
 ```
 
-One PR. The control goes red before the legs go green.
+S5a first as its own PR; the rest in one PR. The control goes red before the legs go green.
 
 ## Checks
 
@@ -109,6 +110,7 @@ None. The three premises it rests on were read off the code ([DECISIONS.md → S
   owner (FIX-1777's stamp) and the conversation's owner are the same person, in the DevTeam Lab's
   real arrangement. If it is refused for ownership, raise it before working around it.
 - **The org check.** A notice crosses from the worker's run into the coordinator's conversation. The likely refusal is the organization binding, not ownership, since the coordinator's turn runs as the person and the list is the organization's. Prove the delivery in the goal check's real arrangement.
+- `handedOffTaskPredicate` (`task-board/hand-off.ts`) decides which tasks a drain handed off from the assignee, and its doc comment relies on the freeze. Under S5a a waiting task's assignee can move, so it may move between lists of handed-off workers; confirm the predicate is read at claim time, and update the comment.
 - Read FIX-1778's final name for the lookup and FIX-1779's capability name before wiring S5.
 - What a completed notice carries as "output summary": the row's output, cut to a short line, with
   the run's link.
