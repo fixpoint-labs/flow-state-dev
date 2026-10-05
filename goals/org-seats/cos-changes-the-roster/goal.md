@@ -21,14 +21,18 @@ comes from opening a session on its address.
 
 1. **boot**: the chief of staff is listed from the tree, on the `agent` kind, with a door. No
    other declared seat names `hire`, `fire` or `rehire`.
-2. **discover**: asked who is on the feature mailbox, it names every declared member by its full
-   seat id (`eng.em`, not `em`), and the line naming each one also names the kind its file
-   declares (`em`, `coder`, `agent`), both matched exactly.
+2. **discover**: asked who is on the feature mailbox, the chief of staff calls `discover`, and what
+   that turn's `discover` calls returned lists every declared member by its full id (`eng.em`, not
+   `em`, matched as a whole id) in the mailbox's member list, and gives each one the kind its file
+   declares (`em`, `coder`, `agent`). Members and kinds may come from separate calls in the turn.
+   Graded on the tool's output, read off the session's `tool_output` items, never on the answer's
+   wording: who is on a mailbox is data, and the check does not grade the model reciting it.
 3. **hire**: asked for a coder under the held-out id, it hires one at once. No approval is raised.
    The seat is listed, its roster row is written, and its address answers.
-4. **discover hired** (BR-23): in a fresh session, asked which seats the organization has hired
-   (the question names neither the seat nor a kind), the line of the answer naming the held-out
-   seat by its full id also names its kind, `coder`, both matched exactly.
+4. **discover hired** (BR-23): in a fresh session, asked which workers the organization has hired
+   (the question names neither the worker nor a kind), the chief of staff calls `discover`, and a
+   result in that turn carries the held-out worker by its full id on kind `coder`. Graded on the
+   tool's output, as in leg 2.
 5. **restart**: after a restart the hired seat is still listed, still rostered, and still answers.
 6. **ask**: asked to fire it, the turn suspends on one `human_approval` naming the verb, the seat
    and its kind. Nothing has changed yet.
@@ -58,6 +62,7 @@ grade is read off the stores through the HTTP routes, never off the model's word
 |---|---|---|
 | `deny-fire` | the person's answer: Deny instead of Approve | **seat gone** only: the seat is still listed, rostered and answering. **answer** stays green, since the route takes a Deny and the turn completes |
 | `hide-hired-from-discover` | the hired seat's roster row, which discover reads a hire from, is moved aside for the discover-hired turn and put back after | **discover hired** only: the answer lists the declared seats and not the hire; every later leg stays green |
+| `drop-member-from-discover` | one member is taken out of the mailbox's inventory row, which discover reads members from, for the discover turn and put back after | **discover** only: the turn's result lists the mailbox without that member; every later leg stays green |
 | `no-seat-delivery` | the mailbox's notify hands the seat's post to nobody | **a seat asks** only: no delivery to the chief of staff, and no roster row, no inventory row and no address for the held-out id |
 
 The tree with no chief of staff (today's `main`) goes red at **boot**: `Unknown flow
@@ -71,7 +76,8 @@ with a precondition message and grades nothing.
 
 **Controls:** `GOAL_CONTROL=deny-fire pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts`,
 `GOAL_CONTROL=no-seat-delivery pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts`,
-`GOAL_CONTROL=hide-hired-from-discover pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts`
+`GOAL_CONTROL=hide-hired-from-discover pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts`,
+`GOAL_CONTROL=drop-member-from-discover pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts`
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -88,3 +94,4 @@ with a precondition message and grades nothing.
 | 2026-10-02 | 484158ba2+P1s (FIX-1719 PR 2, local, merged with main fe3d41fe1, not pushed) | openai/gpt-5.4-mini | PASS | All nine legs green on the tree merged with main (#2645, #2649, #2647). `deny-fire` FAILS at seat gone only, `no-seat-delivery` at a seat asks only, `hide-hired-from-discover` at discover hired only. |
 | 2026-10-05 | 3aae17e28+FIX-1781 | openai/gpt-5.4-mini | PASS | On `3aae17e28` the check FAILED 5 of 5 standalone runs at **discover**: `discover` returned all four members, and the answer left out `chief-of-staff` (once `eng.em` too). The chief of staff's `WORKER.md` now says to name every member a mailbox lookup returns, itself included. 10 standalone runs: **discover** green in all 10; 9 PASS all nine legs, one FAILED at **hire** (the model refusing to hire a `coder` without `settings.document`, the miss already logged on 2026-10-02). `deny-fire` FAILS at seat gone only, `no-seat-delivery` at a seat asks only, `hide-hired-from-discover` at discover hired only. |
 | 2026-10-05 | f609f03f1+review (FIX-1781, #2768) | openai/gpt-5.4-mini | PASS | Self-inclusion is now conditional on `discover` returning the chief of staff, so it can't add itself to a mailbox it isn't on. The bare conditional ("when you are one of them, list yourself too") FAILED 1 of 5 at **discover** (`chief-of-staff` left out). The final wording ("drop none ... leaving yourself out is the usual mistake") PASSED 8 of 8 standalone. Asked five times who is on `eng.triage` (members: `eng.em`), the answer named only `eng.em`. `deny-fire` FAILS at seat gone only, `no-seat-delivery` at a seat asks only, `hide-hired-from-discover` at discover hired only. |
+| 2026-10-05 | 031e74065+deterministic discover (FIX-1781, #2768) | openai/gpt-5.4-mini | PASS | The prompt lines telling the chief of staff to list every member, itself included, are reverted from its `WORKER.md` and the docs page. **discover** and **discover hired** now grade what the turn's `discover` calls returned, not the answer. 12 standalone runs: 11 PASS all nine legs; one FAILED at **discover**: the model called `discover` on mailboxes and workers with `detail: "thin"`, which returns no member list and no kinds, and then answered anyway (`eng.coder`, `eng.em`, `eng.reviewer — reviewer`: the chief of staff missing, one kind wrong). A thin mailbox entry carries no members at all, so that answer was a guess. Controls: `deny-fire` FAILS at seat gone only; `hide-hired-from-discover` at discover hired only; `drop-member-from-discover` at discover only (`3 members: eng.em, eng.coder, eng.reviewer`). `no-seat-delivery` FAILED at a seat asks only on its second run; its first also FAILED at **discover**, the turn's results giving no kinds. |
