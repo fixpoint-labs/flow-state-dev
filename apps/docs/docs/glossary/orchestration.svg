@@ -103,5 +103,5 @@
   <text x="702" y="412" class="code">parallelTasks  eventActors</text>
   <text x="702" y="430" class="muted">patterns</text>
   <rect x="28" y="484" width="864" height="52" rx="12" class="dash"/>
-  <text x="44" y="515" class="p">A task's assignee names a board worker. It never names a Workforce worker; Workforce does not staff a board.</text>
+  <text x="44" y="515" class="p">A task's assignee names a board worker, or a Workforce worker that takes tasks. The board runs the list; Workforce finds the worker.</text>
 </svg>

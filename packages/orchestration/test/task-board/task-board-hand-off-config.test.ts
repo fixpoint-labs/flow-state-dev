@@ -281,9 +281,9 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
 });
 
 describe("hand-off dispatch — the uniform and floor seats", () => {
-  it("refuses a task dispatcher as the uniform worker — only a named seat can hand off", () => {
-    // A uniform worker has no seat name, so a row it takes has no assignee for
-    // the child's gate to check the row against.
+  it("refuses a task dispatcher as the uniform worker — a hand-off is addressed by the row's assignee", () => {
+    // A uniform worker stands in for every row whatever it names, so there is
+    // no assignee to address the hand-off by.
     expect(() =>
       taskBoard({
         name: "uniform-hand-off",
@@ -291,21 +291,20 @@ describe("hand-off dispatch — the uniform and floor seats", () => {
         collection: durable,
         workers: seat("uniform-impl"),
       })
-    ).toThrow(/only a named seat can hand off/);
+    ).toThrow(/a uniform worker cannot hand off/);
   });
 
-  it("refuses a hand-off through the delegation floor — only a named seat can hand off", () => {
-    // The floor has no seat name — a row it takes has no assignee — so there
-    // is nothing for the child's gate to check the row against.
-    expect(() =>
-      taskBoard({
-        name: "floor-hand-off",
-        boardId: "floor-hand-off",
-        collection: durable,
-        workers: { summarize: worker("sum-floor") },
-        defaultWorker: seat("floor-impl"),
-      })
-    ).toThrow(/only a named seat can hand off/);
+  it("lets the fallback hand off, listing it as the floor", () => {
+    // The fallback hands each row over under the assignee the row names, so
+    // the child's gate still has an assignee to check the row against.
+    const board = taskBoard({
+      name: "floor-hand-off",
+      boardId: "floor-hand-off",
+      collection: durable,
+      workers: { summarize: worker("sum-floor") },
+      defaultWorker: seat("floor-impl"),
+    });
+    expect(board.handedOff.map((s) => [s.kind, s.label])).toEqual([["floor", "floor"]]);
   });
 });
 

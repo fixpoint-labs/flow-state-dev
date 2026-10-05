@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" role="img" aria-labelledby="title desc">
   <title id="title">Worker file, seat and session: where each lives</title>
-  <desc id="desc">A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, hireWorkforce turns each record into a seat, a configured copy of a flow kind with its own id, and your app registers the seats. Sessions, state and resources a seat writes live in your store. A seat hired while the app runs is also written to the store as a roster row. A task board's assignee names a board worker, never a seat.</desc>
+  <desc id="desc">A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, hireWorkforce turns each record into a worker, a configured copy of a flow kind with its own id, and your app registers the workers. Sessions, state and resources a worker writes live in your store. A worker hired while the app runs is also written to the store as a roster row. A task's assignee can name any worker that takes tasks: the board runs the list, and Workforce finds the worker.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
@@ -100,5 +100,5 @@
   <text x="44" y="452" class="p">A seat is the flow kind plus an id and settings. The kind is unchanged, and many seats can run on it.</text>
   <text x="44" y="472" class="p">You open a session against a seat the way you open one against any flow. Its sessions belong to the seat, not to the file.</text>
   <text x="44" y="492" class="p">A mailbox is a session on the shared mailbox kind. Its members are seats; the mailbox is not one.</text>
-  <text x="44" y="520" class="muted">A task board's assignee names a board worker, never a seat. Workforce does not staff a board.</text>
+  <text x="44" y="520" class="muted">A task's assignee can name any worker that takes tasks. The board runs the list; Workforce finds the worker.</text>
 </svg>

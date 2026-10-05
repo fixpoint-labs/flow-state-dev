@@ -161,6 +161,7 @@ export {
   taskBindingOf,
   framed,
   readFramed,
+  resolveTaskFlowKind,
   taskDispatchInputSchema,
   taskSessionKeyFor
 } from "./types/dispatch";
@@ -177,7 +178,9 @@ export type {
   TaskBinding,
   TaskDispatchInput,
   TaskEntry,
-  TaskSessionPolicy
+  TaskFlowTarget,
+  TaskSessionPolicy,
+  TaskTargetQuery
 } from "./types/dispatch";
 export type {
   CapabilityPresetCtx,

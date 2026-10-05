@@ -672,7 +672,7 @@ Both actions take the board's **local** name. Filing says where the row landed:
   status: "pending" }
 ```
 
-`assignee` is the key of the worker that should run the row, as named in the board's own `workers` map. It is not a mailbox member, and the two are separate namespaces even when they read alike.
+`assignee` names the worker that should run the row. A board draining this ledger routes by it: a name in the board's own `workers` map runs there, and a board set up to [hand a row to the worker it names](#handing-a-row-to-the-worker-it-names) sends any other name to the worker `discover` lists under it. It is not a mailbox member, and the two are separate namespaces even when they read alike.
 
 `fileTask` also takes `title`, `context`, `priority`, `maxAttempts`, `labels` and `input`. The row's id is minted, not chosen. Its `author` is the same unverified claim a post's is: checked against the declared members, stored beside `authorVerified: false`, and optional. A row filed without one is accepted.
 
@@ -797,6 +797,114 @@ Rename or move a mailbox's folder and its boards move with it, since a board's i
 
 The rows themselves are [task substrate](../orchestration/task-substrate.md) rows, with the same fields, statuses and transitions any other board's carry.
 
+### Handing a row to the worker it names
+
+A board's `workers` map fixes its names when you write it. To let a row name any of your workers instead, including one hired a minute ago, the worker has to be able to take a task, and the board has to ask who a name means when it hands the row over.
+
+The built-in `agent` kind takes tasks from the boards you pass it as `taskLists`, and from none without them, which includes the copy you get when you pass no `kinds`. Build it with every board your mailboxes hold, hire, and build the **worker lookup** over the live registry:
+
+```ts
+import {
+  createWorkerLookup,
+  defineAgentWorkerFlow,
+  defineMailboxFlow,
+  hireWorkforce,
+  mailboxBoardIds,
+  mailboxInstances,
+} from "@flow-state-dev/workforce";
+import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
+import { instanceAt } from "./registry-access";
+
+// Check `errors` on both reads, as in "Treat a non-empty errors as fatal".
+const { workers } = await readWorkforce("./workforce");
+const { mailboxes } = await readMailboxesDirectory("./workforce");
+const boardIds = mailboxBoardIds(mailboxes);
+
+const hired = hireWorkforce(workers, {
+  kinds: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) },
+  mailboxBoards: boardIds,
+});
+
+const lookup = createWorkerLookup({ instanceAt, declared: hired.map((worker) => worker.id) });
+
+const mailboxKinds = mailboxInstances(mailboxes, {
+  kinds: { mailbox: defineMailboxFlow({ checkAssignee: lookup.filingCheck() }) },
+});
+```
+
+`instanceAt(address)` returns the flow registered at an address right now: `registry.get(address)` on the runtime, the same getter the hire tools take. [Adding a chief of staff](./chief-of-staff.md#adding-one) shows it added to the `registry-access.ts` from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate). The lookup reads it on every call, so a worker hired while the app runs is found the moment it is registered, and a fired one stops being found.
+
+Then give the board that drains the ledger a `defaultWorker` that hands each row to whatever its name means:
+
+```ts
+import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { WORKER_TASK_ENTRY, mailboxBoard } from "@flow-state-dev/workforce";
+
+const followups = mailboxBoard("engineering.incidents", "followups");
+
+const board = taskBoard({
+  name: "followups-desk",
+  boardId: followups.id,          // the ledger's own id: the worker looks the ledger up by it
+  collection: followups,
+  workers: {},
+  defaultWorker: dispatcher({
+    name: "hand-to-named-worker",
+    action: WORKER_TASK_ENTRY,    // "work"
+    session: "per-task",
+    flowKind: lookup.flowKind,
+  }),
+});
+
+export const followupsDesk = defineFlow({
+  kind: "followups-desk",
+  actions: { drain: { block: board.drain } },
+})();
+```
+
+Register `followupsDesk` alongside the hired workers and mailbox kinds, and run its `drain` the way you would any board's. Each row filed with `fileTask` and an `assignee` then runs on that worker, one run per row. A worker of the built-in kind answers it as one turn, and the answer becomes the row's result. See [Taking a task](./built-in-worker.md#taking-a-task).
+
+`boardId` has to be the ledger's id, `followups.id`. A worker takes a row only from a board whose id is one of its `taskLists`, and refuses any other with `UnknownTaskLedgerError` before reading a row.
+
+#### Who a name reaches
+
+The lookup finds a worker your files declare, a worker hired for the organization, or a worker the member hired for themselves. "The member" is always the person who filed the row. The list records who filed it, so when a teammate's drain hands the row over, it still reaches the filer's own worker and never the teammate's. It never finds another organization's workers, or another member's own.
+
+| The name | At `fileTask` | At hand-over |
+| --- | --- | --- |
+| Nobody holds it | Refused, nothing written. `MailboxPostRefusedError`, `reason: "unknown-assignee"`, message `unknown-assignee: No worker is named "frontend".` | Refused `flow-not-found`, naming the assignee. The attempt fails. |
+| Held by two workers, such as one hired for the organization and one of the member's own | Refused `unknown-assignee`, naming both: `"frontend" names 2 workers: one hired for the organization and one your own. Fire or rename one of them so the name means one worker.` | The attempt fails with an error carrying the same sentence. |
+| Held by a worker whose kind takes no tasks | Refused `unknown-assignee`, with a message naming the worker and its kind, which declares no `work` task entry. | The attempt fails with an error carrying the same sentence. |
+
+A worker fired after its row was filed fails at hand-over, naming it. No other worker runs that row. A row filed with no assignee is refused at hand-over too, since the fallback hands a row over by the name on it. Every failed attempt goes through the board's ordinary error path, so `maxAttempts` and `onError` apply.
+
+If a board over a ledger keeps names of its own in `workers`, tell the filing check, or it refuses them as unknown:
+
+```ts
+defineMailboxFlow({
+  checkAssignee: lookup.filingCheck({ [followups.id]: ["analyst"] }),
+});
+```
+
+Without `checkAssignee`, `fileTask` files any assignee as written, and a bad name is only caught at hand-over.
+
+#### A kind of your own
+
+A kind you write takes tasks when it declares a `work` task entry whose tasks come from your mailboxes' boards:
+
+```ts
+import { mailboxTaskLists } from "@flow-state-dev/workforce";
+
+// in the kind's defineFlow({ ... })
+task: {
+  actions: {
+    work: { block: reviewTask, from: mailboxTaskLists(boardIds) },
+  },
+},
+```
+
+`reviewTask` receives a `TaskWorkerInput` (`taskId`, `goal`, `title`, `context`, `input`, and the rest), and what it returns is the row's result. A task from a board outside `boardIds` is refused. An entry whose blocks keep session state is refused unless you pass `mailboxTaskLists(boardIds, { allowSessionState: true })`; do that only when tasks are handed over `per-task`, or the state has the same shape for every task. [A task entry served by many boards](../orchestration/task-board.md#a-task-entry-served-by-many-boards) covers the checks every arriving task gets.
+
 ## A room per project
 
 A [project](./projects.md) has one room, a conversation its members share. A room isn't a mailbox you declare. It's built from a **template**: the seats that answer in it and the charter they work under. Every project's room shares one template.
@@ -842,6 +950,8 @@ The other arguments are as in the snippet above. If you declare the template in 
 Rooms run on the built-in mailbox kind, and that kind has to be able to wake seats, so build it with a notify block, as in `kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) }`. Left as the plain built-in, a template that names seats is refused, because no post would wake them.
 
 `wakeMemberSeats(seats)` wakes a member whose seat is in the `seats` list and whose kind hears mailbox posts, as the built-in `agent` kind does. A notify block you write yourself wakes only the members its own code wakes; `mailboxInstances` doesn't check that it reaches the template's seats. A seat hired after you built `wakeMemberSeats(seats)` isn't in its list and isn't woken.
+
+If your app already has a notify block, keep it by passing it as the fallback: `defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) })`. A chief of staff (the `agent` kind) in the template is then woken by a person's post in the room (a post from another worker wakes no worker), and your block handles every member whose worker can't hear posts. The table under [waking agent workers](#waking-agent-seats) shows which members the fallback gets.
 
 If your app calls `mailboxInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its mailbox kind with the same seats and charter. A call that finds a different template is refused.
 

@@ -310,7 +310,8 @@ why `goalSeekLoop` rejects such a board when `maxIterations > 1`. `workers` is a
 single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
 `defaultWorker` (optional fallback for a task whose assignee is unmatched or
-omitted — reached only on a miss, declared workers untouched),
+omitted — reached only on a miss, declared workers untouched; may be a task
+dispatcher, see below),
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`),
 `onReview` (`"hold"` default | `"exit"` — whether a task parked with `awaitReview`
@@ -439,13 +440,64 @@ The in-process dispatcher applies that policy, and so do queue workers that shar
 a lease backend. On a deployment that hands dispatches to an external queue without
 one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
-Only a named seat hands off: `defaultWorker` and a uniform `workers` block have no
-seat name and so no assignee to route by.
+A named seat and `defaultWorker` can hand off. A uniform `workers` block can't: it has
+no assignee to route by. A `defaultWorker` dispatcher hands each task the registry
+doesn't name over under the task's own assignee, and refuses a task with none
+(`flow-not-found`), which fails through the board's error path.
+
+A task dispatcher's `flowKind` may be a function, `(task, ctx) => flowId | undefined`
+(sync or async; `task` is `{ assignee, taskId, input }`), called once per task at
+hand-over, and only with `session: "per-task"` (any other policy throws when the
+dispatcher is built). Answering `undefined` refuses the dispatch `flow-not-found`, naming the
+assignee. Put it at `defaultWorker` to send every assignee without a seat of its own
+to a flow looked up at that moment:
+
+```ts
+defaultWorker: dispatcher({
+  name: "hand-off-by-assignee",
+  action: "work",
+  session: "per-task",
+  flowKind: (task, ctx) => findFlowFor(task.assignee, ctx),
+}),
+```
 
 `defineFlow` refuses a hand-off whose entry the flow forgot to declare, a task
-entry no board hands off to, a task dispatcher no board holds, and two boards
-handing off to one entry. `board.handedOff` lists the seats that hand off, in
-declaration order.
+entry no board hands off to and no `from` serves, a task dispatcher no board holds,
+two boards handing off to one entry, and an entry with `from` that a board in the
+same flow also hands off to. `board.handedOff` lists the seats that hand off, in
+declaration order, with a `defaultWorker` dispatcher last (`kind: "floor"`, label `floor`).
+Each entry carries `kind` (`"named"` or `"floor"`) to branch on; `label` is for messages.
+
+**An entry served by many boards.** `taskLedgers({ name, resolve, uses?, onError?,
+allowSessionState? })` returns a `TaskBinding` to pass as a task entry's `from`.
+The entry then needs no board in its flow, and takes tasks from any board whose
+ledger `resolve(ledgerId, ctx)` returns (`Promise<TaskCollectionRef | undefined>`).
+The ledger id is the `boardId` the sending board hands off under, so a board over a
+shared ledger sets `boardId` to the ledger's id. An id `resolve` doesn't answer for
+throws `UnknownTaskLedgerError` (`code: "unknown-task-ledger"`, carrying `entry`,
+`taskId`, `ledgerId`) before any row is read; otherwise every check below runs on
+that ledger. The id arrives on the dispatch, so resolve it against `ctx`, never from
+a process-wide map. `uses` declares the ledgers' resources, `onError` defaults to
+`"skip"`, and `allowSessionState` accepts an entry whose blocks keep session state.
+
+```ts
+task: {
+  actions: {
+    work: {
+      block: review,
+      from: taskLedgers({
+        name: "review-queues",
+        resolve: async (ledgerId, ctx) => {
+          const collection = resolveResourceCollection(ctx, ledgerId);
+          return collection === undefined
+            ? undefined
+            : getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: ledgerId, collection });
+        },
+      }),
+    },
+  },
+},
+```
 
 The `task` dispatch carries the claim's identity (`boardId`, `taskId`, `attempt`,
 `createdAt`, `incarnationId`) and the worker input the drain packed at claim time —
