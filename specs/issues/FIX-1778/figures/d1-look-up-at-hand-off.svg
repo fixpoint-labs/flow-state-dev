@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1: when a board hands a task over, how is its worker found? Chosen: look the name up at hand-off, through a generic hook Workforce fills. Instead of: a fixed route per worker, added at each hire. It comes down to a worker hired mid-conversation: a fixed route can't reach it until the app restarts. The price: the board can no longer list every worker it may reach. Declared routes are a tie. Locks in: the fallback's target is decided per task. Flips if: hires only took effect at restart, so fixed routes could list every worker."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">When a list hands a task over, how does it find the worker the task names?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Look the name up at hand-off</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">A fixed route per worker, added at hire</text>
+  </g>
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A WORKER HIRED</text>
+    <text class="t-lbl" x="32" y="169">MID-CONVERSATION</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Reached in the same turn</text>
+    <text class="t-s" x="248" y="179">the lookup sees the new hire</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Not reached until a restart</text>
+    <text class="t-s" x="612" y="179">routes are built at start</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="222">WHAT A LIST</text>
+    <text class="t-lbl" x="32" y="235">CAN LIST</text>
+    <text class="mark minus" x="228" y="225">−</text>
+    <text class="t-b" x="248" y="224">Not every worker it may reach</text>
+    <text class="t-s" x="248" y="242">the set is open until hand-off</text>
+    <text class="mark plus" x="592" y="225">+</text>
+    <text class="t-b" x="612" y="224">Every route, up front</text>
+    <text class="t-s" x="612" y="242">read off the list</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="280">A DECLARED</text>
+    <text class="t-lbl" x="32" y="293">ROUTE (CODER)</text>
+    <text class="mark tie" x="228" y="283">=</text>
+    <text class="t-b" x="248" y="282">Same route as today</text>
+    <text class="t-s" x="248" y="300">the lookup is not asked</text>
+    <text class="mark tie" x="592" y="283">=</text>
+    <text class="t-b" x="612" y="282">Same route as today</text>
+    <text class="t-s" x="612" y="300"></text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">The fallback's target is decided per task</text>
+    <text class="t-s" x="32" y="389">nobody can list them all</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">Hires only took effect at restart</text>
+    <text class="t-s" x="494" y="389">then fixed routes, listed up front, win</text>
+  </g>
+</svg>
