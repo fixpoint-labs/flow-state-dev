@@ -118,6 +118,48 @@ export function releaseSeat(id: string): boolean {
 }
 ```
 
+If a function builds the `FlowState` and runs more than once per process, such as an `openApp()` each test calls, keep the binding in a local `let` so each call registers into its own state. Assign it after `createFlowState`, once the registry exists. The callbacks only run when a hire or fire happens. For what `kindAt` and `instanceAt` are for, see [Adding one](./chief-of-staff.md#adding-one).
+
+```ts
+import { createFlowState, type FlowState, type FlowStateRuntime } from "@flow-state-dev/engine";
+import {
+  createSeatHireCapability,
+  defineAgentWorkerFlow,
+  hireWorkforce,
+  registerHiredSeat,
+  type HireOptions,
+} from "@flow-state-dev/workforce";
+
+export async function openApp(options: AppOptions) {
+  const kinds: NonNullable<HireOptions["kinds"]> = { coder: coderKind };
+  let live: { state: FlowState; registry: FlowStateRuntime["registry"] } | undefined;
+
+  const hire = createSeatHireCapability({
+    kinds,
+    register: (worker, pin) => {
+      if (!live) throw new Error("No FlowState to register into.");
+      const { state } = live;
+      registerHiredSeat((instance, owner) => state.register(instance, { pin: owner }), worker, pin);
+    },
+    unregister: (id) => live?.state.unregister(id) ?? false,
+    kindAt: (address) => live?.registry.get(address)?.kind,
+    instanceAt: (address) => live?.registry.get(address),
+    allowKinds: ["coder", "agent"],
+  });
+  kinds.agent = defineAgentWorkerFlow({ uses: [hire] });
+
+  const hired = hireWorkforce(options.workers, { kinds });
+  const state = createFlowState({
+    flows: { ...Object.fromEntries(hired.map((worker) => [worker.id, worker])) /* , your other flows */ },
+    stores: options.stores,
+  });
+  live = { state, registry: (await state.getRuntime()).registry };
+  return state;
+}
+```
+
+If you wrap hired workers with a resolver as `withAdminResolver` does above, apply it to `instance` inside `register`.
+
 ## The ready-made hire and fire handlers
 
 `createSeatHireBlocks` gives you the whole hire and fire sequence as two handlers you mount as actions. It also returns `brokenSeats` and `rehire`, for [repairing a seat whose kind is gone](#repairing-a-seat-whose-kind-is-gone). Use them when a person or your own code does the hiring, from a screen or an admin route, with no model in front of the call. Mounted as actions, they never ask anyone before they act.

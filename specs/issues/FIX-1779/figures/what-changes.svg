@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Two panels. Today: at start, MAILBOX.md files decide which mailboxes and task lists exist, and the boot worker list decides who a post can wake. A coordinator can only post, and a worker hired later is never woken. After: a coordinator's tools open a mailbox through the host while the app runs. The mailbox's session holds its members, charter, task list and who works it, and its inventory row makes it findable. On every post the wake asks the host's live worker list, so a worker hired a minute ago is reached. Files still open mailboxes at start, as a starting list."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .boot  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .gone  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .arr-x { stroke:var(--gone); stroke-width:1.4; fill:none; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="14" width="446" height="372" rx="8"/>
+    <text class="t-lbl" x="32" y="36">TODAY · FIXED AT START</text>
+    <rect class="boot" x="32" y="52" width="196" height="52" rx="5"/>
+    <text class="t-b" x="44" y="73">MAILBOX.md files</text>
+    <text class="t-s" x="44" y="91">which mailboxes, which task lists</text>
+    <rect class="boot" x="250" y="52" width="196" height="52" rx="5"/>
+    <text class="t-b" x="262" y="73">boot worker list</text>
+    <text class="t-s" x="262" y="91">who a post can wake</text>
+    <path class="arr" d="M130 104 V142"/>
+    <rect class="n-box" x="32" y="142" width="196" height="64" rx="5"/>
+    <text class="t-b" x="44" y="163">eng.feature</text>
+    <text class="t-s" x="44" y="181">members from the file</text>
+    <text class="t-s" x="44" y="196">task list from the file</text>
+    <path class="arr" d="M348 104 V142"/>
+    <rect class="n-box" x="250" y="142" width="196" height="64" rx="5"/>
+    <text class="t-b" x="262" y="163">the wake</text>
+    <text class="t-s" x="262" y="181">reaches only workers</text>
+    <text class="t-s" x="262" y="196">on the boot list</text>
+    <rect class="n-box" x="32" y="236" width="196" height="52" rx="5"/>
+    <text class="t-b" x="44" y="257">coordinator</text>
+    <text class="t-s" x="44" y="275">can post, can hire</text>
+    <path class="arr-x" d="M228 262 H262"/>
+    <rect class="gone" x="262" y="236" width="184" height="52" rx="5"/>
+    <text class="t-x" x="274" y="257">can't open a mailbox</text>
+    <text class="t-x" x="274" y="275">or add a worker to one</text>
+    <rect class="gone" x="32" y="312" width="414" height="52" rx="5"/>
+    <text class="t-x" x="44" y="333">a worker hired later is on no mailbox, and never woken,</text>
+    <text class="t-x" x="44" y="351">not even after a restart</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="14" width="446" height="372" rx="8"/>
+    <text class="t-lbl" x="494" y="36">AFTER · CHANGED WHILE THE APP RUNS</text>
+    <rect class="n-box" x="494" y="52" width="196" height="52" rx="5"/>
+    <text class="t-b" x="506" y="73">coordinator's tools</text>
+    <text class="t-s" x="506" y="91">set up · subscribe · file a task</text>
+    <rect class="boot" x="712" y="52" width="196" height="52" rx="5"/>
+    <text class="t-b" x="724" y="73">MAILBOX.md files</text>
+    <text class="t-s" x="724" y="91">a starting list, at first open</text>
+    <path class="arr" d="M592 104 V142"/>
+    <path class="arr" d="M810 104 V124 H700 V142"/>
+    <rect class="new" x="494" y="142" width="414" height="76" rx="5"/>
+    <text class="t-h" x="506" y="164">the mailbox: its session + inventory row</text>
+    <text class="t-c" x="506" y="184">members · charter · task list · who works it</text>
+    <text class="t-c" x="506" y="202">found by discover · a project's workstream</text>
+    <path class="arr" d="M700 218 V250"/>
+    <rect class="new" x="494" y="250" width="196" height="64" rx="5"/>
+    <text class="t-b" x="506" y="271">the wake, per post</text>
+    <text class="t-c" x="506" y="289">asks the host's live</text>
+    <text class="t-c" x="506" y="304">worker list</text>
+    <path class="arr" d="M690 282 H712"/>
+    <rect class="new" x="712" y="250" width="196" height="64" rx="5"/>
+    <text class="t-b" x="724" y="271">the hire</text>
+    <text class="t-c" x="724" y="289">woken on the next post</text>
+    <text class="t-c" x="724" y="304">and after a restart</text>
+    <text class="t-s" x="494" y="346">no file written · no restart · no new store</text>
+  </g>
+</svg>

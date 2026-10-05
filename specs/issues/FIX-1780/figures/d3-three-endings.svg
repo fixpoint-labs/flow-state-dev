@@ -1,0 +1,96 @@
+<svg viewBox="0 0 940 422" role="img" aria-label="D3: which endings wake the filer. Chosen: completed, failed for good, parked. Instead of: every status change. It comes down to whether the coordinator has a next step. Also: model time, one turn per real ending rather than per retry. The price: a task somebody else cancels wakes nobody. Locks in three endings; flips if people cancel coordinators&#x27; tasks often."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="940" height="422"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Which endings of a task wake the worker that filed it?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Completed, failed for good, parked</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Every status change</text>
+  </g>
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A NEXT STEP</text>
+    <text class="t-lbl" x="32" y="169">FOR IT</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Always: report, reassign, pass on</text>
+    <text class="t-s" x="248" y="179">each notice is actionable</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Often none: a retry runs anyway</text>
+    <text class="t-s" x="612" y="179">a cancel is its own act</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="222">MODEL TIME</text>
+    <text class="t-lbl" x="32" y="235">SPENT</text>
+    <text class="mark plus" x="228" y="224">+</text>
+    <text class="t-b" x="248" y="223">One turn per real ending</text>
+    <text class="t-s" x="248" y="241">not one per retry</text>
+    <text class="mark minus" x="592" y="224">−</text>
+    <text class="t-b" x="612" y="223">A turn per retry and per edit</text>
+    <text class="t-s" x="612" y="241">for nothing to do</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="282">SOMEBODY ELSE</text>
+    <text class="t-lbl" x="32" y="295">CANCELS IT</text>
+    <text class="mark minus" x="228" y="284">−</text>
+    <text class="t-b" x="248" y="283">Not told</text>
+    <text class="t-s" x="248" y="301">it finds out on its next read</text>
+    <text class="mark plus" x="592" y="284">+</text>
+    <text class="t-b" x="612" y="283">Told</text>
+    <text class="t-s" x="612" y="301">it can say so</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="353">LOCKS IN</text>
+    <text class="t-b" x="32" y="373">Three endings wake the filer</text>
+    <text class="t-s" x="32" y="391">one notice each, a park each time</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="353">FLIPS IF</text>
+    <text class="t-b" x="494" y="373">People often cancel its tasks</text>
+    <text class="t-s" x="494" y="391">then a cancel by another wakes it too</text>
+  </g>
+</svg>

@@ -59,11 +59,13 @@ export function readConversation(clients: LabClients, sessionId: string): Promis
  * Send a line to the chief of staff through its door, into `sessionId`: the
  * conversation's, or a {@link newConversationId} the door's request opens.
  * Resolves as {@link sendTurn} does once the line is delivered; rejects as it does.
+ * `onHeld` is {@link sendTurn}'s: the session holds the line, the reply is in flight.
  */
 export async function sendToChiefOfStaff(
   clients: LabClients,
   target: { seatId: string; door: string; sessionId: string },
   message: string,
+  onHeld?: () => void,
 ): Promise<{ requestId: string; suspended: boolean; stopped: TurnStop }> {
-  return sendTurn(clients, { sessionId: target.sessionId, flowId: target.seatId, door: target.door }, message);
+  return sendTurn(clients, { sessionId: target.sessionId, flowId: target.seatId, door: target.door }, message, { onHeld });
 }

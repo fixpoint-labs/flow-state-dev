@@ -32,7 +32,34 @@ const manager = harnessManager({
 });
 ```
 
-Mount it as the block behind a board seat that hands off, and rows filed on that board become supervised runs.
+Mount it as the block behind a board worker that hands off, and rows filed on that board become supervised runs.
+
+With `workspace: { root, sourceRepo, baseRef }`, every run gets a new branch of `sourceRepo`, cut from `baseRef`. The branch lives in `sourceRepo` itself and the run's checkout sits under `root`.
+
+## Running a project's work
+
+Hand the manager a workspace host instead of a fixed repository, and each run gets its files from whatever the host's source says. A *workspace host* turns a run's source into a directory the agent works in, and saves the files kept with it; a *run source* says where those files come from. Both come from `@flow-state-dev/workspace`:
+
+```ts
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+
+harnessManager({
+  boardCollectionId: work.id,
+  boardCollection: work,
+  workspace: localWorkspaceHost({
+    root: "/var/fsd/runs",
+    remotes: { allow: ["github.com"] },
+    source: (ctx) => ({ kind: "repo", repo: "https://github.com/acme/storefront.git" }),
+  }),
+  // ...
+});
+```
+
+The source answers per run, from the block context, and it is asked when a run is first set up. The repository and base branch it named are recorded on the run record (`remote`, `baseRef`). A retry uses the recorded ones, so changing where a source points applies to new rows and never moves a run already under way. A run that started with no repository is recorded as one (`filesOnly`), so it stays on its kept files even if its project gains a repository later.
+
+When the run has files kept beside its checkout, the manager saves them at the end of each turn, when the run asks a question, and when the harness fails. The run record's `lastSave` shows the result: the time, any files left alone because someone else changed them too, and an error if the save failed. A failed save does not fail the run, and the next save tries again. The exception is a run that would complete: completing is its last save, so a run whose phase is done but whose files could not be saved fails that attempt instead, and the retry saves them.
+
+A run its workspace refuses is not retried. That covers a source answering `refused` and a host that won't provision what the source named, such as a remote it doesn't allow. The row is cancelled on its first attempt, before the harness starts, with the refusal as its reason. The same answer would come back on every retry, so retrying would only spend the attempts. In a run with no repository, the manager's question file stays out of the saved files.
 
 ## Running a mailbox's board
 
@@ -179,7 +206,7 @@ Neither bounds what the run *spawned*. A command the agent's process started can
 
 **`@flow-state-dev/harness-manager`** — the supported host API, and what this package versions: `harnessManager` and its options, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
 
-**`@flow-state-dev/harness-manager/checkout`** — how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. A separate entry point rather than a note on the main barrel, because semver binds what the barrel exports whatever a header says about it. This repository's own consumer and its goal checks import from here; a host should not. They are git-worktree-specific, and a second checkout strategy would put them behind a seam. Adopt `harnessManager({ harness })` and let it own the checkout.
+**`@flow-state-dev/harness-manager/checkout`** — how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. A separate entry point rather than a note on the main barrel, because semver binds what the barrel exports whatever a header says about it. This repository's own consumer and its goal checks import from here; a host should not. They are git-worktree-specific, and a second checkout strategy would put them behind a seam. Adopt `harnessManager({ harness })` and let it own the checkout.
 
 The run record's writes (`openRunRow`, `writeRunRow`) and the inbox's `withdrawEarlierQuestions` are on neither: they write through the attempt fence, and calling one from outside a claimed attempt either gets refused or corrupts a ledger the board is the authority on. Read with `readRunRow` and the collections.
 

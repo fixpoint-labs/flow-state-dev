@@ -25,6 +25,12 @@ export interface FakeCollection extends ResourceCollectionRef<ProjectedEntryStat
   forgetStatePath(key: string): void;
   /** Make every content write reject, the way a store that is down does. */
   breakWrites(reason?: string): void;
+  /** Let content writes through again, the way a store that came back does. */
+  mendWrites(): void;
+  /** The `prefix` argument of every `list` call, in order (`undefined` for an unfiltered one). */
+  listCalls(): readonly (string | undefined)[];
+  /** Every key whose content was read, in order. */
+  contentReads(): readonly string[];
 }
 
 const unsupported = (name: string) => () => {
@@ -46,6 +52,8 @@ export function createFakeCollection(
   const prefix = pattern.replace(/\/\*+$/, "");
 
   let writeFailure: string | undefined;
+  const listed: (string | undefined)[] = [];
+  const reads: string[] = [];
 
   const refFor = (key: string) => ({
     // A real `ResourceRef.path` is the canonical storage key, prefix
@@ -55,6 +63,7 @@ export function createFakeCollection(
       return state.get(key)!;
     },
     async readContent() {
+      reads.push(key);
       return content.get(key) ?? null;
     },
     async writeContent(next: string) {
@@ -85,8 +94,13 @@ export function createFakeCollection(
       }
       return refFor(k) as never;
     },
-    async list() {
-      return [...state.keys()].map((k) => refFor(k)) as never;
+    // Filtered the way the engine filters: a bare string prefix on the key,
+    // with no separator boundary of its own.
+    async list(listPrefix?: string) {
+      listed.push(listPrefix);
+      return [...state.keys()]
+        .filter((k) => listPrefix === undefined || k.startsWith(listPrefix))
+        .map((k) => refFor(k)) as never;
     },
     async delete(key: string | Record<string, string>) {
       const k = String(key);
@@ -94,6 +108,8 @@ export function createFakeCollection(
       state.delete(k);
     },
     contents: () => Object.fromEntries(content),
+    listCalls: () => [...listed],
+    contentReads: () => [...reads],
     setExternal: (key: string, next: string) => {
       content.set(key, next);
       state.set(key, {
@@ -108,6 +124,9 @@ export function createFakeCollection(
     },
     breakWrites: (reason = "the store is unavailable") => {
       writeFailure = reason;
+    },
+    mendWrites: () => {
+      writeFailure = undefined;
     },
     forgetStatePath: (key: string) => {
       const current = state.get(key);

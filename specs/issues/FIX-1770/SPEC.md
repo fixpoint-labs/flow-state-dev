@@ -44,7 +44,7 @@ The check reads what a browser shows from an installed copy. Each control must t
 | **Signal** | **a:** the sidebar's TEAMS equals the held-out Lab's declared workers, and *Open trace* loads the DevTool on a session of that Lab. **b:** within 20 s of saving a change to the Lab, with no other input, the page shows it |
 | **Input** | A small Lab (config and Workforce tree) importing only installed packages. Another tree, or another changed file, must pass too |
 | **Anti-game** | No repository import, workspace link or `pnpm` filter. Read the page, never fsdev's log |
-| **Control that must fail** | `GOAL_CONTROL=no-page-config` must FAIL **a:TEAMS equals the Lab's workers**. `GOAL_CONTROL=no-watch` must FAIL **b:the change shows**. Today's `main` fails at install: there is no `shift-manager` to install |
+| **Control that must fail** | `GOAL_CONTROL=no-page-config` must FAIL **a:Open trace opens the Lab's session** and **b:the change shows**. TEAMS still draws under it: the page's reads don't need the page config. `GOAL_CONTROL=no-watch` must FAIL **b:the change shows**. Today's `main` fails at install: there is no `shift-manager` to install |
 
 ## What changes
 
