@@ -185,11 +185,14 @@ describe("one read per post, shared", () => {
     // What the wake and the route each hold: one reader per getter.
     const forWake = hearingPerPost(live);
     const forRoute = hearingPerPost(live);
-    const post = (id: string) => ({ request: { identity: { id } } }) as never;
+    // Every block delivering one post shares its request handle.
+    const request = (id: string) => ({ identity: { id } });
+    const first = request("req_1");
+    const second = request("req_2");
 
-    expect(forWake(post("req_1"))).toBe(forRoute(post("req_1")));
+    expect(forWake({ request: first } as never)).toBe(forRoute({ request: first } as never));
     expect(reads).toBe(1);
-    forRoute(post("req_2"));
+    forRoute({ request: second } as never);
     expect(reads).toBe(2);
   });
 });

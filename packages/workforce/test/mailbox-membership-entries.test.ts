@@ -82,6 +82,33 @@ describe("subscribe", () => {
     expect(conflicts.length).toBeGreaterThan(0);
     expect([...(await h.stateOf("eng.feature"))!.members as string[]].sort()).toEqual(["eng.a", "eng.b", "eng.ivy"]);
   });
+  it("leaves the inventory row on the session's members when the earlier change publishes last", async () => {
+    const h = await boot();
+    // Hold the first publish of a one-worker snapshot until the other subscribe
+    // has finished, so the change that committed first writes its rows last.
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let held = false;
+    const set = h.stores.resourceState.set.bind(h.stores.resourceState);
+    vi.spyOn(h.stores.resourceState, "set").mockImplementation(async (...args) => {
+      const [, , key, state] = args;
+      if (!held && key.endsWith("mailboxes/eng.feature") && (state as { members?: unknown[] }).members?.length === 2) {
+        held = true;
+        await released;
+      }
+      return set(...args);
+    });
+    const a = h.internal(MAILBOX_SUBSCRIBE_ACTION, { workers: ["eng.a"] });
+    const b = h.internal(MAILBOX_SUBSCRIBE_ACTION, { workers: ["eng.b"] });
+    void Promise.race([a, b]).then(release, release);
+    await Promise.all([a, b]);
+
+    // The control: the stale write did happen after the other change's.
+    expect(held).toBe(true);
+    const members = ["eng.a", "eng.b", "eng.ivy"];
+    expect([...((await h.stateOf("eng.feature"))!.members as string[])].sort()).toEqual(members);
+    expect([...((await h.row("inventory/mailboxes/eng.feature"))!.members as string[])].sort()).toEqual(members);
+  });
 });
 
 describe("contending with posts", () => {

@@ -1301,7 +1301,11 @@ export function openMailboxAtRunTime(options: OpenMailboxAtRunTimeOptions): RunT
     }
   };
 
-  const changeOutput = (ran: unknown): { members: string[] } => membershipChangedSchema.parse(ran);
+  // The entry's output, or a run result carrying it as `output` (what `runAction` returns).
+  const changeOutput = (ran: unknown): { members: string[] } => {
+    const direct = membershipChangedSchema.safeParse(ran);
+    return direct.success ? direct.data : membershipChangedSchema.parse((ran as { output?: unknown } | null | undefined)?.output);
+  };
 
   return {
     async setUp(request) {

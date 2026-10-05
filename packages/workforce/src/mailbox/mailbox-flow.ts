@@ -32,7 +32,7 @@
  */
 
 import { defineFlow, dispatcher, handler, router, sequencer } from "@flow-state-dev/core";
-import { readCommitted, withOutcome } from "@flow-state-dev/core/helpers";
+import { deepEqual, readCommitted, withOutcome } from "@flow-state-dev/core/helpers";
 import type { ActionConfig, BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration";
 import { taskSchema } from "@flow-state-dev/orchestration/tasks";
@@ -1479,6 +1479,9 @@ export function inventoryWriterActions(kind: string) {
  * and a list's hand-off read, so the app reaches these entries and a client
  * never does.
  */
+/** How many times a membership change publishes before it leaves the rows to the next change or boot. */
+const PUBLISH_PASSES = 4;
+
 function membershipEntriesFor(kind: string, boardIds: readonly string[], inventory: boolean) {
   const resources = inventory ? { resources: MAILBOX_ROW_COLLECTIONS } : {};
 
@@ -1524,10 +1527,11 @@ function membershipEntriesFor(kind: string, boardIds: readonly string[], invento
     removed: readonly string[]
   ) => {
     const opened = changeable(ctx);
+    const write = (mutator: (state: Readonly<Record<string, unknown>>) => Partial<Record<string, unknown>>) =>
+      ctx.session.atomicState(mutator);
     const written =
       (await withOutcome(
-        (mutator: (state: Readonly<Record<string, unknown>>) => Partial<Record<string, unknown>>) =>
-          ctx.session.atomicState(mutator),
+        write,
         (state: Readonly<Record<string, unknown>>) => {
           // Fresh on every run, including the re-run a version conflict makes.
           const current = boundMailbox(state) ?? opened;
@@ -1540,7 +1544,25 @@ function membershipEntriesFor(kind: string, boardIds: readonly string[], invento
       )) ?? opened;
     // Published even when nothing changed: a retry of a change whose rows never
     // landed (the write committed, the request died before this line) repairs them.
-    await publish(ctx, written, removed);
+    //
+    // The rows follow the session as committed, not this request's copy: a
+    // change that committed after this one can publish before it, and this
+    // one's rows would then land last and stale. So after each publish, read
+    // the session again (a write that changes nothing re-reads the store) and
+    // publish again until the rows match it. Whichever publish lands last
+    // checked the session after it landed.
+    let published = written;
+    let gone = [...removed];
+    for (let pass = 0; pass < PUBLISH_PASSES; pass++) {
+      await publish(ctx, published, gone);
+      const committed = (await withOutcome(write, (state: Readonly<Record<string, unknown>>) => ({
+        state: {},
+        result: boundMailbox(state)
+      }))) ?? published;
+      if (deepEqual(committed.members, published.members)) break;
+      gone = [...gone, ...published.members];
+      published = committed;
+    }
     return { members: written.members };
   };
 
@@ -1557,7 +1579,9 @@ function membershipEntriesFor(kind: string, boardIds: readonly string[], invento
             "opened while the app runs; a file's mailbox registers through `openInventory`."
         );
       }
-      await publish(ctx as unknown as BlockContext, mailbox, [], input.description);
+      // A repair passes no description; the session keeps the one its setup gave.
+      const description = input.description ?? ctx.session.metadata.description;
+      await publish(ctx as unknown as BlockContext, mailbox, [], description);
       return { members: mailbox.members };
     }
   });

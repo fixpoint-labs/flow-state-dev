@@ -83,3 +83,27 @@ describe("a ledger over one key prefix", () => {
     }
   });
 });
+
+describe("nested key prefixes", () => {
+  it("keeps a ledger apart from one nested under its prefix", async () => {
+    const backing = createFakeResourceCollection();
+    const team = await ledgerAt(backing, "team");
+    const project = await ledgerAt(backing, "team/project");
+
+    await project.addTask({ id: "t1", goal: "inner" });
+    await team.addTask({ id: "t2", goal: "outer" });
+
+    // A fresh resolution reads the store, where the inner row is listed under "team/" too.
+    const reread = await ledgerAt(backing, "team");
+    expect(reread.list().map((task) => task.goal)).toEqual(["outer"]);
+    expect(await reread.claim("w1")).toMatchObject({ goal: "outer" });
+    expect(await reread.claim("w2")).toBeNull();
+    expect(project.get("t1")?.status).toBe("pending");
+  });
+
+  it("refuses a task id carrying a slash, which would be a nested ledger's key", async () => {
+    const backing = createFakeResourceCollection();
+    const team = await ledgerAt(backing, "team");
+    await expect(team.addTask({ id: "project/t1", goal: "g" })).rejects.toThrow(/carries a "\/"/);
+  });
+});

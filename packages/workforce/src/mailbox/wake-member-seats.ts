@@ -101,16 +101,13 @@ export function hearingSeatsById(seats: readonly FlowInstance[]): Map<string, Fl
  */
 export type MailboxWorkerSource = readonly FlowInstance[] | (() => readonly FlowInstance[]);
 
-/** How many posts' reads a getter keeps at once: enough for the posts in flight, never the history. */
-const POSTS_KEPT = 64;
-
 /** One reader per getter, so a wake and a route over the same getter share a post's read. */
 const readers = new WeakMap<() => readonly FlowInstance[], (ctx: BlockContext) => Map<string, FlowInstance[]>>();
 
 /**
  * The seats that can hear a post, by logical id, as of the post `ctx` is
  * delivering. A list is grouped once, here. A getter is called once per post,
- * keyed by the request (one fan-out per post), and every block reading it for
+ * keyed by the post's request handle (one fan-out per post), and every block reading it for
  * that post (each member's wake, the route's case) gets the same answer. Not
  * re-exported from the package root.
  */
@@ -121,15 +118,14 @@ export function hearingPerPost(source: MailboxWorkerSource): (ctx: BlockContext)
   }
   const known = readers.get(source);
   if (known !== undefined) return known;
-  const byPost = new Map<string, Map<string, FlowInstance[]>>();
+  // Keyed on the post's request handle, which every block delivering that post
+  // shares, so a post's read lives exactly as long as the post does.
+  const byPost = new WeakMap<object, Map<string, FlowInstance[]>>();
   const read = (ctx: BlockContext) => {
-    const postId = ctx.request.identity.id;
-    let hearing = byPost.get(postId);
+    let hearing = byPost.get(ctx.request);
     if (hearing === undefined) {
       hearing = hearingSeatsById(source());
-      byPost.set(postId, hearing);
-      // Oldest first: a post's deliveries all land before many more posts start.
-      if (byPost.size > POSTS_KEPT) byPost.delete(byPost.keys().next().value as string);
+      byPost.set(ctx.request, hearing);
     }
     return hearing;
   };

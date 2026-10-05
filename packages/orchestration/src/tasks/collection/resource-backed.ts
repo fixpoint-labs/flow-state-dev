@@ -212,6 +212,10 @@ export interface ResourceBackedOptions {
    *
    * One or more key segments, with no leading or trailing `/`. Omitted, the
    * ledger is the whole collection, keyed by task id, as before.
+   *
+   * Prefixes may nest (`team` and `team/project`): a ledger holds only the
+   * keys one segment below its prefix, and refuses a task id carrying a `/`,
+   * so no key one ledger writes is a key another ledger holds.
    */
   keyPrefix?: string;
 }
@@ -298,7 +302,31 @@ function keyPrefixOf(keyPrefix: string | undefined): {
         `or trailing "/" — tasks are stored at "<keyPrefix>/<taskId>".`
     );
   }
-  return { listPrefix: `${keyPrefix}/`, keyOf: (taskId) => `${keyPrefix}/${taskId}` };
+  return {
+    listPrefix: `${keyPrefix}/`,
+    keyOf: (taskId) => {
+      // One segment below the prefix, so a nested ledger's keys are never this one's.
+      if (taskId.includes("/")) {
+        throw new Error(
+          `[tasks] task id "${taskId}" carries a "/", which a ledger at keyPrefix "${keyPrefix}" ` +
+            "cannot hold: its tasks are one key segment below the prefix."
+        );
+      }
+      return `${keyPrefix}/${taskId}`;
+    }
+  };
+}
+
+/**
+ * Whether a listed row sits directly under `listPrefix`, rather than under a
+ * longer prefix nested in it. The row's path is the collection's pattern
+ * prefix, then its key, so the key starts at the first segment-aligned
+ * occurrence of `listPrefix`.
+ */
+function directlyUnder(path: string, listPrefix: string, id: string): boolean {
+  const at = path.startsWith(listPrefix) ? 0 : path.indexOf(`/${listPrefix}`) + 1;
+  if (at === 0 && !path.startsWith(listPrefix)) return false;
+  return path.slice(at + listPrefix.length) === id;
 }
 
 /**
@@ -404,6 +432,8 @@ async function reconcileTaskSet(
     // adopting it would plant an unaddressable phantom in a record every handle
     // reads. Leaving it out of `stored` also lets rule 4 retire a prior entry.
     if (typeof id !== "string" || id.length === 0) continue;
+    // A nested prefix's row is listed under this one too; it is that ledger's.
+    if (listPrefix !== undefined && !directlyUnder(ref.path, listPrefix, id)) continue;
     stored.add(id);
     mirror.set(id, ref);
   }

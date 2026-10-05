@@ -51,7 +51,8 @@ export function sessionApi(stores: StoreRegistry) {
           createdAt: now,
           updatedAt: now,
           journal: [],
-          ...(options.description === undefined ? {} : { metadata: { description: options.description } })
+          // Top-level, where the session route writes it and `ctx.session.metadata` reads it.
+          ...(options.description === undefined ? {} : { description: options.description })
         } as never,
         "absent"
       );

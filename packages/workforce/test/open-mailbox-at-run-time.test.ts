@@ -117,7 +117,12 @@ describe("setting a mailbox up", () => {
 
     await expect(h.open.setUp({ ...LOGIN, members: ["platform.bob"] })).rejects.toThrow(/"platform\.login" is already a mailbox/);
     // The retry made it findable again, and changed nothing else.
-    expect(await h.row("inventory/mailboxes/platform.login")).toMatchObject({ members: ["platform.ada"], origin: "runtime" });
+    // With the description its setup gave: the retry carries none of its own.
+    expect(await h.row("inventory/mailboxes/platform.login")).toMatchObject({
+      members: ["platform.ada"],
+      origin: "runtime",
+      description: "The login page."
+    });
     expect((await h.stateOf("platform.login"))!.members).toEqual(["platform.ada"]);
   });
 });
@@ -131,6 +136,15 @@ describe("subscribing through the opener", () => {
     });
     expect(await h.open.unsubscribe({ orgId: ORG_ID, mailboxId: "platform.login", workers: ["platform.ada"] })).toEqual({
       members: []
+    });
+  });
+
+  it("reads the members from a door that returns the run result rather than its output", async () => {
+    const h = await boot();
+    const run = async (request: Parameters<typeof h.run>[0]) => ({ output: await h.run(request) });
+    const open = openMailboxAtRunTime({ client: h.client, run, userId: USER_ID, teams: ["eng", "platform"] });
+    expect(await open.subscribe({ orgId: ORG_ID, mailboxId: "eng.feature", workers: ["eng.newhire"] })).toEqual({
+      members: ["eng.ivy", "eng.newhire"]
     });
   });
 
