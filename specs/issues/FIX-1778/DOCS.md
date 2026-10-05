@@ -138,6 +138,15 @@ After *"A target chosen from data is a `router` over declared dispatchers, not a
 string."* add: *"The exception is a `task` dispatcher's `flowKind`, which may be a function of the
 task, checked when the task is handed over like any cross-flow address."*
 
+## UPDATE · `docs/architecture/dispatched-work.md`, `action-forms.md`, `resource-collections.md`
+
+Contributor references, not user docs. `dispatched-work.md` and `action-forms.md`: a `task`
+dispatcher's `flowKind` may be a function of the task, resolved at hand-over like any cross-flow
+address; the reachability walk shows it as looked up per task. `dispatched-work.md`: a task entry
+may name where its tasks come from (`from`), and its gate reads the ledger per task.
+`resource-collections.md`: a worker kind declares the lists it can be handed tasks from at boot,
+plus the one run-time-lists collection, and reads a run-time list through its key prefix.
+
 ## UPDATE · `packages/orchestration/README.md` and `packages/workforce/README.md`
 
 The two orchestration subsections above, in the README's terse form. Workforce: the lookup, the
