@@ -34,7 +34,7 @@ The *proved by* column is the check the plan runs.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-15 | A coordinator files a task on a mailbox's task list | The task is on that list, readable the same way as a file list's task. `fileTask` also records `filingWorker`: the calling worker's name as the runtime knows it, never from tool input and never a session or flow id. It sits beside the task's owner, which FIX-1777's add records from the resolved identity, and is not the owner: it is never used for the run claim or the bill, only to report back to that worker (FIX-1780) | CI · goal check |
-| BR-16 | The list does not exist on that mailbox, or the task names an assignee no worker holds | Refused, naming the lists it has, or the assignee | CI |
+| BR-16 | The list does not exist on that mailbox; the task names an assignee no worker holds, or two workers hold (FIX-1778's lookup); or the assignee is not one of the list's workers (BR-18), under FIX-1778's option (ii) | Refused, naming the lists it has, or the assignee and why. If Jake picks FIX-1778's other option, the last check goes and the rest stay | CI |
 | BR-17 | Two run-time mailboxes each have a `tasks` list | Neither ever sees the other's tasks | CI |
 | BR-18 | Something asks which workers work a list | One answer for file lists and run-time lists: the workers the `MAILBOX.md`'s `workedBy` names for it (FIX-1777), plus those subscribed with `worksTaskList`, minus those unsubscribed since. Being a member, or declaring the board, does not count | CI |
 
