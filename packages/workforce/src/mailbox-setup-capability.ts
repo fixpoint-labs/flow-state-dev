@@ -53,9 +53,9 @@ export const MAILBOX_SETUP_CAPABILITY = "mailbox-setup";
 export interface MailboxSetupCapabilityOptions {
   /**
    * The host's door to opening and changing mailboxes: `openMailboxAtRunTime`,
-   * or an object forwarding to it once the host has built it.
+   * or a function that returns it once the host has built it.
    */
-  open: RunTimeMailboxOpener;
+  open: RunTimeMailboxOpener | (() => RunTimeMailboxOpener);
   /**
    * The workers a name is looked up among: the same list or getter the wake
    * takes. Pass the host's registry getter, so a worker hired a moment ago
@@ -109,6 +109,11 @@ const fileTaskInput = z
 
 const membersOutput = z.object({ mailboxId: z.string(), members: z.array(z.string()) });
 
+/** The opener now, when `open` is handed over after the capability is built. */
+function openerOf(open: RunTimeMailboxOpener | (() => RunTimeMailboxOpener)): RunTimeMailboxOpener {
+  return typeof open === "function" ? open() : open;
+}
+
 /** The caller's organization and member, from the verified principal. */
 function callerOf(ctx: BlockContext): WorkerLookupCaller {
   const orgId = ctx.org?.identity.orgId ?? ctx.org?.identity.id;
@@ -153,7 +158,7 @@ export function createMailboxSetupCapability(options: MailboxSetupCapabilityOpti
     outputSchema: z.object({ mailboxId: z.string(), taskList: z.string() }),
     execute: async (input: z.infer<typeof setUpInput>, ctx) => {
       const caller = callerOf(ctx as unknown as BlockContext);
-      return await open.setUp({
+      return await openerOf(open).setUp({
         orgId: caller.orgId,
         team: input.team,
         name: input.name,
@@ -174,7 +179,7 @@ export function createMailboxSetupCapability(options: MailboxSetupCapabilityOpti
     outputSchema: membersOutput,
     execute: async (input: z.infer<typeof subscribeInput>, ctx) => {
       const caller = callerOf(ctx as unknown as BlockContext);
-      const changed = await open.subscribe({
+      const changed = await openerOf(open).subscribe({
         orgId: caller.orgId,
         mailboxId: input.mailboxId,
         workers: lookedUp(input.workers, caller, "Worker"),
@@ -193,7 +198,7 @@ export function createMailboxSetupCapability(options: MailboxSetupCapabilityOpti
     outputSchema: membersOutput,
     execute: async (input: z.infer<typeof membershipInput>, ctx) => {
       const caller = callerOf(ctx as unknown as BlockContext);
-      const changed = await open.unsubscribe({ orgId: caller.orgId, mailboxId: input.mailboxId, workers: input.workers });
+      const changed = await openerOf(open).unsubscribe({ orgId: caller.orgId, mailboxId: input.mailboxId, workers: input.workers });
       return { mailboxId: input.mailboxId, members: changed.members };
     }
   });
@@ -209,7 +214,7 @@ export function createMailboxSetupCapability(options: MailboxSetupCapabilityOpti
     execute: async (input: z.infer<typeof fileTaskInput>, ctx) => {
       const caller = callerOf(ctx as unknown as BlockContext);
       const { orgId: _ignored, list, assignee, ...task } = input;
-      return await open.fileTask({
+      return await openerOf(open).fileTask({
         ...task,
         orgId: caller.orgId,
         list: list ?? RUN_TIME_TASK_LIST,

@@ -805,7 +805,6 @@ import {
   createMailboxSetupCapability,
   defineAgentWorkerFlow,
   openMailboxAtRunTime,
-  type RunTimeMailboxOpener,
 } from "@flow-state-dev/workforce";
 
 const mailboxSetup = createMailboxSetupCapability({
@@ -822,20 +821,8 @@ const agent = defineAgentWorkerFlow({ uses: [mailboxSetup] });
 
 `run` is the same kind of function `openInventory` takes: it calls `runAction` with
 `source: "internal"` and returns the action's output. Your registry and session client usually
-exist only after the app has started, so if your kinds are built before that, pass `open` an
-object whose four methods forward to the opener once you've built it:
-
-```ts
-let opener: RunTimeMailboxOpener | undefined;
-const open: RunTimeMailboxOpener = {
-  setUp: (request) => opener!.setUp(request),
-  subscribe: (request) => opener!.subscribe(request),
-  unsubscribe: (request) => opener!.unsubscribe(request),
-  fileTask: (request) => opener!.fileTask(request),
-};
-// After the app starts:
-opener = openMailboxAtRunTime({ client: sessionClient, userId: "u_42", run: runInternalAction, teams: ["platform", "support"] });
-```
+exist only after the app has started. If the kinds are built before that, pass `open` a function
+that returns the opener (`open: () => opener`), the same way `workers` can be a function.
 
 Then name the tools in the coordinator's `WORKER.md`. A worker that doesn't name them can't call
 them:

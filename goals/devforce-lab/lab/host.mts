@@ -710,18 +710,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // exist only once the flow state does, so it is bound below; until then, and
   // in a Lab that opens no mailboxes, every call is refused by name.
   let mailboxOpener: RunTimeMailboxOpener | undefined;
-  const opener = (): RunTimeMailboxOpener => {
-    if (mailboxOpener === undefined) {
-      throw new Error("this Lab opened no mailboxes, so there is none to set up or change. Nothing was changed.");
-    }
-    return mailboxOpener;
-  };
   const mailboxSetup = createMailboxSetupCapability({
-    open: {
-      setUp: (request) => opener().setUp(request),
-      subscribe: (request) => opener().subscribe(request),
-      unsubscribe: (request) => opener().unsubscribe(request),
-      fileTask: (request) => opener().fileTask(request),
+    open: () => {
+      if (mailboxOpener === undefined) {
+        throw new Error("this Lab opened no mailboxes, so there is none to set up or change. Nothing was changed.");
+      }
+      return mailboxOpener;
     },
     workers: registered,
   });

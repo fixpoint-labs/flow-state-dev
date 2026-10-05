@@ -120,12 +120,7 @@ export async function startHost(
   });
   const live = (): readonly FlowInstance[] => registry?.list() ?? [];
   const mailboxSetup = createMailboxSetupCapability({
-    open: {
-      setUp: (request) => opener!.setUp(request),
-      subscribe: (request) => opener!.subscribe(request),
-      unsubscribe: (request) => opener!.unsubscribe(request),
-      fileTask: (request) => opener!.fileTask(request)
-    },
+    open: () => opener!,
     workers: live
   });
   kinds.agent = defineAgentWorkerFlow({ uses: [hireTools, mailboxSetup] });
