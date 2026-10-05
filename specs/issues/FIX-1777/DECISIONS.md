@@ -70,6 +70,9 @@ It comes down to whether a hand-off finishes in one turn: a card would stop it a
   (the FSD Architect, on #2753).
 - **More than one worker and no assignee: the task waits and the answer says to assign it.** An
   order would quietly pick who spends the run; the coordinator assigns by name anyway (FIX-1778).
+- **Only an add starts a list; an assign or a subscribe does not.** One watch, on adds. A waiting
+  task is started by FIX-1780's `reassignTask`, which runs the list after it assigns; a bare
+  `assignTask` or a later subscribe leaves it for the next run (the FSD Architect, on #2753).
 - **A list with no worker for a task.** The task is filed and waits, and the filing's answer says
   no worker works it. Same as hire's unattended-board warning, now at the moment it matters.
 

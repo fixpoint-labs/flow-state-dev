@@ -10,7 +10,7 @@
 | BR-2 | The filer is a coordinator mid-turn | Its filing returns as soon as the task is stored. The turn does not wait for the run | Goal leg a (call returns before the task completes) |
 | BR-3 | The task names a worker (assignee) | It goes to that worker, through FIX-1778's lookup; a board alias wins over the lookup | FIX-1778's checks; leg a's assigned route |
 | BR-4 | The task names no worker, and exactly one worker works the list (BR-18) | It goes to that worker | Leg a's unassigned route |
-| BR-5 | The task names no worker and no worker works the list | The task is filed and waits, and the filing's answer says why. Nothing errors in the filer's turn. A task that names a worker no one holds, or two hold, is refused at filing, and one whose worker was let go after filing fails at hand-over; both are FIX-1778's rules (its BR-11 and BR-4), not this one | Workforce unit test |
+| BR-5 | The task names no worker and no worker works the list | The task is filed and waits, and the filing's answer says why. A worker subscribed to the list later does not start it; it waits for the next run of the list. Nothing errors in the filer's turn. A task that names a worker no one holds, or two hold, is refused at filing, and one whose worker was let go after filing fails at hand-over; both are FIX-1778's rules (its BR-11 and BR-4), not this one | Workforce unit test |
 | BR-6 | A filing adds nothing (the task already existed, or the write was an update) | Nothing runs | Workforce unit test; DevTeam board check, repeat post |
 | BR-7 | The list is a worker's private board, not a mailbox's | As today: nothing runs on add | Workforce unit test (negative) |
 
@@ -19,7 +19,7 @@
 | | When | Then | Proved by |
 |---|---|---|---|
 | BR-18 | Deciding who works a mailbox's list | The workers the mailbox names for it: `workedBy:` in its `MAILBOX.md`, plus those subscribed with `worksTaskList` at run time (FIX-1779), minus any worker unsubscribed from it since. Being a member, or declaring the list's ledger, counts for nothing | Workforce unit test: a member that declares the ledger and isn't named is not handed a task |
-| BR-19 | The task names no worker and more than one works the list | The task is filed and waits, and the filing's answer says to assign it. No order picks one. Assigning it later needs FIX-1780 BR-16b, which lets `setAssignee` through the FIX-982 freeze on a hand-over list | Workforce unit test |
+| BR-19 | The task names no worker and more than one works the list | The task is filed and waits, and the filing's answer says to assign it with FIX-1780's `reassignTask`, which runs the list after it assigns. No order picks one. Assigning it later needs FIX-1780 BR-16b, which lets `setAssignee` through the FIX-982 freeze on a hand-over list. A bare `assignTask` (a board tool or a person) does not start the task; it waits for the next run of the list | Workforce unit test |
 
 ## Whose run it is
 
