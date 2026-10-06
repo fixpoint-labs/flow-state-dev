@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D2, what happens to best fit&#x27;s fallback when a conversation&#x27;s delegates change. Chosen: the fallback is one of the conversation&#x27;s delegates, and removing it leaves the posts best fit can&#x27;t place recorded and said in the conversation. Instead of: refusing to remove the fallback delegate until another is set. It comes down to the first row: a person removing a delegate is never refused over a setting they may not know about, while refusing the removal surprises them. The price is the second row: a post the evaluator can&#x27;t place can go unanswered, visibly, where refusing keeps a fallback always set. The third row: falling back to the coordinator&#x27;s own judgment turn was dropped for cost under either option. Locks in: a best-fit conversation that can have no fallback. Flips if: posts go unplaced often."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">When the fallback delegate is removed, what happens?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Removal works; misses are told</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Refuse the removal</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A PERSON REMOVES</text>
+    <text class="t-lbl" x="32" y="169">A DELEGATE</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">It goes, every time</text>
+    <text class="t-s" x="248" y="179">the fallback clears in that conversation</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Refused over a setting</text>
+    <text class="t-s" x="612" y="179">they must pick a new fallback first</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="222">A POST BEST FIT</text>
+    <text class="t-lbl" x="32" y="235">CAN&#x27;T PLACE</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">Unanswered, recorded, told</text>
+    <text class="t-s" x="248" y="241">until someone sets a new fallback</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Always someone takes it</text>
+    <text class="t-s" x="612" y="241">the fallback can never be missing</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="280">A MODEL TURN</text>
+    <text class="t-lbl" x="32" y="293">PER MISS</text>
+    <text class="mark tie" x="228" y="282">=</text>
+    <text class="t-b" x="248" y="281">None</text>
+    <text class="t-s" x="248" y="299">a judgment turn as fallback was dropped</text>
+    <text class="mark tie" x="592" y="282">=</text>
+    <text class="t-b" x="612" y="281">None</text>
+    <text class="t-s" x="612" y="299">the same</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">A best-fit conversation can have no fallback</text>
+    <text class="t-s" x="32" y="387">a miss is visible in the conversation, never silent</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">Posts go unplaced often in practice</text>
+    <text class="t-s" x="494" y="387">then a removal asks for a new fallback</text>
+  </g>
+</svg>
