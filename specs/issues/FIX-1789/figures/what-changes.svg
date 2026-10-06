@@ -1,0 +1,80 @@
+<svg viewBox="0 0 940 472" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels, today and after, in the same five cases. Today the flows passed to the hire are the allowlist and each worker's mint checks configuration only: a flow with no door is hired and takes no message, private data at org scope is hired and every member reads it, the org's shared record is written and every member reads it, a shared entry says nothing of who wrote it, and there is no way to keep a flow for standard workers. After, the installation registers its worker flows with standard-only per entry, and three checks run once per flow at boot: the flow with no door and the private data at org scope are refused at boot by name, the org's shared record is refused when it runs if Q2 holds, a shared entry names the user and the worker, and a user's own worker on a kept flow is refused naming the flow.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-old { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-new { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="472"/>
+  <g id="panels">
+    <rect class="panel" x="16" y="14" width="446" height="176" rx="6"/>
+    <rect class="panel" x="478" y="14" width="446" height="176" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY</text>
+    <text class="t-lbl" x="494" y="34">AFTER</text>
+  </g>
+  <g id="today-path">
+    <rect class="n-box" x="32" y="46" width="414" height="50" rx="5"/>
+    <text class="t-h" x="48" y="67">The flows passed to the hire</text>
+    <text class="t-s" x="48" y="85">the allowlist; no flag, no check of its own</text>
+    <path class="arrow" d="M239 96 L239 118"/>
+    <path class="head" d="M234 114 L239 122 L244 114 Z"/>
+    <rect class="n-box" x="32" y="124" width="414" height="50" rx="5"/>
+    <text class="t-h" x="48" y="145">Each worker's mint</text>
+    <text class="t-s" x="48" y="163">checks configuration only, once per worker</text>
+  </g>
+  <g id="after-path">
+    <rect class="n-new" x="494" y="46" width="414" height="50" rx="5"/>
+    <text class="t-h" x="510" y="67">The installation's worker flows</text>
+    <text class="t-s" x="510" y="85">standard-only per entry; agent underneath</text>
+    <path class="arrow" d="M701 96 L701 118"/>
+    <path class="head" d="M696 114 L701 122 L706 114 Z"/>
+    <rect class="n-new" x="494" y="124" width="414" height="50" rx="5"/>
+    <text class="t-h" x="510" y="145">Three checks, once per flow, at boot</text>
+    <text class="t-s" x="510" y="163">configuration · one door · private state</text>
+  </g>
+  <g id="case-1">
+    <text class="t-lbl" x="32" y="216">A FLOW WITH NO DOOR</text>
+    <text class="t-old" x="32" y="236">Hired; takes no message</text>
+    <text class="t-new" x="494" y="236">Refused at boot, by name</text>
+    <line class="row" x1="16" y1="250" x2="924" y2="250"/>
+  </g>
+  <g id="case-2">
+    <text class="t-lbl" x="32" y="270">PRIVATE DATA KEPT AT ORG SCOPE</text>
+    <text class="t-old" x="32" y="290">Hired; every member reads it</text>
+    <text class="t-new" x="494" y="290">Refused at boot, by name</text>
+    <line class="row" x1="16" y1="304" x2="924" y2="304"/>
+  </g>
+  <g id="case-3">
+    <text class="t-lbl" x="32" y="324">THE ORG'S SHARED RECORD, WRITTEN WITH NOTHING DECLARED</text>
+    <text class="t-old" x="32" y="344">Written; every member reads it</text>
+    <text class="t-new" x="494" y="344">Refused when it runs (Q2)</text>
+    <line class="row" x1="16" y1="358" x2="924" y2="358"/>
+  </g>
+  <g id="case-4">
+    <text class="t-lbl" x="32" y="378">AN ENTRY IN A SHARED RESOURCE</text>
+    <text class="t-old" x="32" y="398">Says nothing of who wrote it</text>
+    <text class="t-new" x="494" y="398">Names the user and the worker</text>
+    <line class="row" x1="16" y1="412" x2="924" y2="412"/>
+  </g>
+  <g id="case-5">
+    <text class="t-lbl" x="32" y="432">A USER'S OWN WORKER ON A FLOW KEPT FOR STANDARD WORKERS</text>
+    <text class="t-old" x="32" y="452">No way to keep a flow</text>
+    <text class="t-new" x="494" y="452">Refused, naming the flow</text>
+  </g>
+</svg>
