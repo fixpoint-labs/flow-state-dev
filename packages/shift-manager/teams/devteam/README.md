@@ -1,5 +1,11 @@
 # The DevForce lab
 
+This directory is two things at once: Shift Manager's DevTeam profile
+(`fsdev.config.mts`), and the tree and host the DevForce lab's goal checks in
+[`goals/devforce-lab/`](../../../../goals/devforce-lab/) open. It lives beside the
+profile so the package never imports from the goal corpus; the checks reach in
+here instead.
+
 Two halves of one claim have each been proved and had never met. The pentest lab
 shows that a post reaches seats declared in Markdown — but every seat in it
 produces a line of text. `labs/conductor` shows that a board row becomes a
@@ -17,12 +23,12 @@ slot; the third adds the two ends of the path neither of them reaches:
 
 | | |
 |---|---|
-| [`../it-wakes-the-seat-a-file-declared/`](../it-wakes-the-seat-a-file-declared/) | The contract gate. A scripted stub in the slot, no model at all, every rule graded on what the plumbing carried. |
-| [`../it-commits-from-the-seats-own-file/`](../it-commits-from-the-seats-own-file/) | The honesty check. A real coding agent in that same slot, and the one leg a stub cannot reach — a commit the base ref does not have. |
-| [`../it-ships-an-artifact-a-person-can-open/`](../it-ships-an-artifact-a-person-can-open/) | The product check. A **post** is what starts the work, and the work is published to an address that outlives the run and judged against a condition the brief stated first. |
-| [`../it-keeps-its-rows-on-the-mailboxes-board/`](../it-keeps-its-rows-on-the-mailboxes-board/) | The board check. The feature mailbox holds the board its rows sit on, and a posted line ends as one completed row read back through the mailbox, the HTTP door and the organization's storage. No model. |
-| [`../it-waits-for-a-person-before-it-files/`](../it-waits-for-a-person-before-it-files/) | The approval check. With the ask turned on, the EM seat asks a person before it files a feature. Approve files the row and the coder starts; Deny files nothing. No model, and the answer goes through the session's own resume. |
-| [`../it-codes-in-the-projects-repository/`](../it-codes-in-the-projects-repository/) | The project check. The coder runs on a workspace host whose source is the project holding the board's workstream: a project with a repository gets a branch of it, one without runs on its files, a remote the host does not allow is refused by name, and what a run keeps is saved to the project. No model. |
+| [`goals/devforce-lab/it-wakes-the-seat-a-file-declared/`](../../../../goals/devforce-lab/it-wakes-the-seat-a-file-declared/) | The contract gate. A scripted stub in the slot, no model at all, every rule graded on what the plumbing carried. |
+| [`goals/devforce-lab/it-commits-from-the-seats-own-file/`](../../../../goals/devforce-lab/it-commits-from-the-seats-own-file/) | The honesty check. A real coding agent in that same slot, and the one leg a stub cannot reach — a commit the base ref does not have. |
+| [`goals/devforce-lab/it-ships-an-artifact-a-person-can-open/`](../../../../goals/devforce-lab/it-ships-an-artifact-a-person-can-open/) | The product check. A **post** is what starts the work, and the work is published to an address that outlives the run and judged against a condition the brief stated first. |
+| [`goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/`](../../../../goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/) | The board check. The feature mailbox holds the board its rows sit on, and a posted line ends as one completed row read back through the mailbox, the HTTP door and the organization's storage. No model. |
+| [`goals/devforce-lab/it-waits-for-a-person-before-it-files/`](../../../../goals/devforce-lab/it-waits-for-a-person-before-it-files/) | The approval check. With the ask turned on, the EM seat asks a person before it files a feature. Approve files the row and the coder starts; Deny files nothing. No model, and the answer goes through the session's own resume. |
+| [`goals/devforce-lab/it-codes-in-the-projects-repository/`](../../../../goals/devforce-lab/it-codes-in-the-projects-repository/) | The project check. The coder runs on a workspace host whose source is the project holding the board's workstream: a project with a repository gets a branch of it, one without runs on its files, a remote the host does not allow is refused by name, and what a run keeps is saved to the project. No model. |
 
 It is **evidence, not an application**. Nobody opens it and clicks through it;
 you re-run it a year from now and compare against the verdict logs in the two
@@ -134,7 +140,7 @@ const lab = await openLab({
 ## Serving it
 
 This tree is served as Shift Manager's `devteam` profile. The profile's config,
-`packages/shift-manager/teams/devteam/fsdev.config.mts`, opens it through `openLab`, and
+`fsdev.config.mts` beside this file, opens it through `openLab`, and
 `fsdev dev --config` takes the same file. `DEVFORCE_LAB_HARNESS` picks what runs an approved
 row (`harness.mts`):
 

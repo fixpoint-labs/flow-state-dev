@@ -50,7 +50,7 @@ To open another Lab from a checkout, pass its config:
 
 `devteam` is the team profile in this repository, at `teams/devteam/fsdev.config.mts`. It isn't in the published package, because it builds on the repository's own test Labs.
 
-It's a software team. An EM worker files features as rows on the team's board, a coder worker runs each row as a supervised coding run, and a reviewer worker is declared but never woken. On start the EM asks you to approve one feature, so Inbox has something in it. It also opens with two projects you own: Storefront, which holds a workstream from each of the two teams, and Platform, which holds none yet. The EM answers every line posted in a project's room. Rows run on a scripted harness with no model unless `DEVFORCE_LAB_HARNESS=claude-code` is set. Its tree and the checks behind it are in [`goals/devforce-lab/lab/`](../../goals/devforce-lab/lab/README.md). It keeps what it holds in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite` (or at `DEVTEAM_STORE`), so projects, their rooms and your talk sessions survive a restart. Delete the file to start fresh.
+It's a software team. An EM worker files features as rows on the team's board, a coder worker runs each row as a supervised coding run, and a reviewer worker is declared but never woken. On start the EM asks you to approve one feature, so Inbox has something in it. It also opens with two projects you own: Storefront, which holds a workstream from each of the two teams, and Platform, which holds none yet. The EM answers every line posted in a project's room. Rows run on a scripted harness with no model unless `DEVFORCE_LAB_HARNESS=claude-code` is set. Its tree sits beside the config, in [`teams/devteam/`](teams/devteam/README.md), and the checks behind it are in [`goals/devforce-lab/`](../../goals/devforce-lab/). It keeps what it holds in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite` (or at `DEVTEAM_STORE`), so projects, their rooms and your talk sessions survive a restart. Delete the file to start fresh.
 
 ## What a Lab's config provides
 
@@ -87,7 +87,7 @@ export default lab.state;
 | `sqliteStores({ filename })` | `@flow-state-dev/store-sqlite` | Kept in the file. A relative `filename` lands under the directory you ran the command in. |
 | `postgresStores(options)` | `@flow-state-dev/store-postgres` | Kept in the database. |
 
-To open a Lab and work it, use `inMemoryStores()`. Pick SQLite or Postgres when the Lab should keep what it holds across a restart. [`goals/multi-seat-collab/lab/fsdev.config.mts`](../../goals/multi-seat-collab/lab/fsdev.config.mts) runs on SQLite.
+To open a Lab and work it, use `inMemoryStores()`. Pick SQLite or Postgres when the Lab should keep what it holds across a restart. [`test/fixtures/multi-seat-collab/fsdev.config.mts`](test/fixtures/multi-seat-collab/fsdev.config.mts) runs on SQLite.
 
 **An organization.** Every request a Lab serves runs in an organization, and Shift Manager shows it in the sidebar. A Lab names its own with `resolvePrincipal` on `createFlowState`, which returns who a request is:
 

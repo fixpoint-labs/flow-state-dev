@@ -21,7 +21,7 @@ import { appendFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import type { HarnessFeeds } from "../../../devforce-lab/lab/harness.mts";
+import type { HarnessFeeds } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
 
 /** The file each attempt's record is appended to. */
 export const RUNS_ENV = "TURN_GOAL_RUNS";

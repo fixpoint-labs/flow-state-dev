@@ -85,12 +85,11 @@ import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { RUN_STAMP, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { boardMailboxOf, LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../lab/host.mts";
-import { PHASE } from "../lab/phase.mts";
-import { createNotifyLog, type NotifyLog } from "../lab/notify.mts";
-import { ACCEPTANCE_MODULE, runAcceptance } from "../lab/acceptance.mts";
+import { boardMailboxOf, LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
+import { createNotifyLog, type NotifyLog } from "../../../packages/shift-manager/teams/devteam/notify.mts";
+import { ACCEPTANCE_MODULE, runAcceptance } from "../../../packages/shift-manager/teams/devteam/acceptance.mts";
 import {
-  ARTIFACTS_ROOT,
   BASE_REF,
   branchesUnder,
   cloneRef,
@@ -98,7 +97,7 @@ import {
   commitsAhead,
   createScratchRepo,
   publishArtifact,
-} from "../lab/scratch-repo.mts";
+} from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 
 stripIntentOverrides();
 
@@ -160,11 +159,20 @@ const PROMPT_TOKEN_HOMES = {
 } as const;
 
 const THIS_FILE = fileURLToPath(import.meta.url);
-const LAB_ROOT = fileURLToPath(new URL("../lab", import.meta.url));
+const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
 const DEVFORCE_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const REREAD = fileURLToPath(new URL("./reread/run.mts", import.meta.url));
 
 /** Where this run's artifact and store live — the declared address (D1). */
+/**
+ * Where published artifacts live — a declared path beside this goal.
+ *
+ * Not under `tmpdir()`, deliberately: a temp directory is swept, and an address
+ * that is gone by the time somebody looks fails D1's first property exactly as a
+ * commit in a temp directory does. Ignored by `goals/devforce-lab/.gitignore`, so
+ * a run leaves no tracked change (BR-16).
+ */
+const ARTIFACTS_ROOT = fileURLToPath(new URL("../.artifacts/", import.meta.url));
 const RUN_DIR = join(ARTIFACTS_ROOT, RUN_STAMP);
 const ARTIFACT_REPO = join(RUN_DIR, "feature.git");
 const STORE_FILE = join(RUN_DIR, "lab.db");
@@ -355,10 +363,11 @@ await runGoal(async () => {
   // landed — `specs/issues/FIX-1496/PLAN.md` carries the sunset rule and what
   // it said to carry forward. The snapshot claims expired; this did not.
 
-  /** Every `.mts` file under the lab, and the category it belongs to. */
+  /** Every `.mts` file under the lab (as `lab/…`) and this subject's goals, and the category it belongs to. */
   const classified = new Map<string, string>();
   const unclassified: string[] = [];
-  for (const [path] of filesUnder(DEVFORCE_ROOT)) {
+  const proofFiles = [...filesUnder(LAB_ROOT).map(([path, text]) => [`lab/${path}`, text] as [string, string]), ...filesUnder(DEVFORCE_ROOT)];
+  for (const [path] of proofFiles) {
     if (!path.endsWith(".mts")) continue;
     const category =
       /^lab\/workforce\/flows\/workers\/[^/]+\.mts$/.test(path) ? "worker kind"

@@ -3,7 +3,9 @@
 The hire behind the ER-Collab exit proof (FIX-1497): a planner and two worker seats, declared in
 Markdown, working one mailbox's board, served by the ordinary `fsdev dev` so the shipped DevTool can
 watch it. The graded check is
-[`../it-hands-a-row-between-two-seats-in-view/`](../it-hands-a-row-between-two-seats-in-view/goal.md).
+[`goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/`](../../../../../goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/goal.md).
+It lives here, among Shift Manager's test fixtures, because the package's own tests open it too;
+the goals reach in here, never the reverse.
 
 To look at it by hand:
 
@@ -11,7 +13,7 @@ To look at it by hand:
 pnpm --filter @flow-state-dev/devtool build        # once per checkout
 pnpm --filter @flow-state-dev/devtool build:assets
 # from a scratch directory, with the intent overrides unset (see below):
-pnpm tsx <repo>/packages/cli/bin/fsdev.ts dev --config <repo>/goals/multi-seat-collab/lab/fsdev.config.mts
+pnpm tsx <repo>/packages/cli/bin/fsdev.ts dev --config <repo>/packages/shift-manager/test/fixtures/multi-seat-collab/fsdev.config.mts
 ```
 
 ## How it is wired
@@ -40,7 +42,7 @@ against what the ledger holds.
 | `workforce/flows/workers/` | The two kinds, one file each, basename = the kind a `WORKER.md` names in its `flow:` line. `planner.mts` has one action, a dispatch into the mailbox's own `fileTask`. `worker.mts` has the mailbox's board with a desk-narrowed claim, a same-flow hand-off per desk, `onReview: "exit"`, a `drain` action, and the person's door: `answer`, over the board's unpark-and-drain step. The loader does not walk `flows/`. |
 | `workforce/flows/piece.mts` | The row's input contract, the one piece both kinds share. Beside the kinds rather than among them, since a file under `flows/workers/` reads as a kind. |
 | `fsdev.config.mts` | Everything `fsdev dev` serves: one `FlowState` over SQLite, the app's desk → seat map, and the boot (`openLab`) before the first request. `GOAL_CONTROL` perturbs it here; `no-inventory` skips the inventory half of the boot; `mailbox-actions-off` hires the mailbox as if it had not declared `boardActions`. |
-| `run-scenario.mts` | The driver the check uses: spawns `fsdev dev` (optionally with `FSDEV_DEBUG_ENDPOINTS=0`), meets the mailbox the boot opened through `openMailboxes` over the HTTP session route, and files, drains and answers over the action route. Reports; grades nothing. |
+| `goals/multi-seat-collab/run-scenario.mts` | The driver the check uses, kept with the goals since it needs `goals/lib`: spawns `fsdev dev` (optionally with `FSDEV_DEBUG_ENDPOINTS=0`), meets the mailbox the boot opened through `openMailboxes` over the HTTP session route, and files, drains and answers over the action route. Reports; grades nothing. |
 
 ## What the lab owns rather than the framework
 

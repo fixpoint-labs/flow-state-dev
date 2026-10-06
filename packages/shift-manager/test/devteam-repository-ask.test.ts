@@ -14,9 +14,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FlowInstance, GeneratorModel, ModelResolver, SuspensionRecord } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { selectHarness } from "../../../goals/devforce-lab/lab/harness.mts";
-import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../goals/devforce-lab/lab/host.mts";
-import { createNotifyLog } from "../../../goals/devforce-lab/lab/notify.mts";
+import { selectHarness } from "../teams/devteam/harness.mts";
+import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
+import { createNotifyLog } from "../teams/devteam/notify.mts";
 
 const COS = "chief-of-staff";
 const FIRST = "https://github.com/acme/storefront.git";

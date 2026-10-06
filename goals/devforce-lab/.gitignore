@@ -1,3 +1,3 @@
 # Published run artifacts — a durable address a run writes to, regenerated per
-# run and never committed. See `lab/scratch-repo.mts` → ARTIFACTS_ROOT.
+# run and never committed. See `it-ships-an-artifact-a-person-can-open/run.mts` → ARTIFACTS_ROOT.
 .artifacts/

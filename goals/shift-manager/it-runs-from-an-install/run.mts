@@ -56,7 +56,7 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (!["", "no-page-config", "no-watch"].includes(CONTROL)) throw new Error(`unknown GOAL_CONTROL=${CONTROL}`);
 
 /** The held-out Lab: the run-lab unless `GOAL_LAB` names another. */
-const LAB = resolve(process.env.GOAL_LAB ?? repoPath("goals", "shift-manager", "it-shows-and-stops-a-task-run", "lab"));
+const LAB = resolve(process.env.GOAL_LAB ?? repoPath("packages", "shift-manager", "test", "fixtures", "run-lab"));
 const SCRATCH = goalTmpDir("shift-manager-install");
 /** How long a saved change may take to show. */
 const CHANGE_WITHIN_MS = 20_000;

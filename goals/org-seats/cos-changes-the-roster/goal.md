@@ -10,7 +10,7 @@ Before this, a Lab's seats were whatever its files declared. Adding or removing 
 a folder and restarting the server. No seat could do it, and no person could ask for it.
 
 **Input:** the DevTeam profile (`packages/shift-manager/teams/devteam`), whose tree
-(`goals/devforce-lab/lab/workforce`) declares `org/workers/chief-of-staff`. The check serves it
+(`packages/shift-manager/teams/devteam/workforce`) declares `org/workers/chief-of-staff`. The check serves it
 three times through Shift Manager's own command, over one SQLite file it owns. The seat it
 asks for is **held out**: `coder-<random hex>`, picked at run time, so no file in the repository
 can name it. The mailbox and its members are read off the tree, never spelled in the check.

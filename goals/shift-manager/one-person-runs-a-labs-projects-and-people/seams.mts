@@ -103,7 +103,7 @@ export function seams(base: string): SeamRow[] {
 
   // ---- One orphan read (ER-5) ----------------------------------------------------
   row("One orphan read (ER-5)", (out) => {
-    const files = sources(["packages", "apps/kitchen-sink", "labs", "goals/devforce-lab/lab"]);
+    const files = sources(["packages", "apps/kitchen-sink", "labs"]);
     const classifies = grep(files, /reason:\s*"kind-gone"/);
     const callers = grep(files, /\bcheckHiredSeatRow\(/).filter((h) => !/^export (async )?function/.test(h.text));
     out.push(`$ grep 'reason: "kind-gone"': ${classifies.map((h) => `${h.file}:${h.line}`).join(", ")}`);
@@ -111,7 +111,7 @@ export function seams(base: string): SeamRow[] {
     const blocks = "packages/workforce/src/seat-hire-blocks.ts";
     const [from, to] = rangeOf(blocks, /const brokenSeats = handler\(/, /^  const \w+/);
     const inBroken = callers.filter((h) => h.file === blocks && h.line >= from && h.line <= to);
-    const host = readFileSync(join(REPO_ROOT, "goals/devforce-lab/lab/host.mts"), "utf8");
+    const host = readFileSync(join(REPO_ROOT, "packages/shift-manager/teams/devteam/host.mts"), "utf8");
     const viaCapability = /createSeatHireCapability\(/.test(host);
     out.push(`brokenSeats (${blocks}:${from}-${to}) calls it ${inBroken.length} time(s); the DevTeam host installs createSeatHireCapability: ${viaCapability}`);
     const ok = classifies.length === 1 && classifies[0]!.file === "packages/workforce/src/roster/check.ts" && inBroken.length === 1 && viaCapability;
@@ -121,7 +121,7 @@ export function seams(base: string): SeamRow[] {
 
   // ---- The DevTeam tree and host -------------------------------------------------
   row("The DevTeam tree and host", (out) => {
-    const tree = join(REPO_ROOT, "goals/devforce-lab/lab/workforce");
+    const tree = join(REPO_ROOT, "packages/shift-manager/teams/devteam/workforce");
     const toolsOf = (file: string) => {
       const m = /^tools:\s*\[(.*)\]\s*$/m.exec(readFileSync(file, "utf8"));
       return m === null ? [] : m[1]!.split(",").map((t) => t.trim()).filter(Boolean);

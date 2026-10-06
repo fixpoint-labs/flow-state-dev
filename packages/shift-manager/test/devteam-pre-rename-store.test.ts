@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { MAILBOX_KIND, PRE_RENAME_NAMES } from "@flow-state-dev/workforce";
-import { LAB_ORG_ID, LAB_USER_ID } from "../../../goals/devforce-lab/lab/host.mts";
+import { LAB_ORG_ID, LAB_USER_ID } from "../teams/devteam/host.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));

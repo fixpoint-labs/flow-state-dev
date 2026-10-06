@@ -102,7 +102,7 @@ export function groupsFor(published) {
     ["goals", (p) => /^goals\//.test(p)],
     ["readmes", (p) => /^(packages|labs)\/[^/]+\/README\.md$|^apps\/kitchen-sink\/README\.md$|^labs\/README\.md$|^README\.md$/.test(p)],
     ["site", (p) => /^apps\/docs\/|^docs\//.test(p)],
-    ["ui", (p) => /^labs\/|^apps\/kitchen-sink\/|^packages\/(devtool|ui)\//.test(p)],
+    ["ui", (p) => /^labs\/|^apps\/kitchen-sink\/|^packages\/(devtool|ui)\/|^packages\/shift-manager\/teams\//.test(p)],
     [
       "api",
       (p) => {
@@ -282,7 +282,7 @@ export const PHRASE_SURVIVORS = [
   ["loader's own channel", ["packages/workforce/test/team-instructions-seam.test.ts"]],
   ["within 1 per channel", ["goals/design-system/skins-reused-components-from-one-token-set/goal.md"]],
   ["leak through a third channel", ["goals/delegation/synthesizes-fanned-out-worker-results/goal.md"]],
-  ["either alone leaves a channel", ["goals/devforce-lab/lab/acceptance-check.mjs"]],
+  ["either alone leaves a channel", ["packages/shift-manager/teams/devteam/acceptance-check.mjs"]],
   ["Their own channel (rather|for the reason)", ["packages/workforce/src/loader/read-workforce.ts"]],
   ["five channels are one list", ["packages/workforce/src/loader/read-declared-roster.ts"]],
 ];

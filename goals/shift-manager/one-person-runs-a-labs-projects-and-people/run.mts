@@ -23,7 +23,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { LAB_USERS } from "../../devforce-lab/lab/host.mts";
+import { LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerPages } from "../../lib/shift-manager.mts";

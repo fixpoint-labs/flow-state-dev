@@ -39,7 +39,7 @@ const sources = walk(src).filter((f) => /\.(tsx?|css)$/.test(f));
 /** Every name a tree declares that a shell could be tempted to write in. */
 async function treeNames(): Promise<Set<string>> {
   const names = new Set<string>();
-  for (const tree of ["goals/devforce-lab/lab/workforce", "goals/multi-seat-collab/lab/workforce"]) {
+  for (const tree of ["packages/shift-manager/teams/devteam/workforce", "packages/shift-manager/test/fixtures/multi-seat-collab/workforce"]) {
     const roster = await readDeclaredRoster(join(repo, tree));
     for (const worker of roster.workers) {
       const [team, ...rest] = worker.id.split(".");

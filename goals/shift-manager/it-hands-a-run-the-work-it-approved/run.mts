@@ -51,12 +51,12 @@ import { harnessRunHandleSchema, harnessRunInputSchema, handler, sequencer } fro
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { claudeCodeHarness } from "../../devforce-lab/lab/harness.mts";
-import { harnessStub, type StubRun } from "../../devforce-lab/lab/harness-stub.mts";
-import { LAB_TREE, openLab, type Lab, type OpenLabOptions } from "../../devforce-lab/lab/host.mts";
-import { createNotifyLog } from "../../devforce-lab/lab/notify.mts";
-import { BASE_REF, commitAll, createScratchRepo } from "../../devforce-lab/lab/scratch-repo.mts";
-import { seatSessionId } from "../../devforce-lab/lab/ask.mts";
+import { claudeCodeHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { LAB_TREE, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { createNotifyLog } from "../../../packages/shift-manager/teams/devteam/notify.mts";
+import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { seatSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 
 stripIntentOverrides();
 
@@ -97,7 +97,7 @@ if (LEG !== "" && LEG !== "a" && LEG !== "b") {
   process.exit(2);
 }
 
-const LAB_ROOT = fileURLToPath(new URL("../../devforce-lab/lab", import.meta.url));
+const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
 const CHARTER_TOKEN = Object.keys(fixture.charterToken)[0]!;
 const REAL_RUN_TIMEOUT_MS = 10 * 60_000;
 

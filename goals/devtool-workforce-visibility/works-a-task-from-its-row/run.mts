@@ -36,9 +36,9 @@ import { SERVER_ONLY_TASK_FIELDS, taskToolSuffix } from "@flow-state-dev/orchest
 import { MAILBOX_KIND } from "@flow-state-dev/workforce";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { readLabTree } from "../../multi-seat-collab/lab/host.mts";
-import { Scenario, actionOutputOf, serveLab } from "../../multi-seat-collab/lab/run-scenario.mts";
-import { ANSWER_ENTRY, WORKER_KIND } from "../../multi-seat-collab/lab/workforce/flows/workers/worker.mts";
+import { readLabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { Scenario, actionOutputOf, serveLab } from "../../multi-seat-collab/run-scenario.mts";
+import { ANSWER_ENTRY, WORKER_KIND } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
 
 type Fixture = {
   piece: { goal: string; desk: string; asks: string };

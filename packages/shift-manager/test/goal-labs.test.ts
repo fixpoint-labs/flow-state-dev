@@ -54,8 +54,8 @@ function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
 }
 
 describe.each([
-  ["multi-seat-collab", "goals/multi-seat-collab/lab/fsdev.config.mts", "goals/multi-seat-collab/lab/workforce"],
-  ["devteam", "packages/shift-manager/teams/devteam/fsdev.config.mts", "goals/devforce-lab/lab/workforce"],
+  ["multi-seat-collab", "packages/shift-manager/test/fixtures/multi-seat-collab/fsdev.config.mts", "packages/shift-manager/test/fixtures/multi-seat-collab/workforce"],
+  ["devteam", "packages/shift-manager/teams/devteam/fsdev.config.mts", "packages/shift-manager/teams/devteam/workforce"],
 ])("%s", (name, configPath, treePath) => {
   let opened: Opened;
   beforeAll(async () => {
@@ -136,7 +136,7 @@ describe("devteam: an approved task's run", () => {
     // pacing a person watching needs. The it-shows-and-stops goal keeps it.
     process.env[STEP_MS_ENV] = "0";
     try {
-      opened = await open("packages/shift-manager/teams/devteam/fsdev.config.mts", "goals/devforce-lab/lab/workforce");
+      opened = await open("packages/shift-manager/teams/devteam/fsdev.config.mts", "packages/shift-manager/teams/devteam/workforce");
     } finally {
       delete process.env[STEP_MS_ENV];
     }

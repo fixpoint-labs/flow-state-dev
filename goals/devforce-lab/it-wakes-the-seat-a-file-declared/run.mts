@@ -52,10 +52,10 @@ import {
   type Lab,
   type OpenLabOptions,
   type SeatSkill,
-} from "../lab/host.mts";
-import { harnessStub, type HarnessStubOptions, type StubRun } from "../lab/harness-stub.mts";
-import { BASE_REF, commitAll, createScratchRepo } from "../lab/scratch-repo.mts";
-import { PHASE } from "../lab/phase.mts";
+} from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { harnessStub, type HarnessStubOptions, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
 
 stripIntentOverrides();
 
@@ -105,7 +105,7 @@ if (CONTROL === "list") {
   process.exit(0);
 }
 
-const LAB_ROOT = fileURLToPath(new URL("../lab", import.meta.url));
+const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 

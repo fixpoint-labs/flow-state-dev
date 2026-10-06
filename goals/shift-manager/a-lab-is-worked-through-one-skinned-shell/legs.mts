@@ -45,12 +45,12 @@ import {
 
 /** The trees the epic pins, and the Labs each leg opens. */
 export const TREES = {
-  devforce: join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce"),
+  devforce: join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "workforce"),
   pentest: join(REPO_ROOT, "goals", "pentest-lab", "lab", "workforce"),
-  runLab: join(REPO_ROOT, "goals", "shift-manager", "it-shows-and-stops-a-task-run", "lab", "workforce"),
+  runLab: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "run-lab", "workforce"),
 };
 export const PENTEST_CONFIG = join(REPO_ROOT, "goals", "pentest-lab", "lab", "fsdev.config.mts");
-const RUN_LAB_CONFIG = join(REPO_ROOT, "goals", "shift-manager", "it-shows-and-stops-a-task-run", "lab", "fsdev.config.mts");
+const RUN_LAB_CONFIG = join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "run-lab", "fsdev.config.mts");
 const ASK_LAB_CONFIG = join(SHIFT_MANAGER, "test", "fixtures", "ask-lab", "fsdev.config.mts");
 
 /** The model keys a keyless leg must not carry. */
