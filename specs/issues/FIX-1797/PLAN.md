@@ -97,7 +97,9 @@ and only a green rerun closes the sub-issue.
 
 Each scratch-patch control runs on a fresh store and must fail its step and leave the rest of
 its leg green. One that fails at setup, reddens another step, or can't apply to the commit is a
-finding.
+finding. A step that checks exactly what a control deliberately changes is graded without that
+check under that control: `org-scoped-workers` moves the worker row to org scope, so m1 and a2
+skip their scope assertion there, and the step the control names is the one meant to fail.
 
 | Control | Changes | Runs | Must fail | Stays green | Named by |
 |---|---|---|---|---|---|
