@@ -1,5 +1,5 @@
 /*
- * Shift Manager — day and night, over the tokens FSD's components already read.
+ * Shift Manager — day, evening and night, over the tokens FSD's components already read.
  *
  * The values are the final design hand-back's (design pass 2, 2026-10-01:
  * `specs/epics/FIX-1649/assets/design/v2/`): day is its `:root`, night is its
@@ -71,6 +71,11 @@
   --sidebar: #e7e2d5;
   --inspector: #f3f0e7;
 
+  /* The three shifts' own colours, the same in every theme: the mark's petals and its sundial arc read them. */
+  --shift-day: #f8f6f0;
+  --shift-evening: #d9cfb2;
+  --shift-night: #16150f;
+
   --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
@@ -117,6 +122,33 @@
 
   --sidebar: #121109;
   --inspector: #1a1913;
+}
+
+/*
+ * Evening: the warm middle of the day, a light variant. Only what differs from
+ * day is set, so every other token is day's. The page is the design's surface
+ * one step toward amber, the shell surfaces keep their step below it, and the
+ * on-ink foregrounds follow the design's paper. `accent` is day's tint,
+ * flattened over this page. Applies under `data-shift="evening"` on the root;
+ * night is `.dark`, and the two never apply together.
+ */
+:root[data-shift=evening] {
+  --background: #eee8d7;
+  --card: #f5f0e2;
+  --popover: #f5f0e2;
+  --primary-foreground: #e6dfcb;
+  --secondary: #e6dfcb;
+  --muted: #e6dfcb;
+  --destructive-foreground: #e6dfcb;
+  --success-foreground: #e6dfcb;
+  --warning-foreground: #e6dfcb;
+  --info-foreground: #e6dfcb;
+  --accent: #c7c2b3;
+  --border: #c3bca9;
+  --input: #c3bca9;
+
+  --sidebar: #e2dac4;
+  --inspector: #ebe4d2;
 }
 
 /*
