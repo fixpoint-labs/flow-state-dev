@@ -157,7 +157,7 @@ FIX-1762's stack merged first (#2738 and #2748, 2026-10-06).
 **Jake, 2026-10-06:** yes. Asked on [the inventory](https://linear.app/fixpoint-labs/issue/FIX-1786#comment-9e837aa5),
 call 2. FIX-1774 is Canceled and FIX-1777 a Duplicate in Linear. FIX-1791 carries FIX-1774's
 dogfood legs and its *not done if* list, and FIX-1794 carries FIX-1777's "runs as the filer"
-rule, both restated on the new model. FIX-1774's task legs later moved to FIX-1794
+rule, both restated on the new model. FIX-1774's leg e later moved to FIX-1794 and its leg d to FIX-1793
 ([decided in review](#decided-in-review-recorded-so-no-child-reopens-them)).
 
 ## Who owns what
@@ -226,8 +226,9 @@ engine rule. The closure only checks.
   this record ([ER-24](BUSINESS-RULES.md#how-the-set-is-run)).
 - **FIX-1794 builds filing tasks for delegates and following them through, not FIX-1791.** A
   task needs a board, and FIX-1794 decides how a board whose rows cross a flow stays its own
-  (ER-9). So FIX-1774's task legs and FIX-1780's follow-through go to FIX-1794, and a coordinator
-  files no task until FIX-1794 ships. FIX-1791 keeps posts and delegates. Jake, 2026-10-06, at
+  (ER-9). So FIX-1774's leg e (tasks) and FIX-1780's follow-through go to FIX-1794, and a coordinator
+  files no task until FIX-1794 ships. FIX-1774's leg d (opening a workstream from the
+  coordinator) goes to FIX-1793, whose project coordinator does it. FIX-1791 keeps posts and delegates. Jake, 2026-10-06, at
   FIX-1791's spec gate ([its Q1](../../issues/FIX-1791/DECISIONS.md#q1)), bound to the set by
   this record ([ER-24](BUSINESS-RULES.md#how-the-set-is-run)).
 - **Checked against `main` at `74f9a4f68`:** a project room and the mailbox boards are as
