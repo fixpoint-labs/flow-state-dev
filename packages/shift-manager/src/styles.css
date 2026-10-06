@@ -43,3 +43,18 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/*
+ * A change of shift fades rather than flips. The class is on the root only
+ * while the colours move, and its length (`--shift-xd`) is set by whoever
+ * changed the shift: a pick is quick, the clock is slow.
+ */
+html.shift-fade,
+html.shift-fade * {
+  transition:
+    background-color var(--shift-xd) linear,
+    color var(--shift-xd) linear,
+    border-color var(--shift-xd) linear,
+    fill var(--shift-xd) linear,
+    stroke var(--shift-xd) linear !important;
+}
