@@ -12,7 +12,7 @@
  * not a control that never does anything.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handler } from "@flow-state-dev/core";
@@ -69,7 +69,11 @@ describe("V4 · every control is read through the gate, and only in this app (BR
 
   it("reads no control anywhere under packages/", () => {
     const names = ["GOAL_CONTROL", "KITCHEN_SINK_TEST_MODE"];
+    // A lab under a package's `test/fixtures/` is a goal lab a test loads, not
+    // package code, and a goal lab reads its own control.
+    const fixtures = `${sep}test${sep}fixtures${sep}`;
     const hits = sourcesUnder(join(REPO, "packages"))
+      .filter((path) => !path.includes(fixtures))
       .flatMap((path) => {
         const text = readFileSync(path, "utf8");
         return names.filter((name) => text.includes(name)).map((name) => `${relative(REPO, path)}: ${name}`);
