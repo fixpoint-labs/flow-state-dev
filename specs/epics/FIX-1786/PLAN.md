@@ -8,12 +8,12 @@ hands the next. How to build any piece is that issue's own plan. IDs cross-refer
 
 ## The path
 
-![The path as of 6 October 2026, in phases rather than dates. Now: this spec in review and the FIX-1787 inventory posted, its merge-first rows landing. After the gate every child's spec can be written. Builds run in waves: the worker contract and per-org user data together; then workers as resources; then the coordinator flow beside the library; then projects and workstreams beside the assignment chain; then the MAILBOX.md conversion; then the terminology sweep; then the closure run. The closure's QA plan is written beside the specs, and it runs leg c early when workers as resources merges. The critical path runs the inventory, the contract, workers, the coordinator, projects, the conversion, the terms and the closure run](figures/path.svg)
+![The path as of 6 October 2026, in phases rather than dates. Now: this spec in review and the FIX-1787 inventory posted, its merge-first rows landing. After the gate every child's spec can be written. Builds run in waves: the worker contract and per-org user data together; then workers as resources; then the coordinator flow; then projects and workstreams beside the assignment chain; then the MAILBOX.md conversion; then the terminology sweep; then the closure run. The worker library's spec is written with the others, and its build follows the MVP, after the closure run. The closure's QA plan is written beside the specs, and it runs leg c early when workers as resources merges. The critical path runs the inventory, the contract, workers, the coordinator, projects, the conversion, the terms and the closure run](figures/path.svg)
 
-A long chain with three narrow windows. Nothing builds until the inventory's merge-first rows
+A long chain with two narrow windows. Nothing builds until the inventory's merge-first rows
 land; the contract and per-org keys then run together, and workers as resources is the one
-step everything else waits on. Projects, the chain and the library are the widest window. The
-privacy fix is checked when workers merges, not only at the end (ER-30). The graph itself is in [the spec](SPEC.md#how-the-issues-flow-into-each-other); this adds time.
+step everything else waits on. Projects beside the chain is the other window; the library
+builds after the MVP (Q2). The privacy fix is checked when workers merges, not only at the end (ER-30). The graph itself is in [the spec](SPEC.md#how-the-issues-flow-into-each-other); this adds time.
 
 ## What each issue entails
 
@@ -24,12 +24,12 @@ privacy fix is checked when workers merges, not only at the end (ER-30). The gra
 | **FIX-1790** per-org data | spec → impl PR | The engine's user key | User data per (user, org); old records moved to the one org they belong to by an operator step, or refused, never read in two (ER-3) | FIX-1788 | Medium: a persisted key every flow uses, and its migration |
 | **FIX-1788** workers | spec → impl PRs | ER-2 · ER-3 · projected collections · Q1's list | Worker resources on singleton flows, standard projection, fork, deprecations; the session link, set and checked at create where only the server writes (D3's third change); a worker's own key for its private state, with today's per-worker cells moved (ER-1) | FIX-1791 · FIX-1795 | Large |
 | **FIX-1791** coordinator | spec → impl PRs | ER-1 · FIX-1779's join and leave · FIX-1774's legs · Q1's list | The coordinator flow, delegates, four policies, the records (ER-4, ER-5); the chief of staff as a standard coordinator | FIX-1793 · FIX-1794 · FIX-1792 | Medium to large |
-| **FIX-1795** library | spec → impl PR | ER-1's write path | Templates and copies, model variants (ER-10) | FIX-1796 | Medium |
+| **FIX-1795** library | spec now → impl PR after the MVP | ER-1's write path | Templates and copies, model variants (ER-10) | Nothing in the MVP; it builds once the closure run passes | Medium |
 | **FIX-1793** projects | spec → impl PRs | ER-4 · ER-3 · FIX-1762's locks · Q2 | Private and shared projects (Q2); workstream resources, the row rule, the project coordinator; rooms and Shift Manager's Stream tab removed (ER-7, ER-8) | FIX-1792 | Large: about 2,200 lines out, one engine rule in |
 | **FIX-1794** chain | spec → impl PR | ER-4's delegates · FIX-1778 · FIX-1780's hand-off rule · FIX-1777's rule | Tasks down the owner's boards, drained as the owner; a board whose rows cross a flow stays its own board, never one ledger for the owner's sessions (ER-9) | FIX-1796 | Medium; larger if that needs a task-board change |
 | **FIX-1792** `WORKER.md` | spec → impl PR | ER-4 · ER-7 · D5 | 33 files converted, 15 boards resolved, old files refused (ER-6) | FIX-1796 | Medium |
-| **FIX-1796** terms | spec → impl PRs | Every child merged | The sweep and the glossary (ER-12) | The closure run | Medium, wide and mechanical |
-| **FIX-1797** closure · required | spec (the QA plan) → runs until clean → PR | Every other child, on one `main` commit | The committed checks, an early leg-c run when FIX-1788 merges (ER-30), a QA report, a bug child per failure | The wrap | Medium, repeats per retest |
+| **FIX-1796** terms | spec → impl PRs | Every child merged except FIX-1795, which is new code in the new terms (ER-25) | The sweep and the glossary (ER-12) | The closure run | Medium, wide and mechanical |
+| **FIX-1797** closure · required | spec (the QA plan) → runs until clean → PR | Every other child except FIX-1795, on one `main` commit (ER-27) | The committed checks, an early leg-c run when FIX-1788 merges (ER-30), a QA report, a bug child per failure | The wrap | Medium, repeats per retest |
 
 ## Where it is
 
@@ -45,17 +45,21 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
    it.
 2. **The inventory's merge-first rows land or close**, #2759 first, then the PRs that rebase on
    it → FIX-1789 and FIX-1790 builds start.
-3. **Both merge** → FIX-1788 builds. It merges → FIX-1791 and FIX-1795 build, and FIX-1797 runs
-   leg c early on that commit (ER-30). A failure is a bug child that blocks both from merging.
+3. **Both merge** → FIX-1788 builds. It merges → FIX-1791 builds, and FIX-1797 runs leg c early
+   on that commit (ER-30). A failure is a bug child that blocks FIX-1791 and FIX-1795 from merging.
 4. **FIX-1791 merges** → FIX-1793 and FIX-1794. FIX-1793 merges → FIX-1792.
-5. **FIX-1792, FIX-1794 and FIX-1795 merge** → FIX-1796. It merges → the closure's first run.
+5. **FIX-1792 and FIX-1794 merge** → FIX-1796. It merges → the closure's first run. The terms
+   sweep doesn't wait on the library: the library is new code, written in the new terms (ER-25),
+   so the sweep has nothing of it to remove.
 6. **A run finds bugs** → each is a child that blocks FIX-1797, and the whole plan reruns on a
    fresh `main` commit once they merge (ER-27).
-7. **FIX-1793's spec gate asks two things of Q2.** If private projects cost the MVP much more
+7. **A run passes: the MVP** → FIX-1795 builds, on the spec approved at its own gate. Its tests
+   prove ER-10; the closure's run never checked it.
+8. **FIX-1793's spec gate asks two things of Q2.** If private projects cost the MVP much more
    than a scope configuration, dropping them is an amendment here that takes out leg b's
    private-project step with them. And whether the shared half stays in the MVP: no is an
-   amendment to the goal that takes leg b's two-owner half and FIX-1795 with it. Nothing
-   re-sequences.
+   amendment to the goal that takes leg b's two-owner half with it. The library's half is
+   answered: it follows the MVP (step 7). Nothing re-sequences.
 
 ## Coordination seams to watch
 
@@ -83,4 +87,5 @@ instances and owner pins from the engine; FIX-1788 blocks it, and each deprecati
 
 When ER-28 holds: run the lessons pass, dispatch docs polish over `apps/docs/docs/workforce/`
 (the inventory closed #2715 for that reason), refresh the project spec (#2420), and report the
-outcome from Linear and implementation evidence. Amendments go through a follow-up PR.
+outcome from Linear and implementation evidence. FIX-1795 is the one child still open then: it
+builds after the MVP, and the report names it. Amendments go through a follow-up PR.
