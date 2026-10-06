@@ -16,13 +16,13 @@
 - **b1** Asked for a coder seat, CoS's `hire` is ok, no `human_approval` is raised, and TEAMS lists the seat with its new roster and inventory rows.
 - **b2** Asked to fire it, the turn suspends on one `human_approval` naming `fire`, the seat and its kind; Inbox lists it with the seat on its card; nothing changes. After a restart the seat and the ask are both still there.
 - **b3** Approve in Inbox: the seat leaves TEAMS, the roster and the inventory, and is still gone after a restart.
-- **b4** Asked in the board's workstream, the EM seat hires nothing.
+- **b4** Asked in the board's workstream, the EM seat hires nothing. The ask must be kept first: the mailbox's session holds the line once, or b4 fails, since a line never sent hires nothing either.
 - **c1** On boot 1 (`extra-kind`), CoS hires a seat on the scratch kind and TEAMS lists it.
 - **c2** On boot 2 (as shipped), the boot names the seat; asked which seats won't start, CoS's `brokenSeats` lists it as `kind-gone`, its answer on screen names it, and its roster row is unchanged.
 - **c3** Asked to retire it, the turn suspends; Approve in Inbox.
 - **c4** Boot 3 names no problem; TEAMS doesn't list the seat; neither store has its row.
-- **J4** A docs-only writer adds CoS, the hire capability with `askBefore: ["fire"]`, the projects collection and the project tools to a scratch copy of the pentest Lab; Shift Manager over it boots, PROJECTS lists the project CoS created with a room the person posts in, and TEAMS lists the seat CoS hired. Each step the writer logs as *doc silent* fails.
-- **P3.1 to P3.4** every child's check on its green path, with the controls part 1 hasn't already failed (`manifest.mts`).
+- **J4** A docs-only writer adds CoS, the hire capability with `askBefore: ["fire"]`, the projects collection and the project tools to a scratch copy of the pentest Lab; Shift Manager over it boots, PROJECTS lists the project CoS created with a room the person posts in, and TEAMS lists the seat CoS hired. Asked to fire that worker, CoS's turn suspends on one `human_approval` naming `fire` and the worker, read from the store's items and left unanswered. The room is read from the store through the talk session the Stream names; a Stream that names none fails. Each step the writer logs as *doc silent* fails.
+- **P3.1 to P3.4** every child's check on its green path, with the controls part 1 hasn't already failed (`manifest.mts`). A child's control counts as red only when it exits with a FAIL list naming the assertions its own goal.md names for it, and nothing else where that goal says "only" (`EXPECTED` in `manifest.mts`). A timeout, a crash or a red at another assertion is a finding.
 - `goals/shift-manager/a-lab-is-worked-through-one-skinned-shell` is excluded from P3.4: it is FIX-1737's closure goal, matched only because it serves DevTeam, and its part 3 reruns checks P3 already runs.
 - **Part 4** the seam rows, each a scripted assertion (`seams.mts`).
 - ER-13 (published prose never says "worker") is removed: FIX-1755 was dropped because the term "seat" is being retired.
@@ -35,7 +35,7 @@
 
 **On demand only:** run at this closure, and at the closure of each later epic that touches the chief of staff. It is not a CI gate and has no schedule: it rests on a real model with no retry (FIX-1720 QR-5).
 
-**Controls:** each runs inside the plain run, on its own fresh store, and must fail its leg at its own step and leave the rest green. The patches (`controls/patches.mts`) are applied to a scratch copy of the Lab beside the original, never committed, and printed in full in the report.
+**Controls:** each runs inside the plain run, on its own fresh store, and must fail its leg at its own step and leave the rest green: every step named below as staying green must run and pass, and a step that never ran counts as red. The patches (`controls/patches.mts`) are applied to a scratch copy of the Lab beside the original, never committed, and printed in full in the report.
 
 - `deny-fire`: Reject instead of Approve at b3. Must fail **b3** ("seat gone"); a, b4 and c stay green.
 - `no-tool`: `createProject` removed from CoS's `tools:`. Must fail **a1** ("two rows"); b and c stay green.

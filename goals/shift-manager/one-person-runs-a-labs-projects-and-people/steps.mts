@@ -17,10 +17,10 @@ import {
   labRoutes,
   openShiftManager,
   personPage,
-  serveLab,
+  startShiftManager,
   type LabRoutes,
   type LabUser,
-  type ServedLab,
+  type ServedShiftManager,
   type StoredItem,
 } from "../../lib/shift-manager.mts";
 
@@ -99,7 +99,7 @@ export type People = { owner: LabUser; member: LabUser; outsider: LabUser };
 
 /** A Lab being served, the people who use it, and a page per person. */
 export class World {
-  served!: ServedLab;
+  served!: ServedShiftManager;
   routes!: { owner: LabRoutes; member: LabRoutes; outsider: LabRoutes };
   page!: Page;
   pageErrors: string[] = [];
@@ -113,11 +113,13 @@ export class World {
 
   /** Start (or restart, on the same store) the Lab, and open the owner's page. Records the boot's problems. */
   async boot(label: string, config = this.lab.config): Promise<void> {
-    this.served = await serveLab({
+    this.served = await startShiftManager({
+      scratch: this.lab.scratch,
+      label: label.replace(/\s+/g, "-"),
       config,
       pages: this.lab.pages,
-      scratch: this.lab.scratch,
       env: { DEVTEAM_STORE: this.lab.store, ...(this.lab.env ?? {}) },
+      timeoutMs: 120_000,
       ...(this.lab.root === undefined ? {} : { root: this.lab.root }),
       ...(this.lab.tsx === undefined ? {} : { tsx: this.lab.tsx }),
     });

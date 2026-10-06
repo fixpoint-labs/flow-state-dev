@@ -12,7 +12,8 @@
  *
  * Then Shift Manager serves the copy, and the person asks its chief of staff
  * for a project and a seat in the Chief of Staff view: PROJECTS must list the
- * project with a room the person can post in, and TEAMS the seat. The copy is
+ * project with a room the person can post in, TEAMS the worker it hired, and a
+ * fire of that worker must suspend on one `human_approval` in the store (askBefore). The copy is
  * deleted after the run; `labs/shift-manager` is left untouched.
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
@@ -20,8 +21,8 @@ import { dirname, join, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import type { Browser } from "playwright";
 import { REPO_ROOT } from "../../lib/index.mts";
-import { labRoutes, personPage, serveLab, openShiftManager } from "../../lib/shift-manager.mts";
-import { askCos, callsTo, hex, projectsDrawn, quote, readRoom, RunRecord, sleep, teamsSeats, visible, World } from "./steps.mts";
+import { labRoutes, personPage, startShiftManager, openShiftManager } from "../../lib/shift-manager.mts";
+import { askCos, asksOf, callsTo, hex, projectsDrawn, quote, readRoom, RunRecord, sleep, teamsSeats, visible, World } from "./steps.mts";
 
 /** The pages D3's writer sees, as published on the commit (DOCS.md). */
 export const J4_PAGES = [
@@ -171,7 +172,7 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
     // ---- Shift Manager over the copy: the person asks CoS for a project and a seat ----
     let served;
     try {
-      served = await serveLab({ config: join(copy, "fsdev.config.mts"), pages, scratch, timeoutMs: 120_000 });
+      served = await startShiftManager({ scratch, label: "j4", config: join(copy, "fsdev.config.mts"), pages, timeoutMs: 120_000 });
     } catch (error) {
       failures.push(`J4: Shift Manager over the writer's Lab did not boot: ${(error as Error).message.slice(0, 1500)}`);
       return { ok: false, failures, notes, steps, silent, diff, record };
@@ -216,20 +217,39 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
               }
               // The room the Stream reads: its talk session, as the page names it, read back through the Lab.
               const talk = (await world.page.getByTestId("stream").getAttribute("data-talk-session").catch(() => null)) ?? undefined;
-              if (talk !== undefined) {
-                const lines: Array<{ body: string }> = await readRoom(world.routes.owner, talk).catch(() => []);
-                if (!lines.some((l) => l.body.includes(token))) failures.push(`J4: ${id}'s room holds no line with ${token}`);
+              if (talk === undefined) failures.push(`J4: ${id}'s Stream names no talk session, so the room can't be read from the store`);
+              else {
+                const read = await readRoom(world.routes.owner, talk).then(
+                  (lines) => ({ lines }),
+                  (error: Error) => ({ error: error.message }),
+                );
+                if ("error" in read) failures.push(`J4: ${id}'s room could not be read through ${talk}: ${read.error.slice(0, 300)}`);
+                else if (!read.lines.some((l) => l.body.includes(token))) failures.push(`J4: ${id}'s room holds no line with ${token}`);
+                else notes.push(`J4: ${id}'s room, read through ${talk}, holds the line with ${token}`);
               }
             }
           }
         }
         const seat = `helper-${hex()}`;
         const hire = await askCos(world, "J4", `Please hire a seat with the seat id "${seat}".`);
-        if (hire !== undefined) {
+        if (hire === undefined) failures.push("J4: asked for a worker, the Chief of Staff view draws no chief of staff to ask");
+        else {
           await sleep(500);
           const teams = await teamsSeats(world);
           if (!teams.some((t) => t === seat || t.endsWith(`.${seat}`))) failures.push(`J4: asked for a seat, TEAMS doesn't list "${seat}": ${quote(hire)}`);
-          else notes.push(`J4: TEAMS lists ${teams.find((t) => t.endsWith(seat))}`);
+          else {
+            notes.push(`J4: TEAMS lists ${teams.find((t) => t.endsWith(seat))}`);
+            // askBefore: ["fire"]: a fire of that worker suspends on the person's approval, read from the store. Left unanswered.
+            const fire = await askCos(world, "J4", `Please fire the seat "${seat}".`);
+            if (fire === undefined || fire.sessionId === null || fire.requestId === null) failures.push(`J4: the fire was not asked: ${quote(fire)}`);
+            else {
+              const asks = (await asksOf(world.routes.owner, fire.sessionId, fire.requestId)).filter((a) => a.reason === "human_approval");
+              const data = asks[0]?.data as { verb?: string; seatId?: string } | undefined;
+              if (fire.status !== "suspended" || asks.length !== 1) failures.push(`J4: asked to fire "${seat}", the turn ended ${fire.status} with ${asks.length} human_approval ask(s), not suspended on one: ${quote(fire)}`);
+              else if (data?.verb !== "fire" || data?.seatId !== seat) failures.push(`J4: the fire's ask names ${JSON.stringify(data)}, not fire "${seat}"`);
+              else notes.push(`J4: asked to fire "${seat}", the turn suspended on one human_approval ${JSON.stringify(data)}; left unanswered`);
+            }
+          }
         }
         await record.shot(world.page, "j4");
       } finally {

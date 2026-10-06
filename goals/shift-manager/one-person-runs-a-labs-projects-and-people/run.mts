@@ -171,7 +171,12 @@ await runGoal(async () => {
     }
 
     // ---- controls -------------------------------------------------------------------
-    const grade = (control: string, run: LegsRun, mustFail: string, reason: RegExp, staysGreen: RegExp) => {
+    // A control passes only when it failed `mustFail` for `reason` and every step
+    // in `staysGreen` is present and PASS: a step that never ran (an exception
+    // cut the leg short) is not green. Any other red step outside the
+    // control's leg (`reach`, `page`, `setup`) is a leak too.
+    const LEG_STEP = /^[abc]\d$/;
+    const grade = (control: string, run: LegsRun, mustFail: string, reason: RegExp, staysGreen: string[]) => {
       const red = reds(run);
       const at = red.find((r) => r.id === mustFail && r.notes.some((n) => reason.test(n)));
       // A step that is red in the plain run for the same reason is that run's
@@ -181,16 +186,24 @@ await runGoal(async () => {
       const shape = (n: string) => n.replace(/[0-9a-f]{4,}/g, "#").replace(/\s+/g, " ").slice(0, 160);
       const baseline = new Set((plainRun === undefined ? [] : reds(plainRun)).flatMap((x) => x.notes.filter((n) => n.startsWith("FAIL")).map(shape)));
       const excused = (x: { notes: string[] }) => plainRun !== undefined && x.notes.filter((n) => n.startsWith("FAIL")).every((n) => baseline.has(shape(n)));
-      const leaked = red.filter((r) => r.id !== mustFail && staysGreen.test(r.id) && !excused(r));
+      const recorded = new Set(run.records.flatMap((r) => [...r.steps.keys()]));
+      const absent = staysGreen.filter((id) => !recorded.has(id));
+      const leaked = [
+        ...absent.map((id) => ({ id, notes: ["never ran"] })),
+        ...red.filter((r) => r.id !== mustFail && (staysGreen.includes(r.id) || !LEG_STEP.test(r.id)) && !excused(r)),
+      ];
       const ok = at !== undefined && leaked.length === 0;
       const line = at === undefined ? `never failed ${mustFail} on ${reason.source}` : `failed ${mustFail}: ${at.notes.find((n) => reason.test(n))?.slice(0, 300)}`;
-      controlVerdicts.push({ control, ok, line: `${line}${leaked.length > 0 ? `; also red: ${leaked.map((l) => `${l.id} ${l.notes.join(" / ").slice(0, 200)}`).join("; ")}` : ""}` });
+      controlVerdicts.push({ control, ok, line: `${line}${leaked.length > 0 ? `; also red or missing: ${leaked.map((l) => `${l.id} ${l.notes.join(" / ").slice(0, 200)}`).join("; ")}` : ""}` });
       if (!ok) failures.push(`control ${control}: ${controlVerdicts.at(-1)!.line}`);
     };
+    const A = ["a1", "a2", "a3", "a4", "a5"];
+    const B = ["b1", "b2", "b3", "b4"];
+    const C = ["c1", "c2", "c3", "c4"];
     if (wants("deny-fire")) {
       const run = await runLegs("deny-fire", pages, browser, { config: CONFIG, extraKindConfig: shipped([]), deny: true, legs: ["a", "b", "c"] });
       runs.push(run);
-      grade("deny-fire", run, "b3", /seat gone/, /^(a\d|c\d|b[124])$/);
+      grade("deny-fire", run, "b3", /seat gone/, [...A, "b1", "b2", "b4", ...C]);
     }
     if (wants("no-tool")) {
       const lab = scratchLab(hex(2), [noTool]);
@@ -198,7 +211,7 @@ await runGoal(async () => {
         const run = await runLegs("no-tool", pages, browser, { config: lab.config, extraKindConfig: shipped([noTool]), deny: false, legs: ["a", "b", "c"] });
         run.patches.unshift(lab.diff);
         runs.push(run);
-        grade("no-tool", run, "a1", /two rows|createProject/, /^(b\d|c\d)$/);
+        grade("no-tool", run, "a1", /two rows|createProject/, [...B, ...C]);
       } finally {
         lab.remove();
       }
@@ -219,7 +232,7 @@ await runGoal(async () => {
         lab.remove();
       }
       runs.push(run);
-      grade("no-cos", run, "b1", /seat appears/, /^setup$/);
+      grade("no-cos", run, "b1", /seat appears/, ["setup"]);
     }
     if (wants("today")) {
       const record = new RunRecord("todays-main", SHOTS);
@@ -281,7 +294,7 @@ await runGoal(async () => {
     const env: Record<string, string> = { PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? "/opt/pw-browsers" };
     if ((process.env.ANTHROPIC_API_KEY ?? "") === "" && (process.env.MY_ANTHROPIC_API_KEY ?? "") !== "") env.ANTHROPIC_API_KEY = process.env.MY_ANTHROPIC_API_KEY!;
     p3 = await runManifest(manifest(), logs, env, Number(process.env.GOAL_PARALLEL ?? 3));
-    for (const r of p3) if (r.verdict === "FAIL" || r.verdict === "PASS (control NOT red)" || r.verdict === "BLOCKED") failures.push(`part 3 ${r.id} ${r.path}${r.control === null ? "" : ` GOAL_CONTROL=${r.control}`}: ${r.verdict}: ${r.tail.slice(0, 400)}`);
+    for (const r of p3) if (r.verdict === "FAIL" || r.verdict === "PASS (control NOT red)" || r.verdict === "FAIL (not at its named assertion)" || r.verdict === "BLOCKED") failures.push(`part 3 ${r.id} ${r.path}${r.control === null ? "" : ` GOAL_CONTROL=${r.control}`}: ${r.verdict}: ${r.tail.slice(0, 400)}`);
   }
 
   // ---- part 4 ---------------------------------------------------------------------------

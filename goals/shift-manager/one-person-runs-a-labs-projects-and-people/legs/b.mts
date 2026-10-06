@@ -55,24 +55,38 @@ export async function hireWithoutCos(world: World, mailboxSession: string, board
     return;
   }
   r.saw("setup", "the Chief of Staff view draws its no-CoS state");
-  await postInWorkstream(world, boardMailbox, `Please hire one more coder for the team, with the seat id "${seat}".`);
+  const posted = await postInWorkstream(world, boardMailbox, `Please hire one more coder for the team, with the seat id "${seat}".`);
+  if (posted.stored !== 1) {
+    r.fail("setup", `the ask to the EM was not kept: ${posted.said}; the mailbox's session holds ${posted.stored} copies, so a missing worker would prove nothing`);
+    return;
+  }
   await sleep(20_000);
   const seen = await where(world, mailboxSession, null, seat);
   if (seen.inventoryRow === undefined && !seen.inTeams) r.fail("b1", `seat appears: asked of the EM seat with no chief of staff, no seat "${seat}" is in the inventory or TEAMS`);
   else r.saw("b1", `"${seat}" appeared: inventory ${String(seen.inventoryRow?.id)}, TEAMS ${seen.inTeams}`);
 }
 
-async function postInWorkstream(world: World, mailbox: string, line: string): Promise<string> {
+/**
+ * Post `line` in a workstream's composer, as a person does, and wait for the
+ * mailbox's session to keep it. A post (no `@name`) has no delivered state:
+ * the composer reads the line back and clears its draft, or shows why not.
+ * `stored` is how many `mailbox-post` items in the store carry the line;
+ * `said` is what the composer showed.
+ */
+async function postInWorkstream(world: World, mailbox: string, line: string): Promise<{ stored: number; said: string }> {
   await world.open(`/w/${encodeURIComponent(mailbox)}/stream`);
   await world.page.getByTestId("composer-input").waitFor({ timeout: 15_000 });
   await world.page.getByTestId("composer-input").fill(line);
   await world.page.getByTestId("composer-send").click();
-  let state = "";
-  for (const until = Date.now() + 60_000; Date.now() < until; await sleep(200)) {
-    state = (await world.page.getByTestId("composer-status").getAttribute("data-state").catch(() => "")) ?? "";
-    if (["delivered", "refused", "not-sent", "unconfirmed", "blocked"].includes(state)) break;
+  const kept = async () => (await world.routes.owner.items(mailbox, "component")).filter((i) => (i as { component?: string }).component === "mailbox-post" && (i.data as { body?: string } | undefined)?.body === line).length;
+  let stored = 0;
+  for (const until = Date.now() + 60_000; Date.now() < until; await sleep(500)) {
+    stored = await kept();
+    if (stored > 0) break;
   }
-  return state;
+  const error = await world.page.getByTestId("composer-error").textContent({ timeout: 1_000 }).catch(() => null);
+  const state = (await world.page.getByTestId("composer-status").getAttribute("data-state").catch(() => null)) ?? "unknown";
+  return { stored, said: error === null ? `the composer reads ${state}` : `the composer says "${error.trim().slice(0, 200)}"` };
 }
 
 /** b1 to b4. `restart` stops and starts the Lab on the same store. */
@@ -157,10 +171,15 @@ export async function legB(world: World, mailboxSession: string, boardMailbox: s
   // ---- b4 · no other seat hires ---------------------------------------------------
   const other = `coder-${hex()}`;
   const rosterBefore = (await readRoster(world.routes.owner, cosSession))?.length;
-  const delivered = await postInWorkstream(world, boardMailbox, `EM, please hire another coder seat for this team yourself, with the seat id "${other}".`);
+  const posted = await postInWorkstream(world, boardMailbox, `EM, please hire another coder seat for this team yourself, with the seat id "${other}".`);
+  // Only a line the mailbox kept was asked of anyone: an unsent one hires nothing whatever the EM would do.
+  if (posted.stored !== 1) {
+    r.fail("b4", `the ask was not kept: ${posted.said}; the mailbox's session holds ${posted.stored} copies, so no worker being hired proves nothing`);
+    return;
+  }
   // The EM answers in its own time; give it the turn a person would wait for.
   await sleep(30_000);
   const after = await where(world, mailboxSession, cosSession, other);
   if (after.rosterRow !== undefined || after.inventoryRow !== undefined || after.inTeams) r.fail("b4", `asked of the EM seat, "${other}" was hired: roster ${after.rosterRow !== undefined}, inventory ${after.inventoryRow !== undefined}`);
-  else r.saw("b4", `the line went ${delivered}; no roster row for "${other}" (roster ${rosterBefore} rows before, ${(await readRoster(world.routes.owner, cosSession))?.length} after)`);
+  else r.saw("b4", `the mailbox kept the line once; no roster row for "${other}" (roster ${rosterBefore} rows before, ${(await readRoster(world.routes.owner, cosSession))?.length} after)`);
 }
