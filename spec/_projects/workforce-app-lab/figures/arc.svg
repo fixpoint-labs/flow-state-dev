@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The arc: five epic lanes against three weeks from Sep 29. The lab shell, FIX-1649, is done: its bar runs from its epic spec on the evening of Sep 29, through approval at Sep 30 01:33 UTC, to its closure merging at Oct 4 10:56 UTC, just before the now line; Linear status is pending. Org primitives, FIX-1650, is in flight from its approval on Oct 1 and crosses the now line at Oct 4 11:10 UTC. The eng workstream kit, attention and inspect, and review and GitHub wake are held with no bar.">
+<svg viewBox="0 0 940 486" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The arc: nine epic lanes against three weeks from Sep 29. The lab shell, FIX-1649, is done: its bar runs from its epic spec on Sep 29 to its closure merging on Oct 4. Org primitives, FIX-1650, is in flight from its approval on Oct 1 to the now line at Oct 6 01:30 UTC, with its closure PR open. Coding tasks FIX-1763, talk on a finished task FIX-1765 and memory and context FIX-1775 were filed on Oct 4 and private and shared FIX-1786 on Oct 6; each has a filing tick and no bar, because none has an approved objective, though FIX-1763's children are building. The eng workstream kit, attention and inspect, and review and GitHub wake are held with no bar.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -13,6 +13,7 @@
     .done   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
     .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
     .mark   { stroke:var(--code); stroke-width:1.4; }
+    .filed  { stroke:var(--ink-3); stroke-width:2; }
     .now    { stroke:var(--gone); stroke-width:1.6; }
     .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
               font-size:9.5px; letter-spacing:.1em; }
@@ -21,10 +22,11 @@
     .t-now  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
   </style>
 
-  <!-- 30px per day: x = 180 + 30 * (days since Sep 29 00:00 UTC). Now Oct 4 11:10 = 344.0.
-       Shell: spec from 202.9 (Sep 29 22:44), approval tick at 211.9 (Sep 30 01:33), closure
-       merged at 343.7 (Oct 4 10:56). Org primitives: spec 262.8 (Oct 1 18:13), approved 263.8
-       (Oct 1 18:33), building to the now line. -->
+  <!-- 30px per day: x = 180 + 30 * (days since Sep 29 00:00 UTC). Now Oct 6 01:30 = 391.9.
+       Shell: spec 202.9 (Sep 29 22:44), approval tick 211.9 (Sep 30 01:33), closure merged 343.7
+       (Oct 4 10:56). Org primitives: approved 262.8 (Oct 1 18:13), to the now line.
+       Filing ticks: FIX-1763 348.3 (Oct 4 14:40), FIX-1765 350.5 (Oct 4 16:22),
+       FIX-1775 358.2 (Oct 4 22:33), FIX-1786 391.3 (Oct 6 01:02). Lanes 48px apart. -->
   <g id="axis">
     <text class="t-lbl" x="16" y="20">EPIC</text>
     <text class="t-lbl" x="180" y="20">SEP 29</text>
@@ -32,7 +34,7 @@
     <text class="t-lbl" x="600" y="20">OCT 13</text>
     <text class="t-lbl" x="810" y="20">OCT 20</text>
     <path class="axis" d="M180 30 H900"/>
-    <path class="tick" d="M180 30 V270 M390 30 V270 M600 30 V270 M810 30 V270"/>
+    <path class="tick" d="M180 30 V462 M390 30 V462 M600 30 V462 M810 30 V462"/>
   </g>
 
   <g id="shell">
@@ -40,35 +42,65 @@
     <text class="t-s"    x="16" y="70">FIX-1649 · done</text>
     <rect class="done" x="202.9" y="42" width="140.8" height="26" rx="2"/>
     <path class="mark" d="M211.9 42 V68"/>
-    <text class="t-s" x="352" y="54">wrapped Oct 4 10:56 · closure FIX-1663 merged, #2709</text>
-    <text class="t-s" x="352" y="67">Linear status pending with Jake</text>
+    <text class="t-s" x="402" y="54">wrapped Oct 4 · closure FIX-1663 merged, #2709</text>
+    <text class="t-s" x="402" y="67">Linear Done the same day, 35 of 35</text>
   </g>
 
   <g id="org">
     <text class="t-lane" x="16" y="104">org primitives</text>
     <text class="t-s"    x="16" y="118">FIX-1650 · in flight</text>
-    <rect class="flight" x="262.8" y="90" width="81.2" height="26" rx="2"/>
-    <text class="t-s" x="352" y="102">approved Oct 1 · FIX-1718, FIX-1719 building</text>
-    <text class="t-s" x="352" y="115">closure FIX-1720 in development</text>
+    <rect class="flight" x="262.8" y="90" width="129.1" height="26" rx="2"/>
+    <text class="t-s" x="402" y="102">approved Oct 1 · 11 of 20 children done</text>
+    <text class="t-s" x="402" y="115">closure FIX-1720 open as #2781</text>
+  </g>
+
+  <g id="coding">
+    <text class="t-lane" x="16" y="152">coding tasks</text>
+    <text class="t-s"    x="16" y="166">FIX-1763 · not started</text>
+    <path class="filed" d="M348.3 140 V162"/>
+    <text class="t-s" x="402" y="150">filed Oct 4 · no epic spec</text>
+    <text class="t-s" x="402" y="163">children building: FIX-1762 stack open, FIX-1778 done</text>
+  </g>
+
+  <g id="finished">
+    <text class="t-lane" x="16" y="200">talk on a finished task</text>
+    <text class="t-s"    x="16" y="214">FIX-1765 · not started</text>
+    <path class="filed" d="M350.5 188 V210"/>
+    <text class="t-s" x="402" y="204">filed Oct 4 · first child FIX-1764</text>
+  </g>
+
+  <g id="memory">
+    <text class="t-lane" x="16" y="248">memory &amp; context</text>
+    <text class="t-s"    x="16" y="262">FIX-1775 · not started</text>
+    <path class="filed" d="M358.2 236 V258"/>
+    <text class="t-s" x="402" y="252">filed Oct 4 · first child FIX-1776</text>
+  </g>
+
+  <g id="private">
+    <text class="t-lane" x="16" y="296">private &amp; shared</text>
+    <text class="t-s"    x="16" y="310">FIX-1786 · not started</text>
+    <path class="filed" d="M391.3 284 V306"/>
+    <text class="t-s" x="402" y="294">filed Oct 6 · epic spec being written</text>
+    <text class="t-s" x="402" y="307">inventory FIX-1787 first · would supersede parts of FIX-1650</text>
   </g>
 
   <g id="kit">
-    <text class="t-lane" x="16" y="152">eng workstream kit</text>
-    <text class="t-s"    x="16" y="166">FIX-1651 · held</text>
+    <text class="t-lane" x="16" y="344">eng workstream kit</text>
+    <text class="t-s"    x="16" y="358">FIX-1651 · held</text>
   </g>
 
   <g id="attention">
-    <text class="t-lane" x="16" y="200">attention &amp; inspect</text>
-    <text class="t-s"    x="16" y="214">FIX-1652 · held</text>
+    <text class="t-lane" x="16" y="392">attention &amp; inspect</text>
+    <text class="t-s"    x="16" y="406">FIX-1652 · held</text>
   </g>
 
   <g id="review">
-    <text class="t-lane" x="16" y="248">review &amp; GitHub wake</text>
-    <text class="t-s"    x="16" y="262">FIX-1653 · held</text>
+    <text class="t-lane" x="16" y="440">review &amp; GitHub wake</text>
+    <text class="t-s"    x="16" y="454">FIX-1653 · held</text>
   </g>
 
   <g id="now">
-    <path class="now" d="M344.0 30 V278"/>
-    <text class="t-now" x="347" y="290">now · Oct 4 11:10 UTC</text>
+    <path class="now" d="M391.9 30 V466"/>
+    <text class="t-now" x="395" y="478">now · Oct 6 01:30 UTC</text>
   </g>
 </svg>

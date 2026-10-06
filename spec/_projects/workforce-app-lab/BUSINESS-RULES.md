@@ -10,6 +10,10 @@ it; the others inherit it.
 | **PR-1** | When an epic ships a surface in Shift Manager, then it is reached through the shell's nav and drawn in the shell's design system in v2's look, reusing FSD components skinned only through `--fsd-*` tokens, never restyled or edited in copy | FIX-1649 | FIX-1663's closure check: leg a (every surface reached), leg c (no Shift Manager value in FSD), leg d (v2's look, FIX-1737's check); FIX-1655's re-sync check on copied components |
 | **PR-2** | When an epic's surface in Shift Manager writes to the engine, then it goes through a seam on FIX-1649 ER-15's list: a worker's session only through its shipped operations, and the person's own room only through `lib/talk.ts`'s `sendAction(` and `lib/reads.ts`'s `createSession(`, on `ROOM_KIND`. A new write path is an amendment to that list, never a second route | FIX-1649 | FIX-1663's part 4 seam check (`goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/`), which fails on a call outside the list |
 
+PR-2's room seams are contested by FIX-1786, which removes rooms
+([Decisions](DECISIONS.md) → Open, T2). PR-2 binds as written until that epic's objective gate,
+and a removal then is the amendment to the list that PR-2 already provides for.
+
 **No epic may:**
 
 - mint a Layer 1 Agent, Team, Channel, MessageBoard or required Project noun;

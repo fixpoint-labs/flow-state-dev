@@ -7,11 +7,11 @@ deliberately not next. Each epic's own plan owns its checks.
 
 ![The arc](figures/arc.svg)
 
-Day six. The shell's bar is closed: spec from the evening of Sep 29, approval at 01:33 UTC on
-Sep 30, closure merged at 10:56 UTC on Oct 4. Linear still shows it Spec Approved; the status
-writes are pending with Jake, and the bar follows the merged PRs. Org primitives has run since its
-approval on Oct 1 and is the one bar crossing the now line. Three lanes stay empty, which is the
-plan, not a gap.
+Day eight. The shell's bar closed at its closure merge on Oct 4, and Linear marked it Done
+that afternoon. Org primitives is still the only bar, and it reaches the now line with its closure
+PR open. Four lanes opened Oct 4 to 6, each with a tick at filing and no bar: none has an approved
+objective. FIX-1763's children are building anyway, and that is the gap to watch. FIX-1786's tick
+sits on the now line. Three lanes stay empty by plan.
 
 ## What each epic consumes and releases
 
@@ -22,9 +22,15 @@ plan, not a gap.
 | **eng workstream kit** · FIX-1651 | A workstream from FIX-1650 | Linear sync, a per-issue board, and the EM, Lead and specialist seats |
 | **attention & inspect** · FIX-1652 | The shell's Inbox, and the task inspector's inspect depth. Resources has no place in the shell's v1 and is reached from Jump to until its design pass 2 | Needs-you, harness visibility, the resources list |
 | **review & GitHub wake** · FIX-1653 | FIX-1637's wake spine | Review and GitHub events that wake the right seat |
+| **coding tasks** · FIX-1763 | FIX-1650's org-level projects (FIX-1718); the harness manager | A project's optional repository and a harness worktree mapped from it. Then a run's work survives losing its machine, a sandbox, and push and PR. **Holds FIX-1651 to FIX-1653** until the repo floor is real |
+| **talk on a finished task** · FIX-1765 | The shell's task view; the existing needs-you signal | A message on a finished task that stays on it and reaches whoever acts next. No second inbox |
+| **memory & context** · FIX-1775 | The shipped memory pack; the Shift Coordinator from FIX-1650 | Standard memory on the coordinator, then a long session kept inside its window. Takes long-lived session memory from FIX-1786 |
+| **private & shared** · FIX-1786 | Everything in flight in Workforce, boards, engine scopes and Shift Manager, inventoried first (FIX-1787); FIX-1778's named assignment | Workers as private resources, coordinators in place of mailboxes and rooms, one-owner workstreams, and the retired terms gone from code and docs. **Releases nothing until its gate** ([Decisions](DECISIONS.md) → Open) |
 
 ## What is deliberately not next
 
-- **FIX-1651 to FIX-1653** until the Cycle PM stamps a proof gap.
+- **FIX-1651 to FIX-1653** until the Cycle PM stamps a proof gap, and until FIX-1763's repo floor
+  (FIX-1762) is real.
+- **FIX-1786's refactor itself.** Its inventory comes first; most active work merges before it starts.
 - **Anything in Cycle 1.** This project is a Cycle 2 candidate.
 - **A second Lab's shell.** CyberForce arrives on this one.
