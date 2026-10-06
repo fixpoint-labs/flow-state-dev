@@ -67,3 +67,4 @@ earlier cycle files are records and are not rewritten.
 | 19 | kitchen-sink support desk epic wrap (FIX-1592) (2026-09-29) | [`cycle-19.md`](cycle-ledger/cycle-19.md) |
 | 20 | hard-gates-before-public-release epic wrap (FIX-1635) (2026-10-01) | [`cycle-20.md`](cycle-ledger/cycle-20.md) |
 | 21 | Shift Manager lab shell epic wrap (FIX-1649) (2026-10-04) | [`cycle-21.md`](cycle-ledger/cycle-21.md) |
+| 22 | Org primitives epic wrap (FIX-1650) (2026-10-06) | [`cycle-22.md`](cycle-ledger/cycle-22.md) |
