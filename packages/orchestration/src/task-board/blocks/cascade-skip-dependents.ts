@@ -72,12 +72,9 @@ export function createCascadeSkipDependents(
           const failedDep = deps.find((d) => cascading.has(d));
           if (failedDep === undefined) continue;
           const cancelled = await collection.cancel(task.id, `dep ${failedDep} failed`);
-          // Only a cancel that landed is ours to label and cascade from. The
-          // snapshot above can be stale by the time the write arrives — another
-          // actor may already have settled the task — and `cancel` declines
-          // rather than throws then. Labelling it anyway would mark a task this
-          // pass never cancelled as a dead dependency, and every later pass
-          // would skip its dependents off the back of that label (FIX-985).
+          // The pending snapshot can be stale. `cancel` declines when another
+          // actor already settled the task; a write that did not land is not
+          // ours to label or cascade from (FIX-985).
           if (cancelled.outcome !== "recorded") continue;
           await collection.addLabel(task.id, "skipped");
           cascading.add(task.id);
