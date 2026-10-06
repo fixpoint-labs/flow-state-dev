@@ -31,7 +31,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Refusing a person's requests with `migration-required` while they have uncopied data · copying it automatically on their first request in an org |
-| **Because** | A refusal has to look in the old cell to know there is something to refuse: a read across orgs on every run, the read ER-3 closes, and a store call per request. It would also lock a person who worked in two orgs out of every flow until someone resolves them by hand. An automatic copy picks the org from the first request after the upgrade, and the framework can't tell a one-org person from one whose other org hasn't signed in yet ([FIX-1538 D2](../FIX-1538/DECISIONS.md#d2)). Starting empty is what hired seats have done since FIX-1538 |
+| **Because** | A refusal has to look in the old cell to know there is something to refuse: a read across orgs on every run, the read ER-3 closes, and a store call per request. It would also lock a person who worked in two orgs out of every flow until someone resolves them by hand. An automatic copy picks the org from the first request after the upgrade, and the framework can't tell a one-org person from one whose other org hasn't signed in yet ([FIX-1538 D2](../FIX-1538/DECISIONS.md#d2)). Starting empty is what hired workers have done since FIX-1538 |
 | **Locks in** | Every deployment with saved user data has an operator step at upgrade, with writers stopped. An operator who skips it gets no error: every person's preferences, saved collections and flow-private data look empty. Nothing is lost and the step can run later, but whatever a person writes in between makes the step stop for them. The framework never moves or deletes a record |
 
 ![D1, between the upgrade and the copy step: old data read by nothing, chosen, beside a migration-required refusal. Decides it: a person who worked in two orgs works in both instead of being refused on every flow. Price: an operator who skips the step sees no error. Locks in an upgrade step; flips if a deployment can't stop its writers](figures/d1-before-the-step.svg)
@@ -47,7 +47,7 @@ shipped copy command earns its place, still offline per person, still never a ru
 | | |
 |---|---|
 | **Instead of** | The operator's membership records alone · the person's most recent org · a copy into every org the person belongs to |
-| **Because** | A session is the one record in the store that says which org a run happened in, and it says so per flow. The person's shared cell and user record could have been written by any of their sessions; a flow-isolated cell only by their sessions on that flow, so a hired seat's private data keeps its one org when its person works in two. Membership says where a person is now, not where they wrote: Alice, in Acme until June and in Globex since, would have Acme's data copied into Globex. The most recent org is a guess, and every org is the leak ER-3 closes. A deleted session leaves no trace in the store, so the sessions that remain are evidence only when none of that person's is missing: if Alice's Globex sessions were deleted, the rest name Acme alone and the step would copy Globex data into Acme |
+| **Because** | A session is the one record in the store that says which org a run happened in, and it says so per flow. The person's shared cell and user record could have been written by any of their sessions; a flow-isolated cell only by their sessions on that flow, so a hired worker's private data keeps its one org when its person works in two. Membership says where a person is now, not where they wrote: Alice, in Acme until June and in Globex since, would have Acme's data copied into Globex. The most recent org is a guess, and every org is the leak ER-3 closes. A deleted session leaves no trace in the store, so the sessions that remain are evidence only when none of that person's is missing: if Alice's Globex sessions were deleted, the rest name Acme alone and the step would copy Globex data into Acme |
 | **Locks in** | A person whose sessions name two orgs gets their shared data back in neither: it stays put, named in the upgrade record, until someone decides by hand. The step also needs the operator to vouch that none of the person's sessions was deleted, or that their own records never placed the person in another org; membership can veto a copy, never choose its org. Without that, and for a person with no sessions left, it stops the same way. A deployment that only ever ran in one org, which includes every development app on the default org, gets everything back |
 
 ![D2, where the step copies a saved cell: the one org its writers' sessions name, chosen, beside membership records. Decides it: Alice, who moved from Acme to Globex, would have Acme's data copied into Globex by membership. Price: a person with any deleted session stops unless the operator's records clear every other org. Locks in: a two-org person's shared data returns nowhere until decided by hand](figures/d2-attribution.svg)
@@ -59,13 +59,13 @@ in. That record attributes a cell more finely than sessions do, and the step sho
 
 ## Decided, not asked
 
-- **One cell per (person, org) for every flow, the one hired seats already use**,
+- **One cell per (person, org) for every flow, the one hired workers already use**,
   `<person>:~org:<org>`, plus the flow when flow-isolated ([pinned names](PLAN.md#pinned-names)).
-  A seat's shared data doesn't move, and it now shares a person's cell with the app's other flows
+  A hired worker's shared data doesn't move, and it now shares a person's cell with the app's other flows
   in that org, as any two flows do; the registry still refuses incompatible schemas. FIX-1538 kept
   them apart only because the app's cell crossed orgs ([EVOLUTION.md](EVOLUTION.md)).
 - **The org comes from the admitted run or the stored session**, never a header or body (BP-031).
-  A pinned seat's equals its pin's; admission checked that.
+  A pinned worker's equals its pin's; admission checked that.
 - **A missing or blank org throws.** No path builds the cross-org key (ER-13).
 - **Flow-isolated keys gain the org too.**
 - **A schedule's dispatch names the org**, and the row must name the same one: the id selects a
@@ -84,7 +84,7 @@ in. That record attributes a cell more finely than sessions do, and the step sho
 
 | Alternative | Why not |
 |---|---|
-| A new cell shape for unpinned flows, seats kept apart | Keys on the pin the epic is deprecating, and two cells per person per org isolate nothing |
+| A new cell shape for unpinned flows, hired workers kept apart | Keys on the pin the epic is deprecating, and two cells per person per org isolate nothing |
 | A deployment-wide "old data belongs to org X" setting | A permanent second read path, wrong for any deployment that ever had two orgs |
 | A shipped migration command now | The stores' normal calls mint versions and drop deletion markers; the per-adapter procedures already have raw access. Revisit on D1's *change my mind* |
 | Move cells instead of copying | Deletes the only record a wrong attribution could be recovered from |
@@ -101,7 +101,7 @@ in. That record attributes a cell more finely than sessions do, and the step sho
 ## How it got here
 
 - **Draft** — framed as ER-3's attribution question; one (person, org) cell for every flow,
-  reusing the seat's shape, with the org from the run or the stored session; old cells inert by
+  reusing the hired worker's shape, with the org from the run or the stored session; old cells inert by
   construction and copied by a documented operator step that attributes per writing flow; one PR.
 - **Review round 1** — D2 now needs the operator to vouch that no session is missing, because a
   deleted session leaves no trace and the ones left could name one org while the deleted ones

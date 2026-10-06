@@ -8,11 +8,11 @@
 |---|---|---|
 | **works in Acme and Globex** | Globex shows her the preferences, notes and private flow data she saved in Acme | Each org shows only what she saved there. Globex starts empty |
 | **is about to get a private roster of workers** (FIX-1788) | Her workers would be user data, so one roster would show in both orgs | Her Acme roster is not her Globex roster |
-| **uses a hired seat and the app's chat flow in one org** | The seat keeps its own per-org copy, the chat flow a cross-org one, and neither sees the other | Both use her one cell in that org, as any two flows sharing user data do |
+| **uses a hired worker and the app's chat flow in one org** | The worker keeps its own per-org copy, the chat flow a cross-org one, and neither sees the other | Both use her one cell in that org, as any two flows sharing user data do |
 | **upgrades a deployment with saved user data** | n/a | Each person starts empty until the operator runs a documented copy step, which copies a saved cell only into the one org its sessions name. Nothing is read across orgs or deleted |
 | **sends a request with no org** | Refused since FIX-1442 | Still refused, never the cross-org cell |
 
-Hired seats already keep a person's data per org ([FIX-1538](../FIX-1538/SPEC.md)). This does it
+Hired workers already keep a person's data per org ([FIX-1538](../FIX-1538/SPEC.md)). This does it
 for every flow, so the epic can make workers and private projects user data without leaking them
 between orgs ([epic ER-3](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
 
@@ -26,7 +26,7 @@ what they saved before the upgrade comes back in one org at most.**
 | **The real need** | The PRD: "what a user keeps in one org never appears in another", for every flow, nothing deleted. The epic set "data stored before still reads" to "in one org at most, after an operator step" ([ER-3](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 | **Smaller, and rejected** | "The key carries the org." A one-line change that leaves a view, the schedule resolver or the test harness on the old cell |
 | **Bigger, and not this issue's** | Workers and private projects as user data (FIX-1788, FIX-1793). Removing owner pins (FIX-1798) |
-| **Not done if** | The check ran with one person or one org · only on a hired seat, whose cell already had the org · without a record from before the upgrade · without user state or a flow-isolated resource · the copy step's SQL was published for a store it was never walked on (SQLite and Postgres both) |
+| **Not done if** | The check ran with one person or one org · only on a hired worker, whose cell already had the org · without a record from before the upgrade · without user state or a flow-isolated resource · the copy step's SQL was published for a store it was never walked on (SQLite and Postgres both) |
 
 ```mermaid
 flowchart LR
@@ -47,12 +47,12 @@ the key, and it must fail.
 | **Goal check** | `goals/user-scope/keeps-a-users-data-in-the-org-it-was-saved-in/` · model `n/a` · real HTTP router, SQLite · run by the implementer · verdict in the implementation PR |
 | **Signal** | a: Alice's next Acme run reads back her user state, a shared and a flow-isolated resource. b: Alice in Globex and Bob in Acme read none of the three, by a run, the state route or the resource route. c: an old marker reads in neither org after the upgrade; after the published step, a one-org person's reads in that org only and a two-org person's nowhere |
 | **Input** | An app flow with no pin, three markers, two orgs, three people. Other values, and ids with `:`, must pass too |
-| **Anti-game** | No assertion on a key string, on a hired seat, or on a fixture that writes the new cell. The step's statements are the published page's |
+| **Anti-game** | No assertion on a key string, on a hired worker, or on a fixture that writes the new cell. The step's statements are the published page's |
 | **Control that must fail** | `GOAL_CONTROL=cross-org-key`: leg b FAILS on *Globex reads Alice's shared marker*. `GOAL_CONTROL=fallback-read`: leg c FAILS on *the old marker reads in Globex*. Today's `main` fails leg b |
 
 ## What changes
 
-![Today, the app's chat flow for Alice in Acme and in Globex writes one cell named alice, while her Acme seat keeps its own cell. After, every flow writes a cell for its person and org inside the Acme or Globex box; the seat and the chat flow share alice in acme. The old alice cell sits below a fence nothing crosses, copied into one org only by the operator step](figures/cells.svg)
+![Today, the app's chat flow for Alice in Acme and in Globex writes one cell named alice, while her Acme worker keeps its own cell. After, every flow writes a cell for its person and org inside the Acme or Globex box; the worker and the chat flow share alice in acme. The old alice cell sits below a fence nothing crosses, copied into one org only by the operator step](figures/cells.svg)
 
 Red lines on the left are the leak. On the right every flow lands inside its org's box, and the
 old cell is kept but read by nothing.
@@ -86,7 +86,7 @@ The org comes from the run or the stored session, never a header or body.
 ## What stays as it is
 
 - **Session and org keys**, byte for byte, and tenant handling.
-- **A hired seat's shared cell**, already `<person>:~org:<org>`.
+- **A hired worker's shared cell**, already `<person>:~org:<org>`.
 - **Org is never optional** (FIX-1442), and the registry's cross-flow schema check.
 - **Owner pins** stay in the engine for admission, deprecated; FIX-1798 removes them.
 

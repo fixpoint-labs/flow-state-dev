@@ -14,7 +14,7 @@ The *proved by* column names the check in [PLAN.md](PLAN.md#checks).
 | BR-2 | Alice opens the same flow in Globex | Her cell in Globex starts empty. Nothing she saved in Acme is read, through a run or any view | Goal leg b · V2 |
 | BR-3 | Bob, in Acme, opens the same flow | His own cell in Acme. Nothing of Alice's is read | Goal leg b · V2 |
 | BR-4 | Two flows in Acme declare the same shared user resource or user state | Both read and write Alice's one cell in Acme. Shared still means shared, inside one org. The registry still compares their schemas at startup | V2 · existing registry suite |
-| BR-5 | Alice uses a hired seat in Acme | Its shared cell is her cell in Acme, the key it already had, now shared with the app's other flows in Acme. Its flow-isolated data keys by her, Acme and the seat | V1 key table · V2 |
+| BR-5 | Alice uses a hired worker in Acme | Its shared cell is her cell in Acme, the key it already had, now shared with the app's other flows in Acme. Its flow-isolated data keys by her, Acme and the worker | V1 key table · V2 |
 | BR-6 | Any org-scoped or session-scoped data, with or without a tenant | Unchanged, byte for byte | V1 key table · existing suites |
 | BR-7 | A user id, org id or flow id contains `:`, `\` or the text `~org` | No two (person, org, flow) tuples share a key, and no new key equals a key an older release wrote | V1 collision table · `poc/key-shape/` |
 
@@ -22,11 +22,11 @@ The *proved by* column names the check in [PLAN.md](PLAN.md#checks).
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-8 | A run keys user data | The org is the admitted run's. For a pinned seat it equals the pin's org, which admission already checked. A header or body never chooses it | V2 |
+| BR-8 | A run keys user data | The org is the admitted run's. For a pinned worker it equals the pin's org, which admission already checked. A header or body never chooses it | V2 |
 | BR-9 | A run, a view or a helper call has no org, or a blank one | Refused, as FIX-1442 refuses it. No user data is read or written, and the cross-org cell is never the answer | V1 · V3 |
 | BR-10 | Any read-side view of a session (state route, resource routes, debug snapshot, a sibling transport) | It resolves the cell the run wrote, from the session's stored org | V3, one per view family |
 | BR-11 | A run dispatches a child session on another flow | The child keeps the person and the org, and reads that flow's buckets in the same cell | V2 |
-| BR-12 | A dynamic schedule fires | The dispatch names the org; the resolver reads that cell and dispatches only a row naming the same org. No org in the dispatch, or a row naming another, resolves as missing, as does a user-owned seat's id naming another person | V5 |
+| BR-12 | A dynamic schedule fires | The dispatch names the org; the resolver reads that cell and dispatches only a row naming the same org. No org in the dispatch, or a row naming another, resolves as missing, as does a user-owned worker's id naming another person | V5 |
 | BR-13 | A test seeds user data through the testing harness | It lands in the cell the run will read: the harness's org, or the default org when none is given | V6 |
 | BR-14 | A flow declares a user-scoped projected resource | Its hooks receive the person and the org. The app keys its own rows by both; the framework can't, and the docs say so | DOCS review |
 

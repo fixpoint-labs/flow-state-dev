@@ -4,7 +4,7 @@
 
 FIX-1790 owns "which org a user's record belongs to" in the epic's ownership table
 ([epic DOCS.md](../../epics/FIX-1786/DOCS.md#ownership)). Every page below describes user data as
-one record per person per organization, which is now true for every flow, so the hired-seat
+one record per person per organization, which is now true for every flow, so the hired-worker
 exceptions on these pages go. Voice watch-outs: describe what the framework does, not what it
 used to do, except inside the upgrade section; no sentence opens with "This"; introduce "user
 scope" and "flow isolation" in plain words where a page meets them first.
@@ -44,7 +44,7 @@ In "Multi-tenant isolation", the sentence "so they key on `userId` / `orgId` alo
 >
 > The organization is part of the user's key. What a flow saves for Alice while she works in
 > Acme is not what any flow reads for her in Globex. Inside one organization, a [hired
-> seat](/docs/workforce/durable-hire) shares Alice's record with your other flows, like any
+> worker](/docs/workforce/durable-hire) shares Alice's record with your other flows, like any
 > two flows do.
 
 The "Hired seats share within one organization" subsection is removed; the paragraph above says
@@ -55,16 +55,16 @@ what it said, for every flow.
 The figure loses its third place (the person's data "outside hired seats"), and its alt text
 becomes:
 
-> Where a hired seat keeps what it learns about alice. Inside the acme organization: one cell for
+> Where a hired worker keeps what it learns about alice. Inside the acme organization: one cell for
 > alice in acme, holding her user record and her shared user-scoped resources, which every flow
-> in acme uses, hired seats included; and one cell per seat for flow-isolated data, such as alice
+> in acme uses, hired workers included; and one cell per worker for flow-isolated data, such as alice
 > in acme for acme.support.ada. In globex, alice has a separate cell of her own, which nothing in
 > acme reads. A projected resource is stored by your own hooks, so key its rows by the
 > organization too.
 
-> A seat keeps what it learns about a person in the same place every flow in the organization
+> A hired worker keeps what it learns about a person in the same place every flow in the organization
 > does: one cell for that person in that organization. With flow isolation, it keeps one cell per
-> person per seat, still inside the organization. A resource's own `flowIsolation` decides which
+> person per worker, still inside the organization. A resource's own `flowIsolation` decides which
 > applies; a resource that doesn't set it follows the kind's `isolateUserState`.
 >
 > If you are upgrading an app that already saved user data, see [Upgrading: moving user data into
@@ -87,7 +87,7 @@ both queries), and after the example:
 > `createResourceCollectionScheduleResolver` there. Its schedule id names the organization, the
 > user and the key, `<orgId>/<userId>/<key>`. It reads the row from that person's data in that
 > organization, and returns `null` when the id names no organization or the row names a different
-> one. On a seat only one member can reach, it also returns `null` for an id naming another user.
+> one. On a worker only one member can reach, it also returns `null` for an id naming another user.
 >
 > If you write the resolver by hand, pass the organization to `resolveUserStorageKey` from
 > `@flow-state-dev/engine`. It throws when the organization is missing or blank:
@@ -128,7 +128,7 @@ guard's paragraph:
 > move them, because one cell may hold what a person saved in two organizations. Until you copy
 > it, each person starts empty in each organization. Nothing is deleted.
 >
-> Hired seats already kept their shared data per organization. Those cells are where they belong
+> Hired workers already kept their shared data per organization. Those cells are where they belong
 > and need nothing.
 >
 > Copying is offline: stop the writers, schedulers included, before you start the new release,
@@ -212,5 +212,5 @@ scheduled README's hand-written resolver matches the `scheduled.md` example abov
 ## Publication ownership
 
 FIX-1790 publishes all of the above after V7 has walked the step on a SQLite file and on Postgres,
-and VG has passed. Only statements V7 ran are published. The Workforce overview and glossary stay FIX-1796's; FIX-1788 owns the seat pages' move to
-workers, and builds on this section's cell.
+and VG has passed. Only statements V7 ran are published. The Workforce overview and glossary stay FIX-1796's; FIX-1788 owns the hire pages' move to
+worker terms, and builds on this section's cell.
