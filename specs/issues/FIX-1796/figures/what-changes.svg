@@ -1,0 +1,96 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="What changes: several old names for one idea become one name each. Seat, hired seat, flow instance and owner pin become worker, a user's own, run by the flow it names. Kind, for the flow a worker runs on, becomes worker flow. Hired roster becomes roster. Mailbox, its member and its thread become coordinator, delegate and the delegate's session. Room and talk session become the project coordinator. Person, for the signed-in user, becomes user. Below a dashed line, kept by design: a task board's seat, its types and its hand-off's seat field, saved key strings, the engine's flow kind, flow instances and owner pins until FIX-1798, its dispatch target, retained specs, changelogs and blog posts, and the words in goals."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .old    { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .arrow  { stroke:var(--ink-3); stroke-width:1.4; }
+    .head   { fill:var(--ink-3); }
+    .fence  { stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 5; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-old  { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="heads">
+    <text class="t-lbl" x="16" y="34">TODAY · SEVERAL NAMES FOR ONE IDEA</text>
+    <text class="t-lbl" x="536" y="34">AFTER · ONE NAME EACH, DEFINED ONCE IN THE GLOSSARY</text>
+    <text class="t-s" x="16" y="54">in package source, exports, published pages, labs and apps</text>
+    <text class="t-s" x="536" y="54">a retired word is left only where the guard lists why</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="old" x="16" y="70" width="388" height="34" rx="5"/>
+    <text class="t-b c-old" x="30" y="92">seat · hired seat · flow instance · owner pin</text>
+    <line class="arrow" x1="410" y1="87" x2="520" y2="87"/>
+    <polygon class="head" points="520,82 530,87 520,92"/>
+    <rect class="new" x="536" y="70" width="388" height="34" rx="5"/>
+    <text class="t-h c-code" x="550" y="92">worker</text>
+    <text class="t-s" x="613.2" y="92">a user's own, run by the flow it names</text>
+  </g>
+  <g id="row-2">
+    <rect class="old" x="16" y="114" width="388" height="34" rx="5"/>
+    <text class="t-b c-old" x="30" y="136">kind, for the flow a worker runs on</text>
+    <line class="arrow" x1="410" y1="131" x2="520" y2="131"/>
+    <polygon class="head" points="520,126 530,131 520,136"/>
+    <rect class="new" x="536" y="114" width="388" height="34" rx="5"/>
+    <text class="t-h c-code" x="550" y="136">worker flow</text>
+    <text class="t-s" x="654.2" y="136">agent, the coordinator, or the app's own</text>
+  </g>
+  <g id="row-3">
+    <rect class="old" x="16" y="158" width="388" height="34" rx="5"/>
+    <text class="t-b c-old" x="30" y="180">hired roster</text>
+    <line class="arrow" x1="410" y1="175" x2="520" y2="175"/>
+    <polygon class="head" points="520,170 530,175 520,180"/>
+    <rect class="new" x="536" y="158" width="388" height="34" rx="5"/>
+    <text class="t-h c-code" x="550" y="180">roster</text>
+    <text class="t-s" x="613.2" y="180">the workers one user has</text>
+  </g>
+  <g id="row-4">
+    <rect class="old" x="16" y="202" width="388" height="34" rx="5"/>
+    <text class="t-b c-old" x="30" y="224">mailbox · its member · its thread</text>
+    <line class="arrow" x1="410" y1="219" x2="520" y2="219"/>
+    <polygon class="head" points="520,214 530,219 520,224"/>
+    <rect class="new" x="536" y="202" width="388" height="34" rx="5"/>
+    <text class="t-h c-code" x="550" y="224">coordinator · delegate</text>
+    <text class="t-s" x="744.4" y="224">and the delegate's session</text>
+  </g>
+  <g id="row-5">
+    <rect class="old" x="16" y="246" width="388" height="34" rx="5"/>
+    <text class="t-b c-old" x="30" y="268">room · talk session</text>
+    <line class="arrow" x1="410" y1="263" x2="520" y2="263"/>
+    <polygon class="head" points="520,258 530,263 520,268"/>
+    <rect class="new" x="536" y="246" width="388" height="34" rx="5"/>
+    <text class="t-h c-code" x="550" y="268">project coordinator</text>
+    <text class="t-s" x="719.8" y="268">one per user per project</text>
+  </g>
+  <g id="row-6">
+    <rect class="old" x="16" y="290" width="388" height="34" rx="5"/>
+    <text class="t-b c-old" x="30" y="312">person, for the signed-in user</text>
+    <line class="arrow" x1="410" y1="307" x2="520" y2="307"/>
+    <polygon class="head" points="520,302 530,307 520,312"/>
+    <rect class="new" x="536" y="290" width="388" height="34" rx="5"/>
+    <text class="t-h c-code" x="550" y="312">user</text>
+    <text class="t-s" x="596.8" y="312">a person, signed in, in one org</text>
+  </g>
+
+  <g id="kept">
+    <line class="fence" x1="16" y1="344" x2="924" y2="344"/>
+    <rect class="foot" x="16" y="356" width="908" height="70" rx="5"/>
+    <text class="t-lbl" x="32" y="375">KEPT, BY DESIGN</text>
+    <text class="t-s" x="32" y="395">a task board's seat, its types and its hand-off's seat field (D1) · saved key strings (D2)</text>
+    <text class="t-s" x="32" y="413">the engine's flow kind, flow instances and owner pins, until FIX-1798 · its dispatch target · specs, changelogs, blog posts · words in goals</text>
+  </g>
+</svg>
