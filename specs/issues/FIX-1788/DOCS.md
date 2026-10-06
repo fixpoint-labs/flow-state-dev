@@ -5,20 +5,24 @@
 FIX-1788 publishes the specifics the epic's [ownership table](../../epics/FIX-1786/DOCS.md#ownership)
 gives it: standard and non-standard workers, forking, and a session's worker. The shared
 opening is the epic's, published by FIX-1796. Quoted prose follows the outsider rule
-([`user-docs.md`](../../../docs/contributing/user-docs.md)). Names in it that `PLAN.md` doesn't
-pin (the session-state option, the upgrade command, `fork`) are reconciled with the shipped
-code before publishing. Q1's answer sets one sentence, marked below.
+([`user-docs.md`](../../../docs/contributing/user-docs.md)) and uses the new terms: worker,
+worker flow, user. Pinned names are `PLAN.md`'s. Draft names, reconciled with the shipped code
+before publishing: `serverOwned`, `createCheck` and its `link` input, `createWorkerHireBlocks`,
+`fork`, the upgrade command. `workerFlows` is FIX-1789's.
 
-## UPDATE · `apps/docs/docs/configuration/flow.md` · the `session` table, a new row after `client`
+## UPDATE · `apps/docs/docs/configuration/flow.md` · the `session` table, two new rows after `client`
 
-> | `serverOwned` | `string[]` | none | Session-state fields only your flow's code writes. Creating a session with a value for one is refused with a 400 that names the field. Use it for anything that decides what a session may do, such as which worker it runs. |
+> | `createCheck` | function | none | Runs before a session of this flow is written, on every path that creates one: the create request, an action sent to a session id that doesn't exist yet, and a transport that opens sessions. It receives the verified caller and the create's `link` input. It refuses the create, or returns a value stored on the session that nothing can change afterwards. A create with no `link` input is refused. |
+> | `serverOwned` | `string[]` | none | Session-state fields only your flow's code writes. Creating a session with a value for one is refused with a 400 that names the field. Use it for state that decides what a session may do and changes as it runs. |
 
 ## UPDATE · `apps/docs/docs/fundamentals/state-and-scopes.md` · "Creating sessions", a new last paragraph
 
 > A caller can pass initial `state` when it creates a session. That suits preferences and
-> drafts, and it is the wrong place for a value that grants anything: the caller wrote it.
-> Declare such fields in `serverOwned`. The create then refuses a value for them, and only a
-> block in your flow can set them, from something it checked.
+> drafts, and it is the wrong place for a value that grants anything: the caller wrote it. A
+> value fixed for the session's life, such as which worker it runs, belongs to `createCheck`,
+> which checks it before the session exists. A value your flow changes as it runs belongs in a
+> `serverOwned` field: the create refuses a value for it, and only a block in your flow can set
+> it.
 
 ## REPLACE · `apps/docs/docs/workforce/durable-hire.md` · the whole page
 
@@ -37,9 +41,9 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > is registered and nothing restarts: the next turn on any of your processes can use it.
 >
 > ```ts
-> import { createSeatHireBlocks } from "@flow-state-dev/workforce"
+> import { createWorkerHireBlocks } from "@flow-state-dev/workforce"
 >
-> const { hire, fork, fire } = createSeatHireBlocks({ kinds })
+> const { hire, fork, fire } = createWorkerHireBlocks({ workerFlows })
 >
 > defineFlow({
 >   kind: "roster-admin",
@@ -50,17 +54,24 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > `hire` takes an id, the flow the worker runs on, and its settings, the same keys a
 > `WORKER.md` accepts. The worker's flow checks the settings when the row is saved. A bad
 > value, a flow your installation doesn't run workers on or keeps for standard workers, or an id
-> already on the user's roster
-> is refused, and nothing is written. An id can't be a standard worker's: fork it instead.
+> already on the user's roster is refused, and nothing is written. An id can't be a standard
+> worker's: fork it instead.
 >
-> ## Forking a standard worker
+> ## Forking a worker
 >
 > `fork` starts a new worker of the user's own from a standard worker's configuration, under a
-> new id. The standard worker doesn't change, for this user or anyone else. *(Q1: the fork
-> keeps a copy of the standard worker's instructions, and doesn't change when your
-> installation's files do. Fork again to pick up a change.)*
+> new id. The fork keeps a copy of the standard worker's instructions, and doesn't change when
+> your installation's files do. Fork again to pick up a change. The standard worker doesn't
+> change, for this user or anyone else.
 >
-> ## Firing a worker
+> A fork starts with no conversations. The user's sessions with the worker they forked stay
+> with that worker.
+>
+> ## Changing or firing a worker
+>
+> An edit to a worker reaches its next turn, in every session. If the edit moves the worker to
+> a different flow, its earlier sessions stop taking messages, with both flows named: a session
+> stays on the flow it was created on. Start a new session to talk to the worker on its new flow.
 >
 > `fire` deletes the row. Its past sessions stay readable to their owner. A new message to one
 > is refused with the worker named as fired. Every process sees the fire on the next turn.
@@ -68,8 +79,8 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > ## Who can reach a worker
 >
 > Only its owner. A worker belongs to one user in one organization: another member can't list
-> it, open its sessions, send it a message or name it in a session of their own. A user who
-> belongs to two organizations has a separate roster in each.
+> it, open its sessions, send it a message or create a session with it. A user who belongs to
+> two organizations has a separate roster in each.
 >
 > ## What is stored
 >
@@ -87,7 +98,7 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 
 > Every `WORKER.md` is a **standard worker**. Every user of every organization in the
 > installation has it, configured exactly as the file says, and nobody can edit it while the app
-> runs. To change one for yourself, [fork it](./durable-hire.md#forking-a-standard-worker).
+> runs. To change one for yourself, [fork it](./durable-hire.md#forking-a-worker).
 >
 > Each flow a worker names runs as one copy, shared by every worker that names it. A hundred
 > workers on `agent` are one registered flow, not a hundred. What makes them different is their
@@ -97,22 +108,60 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 
 > ## Talking to a worker
 >
-> Send to the flow the worker runs on, and name the worker:
+> A conversation with a worker is a session, and a session runs one worker for its whole life.
+> You name the worker when the session is created. Messages after that never name it.
+>
+> **1. Pick the worker.** The user's roster lists their own workers and the standard ones. Each
+> entry names the flow it runs on, as `flow` (most run on `agent`).
+>
+> **2. Find or start the session.**
 >
 > ```ts
-> await client.actions("agent").sendAction("run", { message, worker: "researcher" }, { sessionId })
+> import { ensureWorkerSession, findWorkerSession } from "@flow-state-dev/workforce"
+>
+> const session = await ensureWorkerSession({ worker: "researcher" })
 > ```
 >
-> The first message links the session to that worker. The server checks the worker is yours or
-> a standard one and that it runs on this flow, then records the link where callers can't write
-> it. Later messages can leave `worker` out. Naming a different worker on a linked session is
-> refused: start a new session instead. A worker that isn't yours is refused with the same answer
-> as one that doesn't exist.
+> `ensureWorkerSession` returns the user's session with that worker, and creates one if there
+> isn't one. It looks up the worker's flow for you. Two calls at once get the same session, not
+> two. When you only want to check, `findWorkerSession` takes the same argument and returns the
+> session or nothing.
 >
-> Tasks and messages your other workers hand to this one open sessions the same way, through
-> the same check.
+> Both are built on the session client, which you can call directly. Use it to start a second
+> conversation with the same worker:
+>
+> ```ts
+> import { createSessionClient } from "@flow-state-dev/client"
+>
+> const sessions = createSessionClient({ baseUrl })
+> const mine = await sessions.listSessions({ flowKind: "agent", userId, worker: "researcher" })
+> const fresh = await sessions.createSession({ flowKind: "agent", userId, worker: "researcher" })
+> ```
+>
+> The server checks the worker when the session is created: it must be yours or a standard
+> one, and it must run on this flow. A worker that isn't yours is refused with the same answer
+> as one that doesn't exist. A session created without a worker is refused. The link is stored
+> where callers can't write it, and it never changes.
+>
+> **3. Talk to it.** An ordinary action on that session:
+>
+> ```ts
+> import { createClient } from "@flow-state-dev/client"
+>
+> const agent = createClient({ flowKind: session.flowKind, userId })
+> await agent.sendAction("run", { message }, { sessionId: session.id })
+> ```
+>
+> In React, pass the worker to `useFlow`, which lists and creates that worker's sessions:
+>
+> ```tsx
+> const flow = useFlow({ flowKind: "agent", worker: "researcher", autoCreateSession: true })
+> ```
+>
+> Tasks and messages your other workers hand to this one open sessions the same way, naming the
+> worker when the session is created.
 
-## UPDATE · `apps/docs/docs/persistence/overview.md` · after "Upgrading: moving hired seats' stored data", a new section
+## UPDATE · `apps/docs/docs/persistence/overview.md` · a new section after the existing upgrade section for stored hire data
 
 > ## Upgrading: hired workers become worker rows
 >
@@ -137,12 +186,16 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > Nothing is deleted. The earlier rows stay, and running the step again changes nothing it
 > already moved.
 
-## UPDATE · `packages/workforce/README.md` and `packages/engine/README.md`
+## UPDATE · `packages/workforce/README.md`, `packages/engine/README.md`, `packages/client/README.md`
 
 > **workforce:** A worker is a row in its owner's data, run by one shared copy of the flow it
-> names. `hire`, `fork` and `fire` write it; a session names its worker on its first message.
+> names. `hire`, `fork` and `fire` write it. A session names its worker when it is created;
+> `ensureWorkerSession` and `findWorkerSession` find or start one.
 >
-> **engine:** `session.serverOwned` names session-state fields the session create refuses.
+> **engine:** `session.createCheck` checks a value at session create and stores it where nothing
+> changes it; `session.serverOwned` names session-state fields the session create refuses.
+>
+> **client:** `createSession` takes `worker`, and `listSessions` filters by it.
 
 ## Publication ownership
 

@@ -58,6 +58,6 @@ already defined once and handed to the hire by name. `legacy-desk` and
 
 ## What it doesn't cover
 
-Flows an app hands the hire with no `WORKER.md` naming them (a runtime hire's kinds, say).
+Flows an app hands the hire with no `WORKER.md` naming them (a runtime hire's `workerFlows`, say).
 `PLAN.md` → V0 finds those at implement time from every `hireWorkforce` call. Files under
 `specs/` are retained POC evidence and are not converted.

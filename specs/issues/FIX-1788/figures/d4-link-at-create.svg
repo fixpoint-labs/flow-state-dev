@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="D2: where a worker hired for the whole org goes. Chosen: a private copy for each member who talked to it. Instead of: nobody&#x27;s until an operator names an owner. The row that decides it, what each user already had: each member keeps their conversations and memory with it and nobody gains anything, against a worker users rely on daily stopping for everyone. Second row, how many workers: one per member who used it, each then changing on its own, against one, kept whole. Third row, operator work: none, against naming an owner per hire by hand. Locks in: one worker becomes several; the old row stays for the library later. Flips if teams relied on one memory changing for everyone at once.">
+     aria-label="D4, the call: where does a session learn which worker it runs, when it is created or on its first message? Chosen: at create, in a server-only field on the session record. Instead of: on the first turn, in server-owned session state. The row that decides it, what carries the worker: the session, once, so messages never name a worker, against the first message, so every app call carries it. Second row, where it is checked: an engine check on every way a session is made, against flow code on a turn with no create hook. Third row, a session with no worker: never written, refused at create, against existing until its first turn and refused only then. Locks in a create check on every path that opens a session, and a worker option on session create and list with two lookup helpers. Flips if an app must open a session before it knows which worker it runs.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -11,7 +11,6 @@
     .bg     { fill:var(--surface); }
     .ask    { fill:var(--surface-2); }
     .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
-    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
     .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
     .decide { fill:var(--accent-soft); }
     .bar    { fill:var(--accent); }
@@ -35,62 +34,62 @@
   <rect class="bg" x="0" y="0" width="940" height="418"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Where does a worker hired for the whole org go?</text>
+    <text class="t-lbl" x="32" y="32">D4 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where does a session learn its worker: when it is created, or on its first message?</text>
   </g>
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">A copy for each member who used it</text>
+    <text class="t-h c-code" x="228" y="112">At create, a server-only field</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Nobody&#x27;s, until an operator names one</text>
+    <text class="t-h c-lost" x="592" y="112">On the first turn, server-owned state</text>
   </g>
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WHAT EACH USER</text>
-    <text class="t-lbl" x="32" y="169">ALREADY HAD</text>
+    <text class="t-lbl" x="32" y="156">WHAT CARRIES</text>
+    <text class="t-lbl" x="32" y="169">THE WORKER</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Kept, and nothing new</text>
-    <text class="t-s" x="248" y="179">their conversations and memory</text>
+    <text class="t-b" x="248" y="161">The session, once</text>
+    <text class="t-s" x="248" y="179">messages never name a worker</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Stops for everyone</text>
-    <text class="t-s" x="612" y="179">until an operator acts</text>
+    <text class="t-b" x="612" y="161">The first message</text>
+    <text class="t-s" x="612" y="179">every app call shape carries it</text>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="218">HOW MANY</text>
-    <text class="t-lbl" x="32" y="231">WORKERS</text>
+    <text class="t-lbl" x="32" y="218">WHERE IT IS</text>
+    <text class="t-lbl" x="32" y="231">CHECKED</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">One per member who used it</text>
-    <text class="t-s" x="248" y="241">each changes on its own</text>
+    <text class="t-b" x="248" y="223">An engine check at create</text>
+    <text class="t-s" x="248" y="241">on every way a session is made</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">One, kept whole</text>
-    <text class="t-s" x="612" y="241">under its named owner</text>
+    <text class="t-b" x="612" y="223">Flow code, on a turn</text>
+    <text class="t-s" x="612" y="241">no create hook</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
   <g id="row-3">
-    <text class="t-lbl" x="32" y="276">OPERATOR</text>
-    <text class="t-lbl" x="32" y="289">WORK</text>
+    <text class="t-lbl" x="32" y="276">A SESSION WITH</text>
+    <text class="t-lbl" x="32" y="289">NO WORKER</text>
     <text class="mark plus" x="228" y="282">+</text>
-    <text class="t-b" x="248" y="281">None</text>
-    <text class="t-s" x="248" y="299">the step reads the sessions</text>
+    <text class="t-b" x="248" y="281">Never written</text>
+    <text class="t-s" x="248" y="299">refused at create</text>
     <text class="mark minus" x="592" y="282">−</text>
-    <text class="t-b" x="612" y="281">Name an owner, per hire</text>
-    <text class="t-s" x="612" y="299">by hand</text>
+    <text class="t-b" x="612" y="281">Exists until its first turn</text>
+    <text class="t-s" x="612" y="299">refused only then</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">One worker becomes several</text>
-    <text class="t-s" x="32" y="387">the old row stays, for the library later</text>
+    <text class="t-b" x="32" y="369">A create check on every way in</text>
+    <text class="t-s" x="32" y="387">worker on create and list; two lookup helpers</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">Teams relied on one shared memory</text>
-    <text class="t-s" x="494" y="387">then hold the hire for the operator</text>
+    <text class="t-b" x="494" y="369">An app must open a session</text>
+    <text class="t-s" x="494" y="387">before it knows which worker runs it</text>
   </g>
 </svg>
