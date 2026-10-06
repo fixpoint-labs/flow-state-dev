@@ -64,13 +64,14 @@ On the left, a worker is a registered copy. On the right, it is data, and the co
 
 ```diff
   import { createClient } from "@flow-state-dev/client"
-+ import { ensureWorkerSession } from "@flow-state-dev/workforce"
++ import { createWorkforceClient } from "@flow-state-dev/workforce"
 
 - const researcher = createClient({ flowKind: "acme.~alice.researcher", userId })
 - await researcher.sendAction("run", { message }, { sessionId })
-+ const session = await ensureWorkerSession({ worker: "researcher" })   // finds hers, or creates one linked to it
-+ const agent = createClient({ flowKind: session.flowKind, userId })     // the flow the worker names
-+ await agent.sendAction("run", { message }, { sessionId: session.id })  // no worker in the message
++ const workforce = createWorkforceClient({ userId, baseUrl })                  // same options as createSessionClient
++ const session = await workforce.ensureWorkerSession({ worker: "researcher" })  // finds hers, or creates one linked to it
++ const agent = createClient({ flowKind: session.flowKind, userId })            // the flow the worker names
++ await agent.sendAction("run", { message }, { sessionId: session.id })         // no worker in the message
 ```
 
 Underneath, the helper is today's session client with two new options:

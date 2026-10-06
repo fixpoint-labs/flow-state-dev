@@ -40,7 +40,7 @@ work.
 | BR-18a | A coordinator's session records its delegates after create | Held in server-written session state: flow code writes it, a caller can't (BR-15), and the link beside it stays fixed. FIX-1791 consumes it. Its delivery opens each delegate's session through `ensureWorkerSession`, with the worker and FIX-1791's coordinator-conversation key named; it can't post to a fresh id and rely on the turn (BR-14) | CI, on a fixture flow |
 | BR-19 | A linked worker is fired | The turn is refused, naming it as fired. The session stays readable | CI |
 | BR-19a | A linked worker's flow is no longer registered | The turn is refused. The session reads as a session of any unregistered flow reads today: this issue adds no engine read path (ER-22) | CI |
-| BR-19b | Alice edits a worker to name a different flow | The link holds. A turn on a session created before the edit is refused, naming both flows. New sessions are created on the new flow | CI |
+| BR-19b | Alice edits a worker to name a different flow | The link holds. A turn on a session created before the edit is refused, naming both flows. New sessions are created on the new flow: `ensureWorkerSession` finds none there and creates one at a new id | CI |
 | BR-19c | Alice forks a worker she already has sessions with | The fork is a new worker with no sessions. Those sessions stay with the original | CI |
 
 ## What a worker runs with

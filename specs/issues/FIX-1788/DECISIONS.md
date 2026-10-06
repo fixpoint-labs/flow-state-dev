@@ -117,7 +117,9 @@ What PLAN doesn't hold:
   FIX-1788 pick and build the mechanism and FIX-1791 consume it. The create must also refuse those
   fields before any app can seed them. FIX-1791's delegates ([#2815](https://github.com/fixpoint-labs/flow-state-dev/pull/2815))
   are the consumer.
-- **The app-facing API is today's client plus two helpers** (Jake, #2812). Their criteria object
+- **The app-facing API is today's client plus two helpers** (Jake, #2812). They are methods on a
+  bound `createWorkforceClient({ userId, baseUrl })`, with the session client's transport options,
+  so they need no ambient state and no new endpoint (Codex on #2818). Their criteria object
   grows later: [FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794) adds `taskId`,
   [FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793) adds `workstreamId`, and FIX-1791
   adds a key for the coordinator conversation a delegate's session belongs to. The engine knows no

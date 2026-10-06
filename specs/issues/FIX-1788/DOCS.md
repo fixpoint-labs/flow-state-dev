@@ -10,8 +10,8 @@ worker flow, user.
 
 | Shipped names | |
 |---|---|
-| **Pinned** ([PLAN.md](PLAN.md#pinned-names)) | `worker` on `createSession` · `worker` on `listSessions` · the roster's `flow` · `findWorkerSession` · `ensureWorkerSession` · `workerFlows` (FIX-1789's) |
-| **Drafts**, reconciled with the shipped code before publishing | `createCheck` and its `link` input · `serverOwned` · `createWorkerHireBlocks` · `fork` · `useFlow`'s `worker` · `fsdev run --worker` · the upgrade command |
+| **Pinned** ([PLAN.md](PLAN.md#pinned-names)) | `worker` on `createSession` · `worker` on `listSessions` · the roster's `flow` · `createWorkforceClient` and its methods `findWorkerSession` and `ensureWorkerSession` · `workerFlows` (FIX-1789's) |
+| **Drafts**, reconciled with the shipped code before publishing | `createCheck` and its `link` input · `serverOwned` · `createWorkerHireBlocks` · `fork` · the React hook `useWorkforce` · `useFlow`'s `worker` · `fsdev run --worker` · the upgrade command |
 
 ## UPDATE · `apps/docs/docs/configuration/flow.md` · the `session` table, two new rows after `client`
 
@@ -120,14 +120,17 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > **2. Find or start the session.**
 >
 > ```ts
-> import { ensureWorkerSession, findWorkerSession } from "@flow-state-dev/workforce"
+> import { createWorkforceClient } from "@flow-state-dev/workforce"
 >
-> const session = await ensureWorkerSession({ worker: "researcher" })
+> const workforce = createWorkforceClient({ userId, baseUrl })
+> const session = await workforce.ensureWorkerSession({ worker: "researcher" })
 > ```
 >
-> `ensureWorkerSession` returns the user's session with that worker, and creates one if there
-> isn't one. It looks up the worker's flow for you. Two calls at once get the same session, not
-> two. When you only want to check, `findWorkerSession` takes the same argument and returns the
+> `createWorkforceClient` takes the same options as `createSessionClient`. Its
+> `ensureWorkerSession` returns the user's most recent session with that worker, and creates one
+> if there isn't one. It looks up the worker's flow for you. Two calls at once get the same
+> session, not two. If you move a worker to another flow, the next call starts a new session
+> there. When you only want to check, `findWorkerSession` takes the same argument and returns the
 > session or nothing.
 >
 > Both are built on the session client, which you can call directly. Use it to start a second
@@ -155,9 +158,11 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > await agent.sendAction("run", { message }, { sessionId: session.id })
 > ```
 >
-> In React, pass the worker to `useFlow`, which lists and creates that worker's sessions:
+> In React, `useWorkforce` gives you the same client, and `useFlow` takes the worker, so it lists
+> and creates only that worker's sessions:
 >
 > ```tsx
+> const workforce = useWorkforce()
 > const flow = useFlow({ flowKind: "agent", worker: "researcher", autoCreateSession: true })
 > ```
 >
@@ -193,7 +198,7 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 
 > **workforce:** A worker is a row in its owner's data, run by one shared copy of the flow it
 > names. `hire`, `fork` and `fire` write it. A session names its worker when it is created;
-> `ensureWorkerSession` and `findWorkerSession` find or start one.
+> `createWorkforceClient(...).ensureWorkerSession` and `findWorkerSession` find or start one.
 >
 > **engine:** `session.createCheck` checks a value at session create and stores it where nothing
 > changes it; `session.serverOwned` names session-state fields the session create refuses.
