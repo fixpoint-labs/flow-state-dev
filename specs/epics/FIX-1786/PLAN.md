@@ -27,7 +27,7 @@ builds after the MVP (Q2). The privacy fix is checked when workers merges, not o
 | **FIX-1795** library | spec now → impl PR after the MVP | ER-1's write path | Templates and copies, model variants (ER-10) | Nothing in the MVP; it builds once the closure run passes | Medium |
 | **FIX-1793** projects | spec → impl PRs | ER-4 · ER-3 · FIX-1762's locks · Q2 · FIX-1774's leg d | Private and shared projects (Q2); workstream resources, the row rule, the project coordinator; rooms and Shift Manager's Stream tab removed (ER-7, ER-8) | FIX-1792 | Large: about 2,200 lines out, one engine rule in |
 | **FIX-1794** chain | spec → impl PR | ER-4's delegates · FIX-1778 · FIX-1780's hand-off rule and follow-through · FIX-1777's rule · FIX-1774's leg e | Tasks filed for delegates down the owner's boards, drained as the owner and followed through, so a coordinator files tasks only from here; every board in the chain keeps its rows at the owner's user scope, one partition per conversation (ER-9, D6) | FIX-1792 · FIX-1796 | Medium, with one task-board change (D6) |
-| **FIX-1792** `WORKER.md` | spec → impl PRs | ER-4 · ER-7 · D5 · FIX-1794's conversation board (D6) · FIX-1791 P2's rounds | 33 files converted, 15 boards resolved, old files refused (ER-6); project claims and a project row's mailbox list removed, which FIX-1793 leaves deprecated; discovery's `mailboxes` domain removed | FIX-1796 | Large: five PRs as a stack, P1, P2, P3, P4a (the refusal) and P4b (the removal) |
+| **FIX-1792** `WORKER.md` | spec → impl PRs | ER-4 · D5 · FIX-1794's conversation board (D6) · FIX-1791's P2 (`everyone`, `rounds`) · FIX-1793's project code, for removing claims | 33 files converted, all 15 boards on conversation boards, old files refused (ER-6); project claims and a project row's mailbox list removed, which FIX-1793 leaves deprecated; discovery's `mailboxes` domain removed | FIX-1796 | Large: five PRs as a stack. P1 after FIX-1791 through its P2 (`everyone`); P2 after FIX-1791's P2 (`rounds`) and FIX-1794; P3 after FIX-1791's P2, FIX-1794 and FIX-1793 (for S10); P4a after P1–P3; P4b after P4a |
 | **FIX-1796** terms | spec → impl PRs | Every child merged except FIX-1795, which is new code in the new terms (ER-25) | The sweep and the glossary (ER-12); discovery's `seats` domain renamed `workers` (D7) | The closure run | Medium, wide and mechanical |
 | **FIX-1797** closure · required | spec (the QA plan) → runs until clean → PR | Every other child except FIX-1795, on one `main` commit (ER-27) | The committed checks, an early leg-c run when FIX-1788 merges (ER-30), a QA report, a bug child per failure | The wrap | Medium, repeats per retest |
 
@@ -50,13 +50,14 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
    Until a run is green, a related sub-issue of FIX-1797 holds both from merging, though they
    build meanwhile; closing a bug child alone releases neither (FIX-1797's spec,
    [#2835](https://github.com/fixpoint-labs/flow-state-dev/pull/2835)).
-4. **FIX-1791 merges** → FIX-1793 and FIX-1794, and FIX-1792's P1, its coordinators without
-   boards. FIX-1794 merges → FIX-1792's P2, which moves each session board onto FIX-1794's
-   conversation board (D6). FIX-1793 and FIX-1794 both merged → its P3, the DevTeam and its
-   workstreams, then P4a, the refusal, and P4b, the removal, as a stack
-   ([#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833)'s PLAN). P2 and P3 also
-   need FIX-1791's P2: the five coordinators they convert run `judgment` with `rounds: 1`, and
-   rounds ship in that PR. So FIX-1791 must not cut rounds from its P2. One exception: FIX-1794's
+4. **FIX-1791 merges** → FIX-1793 and FIX-1794. FIX-1792 is five PRs as a stack
+   ([#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833)'s PLAN). P1, coordinators
+   without boards, waits for FIX-1791 through its P2, where `everyone` ships. P2, the
+   conversation boards, waits for FIX-1791's P2 (`rounds`) and FIX-1794, and moves each session
+   board onto FIX-1794's conversation board (D6). P3, the DevTeam and claims, waits for FIX-1791's
+   P2, FIX-1794 and FIX-1793, for its S10. P4a, the refusal, waits for P1 to P3, and P4b, the
+   removal, for P4a. The five coordinators P2 and P3 convert run `judgment` with `rounds: 1`, so
+   FIX-1791 must not cut `rounds`, or `everyone`, from its P2. One exception: FIX-1794's
    first PR (the partitioned board, D6) touches only orchestration on its own fixtures, so it may
    start now that D6 is recorded, without waiting for FIX-1791. FIX-1793's workstream boards
    live on that partition, so its board-consuming slice merges only after FIX-1794's first PR.
@@ -91,7 +92,11 @@ FIX-1763 and its children, whose org-level project fence Q2 lifted · FIX-1650 a
 first and get an evolution note · FIX-1775, long-lived memory · FIX-1778, consumed · FIX-1762's
 stack, merged and consumed · FIX-1765 and FIX-1764, specced after FIX-1791 · FIX-1745, obsolete when rooms
 go · FIX-1766, FIX-1767 and FIX-1768, carried into FIX-1793's spec · FIX-1798, which removes flow
-instances and owner pins from the engine; FIX-1788 blocks it, and each deprecation marker names it.
+instances and owner pins from the engine; FIX-1788 blocks it, and each deprecation marker names it ·
+[FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802), a worker splitting its task across
+its own delegates, which also gives a coordinator a way to take a delegated post. It carries the
+DevTeam's feature and release workstreams on storefront and its coding runs' placement in the
+project, which FIX-1792 leaves on conversation boards.
 
 ## Wrap
 

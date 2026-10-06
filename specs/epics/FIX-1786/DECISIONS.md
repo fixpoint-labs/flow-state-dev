@@ -90,7 +90,7 @@ noun in core earns its place.
 |---|---|
 | **Instead of** | One rule per file type (every lab board a workstream) · or keeping an org-scoped board as a third shape |
 | **Because** | An org-scoped board is the shape this epic removes: any member's session drains it, and the session's user doesn't narrow it. A session board is private and needs no project; a workstream costs a project. So FIX-1792 asks one question per board: does the work outlive one conversation, and does a person track it? Yes makes it a workstream; otherwise, and when unclear, a session board. Goal fixtures that test board mechanics become session boards |
-| **Locks in** | FIX-1792 waits on FIX-1793 for the workstream option. The per-board table is FIX-1792's spec. A session board that hands rows to a delegate on another flow can't be shared down the lineage, which stops at a flow, and still stays its own board: never one ledger for all its owner's sessions. [D6](#d6) is how ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Locks in** | FIX-1792 waits on FIX-1793 only for the claims removal (its S10). The per-board table is FIX-1792's spec: all 15 boards are conversation boards. The DevTeam's feature board is the one that should become a workstream, and does with FIX-1802, which gives a coordinator a way to take a delegated post. A session board that hands rows to a delegate on another flow can't be shared down the lineage, which stops at a flow, and still stays its own board: never one ledger for all its owner's sessions. [D6](#d6) is how ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 <a name="d6"></a>
 ## D6 · A board keeps its tasks at its owner's user scope, in a partition only its own conversation reaches
@@ -348,7 +348,8 @@ engine rule. The closure only checks.
   `workers` ([D7](#d7)), on the product owner's rule that "seat" names a place on a task board
   only (#2832). It is the fifth Layer 1 change ([D3](#d3)); the board keeps its word, and the
   glossary defines it. The channel-kind paths the draft kept don't exist on `main`, so the spec
-  stops naming them. The plan gives FIX-1792 five PRs, ties two of them to FIX-1791's rounds, and
-  notes FIX-1797's milestone hold.
+  stops naming them. The plan gives FIX-1792 five PRs, ties them to FIX-1791's P2, and notes
+  FIX-1797's milestone hold. All 15 of FIX-1792's boards go to conversations, so it waits on
+  FIX-1793 only to remove claims; the DevTeam's workstreams move to FIX-1802 (#2833).
 
 **Open: none.**

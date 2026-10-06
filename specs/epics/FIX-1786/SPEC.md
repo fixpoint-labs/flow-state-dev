@@ -114,7 +114,7 @@ flowchart LR
   K -->|"the project coordinator"| P["FIX-1793 · projects and workstreams"]
   K -->|"delegates as assignees"| H["FIX-1794 · assignment chain"]
   K -->|"the coordinator flow"| M["FIX-1792 · MAILBOX.md to WORKER.md"]
-  P -->|"workstreams for boards"| M
+  P -->|"the claims to remove"| M
   H -->|"the conversation board"| M
   M --> T["FIX-1796 · terminology"]
   H --> T
