@@ -39,6 +39,12 @@
     @apply border-border;
   }
 
+  /* Scrollbars take the theme: a thin thumb in the border colour on a clear track. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
   }
