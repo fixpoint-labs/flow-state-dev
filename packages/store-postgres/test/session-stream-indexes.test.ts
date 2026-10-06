@@ -27,7 +27,7 @@
  * itself sends (`sessionStreamReads`), as `list-option-widenings.test.ts`
  * measures the child listing.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import type { SessionRecord } from "@flow-state-dev/engine";
 import { sessionStreamReads } from "@flow-state-dev/engine/testing";
@@ -118,9 +118,41 @@ const INSERT_CHUNK = 10_000;
  */
 const turn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
+/** Batches the seed writes; a test's own batches are tagged after them, so ids never collide. */
+const SEED_BATCHES = 4;
+
+/**
+ * The seeded database, built once per file. Seeding 400,000 rows is nearly all
+ * of this file's time, and every test starts from the same rows, so each test
+ * runs inside a transaction on it that is rolled back afterwards. Postgres
+ * rolls back the rows a test adds and the statistics its `ANALYZE` writes, so
+ * the next test sees the seed exactly as the first one did.
+ */
+let seeded: Promise<PGlite> | undefined;
+let open: PGlite | undefined;
+
+afterEach(async () => {
+  await open?.query("ROLLBACK");
+  open = undefined;
+});
+
 async function harness(): Promise<Harness> {
-  const db: PGlite = await freshPglite();
-  await turn();
+  seeded ??= (async () => {
+    const db = await freshPglite();
+    await turn();
+    await seed(await connect(db, { initSchema: true, firstBatch: 0 }));
+    return db;
+  })();
+  const db = await seeded;
+  await db.query("BEGIN");
+  open = db;
+  return connect(db, { initSchema: false, firstBatch: SEED_BATCHES });
+}
+
+async function connect(
+  db: Pick<PGlite, "query">,
+  options: { initSchema: boolean; firstBatch: number }
+): Promise<Harness> {
   const direct: QueryExecutor = {
     async query(text: string, values?: unknown[]) {
       const result = await db.query(text, values);
@@ -128,7 +160,7 @@ async function harness(): Promise<Harness> {
       return { rows: result.rows as Record<string, unknown>[], rowCount: result.affectedRows ?? 0 };
     }
   };
-  await initializeSchema(direct);
+  if (options.initSchema) await initializeSchema(direct);
 
   // Record what the store sends so the measurement explains the store's own SQL.
   const sent: Array<{ sql: string; params: unknown[] }> = [];
@@ -140,7 +172,7 @@ async function harness(): Promise<Harness> {
   };
   const stores = await createPostgresStores({ executor: recording, skipSchemaInit: true });
 
-  let batch = 0;
+  let batch = options.firstBatch;
   const add: Harness["add"] = async (session, parent, from, count, scope = {}) => {
     const tag = `b${batch++}`;
     const user = `'${scope.user ?? "alice"}'`;
@@ -179,6 +211,11 @@ async function harness(): Promise<Harness> {
     return walk(plan, { rows: 0, removed: 0, plan: "" });
   };
 
+  return { add, measure };
+}
+
+/** The rows every test starts from, written in {@link SEED_BATCHES} batches. */
+async function seed({ add }: Harness): Promise<void> {
   // The followed session holds more than a page of recent rows, so every read
   // returns a full page before and after and only the work behind it can move.
   await add(() => "'target'", () => "'target'", 50_000, 30, { org: "org_a" });
@@ -194,7 +231,6 @@ async function harness(): Promise<Harness> {
     tenant: "acme",
     org: "org_a"
   });
-  return { add, measure };
 }
 
 /** Assert each read examines and discards no more rows now than `before`. */
