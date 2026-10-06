@@ -31,7 +31,7 @@ import type {
   SessionConfig,
   UserConfig
 } from "@flow-state-dev/core/types";
-import type { DeclaredResources } from "@flow-state-dev/core";
+import { firstInProcess, type DeclaredResources } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
 import {
   INSTRUCTIONS_KEY,
@@ -208,7 +208,8 @@ export interface HireOptions {
    * Handed over so this step can say when a mailbox holds a board **no flow
    * hired here declares**: the rows would sit `pending` forever with nothing
    * said, which is the one failure a declared board can produce silently. Each
-   * unattended id gets a `console.warn` naming the mailbox and the id.
+   * unattended id gets a `console.warn` naming the mailbox and the id, once per
+   * process: a later hire that finds the same board unattended says nothing.
    *
    * **A warning, never a refusal**, and the reason is in the evidence rather
    * than in a preference: a seat may legitimately live in another process, and
@@ -948,14 +949,23 @@ export function hireWorkforce(
 
   // After the refusals, deliberately: a roster that did not hire has nothing
   // to be unattended by, and a warning printed beside a fatal error is noise.
-  for (const warning of unattendedBoardWarnings(options.mailboxBoards ?? [], seats)) {
-    console.warn(warning);
+  // Once per process per board (see `firstInProcess`), so a hot reload stays
+  // quiet while a board that newly goes unattended still prints.
+  for (const boardId of options.mailboxBoards ?? []) {
+    for (const warning of unattendedBoardWarnings([boardId], seats)) {
+      if (firstInProcess(`workforce/unattended-board/${boardId}`)) console.warn(warning);
+    }
   }
   // A kind with two doors is reported, not refused: the seat is hired, and
   // published with no door, so it takes no message until one is removed.
+  // Once per process per problem: keyed on the sentence, which names the seat,
+  // its kind and its doors, so a hot reload stays quiet while a changed problem
+  // still prints.
   for (const seat of seats) {
     const { problem } = seatDoorOf(seat);
-    if (problem !== undefined) console.warn(`[workforce] ${problem}`);
+    if (problem !== undefined && firstInProcess(`workforce/two-doors/${problem}`)) {
+      console.warn(`[workforce] ${problem}`);
+    }
   }
 
   return seats;

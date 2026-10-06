@@ -6,9 +6,9 @@
  * lists every workstream on its own, the flat list PROJECTS drew before
  * projects shipped. The goal must fail at "PROJECTS equals the store's rows".
  */
-import { projectsOf as groupedAsWritten, type LoadedSnapshot } from "../../../../labs/shift-manager/src/lib/derive.ts";
+import { projectsOf as groupedAsWritten, type LoadedSnapshot } from "../../../../packages/shift-manager/src/lib/derive.ts";
 
-export * from "../../../../labs/shift-manager/src/lib/derive.ts";
+export * from "../../../../packages/shift-manager/src/lib/derive.ts";
 
 /** Every workstream, no project: the rows are never read into the grouping. */
 export function projectsOf(snapshot: LoadedSnapshot): ReturnType<typeof groupedAsWritten> {

@@ -5,7 +5,7 @@
  * Each is applied to a scratch copy of the commit's DevTeam Lab, never to the
  * Lab itself, and never committed: the DevTeam tree and host
  * (`goals/devforce-lab/lab/`) are copied beside themselves, and the DevTeam
- * profile (`labs/shift-manager/teams/devteam/`) beside itself with its imports
+ * profile (`packages/shift-manager/teams/devteam/`) beside itself with its imports
  * pointed at the copy. Copies sit where the originals sit, so every package
  * and relative import resolves as it does for the shipped Lab. The whole
  * difference from the commit is printed in the report ({@link ScratchLab.diff}),
@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { REPO_ROOT } from "../../../lib/index.mts";
 
 const LAB = join(REPO_ROOT, "goals", "devforce-lab", "lab");
-const PROFILE = join(REPO_ROOT, "labs", "shift-manager", "teams", "devteam");
+const PROFILE = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam");
 
 /** One edit to a scratch copy of the Lab: its name, and what it does to the copy at `lab`. */
 export type Patch = { name: string; apply(lab: string): void };

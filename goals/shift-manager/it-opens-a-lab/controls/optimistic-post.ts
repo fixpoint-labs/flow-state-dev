@@ -22,12 +22,12 @@ import {
   mergeLines,
   readTranscriptPage as readAsWritten,
   type TranscriptPage,
-} from "../../../../labs/shift-manager/src/lib/transcript.ts";
+} from "../../../../packages/shift-manager/src/lib/transcript.ts";
 
-export * from "../../../../labs/shift-manager/src/lib/transcript.ts";
-import type { sendTurn as realSendTurn } from "../../../../labs/shift-manager/src/lib/send.ts";
+export * from "../../../../packages/shift-manager/src/lib/transcript.ts";
+import type { sendTurn as realSendTurn } from "../../../../packages/shift-manager/src/lib/send.ts";
 
-export * from "../../../../labs/shift-manager/src/lib/send.ts";
+export * from "../../../../packages/shift-manager/src/lib/send.ts";
 
 const drawn = new Map<string, MailboxTranscriptLine[]>();
 

@@ -1,5 +1,5 @@
 /**
- * The run-lab's fsdev config: what Shift Manager's start script loads.
+ * The run-lab's fsdev config: what Shift Manager's command loads.
  *
  *     pnpm --filter @flow-state-dev/shift-manager start --config goals/shift-manager/it-shows-and-stops-a-task-run/lab/fsdev.config.mts
  *

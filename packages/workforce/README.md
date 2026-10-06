@@ -1316,12 +1316,85 @@ in a seat's own folder; that refuses at hire.
 
 Pass `hireWorkforce` the roster's minted ids as `mailboxBoards` and it warns on stderr for any board
 no hired seat declares, naming the mailbox and the board. It never refuses: a mailbox may keep a
-board that only people read.
+board that only people read. Each warning prints once per process, so a dev server that re-runs
+the hire on every hot reload says it once, and only a board that newly goes unattended prints again.
 
 Renaming or moving a mailbox's folder re-keys its boards, because a board id is derived from where
 the mailbox sits. Rows filed under the old id stay at the old key, nothing migrates them and nothing
 refuses. The unattended-board warning is what makes it visible, since the seat still names the id
 that moved.
+
+### Handing a row to the worker it names
+
+A row's `assignee` can name any worker, by the name `discover` lists, including one hired while the
+app runs, when the board draining the ledger asks the worker lookup who the name means.
+
+```ts
+import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import {
+  WORKER_TASK_ENTRY,
+  createWorkerLookup,
+  defineAgentWorkerFlow,
+  defineMailboxFlow,
+  hireWorkforce,
+  mailboxBoard,
+  mailboxBoardIds,
+  mailboxInstances,
+} from "@flow-state-dev/workforce";
+
+const boardIds = mailboxBoardIds(mailboxes);
+const hired = hireWorkforce(workers, {
+  kinds: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) }, // gives the agent kind a `work` task entry
+  mailboxBoards: boardIds,
+});
+
+const lookup = createWorkerLookup({
+  instanceAt: (id) => runtime.registry.get(id), // read on every lookup, never copied
+  declared: hired.map((worker) => worker.id),
+});
+
+const mailboxKinds = mailboxInstances(mailboxes, {
+  kinds: { mailbox: defineMailboxFlow({ checkAssignee: lookup.filingCheck() }) },
+});
+
+const followups = mailboxBoard("engineering.incidents", "followups");
+const board = taskBoard({
+  name: "followups-desk",
+  boardId: followups.id, // hand off under the ledger's id
+  collection: followups,
+  workers: {},
+  defaultWorker: dispatcher({ name: "hand-to-named-worker", action: WORKER_TASK_ENTRY, session: "per-task", flowKind: lookup.flowKind }),
+});
+const desk = defineFlow({ kind: "followups-desk", actions: { drain: { block: board.drain } } })();
+```
+
+`createWorkerLookup({ instanceAt, declared })` returns `{ find(name, ctx, member?), flowKind, filingCheck(aliases?) }`.
+`declared` may be a getter, read on every lookup, for a lookup built before the workers are hired.
+`find` answers `{ found: true, flowId }` or `{ found: false, reason, message }`, `reason` being
+`not-found`, `ambiguous` or `takes-no-tasks`. It finds a worker the files declare (an id in
+`declared` with a flow registered there), one hired for the request's organization, or one the
+member who filed the task hired for themselves: the session owner at filing (or the `member` passed
+to `find`), and at hand-over the filer the ledger recorded on the row, whoever runs the drain. A
+row with no recorded filer reaches no member's own worker. Another organization's workers and another member's own are never found. A name held
+by more than one of those is `ambiguous`, naming each; a worker whose kind declares no `work` task
+entry is `takes-no-tasks`, which still carries the `flowId` the name means.
+
+`flowKind` is the `TaskFlowTarget` for a board's `defaultWorker`: `not-found` answers nothing, which
+refuses the hand-over `flow-not-found` naming the assignee; `ambiguous` and `takes-no-tasks` throw
+`[workforce] task "<id>" could not be handed over: <message>`. Either way the attempt fails through
+the board's error path. `filingCheck(aliases?)` is `defineMailboxFlow`'s `checkAssignee`: it
+returns `undefined` for a name the lookup finds, else the message, which `fileTask` throws as
+`MailboxPostRefusedError` with `reason: "unknown-assignee"` before writing anything. `aliases` maps a
+board id to the names a board over that ledger keeps in its own `workers`
+(`{ [followups.id]: ["analyst"] }`); those pass without the lookup.
+
+`defineAgentWorkerFlow({ taskLists })` gives the agent kind a `work` task entry fed by
+`mailboxTaskLists(taskLists, { allowSessionState: true })`: one turn per task, with the task's title,
+goal and context as the message and the answer as the task's result. Without `taskLists` the kind
+takes no tasks, and that includes the built-in a hire with no `kinds` uses. A kind of your own takes
+tasks with `task: { actions: { work: { block, from: mailboxTaskLists(boardIds) } } }`. Hand tasks
+over `per-task` so each runs in a session of its own.
 
 ### What a transcript proves
 
@@ -2022,8 +2095,8 @@ membershipPrefix("");
 ## Projects
 
 A project is a row in the organization's `projects` collection: a title, a brief, an owner, its
-`members`, the workstreams (declared mailboxes, from any team) it groups, and each member's talk
-session. Declare the collection once in `workforce/org/resources/projects.ts` with
+`members`, the workstreams (declared mailboxes, from any team) it groups, the git remote its code
+lives in (`repository`, or `null`), and each member's talk session. Declare the collection once in `workforce/org/resources/projects.ts` with
 `defineProjectsCollection()`. The guide is the docs site's Workforce → Projects page.
 
 ```ts
@@ -2033,13 +2106,26 @@ const projects = defineProjectBlocks();
 defineFlow({ kind: "lab", actions: { ...projects.actions } });
 ```
 
-- **`createProject { id, title, brief?, members?, workstreams? }`** writes a row with `create`.
+- **`createProject { id, title, brief?, members?, workstreams?, repository? }`** writes a row with `create`.
   The owner is the calling session's owner, and is always a member. An id held by another owner,
   `unassigned`, a workstream not in the mailbox inventory, and a workstream another project holds
   are each refused, and nothing is half written. The same owner re-sending an id gets the row back
   (`created: false`) and its talk session bound if it wasn't.
 - **`setWorkstreams { projectId, workstreams }`** replaces the list. Members only.
-- **As a seat's tools.** Put both in `defineAgentWorkerFlow({ catalog })` under the names a seat's
+- **`setRepository { projectId, repository }`** sets, changes or clears (`null`) the repository and
+  returns `{ project }`. Members only. Nothing else on the row moves, and of two members setting it
+  at once one value is kept whole. A value must be a remote, the address you'd pass to `git clone`:
+  both writes refuse a path, a value starting with `-`, a control character, a remote-helper address (`ext::…`), a user
+  or password on `http(s)`, and a password on any scheme, with `invalid-repository`, and never
+  repeat the value. `git@host:org/repo` and `ssh://git@host/org/repo` are accepted. Stored rows
+  aren't re-parsed on read: treat a missing `repository` as `null`, or read through
+  `projectRowSchema.parse`.
+- **`readProjectFiles { projectId }`** returns `{ files: [{ path, size }] }` (size in UTF-8 bytes,
+  never the body, since the output is logged as the tool result), the files the
+  project keeps in the org's `project-files` collection (`defineProjectFilesCollection()`), at
+  `project-files/<projectId>/<path>`. Members only. The collection is org-scoped, shared, lazy, and
+  has no browser read.
+- **As a worker's tools.** Put the writes in `defineAgentWorkerFlow({ catalog })` under the names a worker's
   `tools:` spells. A catalog key must be the tool's own name, so wrap each in a one-step
   `sequencer({ name: "createProject", inputSchema: createProjectInputSchema, outputSchema:
   createProjectOutputSchema }).step(projects.createProject)`. The owner is the session the seat
@@ -2129,7 +2215,7 @@ before fire removed inventory rows is left out that way.
 
 | Export | Description |
 |--------|-------------|
-| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and `onMailboxPost` (internal, for a mailbox's notify block). |
+| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and `onMailboxPost` (internal, for a mailbox's notify block), and with `taskLists` a `work` task entry. |
 | `AGENT_KIND` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and mailbox sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |
@@ -2179,7 +2265,7 @@ before fire removed inventory rows is left out that way.
 | `ResourceModules` | The generated `resourceModules` map: one entry per discovered module, keyed by its ref. |
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `SeatCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that seat wants. Read by the built-in `agent` kind; validated at the hire. |
-| `defineMailboxFlow(options?)` | Build a mailbox kind. `options.notify` is the per-member fan-out block. `options.route` is the route from `routeByPurpose`. |
+| `defineMailboxFlow(options?)` | Build a mailbox kind. `options.notify` is the per-member fan-out block. `options.route` is the route from `routeByPurpose`. `options.checkAssignee(assignee, listId, ctx)` runs before `fileTask` files a row naming an assignee: return `undefined` to file it, or the sentence to refuse with (`unknown-assignee`). Pass `createWorkerLookup(...).filingCheck(aliases)`. |
 | `wakeMemberSeats(seats, options?)` | The notify block for `defineMailboxFlow({ notify })`. Wakes each member whose hired seat declares `onMailboxPost`, once per post, and never on a seat's line (`seatAuthored: true`). A client `post` wakes hearing members whether or not it sets `author`. `options.fallback` runs for members whose seat can't hear a post, including on a seat's line. |
 | `routeByPurpose(seats, { model })` | The route a mailbox kind takes as `defineMailboxFlow({ route })`. For a mailbox that declares `routing:`, each client `post` goes to one member: the member the last client `post` was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `mailbox-route`), else the declared fallback. A seat's line (`seatAuthored: true`) is not routed. A member of the built-in `agent` kind answers with the mailbox's last 20 lines in view, and its reply is posted into the mailbox as its line, once per post. Needs in-process dispatch or queue workers that share a lease backend. Throws without a `model`. |
 | `mailboxRouteRecordSchema` / `MailboxRouteRecord` / `MAILBOX_ROUTE_COMPONENT` / `MAILBOX_ROUTE_EVALUATOR` | One route decision as it is kept on the mailbox's session (`{ postId, by, member?, reason? }`, where `by` is `held`, `evaluated`, `fallback` or `failed`), the component name it is kept under, and the route evaluator's block name. Both names are `"mailbox-route"`. |
@@ -2194,11 +2280,14 @@ before fire removed inventory rows is left out that way.
 | `MailboxManifest` | One mailbox record: `{ id, declared, body }`. |
 | `mailboxBoard(mailboxId, boardName)` | The one declaration for a mailbox's board, carrying its minted `id`. Pass it to `taskBoard({ collection })`, and to `mailboxBoardTaskTools`. Throws when the name is not a plain local name. |
 | `mailboxBoardTaskTools(board)` | Capability granting a seat all eight task tools over one mailbox board, board-qualified by name. List it in the seat kind's `uses`; it declares the ledger too. |
-| `mailboxBoardIds(manifests)` | Every minted id across a roster, sorted and deduped — what `hireWorkforce`'s `mailboxBoards` takes. |
+| `mailboxBoardIds(manifests)` | Every minted id across a roster, sorted and deduped — what `hireWorkforce`'s `mailboxBoards` and `defineAgentWorkerFlow`'s `taskLists` take. |
+| `mailboxTaskLists(boardIds, { allowSessionState? })` | A `TaskBinding` for a task entry's `from`: the entry takes tasks from any of these mailbox boards, resolved in the running organization. A board id outside the list is refused `UnknownTaskLedgerError`. |
+| `createWorkerLookup({ instanceAt, declared })` | Which worker a task's name means. Returns `{ find, flowKind, filingCheck }`; see [Handing a row to the worker it names](#handing-a-row-to-the-worker-it-names). Types `WorkerLookup`, `WorkerLookupAnswer`, `WorkerLookupOptions`. |
+| `WORKER_TASK_ENTRY` | `"work"`, the task entry a worker kind takes tasks through. |
 | `MailboxBoardCollection` | A `DefinedTaskCollection` carrying its minted `id`. |
 | `mailboxBoardRowSchema` | One row as `readBoard` publishes it: the board's facts and the `run` working the task, without the claim's coordinates (`claimedBy`, the lease) or write provenance. |
 | `mailboxFileTaskInputSchema` / `mailboxFileTaskOutputSchema` / `mailboxReadBoardInputSchema` / `mailboxReadBoardOutputSchema` | The `fileTask` and `readBoard` contracts. |
-| `MailboxPostRefusedError` | A post refused on the mailbox's own terms; `reason` is `mailbox-not-bound` or `author-not-a-member`. |
+| `MailboxPostRefusedError` | A post or filing refused on the mailbox's own terms; `reason` is `mailbox-not-bound`, `author-not-a-member`, `board-not-declared`, `board-needs-an-org`, `mailbox-is-a-template` or `unknown-assignee`. |
 | `mailboxPostInputSchema` / `mailboxReadOutputSchema` / `mailboxNotifyInputSchema` | The post, read and notify contracts. |
 | `mailboxSessionStateSchema` / `mailboxTranscriptLineSchema` | A mailbox session's state, and one transcript line. On a kind built with a route, a mailbox's state also carries `mailboxRouteLedger`, which this schema does not describe. |
 | `MAILBOX_POST_COMPONENT` / `emitMailboxPostLine(ctx, line)` / `readMailboxPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a mailbox kind of your own. |
@@ -2277,6 +2366,7 @@ before fire removed inventory rows is left out that way.
 | Mailbox cannot be opened | `openMailboxes` throws, naming the mailbox — except a 409, which means the id is taken. An open mailbox there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable mailbox — is named and refused rather than released. A session of the kind from before the rename is refused as a store to reset, never as a collision |
 | `mailbox-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the mailbox's declared members. Per-request; nothing is written |
+| `unknown-assignee` | A `fileTask` naming an assignee the mailbox kind's `checkAssignee` refuses: no worker holds the name, two do, or its kind takes no tasks. Per-request; nothing is written |
 | `external-dispatcher` | A flow-to-flow post into an opened mailbox on a host whose dispatcher hands work to an external queue and shares no lease backend. A post through the public action route is written, but its notify block never runs: no member is woken and a routed mailbox doesn't answer |
 | Inventory id is not one path segment | `membershipKey` and `membershipPrefix` throw, naming the offending argument: an empty id, one containing `/` or `\`, or `.` and `..` |
 | Unknown kind on `hire` | The tool, listing the hireable kinds. Writes nothing. |

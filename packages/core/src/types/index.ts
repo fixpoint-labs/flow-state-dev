@@ -50,7 +50,9 @@ export type {
   TaskBinding,
   TaskDispatchInput,
   TaskEntry,
-  TaskSessionPolicy
+  TaskFlowTarget,
+  TaskSessionPolicy,
+  TaskTargetQuery
 } from "./dispatch";
 
 export {
@@ -64,6 +66,7 @@ export {
   taskBindingOf,
   framed,
   readFramed,
+  resolveTaskFlowKind,
   taskDispatchInputSchema,
   taskSessionKeyFor
 } from "./dispatch";

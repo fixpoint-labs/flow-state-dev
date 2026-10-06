@@ -6,7 +6,7 @@ export { program } from "./cli";
 export { resolveBlock, isBlockDefinition } from "./resolve-block";
 export { resolveFlow, discoverFlows, getSearchedDirs, isFlowInstance } from "./resolve-flow";
 export type { DiscoverFlowsOptions, FlowImportFailure } from "./resolve-flow";
-export { loadFsdevConfig } from "./load-config";
+export { loadFsdevConfig, locateConfig } from "./load-config";
 export type { LoadConfigOptions, LoadedConfig } from "./load-config";
 export { declaredDevtoolConfig } from "./devtool-config";
 export { parseInputArg } from "./parse-input";

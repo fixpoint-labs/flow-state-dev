@@ -19,6 +19,7 @@ docs/superpowers/*
 .mcp.json
 .claude/specs/*
 packages/devtool/dist-client/*
+packages/shift-manager/dist-client/*
 .claude/**/_drafts/*
 .claude/worktrees/
 # Orchestration working memory — session-only, never commit (fleet board, handle caches)

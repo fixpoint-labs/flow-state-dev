@@ -88,7 +88,11 @@ import {
   createSkillsLibrary,
   pushActiveSkill
 } from "@flow-state-dev/orchestration";
+import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
+import { WORKER_TASK_ENTRY } from "./worker-task-entry";
+import { mailboxTaskLists } from "./mailbox/mailbox-board";
 import {
   mailboxNotifyInputSchema,
   mailboxTranscriptLineSchema,
@@ -312,6 +316,18 @@ export interface AgentWorkerFlowOptions {
    * `flowIsolation`, which is FIX-1396's.
    */
   isolateUserState?: boolean;
+  /**
+   * The mailbox task lists this kind's workers take tasks from, by minted id
+   * (`mailboxBoardIds(mailboxes)`). With them, a task a list hands to one of
+   * these workers runs as one turn: the task's goal and context are the
+   * message, the worker's own instructions, tools and model answer it, and
+   * the answer is the task's result. Hand tasks over `per-task`, so each runs
+   * in a session of its own, apart from the worker's conversations.
+   *
+   * Absent, the kind declares no task door, and a task handed to one of its
+   * workers is refused as one it takes no tasks for.
+   */
+  taskLists?: readonly string[];
   /**
    * A block run after the worker answers, as a side-chain — it cannot change
    * the answer, and a failure in it does not fail the turn.
@@ -1196,6 +1212,14 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     )
     .tapIf((_reply, ctx) => ctx.request.state[ROUTED_TURN_STATE] !== undefined, landRoutedReply);
 
+  /**
+   * A task as this worker takes it: one turn of `run`, the task as the
+   * message, the answer as the result. A turn that throws fails the attempt
+   * through the list's ordinary error path.
+   */
+  const taskTurn = sequencer({ name: "agent-task-turn", inputSchema: taskWorkerInputSchema })
+    .step((task: TaskWorkerInput) => ({ message: taskMessage(task) }), run);
+
   const flow = defineFlow({
     kind: AGENT_KIND,
     // Required by contract C2. A plain singleton's seats mint and are then
@@ -1223,7 +1247,21 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
           userMessage: heardTurn
         }
       }
-    }
+    },
+    ...(options.taskLists === undefined
+      ? {}
+      : {
+          task: {
+            actions: {
+              [WORKER_TASK_ENTRY]: {
+                block: taskTurn,
+                // The turn keeps the worker's skill state on the session, the
+                // same shape for every task, so a shared session would be safe.
+                from: mailboxTaskLists(options.taskLists, { allowSessionState: true })
+              }
+            }
+          }
+        })
   });
 
   /**
@@ -1274,6 +1312,24 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     return seat;
   };
   return Object.assign(mint, flow) as typeof flow;
+}
+
+/**
+ * A task as an agent worker reads it: the title when there is one, the goal,
+ * the task's context, and its structured input as JSON when it carries any.
+ */
+function taskMessage(task: TaskWorkerInput): string {
+  const lines = [task.title === undefined ? task.goal : `${task.title}\n\n${task.goal}`];
+  if (task.context !== undefined && task.context.trim().length > 0) lines.push(`Context:\n${task.context}`);
+  if (hasInput(task.input)) lines.push(`Input:\n${JSON.stringify(task.input, null, 2)}`);
+  return lines.join("\n\n");
+}
+
+/** True for a task input worth showing: present, and not an empty object. */
+function hasInput(input: unknown): boolean {
+  if (input === undefined || input === null) return false;
+  if (typeof input === "object" && !Array.isArray(input)) return Object.keys(input).length > 0;
+  return true;
 }
 
 /**

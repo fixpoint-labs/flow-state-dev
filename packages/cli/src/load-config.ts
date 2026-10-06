@@ -70,7 +70,7 @@ function displayPath(absPath: string, cwd: string): string {
  * precedence order. Returns `undefined` when no config exists and none was
  * named (callers fall back to legacy discovery + defaults).
  */
-function locateConfig(options: LoadConfigOptions): string | undefined {
+export function locateConfig(options: LoadConfigOptions): string | undefined {
   const { cwd, configPath } = options;
 
   if (configPath !== undefined) {

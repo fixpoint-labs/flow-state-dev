@@ -45,7 +45,7 @@ const wants = (part: (typeof ALL)[number]) => ONLY.length === 0 || ONLY.includes
 const TODAYS_MAIN = "1afe16ffeed2ed6c6ac1c4391ceaedbc2b9fb4e1";
 const MODEL = "openai/gpt-5.4-mini";
 const MODEL_KEYS = ["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"];
-const CONFIG = join(REPO_ROOT, "labs", "shift-manager", "teams", "devteam", "fsdev.config.mts");
+const CONFIG = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "fsdev.config.mts");
 const git = (...args: string[]) => execFileSync("git", ["-C", REPO_ROOT, ...args], { encoding: "utf8" }).trim();
 
 const SCRATCH = goalTmpDir("closure-fix-1720");

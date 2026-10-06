@@ -151,19 +151,21 @@ export function seams(base: string): SeamRow[] {
 
   // ---- Gap copy (ER-8) -------------------------------------------------------------
   row("Gap copy (ER-8)", (out) => {
-    const files = sources(["labs/shift-manager/src"]);
+    const files = sources(["packages/shift-manager/src"]);
     const stale = grep(files, /FIX-1650|arrives? with FIX-1(718|719|621)|once org seats ship|org seats ship|wait(s|ing)? (on|for) org seats/i);
-    out.push(`$ grep labs/shift-manager/src for copy that something arrives with FIX-1650 or waits on org seats: ${stale.length}`);
+    out.push(`$ grep packages/shift-manager/src for copy that something arrives with FIX-1650 or waits on org seats: ${stale.length}`);
     for (const h of stale) out.push(`  ${h.file}:${h.line}: ${h.text}`);
     // Only this epic's own commits are graded: another epic (FIX-1737's v2 look) may reword these entries.
-    const gaps = "labs/shift-manager/src/gaps.ts";
-    const epicCommits = git("log", "--format=%H %s", "--no-merges", "-E", "--grep=FIX-(1621|1718|1719|1720|1722|1723|175[2-8])\\b", `${base}..HEAD`, "--", gaps)
+    // The file moved with Shift Manager (labs/ to packages/); the epic's earlier commits touched the old path.
+    const gaps = "packages/shift-manager/src/gaps.ts";
+    const gapPaths = ["labs/shift-manager/src/gaps.ts", gaps];
+    const epicCommits = git("log", "--format=%H %s", "--no-merges", "-E", "--grep=FIX-(1621|1718|1719|1720|1722|1723|175[2-8])\\b", `${base}..HEAD`, "--", ...gapPaths)
       .split("\n")
       .filter(Boolean);
     const added: string[] = [];
     const removed: string[] = [];
     for (const c of epicCommits) {
-      for (const l of git("show", "--format=", "-U0", c.split(" ")[0]!, "--", gaps).split("\n")) {
+      for (const l of git("show", "--format=", "-U0", c.split(" ")[0]!, "--", ...gapPaths).split("\n")) {
         if (!/FIX-165[12]/.test(l)) continue;
         if (l.startsWith("+") && !l.startsWith("+++")) added.push(l.slice(1));
         else if (l.startsWith("-") && !l.startsWith("---")) removed.push(l.slice(1));
@@ -229,7 +231,7 @@ export function seams(base: string): SeamRow[] {
       ["the shared section, org seat and mailbox (FIX-1719)", "apps/docs/docs/workforce/overview.md", /^## Projects, workstreams, and the seats that run them\n[\s\S]*?chief of staff[\s\S]*?(approve)/im],
       ["A room per project (FIX-1718)", "apps/docs/docs/workforce/mailboxes.md", /^## A room per project$/m],
       ["Asking CoS for a project (FIX-1718)", "apps/docs/docs/workforce/projects.md", /^# Projects$[\s\S]*chief of staff/m],
-      ["Shift Manager's PROJECTS (FIX-1718)", "labs/shift-manager/README.md", /^## What you see$[\s\S]*?PROJECTS/m],
+      ["Shift Manager's PROJECTS (FIX-1718)", "packages/shift-manager/README.md", /^## What you see$[\s\S]*?PROJECTS/m],
       ["The CoS page (FIX-1719)", "apps/docs/docs/workforce/chief-of-staff.md", /^# The chief of staff$[\s\S]*?^## Adding one$[\s\S]*?askBefore/m],
       ["Repairing a seat whose kind is gone (FIX-1621)", "apps/docs/docs/workforce/durable-hire.md", /^## Repairing a seat whose kind is gone$/m],
     ];
@@ -239,7 +241,7 @@ export function seams(base: string): SeamRow[] {
       ok &&= found;
       out.push(`${found ? "found" : "FAIL: missing"} ${what}: ${page} ${re.source.slice(0, 70)}`);
     }
-    const notYet = /^## What isn't here yet$([\s\S]*?)^## /m.exec(readFileSync(join(REPO_ROOT, "labs/shift-manager/README.md"), "utf8"))?.[1] ?? "";
+    const notYet = /^## What isn't here yet$([\s\S]*?)^## /m.exec(readFileSync(join(REPO_ROOT, "packages/shift-manager/README.md"), "utf8"))?.[1] ?? "";
     const stillThere = /^\s*[-*]\s+\**Projects\b/im.test(notYet);
     out.push(`"What isn't here yet" ${stillThere ? "FAIL: still lists" : "no longer lists"} a Projects bullet`);
     return ok && !stillThere;

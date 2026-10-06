@@ -391,6 +391,7 @@ describe("boardQuiescence - work handed to a child session", () => {
 describe("handedOffTaskPredicate", () => {
   const seat = (name: string): HandOffSeat => ({
     name,
+    kind: "named",
     label: `assignee:${name}`,
     dispatch: { type: "task", action: "t", session: "per-task" },
   });

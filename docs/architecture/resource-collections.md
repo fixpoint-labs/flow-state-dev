@@ -232,6 +232,12 @@ const fileManager = handler({
 
 Sequencers collect collection declarations from child blocks. `defineFlow` merges them into the flow's `resources` map. Conflict detection applies: two blocks declaring different collection refs for the same name will throw at build time. If both blocks reference the same `defineResourceCollection()` instance, the merge succeeds.
 
+A block reaches only the resources its flow declares, so a block that must
+read a collection chosen per request (a task door reading the list a task came
+from) declares every collection it may be handed at boot and resolves one by
+id inside that set. Workforce's `mailboxTaskLists(boardIds)` does this for the
+mailbox task lists the tree declares.
+
 ## When to use collections vs static resources
 
 Use a static resource when you know the resource names at definition time: `plan`, `artifacts`, `preferences`. These are fixed parts of your flow's data model.

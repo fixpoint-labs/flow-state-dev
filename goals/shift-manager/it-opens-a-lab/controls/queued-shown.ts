@@ -6,7 +6,7 @@
  * Queued toggle hides nothing and counts nothing. The goal must fail at
  * "Tasks equals the store's open rows" on a Lab holding a queued row.
  */
-export * from "../../../../labs/shift-manager/src/lib/tasks.ts";
+export * from "../../../../packages/shift-manager/src/lib/tasks.ts";
 
 /** No row is queued. */
 export function isQueued(): boolean {

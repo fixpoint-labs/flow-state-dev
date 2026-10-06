@@ -6,7 +6,7 @@
  * Real path, no model, out of CI. See goal.md for the contract.
  *
  * Shift Manager is built with Vite into a scratch directory and served by its own
- * start script over the run-lab's `fsdev.config.mts`, devtool included: a
+ * command over the run-lab's `fsdev.config.mts`, devtool included: a
  * mailbox-attached board whose rows hand off to scripted runs that narrate a
  * step a second and hold until aborted. Chromium reaches each row by clicking,
  * from Tasks or from a board card. What the page draws is graded against the
@@ -61,6 +61,7 @@ import { compareItemOrder, createSSEClient } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
+import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -75,7 +76,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 }
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
+const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-task-run");
 const CONFIG = join(HERE, "lab", "fsdev.config.mts");
@@ -145,7 +146,7 @@ async function startLab(pages: string): Promise<Running> {
   mkdirSync(join(SCRATCH, "labs"), { recursive: true });
   const workDir = mkdtempSync(join(SCRATCH, "labs", "run-lab-"));
   let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", CONFIG, "--port", "0", "--assets", pages], {
+  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", CONFIG, "--port", "0", "--no-open", "--assets", pages], {
     cwd: workDir,
     env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "" }),
     stdio: ["ignore", "pipe", "pipe"],
@@ -160,18 +161,17 @@ async function startLab(pages: string): Promise<Running> {
     }),
   );
   for (let waited = 0; waited < 90_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    const devtool = /Devtool: (http:\/\/\S+)/.exec(log);
-    if (match !== null && devtool === null) {
+    const served = servedAddresses(log);
+    if (served !== undefined && served.devtool === null) {
       child.kill("SIGTERM");
       throw new Error(`Shift Manager served no devtool; build its pages with pnpm build:assets. Log tail:\n${log.slice(-2000)}`);
     }
-    if (match !== null) return { origin: match[1]!, devtool: devtool![1]!, child, exited };
+    if (served !== undefined) return { origin: served.origin, devtool: served.devtool!, child, exited };
     if (gone) break;
     await sleep(250);
   }
   child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served the run-lab. Log tail:\n${log.slice(-2000)}`);
+  throw new Error(`Shift Manager's command never served the run-lab. Log tail:\n${log.slice(-2000)}`);
 }
 
 // ---- the store, read by this script -----------------------------------------
@@ -546,6 +546,6 @@ await runGoal(async () => {
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its start script over the run-lab; each row reached by clicking in Chromium and graded against the store, read through each run's own flow. ${evidence.join("; ")}`,
+    evidence: `Shift Manager built with Vite and served by its command over the run-lab; each row reached by clicking in Chromium and graded against the store, read through each run's own flow. ${evidence.join("; ")}`,
   };
 });

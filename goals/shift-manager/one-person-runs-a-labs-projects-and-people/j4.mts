@@ -14,7 +14,7 @@
  * for a project and a seat in the Chief of Staff view: PROJECTS must list the
  * project with a room the person can post in, TEAMS the worker it hired, and a
  * fire of that worker must suspend on one `human_approval` in the store (askBefore). The copy is
- * deleted after the run; `labs/shift-manager` is left untouched.
+ * deleted after the run; `packages/shift-manager` is left untouched.
  */
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -33,7 +33,7 @@ export const J4_PAGES = [
   "apps/docs/docs/workforce/durable-hire.md",
   "apps/docs/docs/workforce/workers-on-disk.md",
   "packages/workforce/README.md",
-  "labs/shift-manager/README.md",
+  "packages/shift-manager/README.md",
   "goals/pentest-lab/lab/README.md",
 ];
 
@@ -186,7 +186,7 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
   // directory in it: the writer's Glob doesn't follow a symlink, and would report a linked `lab/` empty.
   const workspace = join(REPO_ROOT, "goals", "pentest-lab", `j4-${hex(3)}`);
   const copy = join(workspace, "lab");
-  const smBefore = execFileSync("git", ["-C", REPO_ROOT, "status", "--porcelain", "--", "labs/shift-manager"], { encoding: "utf8" });
+  const smBefore = execFileSync("git", ["-C", REPO_ROOT, "status", "--porcelain", "--", "packages/shift-manager"], { encoding: "utf8" });
   cpSync(source, copy, { recursive: true });
   let diff = "";
   let steps: string[] = [];
@@ -298,8 +298,8 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
     } finally {
       await served.stop();
     }
-    const smAfter = execFileSync("git", ["-C", REPO_ROOT, "status", "--porcelain", "--", "labs/shift-manager"], { encoding: "utf8" });
-    if (smAfter !== smBefore) failures.push("J4: labs/shift-manager changed");
+    const smAfter = execFileSync("git", ["-C", REPO_ROOT, "status", "--porcelain", "--", "packages/shift-manager"], { encoding: "utf8" });
+    if (smAfter !== smBefore) failures.push("J4: packages/shift-manager changed");
     return { ok: failures.length === 0, failures, notes, steps, silent, diff, record };
   } finally {
     // The writer's files, kept for the report, then the copy is deleted.
