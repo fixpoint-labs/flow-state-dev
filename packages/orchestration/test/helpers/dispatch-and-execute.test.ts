@@ -418,8 +418,9 @@ interface Probe {
  * A background block that records how it ended. The result is read off a
  * closed-over marker rather than the sequencer's work slot, because what is
  * under test is the signal the task RAN under, not how its value is collected.
+ * `timeoutMs` is how long it runs when nothing aborts it.
  */
-function sideChainProbe(name: string, probe: Probe) {
+function sideChainProbe(name: string, probe: Probe, timeoutMs = 2_000) {
   return handler({
     name,
     inputSchema: z.any(),
@@ -430,7 +431,7 @@ function sideChainProbe(name: string, probe: Probe) {
         ctx.signal?.addEventListener("abort", () => resolve("aborted"), {
           once: true,
         });
-        setTimeout(() => resolve("timeout"), 2_000);
+        setTimeout(() => resolve("timeout"), timeoutMs);
       });
       probe.ended = ended;
       return { ended };
@@ -642,8 +643,10 @@ describe("a worker's background work survives transport teardown", () => {
     const background = new AbortController();
     const probe: Probe = { ended: "never-ran" };
 
+    // Outlasts the disconnect at 50ms, which would abort it at once if the
+    // transport signal reached the background channel.
     const worker = sequencer({ name: "bg-survives", inputSchema: z.any() })
-      .sideChain(sideChainProbe("bg-survives-task", probe))
+      .sideChain(sideChainProbe("bg-survives-task", probe, 300))
       .map(() => ({ done: true }));
 
     // Transport teardown while the worker runs. The claim is untouched.

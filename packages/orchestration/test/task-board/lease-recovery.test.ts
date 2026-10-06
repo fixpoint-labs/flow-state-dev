@@ -41,12 +41,15 @@ import { createFakeSequencerState } from "../helpers";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** A board collection on the real clock, so leases genuinely expire. */
-function liveCollection(collectionId: string): TaskCollectionRef {
+/**
+ * A board collection on the real clock, so leases genuinely expire. `skew`
+ * moves that clock forward without waiting, for a lapse no live driver races.
+ */
+function liveCollection(collectionId: string, clock = { skew: 0 }): TaskCollectionRef {
   return createStateBackedTaskCollection({
     collectionId,
     state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
-    now: () => Date.now(),
+    now: () => Date.now() + clock.skew,
   });
 }
 
@@ -64,12 +67,15 @@ describe("a stranded job returns to the queue and gets done", () => {
     // The abandoned row is created the way one really is: a claimant that then
     // stops renewing. Here that claimant simply never had a driver — which is
     // exactly the state a worker leaves behind when its process dies.
-    const collection = liveCollection("recovery");
+    const clock = { skew: 0 };
+    const collection = liveCollection("recovery", clock);
     await collection.addTask({ id: "t", goal: "finish the stranded job" });
     await collection.claim("worker-that-died", { leaseDurationMs: 1_000 });
     expect(collection.get("t")?.status).toBe("in_progress");
 
-    await sleep(1_100); // nobody renewed it, so the lease lapses
+    // Nobody renewed it, so the lease lapses. The dead claimant has no driver,
+    // so nothing races the clock: move it rather than wait.
+    clock.skew += 1_100;
 
     const ran: string[] = [];
     const worker = handler({
