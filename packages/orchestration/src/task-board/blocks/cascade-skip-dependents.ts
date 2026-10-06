@@ -31,12 +31,7 @@ export interface CascadeSkipDependentsOptions {
   name: string;
 }
 
-/**
- * Whether a task's dependents must be skipped: it failed, or a cascade
- * cancelled it (the `skipped` label is that cascade's mark). The one rule
- * for both seeding the cascade set and re-reading a task whose cancel was
- * declined.
- */
+/** A task whose dependents must be skipped: it failed, or a cascade skipped it. */
 function isCascadeSource(task: Pick<Task, "status" | "labels">): boolean {
   return (
     task.status === "errored" ||
@@ -82,19 +77,11 @@ export function createCascadeSkipDependents(
           const failedDep = deps.find((d) => cascading.has(d));
           if (failedDep === undefined) continue;
           const cancelled = await collection.cancel(task.id, `dep ${failedDep} failed`);
-          // Only a cancel that landed is ours to label. The snapshot above can
-          // be stale by the time the write arrives — another actor may already
-          // have settled the task — and `cancel` declines rather than throws
-          // then. Labelling it anyway would mark a task this pass never
-          // cancelled as a dead dependency, and every later pass would skip
-          // its dependents off the back of that label (FIX-985).
+          // The pending snapshot can be stale, and a cancel that did not land
+          // is not ours to label (FIX-985).
           if (cancelled.outcome !== "recorded") {
-            // Declined, so re-read the task: it still cascades if it is a
-            // source by the same rule the set was seeded with (a rival cascade
-            // skipped it first), so the chain keeps walking in this call. A
-            // task that was stopped or completed instead is left alone with
-            // its dependents. Terminal status is absorbing, so this read
-            // cannot be overtaken.
+            // Whoever settled it first decides: a task already a source (a
+            // rival cascade skipped it) still cascades, anything else is left.
             const settled = collection.get(task.id);
             if (settled !== undefined && isCascadeSource(settled)) {
               cascading.add(task.id);
