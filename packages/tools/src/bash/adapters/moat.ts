@@ -824,6 +824,85 @@ interface MoatRunHandle {
 }
 
 /**
+ * Resolve symlinks in a host path under the bind mount and return the real
+ * path when it is still inside `realRoot` (the mount's real path), or null
+ * when it is not.
+ *
+ * The bind mount is writable from inside the container, so the model can
+ * plant a symlink there (`ln -s / /workspace/root`). Inside the container
+ * that link reaches container files only; followed on the host it reaches
+ * the developer's machine. A null means the host must not touch the path.
+ *
+ * Callers open the returned real path with `O_NOFOLLOW`, so a final
+ * component swapped for a symlink after this check fails instead of being
+ * followed. An intermediate directory swapped in that window is not
+ * covered; `moat exec` is the path with no host exposure at all.
+ */
+async function containRealPath(realRoot: string, hostPath: string): Promise<string | null> {
+  const missing: string[] = [];
+  let probe = hostPath;
+  let real: string;
+  for (;;) {
+    try {
+      real = await realpath(probe);
+      break;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      // A symlink loop has no host answer; let the container report it.
+      if (code === "ELOOP") return null;
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw err;
+      // A dangling symlink also reports ENOENT; writing to it would create
+      // its target, which may be anywhere on the host.
+      if (await lstat(probe).then(() => true, () => false)) return null;
+      const parent = path.dirname(probe);
+      if (parent === probe) return null;
+      missing.unshift(path.basename(probe));
+      probe = parent;
+    }
+  }
+  const resolved = path.join(real, ...missing);
+  const rel = path.relative(realRoot, resolved);
+  if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
+  return resolved;
+}
+
+/** Write a path `containRealPath` returned, refusing a symlink at the leaf. */
+async function writeContainedHostFile(realPath: string, content: string): Promise<void> {
+  await mkdir(path.dirname(realPath), { recursive: true });
+  await writeFile(realPath, content, { encoding: "utf-8", flag: NO_FOLLOW_WRITE });
+}
+
+/**
+ * Write a workspace-relative file straight into a MOAT bind-mount source on
+ * the host, with no container involved.
+ *
+ * For a caller that writes before any run exists (the bash tool's
+ * `bashWriteFile` host fast path), so there is no `moat exec` to fall back
+ * to: a path that leaves the mount, by `..` or through a planted symlink, is
+ * refused. Leading slashes collapse onto the mount root. `mountTarget` only
+ * names the mount in the error, so the model never sees the host path.
+ *
+ * @throws {MoatPathEscapeError} when the path resolves outside `mountSource`.
+ */
+export async function writeFileWithinMoatMount(
+  mountSource: string,
+  mountTarget: string,
+  relativePath: string,
+  content: string,
+): Promise<void> {
+  let lexical: string;
+  try {
+    lexical = resolveWithinWorkspace(mountSource, relativePath.replace(/^\/+/, ""));
+  } catch {
+    throw new MoatPathEscapeError(relativePath, mountTarget);
+  }
+  const realRoot = await realpath(mountSource).catch(() => path.resolve(mountSource));
+  const contained = await containRealPath(realRoot, lexical);
+  if (contained === null) throw new MoatPathEscapeError(relativePath, mountTarget);
+  await writeContainedHostFile(contained, content);
+}
+
+/**
  * Build a `Sandbox` against a started MOAT run. Visible for tests; production
  * code goes through `resolveMoatSandbox`, which constructs the handle.
  */
@@ -871,47 +950,12 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
   }
 
   /**
-   * Resolve symlinks in a host path from `toHostPath` and return the real
-   * path when it is still inside the bind mount, or null when it is not.
-   *
-   * The bind mount is writable from inside the container, so the model can
-   * plant a symlink there (`ln -s / /workspace/root`). Inside the container
-   * that link reaches container files only; followed on the host it reaches
-   * the developer's machine. A null sends the operation through `moat exec`,
-   * where the link resolves in the container's namespace.
-   *
-   * Callers open the returned real path with `O_NOFOLLOW`, so a final
-   * component swapped for a symlink after this check fails instead of being
-   * followed. An intermediate directory swapped in that window is not
-   * covered; `moat exec` is the path with no host exposure at all.
+   * `containRealPath` against this handle's real mount root. A null sends
+   * the operation through `moat exec`, where a planted link resolves in the
+   * container's namespace.
    */
   async function containHostPath(hostPath: string): Promise<string | null> {
-    const realRoot = await mountRealRoot();
-    const missing: string[] = [];
-    let probe = hostPath;
-    let real: string;
-    for (;;) {
-      try {
-        real = await realpath(probe);
-        break;
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
-        // A symlink loop has no host answer; let the container report it.
-        if (code === "ELOOP") return null;
-        if (code !== "ENOENT" && code !== "ENOTDIR") throw err;
-        // A dangling symlink also reports ENOENT; writing to it would create
-        // its target, which may be anywhere on the host.
-        if (await lstat(probe).then(() => true, () => false)) return null;
-        const parent = path.dirname(probe);
-        if (parent === probe) return null;
-        missing.unshift(path.basename(probe));
-        probe = parent;
-      }
-    }
-    const resolved = path.join(real, ...missing);
-    const rel = path.relative(realRoot, resolved);
-    if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
-    return resolved;
+    return containRealPath(await mountRealRoot(), hostPath);
   }
 
   return {
@@ -987,8 +1031,7 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
       const lexical = toHostPath(filePath);
       const hostPath = lexical === null ? null : await containHostPath(lexical);
       if (hostPath !== null) {
-        await mkdir(path.dirname(hostPath), { recursive: true });
-        await writeFile(hostPath, content, { encoding: "utf-8", flag: NO_FOLLOW_WRITE });
+        await writeContainedHostFile(hostPath, content);
         return;
       }
       // Fallback: path is outside the bind mount. Go through `moat exec`.

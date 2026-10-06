@@ -64,7 +64,7 @@ import {
 import path from "node:path";
 import fs from "node:fs/promises";
 import { quote as shellQuote } from "shell-quote";
-import { purgeOldRuns } from "./adapters/moat";
+import { purgeOldRuns, writeFileWithinMoatMount } from "./adapters/moat";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -893,9 +893,10 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
           return cold;
         })());
 
-      const hostPath = path.join(hostMountSource, input.path);
-      await fs.mkdir(path.dirname(hostPath), { recursive: true });
-      await fs.writeFile(hostPath, input.content, "utf-8");
+      // The host write runs outside the container, so it is held to the bind
+      // mount: a `..` path or a symlink planted from inside the container
+      // throws instead of reaching the developer's machine.
+      await writeFileWithinMoatMount(hostMountSource, destination, input.path, input.content);
       const refused = await routeWrittenFile(entry, input.path, input.content);
       return { success: refused === null, refused };
     },
