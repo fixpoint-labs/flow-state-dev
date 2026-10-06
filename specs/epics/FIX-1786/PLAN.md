@@ -48,7 +48,9 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
 3. **Both merge** → FIX-1788 builds. It merges → FIX-1791 builds, and FIX-1797 runs leg c early
    on that commit (ER-30). A failure is a bug child that blocks FIX-1791 and FIX-1795 from merging.
 4. **FIX-1791 merges** → FIX-1793 and FIX-1794. Both merge → FIX-1792, which moves each
-   session board onto FIX-1794's conversation board (D6).
+   session board onto FIX-1794's conversation board (D6). One exception: FIX-1794's first PR (the
+   partitioned board, D6) touches only orchestration on its own fixtures, so it may start once this
+   amendment merges, without waiting for FIX-1791.
 5. **FIX-1792 merges** → FIX-1796. It merges → the closure's first run. The terms
    sweep doesn't wait on the library: the library is new code, written in the new terms (ER-25),
    so the sweep has nothing of it to remove.
