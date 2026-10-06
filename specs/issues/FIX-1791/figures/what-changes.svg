@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 500" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two panels, today and after, in the same five cases. Today a mailbox is its own flow, one session no worker owns, and the members it hands posts to are fixed when it opens and matched by name against the org's hires. After, a coordinator is a worker on the user's roster, run by the coordinator flow, and each conversation keeps its own delegates in server-owned state, copied from its defaults and checked against the user's roster live. Case by case: who hears a post goes from members fixed at open to delegates changed in the app or by the coordinator's own tool; how a post is placed goes from best fit or everyone to judgment, best fit, round robin or everyone; another user's worker goes from matched by name with a pin deciding to refused by one check on both paths; an answer goes from waking nobody to going back out within a round limit; a post delivered twice goes from one answer per routed post to one answer per delegate per round.">
+     aria-label="Two panels, today and after, in the same five cases. Today a mailbox is its own flow, one session no worker owns, and the members it hands posts to are fixed when it opens and matched by name against the org's hires. After, a coordinator is a worker on the user's roster, run by the coordinator flow, and each conversation keeps its own delegates in server-written state, copied from its defaults and checked against the user's roster live. Case by case: who hears a post goes from members fixed at open to delegates changed in the app or by the coordinator's own tool; how a post is placed goes from best fit or everyone to judgment, best fit, round robin or everyone; another user's worker goes from matched by name with a pin deciding to refused by one check on both paths; an answer goes from waking nobody to going back out within a round limit; a post delivered twice goes from one answer per routed post to one answer per delegate per round.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -46,7 +46,7 @@
     <path class="head" d="M696 114 L701 122 L706 114 Z"/>
     <rect class="n-new" x="494" y="124" width="414" height="50" rx="5"/>
     <text class="t-h" x="510" y="145">This conversation's delegates</text>
-    <text class="t-s" x="510" y="163">server-owned, from its defaults, checked live</text>
+    <text class="t-s" x="510" y="163">server-written, from its defaults, checked live</text>
   </g>
   <g id="case-1">
     <text class="t-lbl" x="32" y="216">WHO HEARS A POST</text>

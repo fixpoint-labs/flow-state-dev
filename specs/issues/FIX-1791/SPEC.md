@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-## Five people, before and after
+## Five users, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
@@ -28,7 +28,7 @@ worker is ever a delegate.**
 | **The real need** | The [PRD](https://linear.app/fixpoint-labs/issue/FIX-1791): delegates in session state, changed by the app or the coordinator's tool, both passing one roster check; four policies; the three mailbox guarantees kept; the chief of staff a standard coordinator. FIX-1774's job, carried here: route to the worker that fits, hire when none does, never hire a twin. FIX-1785's rule, carried here: delegates are read as data, never guessed |
 | **Smaller, and rejected** | "The mailbox flow gains round robin and join and leave." It keeps a mailbox as a session no worker owns, matched by org names, and puts the roster check on a part the epic removes |
 | **Bigger, and not this issue's** | Tasks assigned from delegates, and hearing how they ended ([FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794), if [Q1](DECISIONS.md#q1) holds) · project coordinators ([FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793)) · converting `MAILBOX.md` ([FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792)) · transcript resources and channels (the epic's fence) |
-| **Not done if** | The check ran with one user · a caller can set an answer's round · a post delivered twice gets two answers from one delegate · a delegate is resolved from a list built at start · a change in one conversation shows in another · a session create seeds delegates · the coordinator names its delegates from a listing or its prompt · another user's worker becomes a delegate by any path · the chief of staff still runs as an `agent` worker |
+| **Not done if** | The check ran with one user · a caller can set an answer's round · a post delivered twice gets two answers from one delegate · a delegate is resolved from a list built at start · a change in one conversation shows in another · two conversations share one delegate session · a session create seeds delegates · the coordinator names its delegates from a listing or its prompt · another user's worker becomes a delegate by any path · the chief of staff still runs as an `agent` worker |
 
 ```mermaid
 flowchart LR
@@ -54,12 +54,12 @@ never the reply's prose. Under the dashed control, Bob's worker must land on Ali
 
 ## What changes
 
-![Two panels, today and after. Today a mailbox is its own flow: its members are fixed at open, matched by name against org hires, a worker's answer wakes nobody, and best fit or everyone are the only policies. After, a coordinator is a worker on the user's roster: its delegates live in each conversation's server-owned state, start from its defaults, and change through the app or its own tool, both passing one roster check; it picks by judgment, best fit, round robin or everyone; answers go back out within a round limit; each delegate answers each post once per round; every decision is recorded](figures/what-changes.svg)
+![Two panels, today and after. Today a mailbox is its own flow: its members are fixed at open, matched by name against org hires, a worker's answer wakes nobody, and best fit or everyone are the only policies. After, a coordinator is a worker on the user's roster: its delegates live in each conversation's server-written state, start from its defaults, and change through the app or its own tool, both passing one roster check; it picks by judgment, best fit, round robin or everyone; answers go back out within a round limit; each delegate answers each post once per round; every decision is recorded](figures/what-changes.svg)
 
 On the left, the mailbox decides who hears a post from a list written once. On the right, the
 user's own worker decides, from a list each conversation owns and both paths check the same way.
 
-**What a person writes**, shown on kitchen-sink's help desk (FIX-1792 converts the files):
+**What an installation writes**, shown on kitchen-sink's help desk (FIX-1792 converts the files):
 
 ```diff
 - # teams/support/mailboxes/help/MAILBOX.md
@@ -75,37 +75,48 @@ user's own worker decides, from a list each conversation owns and both paths che
   description: Ask the support team anything.
 ```
 
-**And what an app writes to change one conversation's delegates**, on the public typed client:
+**And what an app writes to change one conversation's delegates**, opening the conversation
+the way [FIX-1788](../FIX-1788/SPEC.md#what-changes) opens any worker session:
 
-```diff
-+ const coordinator = createTypedClient({ flow: coordinatorFlow, userId })
-+ // sessionId: a conversation already linked to Alice's chief of staff (FIX-1788's link)
-+ await coordinator.actions.addDelegate({ worker: "researcher" }, { sessionId })
-+ // refused, like a missing worker, unless researcher is on this user's roster
-+ await coordinator.actions.setFallback({ worker: "researcher" }, { sessionId })
-+ await coordinator.actions.removeDelegate({ worker: "researcher" }, { sessionId })
-+ await coordinator.actions.listDelegates({}, { sessionId })   // the whole list, with notes
+```ts
+import { createClient } from "@flow-state-dev/client"
+import { createWorkforceClient } from "@flow-state-dev/workforce"
+
+const workforce = createWorkforceClient({ userId, baseUrl })
+const session = await workforce.ensureWorkerSession({ worker: "chief-of-staff" })  // linked at create
+const coordinator = createClient({ flowKind: session.flowKind, userId, baseUrl })   // the flow the worker names
+await coordinator.sendAction("addDelegate", { worker: "researcher" }, { sessionId: session.id })
+// refused, like a missing worker, unless researcher is on this user's roster
+await coordinator.sendAction("setFallback", { worker: "researcher" }, { sessionId: session.id })
+await coordinator.sendAction("removeDelegate", { worker: "researcher" }, { sessionId: session.id })
+await coordinator.sendAction("listDelegates", {}, { sessionId: session.id })   // the whole list, with notes
 ```
 
-The four actions work on a conversation that is already linked to a coordinator worker, and
-never name or set that worker. The coordinator flow goes on the list of worker flows the
-installation keeps ([epic Q1](../../epics/FIX-1786/DECISIONS.md#q1)), like `agent`, with no
-declaration shape of its own.
+Every session on a worker flow is linked to its worker when it is created, in a field only the
+server writes, and no action names a worker ([epic D3](../../epics/FIX-1786/DECISIONS.md#d3),
+FIX-1788 BR-10 and BR-13). So the four actions work on any coordinator conversation. The public
+create can't seed delegates (FIX-1788 BR-15 and BR-18a): these actions and the coordinator's own
+tool are the only writers of a conversation's list. The coordinator flow goes on the list of
+worker flows the installation keeps ([epic Q1](../../epics/FIX-1786/DECISIONS.md#q1)), like
+`agent`, with no declaration shape of its own.
 
 ## How a post reaches a delegate
 
 ```mermaid
 flowchart LR
   P["a post · at the door"] --> R["routing · the session's policy"]
-  D["delegates · server-owned session state"] --> R
-  R -->|"each pick checked against the user's roster, live"| L["the delegate's session · linked by the server"]
+  D["delegates · server-written session state"] --> R
+  R -->|"each pick checked against the user's roster, live"| L["the delegate's session · one per conversation · linked at create"]
   L -->|"answer, with its delivery's token"| A["one answer per delegate per round"]
   A -->|"within the round limit"| R
   R --> K["a routing record per decision"]
 ```
 
 The roster check runs on every add and again on every delivery, so a fired worker drops out
-without anyone editing the list.
+without anyone editing the list. A delivery opens the delegate's session through FIX-1788's
+`ensureWorkerSession({ worker, coordinatorSessionId })`: the delegate is named, so the server
+links the session at create, and the key gives each coordinator conversation its own session per
+delegate. It never posts to a fresh id.
 
 ## What stays as it is
 
@@ -137,7 +148,7 @@ answers.
    turn on per coordinator, or a cost per post nobody bounded.
 2. **[D2](DECISIONS.md#d2) · Best fit's fallback is one of the conversation's delegates;
    removing it leaves posts it can't place recorded and told, never refused.** If wrong: a
-   person's post sits unanswered after a removal they thought was harmless.
+   user's post sits unanswered after a removal they thought was harmless.
 
 Q1 moves scope between two of the epic's children, so its answer binds once a follow-up epic PR
 records it ([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)).

@@ -49,17 +49,20 @@ It is the second worker flow a reader meets. Front matter `sidebar_label: Coordi
 > changes to it stay in that conversation. You can change them two ways, and both are checked the
 > same way:
 >
-> - **From your app**, with the coordinator's actions on a conversation that is already open
->   with it:
+> - **From your app**, with the coordinator's actions on a conversation you opened with it:
 >
 >   ```ts
->   const coordinator = createTypedClient({ flow: coordinatorFlow, userId })
->   await coordinator.actions.addDelegate({ worker: "researcher", note: "license questions" }, { sessionId })
->   await coordinator.actions.removeDelegate({ worker: "support.devices" }, { sessionId })
->   await coordinator.actions.listDelegates({}, { sessionId })
+>   const workforce = createWorkforceClient({ userId, baseUrl })
+>   const session = await workforce.ensureWorkerSession({ worker: "support.help" })
+>   const coordinator = createClient({ flowKind: session.flowKind, userId, baseUrl })
+>   await coordinator.sendAction("addDelegate", { worker: "researcher", note: "license questions" }, { sessionId: session.id })
+>   await coordinator.sendAction("removeDelegate", { worker: "support.devices" }, { sessionId: session.id })
+>   await coordinator.sendAction("listDelegates", {}, { sessionId: session.id })
 >   ```
 >
 > - **By the coordinator itself**, with its delegate tools, when you ask it to bring someone in.
+>
+> Those are the only two ways. A conversation can't be created with delegates already set.
 >
 > A delegate must be a worker on your own roster: one of yours, or a standard worker. Anything
 > else is refused with the same answer as a worker that doesn't exist. A conversation holds at

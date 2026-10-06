@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D2, what happens to best fit&#x27;s fallback when a conversation&#x27;s delegates change. Chosen: the fallback is one of the conversation&#x27;s delegates, and removing it leaves the posts best fit can&#x27;t place recorded and said in the conversation. Instead of: refusing to remove the fallback delegate until another is set. It comes down to the first row: a person removing a delegate is never refused over a setting they may not know about, while refusing the removal surprises them. The price is the second row: a post the evaluator can&#x27;t place can go unanswered, visibly, where refusing keeps a fallback always set. The third row: falling back to the coordinator&#x27;s own judgment turn was dropped for cost under either option. Locks in: a best-fit conversation that can have no fallback. Flips if: posts go unplaced often."
+<svg viewBox="0 0 940 418" role="img" aria-label="D2, what happens to best fit&#x27;s fallback when a conversation&#x27;s delegates change. Chosen: the fallback is one of the conversation&#x27;s delegates, and removing it leaves the posts best fit can&#x27;t place recorded and said in the conversation. Instead of: refusing to remove the fallback delegate until another is set. It comes down to the first row: a user removing a delegate is never refused over a setting they may not know about, while refusing the removal surprises them. The price is the second row: a post the evaluator can&#x27;t place can go unanswered, visibly, where refusing keeps a fallback always set. The third row: falling back to the coordinator&#x27;s own judgment turn was dropped for cost under either option. Locks in: a best-fit conversation that can have no fallback. Flips if: posts go unplaced often."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -52,7 +52,7 @@
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">A PERSON REMOVES</text>
+    <text class="t-lbl" x="32" y="156">A USER REMOVES</text>
     <text class="t-lbl" x="32" y="169">A DELEGATE</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
