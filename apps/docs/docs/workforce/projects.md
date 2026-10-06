@@ -238,46 +238,6 @@ It returns that project's files, never another project's. A non-member is refuse
 
 In a project with a repository, a coding run finds the project's files in `project/`, next to its checkout and never inside it, so they don't show up in `git status`. Whatever the run leaves there is saved back to the project.
 
-## The room and talk sessions
-
-A project's room is stored on the organization's side, one row per line. Nobody reaches it directly. Each member gets their own **talk session**: a session on the mailbox kind that knows which project it's about. Every room call goes through one.
-
-A session, the room and a line are three separate things. The session is one person's, the room and its lines are the organization's, and none of them holds a copy of another.
-
-![A talk session holds only which project it is about and belongs to one person. The project row, the room counter and the room lines are organization data. A line stores its number, poster, optional seat author and body.](./project-room-parts.svg)
-
-Posts from every member's session land in the same ordered room.
-
-![Multiple talk sessions, one shared room](./project-room-sessions.svg)
-
-Each member has exactly one talk session on the project, however many windows they open. The row lists one session per person, and every session reaches the same room.
-
-![Alice, Bob and Cara each have one talk session. Alice's two windows share hers. The project row lists one session per person, and all three sessions reach the same single room.](./project-room-handles.svg)
-
-| Call | What it does |
-|------|--------------|
-| `join { projectId }` | Returns your talk session on the project. If the project already lists one for you, you get that one back, so a second window ends up in the same session. Otherwise the session you called from becomes your talk session. A declared mailbox's own session can't become one: `join` from it is refused with `talk-on-a-mailbox` |
-| `post { body }` | Adds a line to the room, as you |
-| `read { after }` | Returns the lines after a cursor, up to 200 at a time, and the cursor for the next read, with the room's charter and seats |
-
-`createProject` gets the creator's talk session ready for them. With a [talk template](#setting-up-the-room) in place, so does any other code that creates a project inside a flow turn, in the same turn. A row your code writes outside a turn gets none. Every other member joins.
-
-Other members' lines aren't pushed to you. They show up the next time your view reads the room, so read on open, on focus, and after you post.
-
-When several people post at once, every line lands, in one order everyone sees. A read never skips a line. A line still being written appears on a later read.
-
-### Members only
-
-Only a project's members can read or post in its room. A non-member's `join` is refused with `not-a-member`, binds nothing, and never adds them to `members`. Their `read` or `post` is refused too: with `talk-not-bound` when their session isn't bound to a project, and with `not-a-member` when its state names the project anyway.
-
-Access comes from the project row, never from the session. Every room call checks the caller against the row's `members`. Writing a project id into a session's state grants nothing.
-
-Everyone in the organization can see the row. Only the people in its `members` can get into the room, and `join` never changes who that is.
-
-![Everyone in the organization can list project rows. Only members can read or post in the room, through their own talk session, and every room call checks the session's server-recorded owner against members. Join binds the session and lists it on the row but never adds to members.](./project-room-membership.svg)
-
-Room lines aren't readable from the browser through the collection route. The only way to read them is `read` on a member's talk session.
-
 ## Setting up the room
 
 A room isn't a mailbox you declare. Every project's room is built from one **template**: the workers a post wakes and the charter they work under.
@@ -350,6 +310,46 @@ That file is a template, not a mailbox. It's never opened, and it never shows up
 - **Rooms aren't in the inventory.** The inventory lists the mailboxes you declared, and no talk session is ever one of its rows.
 
 `mailboxInstances` checks templates along with your mailboxes and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or names something other than the projects collection, a seat that isn't a seat id or is listed twice, seats on a kind that can't wake them, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `MAILBOX.md`.
+
+## The room and talk sessions
+
+A project's room is stored on the organization's side, one row per line. Nobody reaches it directly. Each member gets their own **talk session**: a session on the mailbox kind that knows which project it's about. Every room call goes through one.
+
+A session, the room and a line are three separate things. The session is one person's, the room and its lines are the organization's, and none of them holds a copy of another.
+
+![A talk session holds only which project it is about and belongs to one person. The project row, the room counter and the room lines are organization data. A line stores its number, poster, optional seat author and body.](./project-room-parts.svg)
+
+Posts from every member's session land in the same ordered room.
+
+![Multiple talk sessions, one shared room](./project-room-sessions.svg)
+
+Each member has exactly one talk session on the project, however many windows they open. The row lists one session per person, and every session reaches the same room.
+
+![Alice, Bob and Cara each have one talk session. Alice's two windows share hers. The project row lists one session per person, and all three sessions reach the same single room.](./project-room-handles.svg)
+
+| Call | What it does |
+|------|--------------|
+| `join { projectId }` | Returns your talk session on the project. If the project already lists one for you, you get that one back, so a second window ends up in the same session. Otherwise the session you called from becomes your talk session. A declared mailbox's own session can't become one: `join` from it is refused with `talk-on-a-mailbox` |
+| `post { body }` | Adds a line to the room, as you |
+| `read { after }` | Returns the lines after a cursor, up to 200 at a time, and the cursor for the next read, with the room's charter and seats |
+
+`createProject` gets the creator's talk session ready for them. With a [talk template](#setting-up-the-room) in place, so does any other code that creates a project inside a flow turn, in the same turn. A row your code writes outside a turn gets none. Every other member joins.
+
+Other members' lines aren't pushed to you. They show up the next time your view reads the room, so read on open, on focus, and after you post.
+
+When several people post at once, every line lands, in one order everyone sees. A read never skips a line. A line still being written appears on a later read.
+
+### Members only
+
+Only a project's members can read or post in its room. A non-member's `join` is refused with `not-a-member`, binds nothing, and never adds them to `members`. Their `read` or `post` is refused too: with `talk-not-bound` when their session isn't bound to a project, and with `not-a-member` when its state names the project anyway.
+
+Access comes from the project row, never from the session. Every room call checks the caller against the row's `members`. Writing a project id into a session's state grants nothing.
+
+Everyone in the organization can see the row. Only the people in its `members` can get into the room, and `join` never changes who that is.
+
+![Everyone in the organization can list project rows. Only members can read or post in the room, through their own talk session, and every room call checks the session's server-recorded owner against members. Join binds the session and lists it on the row but never adds to members.](./project-room-membership.svg)
+
+Room lines aren't readable from the browser through the collection route. The only way to read them is `read` on a member's talk session.
 
 ## A room or a mailbox
 

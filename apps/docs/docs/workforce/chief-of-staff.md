@@ -92,9 +92,13 @@ kinds.agent = defineAgentWorkerFlow({
 });
 ```
 
-`registerSeat`, `releaseSeat`, `kindAt` and `instanceAt` come from the `registry-access.ts` in [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate). The hire tools use `kindAt` to refuse a declared worker by name, and `instanceAt` so that a re-hire interrupted by a restart completes and `fire` releases only the worker it hired.
+`registerSeat`, `releaseSeat`, `kindAt` and `instanceAt` come from the `registry-access.ts` in [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate). The hire tools use `kindAt` to refuse a hire whose name a declared worker already has, and `instanceAt` so that a re-hire interrupted by a restart completes and `fire` releases only the worker it hired.
 
-`createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. The small `mailbox-inventory` capability declares the mailbox inventory on the kind with `projectWritesMailboxInventory`, the declaration the [project tools](#starting-projects) need, so you can add them later without touching it. Passing its key, `mailboxInventory` here, as `inventory.mailboxes` lets `discover` answer who is in a mailbox too. `mailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can answer in a mailbox it is a member of. A mailbox counts it as a member only when its `MAILBOX.md` `members:` lists it, by its own name for an org-level worker, as in `members: [eng.em, eng.coder, chief-of-staff]`. A post from a worker the mailbox doesn't list is refused with `author-not-a-member`. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
+The capabilities on the kind each add one part:
+
+- **Inventory and `discover`.** `createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. The small `mailbox-inventory` capability declares the mailbox inventory on the kind with `projectWritesMailboxInventory`, the declaration the [project tools](#starting-projects) need, so you can add them later without touching it. Passing its key, `mailboxInventory` here, as `inventory.mailboxes` lets `discover` answer who is in a mailbox too.
+- **Posting.** `mailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can answer in a mailbox it is a member of. A mailbox counts it as a member only when its `MAILBOX.md` `members:` lists it, by its own name for an org-level worker, as in `members: [eng.em, eng.coder, chief-of-staff]`. A post from a worker the mailbox doesn't list is refused with `author-not-a-member`.
+- **Hiring.** `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
 
 Build in this order:
 
