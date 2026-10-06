@@ -27,9 +27,8 @@ every task running as its owner and nothing of one user's reachable by the other
 was written to a shared resource or to org scope.**
 
 The worker library follows the MVP (Jake, 2026-10-06). FIX-1795's spec goes through its gate
-now, and its build starts once this goal is met. Nothing else moves out: whether the shared
-project and its workstreams stay in the MVP is still asked at FIX-1793's spec gate
-([Q2](DECISIONS.md#q2)).
+now, and its build starts once this goal is met. Nothing else moves out: at FIX-1793's spec
+gate, Jake kept the shared project and its workstreams in the MVP ([Q2](DECISIONS.md#q2)).
 
 A worker's own state and user-scoped data never cross users. Org scope is shared with the org by
 design: a worker flow may write there if that is how its author built it, the framework doesn't
@@ -91,9 +90,9 @@ blocked by FIX-1787 ([ER-23](BUSINESS-RULES.md#how-the-set-is-run)).
 | [FIX-1788](https://linear.app/fixpoint-labs/issue/FIX-1788) · workers as resources | A worker as a user-scoped resource, run by the singleton flow it names; standard workers projected from files; fork; a session link callers can't seed; instances and pins deprecated | The spine: privacy by construction | Backlog · spec route |
 | [FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791) · coordinator flow | Delegates in session state, four routing policies, one answer per delegate, a routing record | Replaces the mailbox with a worker, and fixes its fixed membership | Backlog · spec route · carries FIX-1774's dogfood legs and *not done if* list |
 | [FIX-1795](https://linear.app/fixpoint-labs/issue/FIX-1795) · worker library | Templates in the org, copied into a user's scope | With hires private, the only way a team shares a worker | In Spec Review ([#2819](https://github.com/fixpoint-labs/flow-state-dev/pull/2819)) · build after the MVP (Jake, 2026-10-06; [Q2](DECISIONS.md#q2)) |
-| [FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793) · projects and workstreams | Private or shared projects; workstream resources an owner writes and the org reads; a project coordinator; rooms removed | Leg b, and the one new engine rule | Backlog · spec route · private projects in ([Q2](DECISIONS.md#q2)) |
+| [FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793) · projects and workstreams | Private or shared projects; workstream resources an owner writes and the org reads; a project coordinator; rooms removed | Leg b, and the one new engine rule | Spec merged ([#2823](https://github.com/fixpoint-labs/flow-state-dev/pull/2823)) · private and shared projects in, and a shared project's members open its workstreams ([Q2](DECISIONS.md#q2)) |
 | [FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794) · assignment chain | Tasks assigned from delegates, down the owner's boards, run as the owner | Today a drain runs as whoever triggers it | Backlog · spec route · carries FIX-1777's "runs as the filer" rule |
-| [FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792) · `MAILBOX.md` to `WORKER.md` | 33 charters converted, 15 boards resolved, old files refused by name | One way to declare a worker | Backlog · spec route |
+| [FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792) · `MAILBOX.md` to `WORKER.md` | 33 charters converted, 15 boards resolved, old files refused by name; project claims and a project row's mailbox list removed | One way to declare a worker | Backlog · spec route |
 | [FIX-1796](https://linear.app/fixpoint-labs/issue/FIX-1796) · terminology | The retired terms gone from code, docs and the glossary | One term, one thing | Backlog · spec route |
 | [FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797) · closure · **required** | The QA plan, an early leg-c run when FIX-1788 merges, and the runs on one `main` commit | Proves the whole | Backlog · blocked by every other child except FIX-1795, which builds after the MVP ([ER-27](BUSINESS-RULES.md#how-the-set-is-run)) |
 
@@ -154,8 +153,8 @@ resources and org scope. If wrong: we rename the parts while a hire still reache
 workers: a list the installation keeps, not a `defineWorkerFlow()` wrapper, chosen at
 FIX-1789's spec gate on a POC of both. [Q2](DECISIONS.md#q2) · private projects are in and FIX-1763's
 "projects stay org-level" is lifted; FIX-1762's stack merged first. The library follows the MVP:
-FIX-1795's spec continues, and its build waits until the goal is met. Whether the shared half
-stays in the MVP is asked at FIX-1793's spec gate.
+FIX-1795's spec continues, and its build waits until the goal is met. At FIX-1793's spec gate,
+the shared half stays in the MVP.
 [Q3](DECISIONS.md#q3) · FIX-1774 and FIX-1777 are closed into FIX-1791 and FIX-1794. At FIX-1789's
 gate, no engine rule on org-scope writes: [D3](DECISIONS.md#d3) stays three. Engineering calls I
 made as EM, for the record: [D2](DECISIONS.md#d2) to [D5](DECISIONS.md#d5). Rules:

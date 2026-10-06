@@ -135,14 +135,15 @@ FIX-1762's stack merged first (#2738 and #2748, 2026-10-06).
 - **The condition.** If FIX-1793's spec finds private projects cost the MVP much more than a
   scope configuration, it raises that at its gate. Taking them out is then an amendment here
   ([ER-24](BUSINESS-RULES.md#how-the-set-is-run)) that removes ER-7's private half, leg b's
-  private step and the docs phrase together.
-- **Where it points.** Jake expects org-level (shared) concepts may be a fast follow after the
-  MVP, as a key unique feature of the platform, which is why private projects should be cheap to
-  build now. The shared project and its workstreams stay in the goal as approved. FIX-1793's
-  spec gate is where that is asked outright, beside the cost check above: does the shared half
-  (the shared project and its two owners, "owner writes, org reads") stay in the MVP? Yes keeps
-  the goal. No is an amendment here that changes the goal, and takes leg b's two-owner half with
-  it.
+  private step and the docs phrase together. It didn't fire: FIX-1793's spec priced a private
+  project as today's row kept in user scope, a scope configuration (its D1).
+- **The shared half stays in the MVP.** Jake, 2026-10-06, at FIX-1793's spec gate
+  ([#2823](https://github.com/fixpoint-labs/flow-state-dev/pull/2823)): "yes to all
+  recommendations." Shared projects stay beside private ones, so the goal and leg b's two-owner
+  half stand as approved, with "owner writes, org reads" behind them. Only a shared project's
+  members open workstreams on it; everyone in the org still reads it (ER-7). Jake still expects
+  more org-level (shared) concepts as a fast follow after the MVP, a key unique feature of the
+  platform.
 - **The library follows the MVP.** Jake, 2026-10-06: "post mvp is fine." FIX-1795's spec
   ([#2819](https://github.com/fixpoint-labs/flow-state-dev/pull/2819)) goes through its gate now;
   its build starts once the goal is met. The goal and leg a lose the library copy, FIX-1796 and
@@ -216,6 +217,12 @@ engine rule. The closure only checks.
   From review round 2 (Codex).
 - **Shift Manager lives at `packages/shift-manager`.** #2759 (FIX-1770) moves it there and lands
   first among the merge-first rows; PRs that edit the lab rebase after it.
+- **FIX-1792 removes project claims and a project row's mailbox list, not FIX-1793.** Today they
+  place a mailbox board's coding runs in its project. FIX-1793 leaves them readable and
+  deprecated, and nothing new builds on them. FIX-1792 removes them as it converts each board,
+  and its per-board table can use them. From FIX-1793's spec
+  ([its decisions](../../issues/FIX-1793/DECISIONS.md#decided-not-asked)), bound to the set by
+  this record ([ER-24](BUSINESS-RULES.md#how-the-set-is-run)).
 - **Checked against `main` at `74f9a4f68`:** a project room and the mailbox boards are as
   [EVOLUTION.md](EVOLUTION.md#where-todays-code-differs-checked-against-main) states; 33
   `MAILBOX.md` files, 15 with boards (the concept's 32 and 14 predate a FIX-1778 fixture).
@@ -277,6 +284,8 @@ engine rule. The closure only checks.
   build after the closure run. Two engineering calls: the terms sweep doesn't wait on the
   library, which is new code written in the new terms (ER-25); and FIX-1795 stays a child but
   doesn't block the closure (ER-27), so the wrap reports it as the one open child.
+- **FIX-1793's gate (Oct 6)**, in a fifth follow-up PR: Jake kept the shared half in the MVP, with
+  only a shared project's members opening workstreams ([Q2](#q2)), and FIX-1792 now owns removing
+  project claims and a project row's mailbox list.
 
-**Open: none needing an answer now.** Whether the shared half stays in the MVP is asked at
-FIX-1793's spec gate ([Q2](#q2)). The library's half is answered: it follows the MVP.
+**Open: none.**
