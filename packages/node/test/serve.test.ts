@@ -479,6 +479,49 @@ describe("serve() — pageMeta", () => {
   });
 });
 
+describe("serve() — pageScript", () => {
+  async function staticDir(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "fsd-node-script-"));
+    await writeFile(join(dir, "index.html"), "<!doctype html><html><head></head><body></body></html>");
+    await writeFile(join(dir, "about.html"), "<!doctype html><html><head></head><body>about</body></html>");
+    return dir;
+  }
+
+  it("writes the script into the index, another HTML file, and the SPA fallback, after the meta", async () => {
+    const handle = await start(fakeRouter, {
+      port: 0,
+      host: "127.0.0.1",
+      staticDir: await staticDir(),
+      pageMeta: { "app-boot": "b1" },
+      pageScript: "window.booted = true;",
+      devtoolConfig: { userId: "owner" },
+    });
+    for (const path of ["/", "/about.html", "/some/client/route"]) {
+      const html = await (await fetch(`http://127.0.0.1:${handle.port}${path}`)).text();
+      // The meta first, so the script can read it; the config script last, as before.
+      expect(html, path).toContain(
+        '<meta name="app-boot" content="b1"><script>window.booted = true;</script>' +
+          '<script>window.__FSD_DEVTOOL_CONFIG__ = {"userId":"owner"};</script></head>',
+      );
+    }
+  });
+
+  it("writes it on a non-loopback host too", async () => {
+    const handle = await start(fakeRouter, { port: 0, host: "0.0.0.0", staticDir: await staticDir(), pageScript: "1;" });
+    expect(await (await fetch(`http://127.0.0.1:${handle.port}/`)).text()).toContain("<script>1;</script></head>");
+  });
+
+  it("escapes a closing tag inside the script so it cannot end the element early", async () => {
+    const handle = await start(fakeRouter, {
+      port: 0,
+      staticDir: await staticDir(),
+      pageScript: 'var s = "</script><b>x</b>";',
+    });
+    const html = await (await fetch(`http://127.0.0.1:${handle.port}/`)).text();
+    expect(html).toContain('<script>var s = "<\\/script><b>x<\\/b>";</script></head>');
+  });
+});
+
 describe("serve() — pageHandler", () => {
   type Handler = NonNullable<ServeOptions["pageHandler"]>;
 
@@ -568,6 +611,50 @@ describe("serve() — pageHandler", () => {
     const handle = await start(fakeRouter, { port: 0, pageHandler: handler });
     expect(await (await fetch(`http://127.0.0.1:${handle.port}/src/a.ts`)).text()).toBe("from-handler /src/a.ts");
     expect((await fetch(`http://127.0.0.1:${handle.port}/elsewhere`)).status).toBe(404);
+  });
+
+  it("holds a streaming response open until the handler ends it", async () => {
+    let finish: (() => void) | undefined;
+    const handle = await start(fakeRouter, {
+      port: 0,
+      staticDir: await staticDir(),
+      pageHandler: (req, res, next) => {
+        if (req.url !== "/stream") return next();
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write("data: one\n\n");
+        finish = () => res.end("data: two\n\n");
+      },
+    });
+    const res = await fetch(`http://127.0.0.1:${handle.port}/stream`);
+    const reader = res.body!.getReader();
+    const first = new TextDecoder().decode((await reader.read()).value);
+    expect(first).toBe("data: one\n\n");
+    finish!();
+    let rest = "";
+    for (let r = await reader.read(); !r.done; r = await reader.read()) rest += new TextDecoder().decode(r.value);
+    expect(rest).toBe("data: two\n\n");
+    // The server still answers after the stream ended.
+    expect((await fetch(`http://127.0.0.1:${handle.port}/app.js`)).status).toBe(200);
+  });
+
+  it("lets a client drop a held stream without wedging the server", async () => {
+    const closed: string[] = [];
+    const handle = await start(fakeRouter, {
+      port: 0,
+      staticDir: await staticDir(),
+      pageHandler: (req, res, next) => {
+        if (req.url !== "/stream") return next();
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write("data: one\n\n");
+        res.on("close", () => closed.push("closed"));
+      },
+    });
+    const abort = new AbortController();
+    const res = await fetch(`http://127.0.0.1:${handle.port}/stream`, { signal: abort.signal });
+    await res.body!.getReader().read();
+    abort.abort();
+    await expect.poll(() => closed).toEqual(["closed"]);
+    expect((await fetch(`http://127.0.0.1:${handle.port}/app.js`)).status).toBe(200);
   });
 
   it("turns an error the handler passes on into a 500", async () => {

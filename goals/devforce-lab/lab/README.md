@@ -134,7 +134,7 @@ const lab = await openLab({
 ## Serving it
 
 This tree is served as Shift Manager's `devteam` profile. The profile's config,
-`labs/shift-manager/teams/devteam/fsdev.config.mts`, opens it through `openLab`, and
+`packages/shift-manager/teams/devteam/fsdev.config.mts`, opens it through `openLab`, and
 `fsdev dev --config` takes the same file. `DEVFORCE_LAB_HARNESS` picks what runs an approved
 row (`harness.mts`):
 
@@ -147,7 +147,7 @@ The scripted run pauses 2 s before each of its five steps so you can watch them 
 `DEVFORCE_LAB_STEP_MS` changes the pause; a test that only needs the row to settle sets it to `0`.
 
 ```bash
-DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/shift-manager start --team devteam
+DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/shift-manager start
 ```
 
 A row the run leaves unfinished goes back to `pending` with its reason, and waits for the next

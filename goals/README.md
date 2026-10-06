@@ -99,7 +99,7 @@ Every goal repeats the same scaffolding around the part that is actually its own
 | `specs`      | `runSpecs` — delegate to an app's mock-free vitest specs |
 | `server`     | `refuseIfAnswering`, `stopProcessGroup` — for a goal that spawns its own server: refuse when anything already answers on the port, and stop the whole detached process group so no survivor is left for the next run to grade |
 | `playwright` | `launchChromium`, `preinstalledChromium` — Chromium for a goal that reads the shipped DevTool. **Not re-exported from `index.mts`**, so a goal that opens no browser does not load Playwright; import `../../lib/playwright.mts` directly |
-| `shift-manager` | `buildShiftManagerCopy` (a patched scratch copy, built with Vite), `startShiftManager` (its start script over a Lab, with `NODE_ENV` as it was before any in-process build), `labApi` (the Lab's routes) — for the Shift Manager goals. **Not re-exported from `index.mts`**; import `../../lib/shift-manager.mts` directly |
+| `shift-manager` | `buildShiftManagerCopy` (a patched scratch copy, built with Vite), `startShiftManager` (its command over a Lab, with `NODE_ENV` as it was before any in-process build), `labApi` (the Lab's routes) — for the Shift Manager goals. **Not re-exported from `index.mts`**; import `../../lib/shift-manager.mts` directly |
 
 The library covers scaffolding only. **The grading logic is the goal** and belongs in `run.mts`. So does retry *policy* — the corpus has three, and they mean different things (retry-until-first-pass over model flakiness vs. require-k-of-k where the stability number is itself the published result).
 

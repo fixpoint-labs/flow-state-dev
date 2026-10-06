@@ -49,7 +49,7 @@
   <text x="344" y="92" class="tag-sess">READS</text>
   <rect x="28" y="104" width="268" height="52" rx="10" class="card-warm"/>
   <text x="42" y="126" class="h">Lab</text>
-  <text x="42" y="144" class="code">--config or --team</text>
+  <text x="42" y="144" class="code">--config</text>
   <rect x="344" y="104" width="548" height="52" rx="10" class="card"/>
   <text x="358" y="125" class="tag-ink">FLOWSTATE</text>
   <text x="508" y="125" class="p">The FlowState one fsdev.config.mts default-exports.</text>

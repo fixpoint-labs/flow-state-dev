@@ -54,6 +54,13 @@ export interface ServeOptions {
    */
   pageMeta?: Record<string, string>;
   /**
+   * An inline script written into every HTML page served from `staticDir`,
+   * after the `pageMeta` tags so it can read them, on any host. For a dev
+   * server's page behaviour, such as reloading when the server restarts. Not
+   * for secrets. A `</` in it is escaped.
+   */
+  pageScript?: string;
+  /**
    * A Connect-style `(req, res, next)` handler for non-API `GET` requests, such
    * as a dev server's middleware. Tried after a real file in `staticDir` and
    * after a dedicated adapter route, before the SPA fallback (a 404 without
@@ -187,7 +194,12 @@ export function serve(
           `Bind a loopback host (127.0.0.1) to use DevTool config injection.\n`,
       );
     }
-    const htmlTransform = createPageHtmlTransform({ host, devtoolConfig, pageMeta: options.pageMeta });
+    const htmlTransform = createPageHtmlTransform({
+      host,
+      devtoolConfig,
+      pageMeta: options.pageMeta,
+      pageScript: options.pageScript,
+    });
     honoApp.get("*", async (c) => {
       if (staticDir !== undefined) {
         const file = await serveStaticFile(c.req.path, staticDir, htmlTransform);

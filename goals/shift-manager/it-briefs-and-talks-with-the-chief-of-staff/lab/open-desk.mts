@@ -1,5 +1,5 @@
 /**
- * The goal's fixture Labs, opened the way Shift Manager's start script loads
+ * The goal's fixture Labs, opened the way Shift Manager's command loads
  * one: a tree with one team, `desk`, whose seats run the turn goal's `asker`
  * kind or the built-in `agent` kind with a real model, in one mailbox with one
  * board. The organization's inventory is open, so each seat's row names its

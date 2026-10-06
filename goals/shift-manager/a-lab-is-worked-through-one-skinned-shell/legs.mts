@@ -494,7 +494,7 @@ export async function legA(ctx: LegCtx): Promise<void> {
     const { userId, bearer } = await injected(page);
     const api = labApi(served.origin, bearer);
     const before = await readStore(api, tree, userId);
-    report.note(`a: DevForce served as --team devteam on the claude-code harness, ${keys.length} model key(s) set; org ${before.orgs.join(", ")}`);
+    report.note(`a: DevForce served as the devteam profile on the claude-code harness, ${keys.length} model key(s) set; org ${before.orgs.join(", ")}`);
 
     // a1: from the first screen, Inbox.
     const approved = await inboxJourney(page, api, before, tree, "a1", report);
@@ -646,9 +646,9 @@ export async function legB(ctx: LegCtx): Promise<void> {
 
   // The fence: Shift Manager untouched, and naming nothing of the pentest tree.
   try {
-    execFileSync("git", ["diff", "--quiet", "HEAD", "--", "labs/shift-manager"], { cwd: REPO_ROOT });
+    execFileSync("git", ["diff", "--quiet", "HEAD", "--", "packages/shift-manager"], { cwd: REPO_ROOT });
   } catch {
-    report.fail("b:fence", "labs/shift-manager differs from the commit");
+    report.fail("b:fence", "packages/shift-manager differs from the commit");
   }
   const names = pentestNames(tree);
   const hits = shiftManagerFiles().flatMap((file) => {
@@ -656,7 +656,7 @@ export async function legB(ctx: LegCtx): Promise<void> {
     return m === null ? [] : [`${relative(REPO_ROOT, file)}: ${m[1] ?? m[2]}`];
   });
   if (hits.length > 0) report.fail("b:fence", `Shift Manager names the pentest tree: ${hits.slice(0, 5).join("; ")}`);
-  report.note(`b:fence: git diff of labs/shift-manager empty; no Shift Manager file (registry copies aside) names a pentest id [${[...tree.seats, ...tree.mailboxes.map((c) => c.id)].join(", ")}] or quotes a bare name of one`);
+  report.note(`b:fence: git diff of packages/shift-manager empty; no Shift Manager file (registry copies aside) names a pentest id [${[...tree.seats, ...tree.mailboxes.map((c) => c.id)].join(", ")}] or quotes a bare name of one`);
 
   // Every Lab opens under an org: a Lab with no resolver opens under the dev org.
   const askLab = await startShiftManager(ctx.scratch, "b-no-resolver", { config: ASK_LAB_CONFIG, pages: ctx.pages, env: KEYLESS });
@@ -688,7 +688,7 @@ export async function legB(ctx: LegCtx): Promise<void> {
     const shown = ((await third.page.getByTestId("org-switcher").locator("span.truncate").first().textContent().catch(() => null)) ?? "").trim();
     if (store.orgs.length !== 1) report.fail("b:org", `[devforce] the person's sessions sit in ${store.orgs.length} orgs (${store.orgs.join(", ")})`);
     else if (shown !== store.orgs[0]) report.fail("b:org", `[devforce] the org switcher names "${shown}", the store's org is ${store.orgs[0]}`);
-    report.note(`b:org [devforce]: --team devteam on the scripted harness; store org ${store.orgs.join(", ")}, switcher "${shown}"`);
+    report.note(`b:org [devforce]: the devteam profile on the scripted harness; store org ${store.orgs.join(", ")}, switcher "${shown}"`);
   } finally {
     await third.page.close();
     await devforce.stop();

@@ -1,0 +1,247 @@
+/**
+ * The right panel's task slot: the task inspector (S7, BR-18 to BR-23).
+ *
+ * Worker and team from the seat inventory, started from the row, the ask the
+ * run waits on (on the highlighter, a way to it in Inbox), the plan and
+ * files the run recorded under its own request (read once per open, no
+ * stream), the rows it waits on and the rows waiting on it from the same board
+ * read, and a link that opens the run's session in the devtool served beside
+ * Shift Manager. Harness, tokens,
+ * cost, acceptance and *review by* are named gaps from the gap registry.
+ */
+import { useEffect, useState, type ReactNode } from "react";
+import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
+import { SectionFailure } from "../components/ui";
+import { asksOfTask, rosterOf, seatFor, waited, type LoadedSnapshot } from "../lib/derive";
+import { useLab } from "../lib/lab-data";
+import { describeFailure, STAFF_TEAM, type Failure } from "../lib/reads";
+import { navigate } from "../lib/routes";
+import { readRecordedWork, RunReadError, type OpenRun, type RecordedWork } from "../lib/run";
+import { useTask } from "../lib/task";
+import type { Gaps } from "../gaps";
+
+function Section({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {
+  return (
+    <section className="border-b px-4 py-3" data-testid={testId}>
+      <h3 className="pb-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function Gap({ text, testId }: { text: string; testId: string }) {
+  return (
+    <p className="text-xs text-muted-foreground" data-testid={testId} data-gap={text}>
+      {text}
+    </p>
+  );
+}
+
+export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
+  const task = useTask();
+  const { row } = task;
+  const seat = row === undefined ? undefined : seatFor(rosterOf(snapshot), row);
+  const after = row === undefined ? [] : task.boardRows.filter((r) => row.deps.includes(r.id));
+  const missingAfter = row === undefined ? [] : row.deps.filter((id) => !task.boardRows.some((r) => r.id === id));
+  const blocks = row === undefined ? [] : task.boardRows.filter((r) => r.deps.includes(row.id));
+  const open = (id: string) => navigate({ level: "task", boardRef: task.boardRef, taskId: id, tab: "session" });
+  // The oldest ask this task's run waits on: the snapshot holds them oldest first.
+  const ask = asksOfTask(snapshot, row)[0];
+
+  return (
+    <div data-testid="task-panel-slot">
+      <div data-testid="task-inspector">
+        <Section title="WORKER" testId="inspector-worker">
+          <p className="text-sm" data-testid="inspector-worker-id" data-seat-id={seat?.id ?? ""}>
+            {seat?.id ?? row?.assignee ?? "No worker named"}
+          </p>
+          <p className="text-xs text-muted-foreground" data-testid="inspector-team">
+            {seat === undefined ? "" : seat.team === STAFF_TEAM ? STAFF_TEAM : `team ${seat.team}`}
+          </p>
+        </Section>
+        <Section title="STARTED" testId="inspector-started">
+          <p className="text-sm" data-testid="inspector-started-at" data-started-at={row?.startedAt ?? ""}>
+            {row?.startedAt == null ? "Not started" : new Date(row.startedAt).toLocaleString()}
+          </p>
+        </Section>
+        {ask === undefined ? null : (
+          <div className="px-4 pt-3.5">
+            <button
+              type="button"
+              onClick={() => navigate({ level: "inbox", suspensionId: ask.item.suspensionId })}
+              className="flex w-full justify-between border border-foreground bg-attention px-2.5 py-2 text-left font-mono text-[11.5px] font-medium text-attention-foreground"
+              data-testid="inspector-needs"
+              data-suspension-id={ask.item.suspensionId}
+            >
+              <span>
+                {ask.kind} waiting {waited(ask.since, Date.now())}
+              </span>
+              <span>inbox ↗</span>
+            </button>
+          </div>
+        )}
+        <Section title="HARNESS · TOKENS · COST" testId="inspector-harness">
+          <Gap text={gaps.task.harness} testId="inspector-harness-gap" />
+        </Section>
+        <Section title="ACCEPTANCE" testId="inspector-acceptance">
+          <Gap text={gaps.task.acceptance} testId="inspector-acceptance-gap" />
+          <Gap text={gaps.task.reviewBy} testId="inspector-review-gap" />
+        </Section>
+        {task.run.kind === "open" ? (
+          <Recorded key={task.run.run.requestId} run={task.run.run} gaps={gaps} />
+        ) : (
+          <Section title="PLAN · FILES" testId="inspector-recorded">
+            <p className="text-xs text-muted-foreground" data-testid="inspector-recorded-none">
+              {task.run.kind === "none" ? "No run has started, so nothing is recorded yet." : "Waiting for the run to open."}
+            </p>
+          </Section>
+        )}
+        <Section title="LINKED" testId="inspector-linked">
+          <p className="text-[11px] text-muted-foreground">After</p>
+          <ul className="mb-2 text-sm" data-testid="inspector-after">
+            {after.map((r) => (
+              <li key={r.id} data-task-id={r.id}>
+                <button type="button" className="hover:underline" onClick={() => open(r.id)}>
+                  {r.title}
+                </button>
+              </li>
+            ))}
+            {missingAfter.map((id) => (
+              <li key={id} data-task-id={id} className="text-muted-foreground">
+                {id} (not on this board)
+              </li>
+            ))}
+            {row?.deps.length === 0 ? <li className="text-xs text-muted-foreground">Nothing</li> : null}
+          </ul>
+          <p className="text-[11px] text-muted-foreground">Blocks</p>
+          <ul className="text-sm" data-testid="inspector-blocks">
+            {blocks.map((r) => (
+              <li key={r.id} data-task-id={r.id}>
+                <button type="button" className="hover:underline" onClick={() => open(r.id)}>
+                  {r.title}
+                </button>
+              </li>
+            ))}
+            {blocks.length === 0 ? <li className="text-xs text-muted-foreground">Nothing</li> : null}
+          </ul>
+        </Section>
+        <Section title="TRACE" testId="inspector-trace">
+          <Trace />
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+/** The plan and files the run recorded, read once per open (BR-19, BR-20). */
+function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
+  const { clients } = useLab();
+  const [work, setWork] = useState<RecordedWork | undefined>(undefined);
+  const [failure, setFailure] = useState<Failure | undefined>(undefined);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setFailure(undefined);
+    readRecordedWork(clients, run)
+      .then((read) => {
+        if (live) setWork(read);
+      })
+      .catch((error: unknown) => {
+        if (live) setFailure(error instanceof RunReadError ? error.failure : describeFailure(error));
+      });
+    return () => {
+      live = false;
+    };
+  }, [clients, run, attempt]);
+
+  if (failure !== undefined) {
+    return (
+      <Section title="PLAN · FILES" testId="inspector-recorded">
+        <SectionFailure what="What the run recorded" failure={failure} onRetry={() => setAttempt((n) => n + 1)} />
+      </Section>
+    );
+  }
+  if (work === undefined) {
+    return (
+      <Section title="PLAN · FILES" testId="inspector-recorded">
+        <p className="text-xs text-muted-foreground">Reading what the run recorded…</p>
+      </Section>
+    );
+  }
+  const more = (truncated: boolean) =>
+    truncated ? <p className="text-xs text-muted-foreground">More than shown: the run recorded more than one read returns.</p> : null;
+  return (
+    <>
+      <Section title="PLAN" testId="inspector-plan">
+        {work.plan === null ? (
+          <Gap text={gaps.task.recordsNoPlan} testId="inspector-plan-none" />
+        ) : (
+          <ol className="space-y-0.5 text-sm">
+            {work.plan.rows.map((step) => (
+              <li key={step.id} data-testid="inspector-plan-step" data-step-id={step.id} data-status={step.status ?? ""}>
+                <span className="text-xs text-muted-foreground">{step.status ?? "no status"}</span> {step.title}
+              </li>
+            ))}
+            {work.plan.rows.length === 0 ? <li className="text-xs text-muted-foreground">The run recorded no plan.</li> : null}
+            {more(work.plan.truncated)}
+          </ol>
+        )}
+      </Section>
+      <Section title="FILES" testId="inspector-files">
+        {work.files === null ? (
+          <Gap text={gaps.task.recordsNoFiles} testId="inspector-files-none" />
+        ) : (
+          <ul className="space-y-0.5 text-sm">
+            {work.files.rows.map((file) => (
+              <li key={file.path} data-testid="inspector-file" data-path={file.path} data-kind={file.kind ?? ""}>
+                <span className="font-mono text-xs">{file.path}</span>{" "}
+                <span className="text-xs text-muted-foreground">{file.kind ?? "touched"}</span>
+              </li>
+            ))}
+            {work.files.rows.length === 0 ? <li className="text-xs text-muted-foreground">The run recorded no file operations.</li> : null}
+            {more(work.files.truncated)}
+          </ul>
+        )}
+      </Section>
+    </>
+  );
+}
+
+/** The devtool link, opening the run's session, with its id beside it (BR-23). */
+function Trace() {
+  const task = useTask();
+  const sessionId = task.run.kind === "open" ? task.run.run.sessionId : task.row?.run?.sessionId;
+  if (task.devtoolUrl === undefined) {
+    return (
+      <p className="text-xs text-muted-foreground" data-testid="inspector-trace-off">
+        Open trace is off: no devtool is served beside Shift Manager. Install <code>@flow-state-dev/devtool</code> (in this
+        repository, build it with <code>pnpm build:assets</code>) and restart.
+      </p>
+    );
+  }
+  return (
+    <div className="text-xs">
+      <a href={traceHref(task.devtoolUrl, sessionId)} target="_blank" rel="noreferrer" className="font-medium underline" data-testid="inspector-trace-link">
+        Open trace
+      </a>
+      {sessionId === undefined ? null : (
+        <p className="mt-1 text-muted-foreground">
+          Session <code data-testid="inspector-trace-session">{sessionId}</code>
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The devtool address that opens the run's session: `?session=<id>`, which the
+ * devtool follows to the session and the flow that owns it. With no run yet,
+ * the devtool itself. `devtoolUrl` parses: `readDevtoolUrl` takes only an
+ * http(s) address.
+ */
+function traceHref(devtoolUrl: string, sessionId: string | undefined): string {
+  if (sessionId === undefined) return devtoolUrl;
+  const url = new URL(devtoolUrl);
+  url.searchParams.set(SESSION_ADDRESS_PARAM, sessionId);
+  return url.toString();
+}

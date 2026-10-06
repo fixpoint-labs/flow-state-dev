@@ -3,8 +3,8 @@
  * and a person changes who works there by asking it. A hire lands at once, a
  * fire lands only on Approve, and both hold across restarts. See goal.md.
  *
- * Real path, real model. The DevTeam profile (`labs/shift-manager/teams/
- * devteam`) is served by Shift Manager's own start script over a SQLite file
+ * Real path, real model. The DevTeam profile (`packages/shift-manager/teams/
+ * devteam`) is served by Shift Manager's own command over a SQLite file
  * this check owns, started three times over that one file. Every change goes
  * through the chief of staff's own turn on `openai/gpt-5.4-mini`; the approval
  * goes through the engine's resume route, as Inbox sends it. What happened is
@@ -65,6 +65,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { LAB_ORG_ID } from "../../devforce-lab/lab/host.mts";
 import { CODER_KIND } from "../../devforce-lab/lab/workforce/flows/workers/coder.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
+import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { ASKER, runSeatAsks } from "./seat-asks.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -83,7 +84,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
   process.exit(2);
 }
 
-const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
+const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const DEVTEAM_CONFIG = join(SHIFT_MANAGER, "teams", "devteam", "fsdev.config.mts");
 const DEVTEAM_TREE = join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
@@ -101,13 +102,13 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 type Served = { origin: string; child: ChildProcess; exited: Promise<void>; log: () => string };
 
 /**
- * Serve DevTeam over `store` through Shift Manager's start script. The pages
+ * Serve DevTeam over `store` through Shift Manager's command. The pages
  * are a stub: this check reads routes, never the screen.
  */
 async function startDevTeam(store: string, pages: string): Promise<Served> {
   const workDir = mkdtempSync(join(SCRATCH, "run-"));
   let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", DEVTEAM_CONFIG, "--port", "0", "--assets", pages], {
+  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", DEVTEAM_CONFIG, "--port", "0", "--no-open", "--assets", pages], {
     cwd: workDir,
     env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", DEVTEAM_STORE: store }),
     stdio: ["ignore", "pipe", "pipe"],
@@ -122,13 +123,13 @@ async function startDevTeam(store: string, pages: string): Promise<Served> {
     }),
   );
   for (let waited = 0; waited < 120_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, child, exited, log: () => log };
+    const served = servedAddresses(log);
+    if (served !== undefined) return { origin: served.origin, child, exited, log: () => log };
     if (gone) break;
     await sleep(250);
   }
   child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served DevTeam. Log tail:\n${log.slice(-3000)}`);
+  throw new Error(`Shift Manager's command never served DevTeam. Log tail:\n${log.slice(-3000)}`);
 }
 
 async function stop(served: Served): Promise<void> {
@@ -532,6 +533,6 @@ await runGoal(async () => {
 
   return {
     failures: graded(),
-    evidence: `DevTeam served three times by Shift Manager's start script over one SQLite file, the chief of staff on a real model. ${evidence.join("; ")}`,
+    evidence: `DevTeam served three times by Shift Manager's command over one SQLite file, the chief of staff on a real model. ${evidence.join("; ")}`,
   };
 });

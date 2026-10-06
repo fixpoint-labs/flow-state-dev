@@ -7,9 +7,9 @@
  * `{ message }` input. None is `null`; two is a reported problem and also
  * `null`, never a guess.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { __resetDeprecationWarningsForTests, defineFlow, handler } from "@flow-state-dev/core";
 import { hireWorkforce } from "../src/hire";
 import { openInventory } from "../src/inventory/open-inventory";
 import type { WorkerManifest } from "../src/manifest";
@@ -56,6 +56,12 @@ function record(id: string, flow?: string): WorkerManifest {
 
 afterEach(() => vi.restoreAllMocks());
 
+// The two-doors warning prints once per process, so each test starts as a
+// fresh process would.
+beforeEach(() => {
+  __resetDeprecationWarningsForTests();
+});
+
 describe("a seat's door (BR-1, BR-2)", () => {
   it("is the built-in agent kind's `run`", () => {
     const [seat] = hireWorkforce([record("eng.lead")], { kinds });
@@ -78,6 +84,26 @@ describe("a seat's door (BR-1, BR-2)", () => {
     expect(found.problem).toContain("eng.chatty");
     // The hire reported it.
     expect(warn.mock.calls.map((c) => String(c[0])).some((line) => line.includes('"message", "say"'))).toBe(true);
+  });
+
+  it("is reported once per process, not once per hire, and a different seat's problem is still said", () => {
+    // `next dev` re-runs an app's module-scope hire on every hot reload. The
+    // same two-door seat is still two-door after an edit, and the sentence
+    // repeated on every save hides a fresh problem among the repeats. So a
+    // repeat is silent, but another seat with two doors must still be named.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doorLines = () =>
+      warn.mock.calls.map((c) => String(c[0])).filter((line) => line.includes('"message", "say"'));
+
+    hireWorkforce([record("eng.chatty", "two-door")], { kinds });
+    hireWorkforce([record("eng.chatty", "two-door")], { kinds });
+    hireWorkforce([record("eng.chatty", "two-door")], { kinds });
+    expect(doorLines()).toHaveLength(1);
+    expect(doorLines()[0]).toContain("eng.chatty");
+
+    hireWorkforce([record("eng.chatty", "two-door"), record("eng.loud", "two-door")], { kinds });
+    expect(doorLines()).toHaveLength(2);
+    expect(doorLines()[1]).toContain("eng.loud");
   });
 
   it("is written on the seat's inventory row at boot", async () => {
