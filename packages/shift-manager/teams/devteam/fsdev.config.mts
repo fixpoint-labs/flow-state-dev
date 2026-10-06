@@ -27,6 +27,13 @@
  * run's session and commits one file so the row settles; or `claude-code`, a
  * real coding agent.
  *
+ * - **Each project's own code.** The coder runs on a workspace host whose
+ *   source is the project holding the board's workstream: Storefront names a
+ *   repository (a bare one beside the store, reached over `file://`, which the
+ *   host allows), so its runs are branches of it with the project's files in
+ *   `project/` beside the checkout; Sandbox names none, so a run there works on
+ *   the project's files alone. No folder is named for any of it.
+ *
  * - **A store that survives a restart.** SQLite, at `DEVTEAM_STORE` or
  *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Seats the chief of
  *   staff hired are read back and serve again at the next start, a fire it
@@ -38,7 +45,7 @@
  * in this file.
  */
 import { mkdirSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
@@ -47,7 +54,7 @@ import { ASSIGNEE } from "../../../../goals/devforce-lab/lab/board.mts";
 import { selectHarness } from "../../../../goals/devforce-lab/lab/harness.mts";
 import { boardMailboxOf, LAB_CROWD, LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "../../../../goals/devforce-lab/lab/host.mts";
 import { createNotifyLog } from "../../../../goals/devforce-lab/lab/notify.mts";
-import { BASE_REF, createScratchRepo } from "../../../../goals/devforce-lab/lab/scratch-repo.mts";
+import { createBareRemote } from "../../../../goals/devforce-lab/lab/scratch-repo.mts";
 import { CODER_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/coder.mts";
 import { EM_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/em.mts";
 import { setAsideLegacyOrgStore, setAsidePreRenameStore } from "./legacy-org-store.mts";
@@ -64,16 +71,27 @@ const ASK_FEATURE = (
   ) as { feature: AskFeature }
 ).feature;
 
+/** Where this Lab keeps what it was told, across restarts. */
+const STORE = process.env.DEVTEAM_STORE ?? fileURLToPath(new URL("../../.fsdev/devteam.sqlite", import.meta.url));
+mkdirSync(dirname(STORE), { recursive: true });
+
 /**
- * The Lab's two default projects, created at start as the Lab's owner with
+ * Storefront's repository: a bare one beside the store, made once and kept, so
+ * the project row a restart reads back still names a remote that exists.
+ */
+const storefrontRemote = createBareRemote("devteam-storefront", { at: join(dirname(STORE), "devteam-storefront.git") });
+
+/**
+ * The Lab's three default projects, created at start as the Lab's owner with
  * the second user as a member, unless the store already holds them.
  *
  * A project belongs to the organization, not a team: `storefront` holds one
- * workstream from each of the two teams. The second holds none yet. Each team
- * keeps one more workstream that no default project lists, so a project
- * created later (by the chief of staff, say) has one from each team to take.
- * Those are the only mailbox ids written here: which workstreams a project
- * holds is the app's data, not the tree's.
+ * workstream from each of the two teams, and names its repository. The other
+ * two hold none yet; `sandbox` has no repository, so coding work moved onto it
+ * runs on its files. Each team keeps one more workstream that no default
+ * project lists, so a project created later (by the chief of staff, say) has
+ * one from each team to take. Those are the only mailbox ids written here:
+ * which workstreams a project holds is the app's data, not the tree's.
  */
 const DEFAULT_PROJECTS = [
   {
@@ -82,11 +100,18 @@ const DEFAULT_PROJECTS = [
     brief: "Get the storefront feature built and released: engineering builds it, operations ships it.",
     members: [LAB_USERS.member.userId, ...LAB_CROWD.map((u) => u.userId)],
     workstreams: ["eng.feature", "ops.release"],
+    repository: storefrontRemote.url,
   },
   {
     id: "platform",
     title: "Platform",
     brief: "Shared groundwork no single feature owns. It holds no workstream yet.",
+    members: [LAB_USERS.member.userId, ...LAB_CROWD.map((u) => u.userId)],
+  },
+  {
+    id: "sandbox",
+    title: "Sandbox",
+    brief: "A prototype from scratch: no repository, so its coding work runs on the project's own files.",
     members: [LAB_USERS.member.userId, ...LAB_CROWD.map((u) => u.userId)],
   },
 ];
@@ -101,22 +126,19 @@ if (coderSeatId === undefined) throw new Error("the DevTeam tree declares no cod
 const members = (boardMailboxOf(roster).declared.members as string[] | undefined) ?? [];
 const addresses = Object.fromEntries(members.filter((m) => kindOf(m) === EM_KIND).map((m) => [m, m]));
 
-/** Where this Lab keeps what it was told, across restarts. */
-const STORE = process.env.DEVTEAM_STORE ?? fileURLToPath(new URL("../../.fsdev/devteam.sqlite", import.meta.url));
-mkdirSync(dirname(STORE), { recursive: true });
 // A store from before the lab's org id changed is set aside, loudly, not reused.
 await setAsideLegacyOrgStore(STORE);
 // So is one from before mailboxes were renamed.
 await setAsidePreRenameStore(STORE, { mailboxIds: roster.mailboxes.map((m) => m.id), orgIds: [LAB_ORG_ID] });
 
-const scratch = createScratchRepo("shift-manager");
 const harness = selectHarness();
 
 const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
   runTimeoutMs: harness.runTimeoutMs,
-  workspace: { root: scratch.root, sourceRepo: scratch.sourceRepo, baseRef: BASE_REF },
+  // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.
+  workspace: { root: join(dirname(STORE), "devteam-runs"), remotes: { allow: ["file"] } },
   coderSeatId,
   mailboxes: { addresses, log: createNotifyLog() },
   inventory: true,

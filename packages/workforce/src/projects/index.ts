@@ -3,7 +3,8 @@
  * and each project's room, reached through a member's own talk session.
  *
  * `collections.ts` is canonical for the keys and row shapes; `project-files.ts`
- * for a member's read of a project's files; `talk.ts` for how
+ * for a member's read of a project's files; `project-workspace.ts` for the run
+ * source a coding run on a project's board gets its files from; `talk.ts` for how
  * a session reaches a room; `room-store.ts` for how a room is written and read;
  * `talk-template.ts` for a room's seats and charter, and the mint on create.
  * The talk entries are built into every mailbox kind by `defineMailboxFlow`.
@@ -62,6 +63,13 @@ export {
 } from "./project-files";
 
 export { ProjectRefusedError, type ProjectRefusalReason } from "./project-refusal";
+
+export {
+  projectWorkspace,
+  projectWorkspaceCapability,
+  type ProjectWorkspaceOptions,
+  type ProjectWorkspaceRefusalReason
+} from "./project-workspace";
 
 export { ROOM_LINE_GRACE_MS, ROOM_PAGE_SIZE } from "./room-store";
 

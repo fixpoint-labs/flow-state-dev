@@ -245,6 +245,22 @@ describe("a project's tabs (BR-25 to BR-29)", () => {
     expect(listed).toEqual((await storedRow(baseUrl, "desk")).workstreams);
   });
 
+  it("Brief names the repository a project's code lives in, or says it runs on its files", async () => {
+    const remote = "https://github.com/acme/desk.git";
+    const { baseUrl } = await lab([
+      { id: "desk", title: "The desk", brief: "Keep the request desk moving.", members: [OTHER], workstreams: ["ops.desk"], repository: remote },
+      { id: "empty", title: "Nothing yet", members: [OTHER] },
+    ]);
+    openApp(baseUrl, "/p/desk/brief");
+    expect((await screen.findByTestId("project-repository")).textContent).toBe(`Repository ${(await storedRow(baseUrl, "desk")).repository}`);
+    expect(screen.getByTestId("project-brief").textContent).toBe("Keep the request desk moving.");
+    cleanup();
+
+    openApp(baseUrl, "/p/empty/brief");
+    expect((await screen.findByTestId("project-repository")).textContent).toBe("No repository · runs on project files");
+    await screen.findByTestId("project-brief-none");
+  });
+
   it("a project with no workstreams and no brief names each empty tab", async () => {
     const { baseUrl } = await lab();
     openApp(baseUrl, "/p/empty/board");
@@ -615,6 +631,7 @@ describe("grouping is the snapshot's (V4)", () => {
     ownerUserId: "alice",
     members: ["alice"],
     workstreams: [],
+    repository: null,
     sessions: [],
     ...over,
   });
@@ -625,6 +642,13 @@ describe("grouping is the snapshot's (V4)", () => {
     expect(toProject({ ...row, brief: "Ship it." })?.brief).toBe("Ship it.");
     expect(toProject(row)?.brief).toBeNull();
     expect(toProject({ ...row, brief: 7 })?.brief).toBeNull();
+  });
+
+  it("a row's repository: a remote reads as written; a row from before the field, or null, is none", () => {
+    const row = { id: "p", title: "P", ownerUserId: ASK_LAB_USER_ID };
+    expect(toProject({ ...row, repository: "git@github.com:acme/p.git" })?.repository).toBe("git@github.com:acme/p.git");
+    expect(toProject(row)?.repository).toBeNull();
+    expect(toProject({ ...row, repository: null })?.repository).toBeNull();
   });
 
   it("projectsOf groups a cross-team project, keeps a gone id as gone, and makes no read", () => {

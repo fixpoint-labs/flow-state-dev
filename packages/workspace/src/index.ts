@@ -45,6 +45,7 @@ export type { RunOptions } from "./exec";
 export { acquireLock, releaseLock, sleep } from "./lock";
 export type { AcquireOptions, LockBounds, LockLease } from "./lock";
 export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./repository";
+export { redactRemote } from "./remotes";
 export type {
   LocalWorkspaceHostOptions,
   PlaceRequest,

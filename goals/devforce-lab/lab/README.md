@@ -12,7 +12,7 @@ declared seat wakes a **different** declared seat, in its own flow instance, int
 a supervised coding run whose prompt was built out of that seat's own files. A
 third seat, declared on the same kind, is never reached.
 
-Five checks drive it. The first two differ by **one expression** — the harness
+Six checks drive it. The first two differ by **one expression** — the harness
 slot; the third adds the two ends of the path neither of them reaches:
 
 | | |
@@ -22,6 +22,7 @@ slot; the third adds the two ends of the path neither of them reaches:
 | [`../it-ships-an-artifact-a-person-can-open/`](../it-ships-an-artifact-a-person-can-open/) | The product check. A **post** is what starts the work, and the work is published to an address that outlives the run and judged against a condition the brief stated first. |
 | [`../it-keeps-its-rows-on-the-mailboxes-board/`](../it-keeps-its-rows-on-the-mailboxes-board/) | The board check. The feature mailbox holds the board its rows sit on, and a posted line ends as one completed row read back through the mailbox, the HTTP door and the organization's storage. No model. |
 | [`../it-waits-for-a-person-before-it-files/`](../it-waits-for-a-person-before-it-files/) | The approval check. With the ask turned on, the EM seat asks a person before it files a feature. Approve files the row and the coder starts; Deny files nothing. No model, and the answer goes through the session's own resume. |
+| [`../it-codes-in-the-projects-repository/`](../it-codes-in-the-projects-repository/) | The project check. The coder runs on a workspace host whose source is the project holding the board's workstream: a project with a repository gets a branch of it, one without runs on its files, a remote the host does not allow is refused by name, and what a run keeps is saved to the project. No model. |
 
 It is **evidence, not an application**. Nobody opens it and clicks through it;
 you re-run it a year from now and compare against the verdict logs in the two

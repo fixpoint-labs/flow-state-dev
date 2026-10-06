@@ -23,6 +23,8 @@ import { defineFlow } from "@flow-state-dev/core";
 import type { DeclaredResources } from "@flow-state-dev/core";
 import { harnessManager, type PhaseSpec, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
+import { projectWorkspaceCapability } from "@flow-state-dev/workforce";
+import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { ledgerDoor, RESUME_ENTRY, WORK_ENTRY, type FeatureLedger } from "../../../board.mts";
 import {
   INSPECT_ENTRY,
@@ -46,8 +48,13 @@ export interface CoderWorkerFlowOptions {
     resume: (ctx: HarnessCallbackContext) => string | null | Promise<string | null>;
     onSession: (sessionId: string, ctx: HarnessCallbackContext) => void | Promise<void>;
   }) => HarnessBlock;
-  /** Where checkouts are cut, from what, and off which ref. */
-  workspace: WorkspaceConfig;
+  /**
+   * Where each run works: a fixed repository (`{ root, sourceRepo, baseRef }`),
+   * or a workspace host whose source is `projectWorkspace` on this kind's
+   * board, so a run works in its project's repository or on its project's
+   * files.
+   */
+  workspace: WorkspaceConfig | WorkspaceHost;
   /** The one phase: how the prompt is built, and what counts as done. */
   phase: PhaseSpec;
   /** Wall-clock budget for one harness run. */
@@ -84,6 +91,8 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     workspace: options.workspace,
     runTimeoutMs: options.runTimeoutMs,
     harness: options.harness,
+    // The collections a project's run source reads, on the blocks that ask it.
+    ...("provision" in options.workspace ? { uses: [projectWorkspaceCapability] } : {}),
   } as never);
 
   return defineFlow({

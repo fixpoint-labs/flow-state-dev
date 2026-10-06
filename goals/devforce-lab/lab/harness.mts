@@ -22,7 +22,7 @@
  * An unknown value is refused at startup rather than read as the default.
  */
 
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
@@ -78,10 +78,14 @@ function rowLine(prompt: string): string {
   return prompt.split("\n").find((line) => line.startsWith("Row ")) ?? "a row";
 }
 
-/** What the scripted run does in its checkout: one file, committed. */
+/**
+ * What the scripted run does where it works: one file, committed when that is
+ * a checkout. A project with no repository runs in its files (`workspace/`,
+ * no git), where the file itself is the work and the manager saves it back.
+ */
 function commitScriptedWork(run: StubRun): void {
   writeFileSync(join(run.cwd, "SCRIPTED-RUN.md"), `A scripted run, no model.\n\n${rowLine(run.prompt)}\n`);
-  commitAll(run.cwd, "scripted run: note the row");
+  if (existsSync(join(run.cwd, ".git"))) commitAll(run.cwd, "scripted run: note the row");
 }
 
 /**

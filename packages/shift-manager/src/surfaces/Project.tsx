@@ -13,7 +13,8 @@
  * - **Workstreams** lists the workstreams the project's row names, each
  *   linking to its own level. One whose mailbox has left the tree is shown as
  *   gone, with no link.
- * - **Brief** is the row's brief.
+ * - **Brief** is the row's brief, under the repository its code lives in, or
+ *   a line saying it has none and its coding work runs on its files.
  *
  * No project holds the workstreams no project lists (D3): its Board and
  * Workstreams list them, and it has no room and no brief.
@@ -116,15 +117,18 @@ export function ProjectView({
         tab === "stream" ? (
           <ProjectStream key={group.project.id} project={group.project} />
         ) : tab === "brief" ? (
-          group.project.brief === null ? (
-            <EmptyState title="No brief" testId="project-brief-none">
-              This project was created without a brief.
-            </EmptyState>
-          ) : (
-            <article className="mx-auto w-full max-w-3xl overflow-y-auto whitespace-pre-wrap p-6 text-sm" data-testid="project-brief">
-              {group.project.brief}
-            </article>
-          )
+          <div className="flex min-h-0 flex-1 flex-col">
+            <Repository repository={group.project.repository} />
+            {group.project.brief === null ? (
+              <EmptyState title="No brief" testId="project-brief-none">
+                This project was created without a brief.
+              </EmptyState>
+            ) : (
+              <article className="mx-auto w-full max-w-3xl overflow-y-auto whitespace-pre-wrap p-6 text-sm" data-testid="project-brief">
+                {group.project.brief}
+              </article>
+            )}
+          </div>
         ) : tab === "board" ? (
           <Lanes snapshot={snapshot} listed={group.workstreams} gaps={gaps} />
         ) : (
@@ -160,6 +164,21 @@ export function ProjectView({
         {body}
       </div>
     </div>
+  );
+}
+
+/** The project's repository on its Brief, or that it has none and runs on its files. */
+function Repository({ repository }: { repository: string | null }) {
+  return (
+    <p className="mx-auto w-full max-w-3xl px-6 pt-6 text-xs text-muted-foreground" data-testid="project-repository">
+      {repository === null ? (
+        "No repository · runs on project files"
+      ) : (
+        <>
+          Repository <span className="font-mono text-foreground">{repository}</span>
+        </>
+      )}
+    </p>
   );
 }
 
