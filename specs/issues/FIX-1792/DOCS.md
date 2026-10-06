@@ -52,7 +52,7 @@ the Workforce category of `sidebars.ts`, after `workforce/ui`, replacing `workfo
 > ```
 >
 > Write `routing: everyone` when the old file had no `routing:` line. Left out, a coordinator
-> routes by its own judgment, which calls a model on every post.
+> routes by its default policy, which calls a model on every post.
 >
 > Renaming the file isn't enough. A `WORKER.md` that still declares `members:`, `boards:` or
 > `boardActions:` is refused, and the message names each line and what replaced it.
@@ -67,7 +67,8 @@ the Workforce category of `sidebars.ts`, after `workforce/ui`, replacing `workfo
 > by the person in that conversation: file a task on it and the coordinator hands it to a
 > delegate ([Coordinators](./coordinators.md)). Work that people track across conversations
 > belongs to a workstream on a [project](./projects.md), led by one of your workers; the lead's
-> workstream session keeps the board.
+> workstream session keeps the board. A worker that isn't a coordinator files tasks only if its
+> `WORKER.md` grants it the filing tools, and its tasks go on its own session's board.
 >
 > ## A kind of your own
 >
@@ -154,8 +155,9 @@ a mailbox" becomes "who a coordinator hands work to".
 `packages/workforce/README.md`: the mailbox floor's section and exports go; the loader section
 names the refusal. `packages/cli/README.md`: `fsdev gen`'s `flows/mailboxes/` slot goes.
 `packages/harness-manager/README.md`, `packages/react/README.md`: the mailbox examples follow the
-pages above. `packages/shift-manager/README.md`, `apps/kitchen-sink/README.md`: the DevTeam's and
-the help desk's coordinators. A `minor` changeset for `@flow-state-dev/workforce` names the
+pages above. `packages/shift-manager/README.md`: the DevTeam's coordinators and its two Storefront
+workstreams, led by the EM. `apps/kitchen-sink/README.md`: the help desk's coordinator, and the
+escalation feature's sections removed. A `minor` changeset for `@flow-state-dev/workforce` names the
 removed exports and links the upgrade page.
 
 ## Publication ownership

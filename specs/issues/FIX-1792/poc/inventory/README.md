@@ -49,19 +49,22 @@ On `cad4e2780` (`main`, 2026-10-06): **PASS**. Re-run after review round 1, on `
   **3** with `boardActions:`, **0** with `mintFor:`, **2** with `flow:` (both `digest`, a kind of
   the tree's own), **2** with `routing:`, **2** with an empty `members:` list. The issue's 33 and
   15 hold; the epic's "15 boards" counts files, not boards.
-- Targets: **15** coordinators whose board becomes the conversation's own, **15** coordinators
-  with no board, **2** kept as old files for the refusal goal check, **1** removed with the legs it
-  served. Until review round 2, the DevTeam's `feature` and `release` led workstreams; those move
-  to FIX-1802.
-- **196** files outside `goals/` name the surface: 34 removed whole, 96 edited, 48 converted,
+- Targets (after the product owner's direction of 2026-10-06): **13** coordinators whose board
+  becomes a session board (the conversation's, or the filing worker's own), **2** files that
+  become Storefront workstreams the EM leads (the DevTeam's `feature` and `release`), **15**
+  coordinators with no board (kitchen-sink's help desk among them, its `escalations` board removed
+  with the feature), **2** kept as old files for the refusal goal check, **1** removed with the
+  legs it served.
+- **196** files outside `goals/` name the surface: 35 removed whole, 96 edited, 47 converted,
   5 carry a refusal, 8 are FIX-1793's, 4 are FIX-1796's, 1 unrelated. The whole-file removals are
-  about 5,000 source lines, 6,900 test lines and 1,200 lines of docs and figures. Kitchen-sink's
-  `escalate` tool is one of them: an `Escalate:` line in the answer replaces it. Round 1 added
-  seven: matching the full export list found files the surface patterns had missed.
+  about 5,000 source lines, 7,200 test lines and 1,200 lines of docs and figures. Kitchen-sink's
+  `escalate` tool, its test and its `no-filing` control are among them: the escalation feature is
+  removed, not replaced. Round 1 added seven: matching the full export list found files the
+  surface patterns had missed.
 - **Exports:** 97 names removed, 27 kept with a reason; every export of a removed file is one
   or the other.
-- **49** goal units: 28 convert, 11 rewrite an outcome the epic changes, 6 edit a field or a word,
-  1 is FIX-1793's, 2 retire and 1 folds into this issue's goal check.
+- **49** goal units: 26 convert, 13 rewrite an outcome the epic or the product owner changes,
+  6 edit a field or a word, 1 is FIX-1793's, 2 retire and 1 folds into this issue's goal check.
 - **The control:** CONTROL PASS, all six cases caught, and nothing left behind.
 - **`--after` on today's `main`:** FAIL, 173 problems (130 before round 1), one of them
   discovery's pinned domain list still naming `mailboxes`. That is the red

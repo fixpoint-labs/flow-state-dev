@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 520" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two panels, today and after, for one support team. Today the team folder holds worker files and a mailboxes folder whose MAILBOX.md lists members and a board; the board's rows are an org row any member's session runs. After, the same team folder holds only worker files: the help desk is a WORKER.md on the coordinator flow with delegates, its board belongs to each conversation and its user, and a MAILBOX.md left in the tree stops the load with its conversion named. Case by case: how a coordinator is declared goes from its own file to a worker file; who keeps a board goes from the org to one conversation's user; how a coding run finds its project goes from a claim row to a workstream, never a claim; an old file goes from loading to stopping the load; tasks on an old board stay in the store, unread.">
+     aria-label="Two panels, today and after, for one support team. Today the team folder holds worker files and a mailboxes folder whose MAILBOX.md lists members and a board; the board's rows are an org row any member's session runs. After, the same team folder holds only worker files: the help desk is a WORKER.md on the coordinator flow with delegates, its escalations board is removed with the feature it served, and a MAILBOX.md left in the tree stops the load with its conversion named. Case by case: how a coordinator is declared goes from its own file to a worker file; who keeps a board goes from the org to one user's session, or a workstream's owner; how a coding run finds its project goes from a claim row to a workstream, never a claim; an old file goes from loading to stopping the load; tasks on an old board stay in the store, unread.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -44,10 +44,10 @@
     <text class="t-m" x="510" y="69">workers/devices/WORKER.md · workers/accounts/WORKER.md</text>
     <rect class="n-new" x="494" y="94" width="414" height="58" rx="5"/>
     <text class="t-m" x="510" y="114">workers/help/WORKER.md</text>
-    <text class="t-s" x="510" y="134">flow: coordinator · delegates · routing: judgment · rounds: 1</text>
-    <rect class="n-new" x="494" y="162" width="200" height="42" rx="5"/>
-    <text class="t-h" x="510" y="181">the board</text>
-    <text class="t-s" x="510" y="197">each conversation's own</text>
+    <text class="t-s" x="510" y="134">flow: coordinator · delegates · routing: best-fit</text>
+    <rect class="n-old" x="494" y="162" width="200" height="42" rx="5"/>
+    <text class="t-old" x="510" y="181">escalations · removed</text>
+    <text class="t-s" x="510" y="197">with the feature it served</text>
     <rect class="n-old" x="708" y="162" width="200" height="42" rx="5"/>
     <text class="t-old" x="722" y="181">MAILBOX.md left here</text>
     <text class="t-s" x="722" y="197">stops the load, named</text>
@@ -61,7 +61,7 @@
   <g id="case-2">
     <text class="t-lbl" x="32" y="300">WHO KEEPS A BOARD</text>
     <text class="t-old" x="32" y="320">The org: any member's session runs it</text>
-    <text class="t-new" x="494" y="320">One conversation's user</text>
+    <text class="t-new" x="494" y="320">One user's session, or a workstream's owner</text>
     <line class="row" x1="16" y1="334" x2="924" y2="334"/>
   </g>
   <g id="case-3">
