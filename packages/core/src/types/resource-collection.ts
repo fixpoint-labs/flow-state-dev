@@ -79,6 +79,17 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    */
   ownerPrivate?: { param: string };
   /**
+   * Make each row readable by everyone the scope serves and writable only by
+   * the user it belongs to. `param` names the pattern parameter that holds the
+   * owner; key it with `ownerSegment(userId)`. Every read path serves the row,
+   * the browser routes included. A create, update or delete is refused unless
+   * the session's user is the one the owner segment names, and no other
+   * collection in the app reads or writes the rows. The pattern must declare
+   * `param` exactly once and must not use `**`. Not with `ownerPrivate`, and
+   * not with an `eviction` policy other than `"none"`.
+   */
+  ownerWrites?: { param: string };
+  /**
    * Intrinsic scope this collection lives in. Required for new collections —
    * mirrors `defineResource({ scope })`.
    */
@@ -336,7 +347,19 @@ export function defineResourceCollection<
   ProjectedClient<AsStateObject<StateOf<TConfig>>, TConfig["client"]>
 > {
   validatePattern(config.pattern);
+  if (config.ownerPrivate !== undefined && config.ownerWrites !== undefined) {
+    throw new Error(`Collection "${config.pattern}" declares both ownerPrivate and ownerWrites; choose one.`);
+  }
   if (config.ownerPrivate !== undefined) assertOwnerPrivateShape(config);
+  if (config.ownerWrites !== undefined) {
+    const named = `Owner-writes collection "${config.pattern}"`;
+    assertOwnerKeyShape(config.pattern, config.ownerWrites.param, named);
+    // Every user's create sees every owner's rows, so its eviction would pick
+    // a row its caller may not delete.
+    if (config.eviction !== undefined && config.eviction !== "none") {
+      throw new Error(`${named} must not evict: an eviction would delete another user's row.`);
+    }
+  }
 
   if (config.contentTemplate !== undefined && config.contentTemplateRef !== undefined) {
     throw new Error(
@@ -458,7 +481,6 @@ function assertOwnerPrivateShape(
   }
 ): void {
   const { pattern, client } = config;
-  const param = config.ownerPrivate?.param;
   const named = `Owner-private collection "${pattern}"`;
   if (
     client?.state?.read === true ||
@@ -467,6 +489,15 @@ function assertOwnerPrivateShape(
   ) {
     throw new Error(`${named} must not enable a browser read.`);
   }
+  assertOwnerKeyShape(pattern, config.ownerPrivate?.param, named);
+}
+
+/**
+ * The key shape both owner modes (`ownerPrivate`, `ownerWrites`) need: the
+ * owner sits at one known segment, so the pattern names the parameter exactly
+ * once, as a whole segment, and has no `**`. `named` opens each refusal.
+ */
+function assertOwnerKeyShape(pattern: string, param: unknown, named: string): void {
   const segments = pattern.split("/");
   if (
     typeof param !== "string" ||

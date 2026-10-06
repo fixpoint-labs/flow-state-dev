@@ -36,7 +36,7 @@ import {
   searchProjectedRecords,
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
-import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
+import { OWNER_ROW_REFUSAL, ownerKeyAdmits, ownerWritesRefusalForKey } from "../resources/owner-private";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
 import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
@@ -754,13 +754,15 @@ export function filterFlowLevelEager(
 /**
  * Fence owner keys on a collection handle.
  *
- * An owner-private collection sees only the session user's own rows. Every
- * other collection sees none of any owner's rows, whatever this process
- * registered. A fenced key is absent for list, count and `getOptional`, and
- * refused for `get` and every write; the message does not say whether the row
- * exists. The decision is {@link ownerKeyAdmits}. Every collection pattern has
- * a wildcard or parameter segment, and so can resolve onto a key with a
- * segment beginning `~`, so every handle is wrapped.
+ * An owner-private collection sees only the session user's own rows, and an
+ * owner-writes collection sees every owner's. Every other collection sees
+ * none of any owner's rows, whatever this process registered. A fenced key is
+ * absent for list, count and `getOptional`, and refused for `get` and every
+ * write; the message does not say whether the row exists. The decision is
+ * {@link ownerKeyAdmits}. Who may write an owner-writes row is judged where
+ * the registry's writes meet the store, since a reader holds refs to it.
+ * Every collection pattern has a wildcard or parameter segment, and so can
+ * resolve onto a key with a segment beginning `~`, so every handle is wrapped.
  */
 function fenceOwnerKeys(
   handle: ResourceCollectionRef<JsonObject>,
@@ -810,7 +812,7 @@ function fenceOwnerKeys(
 }
 
 export function createScopeResourceRegistry<TResources extends Record<string, ResourceRef<any>>>(
-  options: {
+  unfencedOptions: {
     scope: ScopeType;
     /**
      * Identifier of the concrete scope instance — `userId` for `"user"`,
@@ -939,11 +941,40 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     orgId: string;
     /**
      * The session's user, when this registry is built for a run. The
-     * owner-private key fence uses it to serve each caller only their own rows.
+     * owner-key fence uses it to serve each caller only their own owner-private
+     * rows, and to let only the owner write an owner-writes row.
      */
     actorUserId?: string;
   }
 ): ResourceRegistry<TResources> {
+  // An owner-writes row is readable by anyone the scope serves, so a reader
+  // can hold a ref to another user's row and write through it. Every write
+  // this registry makes meets the store through these four callbacks, so the
+  // owner rule is judged here, whichever handle, ref or eviction asked.
+  const declaredConfigs = Object.values(unfencedOptions.configs ?? {});
+  const refuseOwnerWrite = (key: string): void => {
+    const refusal = ownerWritesRefusalForKey(declaredConfigs, key, unfencedOptions.actorUserId);
+    if (refusal !== undefined) throw new Error(refusal);
+  };
+  const options: typeof unfencedOptions = {
+    ...unfencedOptions,
+    mutateResourceKey: async (key, mutator, opts) => {
+      refuseOwnerWrite(key);
+      return unfencedOptions.mutateResourceKey(key, mutator, opts);
+    },
+    deleteResourceKey: async (key) => {
+      refuseOwnerWrite(key);
+      return unfencedOptions.deleteResourceKey(key);
+    },
+    persistResourceContentKey: async (key, content) => {
+      refuseOwnerWrite(key);
+      return unfencedOptions.persistResourceContentKey(key, content);
+    },
+    deleteResourceContentKey: async (key) => {
+      refuseOwnerWrite(key);
+      return unfencedOptions.deleteResourceContentKey(key);
+    },
+  };
   // Null-prototype: keyed by author-supplied accessor names, and this is the
   // map `get()` below reads. On a plain `{}` an accessor of `__proto__` would
   // replace the map's prototype rather than add a key, and an accessor sharing

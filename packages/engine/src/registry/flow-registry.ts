@@ -34,9 +34,9 @@
  * scope, so its `stateSchema` drops out under the flow-level flag, while each
  * resource carries its own `flowIsolation` override and drops out on that.
  *
- * The registry also keeps the owner-private startup fence
+ * The registry also keeps the owner-key startup fence
  * (`admitOwnerPrivateCollections` in `resources/owner-private.ts`). It arms
- * when a flow declaring an owner-private collection is admitted, checks every
+ * when a flow declaring an owner-keyed (owner-private or owner-writes) collection is admitted, checks every
  * held flow against each declaration as it arrives, checks every later flow,
  * and never disarms. A registry that never holds one refuses nothing on that
  * account. Every registry, armed or not, refuses a single resource whose
@@ -157,7 +157,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   };
 
   /**
-   * Every owner-private declaration this registry has admitted. Never
+   * Every owner-keyed declaration this registry has admitted. Never
    * cleared, even across unregister, for the reason the participants map
    * above is kept: the rows outlive the registration, so the constraint has
    * to as well. Non-empty means the startup fence is armed.

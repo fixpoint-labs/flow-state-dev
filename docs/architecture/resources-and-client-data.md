@@ -269,6 +269,16 @@ A collection declaring `ownerPrivate: { param }` owns every key whose first segm
 
 Workforce's private roster collection is the first consumer. Engine knows it only as an owner-private collection.
 
+#### Owner-writes collections
+
+A collection declaring `ownerWrites: { param }` takes the same key shape, the same definition checks except the browser-read one, and both fences. It differs in one rule: **every reader the scope serves reads the row, and only its owner writes it.**
+
+- **Reads.** The key fence admits the row to every read path listed above, for any caller, as long as its first `~` segment sits at the owner parameter. The request-start seed cache admits it too, judged against the run's declared collections, since those collections serve it from that cache.
+- **Writes.** A create, update or delete is refused with its own message (`A row of an owner-writes collection is written only by the user it belongs to.`) unless the session's user is the one the key's owner segment encodes. A reader holds refs it could write through, so the scope resource registry judges this where every write it makes meets the store (state mutate, state delete, content write, content delete), whichever handle, ref or eviction asked. The browser update and delete routes ask the same question before writing.
+- **The startup fence** arms for either mode. An owner-private and an owner-writes declaration of one pattern are two declarations, and the second is refused.
+
+It reads only the key and the declaring collection, so a second process declaring the same collection over one store refuses the same writes. A flow that declares the pattern without the mode gets the key fence's plain-collection answer: absent, and refused on write.
+
 ### Block-Level Resource Declarations
 
 Blocks declare resource dependencies via a single `resources` field:
