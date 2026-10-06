@@ -38,9 +38,9 @@ partition only that conversation reaches (epic [D6](../../epics/FIX-1786/DECISIO
 |---|---|---|---|
 | BR-13 | Work used to go on a converted file's board | It goes on the coordinator's conversation's board, at its user's scope, never an org row ([D1](DECISIONS.md#d1)) | Each converted goal's re-run |
 | BR-14 | A kitchen-sink specialist escalates a case | Its answer to the post ends with an `Escalate:` line naming the case. The post's round closes and wakes the help coordinator's turn once (`routing: judgment`, `rounds: 1`, FIX-1791 BR-24). That turn files the case on its own conversation's board with FIX-1794's `fileTask` and no assignee: one pending, unassigned row (FIX-1794 BR-6). An answer with no such line files nothing. No delegate's session files, and there is no other filing path. The team panel lists the case in every tab on that conversation; another user's conversation lists nothing | `lists-a-filed-case-without-a-reload` re-run · CI with two users · V5 |
-| BR-15 | The DevTeam lab starts | The storefront project's two workstreams, led by `eng.feature` and `ops.release`, are opened by the lab's member through the project's own action, not written as rows | CI |
-| BR-16 | A coding run works for the feature workstream | It finds the project through the workstream; no claim is read or written | `it-codes-in-the-projects-repository` re-run |
-| BR-17 | Another member of the DevTeam org reads the feature workstream | Sees its entry, not its tasks | `it-keeps-its-rows-on-the-mailboxes-board`, rewritten |
+| BR-15 | The DevTeam lab starts | `eng.feature`, `ops.release`, `triage` and `oncall` are coordinators; `eng.feature`'s board is its conversation's (D1). Storefront is created with no mailbox list and no workstream, and nothing writes a project's `workstreams`. The DevTeam's workstreams come with FIX-1802 | CI |
+| BR-16 | A DevTeam coding run starts | No claim is read or written, and nothing falls back to one. The run isn't placed in storefront until the DevTeam has a workstream (FIX-1802); a run placed through a workstream is FIX-1793's BR-33 and BR-34 | V6 |
+| BR-17 | Another member of the DevTeam org asks for the feature work | Refused on `eng.feature`'s conversation (engine ownership); its board shows in no other user's view | `it-keeps-its-rows-on-the-mailboxes-board`, rewritten |
 
 ## Old data
 
@@ -57,7 +57,7 @@ partition only that conversation reaches (epic [D6](../../epics/FIX-1786/DECISIO
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-23 | The last PR lands | The only `MAILBOX.md` files are the refusal goal's two old files, at their pinned paths. Nothing outside the refusal's own files names any export on the removal inventory | `check.mjs --after` · VG leg e |
-| BR-24 | A goal ran on a mailbox | It runs on the converted files and passes, or the plan says why not and names the goal leg that proves its outcome, which has passed on `main` | VG leg e |
+| BR-24 | A goal ran on a mailbox | It runs on the converted files and passes, or it retires here with its reason and the goal leg that proves its outcome, which has passed on `main`. No converted step waits on another issue. Retired: `a-mailbox-holds-the-work-a-seat-drains` (its subjects are gone; on [PLAN's condition](PLAN.md#at-implement-time)) and `it-codes-in-the-projects-repository` (a DevTeam run has no project until FIX-1802; FIX-1793's goal check proves a run placed through its workstream) | VG leg e |
 | BR-25 | A converted host, fixture or test creates a session or a row | It carries an org; nothing gains a default org (FIX-1442) | CI · kitchen-sink's named-org test |
 
 ## Failure taxonomy

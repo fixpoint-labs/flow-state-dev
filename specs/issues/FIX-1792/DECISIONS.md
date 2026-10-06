@@ -9,8 +9,9 @@ The counts here are the checker's ([poc/inventory](poc/inventory/README.md)), no
 
 ```mermaid
 flowchart TD
-  I["FIX-1792"] --> D1["D1 · 14 conversation boards · 1 workstream"]
+  I["FIX-1792"] --> D1["D1 · 15 conversation boards"]
   D1 -.->|"rejected"| X1["every board people look at is a workstream<br/>a project per lab for lists nobody follows"]
+  D1 -.->|"deferred"| X1b["the DevTeam's feature as a workstream<br/>needs a coordinator to take a delegated post · FIX-1802"]
   I --> D2["D2 · old mailbox data left unread"]
   D2 -.->|"rejected"| X2["move pending rows onto a conversation<br/>an org row has no one user to give it to"]
   D2 -.->|"rejected"| X3["stop the boot until the store is reset<br/>loses every project for rows nobody can place"]
@@ -19,15 +20,15 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · 14 of the 15 files with boards keep them on the coordinator's conversation; the DevTeam's feature board becomes a workstream
+## D1 · All 15 files with boards keep them on the coordinator's conversation; the DevTeam's feature becomes a workstream with FIX-1802
 
 | | |
 |---|---|
 | **Instead of** | Every board a lab's people look at becomes a workstream: kitchen-sink's escalations, Shift Manager's `desk.front` and `eng.desk` labs, the DevTeam's feature |
-| **Because** | The epic's question, per board ([D5](../../epics/FIX-1786/DECISIONS.md#d5)): does the work outlive one conversation, and does a person track it? Only the DevTeam's feature does both: its project lists it today, people follow it for days, and its coding runs find the project through it. The rest are a coordinator's working list or fixtures that test board mechanics, which D5 sends to the conversation. Kitchen-sink's escalations is the close call: a person follows a case up, but nobody works that board in the app, kitchen-sink has no projects, and one list across customers' conversations is the sharing between users the epic rules out ([ER-18](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)). Unclear goes to the conversation |
-| **Locks in** | Every converted board belongs to one user, in the partition only its conversation reaches (epic [D6](../../epics/FIX-1786/DECISIONS.md#d6)). Only a coordinator files on its board, so in kitchen-sink a specialist's answer carries the case and the help coordinator files it, unassigned. A case shows in the conversation that filed it, in every tab on it, and nowhere else. In the DevTeam, the storefront project's feature and release work are two workstreams the lab's member opens; other members see each entry, not its tasks. No file declares a board any more: a lab that wants one people track opens a workstream |
+| **Because** | The epic's question, per board ([D5](../../epics/FIX-1786/DECISIONS.md#d5)): does the work outlive one conversation, and does a person track it? Only the DevTeam's feature does both: its project lists it today, people follow it for days, and its coding runs find the project through it. It should be a workstream, but a workstream's lead is a delegate record on the project coordinator, and merged FIX-1791 gives the coordinator flow no way to take a delegated post (its S9, BR-4). A coordinator as a delegate is multi-level delegation, which the product owner deferred with the split to FIX-1802, so the feature's workstream goes there too and its board stays on its coordinator's conversation now. The rest are a coordinator's working list or fixtures that test board mechanics, which D5 sends to the conversation. Kitchen-sink's escalations is the close call: a person follows a case up, but nobody works that board in the app, kitchen-sink has no projects, and one list across customers' conversations is the sharing between users the epic rules out ([ER-18](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)). Unclear goes to the conversation |
+| **Locks in** | Every converted board belongs to one user, in the partition only its conversation reaches (epic [D6](../../epics/FIX-1786/DECISIONS.md#d6)). Only a coordinator files on its board, so in kitchen-sink a specialist's answer carries the case and the help coordinator files it, unassigned. A case shows in the conversation that filed it, in every tab on it, and nowhere else. In the DevTeam, feature work is on the `eng.feature` coordinator's conversation, seen by its user alone. Until FIX-1802 the storefront project lists no workstream and no DevTeam coding run is placed in it; project placement is FIX-1793's and the closure's (FIX-1797) to prove. No file declares a board any more |
 
-![D1, where a mailbox's board goes. Chosen: 14 conversation boards and 1 workstream. Instead of: every board a lab's people look at becomes a workstream. It comes down to the first row: a board nobody follows stays a conversation's list with nothing new to set up, where the other way gives each lab a project and a workstream it never uses. The price is the second row: kitchen-sink's escalations show only in the conversation that filed them, where a workstream would show one list across a person's conversations but needs projects in kitchen-sink. The DevTeam's feature is a workstream either way. Locks in: every converted board belongs to one user, and no file declares a board. Flips if: kitchen-sink's support desk is meant to show one list of cases across a person's conversations](figures/d1-boards.svg)
+![D1, where a mailbox's board goes. Chosen: 15 conversation boards. Instead of: every board a lab's people look at becomes a workstream. It comes down to the first row: a board nobody follows stays a conversation's list with nothing new to set up, where the other way gives each lab a project and a workstream it never uses. The price is the second row: kitchen-sink's escalations show only in the conversation that filed them, where a workstream would show one list across a person's conversations but needs projects in kitchen-sink and FIX-1802. The DevTeam's feature is a conversation board either way for now: a coordinator can lead a workstream only with FIX-1802. Locks in: every converted board belongs to one user, and no file declares a board. Flips if: kitchen-sink's support desk is meant to show one list of cases across a person's conversations](figures/d1-boards.svg)
 
 It comes down to boards nobody follows: as workstreams, each lab grows a project it never uses.
 
@@ -44,8 +45,8 @@ It comes down to boards nobody follows: as workstreams, each lab grows a project
 | Shift Manager roster goal · `eng.desk` | `work` | The roster shows each worker's tasks; the lead drains it | Conversation board |
 | `task-run-link` · `lab.desk` | `work` | Each handed-off row links its run | Conversation board |
 | Shift Manager test labs · `ops.desk`, `eng.queue`, `lab.desk` | `work` | Tasks, asks, parked rows and runs in Shift Manager's tests | Conversation board |
-| **DevTeam · `eng.feature`** | `work` | The team builds a feature; the storefront project lists it; its coding runs find the project through the claim | **Workstream** on storefront |
-| DevTeam · `ops.release` | none | Storefront lists it beside `eng.feature` | **Workstream** on storefront |
+| **DevTeam · `eng.feature`** | `work` | The team builds a feature; the storefront project lists it; its coding runs find the project through the claim | **Conversation board**, `routing: judgment`, `rounds: 1`; a workstream on storefront with FIX-1802 |
+| DevTeam · `ops.release` | none | Storefront lists it beside `eng.feature` | A coordinator with no board; a workstream with FIX-1802 |
 
 Every file, with or without a board, is a row in the checker; [PLAN](PLAN.md#the-files) lists the
 other 18.
@@ -54,12 +55,12 @@ other 18.
 shape as the help desk: `routing: judgment`, `rounds: 1`, the delegate's answer says what to file,
 and the coordinator's turn that the answer wakes files it (FIX-1791 BR-24). That is
 manager-queue-lab's manager, multi-seat-collab's planner, the row goal's filer, and the DevTeam's
-EM under the feature workstream's lead. Every other board is filed by the app, a test, or the
+EM under `eng.feature`. Every other board is filed by the app, a test, or the
 coordinator's own turn on the post, and needs nothing.
 
 **What would change my mind:** kitchen-sink's support desk being meant to show one list of cases
-across all of a person's conversations. Then its escalations is a workstream, and kitchen-sink
-gains one shared project.
+across all of a person's conversations. Then its escalations becomes a workstream with FIX-1802,
+and kitchen-sink gains one shared project.
 
 <a name="d2"></a>
 ## D2 · Old mailbox data stays in the store, unread; no pending task carries over
@@ -102,17 +103,18 @@ converted coordinator's conversation as the user you name, and nothing reads old
 - **No refusing `mailbox` flow is kept for old sessions.** The engine already answers
   `Unknown flow "mailbox"`; a flow kept only to refuse is a second path.
 - **Goals convert by default.** 11 rewrite an outcome the epic changes (who sees a board's rows,
-  a delegate instead of a desk, an unknown member refused). One retires because every subject it
-  had is gone, and names what proves the rest. The pre-rename goal folds into this issue's goal
+  a delegate instead of a desk, an unknown member refused). Two retire, each named under BR-24 with
+  what proves its outcome: one whose subjects are gone, and the DevTeam's coding-in-the-project
+  goal, whose run has no project until FIX-1802. No converted step waits on FIX-1802. The pre-rename goal folds into this issue's goal
   check. The table is in [PLAN](PLAN.md#goals).
 - **Claims, a project's list of mailboxes, `setWorkstreams` and `projectWritesMailboxInventory`
   are removed here**, as the epic records; the chief of staff loses `post-to-mailbox` and
   `setWorkstreams`.
-- **The DevTeam's `release` leads a workstream** because storefront lists it; `triage` and
-  `oncall` are coordinators no project lists, as today.
+- **The DevTeam's `release`, `triage` and `oncall` are coordinators with no board.** Storefront
+  lists none of them after S10; `release` and `feature` become workstreams with FIX-1802.
 - **Desks are lab code** (`answersFor:` is read only by lab flows). A converted lab files for the
-  delegate. A leg that can't hold on a conversation board goes to FIX-1794, or to FIX-1802 when it
-  needs a delegate to file, not out of the goal.
+  delegate. A step where a delegate filed is rewritten so its coordinator files; a step that can't
+  be is retired under BR-24 with its reason. None waits on FIX-1802.
 - **Only a coordinator conversation files on its board** ([FIX-1794](../FIX-1794/SPEC.md) S1, S4).
   Kitchen-sink's `escalate` takes the coordinator's option 1 (review round 1): the specialist's
   answer carries the case, and the help coordinator files it with `fileTask` and no assignee,
@@ -160,6 +162,9 @@ converted coordinator's conversation as the user you name, and nothing reads old
 - **FIX-1794's filing takes a delegate's session as a caller** — **REFUTED** at spec time against
   FIX-1794 S1, S4 and BR-21 ([architect](https://github.com/fixpoint-labs/flow-state-dev/pull/2833#issuecomment-6026639909)).
   D1's kitchen-sink row and BR-14 carry the coordinator's answer.
+- **A coordinator can lead a workstream** — **REFUTED** for merged FIX-1791 in review round 2: a
+  workstream's lead takes a delegated post (FIX-1793 S3, FIX-1791 BR-4), and FIX-1791 S9 gives that
+  entry to `agent` and app flows, not to the coordinator flow. D1's DevTeam rows carry it.
 
 ## How it got here
 
@@ -173,5 +178,8 @@ converted coordinator's conversation as the user you name, and nothing reads old
   last PR split into refuse and remove. `flows/mailboxes/` gained a load-time refusal. Leg d's old
   store became a pinned fixture. The `--after` gate covers the full removed-export list and only
   the two pinned old files.
+- **Review round 2** — the DevTeam's feature moved from a workstream to its coordinator's
+  conversation, because a coordinator can't lead a workstream before FIX-1802; all 15 boards are
+  conversation boards. No converted step waits on FIX-1802.
 
 **Open: none.**

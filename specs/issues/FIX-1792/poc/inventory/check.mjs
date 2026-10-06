@@ -170,7 +170,7 @@ const SKIP = (f) =>
 /**
  * Every MAILBOX.md, keyed by path, with its target and what the goal or app
  * uses it for. Targets: `session` (a coordinator; its board becomes the
- * conversation's own), `workstream` (a coordinator that leads a workstream),
+ * conversation's own; every board file, D1),
  * `coordinator` (no board), `fixture` (kept as an old file for the refusal goal
  * check), `removed` (goes with the legs it served).
  */
@@ -226,13 +226,13 @@ const FILES = {
   "goals/workforce-mailboxes/a-routed-post-gets-one-answer/fixtures/workforce/teams/support/mailboxes/lounge/MAILBOX.md":
     { target: "coordinator", boards: [], use: "a mailbox without routing behaves as before" },
   "packages/shift-manager/teams/devteam/workforce/teams/eng/mailboxes/feature/MAILBOX.md":
-    { target: "workstream", boards: ["work"], use: "the DevTeam builds a feature; the storefront project claims it, and its coding runs find the project through the claim" },
+    { target: "session", boards: ["work"], use: "the DevTeam builds a feature; the storefront project claims it, and its coding runs find the project through the claim. A workstream with FIX-1802" },
   "packages/shift-manager/teams/devteam/workforce/teams/eng/mailboxes/triage/MAILBOX.md":
     { target: "coordinator", boards: [], use: "where the team sorts reports; no default project lists it" },
   "packages/shift-manager/teams/devteam/workforce/teams/ops/mailboxes/oncall/MAILBOX.md":
     { target: "coordinator", boards: [], use: "the pager hand-off; no default project lists it" },
   "packages/shift-manager/teams/devteam/workforce/teams/ops/mailboxes/release/MAILBOX.md":
-    { target: "workstream", boards: [], use: "the storefront project lists it; it keeps no board" },
+    { target: "coordinator", boards: [], use: "the storefront project lists it; it keeps no board. A workstream with FIX-1802" },
   "packages/shift-manager/test/fixtures/ask-lab/workforce/teams/ops/mailboxes/desk/MAILBOX.md":
     { target: "session", boards: ["work"], use: "Shift Manager's tests read its tasks, asks and inbox" },
   "packages/shift-manager/test/fixtures/ask-lab/workforce/teams/ops/mailboxes/side/MAILBOX.md":
@@ -355,13 +355,13 @@ const FILE_CLASS = {
   "packages/shift-manager/src/surfaces/TaskFrame.tsx": "E · S8 · mailboxOf goes with the board ref",
   "packages/shift-manager/src/surfaces/Workstream.tsx": "E · S8 · a workstream reads its entry and lead session",
   "packages/shift-manager/teams/devteam/README.md": "C · S7 · the DevTeam's coordinators and workstreams",
-  "packages/shift-manager/teams/devteam/board.mts": "C · S7 · the feature board is the workstream session's",
-  "packages/shift-manager/teams/devteam/fsdev.config.mts": "C · S7 · storefront opens its two workstreams; no mailbox list",
+  "packages/shift-manager/teams/devteam/board.mts": "C · S7 · the feature board is the coordinator conversation's",
+  "packages/shift-manager/teams/devteam/fsdev.config.mts": "C · S7 · no mailbox list and no workstream; the DevTeam's come with FIX-1802",
   "packages/shift-manager/teams/devteam/host.mts": "C · S7 · mailbox wiring goes",
   "packages/shift-manager/teams/devteam/notify.mts": "C · S7 · the mailbox wake goes",
   "packages/shift-manager/teams/devteam/phase.mts": "E · S7 · a comment hands the mailbox its charter",
-  "packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts": "C · S7 · reads its workstream, not a mailbox board",
-  "packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts": "C · S7 · files on its conversation's board",
+  "packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts": "C · S7 · reads its coordinator conversation's board; no claim",
+  "packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts": "C · S7 · answers what to file; its coordinator files it",
   "packages/shift-manager/teams/devteam/workforce/org/workers/chief-of-staff/WORKER.md": "C · S7 · post-to-mailbox and setWorkstreams leave its tools",
   "packages/shift-manager/test/build-inputs.test.ts": "E · S8 · tests",
   "packages/shift-manager/test/chief-of-staff.test.ts": "E · S8 · workstreams as mailboxes in a fixture",
@@ -369,7 +369,7 @@ const FILE_CLASS = {
   "packages/shift-manager/test/devforce-lab-hired-boot.test.ts": "C · S7 · tests",
   "packages/shift-manager/test/devteam-legacy-org.test.ts": "E · S7 · an old store's mailbox session stays unread",
   "packages/shift-manager/test/devteam-pre-rename-store.test.ts": "E · S7 · the pre-rename store check stays; its fixture's mailbox goes",
-  "packages/shift-manager/test/devteam-repository-ask.test.ts": "C · S7 · the project's workstream, not a claim",
+  "packages/shift-manager/test/devteam-repository-ask.test.ts": "C · S7 · no claim; no project placement in the DevTeam until FIX-1802",
   "packages/shift-manager/test/fixtures/ask-lab/asker.mts": "C · S8 · the fixture lab's coordinator",
   "packages/shift-manager/test/fixtures/ask-lab/lab.mts": "C · S8 · the fixture lab's coordinator",
   "packages/shift-manager/test/fixtures/multi-seat-collab/README.md": "C · S8 · desks become delegates",
@@ -485,10 +485,10 @@ const GOALS = {
   "goals/README.md": "EDIT · the word, FIX-1796",
   "goals/agent-discovery/an-orchestrator-routes-a-task-by-asking": "EDIT · a roster literal's mailboxes field",
   "goals/design-system/skins-reused-components-from-one-token-set": "EDIT · a rail label in a demo host",
-  "goals/devforce-lab/it-codes-in-the-projects-repository": "CONVERT · the run finds its project through its workstream",
-  "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board": "REWRITE · the org sees the workstream's entry; only its owner sees the rows (epic ER-7)",
-  "goals/devforce-lab/it-ships-an-artifact-a-person-can-open": "CONVERT · posts to the feature workstream's lead",
-  "goals/devforce-lab/it-waits-for-a-person-before-it-files": "CONVERT · the EM asks before filing on its conversation's board",
+  "goals/devforce-lab/it-codes-in-the-projects-repository": "RETIRE · a DevTeam run has no project until FIX-1802; FIX-1793's goal check proves a run placed through its workstream (BR-24)",
+  "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board": "REWRITE · only the feature coordinator's user sees the rows; another member sees nothing",
+  "goals/devforce-lab/it-ships-an-artifact-a-person-can-open": "CONVERT · posts to the feature coordinator",
+  "goals/devforce-lab/it-waits-for-a-person-before-it-files": "CONVERT · the EM asks before its answer has the coordinator file",
   "goals/devforce-lab/it-wakes-the-seat-a-file-declared": "CONVERT · a filed row wakes the delegate it names",
   "goals/devtool-workforce-visibility/the-checklist-rows": "REWRITE · row 5 reads every worker and a coordinator's delegates",
   "goals/devtool-workforce-visibility/works-a-task-from-its-row": "CONVERT · the task is on a conversation's board",
@@ -515,8 +515,8 @@ const GOALS = {
   "goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff": "CONVERT · the summary counts conversation boards",
   "goals/shift-manager/it-draws-v2s-look": "CONVERT · screens draw conversation boards",
   "goals/shift-manager/it-groups-workstreams-under-their-projects": "FIX-1793 · rewritten to entries there; re-run here",
-  "goals/shift-manager/it-hands-a-run-the-work-it-approved": "CONVERT · posts on the feature workstream",
-  "goals/shift-manager/it-opens-a-lab": "REWRITE · a workstream shows its entry; its owner sees the lead's board",
+  "goals/shift-manager/it-hands-a-run-the-work-it-approved": "CONVERT · posts to the feature coordinator",
+  "goals/shift-manager/it-opens-a-lab": "REWRITE · the DevTeam's feature opens as its coordinator's conversation; only its user sees the board",
   "goals/shift-manager/it-runs-from-an-install": "CONVERT · finds the coordinator whose conversation holds a board",
   "goals/shift-manager/it-sends-a-turn-into-a-seat-session": "CONVERT · @worker in a workstream",
   "goals/shift-manager/it-shows-and-stops-a-task-run": "CONVERT · finds the coordinator whose conversation holds a board",

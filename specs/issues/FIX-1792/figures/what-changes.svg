@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 520" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two panels, today and after, for one support team. Today the team folder holds worker files and a mailboxes folder whose MAILBOX.md lists members and a board; the board's rows are an org row any member's session runs. After, the same team folder holds only worker files: the help desk is a WORKER.md on the coordinator flow with delegates, its board belongs to each conversation and its user, and a MAILBOX.md left in the tree stops the load with its conversion named. Case by case: how a coordinator is declared goes from its own file to a worker file; who keeps a board goes from the org to one conversation's user, or a workstream's owner; how a coding run finds its project goes from a claim row to its workstream; an old file goes from loading to stopping the load; tasks on an old board stay in the store, unread.">
+     aria-label="Two panels, today and after, for one support team. Today the team folder holds worker files and a mailboxes folder whose MAILBOX.md lists members and a board; the board's rows are an org row any member's session runs. After, the same team folder holds only worker files: the help desk is a WORKER.md on the coordinator flow with delegates, its board belongs to each conversation and its user, and a MAILBOX.md left in the tree stops the load with its conversion named. Case by case: how a coordinator is declared goes from its own file to a worker file; who keeps a board goes from the org to one conversation's user; how a coding run finds its project goes from a claim row to a workstream, never a claim; an old file goes from loading to stopping the load; tasks on an old board stay in the store, unread.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -61,13 +61,13 @@
   <g id="case-2">
     <text class="t-lbl" x="32" y="300">WHO KEEPS A BOARD</text>
     <text class="t-old" x="32" y="320">The org: any member's session runs it</text>
-    <text class="t-new" x="494" y="320">One conversation's user, or a workstream's owner</text>
+    <text class="t-new" x="494" y="320">One conversation's user</text>
     <line class="row" x1="16" y1="334" x2="924" y2="334"/>
   </g>
   <g id="case-3">
     <text class="t-lbl" x="32" y="354">HOW A CODING RUN FINDS ITS PROJECT</text>
     <text class="t-old" x="32" y="374">A claim row on the mailbox</text>
-    <text class="t-new" x="494" y="374">Through its workstream</text>
+    <text class="t-new" x="494" y="374">Through a workstream, never a claim</text>
     <line class="row" x1="16" y1="388" x2="924" y2="388"/>
   </g>
   <g id="case-4">

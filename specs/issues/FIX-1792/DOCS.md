@@ -66,8 +66,8 @@ the Workforce category of `sidebars.ts`, after `workforce/ui`, replacing `workfo
 > No file declares a board. Each conversation with a coordinator keeps a board of its own, owned
 > by the person in that conversation: file a task on it and the coordinator hands it to a
 > delegate ([Coordinators](./coordinators.md)). Work that people track across conversations
-> belongs to a workstream on a [project](./projects.md): open one with the coordinator as its
-> lead, and the lead's workstream session keeps the board.
+> belongs to a workstream on a [project](./projects.md), led by one of your workers; the lead's
+> workstream session keeps the board.
 >
 > ## A kind of your own
 >
@@ -86,7 +86,8 @@ the Workforce category of `sidebars.ts`, after `workforce/ui`, replacing `workfo
 > organization and a conversation belongs to one person, so there is no one to give them to.
 > Finish or cancel them before you upgrade, or file them again on the coordinator's conversation.
 >
-> A project no longer lists mailboxes. For each one you still need, open a workstream.
+> A project no longer lists mailboxes. For each one you still need, open a workstream led by one
+> of your workers.
 
 ## REMOVE · `apps/docs/docs/workforce/mailboxes.md`, `mailbox-parts.svg`, `seat-mailbox-records.svg`
 

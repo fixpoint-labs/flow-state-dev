@@ -3,9 +3,10 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
-(BR-n) and [DECISIONS.md](DECISIONS.md). `tdd`. Five PRs, a GitHub stack (epic ER-26). P1 starts
-after FIX-1791 merges; P2 after FIX-1794; P3 after FIX-1793 and FIX-1794 (epic D4, ER-23). P4a,
-the refusal, lands before P4b, the removal.
+(BR-n) and [DECISIONS.md](DECISIONS.md). `tdd`. Five PRs, a GitHub stack (epic ER-26). "FIX-1791
+merged" means all of its PRs: `everyone` and `rounds` ship in its P2. P1 starts after FIX-1791;
+P2 after FIX-1791 and FIX-1794; P3 also after FIX-1793 (epic D4, ER-23). P4a, the refusal, lands
+before P4b, the removal.
 Run `node specs/issues/FIX-1792/poc/inventory/check.mjs` in every PR and update its tables when a
 classification changes.
 
@@ -19,7 +20,7 @@ classification changes.
 | S4 | goals · P1's files | The 10 board-less files in [the files](#the-files) marked P1, with their hosts and goals, on the coordinator flow | BR-7–BR-10 |
 | S5 | goals, Shift Manager test labs · P2's files | The 13 board files outside kitchen-sink and the DevTeam, and the 2 sibling coordinators marked P2. Each board's work goes on the conversation's board through FIX-1794's filing; desks become delegates | BR-13 |
 | S6 | kitchen-sink | `support.help` is a coordinator on `routing: judgment`, `rounds: 1`, with no `fallback:`. The `escalate` tool goes: each specialist's `WORKER.md` ends an escalating answer with `Escalate: <the case>`, and the coordinator's instructions file that case on its own conversation's board with FIX-1794's `fileTask` and no assignee (FIX-1794 BR-6), in the turn the closed round wakes (FIX-1791 BR-24). No delegate session files and no second filing path is added; the `no-filing` control takes `fileTask` from the coordinator's turn. The mailbox notify, wiring and controls go or move to the coordinator; panels find the conversation by worker id (BR-7a) and read its board | BR-7a BR-14 BR-25 |
-| S7 | `shift-manager` · DevTeam | `eng.feature` and `ops.release` lead workstreams storefront's seed opens as the lab's member; `triage`, `oncall` are coordinators; the host, notify, board, `em` and `coder` move off mailboxes; the chief of staff loses `post-to-mailbox` and `setWorkstreams` | BR-15–BR-17 |
+| S7 | `shift-manager` · DevTeam | `eng.feature` is a coordinator on `routing: judgment`, `rounds: 1`, its board its conversation's; the EM's answer says what to file and the woken turn files it. `ops.release`, `triage`, `oncall` are coordinators with no board. Storefront's seed opens no workstream and writes no list: the DevTeam's workstreams need a coordinator to take a delegated post, and come with FIX-1802; the host, notify, board, `em` and `coder` move off mailboxes; the chief of staff loses `post-to-mailbox` and `setWorkstreams` | BR-15–BR-17 |
 | S8 | `shift-manager` · the app | Reads workstream entries and conversation boards, never mailboxes or claims; renders `coordinator-route` | BR-17 BR-18 |
 | S9 | `workforce`, `ui`, `devtool`, `react`, `contracts` · **removals** | The mailbox flow, binder, boards and `mailboxTaskLists`, route record, best-fit wrapper, wake, post lines (unless FIX-1791 took them), `post-to-mailbox`; the hire's `mailboxBoards` and `agent`'s mailbox `taskLists`; the inventory's mailbox and membership rows; discovery's `mailboxes` domain: its entry in `MANIFEST_DOMAINS` (`contracts`), the workforce's mailboxes manifest source, and the domain in `discover`'s description (`core`), so the pinned list is `seats`, `skills`, `resources` (FIX-1796 renames `seats`); their exports and tests. The checker's `REMOVED_EXPORTS` is the list ([poc/inventory](poc/inventory/README.md): 29 files, about 11,700 lines) | BR-5a BR-18 BR-19 BR-22 BR-23 |
 | S10 | `workforce` · projects · **removals** | Claims stop being declared (rows kept); a project's `workstreams` list, `setWorkstreams`, `projectWritesMailboxInventory` and `projectWorkspace`'s claim path go; a write carrying `workstreams` is refused by name | BR-16 BR-20 BR-21 |
@@ -30,9 +31,9 @@ classification changes.
 
 | PR | Delivers | Depends on |
 |---|---|---|
-| P1 · coordinators without boards | S4 | FIX-1791 merged |
-| P2 · conversation boards | S5, S6 | FIX-1794 merged |
-| P3 · the DevTeam, its workstreams, and claims | S7, S10, S8's DevTeam parts | FIX-1793 and FIX-1794 merged |
+| P1 · coordinators without boards | S4 | FIX-1791 merged, through its P2 (`everyone`) |
+| P2 · conversation boards | S5, S6 | FIX-1791's P2 (`rounds`) and FIX-1794 merged |
+| P3 · the DevTeam and claims | S7, S10, S8's DevTeam parts | FIX-1791's P2 (`rounds`), FIX-1794 and FIX-1793 merged. S7 alone no longer needs FIX-1793; S10 does, since removing the claim path edits FIX-1793's `projectWorkspace` and BR-21 names its workstream action |
 | P4a · refuse | S1, S2, S3; S11's goal check, legs a to d; the upgrade page | P1, P2, P3 |
 | P4b · remove | S9, the rest of S8, S11's goal table and retirement, the rest of S12; VG with leg e | P4a |
 
@@ -75,12 +76,12 @@ a verdict line; a REWRITE states its new outcome in `goal.md` and logs the old r
 
 | Disposition | Goals |
 |---|---|
-| **REWRITE** (11) | devforce-lab `it-keeps-its-rows-on-the-mailboxes-board` (the org sees the entry, the owner the rows) · devtool `the-checklist-rows` (row 5: workers and a coordinator's delegates) · manager-queue-lab's two goals and `lab` (a row names its delegate; `boards:` on a worker refused by name) · multi-seat-collab's goal and `run-scenario.mts` (delegates, not desks) · org-seats `cos-changes-the-roster` (the delegate read, not `discover`) · pentest `a-post-reaches-both-declared-seats` (BR-10) · shift-manager `it-opens-a-lab` · workforce-conventions `code-comes-from-files-alone` (the slot refused) |
-| **RETIRE** (1, conditional) | workforce-conventions `a-mailbox-holds-the-work-a-seat-drains`: its mailbox subjects are gone. Retired in P4b only on the condition in [At implement time](#at-implement-time) |
+| **REWRITE** (11) | devforce-lab `it-keeps-its-rows-on-the-mailboxes-board` (only the feature coordinator's user sees the rows; another member sees nothing) · devtool `the-checklist-rows` (row 5: workers and a coordinator's delegates) · manager-queue-lab's two goals and `lab` (a row names its delegate; `boards:` on a worker refused by name) · multi-seat-collab's goal and `run-scenario.mts` (delegates, not desks) · org-seats `cos-changes-the-roster` (the delegate read, not `discover`) · pentest `a-post-reaches-both-declared-seats` (BR-10) · shift-manager `it-opens-a-lab` (the DevTeam's feature opens as its coordinator's conversation; only its user sees the board) · workforce-conventions `code-comes-from-files-alone` (the slot refused) |
+| **RETIRE** (2) | workforce-conventions `a-mailbox-holds-the-work-a-seat-drains`: its mailbox subjects are gone; retired in P4b only on the condition in [At implement time](#at-implement-time) · devforce-lab `it-codes-in-the-projects-repository`: a DevTeam run has no project until FIX-1802; FIX-1793's goal check proves a run placed through its workstream (BR-24) |
 | **FOLD** (1) | workforce-mailboxes `a-pre-rename-lab-is-refused-by-name` → the goal check |
 | **FIX-1793** (1) | shift-manager `it-groups-workstreams-under-their-projects`: rewritten there, re-run here |
 | **EDIT** (6) | `goals/README.md`, agent-discovery, design-system, hire-plane, workforce-packages, `capabilities-come-from-files-alone`: a field or a word |
-| **CONVERT** (29) | The rest, each with its line in the checker's `GOALS` |
+| **CONVERT** (28) | The rest, each with its line in the checker's `GOALS` |
 
 ## Checks
 
@@ -158,21 +159,24 @@ kind of the tree's own, and classified 196 files, 49 goal units and the removed 
   turn the closed round wakes (FIX-1791 BR-24) and files on an `Escalate:` line. The exact line
   wording is yours; the specialists' `WORKER.md` files and the coordinator's instructions must
   agree on it. Never let a specialist file.
-- Only a coordinator conversation files (FIX-1794 S4). A task session that files is refused until
-  FIX-1802 ships the split. Where a member filed on a mailbox board when a post reached it
-  (manager-queue-lab's manager, multi-seat-collab's planner, the DevTeam's EM, the row goal's
-  filer), give its coordinator the help desk's shape: judgment, `rounds: 1`, the delegate's answer
-  says what to file, the woken turn files it. A leg that needs a delegate's own task session to
-  file waits for FIX-1802; it does not leave the goal.
+- `rounds` (and `everyone`) must not be cut from FIX-1791 P2. If it is, raise it on FIX-1791;
+  there's no second path. Five coordinators here hear answers only through it.
+- Only a coordinator conversation files (FIX-1794 S4). Where a member filed on a mailbox board
+  when a post reached it (manager-queue-lab's manager, multi-seat-collab's planner, the DevTeam's
+  EM, the row goal's filer), give its coordinator the help desk's shape: judgment, `rounds: 1`, the
+  delegate's answer says what to file, the woken turn files it. No converted step waits on
+  FIX-1802: a step that needs a delegate to file is rewritten so its coordinator files, and one
+  that can't be is retired under BR-24 with its reason.
 - Before retiring `a-mailbox-holds-the-work-a-seat-drains` in P4b: FIX-1794's goal check and
   FIX-1791's must have PASS verdicts on `main`. Name each leg that still has a subject against a
   passing leg: V8's subset drain (FIX-1794 leg c), V14's writer half (FIX-1791's answers), V2's
   kind spread and V10's vocabulary (`code-comes-from-files-alone`, kitchen-sink-talk). A leg with
   no home moves into a converted goal; the retirement waits until it has one.
-- The DevTeam's `feature` names `chief-of-staff` as a member. Keep it as a delegate only if its
-  flow takes a delegated post (FIX-1791 BR-4); otherwise drop it and say so in the PR.
+- The DevTeam's `feature` names `chief-of-staff` as a member. The chief of staff is on the
+  coordinator flow, which takes no delegated post (FIX-1791 S9, BR-4), so drop it as a delegate
+  and say so in the PR.
 - manager-queue-lab's "waits for its desk to free": if a conversation board can't hold it, take it
-  to FIX-1794 (board mechanics) or FIX-1802 (a delegate that files) rather than dropping the leg.
+  to FIX-1794 (board mechanics); if it still can't, retire the step under BR-24 with its reason.
 - Leg d's generator boots the old tree on the commit P4a branches from, opens the desk's mailbox
   and files one pending row, through that commit's code only.
 - FIX-1791 may have moved post lines or best fit out of the mailbox folder; remove only what
@@ -196,9 +200,15 @@ Inputs, not instructions. Adopt, adapt or discard.
 - "**`stale` registry keys** are reported but do not fail — fine for ergonomics; easy to misread PASS as "registry still accurate."" — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2833#pullrequestreview-5435243585))
 - "**Perf** — full-repo `readFileSync` per file is fine for a manual/occasional gate; if this lands in every PR CI, consider grep-first or caching (low priority today)." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2833#pullrequestreview-5435243585))
 
+- "An `Escalate:` line goes unfiled in two cases. One is an answer that lands after the round's deadline (FIX-1791 BR-24b). The other is an answer to a hand-off made in the woken turn (BR-25). Tell the coordinator not to hand off in that turn, and cover a late answer in V5 or on the upgrade page." — fsd-head-of-engineering, round 2 ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2833#pullrequestreview-5435442811))
+- "An unassigned filing triggers the board's run (FIX-1794 BR-10, BR-10a). Check that the run clears the pending-wake marker on a row nobody is assigned. Also check that the coordinator doesn't treat the filing's "assign it" reply as a failure." — fsd-head-of-engineering, round 2 ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2833#pullrequestreview-5435442811))
+- "BR-7a: `findWorkerSession({ worker })` returns the user's *most recent* conversation, so a panel should read the conversation it is showing. A workstream session carries `workstreamId`, so `{ worker: eng.feature }` never finds it (S5a)." — fsd-head-of-engineering, round 2 ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2833#pullrequestreview-5435442811))
+
 ## Follow-ups
 
 - Goal folder names `workforce-mailboxes/` and `mailbox-boards/`, kitchen-sink's control file
   names, and the remaining word: FIX-1796.
 - `PRE_RENAME_NAMES` and the channel refusals go at 1.0.
 - Files as migrations, held for later (the epic).
+- The DevTeam's `feature` and `release` as workstreams on storefront, and its coding runs placed in
+  the project: needs a coordinator to take a delegated post; with FIX-1802.

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a mailbox's board goes. Chosen: 14 conversation boards and 1 workstream. Instead of: every board a lab's people look at becomes a workstream. It comes down to the first row: a board nobody follows stays a conversation's list with nothing new to set up, where the other way gives each lab a project and a workstream it never uses. The price is the second row: kitchen-sink's escalations show only in the conversation that filed them, where a workstream would show one list across a person's conversations but needs projects in kitchen-sink. The DevTeam's feature is a workstream either way. Locks in: every converted board belongs to one user, and no file declares a board. Flips if: kitchen-sink's support desk is meant to show one list of cases across a person's conversations."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a mailbox's board goes. Chosen: 15 conversation boards. Instead of: every board a lab's people look at becomes a workstream. It comes down to the first row: a board nobody follows stays a conversation's list with nothing new to set up, where the other way gives each lab a project and a workstream it never uses. The price is the second row: kitchen-sink's escalations show only in the conversation that filed them, where a workstream would show one list across a person's conversations but needs projects in kitchen-sink and FIX-1802. The DevTeam's feature is a conversation board either way for now: a coordinator can lead a workstream only with FIX-1802. Locks in: every converted board belongs to one user, and no file declares a board. Flips if: kitchen-sink's support desk is meant to show one list of cases across a person's conversations."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">14 conversation boards, 1 workstream</text>
+    <text class="t-h c-code" x="228" y="112">15 conversation boards</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Each looked-at board a workstream</text>
@@ -70,7 +70,7 @@
     <text class="t-s" x="248" y="241">the one that filed the case</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">One list across your conversations</text>
-    <text class="t-s" x="612" y="241">but kitchen-sink needs projects</text>
+    <text class="t-s" x="612" y="241">but needs projects and FIX-1802</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
 
@@ -78,11 +78,11 @@
     <text class="t-lbl" x="32" y="280">THE DEVTEAM'S</text>
     <text class="t-lbl" x="32" y="293">FEATURE</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">A workstream</text>
-    <text class="t-s" x="248" y="299">its owner sees the tasks</text>
+    <text class="t-b" x="248" y="281">A conversation board</text>
+    <text class="t-s" x="248" y="299">a workstream with FIX-1802</text>
     <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">A workstream</text>
-    <text class="t-s" x="612" y="299">the same</text>
+    <text class="t-b" x="612" y="281">The same, for now</text>
+    <text class="t-s" x="612" y="299">a coordinator leads one only with FIX-1802</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
 
@@ -97,6 +97,6 @@
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
     <text class="t-b" x="494" y="371">Kitchen-sink should list cases across chats</text>
-    <text class="t-s" x="494" y="389">then escalations is a workstream on one project</text>
+    <text class="t-s" x="494" y="389">then escalations is a workstream, with FIX-1802</text>
   </g>
 </svg>
