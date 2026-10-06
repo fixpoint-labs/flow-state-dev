@@ -31,6 +31,11 @@ needs the same picture.
 
 Apply these; don't restate them in the doc or here.
 
+- **The bar:** [`specs/epics/FIX-1786/concept/CONCEPT.md`](../../../specs/epics/FIX-1786/concept/CONCEPT.md),
+  the Workforce concept doc this skill was distilled from. Read all of it before writing, and
+  match its depth: every part answered concretely, one cast of examples throughout, costs stated,
+  a cited gap table. (Its opening banner and source comment exist because it was copied into an
+  epic spec; a new concept doc doesn't need them.)
 - [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → "Density".
 - [`user-docs.md`](../../../docs/contributing/user-docs.md) → "Voice" and the tells table.
 - [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) for any open
@@ -54,17 +59,32 @@ Sections in this order. Title it `<Area>: How It Should Work` for a target model
    cases come in the sections that follow.
 4. **One section per part,** in the list's order: what it's for, how it's built, then an example
    and, where position or flow carries meaning, a diagram. Tables for comparisons. A "why not X?"
-   subsection only where a reader would genuinely reach for X.
-5. **Naming debates.** One per contested name: a small table (what each name says, where it fits,
+   subsection only where a reader would genuinely reach for X. Every part the model stores
+   answers, in the text or a table:
+   - **Who owns it, and who can see it.**
+   - **Where it's stored:** which scope, which resource or collection, keyed how.
+   - **How many exist:** one per user, per project, per piece of work? (A small "work → sessions"
+     table often does this.)
+   - **What it replaces, and what that costs**, when the part changes something that exists: a
+     "what this replaces" note, then each cost and how it's handled.
+   - **When to use it** over its neighbours, if a reader could pick the wrong one.
+5. **How it flows.** One concrete scenario traced end to end through every part, as a numbered
+   list with a diagram, using the doc's cast (below). This is where a reader checks the parts
+   actually fit together.
+6. **Naming debates.** One per contested name: a small table (what each name says, where it fits,
    familiar from, risks), then **Recommend X** and what would change it.
-6. **The rules.** A numbered list, opened with: *"A behavior none of these rules explains is a bug
+7. **The rules.** A numbered list, opened with: *"A behavior none of these rules explains is a bug
    in the model."* Security models and ownership models get this section; it's the doc's test.
-7. **Vocabulary.** A table: term, what it means, and any property the model turns on (for example
+   When the model changes a file format or config keys, add a migration table here or under the
+   part: old key, new key, how many files use it today.
+8. **Vocabulary.** A table: term, what it means, and any property the model turns on (for example
    private or shared). Above it, one line: *"One term, one thing. Retired: …"* listing every term
-   the doc stopped using and what to say instead.
-8. **Decisions.** A checklist of what's still open, each item with a recommendation and, where
-   useful, what would change our mind. Items held for later or punted say so.
-9. **Where today's code differs.** A two-column table, target vs today. Every "today" cell comes
+   the doc stopped using and what to say instead. Then a **retired-terms table**: the term, what to
+   say instead, where it lives in code and docs today, and how many files mention it. That table
+   is the refactor's checklist, so count by searching, not by guessing.
+9. **Decisions.** A checklist, each item marked decided, open, punted or held. Open items carry a
+   recommendation and, where useful, what would change our mind.
+10. **Where today's code differs.** A two-column table, target vs today. Every "today" cell comes
    from reading the code in this session, with the file path in the cell or beside the table.
    Never from memory or from the docs.
 
@@ -80,10 +100,16 @@ Sections in this order. Title it `<Area>: How It Should Work` for a target model
 - **Target and today stay apart.** The body describes the model as if it had always existed. What
   the code does now goes in the gap table, or in a short "what this replaces" note under the part it
   changes. Never interleave the two in one paragraph.
-- **Label every example by kind:** "researcher (worker)", "launch (mailbox)".
-- **Diagrams make one claim.** The caption states the finding, not the topic: *"a mailbox relaying a
-  post, and a direct ask"*, followed by one sentence saying what to look at. Use the same names as
-  the prose. Look at the rendered result before moving on; a diagram you haven't seen is a guess.
+- **Code names stay out of the body.** Identifiers like `seatAuthored` or `sharedToLineage`
+  belong in "what this replaces" and the gap table. Where the body needs the idea, give it a
+  plain term and define it the first time it's used.
+- **One cast, used everywhere.** Pick two users and three or four named things (Alice and Bob, a
+  "researcher" and a "writer", a "launch" project) and reuse them in every example, diagram and
+  scenario. A reader who has met Alice's researcher once never has to learn a new example again.
+- **Label every example by kind:** "researcher (worker)", "launch (coordinator)".
+- **Diagrams make one claim.** The caption states the finding, not the topic: *"a coordinator
+  relaying a post, and a direct ask"*, followed by one sentence saying what to look at. Use the
+  same names as the prose. Look at the rendered result before moving on; a diagram you haven't seen is a guess.
 - **Language level:** short sentences and plain words that a bright 14-year-old could follow,
   without talking down. No counted preambles ("Three reasons.") or other tells from `user-docs.md`.
 
@@ -99,9 +125,30 @@ Sections in this order. Title it `<Area>: How It Should Work` for a target model
   touch before every edit, and keep their wording unless they ask otherwise.
 - **When the model changes, rewrite the affected sections.** Patching one sentence leaves the parts
   list, the diagrams, the rules, the vocabulary and the gap table describing the old model. After a
-  change, walk all five and bring each in line.
+  change, walk all of them, and the flow scenario, and bring each in line.
 - **Answer challenges in chat, not in the doc.** Push back when the code disagrees. The doc records
   where you landed, not the argument.
+
+## Checking it before you call it done
+
+You wrote the doc, so you can't read it cold. Two checks catch what you can't see:
+
+1. **The cold read.** Dispatch a fresh sub-agent with only the doc: no conversation, no code, no
+   spec. Ask it to:
+   - list the parts in order and say what each is for, who owns it and where it's stored
+   - answer four to six scenario questions you write from the rules, using the doc's cast. Make at
+     least two of them edge cases, e.g. "Bob's researcher answers in a channel Alice also reads.
+     Who is it acting as, and can Alice open its session?"
+   - list every term it had to guess at
+
+   Every wrong answer or guessed term is a gap in the doc. Fix the doc, then rerun the check with
+   a new sub-agent. Never argue with the reader.
+2. **The bar check.** Put the doc beside the exemplar under "Read first" and go part by part: does
+   each of your parts answer what its counterpart there answers? A part with no "who owns it",
+   "where it's stored" or "how many" is thinner than the bar.
+
+Tell the user what the cold read got wrong and what you changed. It's often where the model
+itself is still unclear.
 
 ## Handing off
 
@@ -116,8 +163,13 @@ Sections in this order. Title it `<Area>: How It Should Work` for a target model
 
 ## Done when
 
-- A reader can name every part, in order, and say what each is for.
-- Every term in the body is in the vocabulary table, and no retired term appears outside it.
+- A cold-read sub-agent, given only the doc, names every part in order, says what each is for,
+  and answers every scenario question correctly.
+- Every part the model stores says who owns it, who can see it, where it's stored and how many
+  exist.
+- One cast of examples runs through the whole doc, including every diagram and the flow scenario.
+- Every term in the body is in the vocabulary table, and no retired term appears outside it or
+  the retired-terms table.
 - No example in the doc needs a behavior the rules don't explain.
 - Every open question has a recommendation.
 - Every "today" claim cites a file you read in this session.
