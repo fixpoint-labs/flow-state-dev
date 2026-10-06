@@ -2125,6 +2125,24 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
   project keeps in the org's `project-files` collection (`defineProjectFilesCollection()`), at
   `project-files/<projectId>/<path>`. Members only. The collection is org-scoped, shared, lazy, and
   has no browser read.
+- **`projectWorkspace({ board })`** is a run source for a workspace host (`@flow-state-dev/workspace`):
+  for a run on that mailbox board, the repository of the project that holds the board's
+  workstream, with the project's files beside the checkout, or the project's files alone when it
+  has no repository. It reads only the workstream's claim and the project row, and refuses the run
+  with `no-project` when no project holds the workstream and `not-a-member` when the run's owner is
+  not one of the project's members. The block that asks it must hold
+  `projectWorkspaceCapability`; with harness-manager, pass it on `uses`:
+
+  ```ts
+  const work = mailboxBoard("eng.feature", "work");
+  harnessManager({
+    boardCollectionId: work.id,
+    boardCollection: work,
+    workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace({ board: work }) }),
+    uses: [projectWorkspaceCapability],
+    // ...
+  });
+  ```
 - **As a worker's tools.** Put the writes in `defineAgentWorkerFlow({ catalog })` under the names a worker's
   `tools:` spells. A catalog key must be the tool's own name, so wrap each in a one-step
   `sequencer({ name: "createProject", inputSchema: createProjectInputSchema, outputSchema:
@@ -2275,6 +2293,7 @@ before fire removed inventory rows is left out that way.
 | `defineProjectsCollection({ talk? })` | The organization's `projects` collection: org-scoped, shared across flows, browser-readable through `expose`. `talk` is the org-level talk template: the first one declared stands, the same one again is a no-op, and a different one throws. You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. `defineRoomLinesCollection`, `defineRoomSeqCollection` and `defineWorkstreamClaimsCollection` declare the room and the claims; none has a browser read. |
 | `projectWritesMailboxInventory` | The mailbox inventory declaration the project writes read. A flow that installs the writes and reads the inventory itself declares that read with this object, under any accessor; its own `defineMailboxInventoryCollection()` there is a resource collision when the flow is built. |
 | `defineProjectBlocks()` | Returns `{ createProject, setWorkstreams, actions }`. See [Projects](#projects). A created project's `bind` is dispatched to the built-in `mailbox` kind. |
+| `projectWorkspace({ board })` / `projectWorkspaceCapability` | A run source for a coding run on a project's mailbox board, and the capability holding the collections it reads. See [Projects](#projects). |
 | `openMailboxes(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
 | `readMailboxesDirectory(root)` | Read a `teams/<id>/mailboxes/<name>/` tree into one `MailboxManifest` per mailbox. Ships from the `./loader` subpath (Node only). |
 | `MailboxManifest` | One mailbox record: `{ id, declared, body }`. |

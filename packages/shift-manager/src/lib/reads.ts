@@ -130,6 +130,12 @@ export type Project = {
   members: string[];
   /** The mailbox ids the project holds, as the row lists them. */
   workstreams: string[];
+  /**
+   * The git remote the project's code lives in, or `null` when it has none
+   * (its coding work runs on its files). A row written before the field
+   * existed reads as none.
+   */
+  repository: string | null;
   /** Each member's talk session, at most one per person. */
   sessions: ProjectSession[];
 };
@@ -431,6 +437,7 @@ export function toProject(row: unknown): Project | undefined {
     ownerUserId,
     members: strings(field(row, "members")),
     workstreams: strings(field(row, "workstreams")),
+    repository: text(field(row, "repository")),
     sessions: Array.isArray(sessions)
       ? sessions.flatMap((link) => {
           const sessionId = text(field(link, "sessionId"));

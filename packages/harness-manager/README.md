@@ -55,6 +55,18 @@ harnessManager({
 });
 ```
 
+For a mailbox board a project holds, `@flow-state-dev/workforce` provides the source: `projectWorkspace({ board: work })` answers with the repository of the project that holds the board's workstream, with the project's files beside the checkout, or the project's files alone when it has none. It reads its collections through `projectWorkspaceCapability`, which goes on the manager's `uses`:
+
+```ts
+import { projectWorkspace, projectWorkspaceCapability } from "@flow-state-dev/workforce";
+
+harnessManager({
+  // ...
+  workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace({ board: work }) }),
+  uses: [projectWorkspaceCapability],
+});
+```
+
 The source answers per run, from the block context, and it is asked when a run is first set up. The repository and base branch it named are recorded on the run record (`remote`, `baseRef`). A retry uses the recorded ones, so changing where a source points applies to new rows and never moves a run already under way. A run that started with no repository is recorded as one (`filesOnly`), so it stays on its kept files even if its project gains a repository later.
 
 When the run has files kept beside its checkout, the manager saves them at the end of each turn, when the run asks a question, and when the harness fails. The run record's `lastSave` shows the result: the time, any files left alone because someone else changed them too, and an error if the save failed. A failed save does not fail the run, and the next save tries again. The exception is a run that would complete: completing is its last save, so a run whose phase is done but whose files could not be saved fails that attempt instead, and the retry saves them.

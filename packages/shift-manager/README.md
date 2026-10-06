@@ -225,7 +225,7 @@ A project has four tabs:
 - **Stream** is the project's room: one conversation its members share with the project's seats. You read and post through your own talk session on the project. A member who has none gets Join, and someone who isn't a member is told the room is for its members and sees none of it. The room opens at its newest lines, and **Load earlier** reads the page before them.
 - **Board** draws a lane for each of its workstreams that holds a board.
 - **Workstreams** lists the workstreams the project holds.
-- **Brief** is the project's brief.
+- **Brief** is the project's brief, under the repository its coding work runs in, or *No repository · runs on project files*.
 
 **No project** has no room and no brief, and says so.
 

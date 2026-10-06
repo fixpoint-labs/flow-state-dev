@@ -439,6 +439,10 @@ export function roomLineKey(projectId: string, seq: number): string {
 export function projectIdProblem(id: string): string | undefined {
   if (id.length === 0) return "a project id can't be empty";
   if (id === NO_PROJECT_ID) return `"${NO_PROJECT_ID}" is where workstreams no project lists are shown, so no project can take it`;
-  if (id.includes("/") || id === "." || id === "..") return `project id "${id}" must be one path segment`;
+  // A backslash too: the id is the key prefix a run's files are mounted at,
+  // and a mount scope refuses one, so the project could never be worked on.
+  if (id.includes("/") || id.includes("\\") || id === "." || id === "..") {
+    return `project id "${id}" must be one path segment`;
+  }
   return undefined;
 }

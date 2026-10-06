@@ -369,6 +369,10 @@ describe("project rows", () => {
     const reserved = await h.act("bob", "lab", bobLab, "createProject", { id: "unassigned", title: "No project" });
     expect(refusal(reserved)).toContain("invalid-project-id");
 
+    // Its files are mounted at the id, and a mount scope can't hold a backslash.
+    const backslash = await h.act("bob", "lab", bobLab, "createProject", { id: "acme\\store", title: "Acme store" });
+    expect(refusal(backslash)).toContain("invalid-project-id");
+
     const unknown = await h.act("bob", "lab", bobLab, "createProject", {
       id: "hermes",
       title: "Hermes",

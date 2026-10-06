@@ -67,7 +67,7 @@ These are Shift Manager's own screens and words. Where one maps onto a Workforce
 | **Tasks** | Every row on every board that isn't done, grouped by state, worker or workstream. Queued rows are behind a toggle. |
 | **Roster** | Every worker, grouped as on shift (running a task), on call (waiting on you), or off shift. |
 | **A workstream** | A declared [mailbox](../workforce/mailboxes.md) and the boards it holds, the same workstream a [project](../workforce/projects.md) groups. Tabs: Stream (the transcript, which you can post to), Board, Brief (the mailbox's charter) and Results. |
-| **A project** | Groups workstreams and has one room its members share. Tabs: Stream (the room), Board, Workstreams and Brief. See [Projects](../workforce/projects.md) and [A room or a mailbox](../workforce/projects.md#a-room-or-a-mailbox). |
+| **A project** | Groups workstreams and has one room its members share. Tabs: Stream (the room), Board, Workstreams and Brief, which also names the project's repository, or says its coding work runs on the project's files. See [Projects](../workforce/projects.md) and [A room or a mailbox](../workforce/projects.md#a-room-or-a-mailbox). |
 | **A task** | One worker's run, live, with Interrupt to stop it. *Open trace* opens the run's session in the DevTool (see [Opening a session from a link](../devtool/overview.md#opening-a-session-from-a-link)). |
 
 The sidebar lists the projects with their workstreams under PROJECTS, then the teams under TEAMS. Workstreams that no project lists sit under **No project**. Jump to (⌘K) finds workstreams, workers, tasks and the Lab's readable documents.
