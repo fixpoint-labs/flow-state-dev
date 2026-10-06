@@ -229,9 +229,9 @@ engine rule. The closure only checks.
   From review (Jake); the concept and its workers figure now say so.
 - **A board stays its own when its rows cross a flow.** A user-scoped ledger spans every session
   its owner has, and a board takes any pending row in it, so one of Alice's sessions could claim
-  another's rows. ER-9 now requires that only a board's own drains claim its rows, and leaves how
-  to FIX-1794's spec; a task-board change comes back here. From review round 2 (Codex). It came
-  back as [D6](#d6).
+  another's rows. ER-9 now requires that only a board's own drains claim its rows, and
+  [D6](#d6) records how: one partition per conversation, built by FIX-1794. From review round 2
+  (Codex).
 - **A worker's configuration is data, read per run.** On a singleton, `ctx.flow.config` is one
   frozen bag for every worker, and `seatTools` carries live blocks a stored row can't hold. So the
   contract stores names, resolves them when a session loads its worker, and a flow reads that

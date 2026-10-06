@@ -50,7 +50,8 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
 4. **FIX-1791 merges** → FIX-1793 and FIX-1794. Both merge → FIX-1792, which moves each
    session board onto FIX-1794's conversation board (D6). One exception: FIX-1794's first PR (the
    partitioned board, D6) touches only orchestration on its own fixtures, so it may start once this
-   amendment merges, without waiting for FIX-1791.
+   amendment merges, without waiting for FIX-1791. FIX-1793's workstream boards live on that
+   partition, so its board-consuming slice merges only after FIX-1794's first PR.
 5. **FIX-1792 merges** → FIX-1796. It merges → the closure's first run. The terms
    sweep doesn't wait on the library: the library is new code, written in the new terms (ER-25),
    so the sweep has nothing of it to remove.
