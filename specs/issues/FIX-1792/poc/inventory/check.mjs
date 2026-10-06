@@ -6,9 +6,9 @@
  *
  *   node specs/issues/FIX-1792/poc/inventory/check.mjs            # the census and the inventory
  *   node specs/issues/FIX-1792/poc/inventory/check.mjs --control  # the negative control
- *   node specs/issues/FIX-1792/poc/inventory/check.mjs --after    # the end state, once P4 lands
+ *   node specs/issues/FIX-1792/poc/inventory/check.mjs --after    # the end state, once P4b lands
  *
- * Two parts, each with a TOTALITY assertion.
+ * Three parts, each with a TOTALITY assertion.
  *
  * 1. The census. Every tracked `MAILBOX.md` is parsed and must have a row in
  *    FILES, with its target. The counts the spec states (files, files with
@@ -22,10 +22,19 @@
  *    GOALS: a goal stops running when the mailbox flow goes, whatever words it
  *    uses. A match nobody classified fails the run.
  *
- * `--control` plants an unclassified source file and an unclassified goal that
- * names a mailbox only in prose, requires the run to FAIL on both, and removes
- * them. `--after` asserts the end state: only the refusal fixtures are still a
- * `MAILBOX.md`, and no file outside REFUSAL_HOMES names a removed export.
+ * 3. The removal inventory, by exported name. REMOVED_EXPORTS is every export
+ *    the conversion removes. Census mode keeps it total: every export declared
+ *    in a file FILE_CLASS marks R, and every mailbox- or claim-named export in
+ *    package source, is in REMOVED_EXPORTS or in KEPT_EXPORTS with a reason.
+ *
+ * `--control` plants an unclassified source file, an unclassified goal that
+ * names a mailbox only in prose, and an unlisted mailbox-named export, and
+ * requires the census to FAIL on all three. It then requires `--after` to FAIL
+ * on a plant naming exports the first `--after` missed, and on the two old
+ * refusal fixtures still at their pre-move paths. It removes the plants.
+ * `--after` asserts the end state: the only `MAILBOX.md` files are
+ * AFTER_FIXTURES, under the pinned goal check, and no file outside
+ * REFUSAL_HOMES names a REMOVED_EXPORTS name.
  *
  * Out of scope on purpose: the word "mailbox" in package source and docs that
  * name no removed surface. That sweep is FIX-1796's.
@@ -49,8 +58,84 @@ const SURFACE = new RegExp(
   ].join("|"),
 );
 
-/** Exports the end state must not name outside REFUSAL_HOMES (`--after`). */
-const REMOVED_EXPORTS = /\b(mailboxFlow|defineMailboxFlow|mailboxInstances|openMailboxes|readMailboxesDirectory|mailboxBoard\w*|mailboxTaskLists|routeByPurpose|wakeMemberSeats|mailboxPostCapability|setWorkstreams\w*|projectWritesMailboxInventory|defineWorkstreamClaimsCollection|WORKSTREAM_CLAIMS_RESOURCE)\b/;
+/**
+ * The removal inventory: every exported name the conversion removes (S1, S2,
+ * S9, S10). `--after` refuses each outside REFUSAL_HOMES, so the end-state gate
+ * covers the whole removed surface, not a sample of it. Kept total by
+ * `exportProblems()` in census mode.
+ */
+const REMOVED_EXPORTS = [
+  // S9 · the mailbox flow (mailbox/mailbox-flow.ts)
+  "mailboxFlow", "defineMailboxFlow", "DefineMailboxFlowOptions", "MailboxFlowFactory", "MAILBOX_KIND",
+  "MAILBOX_ANSWER_ACTION", "MAILBOX_SEAT_POST_ACTION", "MailboxSessionState", "mailboxSessionStateSchema",
+  "MailboxPostInput", "mailboxPostInputSchema", "mailboxAnswerInputSchema", "MailboxReadOutput", "mailboxReadOutputSchema",
+  "MailboxRefusalReason", "MailboxPostRefusedError", "boundMailbox", "holdsBoards", "wakesSeats",
+  "MailboxFileTaskInput", "mailboxFileTaskInputSchema", "MailboxFileTaskOutput", "mailboxFileTaskOutputSchema",
+  "mailboxReadBoardInputSchema", "MailboxReadBoardOutput", "mailboxReadBoardOutputSchema", "mailboxBoardRowSchema",
+  "MailboxFanOutInput", "MailboxNotifyInput", "mailboxNotifyInputSchema",
+  "INVENTORY_REGISTER_MAILBOX", "INVENTORY_RETIRE_MAILBOXES", "inventoryMailboxRegisteredSchema", "inventoryMailboxesRetiredSchema",
+  // S9 · the binder and boards (mailbox/mailbox-binder.ts, mailbox/mailbox-board.ts)
+  "mailboxInstances", "MailboxInstancesOptions", "openMailboxes", "OpenMailboxesOptions", "MailboxKind", "mailboxBoardIds",
+  "mailboxBoard", "mailboxBoardId", "mailboxBoardLedger", "mailboxBoardNameProblem", "mailboxBoardNamesFor",
+  "mailboxBoardTaskTools", "resolveMailboxBoard", "MailboxBoardCollection", "MAILBOX_BOARDS_KEY", "MAILBOX_BOARD_CLIENT_FIELDS",
+  "mailboxTaskLists",
+  // S9 · post lines and the route record (mailbox/mailbox-items.ts, mailbox-post-line.ts, mailbox-route.ts)
+  "emitMailboxPostLine", "readMailboxPostLines", "emitMailboxRouteRecord", "MAILBOX_POST_COMPONENT",
+  "MailboxTranscriptLine", "mailboxTranscriptLineSchema", "MAILBOX_ROUTE_COMPONENT", "MAILBOX_ROUTE_EVALUATOR",
+  "MailboxRoute", "MailboxRouting", "MailboxRouteRecord", "mailboxRouteRecordSchema",
+  // S9 · best fit's mailbox wrapper, the wake, post-to-mailbox
+  "routeByPurpose", "RouteByPurposeOptions", "wakeMemberSeats", "WakeMemberSeatsOptions", "hearingSeatsById", "reachableSeat",
+  "mailboxPostCapability", "MAILBOX_POST_CAPABILITY", "POST_TO_MAILBOX_TOOL", "PostToMailboxInput", "postToMailboxInputSchema",
+  // S9 · the inventory's mailbox and membership rows, devtool's and Shift Manager's readers of them
+  "MailboxInventoryRow", "mailboxInventoryRowSchema", "defineMailboxInventoryCollection", "membershipKey",
+  "MailboxRow", "MembershipRow", "toMailboxRow", "mailboxesBySeat", "mailboxOf",
+  // S1 · the loader and the manifest
+  "readMailboxesDirectory", "ReadMailboxesDirectoryResult", "MailboxManifest", "MailboxManifestError", "MailboxManifestErrorKind",
+  // S2 · codegen
+  "mailboxKinds",
+  // S10 · claims, the project's list, setWorkstreams
+  "WORKSTREAM_CLAIMS_RESOURCE", "WorkstreamClaim", "workstreamClaimSchema", "defineWorkstreamClaimsCollection",
+  "SetWorkstreamsInput", "setWorkstreamsInputSchema", "setWorkstreamsOutputSchema", "projectWritesMailboxInventory",
+];
+
+/**
+ * Exports a removed file declares, or mailbox-named exports, that the
+ * conversion does not remove, each with why. A name here is not the surface.
+ */
+const KEPT_EXPORTS = {
+  kindOf: "a generic helper name; goals and labs declare their own",
+  orderedById: "moves with the seats inventory, which stays",
+  isTalkTemplate: "FIX-1793 removes it with rooms",
+  isTemplateMailbox: "FIX-1793 removes it with rooms",
+  routeOf: "a generic name; internal to the removed flow",
+  withoutRepeats: "a generic name; FIX-1791's lines may keep it",
+  RECENT_LINES: "best fit's context; FIX-1791 S4 extracts the ladder",
+  PostCase: "best fit's context; FIX-1791 S4 extracts the ladder",
+  postCaseSchema: "best fit's context; FIX-1791 S4 extracts the ladder",
+  routeRequestSchema: "best fit's request; FIX-1791 S4 extracts the ladder",
+  RouteDecision: "best fit's decision; FIX-1791 S4 extracts the ladder",
+  routeDecisionSchema: "best fit's decision; FIX-1791 S4 extracts the ladder",
+  RouteLedger: "best fit's hold; FIX-1791 S4 extracts the ladder",
+  RouteLedgerState: "best fit's hold; FIX-1791 S4 extracts the ladder",
+  routeLedgerStateSchema: "best fit's hold; FIX-1791 S4 extracts the ladder",
+  ROUTE_LEDGER_STATE: "best fit's hold; FIX-1791 S4 extracts the ladder",
+  ROUTE_BLOCK: "best fit's evaluator; FIX-1791 S4 extracts the ladder",
+  keepLine: "best fit's context; FIX-1791 S4 extracts the ladder",
+  recordRoute: "a generic name; FIX-1791 records coordinator-route",
+  ROUTED_TURN_STATE: "the agent's answer state; agent stays",
+  routedTurnSchema: "the agent's answer state; agent stays",
+  routedTurnStateSchema: "the agent's answer state; agent stays",
+  answerRoutedPost: "the agent's answer path; FIX-1791 S9 replaces it",
+  seatIdConfigSchema: "the agent's settings; agent stays",
+  INVENTORY_REGISTER_SEATS: "the seats inventory stays",
+  inventorySeatsRegisteredSchema: "the seats inventory stays",
+  inventoryWriterActions: "the seats inventory stays",
+};
+
+/** A name that marks an export as part of the removed surface, wherever it is declared. */
+const SURFACE_NAME = /[Mm]ailbox|MAILBOX|[Ww]orkstreamClaim|WORKSTREAM_CLAIMS|[Ss]etWorkstreams/;
+
+const REMOVED_NAME = new RegExp(`\\b(${REMOVED_EXPORTS.join("|")})\\b`);
 
 /** Where the end state may still name an old shape: the refusals and their own tests and fixtures. */
 const REFUSAL_HOMES = [
@@ -61,6 +146,16 @@ const REFUSAL_HOMES = [
   "packages/workforce/test/read-mailboxes-directory.test.ts",
   "goals/coordinators/refuses-a-mailbox-file-by-name/",
   "apps/docs/docs/workforce/upgrading.md",
+];
+
+/**
+ * The only `MAILBOX.md` files the end state keeps: the pre-rename goal's two
+ * old files, moved unchanged under the pinned goal check (PLAN P4a). Exact
+ * paths, so a fixture left at its old path, or a new one anywhere else, fails.
+ */
+const AFTER_FIXTURES = [
+  "goals/coordinators/refuses-a-mailbox-file-by-name/fixtures/tree/teams/desk/mailboxes/front/MAILBOX.md",
+  "goals/coordinators/refuses-a-mailbox-file-by-name/fixtures/tree/teams/desk/mailboxes/notices/MAILBOX.md",
 ];
 
 const SKIP = (f) =>
@@ -226,7 +321,7 @@ const FILE_CLASS = {
   "apps/kitchen-sink/test/picked-session-panel.test.tsx": "C · S6 · tests",
   "apps/kitchen-sink/test/support-desk.test.ts": "C · S6 · the unattended-board warning goes",
   "apps/kitchen-sink/test/workforce-shell.test.ts": "C · S6 · tests",
-  "apps/kitchen-sink/workforce/blocks/escalate.ts": "C · S6 · files onto the delivering conversation's board",
+  "apps/kitchen-sink/workforce/blocks/escalate.ts": "C · S6 · stops filing; the case rides the answer and the coordinator files it",
   "apps/kitchen-sink/workforce/hire.ts": "C · S6 · mailbox binder calls go",
   "apps/kitchen-sink/workforce/mailbox-notify.ts": "R · S6 · the mailbox's notify block",
   "apps/kitchen-sink/workforce/teams/support/workers/accounts/WORKER.md": "C · S6 · post-to-mailbox leaves its tools",
@@ -248,8 +343,12 @@ const FILE_CLASS = {
   "packages/shift-manager/README.md": "E · S12 · workstreams and the DevTeam's mailboxes",
   "packages/shift-manager/src/components/flow-state/chat-assistant.tsx": "E · S8 · renders coordinator-route",
   "packages/shift-manager/src/lib/reads.ts": "E · S8 · mailbox and claim reads go",
+  "packages/shift-manager/src/lib/talk.ts": "T · — · FIX-1793 removes the room client; names MailboxTranscriptLine",
   "packages/shift-manager/src/lib/task.tsx": "E · S8 · a task's board ref",
   "packages/shift-manager/src/lib/transcript.ts": "E · S8 · mailbox transcript lines",
+  "packages/shift-manager/src/surfaces/Project.tsx": "E · S8 · MailboxTranscriptLine, after FIX-1793 moves the Stream tab",
+  "packages/shift-manager/src/surfaces/Stream.tsx": "T · — · FIX-1793 removes the Stream tab; names MailboxTranscriptLine",
+  "packages/shift-manager/src/surfaces/TaskFrame.tsx": "E · S8 · mailboxOf goes with the board ref",
   "packages/shift-manager/src/surfaces/Workstream.tsx": "E · S8 · a workstream reads its entry and lead session",
   "packages/shift-manager/teams/devteam/README.md": "C · S7 · the DevTeam's coordinators and workstreams",
   "packages/shift-manager/teams/devteam/board.mts": "C · S7 · the feature board is the workstream session's",
@@ -298,6 +397,7 @@ const FILE_CLASS = {
   "packages/workforce/src/hire.ts": "E · S9 · mailbox board ids leave the hire",
   "packages/workforce/src/index.ts": "E · S9 · package exports",
   "packages/workforce/src/inventory/collections.ts": "E · S9 · mailbox and membership rows go",
+  "packages/workforce/src/inventory/index.ts": "E · S9 · mailbox and membership row exports",
   "packages/workforce/src/inventory/open-inventory.ts": "E · S9 · mailbox and membership rows go",
   "packages/workforce/src/loader/index.ts": "E · S1 · the loader's exports",
   "packages/workforce/src/loader/read-declared-roster.ts": "E · S1 · the roster has no mailboxes",
@@ -325,6 +425,8 @@ const FILE_CLASS = {
   "packages/workforce/src/seat-hire-blocks.ts": "E · S9 · the mailboxBoards hire option",
   "packages/workforce/test/agent-routed-answer.test.ts": "R · S9 · a routed mailbox answer; FIX-1791's delegated post replaces it",
   "packages/workforce/test/agent-worker-history.test.ts": "E · S9 · its wake fixture",
+  "packages/workforce/test/agent-worker-mailbox-post.test.ts": "R · S9 · tests of the agent's onMailboxPost entry; FIX-1791 S9's delegated post replaces it",
+  "packages/workforce/test/browser-exports.test-d.ts": "E · S9 · browser exports",
   "packages/workforce/test/browser-subpath-safe.test.ts": "E · S9 · exports",
   "packages/workforce/test/codegen-resource-modules.test.ts": "E · S2 · tests",
   "packages/workforce/test/codegen.test.ts": "E · S2 · the slot refused",
@@ -434,6 +536,31 @@ const listFiles = () => [...new Set([...git(["ls-files"]), ...git(["ls-files", "
 const read = (f) => { try { return readFileSync(f, "utf8"); } catch { return undefined; } };
 const unitOf = (f) => { const p = f.split("/"); return p.length > 3 ? `goals/${p[1]}/${p[2]}` : f; };
 
+/** Every name declared `export` at the top of a file. */
+const declaredExports = (text) =>
+  [...text.matchAll(/^export (?:declare )?(?:default )?(?:async )?(?:const|let|function\*?|type|interface|class|enum|abstract class) ([A-Za-z0-9_$]+)/gm)].map((m) => m[1]);
+
+/**
+ * Part 3's totality: every export a removed package-source file declares, and
+ * every mailbox- or claim-named export in package source, is listed as removed
+ * or kept. An export nobody listed is one `--after` could not see.
+ */
+function exportProblems(files) {
+  const problems = [];
+  const listed = new Set([...REMOVED_EXPORTS, ...Object.keys(KEPT_EXPORTS)]);
+  for (const f of files) {
+    if (!/^packages\/[^/]+\/src\//.test(f) || !/\.(ts|tsx|mts|js|mjs)$/.test(f)) continue;
+    const text = read(f);
+    if (text === undefined) continue;
+    const removedWhole = FILE_CLASS[f]?.startsWith("R");
+    for (const name of declaredExports(text)) {
+      if (listed.has(name)) continue;
+      if (removedWhole || SURFACE_NAME.test(name)) problems.push(`export in no removal list: ${name} (${f})`);
+    }
+  }
+  return problems;
+}
+
 function run(mode) {
   const files = listFiles();
   const problems = [];
@@ -465,14 +592,15 @@ function run(mode) {
     if (SKIP(f) || f.endsWith("MAILBOX.md")) continue;
     const text = read(f);
     if (text === undefined) continue;
+    const names = SURFACE.test(text) || REMOVED_NAME.test(text);
     if (f.startsWith("goals/")) {
-      if (SURFACE.test(text) || /mailbox/i.test(text)) goalUnits.add(unitOf(f));
-    } else if (SURFACE.test(text)) {
+      if (names || /mailbox/i.test(text)) goalUnits.add(unitOf(f));
+    } else if (names) {
       const c = FILE_CLASS[f];
       if (!c) problems.push(`unclassified: ${f}`);
       else classed[c[0]] = (classed[c[0]] ?? 0) + 1;
     }
-    if (mode === "after" && REMOVED_EXPORTS.test(text) && !REFUSAL_HOMES.some((h) => f.startsWith(h))) afterHits.push(f);
+    if (mode === "after" && REMOVED_NAME.test(text) && !REFUSAL_HOMES.some((h) => f.startsWith(h))) afterHits.push(`${f} (${REMOVED_NAME.exec(text)[1]})`);
   }
   for (const u of goalUnits) {
     const d = GOALS[u];
@@ -482,11 +610,13 @@ function run(mode) {
   const stale = Object.keys(FILE_CLASS).filter((f) => !files.includes(f));
 
   if (mode === "after") {
-    const left = mailboxes.filter((f) => FILES[f]?.target !== "fixture" && !f.startsWith("goals/coordinators/"));
+    const left = mailboxes.filter((f) => !AFTER_FIXTURES.includes(f));
     if (left.length > 0) problems.push(`still a MAILBOX.md: ${left.join(", ")}`);
+    for (const f of AFTER_FIXTURES) if (!mailboxes.includes(f)) problems.push(`refusal fixture missing: ${f}`);
     for (const f of afterHits) problems.push(`names a removed export: ${f}`);
   } else {
     for (const [k, v] of Object.entries(EXPECT)) if (census[k] !== v) problems.push(`census ${k}: want ${v}, got ${census[k]}`);
+    problems.push(...exportProblems(files));
   }
 
   return { census, byTarget, classed, unitsSeen, goalUnits: goalUnits.size, stale, problems };
@@ -503,19 +633,35 @@ function report(r) {
 
 if (MODE === "control") {
   const plants = [
+    // census: an unclassified file naming the surface
     ["packages/workforce/src/__fix1792_control__.ts", "export const x = openMailboxes;\n"],
+    // census: an unclassified goal that says "mailbox" in prose only
     ["goals/__fix1792-control__/it-talks-in-a-mailbox/run.mts", "// posts to the desk's mailbox, in prose only\n"],
+    // census: a mailbox-named export on no removal list
+    ["packages/workforce/src/__fix1792_control_export__.ts", "export const mailboxControlPlant = 1;\n"],
+    // after: names exports the first `--after` regex missed
+    ["apps/kitchen-sink/lib/__fix1792_after__.ts", "// MAILBOX_ROUTE_COMPONENT emitMailboxPostLine MAILBOX_KIND mailboxKinds\n"],
   ];
   for (const [p, t] of plants) { mkdirSync(p.split("/").slice(0, -1).join("/"), { recursive: true }); writeFileSync(p, t); }
-  let r;
-  try { r = run("census"); } finally {
-    rmSync(plants[0][0], { force: true });
+  let census;
+  let after;
+  try { census = run("census"); after = run("after"); } finally {
+    for (const [p] of plants) rmSync(p, { force: true });
     rmSync("goals/__fix1792-control__", { recursive: true, force: true });
   }
-  const caughtSource = r.problems.some((p) => p.includes("__fix1792_control__.ts"));
-  const caughtGoal = r.problems.some((p) => p.includes("__fix1792-control__/it-talks-in-a-mailbox"));
-  console.log(caughtSource && caughtGoal ? "CONTROL PASS · both plants refused" : `CONTROL FAIL · source ${caughtSource} goal ${caughtGoal}`);
-  process.exit(caughtSource && caughtGoal ? 0 : 1);
+  const has = (r, s) => r.problems.some((p) => p.includes(s));
+  const oldFixtures = Object.keys(FILES).filter((f) => FILES[f].target === "fixture");
+  const checks = {
+    "census · unclassified source": has(census, "__fix1792_control__.ts"),
+    "census · unclassified goal": has(census, "__fix1792-control__/it-talks-in-a-mailbox"),
+    "census · unlisted export": has(census, "mailboxControlPlant"),
+    "after · newly covered exports": has(after, "__fix1792_after__.ts"),
+    "after · fixtures at their old paths": oldFixtures.length === 2 && oldFixtures.every((f) => has(after, f)),
+  };
+  for (const [k, v] of Object.entries(checks)) console.log(`${v ? "caught" : "MISSED"} · ${k}`);
+  const ok = Object.values(checks).every(Boolean);
+  console.log(ok ? "CONTROL PASS · every plant refused" : "CONTROL FAIL");
+  process.exit(ok ? 0 : 1);
 }
 
 const r = run(MODE);

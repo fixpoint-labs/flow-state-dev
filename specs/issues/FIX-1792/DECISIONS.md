@@ -25,7 +25,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Every board a lab's people look at becomes a workstream: kitchen-sink's escalations, Shift Manager's `desk.front` and `eng.desk` labs, the DevTeam's feature |
 | **Because** | The epic's question, per board ([D5](../../epics/FIX-1786/DECISIONS.md#d5)): does the work outlive one conversation, and does a person track it? Only the DevTeam's feature does both: its project lists it today, people follow it for days, and its coding runs find the project through it. The rest are a coordinator's working list or fixtures that test board mechanics, which D5 sends to the conversation. Kitchen-sink's escalations is the close call: a person follows a case up, but nobody works that board in the app, kitchen-sink has no projects, and one list across customers' conversations is the sharing between users the epic rules out ([ER-18](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)). Unclear goes to the conversation |
-| **Locks in** | Every converted board belongs to one user. In kitchen-sink a case shows in the conversation that filed it, in every tab on it, and nowhere else. In the DevTeam, the storefront project's feature and release work are two workstreams the lab's member opens; other members see each entry, not its tasks. No file declares a board any more: a lab that wants one people track opens a workstream |
+| **Locks in** | Every converted board belongs to one user, in the partition only its conversation reaches (epic [D6](../../epics/FIX-1786/DECISIONS.md#d6)). Only a coordinator files on its board, so in kitchen-sink a specialist's answer carries the case and the help coordinator files it, unassigned. A case shows in the conversation that filed it, in every tab on it, and nowhere else. In the DevTeam, the storefront project's feature and release work are two workstreams the lab's member opens; other members see each entry, not its tasks. No file declares a board any more: a lab that wants one people track opens a workstream |
 
 ![D1, where a mailbox's board goes. Chosen: 14 conversation boards and 1 workstream. Instead of: every board a lab's people look at becomes a workstream. It comes down to the first row: a board nobody follows stays a conversation's list with nothing new to set up, where the other way gives each lab a project and a workstream it never uses. The price is the second row: kitchen-sink's escalations show only in the conversation that filed them, where a workstream would show one list across a person's conversations but needs projects in kitchen-sink. The DevTeam's feature is a workstream either way. Locks in: every converted board belongs to one user, and no file declares a board. Flips if: kitchen-sink's support desk is meant to show one list of cases across a person's conversations](figures/d1-boards.svg)
 
@@ -35,7 +35,7 @@ It comes down to boards nobody follows: as workstreams, each lab grows a project
 
 | Tree · coordinator | Board | What it is used for | Becomes |
 |---|---|---|---|
-| kitchen-sink · `support.help` | `escalations` | A specialist files a case that needs a person; nobody works it; the team panel lists it | Conversation board; a case is an unassigned row |
+| kitchen-sink · `support.help` | `escalations` | A specialist files a case that needs a person; nobody works it; the team panel lists it | Conversation board. The specialist's answer carries the case; the coordinator files it, an unassigned row |
 | `mailbox-boards` hire goal · `ops.desk` | `work` | A coordinator hires a worker and files it a task by name | Conversation board |
 | `mailbox-boards` row goal · `eng.feature` | `triage`, `parked` | One worker files a row and another's board runs it; nobody drains `parked` | Conversation board; `parked` goes |
 | `manager-queue-lab` · `eng.queue` (lab and two refusal trees) | `work` | The manager files a row per desk; each desk's worker takes its own | Conversation board; a row names its delegate |
@@ -81,8 +81,11 @@ converted coordinator's conversation as the user you name, and nothing reads old
   "`routing:` unchanged"; FIX-1791's pinned keys made that wrong, and this DOCS.md corrects it.
 - **A `flow:` naming a kind of the tree's own has no conversion.** Both such files name `digest`,
   a goal fixture's kind: one goes with the goal it served, one stays as an old file the refusal
-  goal reads. `flows/mailboxes/` is refused by name at `fsdev gen` and at load. A flow that should
-  run workers moves to `flows/workers/` and the worker-flow list ([FIX-1789](../FIX-1789/SPEC.md)).
+  goal reads. `flows/mailboxes/` is refused by name at `fsdev gen` and, separately, at load, so an
+  app that never regenerates is still refused. It is refused whatever it holds, where an empty
+  `mailboxes/` team folder is passed over: a code slot is itself a declaration, a team folder
+  declares only through its file. A flow that should run workers moves to `flows/workers/` and the
+  worker-flow list ([FIX-1789](../FIX-1789/SPEC.md)).
 - **A renamed file that keeps the old lines is refused by name**: `members:`, `boards:`,
   `boardActions:` or `mintFor:` on a `WORKER.md`, each with what replaced it.
 - **The `CHANNEL.md` refusal stays until 1.0** ([FIX-1748](../FIX-1748/DECISIONS.md#d1)); it now
@@ -101,9 +104,24 @@ converted coordinator's conversation as the user you name, and nothing reads old
 - **The DevTeam's `release` leads a workstream** because storefront lists it; `triage` and
   `oncall` are coordinators no project lists, as today.
 - **Desks are lab code** (`answersFor:` is read only by lab flows). A converted lab files for the
-  delegate. A leg that can't hold on a conversation board goes to FIX-1794, not out of the goal.
-- **A converted coordinator keeps its mailbox's id**, `<team>.<name>`; no tree on `main` has a
-  worker by that name.
+  delegate. A leg that can't hold on a conversation board goes to FIX-1794, or to FIX-1802 when it
+  needs a delegate to file, not out of the goal.
+- **Only a coordinator conversation files on its board** ([FIX-1794](../FIX-1794/SPEC.md) S1, S4).
+  Kitchen-sink's `escalate` takes the coordinator's option 1 (review round 1): the specialist's
+  answer carries the case, and the help coordinator files it with `fileTask` and no assignee,
+  FIX-1794 BR-6's pending, unassigned row. No delegate-session filing, no second path, and
+  FIX-1794 and the epic's D6 stay as merged.
+- **A converted coordinator keeps its mailbox's id**, `<team>.<name>`, as a worker id; no tree on
+  `main` has a worker by that name. Its conversation is found by `findWorkerSession({ worker })`,
+  whose key-set match (FIX-1788 S5a) never returns a delegate's or a task's session.
+- **The last PR is two.** P4a adds the refusals and the goal check; P4b removes the mailbox floor
+  and adds no behaviour. Each is reviewed against one question, and S1 lands before S9.
+- **Leg d's old store is a checked-in file** generated once from the commit P4a branches from, by a
+  committed script, with the SHA beside it. After P4b no commit on `main` can write a mailbox
+  store, so a store seeded "through today's code" would stop being old. A published older package
+  can't seed it: the labs that open mailboxes aren't published.
+- **The retiring goal retires on a condition**: each leg that still has a subject is named against
+  a leg FIX-1791's, FIX-1794's or a converted goal passes on `main`, or it moves rather than goes.
 - **Old-term exports left for FIX-1796:** `PRE_RENAME_NAMES` and its refusal helpers (until 1.0).
   The mailbox floor's exports are removed, not left.
 
@@ -119,13 +137,21 @@ converted coordinator's conversation as the user you name, and nothing reads old
 ## Settled
 
 - **The counts**: 33 files, 15 with boards, 16 boards, 3 `boardActions:`, 0 `mintFor:`, 2 `flow:`
-  (both `digest`) — **CONFIRMED** by [poc/inventory](poc/inventory/README.md) on `cad4e2780`, with
-  its control refusing both plants.
+  (both `digest`) — **CONFIRMED** by [poc/inventory](poc/inventory/README.md) on `cad4e2780`, and
+  again on `ce06cb5c7` with the full removed-export list, its control refusing every plant.
+- **FIX-1794's filing takes a delegate's session as a caller** — **REFUTED** at spec time against
+  FIX-1794 S1, S4 and BR-21 ([architect](https://github.com/fixpoint-labs/flow-state-dev/pull/2833#issuecomment-6026639909)).
+  D1's kitchen-sink row and BR-14 carry the coordinator's answer.
 
 ## How it got here
 
 - **Draft** — framed as one declaration and a loud refusal over sibling-built parts; the census
   found 16 boards and two `flow:` lines naming a kind of the tree's own; D5 applied board by
   board, one workstream; old data left unread; four PRs.
+- **Review round 1** — `escalate` stopped filing from a delegate's session, because FIX-1794
+  refuses that caller: the coordinator files the case (the coordinator's decision, option 1). The
+  last PR split into refuse and remove. `flows/mailboxes/` gained a load-time refusal. Leg d's old
+  store became a pinned fixture. The `--after` gate covers the full removed-export list and only
+  the two pinned old files.
 
 **Open: none.**

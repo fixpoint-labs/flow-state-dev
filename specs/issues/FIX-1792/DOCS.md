@@ -71,7 +71,8 @@ the Workforce category of `sidebars.ts`, after `workforce/ui`, replacing `workfo
 >
 > ## A kind of your own
 >
-> A `flows/mailboxes/` folder isn't read, and `fsdev gen` stops on it. If the flow should run
+> A `flows/mailboxes/` folder isn't read. `fsdev gen` stops on it, and so does the app when it
+> loads, whether or not you regenerated. If the flow should run
 > workers, move it to `flows/workers/` and register it as a
 > [worker flow](./built-in-worker.md#custom-worker-flows). Otherwise it's an ordinary flow of your
 > app.
@@ -158,7 +159,7 @@ removed exports and links the upgrade page.
 
 ## Publication ownership
 
-This issue publishes every operation above in P4, after its checks pass, reconciled against the
-shipped refusal wording. The upgrade page is the epic's draft, published here because this issue
+This issue publishes the upgrade page in P4a, with the refusal that links it, and every other
+operation above in P4b, after its checks pass, reconciled against the shipped refusal wording. The upgrade page is the epic's draft, published here because this issue
 ships what it describes. Nothing here edits `coordinators.md`, the glossary or the overview's
 opening.

@@ -15,7 +15,7 @@
 
 The epic's one way to declare a worker ([FIX-1786](../../epics/FIX-1786/SPEC.md), ER-6, D5), on
 the coordinator flow ([FIX-1791](../FIX-1791/SPEC.md)), conversation boards
-([FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794)) and workstreams
+([FIX-1794](../FIX-1794/SPEC.md)) and workstreams
 ([FIX-1793](../FIX-1793/SPEC.md)).
 
 ## The goal, and how we'll know it's met
@@ -36,7 +36,7 @@ goal and kitchen-sink check that ran on a mailbox passes on the converted files.
 flowchart LR
   T["a lab tree with an old MAILBOX.md"] --> A["legs a, b · the old file, then renamed"]
   T --> C["leg c · its converted twin"]
-  D["leg d · a store today's main wrote"] -->|"its mailbox and pending row left unread"| P["PASS · the goal is met"]
+  D["leg d · a store main wrote at a pinned commit"] -->|"its mailbox and pending row left unread"| P["PASS · the goal is met"]
   E["leg e · every goal that ran on a mailbox"] -->|"re-run on the converted files"| P
   A -->|"refused · file and conversion named"| P
   C -->|"a post answered by its delegates"| P
@@ -49,10 +49,10 @@ coordinator hold. Under the control the old folder is passed over, and leg a mus
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/coordinators/refuses-a-mailbox-file-by-name/`, which folds in `a-pre-rename-lab-is-refused-by-name` · scripted model for leg c, n/a elsewhere · a real host from the published packages, on SQLite · run by the implementer at completion · verdict in P4 |
-| **Signal** | **a**: the boot stops naming `teams/desk/mailboxes/front/MAILBOX.md`, `teams/desk/workers/front/WORKER.md`, `members:` → `delegates:` and that boards are removed; the `flows/mailboxes/` kind and the old `CHANNEL.md` are named too; nothing is registered. **b**: the file renamed with its old lines is refused naming `members:` and `boards:`. **c**: the converted desk loads, and one post gets one answer per delegate, as the mailbox gave. **d**: on a store today's `main` wrote, with the desk's mailbox session and a pending board row, the converted lab boots; a request to the old session is refused naming the `mailbox` flow; the row is unchanged byte for byte, and no conversation's board lists it. **e**: `check.mjs --after` passes, and every goal [PLAN](PLAN.md#goals) marks convert or rewrite has a PASS line on the same commit |
-| **Input** | The folded goal's desk tree (a mailbox on the built-in kind, one on a kind of its own) and the store it seeds. Another team, mailbox name or delegate list must pass too |
-| **Anti-game** | Assert on the words a person reads, never only that something threw: an unknown key already throws today and names nothing useful. Nothing seeded except through today's code. Leg e reads verdict lines, not a subset's exit codes |
+| **Goal check** | `goals/coordinators/refuses-a-mailbox-file-by-name/`, which folds in `a-pre-rename-lab-is-refused-by-name` · scripted model for leg c, n/a elsewhere · a real host from the published packages, on SQLite · run by the implementer · legs a to d pass in P4a; the verdict, with leg e, in P4b |
+| **Signal** | **a**: the boot stops naming `teams/desk/mailboxes/front/MAILBOX.md`, `teams/desk/workers/front/WORKER.md`, `members:` → `delegates:` and that boards are removed; a `flows/mailboxes/` folder, with no `fsdev gen` run, and the old `CHANNEL.md` are named too; nothing is registered. **b**: the file renamed with its old lines is refused naming `members:` and `boards:`. **c**: the converted desk loads, and one post gets one answer per delegate, as the mailbox gave. **d**: on a store `main` wrote at a pinned commit, with the desk's mailbox session and a pending board row, the converted lab boots; a request to the old session is refused naming the `mailbox` flow; the row is unchanged byte for byte, and no conversation's board lists it. **e**: `check.mjs --after` passes, and every goal [PLAN](PLAN.md#goals) marks convert or rewrite has a PASS line on the same commit |
+| **Input** | The folded goal's desk tree (a mailbox on the built-in kind, one on a kind of its own, and a `flows/mailboxes/` folder). For leg d, a SQLite store checked in once, written by the mailbox code at the commit P4a branches from, with that SHA and its generator beside it. Another team, mailbox name or delegate list must pass too |
+| **Anti-game** | Assert on the words a person reads, never only that something threw: an unknown key already throws today and names nothing useful. The old store is never hand-written and never regenerated from a later commit, which by then can't write one. Leg e reads verdict lines, not a subset's exit codes |
 | **Control that must fail** | `GOAL_CONTROL=silent-skip`, the loader passing over `mailboxes/` as deleting it would: leg a FAILS on *the boot names the file*. Today's `main`: every leg FAILS |
 
 ## What changes
@@ -98,9 +98,10 @@ table is [D1](DECISIONS.md#d1).
 
 ## What stays as it is
 
-- The coordinator flow and its keys ([FIX-1791](../FIX-1791/SPEC.md)), conversation boards
-  (FIX-1794) and workstreams ([FIX-1793](../FIX-1793/SPEC.md)). This issue converts onto them and
-  builds none.
+- The coordinator flow and its keys ([FIX-1791](../FIX-1791/SPEC.md)), conversation boards and
+  their filing ([FIX-1794](../FIX-1794/SPEC.md)) and workstreams ([FIX-1793](../FIX-1793/SPEC.md)).
+  This issue converts onto them and builds none: a kitchen-sink case is filed by the coordinator,
+  through FIX-1794's own action.
 - A `WORKER.md` that isn't a coordinator keeps the flow it names; nothing moves onto `agent`.
 - Stored data: nothing is deleted or rewritten.
 - The pre-rename `CHANNEL.md` refusal, until 1.0. Channels themselves aren't built.
@@ -113,7 +114,8 @@ board converted, old files refused by name, and the goals still green. If wrong:
 loader and call it a conversion while half the proof spine stops running.
 
 1. **[D1](DECISIONS.md#d1) · 14 of the 15 files with boards keep them on the coordinator's
-   conversation; the DevTeam's feature board becomes a workstream, with `release` beside it.**
+   conversation; the DevTeam's feature board becomes a workstream, with `release` beside it.** In
+   kitchen-sink, a specialist's answer carries a case and the coordinator files it, unassigned.
    The one to weigh. If wrong: work people follow is hidden in one conversation, or a fixture
    grows a project it never uses.
 2. **[D2](DECISIONS.md#d2) · Old mailbox data stays in the store, unread; no pending task carries
@@ -122,4 +124,4 @@ loader and call it a conversion while half the proof spine stops running.
 **Open: none.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Improvement · `workforce`, `shift-manager`, kitchen-sink, `goals/`, docs · large · 4 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)
+Improvement · `workforce`, `shift-manager`, kitchen-sink, `goals/`, docs · large · 5 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)
