@@ -26,8 +26,8 @@ builds after the MVP (Q2). The privacy fix is checked when workers merges, not o
 | **FIX-1791** coordinator | spec → impl PRs | ER-1 · FIX-1779's join and leave · FIX-1774's legs a to c · Q1's list | The coordinator flow, delegates, four policies, the records (ER-4, ER-5); the chief of staff as a standard coordinator | FIX-1793 · FIX-1794 · FIX-1792 | Medium to large |
 | **FIX-1795** library | spec now → impl PR after the MVP | ER-1's write path | Templates and copies, model variants (ER-10) | Nothing in the MVP; it builds once the closure run passes | Medium |
 | **FIX-1793** projects | spec → impl PRs | ER-4 · ER-3 · FIX-1762's locks · Q2 · FIX-1774's leg d | Private and shared projects (Q2); workstream resources, the row rule, the project coordinator; rooms and Shift Manager's Stream tab removed (ER-7, ER-8) | FIX-1792 | Large: about 2,200 lines out, one engine rule in |
-| **FIX-1794** chain | spec → impl PR | ER-4's delegates · FIX-1778 · FIX-1780's hand-off rule and follow-through · FIX-1777's rule · FIX-1774's leg e | Tasks filed for delegates down the owner's boards, drained as the owner and followed through, so a coordinator files tasks only from here; every board in the chain keeps its rows at the owner's user scope, one partition per conversation (ER-9, D6) | FIX-1796 | Medium, with one task-board change (D6) |
-| **FIX-1792** `WORKER.md` | spec → impl PR | ER-4 · ER-7 · D5 | 33 files converted, 15 boards resolved, old files refused (ER-6); project claims and a project row's mailbox list removed, which FIX-1793 leaves deprecated | FIX-1796 | Medium |
+| **FIX-1794** chain | spec → impl PR | ER-4's delegates · FIX-1778 · FIX-1780's hand-off rule and follow-through · FIX-1777's rule · FIX-1774's leg e | Tasks filed for delegates down the owner's boards, drained as the owner and followed through, so a coordinator files tasks only from here; every board in the chain keeps its rows at the owner's user scope, one partition per conversation (ER-9, D6) | FIX-1792 · FIX-1796 | Medium, with one task-board change (D6) |
+| **FIX-1792** `WORKER.md` | spec → impl PR | ER-4 · ER-7 · D5 · FIX-1794's conversation board (D6) | 33 files converted, 15 boards resolved, old files refused (ER-6); project claims and a project row's mailbox list removed, which FIX-1793 leaves deprecated | FIX-1796 | Medium |
 | **FIX-1796** terms | spec → impl PRs | Every child merged except FIX-1795, which is new code in the new terms (ER-25) | The sweep and the glossary (ER-12) | The closure run | Medium, wide and mechanical |
 | **FIX-1797** closure · required | spec (the QA plan) → runs until clean → PR | Every other child except FIX-1795, on one `main` commit (ER-27) | The committed checks, an early leg-c run when FIX-1788 merges (ER-30), a QA report, a bug child per failure | The wrap | Medium, repeats per retest |
 
@@ -47,8 +47,9 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
    it → FIX-1789 and FIX-1790 builds start.
 3. **Both merge** → FIX-1788 builds. It merges → FIX-1791 builds, and FIX-1797 runs leg c early
    on that commit (ER-30). A failure is a bug child that blocks FIX-1791 and FIX-1795 from merging.
-4. **FIX-1791 merges** → FIX-1793 and FIX-1794. FIX-1793 merges → FIX-1792.
-5. **FIX-1792 and FIX-1794 merge** → FIX-1796. It merges → the closure's first run. The terms
+4. **FIX-1791 merges** → FIX-1793 and FIX-1794. Both merge → FIX-1792, which moves each
+   session board onto FIX-1794's conversation board (D6).
+5. **FIX-1792 merges** → FIX-1796. It merges → the closure's first run. The terms
    sweep doesn't wait on the library: the library is new code, written in the new terms (ER-25),
    so the sweep has nothing of it to remove.
 6. **A run finds bugs** → each is a child that blocks FIX-1797, and the whole plan reruns on a

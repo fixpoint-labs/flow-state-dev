@@ -115,6 +115,7 @@ flowchart LR
   K -->|"delegates as assignees"| H["FIX-1794 · assignment chain"]
   K -->|"the coordinator flow"| M["FIX-1792 · MAILBOX.md to WORKER.md"]
   P -->|"workstreams for boards"| M
+  H -->|"the conversation board"| M
   M --> T["FIX-1796 · terminology"]
   H --> T
   T --> Z["FIX-1797 · closure · required"]
