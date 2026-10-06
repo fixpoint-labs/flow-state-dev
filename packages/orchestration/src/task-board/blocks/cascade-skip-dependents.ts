@@ -12,7 +12,8 @@
  * is cancelled, then `c` is cancelled). Each cancelled task is also
  * stamped with the `"skipped"` label so `normalizeOutputStatus` can
  * translate it back to the legacy `"skipped"` status in the final
- * output.
+ * output. A cancel the substrate declines (the task was settled by
+ * someone else first) is neither labelled nor cascaded from.
  *
  * The substrate's terminal-status taxonomy uses `cancelled` for
  * deliberately-stopped work and reserves `errored` for hard failures —
@@ -70,7 +71,14 @@ export function createCascadeSkipDependents(
           const deps = task.deps ?? [];
           const failedDep = deps.find((d) => cascading.has(d));
           if (failedDep === undefined) continue;
-          await collection.cancel(task.id, `dep ${failedDep} failed`);
+          const cancelled = await collection.cancel(task.id, `dep ${failedDep} failed`);
+          // Only a cancel that landed is ours to label and cascade from. The
+          // snapshot above can be stale by the time the write arrives — another
+          // actor may already have settled the task — and `cancel` declines
+          // rather than throws then. Labelling it anyway would mark a task this
+          // pass never cancelled as a dead dependency, and every later pass
+          // would skip its dependents off the back of that label (FIX-985).
+          if (cancelled.outcome !== "recorded") continue;
           await collection.addLabel(task.id, "skipped");
           cascading.add(task.id);
           changed = true;
