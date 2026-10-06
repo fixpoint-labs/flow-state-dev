@@ -411,14 +411,14 @@ function githubBaseIsMain(baseRefName) {
 function stackedOpenNote(item) {
   const depPr = item.depPr || '<dependency PR>'
   return (
-    `You are stacking on an unmerged dependency's branch so review can start now; it will be rebased onto main when the dependency merges.\n` +
-    `Before you open the GitHub PR, mark it. Title starts with \`DO NOT MERGE until #${depPr} is on main — stacked on ${item.base}\`. Body states that dependency PR and that the GitHub base is not main. Create with \`--base ${item.base}\` (not main). Do not report it as ready to merge while its GitHub base is not main.\n`
+    `You are stacking on an unmerged dependency's branch so review can start now; GitHub rebases it onto main when the dependency merges.\n` +
+    `Open it in a GitHub stack on #${depPr}: create with \`--base ${item.base}\` (not main), then \`gh stack link ${depPr} <this PR>\` so GitHub links the two. Keep the normal title (no \`DO NOT MERGE\` prefix). Body names #${depPr} as the PR below it in the stack. Do not report it as ready to merge while its GitHub base is not main.\n`
   )
 }
 
 function stackedRebaseNote(item) {
   return (
-    `Then rebase it onto fresh ${item.base} so its diff carries only its own slice. Done means \`gh pr view ${item.node.pr} --json baseRefName\` is main (\`gh pr edit ${item.node.pr} --base main\`) and the title no longer starts with \`DO NOT MERGE\`. Report \`baseRefName: main\`. Push and report. Do not merge it. Do not report it as ready to merge while its GitHub base is not main.`
+    `Then rebase it onto fresh ${item.base} so its diff carries only its own slice. Done means \`gh pr view ${item.node.pr} --json baseRefName\` is main. In a linked GitHub stack, GitHub retargets it to main when the dependency merges; if it still names the old branch, the PR was never linked: run \`gh pr edit ${item.node.pr} --base main\` and say so in your report. Report \`baseRefName: main\`. Push and report. Do not merge it. Do not report it as ready to merge while its GitHub base is not main.`
   )
 }
 
