@@ -190,9 +190,11 @@ engine rule. The closure only checks.
   From review.
 - **A shared entry's `writtenBy` is as trustworthy as the worker flow that wrote it.** With no
   engine rule ([D3](#d3)), FIX-1789's shared-write helper stamps it from the session's identity;
-  a caller can't forge it, but the registered flow's own code could, and no doc may promise
-  otherwise ([ER-11](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). From FIX-1789's
-  gate, an engineering call.
+  it can't be forged from input, but flow code that writes the resource directly can set any
+  value (FIX-1789's BR-22; its K3 leg pins the bypass), and no doc may promise otherwise
+  ([ER-11](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). It is for display and audit
+  only, never an authorization input; who may write is FIX-1793's. From FIX-1789's gate, an
+  engineering call.
 - **A worker names the flow that runs it.** An installation has many worker flows (the built-in
   agent, the coordinator, the app's own), each one singleton copy that every worker naming it
   shares. Making flows singletons doesn't put every worker on `agent` ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
