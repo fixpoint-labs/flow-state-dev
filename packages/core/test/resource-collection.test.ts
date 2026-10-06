@@ -719,6 +719,59 @@ describe("defineResourceCollection · ownerPrivate", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Owner-writes collections: the scope reads every row, only its owner writes it
+// ---------------------------------------------------------------------------
+
+describe("defineResourceCollection · ownerWrites", () => {
+  const entries = (overrides: Record<string, unknown> = {}) =>
+    defineResourceCollection({
+      pattern: "entries/[project]/[owner]/[entry]",
+      ownerWrites: { param: "owner" },
+      scope: "org",
+      stateSchema: z.object({}).passthrough(),
+      ...overrides,
+    } as Parameters<typeof defineResourceCollection>[0]);
+
+  it("defines a collection that names its owner parameter once", () => {
+    const collection = entries();
+    expect(collection.ownerWrites).toEqual({ param: "owner" });
+    expect({ ...collection }.ownerWrites).toEqual({ param: "owner" });
+  });
+
+  it("allows a browser read, since every row is readable by the whole scope", () => {
+    expect(() => entries({ client: { state: { read: true }, content: { read: true, prefetch: true } } })).not.toThrow();
+  });
+
+  it("refuses a parameter the pattern lacks, or declares more than once", () => {
+    expect(() => entries({ ownerWrites: { param: "author" } })).toThrow(
+      'Owner-writes collection "entries/[project]/[owner]/[entry]" must declare parameter "author" exactly once.'
+    );
+    expect(() => entries({ pattern: "entries/[owner]/[owner]" })).toThrow(
+      'Owner-writes collection "entries/[owner]/[owner]" must declare parameter "owner" exactly once.'
+    );
+  });
+
+  it('refuses "**", because the owner has to sit at one known segment', () => {
+    expect(() => entries({ pattern: "entries/[owner]/**" })).toThrow(
+      'Owner-writes collection "entries/[owner]/**" must not use "**": its owner sits at one segment.'
+    );
+  });
+
+  it("refuses an eviction policy, which would delete another user's row on a create", () => {
+    expect(() => entries({ maxInstances: 5, eviction: "lru" })).toThrow(
+      'Owner-writes collection "entries/[project]/[owner]/[entry]" must not evict: an eviction would delete another user\'s row.'
+    );
+    expect(() => entries({ maxInstances: 5, eviction: "none" })).not.toThrow();
+  });
+
+  it("refuses ownerPrivate beside it: a row has one owner rule", () => {
+    expect(() => entries({ ownerPrivate: { param: "owner" } })).toThrow(
+      'Collection "entries/[project]/[owner]/[entry]" declares both ownerPrivate and ownerWrites; choose one.'
+    );
+  });
+});
+
 describe("ownerSegment", () => {
   it("is ~ plus the escaped user id, one segment whatever the id holds", () => {
     expect(ownerSegment("alice")).toBe("~alice");

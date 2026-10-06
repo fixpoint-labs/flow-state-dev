@@ -1271,15 +1271,19 @@ export async function createExecutionContext<
   // copy depends on which collection was declared first.
   //
   // Every prefix load passes through here, so it is also where another user's
-  // owner-private row is kept out of the run's cache (`ownerKeyMaySeed`).
+  // owner-private row is kept out of the run's cache (`ownerKeyMaySeed`). An
+  // owner-writes row is everyone's to read, so the scope's collections decide.
   const retainOwnedKeys = <T>(
     scope: ContentScopeType,
     scopeId: string,
     rows: Record<string, T>
   ): Record<string, T> => {
     const owned = ownKeyRecord<T>();
+    const scopeConfigs = Object.values(
+      scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs
+    );
     for (const [key, value] of Object.entries(rows)) {
-      if (!ownerKeyMaySeed(key, userId)) continue;
+      if (!ownerKeyMaySeed(key, userId, scopeConfigs)) continue;
       if (resolveResourceStorageScopeId(scope, key) === scopeId) owned[key] = value;
     }
     return owned;

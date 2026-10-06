@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 520" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels, today and after, in the same five cases. Today a board is an org row: any member's request runs it, and each task runs as whoever ran the board. After, each conversation keeps its own board, stored at its owner's user scope in a partition only that conversation reaches; each task runs in a new task session of the delegate's, on any flow, owned by the same user, and settles its row on the board that filed it. Case by case: who runs a board goes from any member's request to only its conversation's owner; who a task runs as goes from whoever ran the board to the board's owner; two conversations go from one org board shared by every session to each running only its own; a task on another flow goes from an org row any flow can read to a row reached in the owner's partition; how a task ended goes from nobody told to the conversation that filed it told once.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .fence { fill:none; stroke:var(--code); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-old { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-new { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="520"/>
+  <g id="panels">
+    <rect class="panel" x="16" y="14" width="446" height="196" rx="6"/>
+    <rect class="panel" x="478" y="14" width="446" height="196" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY</text>
+    <text class="t-lbl" x="494" y="34">AFTER</text>
+  </g>
+  <g id="today-path">
+    <rect class="n-box" x="32" y="46" width="414" height="50" rx="5"/>
+    <text class="t-h" x="48" y="67">A board · an org row</text>
+    <text class="t-s" x="48" y="85">any member's request runs it</text>
+    <path class="arrow" d="M239 96 L239 128"/>
+    <path class="head" d="M234 124 L239 132 L244 124 Z"/>
+    <rect class="n-box" x="32" y="134" width="414" height="50" rx="5"/>
+    <text class="t-h" x="48" y="155">A task's run · as whoever ran the board</text>
+    <text class="t-s" x="48" y="173">another member's drain can take your task</text>
+  </g>
+  <g id="after-path">
+    <rect class="fence" x="488" y="42" width="426" height="60" rx="6"/>
+    <rect class="n-new" x="494" y="48" width="414" height="48" rx="5"/>
+    <text class="t-h" x="510" y="68">This conversation's board</text>
+    <text class="t-s" x="510" y="86">your user scope · its own partition · only it runs it</text>
+    <path class="arrow" d="M640 102 L640 128"/>
+    <path class="head" d="M635 124 L640 132 L645 124 Z"/>
+    <text class="t-s" x="650" y="120">hand-off</text>
+    <path class="arrow" d="M780 132 L780 106"/>
+    <path class="head" d="M775 110 L780 102 L785 110 Z"/>
+    <text class="t-s" x="790" y="120">settles its row</text>
+    <rect class="n-new" x="494" y="134" width="414" height="50" rx="5"/>
+    <text class="t-h" x="510" y="155">A new task session · yours · any flow</text>
+    <text class="t-s" x="510" y="173">linked to the delegate · tells the conversation how it ended</text>
+  </g>
+  <g id="case-1">
+    <text class="t-lbl" x="32" y="236">WHO RUNS A BOARD</text>
+    <text class="t-old" x="32" y="256">Any member's request</text>
+    <text class="t-new" x="494" y="256">Only its conversation, as its owner</text>
+    <line class="row" x1="16" y1="270" x2="924" y2="270"/>
+  </g>
+  <g id="case-2">
+    <text class="t-lbl" x="32" y="290">WHO A TASK RUNS AS</text>
+    <text class="t-old" x="32" y="310">Whoever ran the board</text>
+    <text class="t-new" x="494" y="310">The board's owner, all the way down</text>
+    <line class="row" x1="16" y1="324" x2="924" y2="324"/>
+  </g>
+  <g id="case-3">
+    <text class="t-lbl" x="32" y="344">TWO CONVERSATIONS</text>
+    <text class="t-old" x="32" y="364">One org board, shared by every session</text>
+    <text class="t-new" x="494" y="364">Each runs, lists and waits on only its own</text>
+    <line class="row" x1="16" y1="378" x2="924" y2="378"/>
+  </g>
+  <g id="case-4">
+    <text class="t-lbl" x="32" y="398">A TASK ON ANOTHER FLOW</text>
+    <text class="t-old" x="32" y="418">Reached as an org row</text>
+    <text class="t-new" x="494" y="418">Reached in the owner's partition, nowhere else</text>
+    <line class="row" x1="16" y1="432" x2="924" y2="432"/>
+  </g>
+  <g id="case-5">
+    <text class="t-lbl" x="32" y="452">HOW A TASK ENDED</text>
+    <text class="t-old" x="32" y="472">Nobody is told</text>
+    <text class="t-new" x="494" y="472">The conversation that filed it, told once</text>
+    <line class="row" x1="16" y1="486" x2="924" y2="486"/>
+  </g>
+  <g id="depth">
+    <text class="t-s" x="494" y="508">a task that splits files its pieces on its own board · five deep at most</text>
+  </g>
+</svg>
