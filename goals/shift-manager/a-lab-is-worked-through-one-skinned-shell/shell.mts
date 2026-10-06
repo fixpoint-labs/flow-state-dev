@@ -3,8 +3,9 @@
  * Lab, reading the store through the Lab's routes, and reading what Chromium paints.
  *
  * Patch builds and the route client come from `goals/lib/shift-manager.mts`.
- * The start script stays here: `--team` or `--config`, an optional `--shift`,
- * a fresh DevTeam sqlite in the work dir, and the devtool URL on the ready line.
+ * Starting the command stays here: a team profile or `--config`, an optional
+ * `--shift`, a fresh DevTeam sqlite in the work dir, and the devtool URL the
+ * banner prints.
  * The grading lives in `legs.mts`.
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
@@ -15,7 +16,7 @@ import { pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, intentFreeEnv } from "../../lib/index.mts";
-import { SHIFT_MANAGER, buildShiftManagerCopy, labApi as labRoutes, type Patch } from "../../lib/shift-manager.mts";
+import { SHIFT_MANAGER, SHIFT_MANAGER_COMMAND, buildShiftManagerCopy, labApi as labRoutes, servedAddresses, type Patch } from "../../lib/shift-manager.mts";
 
 export { SHIFT_MANAGER, type Patch };
 
@@ -115,7 +116,7 @@ export async function buildPages(
   const built = await buildShiftManagerCopy(scratch, name, patches);
   const diffs = patches.map((patch) => {
     const patched = join(scratch, name, "shift-manager", patch.file);
-    return `# ${patch.why}\n${unifiedDiff(join(SHIFT_MANAGER, patch.file), patched, `labs/shift-manager/${patch.file}`)}`;
+    return `# ${patch.why}\n${unifiedDiff(join(SHIFT_MANAGER, patch.file), patched, `packages/shift-manager/${patch.file}`)}`;
   });
   return { pages: built.pages, diff: diffs.join("\n") };
 }
@@ -136,8 +137,9 @@ function unifiedDiff(original: string, patched: string, label: string): string {
 export type Running = { origin: string; devtool: string | null; child: ChildProcess; exited: Promise<void>; log: () => string; stop: () => Promise<void> };
 
 /**
- * Shift Manager's start script over a Lab, from a fresh scratch working
- * directory: `--team <name>` or `--config <path>`, plus `--shift` when given.
+ * Shift Manager's command over a Lab, from a fresh scratch working directory:
+ * a team profile from the package's `teams/` by name, or `--config <path>`,
+ * plus `--shift` when given.
  */
 export async function startShiftManager(
   scratch: string,
@@ -146,8 +148,8 @@ export async function startShiftManager(
 ): Promise<Running> {
   mkdirSync(join(scratch, "labs"), { recursive: true });
   const workDir = mkdtempSync(join(scratch, "labs", `${label}-`));
-  const lab = options.team !== undefined ? ["--team", options.team] : ["--config", options.config!];
-  const args = [join(SHIFT_MANAGER, "bin", "start.mts"), ...lab, "--port", "0", "--assets", options.pages, ...(options.shift === undefined ? [] : ["--shift", options.shift])];
+  const config = options.team !== undefined ? join(SHIFT_MANAGER, "teams", options.team, "fsdev.config.mts") : options.config!;
+  const args = [SHIFT_MANAGER_COMMAND, "--config", config, "--port", "0", "--no-open", "--assets", options.pages, ...(options.shift === undefined ? [] : ["--shift", options.shift])];
   let log = "";
   const child = spawn(TSX, args, {
     cwd: workDir,
@@ -170,16 +172,13 @@ export async function startShiftManager(
     await exited;
   };
   for (let waited = 0; waited < 180_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) {
-      const devtool = /Devtool: (http:\/\/\S+)/.exec(log);
-      return { origin: match[1]!, devtool: devtool?.[1] ?? null, child, exited, log: () => log, stop };
-    }
+    const served = servedAddresses(log);
+    if (served !== undefined) return { ...served, child, exited, log: () => log, stop };
     if (gone) break;
     await sleep(250);
   }
   await stop();
-  throw new Error(`Shift Manager's start script never served ${label}. Log tail:\n${log.slice(-2000)}`);
+  throw new Error(`Shift Manager's command never served ${label}. Log tail:\n${log.slice(-2000)}`);
 }
 
 // ---- the store, read by this script -----------------------------------------

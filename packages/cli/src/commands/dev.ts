@@ -77,7 +77,10 @@ export interface DevCommandOptions {
   config?: string | boolean;
   /** Override the working directory (defaults to process.cwd()). For tests. */
   cwd?: string;
-  /** `--app <package|dir>`: serve this app's built pages at the root, the DevTool beside them. */
+  /**
+   * `--app <package|dir>`: serve this app's built pages at the root, the DevTool beside them.
+   * The path of the package's module file also names the package, wherever `cwd` is.
+   */
   app?: string;
   /** `--host <host>`: the host to bind. Default `127.0.0.1`. */
   host?: string;
@@ -458,6 +461,21 @@ interface ListenerOptions extends DevRuntime {
 const WATCH_SHUTDOWN_GRACE_MS = 1_000;
 
 /**
+ * How long a `--watch` child's whole shutdown may take before it exits anyway.
+ * The runtime waits up to its drain budget (30 s by default) for runs still
+ * going, and a held run would hold every restart that long. A restart is a new
+ * process either way; a run cut off here is left as a killed process leaves it.
+ *
+ * A ceiling on the exit rather than a smaller drain budget, because the budget
+ * (`dispatchDrainTimeoutMs`) is fixed when the config builds its FlowState and
+ * `dispose()` takes none. Exiting before the stores close is what a kill does:
+ * a committed SQLite write survives an unclosed connection, and the run left
+ * `in_progress` is marked interrupted by the restarted child's recovery sweep
+ * (`detectInterruptedRequests`) once its heartbeat goes stale.
+ */
+const WATCH_SHUTDOWN_CEILING_MS = 3_000;
+
+/**
  * Start the servers over a resolved runtime, print the banner, and install the
  * SIGINT/SIGTERM teardown. Releases the runtime when a server fails to bind.
  */
@@ -595,25 +613,29 @@ async function startListeners(o: ListenerOptions): Promise<DevServer> {
   // both share, so the runtime outlives every in-flight request. The discovery
   // path additionally closes the SQLite stores it owns. serve's own signal
   // handling is disabled above so this is the single teardown path.
-  return withSignals({
-    url,
-    devtoolUrl,
-    close: async () => {
-      reload?.close();
-      await devtoolHandle?.close();
-      await vite?.close();
-      await handle.close();
-      o.closeStores?.();
+  return withSignals(
+    {
+      url,
+      devtoolUrl,
+      close: async () => {
+        reload?.close();
+        await devtoolHandle?.close();
+        await vite?.close();
+        await handle.close();
+        o.closeStores?.();
+      },
     },
-  });
+    reload === undefined ? undefined : WATCH_SHUTDOWN_CEILING_MS,
+  );
 }
 
 /**
  * `server`, with SIGINT/SIGTERM closing it and exiting. Its `close()` becomes
  * idempotent and removes the handlers once closed, so a second signal
- * mid-shutdown is ignored.
+ * mid-shutdown is ignored. With `ceilingMs`, a signal exits once that long has
+ * passed even if the close has not finished.
  */
-function withSignals(server: DevServer): DevServer {
+function withSignals(server: DevServer, ceilingMs?: number): DevServer {
   let closing: Promise<void> | undefined;
   const close = (): Promise<void> => {
     closing ??= (async () => {
@@ -627,6 +649,7 @@ function withSignals(server: DevServer): DevServer {
     if (closing !== undefined) return;
     process.stderr.write("\nShutting down...\n");
     void close().then(() => process.exit(EXIT_SUCCESS));
+    if (ceilingMs !== undefined) setTimeout(() => process.exit(EXIT_SUCCESS), ceilingMs).unref();
   };
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);

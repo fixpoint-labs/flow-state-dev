@@ -6,6 +6,8 @@
  * `index.html`. Anything else is a package name, resolved from the working
  * directory the way the app's own project resolves it, whose `getAssetPath()`
  * returns that directory: the same contract `@flow-state-dev/devtool` exports.
+ * The path of a package's module file is taken as that package, so a command
+ * that wraps `fsdev dev` can name itself from any working directory.
  * Under `--watch`, a package that also exports `getSourceRoot()` is served from
  * that folder through the Vite its own install resolves; when it returns
  * nothing, or no Vite resolves there, the built pages are served.
@@ -76,9 +78,15 @@ function resolveViteEntry(root: string): string | undefined {
   return relative === undefined ? undefined : join(dirname(manifest), relative);
 }
 
-/** Whether `--app` names a directory rather than a package. */
+/** Whether `--app` names a directory rather than a package (or a package's module file). */
 function looksLikeDirectory(app: string, cwd: string): boolean {
-  return app.startsWith(".") || isAbsolute(app) || existsSync(resolve(cwd, app));
+  return (app.startsWith(".") || isAbsolute(app) || existsSync(resolve(cwd, app))) && moduleFile(app, cwd) === undefined;
+}
+
+/** The absolute path `--app` names when it is an existing file: a package's module. */
+function moduleFile(app: string, cwd: string): string | undefined {
+  const path = resolve(cwd, app);
+  return existsSync(path) && statSync(path).isFile() ? path : undefined;
 }
 
 /**
@@ -119,7 +127,7 @@ async function importAppPackage(
 ): Promise<{ getAssetPath?: unknown; getSourceRoot?: unknown }> {
   let entry: string;
   try {
-    entry = createRequire(join(cwd, "package.json")).resolve(name);
+    entry = moduleFile(name, cwd) ?? createRequire(join(cwd, "package.json")).resolve(name);
   } catch (err) {
     throw new CliError(
       `--app: "${name}" is neither a directory nor a package installed from ${cwd}: ` +

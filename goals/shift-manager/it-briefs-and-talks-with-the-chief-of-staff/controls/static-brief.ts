@@ -7,8 +7,8 @@
  * summary says two things need the person, and lists both, after one has been
  * answered. The goal must fail at "inline".
  */
-import { shiftSummary as live, type LoadedSnapshot } from "../../../../labs/shift-manager/src/lib/derive.ts";
-export * from "../../../../labs/shift-manager/src/lib/derive.ts";
+import { shiftSummary as live, type LoadedSnapshot } from "../../../../packages/shift-manager/src/lib/derive.ts";
+export * from "../../../../packages/shift-manager/src/lib/derive.ts";
 
 let written: LoadedSnapshot["asks"] | undefined;
 

@@ -122,7 +122,7 @@ A restart is a new process. A config with in-memory stores starts empty each tim
 fsdev dev --config ./fsdev.config.mts --app @acme/ops-console
 ```
 
-`--app` takes a directory with an `index.html`, or a package that exports `getAssetPath()`, a function returning that directory. A relative path or a package name resolves from the directory you run the command in. The API stays at `/api/flows` on the same origin, so your pages call it with relative URLs and need no proxy.
+`--app` takes a directory with an `index.html`, or a package that exports `getAssetPath()`, a function returning that directory. A relative path or a package name resolves from the directory you run the command in. The path of a package's module file names that package too, which lets a command that wraps `fsdev dev` pass itself from wherever it is run. The API stays at `/api/flows` on the same origin, so your pages call it with relative URLs and need no proxy.
 
 Every HTML page fsdev serves carries two things your app can read on boot. The connection config from your config's `devtool` block is `window.__FSD_DEVTOOL_CONFIG__`, as the DevTool gets it, on a loopback host only. The DevTool's address is `<meta name="fsdev-devtool-url" content="…">`, absent when the DevTool isn't installed, or when `--host` is `0.0.0.0` or `::`, since a browser can't reach an all-interfaces address. The command still prints the DevTool's port. In that case the app still starts, and the command says why there's no DevTool.
 

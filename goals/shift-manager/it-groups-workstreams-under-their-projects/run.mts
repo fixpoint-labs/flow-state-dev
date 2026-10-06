@@ -7,7 +7,7 @@
  * runs the chief of staff on a real one. See goal.md for the contract.
  *
  * Built like `it-opens-a-lab`: Shift Manager is built with Vite into a scratch
- * directory and served by its own start script over the DevTeam profile,
+ * directory and served by its own command over the DevTeam profile,
  * whose config creates two default projects at boot. Three legs, graded
  * against the tree on disk and the Lab's store read through its HTTP routes:
  *
@@ -66,6 +66,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, loadFixture, runGoal } from "../../lib/index.mts";
+import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { LAB_CROWD, LAB_USERS } from "../../devforce-lab/lab/host.mts";
 
@@ -102,7 +103,7 @@ const fixture = loadFixture<{
 }>(import.meta.url);
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
+const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const PROJECTS_SRC = join(REPO_ROOT, "packages", "workforce", "src", "projects");
 const SQLITE_SRC = join(REPO_ROOT, "packages", "store-sqlite", "src", "index.ts");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
@@ -191,7 +192,7 @@ async function buildShiftManager(control: string): Promise<string> {
 type Running = { origin: string; child: ChildProcess; log: () => string; exited: Promise<void> };
 
 /**
- * Shift Manager's start script over the DevTeam profile, on the store file at
+ * Shift Manager's command over the DevTeam profile, on the store file at
  * `store`, with the server control's swap if one is set.
  */
 async function startLab(pages: string, fired: string | undefined, store: string): Promise<Running> {
@@ -208,7 +209,7 @@ async function startLab(pages: string, fired: string | undefined, store: string)
           GOAL_SWAP_FIRED: fired,
         };
   let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", CONFIG, "--port", "0", "--assets", pages], {
+  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", CONFIG, "--port", "0", "--no-open", "--assets", pages], {
     cwd: workDir,
     // A fresh store per run, for a profile whose store outlives the process;
     // the restart opens the same one. Every run, the plain one and each control, holds the store's checked writes
@@ -232,19 +233,19 @@ async function startLab(pages: string, fired: string | undefined, store: string)
     }),
   );
   for (let waited = 0; waited < 90_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) {
+    const served = servedAddresses(log);
+    if (served !== undefined) {
       if (!log.includes(`holding checked store writes up to ${WRITE_LATENCY_MS}ms`)) {
         child.kill("SIGTERM");
         throw new Error("the Lab did not hold its store writes, so the bursts would not race");
       }
-      return { origin: match[1]!, child, log: () => log, exited };
+      return { origin: served.origin, child, log: () => log, exited };
     }
     if (gone) break;
     await sleep(250);
   }
   child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served DevTeam. Log tail:\n${log.slice(-2000)}`);
+  throw new Error(`Shift Manager's command never served DevTeam. Log tail:\n${log.slice(-2000)}`);
 }
 
 // ---- the Lab's routes, as one verified user ----------------------------------
@@ -887,7 +888,7 @@ await runGoal(async () => {
   const swapNote = fired === undefined ? "" : ` Swap fired for: ${readFileSync(fired, "utf8").trim().split("\n").map((p) => p.split("/").pop()).join(", ")}.`;
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its start script over the DevTeam profile; ${[
+    evidence: `Shift Manager built with Vite and served by its command over the DevTeam profile; ${[
       ...(MODEL_FREE
         ? [`the screens walked in Chromium as the owner and the room driven over HTTP as the owner, ${1 + LAB_CROWD.length} verified members and an outsider, then the Lab restarted on its store`]
         : []),

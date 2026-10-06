@@ -35,7 +35,7 @@ The rows come from the Lab's own doors. On multi-seat-collab, the planner files 
 - `GOAL_CONTROL=queued-shown`: Tasks treats no row as queued, so the Queued toggle hides nothing (`src/lib/tasks.ts`). Must fail at **Tasks equals the store's open rows** on DevTeam, whose filed row is queued, naming the extra rows and the toggle's count.
 - `GOAL_CONTROL=unanswerable-asks`: every ask is marked as one the Lab won't reopen, so no card offers an answer. Must fail at **an answer from the Stream lands in the store** on DevTeam.
 
-The empty Inbox's two counts have no control here. Neither Lab reaches an empty Inbox with a running row or a seat on call, so both counts read 0 and a sentence that never counts would still pass. `labs/shift-manager/test/inbox-tasks.test.ts` proves the counting.
+The empty Inbox's two counts have no control here. Neither Lab reaches an empty Inbox with a running row or a seat on call, so both counts read 0 and a sentence that never counts would still pass. `packages/shift-manager/test/inbox-tasks.test.ts` proves the counting.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -51,7 +51,7 @@ The empty Inbox's two counts have no control here. Neither Lab reaches an empty 
 | 2026-09-30 | 108a83871+wip | n/a | FAIL (control `optimistic-post`, expected) | Only `the post is in the stored transcript`, on both Labs: 0 stored copies, and gone after a reload. |
 | 2026-09-30 | 108a83871+wip | n/a | FAIL (control `unanswerable-asks`, expected) | Only `[devforce] an answer from Inbox lands in the store`: 1 ask pending and Shift Manager offers an answer on none. |
 | 2026-10-01 | 829c2c2dd+wip (FIX-1690 lab) | n/a | PASS | DevForce's coder seat now has a `message` door, and seats are registered with their doors. Every level still matches each tree and store. DevForce: 1 ask listed of 1 pending, 1 approved. |
-| 2026-10-01 | 475b3cd4b (feat/FIX-1649-shift-manager) | n/a | PASS | After the rename to Shift Manager. DevTeam served from `labs/shift-manager/teams/devteam`; the pages carry the boot-shift code, unset in this run. |
+| 2026-10-01 | 475b3cd4b (feat/FIX-1649-shift-manager) | n/a | PASS | After the rename to Shift Manager. DevTeam served from `packages/shift-manager/teams/devteam`; the pages carry the boot-shift code, unset in this run. |
 | 2026-10-01 | feat/FIX-1723-roster (pre-PR) | n/a | PASS | TEAMS re-pointed at the team rows' status squares (one per seat); the worker list under each team is gone. devteam: 3 seats, 1 row [pending], ask approved 1 of 1. multi-seat-collab: 3 seats, 1 row [parked]. |
 | 2026-10-01 | feat/FIX-1723-roster (pre-PR), `GOAL_CONTROL=static-names` | n/a | FAIL (expected) | Only `[multi-seat-collab] TEAMS equals the store's seats`: missing [eng.builder, eng.planner], extra [eng.coder, eng.em], for the squares and for team eng's row. |
 | 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR) | n/a | PASS | Tasks graded with Queued hidden and shown; Inbox's empty sentence compared whole. devteam: 3 seats, 1 row [pending, queued: hidden by default, toggle says 1], inbox 1 of 1, approved 1 of 1. multi-seat-collab: 3 seats, 1 row [parked], Inbox empty with the store's sentence. |

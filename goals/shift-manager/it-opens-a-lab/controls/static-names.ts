@@ -14,9 +14,9 @@
  * control removes the tree reading and nothing else: a composer turn to a
  * seat that exists still goes through.
  */
-import { createLabReader as readerAsWritten, toSeat, type LabReader, type Seat } from "../../../../labs/shift-manager/src/lib/reads.ts";
+import { createLabReader as readerAsWritten, toSeat, type LabReader, type Seat } from "../../../../packages/shift-manager/src/lib/reads.ts";
 
-export * from "../../../../labs/shift-manager/src/lib/reads.ts";
+export * from "../../../../packages/shift-manager/src/lib/reads.ts";
 
 declare const __STATIC_SEATS__: Array<{ id: string; kind: string }>;
 

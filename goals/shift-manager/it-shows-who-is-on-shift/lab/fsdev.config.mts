@@ -1,5 +1,5 @@
 /**
- * The shift-lab's fsdev config: what Shift Manager's start script loads.
+ * The shift-lab's fsdev config: what Shift Manager's command loads.
  *
  *     pnpm --filter @flow-state-dev/shift-manager start --config goals/shift-manager/it-shows-who-is-on-shift/lab/fsdev.config.mts
  *

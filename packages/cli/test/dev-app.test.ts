@@ -229,6 +229,16 @@ describe("fsdev dev --app <package>", () => {
     expect(await text(server.url)).toContain("ops console");
   });
 
+  it("takes the path of the package's module file, for a command that wraps fsdev dev and serves itself from anywhere", async () => {
+    const project = await projectWithAppPackage(
+      `import { fileURLToPath } from "node:url";\nexport function getAssetPath() { return fileURLToPath(new URL("./dist", import.meta.url)); }\n`,
+    );
+    // From a directory the package isn't installed under: only the file path finds it.
+    const elsewhere = await mkdtemp(join(tmpdir(), "fsdev-app-elsewhere-"));
+    const server = await dev({ cwd: elsewhere, config: appConfig, app: join(project, "node_modules", "@acme", "ops-console", "index.js") });
+    expect(await text(server.url)).toContain("ops console");
+  });
+
   it("refuses a package that doesn't export getAssetPath()", async () => {
     const project = await projectWithAppPackage(`export const other = 1;\n`);
     const err = await refused({ cwd: project, config: appConfig, app: "@acme/ops-console" });

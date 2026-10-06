@@ -6,7 +6,7 @@
  * Real path, no model key, out of CI. See goal.md for the contract.
  *
  * Shift Manager is built with Vite (or `GOAL_PAGES=<dir>` serves pages built
- * elsewhere) and served by its own start script over two Labs: DevTeam, with
+ * elsewhere) and served by its own command over two Labs: DevTeam, with
  * its one ask pending and a filed row running, and this check's own desk Lab
  * (`lab/`), whose chief of staff answers one line from a scripted mock model.
  * Chromium walks every screen by clicking, toggles the sidebar's shift switch
@@ -98,7 +98,7 @@ const V2 = repoPath("specs", "epics", "FIX-1649", "assets", "design", "v2", "shi
 
 const LABS = {
   devteam: {
-    config: repoPath("labs", "shift-manager", "teams", "devteam", "fsdev.config.mts"),
+    config: repoPath("packages", "shift-manager", "teams", "devteam", "fsdev.config.mts"),
     tree: repoPath("goals", "devforce-lab", "lab", "workforce"),
     // Long enough that the filed row is still running while the sweep reads it, short
     // enough to finish inside the scripted run's 60s limit.
@@ -694,7 +694,7 @@ async function pendingAsks(api: LabApi, userId: string): Promise<number> {
 /**
  * The person's pending asks, by the flow (the seat) whose session each waits in. Given the
  * inventory's seats, only their sessions count, as Shift Manager reads asks: a session owned
- * by a seat, or one with no owner on a seat's kind (`labs/shift-manager/src/lib/reads.ts`).
+ * by a seat, or one with no owner on a seat's kind (`packages/shift-manager/src/lib/reads.ts`).
  */
 async function pendingAsksBySeat(api: LabApi, userId: string, seats?: ReadonlyArray<{ id: string; kind: string | null }>): Promise<Map<string, number>> {
   // Dispatch runs included: a seat woken by a mailbox post asks from one, and the app lists them.

@@ -13,7 +13,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -40,18 +40,25 @@ export const flow = defineFlow({
 const CONFIG = `
 import { createFlowState, createInMemoryStores } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { flow } from "./flows/hello.mts";
 import "fake-dep";
 // A tree read from disk at import, as a team's WORKER.md files are.
 if (readFileSync(new URL("./tree/a/WORKER.md", import.meta.url), "utf8").includes("BROKEN")) {
   throw new Error("tree/a/WORKER.md is broken");
 }
-export default createFlowState({
+const flowState = createFlowState({
   flows: { hello: flow },
   modelResolver: createMockModelResolver({}),
   stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(createInMemoryStores()) } } },
 });
+// A run still going when the Lab stops holds its shutdown, as a run that waits
+// on a harness or a person does: dispose waits for it.
+if (existsSync(new URL("./data/held-run.sqlite", import.meta.url))) {
+  const dispose = flowState.dispose.bind(flowState);
+  flowState.dispose = () => new Promise((r) => setTimeout(r, 60_000)).then(dispose);
+}
+export default flowState;
 `;
 
 /** A real Vite install, for an app whose own install has one. */
@@ -182,6 +189,26 @@ describe("fsdev dev --watch on a real child", () => {
     await writeFile(join(lab, "tree", "a", "WORKER.md"), "# a, edited\n");
     await nextBoot(run, before);
   }, 60_000);
+
+  it("restarts within seconds while a run holds the Lab's shutdown", async () => {
+    // The data file is not watched; the next restart loads a Lab whose shutdown is held.
+    await writeFile(join(lab, "data", "held-run.sqlite"), "");
+    const before = await bootId(run);
+    await writeFile(join(lab, "flows", "hello.mts"), flowModule("hello-held"));
+    const held = await nextBoot(run, before);
+    try {
+      const saved = Date.now();
+      await writeFile(join(lab, "flows", "hello.mts"), flowModule("hello-a"));
+      await nextBoot(run, held, 15_000);
+      expect(Date.now() - saved).toBeLessThan(10_000);
+    } finally {
+      await rm(join(lab, "data", "held-run.sqlite"), { force: true });
+      // Leave a child whose shutdown is not held for the cases after this one.
+      const current = await bootId(run);
+      await writeFile(join(lab, "flows", "hello.mts"), flowModule("hello-a") + "\n");
+      await nextBoot(run, current, 90_000);
+    }
+  }, 150_000);
 
   it.each([
     ["a page file", "pages/index.html", PAGE.replace("built page", "built page, edited")],

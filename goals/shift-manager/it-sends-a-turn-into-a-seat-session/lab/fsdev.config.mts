@@ -3,7 +3,7 @@
  * with this goal's recording harness in the `coder` kind's slot
  * (`recording-harness.mts`) and two rows already running on the coder seat.
  *
- * What it adds over `labs/shift-manager/teams/devteam/fsdev.config.mts`, and nothing
+ * What it adds over `packages/shift-manager/teams/devteam/fsdev.config.mts`, and nothing
  * else:
  *
  * - **The harness.** Every attempt records what it was handed to the file

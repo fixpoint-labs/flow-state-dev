@@ -1,0 +1,114 @@
+{
+  "name": "@flow-state-dev/shift-manager",
+  "version": "0.0.0",
+  "description": "The app a Workforce Lab is worked through: point it at a Lab's fsdev config and work its Inbox, tasks, workstreams and teams in one browser tab.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "workforce",
+    "shift-manager"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/shift-manager"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
+  "type": "module",
+  "main": "./cli/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./cli/index.ts"
+    }
+  },
+  "bin": {
+    "shift-manager": "./dist/bin.js"
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "dist-client",
+    "profiles",
+    "!dist/**/*.map",
+    "!dist/**/*.tsbuildinfo",
+    "!dist-client/build-inputs.json"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx scripts/checkout.mts --dev",
+    "build": "vite build && tsc -p tsconfig.build.json && node ../../scripts/add-esm-extensions.mjs dist",
+    "start": "tsx scripts/checkout.mts",
+    "prepublishOnly": "node scripts/check-pages.mjs",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ui:add": "fsdev ui add chat-assistant"
+  },
+  "dependencies": {
+    "@flow-state-dev/devtool": "workspace:*",
+    "@flow-state-dev/fsdev": "workspace:*"
+  },
+  "devDependencies": {
+    "@flow-state-dev/client": "workspace:*",
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/design-system": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/node": "workspace:*",
+    "@flow-state-dev/orchestration": "workspace:*",
+    "@flow-state-dev/react": "workspace:*",
+    "@flow-state-dev/store-sqlite": "workspace:*",
+    "@flow-state-dev/workforce": "workspace:*",
+    "@radix-ui/react-use-controllable-state": "^1.2.2",
+    "@streamdown/cjk": "^1.0.2",
+    "@streamdown/code": "^1.0.3",
+    "@streamdown/math": "^1.0.2",
+    "@streamdown/mermaid": "^1.0.2",
+    "@tailwindcss/vite": "^4.2.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "happy-dom": "^20.8.3",
+    "lucide-react": "^0.575.0",
+    "motion": "^12.34.3",
+    "radix-ui": "^1.4.3",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-markdown": "^10.1.0",
+    "shiki": "^3.22.0",
+    "streamdown": "^2.3.0",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.1.12",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.3",
+    "vitest": "^3.2.4",
+    "zod": "^3.25.76"
+  }
+}
