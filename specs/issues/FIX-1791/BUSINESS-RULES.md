@@ -41,7 +41,7 @@ session on Alice's coordinator. The *proved by* column is the check the plan run
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-20 | A delegate answers a delivery | The answer lands in the conversation, under the delegate's name, once. It must carry its delivery's token | CI · VG leg e |
-| BR-20a | A delivery reaches a delegate that has no session for this conversation yet | It opens one through FIX-1788's `ensureWorkerSession({ worker, coordinatorSessionId })`, on Alice's behalf, with the delegate named, so the server links it at create. A later delivery from this conversation reuses it; one from another conversation opens another. Nothing posts to a session id no create linked (FIX-1788 BR-14, BR-18a) | CI |
+| BR-20a | A delivery reaches a delegate that has no session for this conversation yet | The delivery ledger delivers into a session its caller resolves. The coordinator's default opens one through FIX-1788's `ensureWorkerSession({ worker, coordinatorSessionId })`, on Alice's behalf, with the delegate named, so the server links it at create. A later delivery from this conversation reuses it; one from another conversation opens another. FIX-1793's project coordinator passes the workstream's existing session instead, which is also linked at create. Either way, nothing posts to a session id no create linked (FIX-1788 BR-14, BR-18a) | CI |
 | BR-21 | One delivery reaches a delegate twice, or its answer is sent twice | One answer lands. The second writes nothing | CI · VG leg e |
 | BR-22 | An answer names a post or token it wasn't delivered | Refused. Nothing lands | CI |
 | BR-23 | `rounds:` is zero, or unset | An answer routes nowhere. Under judgment it doesn't wake the coordinator's turn | CI · VG leg e |
