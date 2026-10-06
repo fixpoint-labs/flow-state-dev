@@ -409,6 +409,9 @@ code assigned over one that arrived with the request.
 These options travel with `cwd`. All are unset by default.
 
 ```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+
 // One checkout per invocation, shared by both resolvers. They receive the same
 // context object, so a WeakMap keyed on it hands them the same directory and
 // releases it when the run is done.
@@ -424,7 +427,7 @@ const checkoutFor = (ctx: object) => {
 claudeCodeAgent({
   cwd: (ctx) => checkoutFor(ctx),
   settingSources: ["user"],
-  env: { ...process.env, CI: "1" },
+  env: { ...harnessEnv({ pass: ["PATH", "HOME", "ANTHROPIC_API_KEY"] }), CI: "1" },
   sandbox: async (ctx) => ({
     enabled: true,
     filesystem: { allowWrite: [await checkoutFor(ctx)] },
@@ -445,9 +448,21 @@ write, then those files are user input, and the run reading configuration from
 them means your users configure your agent. Pass `[]` to load none, or list only
 the sources you control.
 
-**`env`** sets the run's environment variables. It replaces the process
-environment rather than adding to it, so spread `process.env` when you meant to
-add.
+**`env`** decides what the run can read. Leave it unset and the run's process
+starts with your server's entire `process.env`: every API key, token and
+connection string in it, readable by any shell command the model runs. Setting
+`env` replaces that environment. It does not add to it.
+
+`harnessEnv` from `@flow-state-dev/core` builds an `env` out of a list of names
+and passes only those. Nothing is implicit, so name `PATH` and `HOME` yourself;
+the run's shell commands and git are found through `PATH`. A named variable that
+isn't set on the server is left out, and one set to an empty string is kept.
+Values are read once, when `harnessEnv` is called. Called inline as above, that
+is when the block is built, so a variable set after that never reaches the run.
+
+To add a fixed value, spread the allowlist and set the value beside it, as the
+example does with `CI`. Spreading `process.env` there instead also works, and
+hands the run every secret the server holds.
 
 **`sandbox`** is the Agent SDK's sandbox settings, forwarded as given. Take a
 value or write a resolver. The resolver form is the one that matters: the
