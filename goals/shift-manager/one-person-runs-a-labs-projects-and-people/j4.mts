@@ -16,7 +16,7 @@
  * fire of that worker must suspend on one `human_approval` in the store (askBefore). The copy is
  * deleted after the run; `labs/shift-manager` is left untouched.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import type { Browser } from "playwright";
@@ -140,6 +140,43 @@ async function write(workspace: string, labCopy: string, log: (s: string) => voi
   return summary;
 }
 
+/**
+ * The kind J4 names when it asks the chief of staff to hire, read from the
+ * writer's files, never from the model: `agent` when the hire capability the
+ * writer installed allows it, otherwise the one other kind it allows. Its
+ * `allowKinds`, when set, is read as written: string literals, and constants
+ * declared in the Lab's own files or exported by the workspace's packages
+ * (`AGENT_KIND`). Left out, every kind is hireable, the built-in `agent`
+ * among them. `error` when no file installs the capability, or when what it
+ * allows can't be read well enough to pick.
+ */
+export function hireableKind(lab: string): { kind: string; allowed: string[] } | { error: string } {
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) => (["node_modules", "dist", "test"].includes(e.name) ? [] : e.isDirectory() ? walk(join(dir, e.name)) : /\.m?ts$/.test(e.name) ? [join(dir, e.name)] : []));
+  const read = (paths: string[]) => paths.map((path) => readFileSync(path, "utf8"));
+  const files = read(walk(lab));
+  if (!files.some((t) => /createSeatHireCapability\s*\(/.test(t))) return { error: "no file in the writer's Lab calls createSeatHireCapability, so nothing can be hired" };
+  const lists = files.flatMap((t) => [...t.matchAll(/allowKinds\s*:\s*\[([^\]]*)\]/g)].map((m) => m[1]!));
+  if (lists.length === 0) return { kind: "agent", allowed: ["agent (no allowKinds: every kind)"] };
+  let packages: string[] | undefined;
+  const declared = (name: string, texts: string[]) => texts.map((t) => new RegExp(`const\\s+${name}\\s*(?::[^=]+)?=\\s*["'\`]([^"'\`]+)["'\`]`).exec(t)?.[1]).find((v) => v !== undefined);
+  const constant = (name: string) =>
+    declared(name, files) ??
+    declared(name, (packages ??= read(readdirSync(join(REPO_ROOT, "packages")).flatMap((p) => (existsSync(join(REPO_ROOT, "packages", p, "src")) ? walk(join(REPO_ROOT, "packages", p, "src")) : [])))));
+  const allowed = new Set<string>();
+  const unread: string[] = [];
+  for (const entry of lists.flatMap((l) => l.split(",")).map((e) => e.trim()).filter(Boolean)) {
+    const literal = /^["'`]([^"'`]+)["'`]$/.exec(entry)?.[1];
+    const value = literal ?? (/^[A-Za-z_$][\w$]*$/.test(entry) ? constant(entry) : undefined);
+    if (value === undefined) unread.push(entry);
+    else allowed.add(value);
+  }
+  const kinds = [...allowed].sort();
+  if (allowed.has("agent")) return { kind: "agent", allowed: kinds };
+  if (unread.length > 0 || kinds.length === 0) return { error: `the writer's allowKinds can't be read well enough to pick a kind (${lists.map((l) => `[${l.trim()}]`).join(", ")}; read [${kinds.join(", ")}], unread [${unread.join(", ")}])` };
+  return { kind: kinds[0]!, allowed: kinds };
+}
+
 export async function j4(browser: Browser, scratch: string, pages: string, shots: string, log: (s: string) => void): Promise<J4Result> {
   const record = new RunRecord("j4", shots);
   const failures: string[] = [];
@@ -231,14 +268,17 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
           }
         }
         const seat = `helper-${hex()}`;
-        const hire = await askCos(world, "J4", `Please hire a seat with the seat id "${seat}".`);
-        if (hire === undefined) failures.push("J4: asked for a worker, the Chief of Staff view draws no chief of staff to ask");
+        // Name the kind, so the chief of staff isn't left to ask which one: the writer's Lab says which it may hire.
+        const hireable = hireableKind(copy);
+        const hire = "error" in hireable ? undefined : await askCos(world, "J4", `Please hire a seat with the seat id "${seat}" on the "${hireable.kind}" kind.${hireable.kind === "agent" ? " It needs no settings." : ""}`);
+        if ("error" in hireable) failures.push(`J4: no kind to hire: ${hireable.error}`);
+        else if (hire === undefined) failures.push("J4: asked for a worker, the Chief of Staff view draws no chief of staff to ask");
         else {
           await sleep(500);
           const teams = await teamsSeats(world);
           if (!teams.some((t) => t === seat || t.endsWith(`.${seat}`))) failures.push(`J4: asked for a seat, TEAMS doesn't list "${seat}": ${quote(hire)}`);
           else {
-            notes.push(`J4: TEAMS lists ${teams.find((t) => t.endsWith(seat))}`);
+            notes.push(`J4: TEAMS lists ${teams.find((t) => t.endsWith(seat))}, hired on "${hireable.kind}" (the writer allows [${hireable.allowed.join(", ")}])`);
             // askBefore: ["fire"]: a fire of that worker suspends on the person's approval, read from the store. Left unanswered.
             const fire = await askCos(world, "J4", `Please fire the seat "${seat}".`);
             if (fire === undefined || fire.sessionId === null || fire.requestId === null) failures.push(`J4: the fire was not asked: ${quote(fire)}`);
