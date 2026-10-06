@@ -1,0 +1,14 @@
+{
+  "name": "fixpoint-labs",
+  "owner": {
+    "name": "Fixpoint Labs"
+  },
+  "description": "Claude Code plugins from Fixpoint Labs.",
+  "plugins": [
+    {
+      "name": "codex",
+      "source": "./plugins/codex",
+      "description": "A `codex` subagent that runs its task through the local Codex CLI instead of Claude."
+    }
+  ]
+}

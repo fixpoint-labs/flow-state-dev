@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# codex-run — hand one task to the local Codex CLI (`codex exec`) and return
+# its final message. Written for the `codex` subagent: the prompt arrives on
+# stdin, the run is detached so it can outlive a single Bash call (capped at
+# 10 minutes), and the caller collects it with --wait.
+#
+# Exit codes: 0 finished, 1 Codex failed, 2 usage error, 3 still running,
+# 127 codex CLI not installed.
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  codex-run [options] < prompt     start a Codex run, wait for it
+  codex-run --wait RUN_ID          keep waiting for a run that is still going
+
+Options:
+  -s, --sandbox MODE   read-only | workspace-write (default) | danger-full-access
+  -m, --model MODEL    Codex model (default: your ~/.codex/config.toml)
+  -e, --effort LEVEL   reasoning effort, e.g. low | medium | high | xhigh
+  -C, --cd DIR         working directory for Codex (default: current dir)
+  -r, --resume ID      continue an earlier Codex session instead of starting fresh
+  -t, --timeout SECS   how long to wait before returning "running" (default 540)
+  -w, --wait RUN_ID    wait on an existing run instead of starting one
+
+Env: CODEX_RUN_DIR (where runs are kept), CODEX_BIN (codex executable).
+USAGE
+}
+
+runs_root="${CODEX_RUN_DIR:-${TMPDIR:-/tmp}/codex-subagent-runs}"
+codex_bin="${CODEX_BIN:-codex}"
+sandbox=workspace-write model="" effort="" cd_dir="$PWD" resume="" wait_id="" timeout=540
+
+need_value() { [[ $# -ge 2 && -n "$2" ]] || { echo "codex-run: $1 needs a value" >&2; exit 2; }; }
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -s|--sandbox) need_value "$@"; sandbox="$2"; shift 2 ;;
+    -m|--model)   need_value "$@"; model="$2"; shift 2 ;;
+    -e|--effort)  need_value "$@"; effort="$2"; shift 2 ;;
+    -C|--cd)      need_value "$@"; cd_dir="$2"; shift 2 ;;
+    -r|--resume)  need_value "$@"; resume="$2"; shift 2 ;;
+    -t|--timeout) need_value "$@"; timeout="$2"; shift 2 ;;
+    -w|--wait)    need_value "$@"; wait_id="$2"; shift 2 ;;
+    -h|--help)    usage; exit 0 ;;
+    *) echo "codex-run: unknown argument '$1'" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+case "$sandbox" in
+  read-only|workspace-write|danger-full-access) ;;
+  *) echo "codex-run: invalid sandbox '$sandbox'" >&2; exit 2 ;;
+esac
+[[ "$timeout" =~ ^[0-9]+$ ]] || { echo "codex-run: --timeout must be whole seconds" >&2; exit 2; }
+
+# Wait for a run to finish (or the timeout to pass) and print its report.
+report() {
+  local id="$1" dir="$runs_root/$1" waited=0
+  [[ -d "$dir" ]] || { echo "codex-run: no run '$id' under $runs_root" >&2; exit 2; }
+  while [[ ! -f "$dir/exit-code" && $waited -lt $timeout ]]; do
+    sleep 2; waited=$((waited + 2))
+  done
+
+  local session
+  session="$(grep -m1 '^session id:' "$dir/output.log" 2>/dev/null | awk '{print $3}' || true)"
+
+  if [[ ! -f "$dir/exit-code" ]]; then
+    echo "status: running"
+    echo "run: $id"
+    [[ -n "$session" ]] && echo "session: $session"
+    echo "log: $dir/output.log"
+    echo "next: codex-run --wait $id"
+    exit 3
+  fi
+
+  local code
+  code="$(cat "$dir/exit-code")"
+  if [[ "$code" == 0 ]]; then echo "status: completed"; else echo "status: failed (codex exited $code)"; fi
+  echo "run: $id"
+  [[ -n "$session" ]] && echo "session: $session"
+  echo "log: $dir/output.log"
+  echo
+  if [[ -s "$dir/last-message.txt" ]]; then
+    echo "----- codex final message -----"
+    cat "$dir/last-message.txt"
+  else
+    echo "----- no final message; last lines of the codex log -----"
+    tail -n 40 "$dir/output.log"
+  fi
+  [[ "$code" == 0 ]] || exit 1
+}
+
+if [[ -n "$wait_id" ]]; then
+  report "$wait_id"
+  exit
+fi
+
+if ! command -v "$codex_bin" >/dev/null 2>&1; then
+  echo "codex-run: the Codex CLI ('$codex_bin') is not on PATH." >&2
+  echo "Install it with 'npm install -g @openai/codex' (or 'brew install codex'), then run 'codex login'." >&2
+  exit 127
+fi
+[[ -d "$cd_dir" ]] || { echo "codex-run: --cd '$cd_dir' is not a directory" >&2; exit 2; }
+
+id="$(date +%Y%m%d-%H%M%S)-$$"
+dir="$runs_root/$id"
+mkdir -p "$dir"
+cat > "$dir/prompt.txt"
+if [[ ! "$(tr -d '[:space:]' < "$dir/prompt.txt")" ]]; then
+  echo "codex-run: empty prompt; pipe the task in on stdin" >&2
+  rm -rf "$dir"; exit 2
+fi
+
+# Options that `codex exec resume` does not accept go before the subcommand.
+args=(exec --color never --skip-git-repo-check -s "$sandbox" -C "$cd_dir" -o "$dir/last-message.txt")
+[[ -n "$model" ]] && args+=(-m "$model")
+[[ -n "$effort" ]] && args+=(-c "model_reasoning_effort=\"$effort\"")
+if [[ -n "$resume" ]]; then args+=(resume "$resume" -); else args+=(-); fi
+
+# Detach so the run survives the Bash call that started it; setsid where available (not on stock macOS).
+detach=(nohup)
+command -v setsid >/dev/null 2>&1 && detach=(setsid nohup)
+"${detach[@]}" bash -c '
+  dir="$1"; shift
+  "$@" < "$dir/prompt.txt" > "$dir/output.log" 2>&1
+  echo $? > "$dir/exit-code.tmp" && mv "$dir/exit-code.tmp" "$dir/exit-code"
+' codex-run "$dir" "$codex_bin" "${args[@]}" < /dev/null > /dev/null 2>&1 &
+
+report "$id"

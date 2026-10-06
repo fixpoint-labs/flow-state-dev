@@ -1,0 +1,7 @@
+{
+  "name": "codex",
+  "version": "0.1.0",
+  "description": "A `codex` subagent that hands its task to OpenAI Codex through the Codex CLI on your machine instead of doing it with Claude.",
+  "author": { "name": "Fixpoint Labs" },
+  "license": "MIT"
+}
