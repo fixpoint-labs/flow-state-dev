@@ -437,6 +437,7 @@ Set `client: { live: true }` to stream each mutation's projected `clientData` as
 
 - Runtime schemas, from the package root: `harnessRunInputSchema`, `harnessRunHandleSchema`, `harnessRunEnvelopeSchema`
 - Types, from `@flow-state-dev/core/types`: `HarnessBlock`, `HarnessRunInput`, `HarnessRunHandle`, `HarnessRunEnvelope`, `HarnessSource`, `HarnessRunStatus`, `HarnessRunOutcome`, `HarnessRunUsage`, `HarnessRunCost`, `HarnessCostBasis`, `HarnessResolver`, `HarnessSessionHook`, `HarnessCallbackContext`
+- `harnessEnv({ pass })`, from the package root (options type `HarnessEnvOptions`): builds a harness's `env` from an allowlist of variable names. A harness's agent runs as a child process, and with no `env` it inherits the server's entire `process.env`. The result holds exactly the named variables that are set, read when `harnessEnv` is called. Nothing else is passed, `PATH` and `HOME` included. Values come from `process.env` by default; pass `env` to read from another source. Where there is no `process` (a browser or edge runtime) and no `env` is given, the result is empty rather than an error.
 
 Two packages implement it: [`@flow-state-dev/claude-code`](../claude-code) (`claude-code/sdk`) and [`@flow-state-dev/codex`](../codex) (`codex/sdk`). [`@flow-state-dev/harness-manager`](../harness-manager) drives either. Full guide: [Coding agents](https://flow-state.dev/docs/tools/coding-agents).
 

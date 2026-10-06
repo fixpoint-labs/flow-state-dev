@@ -214,9 +214,11 @@ export interface CodexThreadOptions {
 /**
  * The SDK's `CodexOptions`, forwarded verbatim to the client constructor.
  *
- * `env` REPLACES the CLI process's environment rather than adding to it — the
- * SDK's own rule. Spread `process.env` to add, exactly as the Claude Code
- * adapter documents for its own `env`.
+ * Leave `env` unset and the CLI process inherits the server's **entire**
+ * `process.env`, every secret in it included. Setting it REPLACES that
+ * environment rather than adding to it — the SDK's own rule. To pass only
+ * named variables, use `harnessEnv` from `@flow-state-dev/core`, exactly as
+ * for the Claude Code adapter's `env`.
  */
 export interface CodexClientOptions {
   codexPathOverride?: string;

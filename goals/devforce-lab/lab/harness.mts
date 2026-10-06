@@ -25,6 +25,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { harnessEnv } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
 import { harnessStub, type StubRun } from "./harness-stub.mts";
 import { commitAll } from "./scratch-repo.mts";
@@ -51,16 +52,52 @@ export interface SelectedHarness {
 }
 
 /**
+ * The only variables of the server's environment a Claude Code run on the Lab
+ * coding path can see.
+ *
+ * Without a list the run inherits all of it — the store path, any repository
+ * or tracker token the server was started with — and its model has a shell.
+ * What is named is what the run needs to work: `PATH` (its shell commands and
+ * git are found through it), `HOME`, `USER` and `SHELL` (its signed-in
+ * credentials, git identity and Bash tool), `TMPDIR`, the two ways it can be
+ * given a credential, and the proxy and CA settings a network that routes
+ * through a proxy needs. The proxy names come in both cases because the
+ * tools a run shells out to disagree: curl reads only lowercase `http_proxy`,
+ * git and most others take either. Add a name here, not a spread of
+ * `process.env`.
+ */
+const CLAUDE_CODE_PASS = [
+  "PATH",
+  "HOME",
+  "USER",
+  "SHELL",
+  "TMPDIR",
+  "ANTHROPIC_API_KEY",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "HTTP_PROXY",
+  "http_proxy",
+  "ALL_PROXY",
+  "all_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "NODE_EXTRA_CA_CERTS",
+] as const;
+
+/**
  * Claude Code in the slot, as the honesty check runs it.
  *
  * `detached: true` because the harness is a child block of the flow's gated
  * task entry, and the claim gate refuses an entry that authors session state
  * beneath it. `recordWork: true` keys the index of what the run touched to the
  * run's own checkout, which is what the task inspector's plan and files read.
+ * `env` passes only {@link CLAUDE_CODE_PASS}.
  */
 export function claudeCodeHarness(feeds: HarnessFeeds): HarnessBlock {
   return claudeCodeAgent({
     ...feeds,
+    env: harnessEnv({ pass: CLAUDE_CODE_PASS }),
     detached: true,
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash"],
