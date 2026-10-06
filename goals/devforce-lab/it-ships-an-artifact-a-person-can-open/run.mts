@@ -363,10 +363,13 @@ await runGoal(async () => {
   // landed — `specs/issues/FIX-1496/PLAN.md` carries the sunset rule and what
   // it said to carry forward. The snapshot claims expired; this did not.
 
+  /** Everything under `lab/`, which already contains the tree. Walked once. */
+  const labFiles = filesUnder(LAB_ROOT);
+
   /** Every `.mts` file under the lab (as `lab/…`) and this subject's goals, and the category it belongs to. */
   const classified = new Map<string, string>();
   const unclassified: string[] = [];
-  const proofFiles = [...filesUnder(LAB_ROOT).map(([path, text]) => [`lab/${path}`, text] as [string, string]), ...filesUnder(DEVFORCE_ROOT)];
+  const proofFiles = [...labFiles.map(([path, text]) => [`lab/${path}`, text] as [string, string]), ...filesUnder(DEVFORCE_ROOT)];
   for (const [path] of proofFiles) {
     if (!path.endsWith(".mts")) continue;
     const category =
@@ -387,8 +390,6 @@ await runGoal(async () => {
 
   /** The authored workforce tree — the files a seat's own configuration comes from. */
   const tree = filesUnder(LAB_TREE);
-  /** Everything under `lab/`, which already contains the tree. Walked once. */
-  const labFiles = filesUnder(LAB_ROOT);
 
   /**
    * The lab's own code — what BUILDS the prompt.
