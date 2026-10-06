@@ -84,7 +84,7 @@ import { createWorkforceClient } from "@flow-state-dev/workforce"
 
 const workforce = createWorkforceClient({ userId, baseUrl })
 const session = await workforce.ensureWorkerSession({ worker: "chief-of-staff" })  // linked at create
-const coordinator = createClient({ flowKind: session.flowKind, userId })            // the flow the worker names
+const coordinator = createClient({ flowKind: session.flowKind, userId, baseUrl })   // the flow the worker names
 await coordinator.sendAction("addDelegate", { worker: "researcher" }, { sessionId: session.id })
 // refused, like a missing worker, unless researcher is on this user's roster
 await coordinator.sendAction("setFallback", { worker: "researcher" }, { sessionId: session.id })

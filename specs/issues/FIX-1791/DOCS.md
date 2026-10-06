@@ -54,7 +54,7 @@ It is the second worker flow a reader meets. Front matter `sidebar_label: Coordi
 >   ```ts
 >   const workforce = createWorkforceClient({ userId, baseUrl })
 >   const session = await workforce.ensureWorkerSession({ worker: "support.help" })
->   const coordinator = createClient({ flowKind: session.flowKind, userId })
+>   const coordinator = createClient({ flowKind: session.flowKind, userId, baseUrl })
 >   await coordinator.sendAction("addDelegate", { worker: "researcher", note: "license questions" }, { sessionId: session.id })
 >   await coordinator.sendAction("removeDelegate", { worker: "support.devices" }, { sessionId: session.id })
 >   await coordinator.sendAction("listDelegates", {}, { sessionId: session.id })
