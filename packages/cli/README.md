@@ -151,6 +151,9 @@ fsdev dev --flow-dir ./my-flows --no-open
 
 # Your own app's pages beside your flows
 fsdev dev --config ./fsdev.config.mts --app @acme/ops-console
+
+# Your own app's pages beside your flows, restarting on a change
+fsdev dev --app @acme/ops-console --watch
 ```
 
 Options:
@@ -161,6 +164,7 @@ Options:
 | `--app <package\|dir>` | Serve an app's pages at the root instead of the DevTool, which moves to a port of its own. Takes a directory with an `index.html`, or a package that exports `getAssetPath()` |
 | `--host <host>` | Host to bind (default `127.0.0.1`). A non-loopback host runs the same check as `fsdev serve` and refuses a config that hands its page a bearer token |
 | `--allow-unauthenticated` | Bind a non-loopback host even when a flow has no authentication configured |
+| `--watch` | Restart when a file your config loaded changes, and reload the open pages. Loopback only. With `--app`, a package that also exports `getSourceRoot()` is served from that folder through the app's own Vite |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `-m, --model <model>` | Override model for generator blocks run in this process |
