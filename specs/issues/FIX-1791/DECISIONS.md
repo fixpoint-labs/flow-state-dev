@@ -33,8 +33,8 @@ Should this issue build the task half too, or hand it to FIX-1794?
 
 **In plain terms.** Two kinds of hand-off exist. A *post* goes to a delegate, who answers it in
 its own conversation; that is this issue. A *task* goes on a board for a delegate to work, and the
-coordinator is told when it finishes, fails or stops on a question; that is FIX-1774's legs d and
-e and FIX-1780's notices and reassign. A task needs a board, and FIX-1794 decides how a board
+coordinator is told when it finishes, fails or stops on a question; that is FIX-1774's leg e and
+FIX-1780's notices and reassign. A task needs a board, and FIX-1794 decides how a board
 whose rows go to a worker on another flow stays its own
 ([ER-9](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). Building
 tasks here means answering that first, or building on the mailbox boards the epic removes.
