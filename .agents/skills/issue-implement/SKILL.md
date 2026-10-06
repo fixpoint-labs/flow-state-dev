@@ -101,9 +101,8 @@ If all clear, move to Step 3.
      deliverables** (not the whole issue), and base it on the dependency's branch if it has one
      (`git fetch origin {dep branch} && git checkout -B fix/{ISSUE-ID}-{sub-PR id} origin/{dep branch}`)
      — else on `origin/main` as above. The branch must include the merged spec; do not repeat its merge per sub-PR.
-     When the git base is a dependency branch, the GitHub PR you open in Step 9 is stacked:
-     mark it there (`DO NOT MERGE` title, body names the dependency, `--base` is that branch,
-     not main).
+     When the git base is a dependency branch, the GitHub PR you open in Step 9 goes in a
+     GitHub stack on the dependency's PR (`--base` is that branch, not main).
 2. **Confirm the implementation base contains the retained spec and approved amendments.** If merge is still pending, return the exact gate blocker rather than starting code. A disclosed in-flight POC does not waive spec merge; later evidence is folded through a new amendment PR.
 3. Update the Linear issue state to "In Development" using `save_issue`
 
@@ -393,14 +392,13 @@ Once approved:
 1. Ensure all changes are committed with conventional commit messages referencing the issue ID
 2. Push: `git push -u origin fix/{ISSUE-ID}`
 3. Open PR with `gh pr create`:
-   - Title: concise description (under 70 characters). The stacked `DO NOT MERGE until
-     #<dependency PR> is on main — stacked on <branch>` prefix is **outside** that budget.
-     **Stacked (GitHub base is another feature branch, not main):** title **starts with**
-     that prefix. Open with `--base <dependency-branch>` — never `--base main` while
-     stacked. Body states that dependency PR and that the GitHub base is not main. After
-     the dependency merges, `gh pr edit --base main` and remove the `DO NOT MERGE` prefix;
-     the diff is only this slice. Do not report the PR as ready to merge while its GitHub
-     base is not main. Canonical:
+   - Title: concise description (under 70 characters).
+     **Stacked (GitHub base is another feature branch, not main):** open with
+     `--base <dependency-branch>` — never `--base main` while stacked — then
+     `gh stack link <dependency PR> <this PR>` so GitHub links them as a stack. No
+     `DO NOT MERGE` title. Body names the dependency PR below it. When the dependency
+     merges, GitHub retargets this PR to main and rebases it; the diff is only this slice.
+     Do not report the PR as ready to merge while its GitHub base is not main. Canonical:
      [`orchestration.md`](../../../docs/contributing/orchestration.md) → Worktree branching.
    - **Body: follow [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout"** — canonical for the block order, what collapses, when a diagram earns its place, and what never collapses. Don't restate it here. What's specific to an **implementation** PR is the mapping:
 
