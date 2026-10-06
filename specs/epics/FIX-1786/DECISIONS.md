@@ -58,11 +58,12 @@ answer record in one shared module.
 | | |
 |---|---|
 | **Instead of** | A Layer 1 worker noun with its own store · or per-org user keys faked inside Workforce |
-| **Because** | Workers, coordinators and workstreams compose what ships: resources, scopes, sessions, projected collections, boards. Three things Workforce cannot fake: a scope key, a row rule, a field a caller can't write. The FIX-1729 spike showed session state is caller-writable at create, so a worker link held there is a claim until checked against a user-scoped read |
-| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change under BP-030; (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) the session's worker link in a field callers can't write, FIX-1788, only if its spec finds session state plus a user-scoped read can't hold it. Flow instances and owner pins get deprecation markers, nothing more. Any other Layer 1 change comes back to this epic |
+| **Because** | Workers, coordinators and workstreams compose what ships: resources, scopes, sessions, projected collections, boards. Three things Workforce cannot fake: a scope key, a row rule, session state a caller can't write. [The end-state POC](#what-the-end-state-poc-showed) settled the third: the public create persists a caller's session state, so a link held there accepts the caller's own other worker, and a row only flow code writes outlives a deleted session id |
+| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change under BP-030; (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session state a flow declares server-owned: the public create refuses caller state for it, and only flow code writes it. The worker link lives there, and so do a coordinator's delegates. FIX-1788 builds it, FIX-1791 consumes it. Flow instances and owner pins get deprecation markers, nothing more. A worker's own key for its private state is Layer 2, FIX-1788's. Any other Layer 1 change comes back to this epic |
 
 **What would change my mind:** a second consumer of a worker outside Workforce. Then a worker
-noun in core earns its place.
+noun in core earns its place. For (3), FIX-1788's spec needing the link before any flow code
+runs, at admission: then a server-only field on the session record instead.
 
 <a name="d4"></a>
 ## D4 · engineering · The contract and per-org keys first; the terms last, with docs moving with code
@@ -80,7 +81,7 @@ noun in core earns its place.
 |---|---|
 | **Instead of** | One rule per file type (every lab board a workstream) · or keeping an org-scoped board as a third shape |
 | **Because** | An org-scoped board is the shape this epic removes: any member's session drains it, and the session's user doesn't narrow it. A session board is private and needs no project; a workstream costs a project. So FIX-1792 asks one question per board: does the work outlive one conversation, and does a person track it? Yes makes it a workstream; otherwise, and when unclear, a session board. Goal fixtures that test board mechanics become session boards |
-| **Locks in** | FIX-1792 waits on FIX-1793 for the workstream option. The per-board table is FIX-1792's spec |
+| **Locks in** | FIX-1792 waits on FIX-1793 for the workstream option. The per-board table is FIX-1792's spec. A session board that hands rows to a delegate on another flow is stored at its owner's user scope, not shared down the lineage, which stops at a flow ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 <a name="q1"></a>
 ## Q1 · open · Which flows can run a user's workers: a list the installation keeps, or a new kind of flow?
@@ -163,9 +164,21 @@ engine rule. The closure only checks.
 
 ## What the end-state POC showed
 
-No end-state POC yet. One question would earn it before the gate: whether a singleton `agent`
-flow loads a user-scoped worker through a server-set session link and drains a lineage-shared
-session board as its owner on today's Layer 1, which settles D3's third change.
+- **Built:** a singleton flow on the real engine, with the worker link in session state, in a
+  user-scoped row only flow code writes, and, as the control that must fail, in session state
+  over org-scoped workers. Its door drains a lineage-shared session board.
+- **See it:** `bash specs/epics/FIX-1786/poc/singleton-worker-link/run.sh`, 12 legs
+  ([README](poc/singleton-worker-link/README.md)).
+- **Showed:** the premise holds within one flow: the session loads its worker, and the task child
+  runs as the owner and settles the row. Another user's link reads nothing; the control honours
+  it. Three things don't hold. A session-state link accepts the caller's own other worker, seeded
+  through the public create, and a flow-owned row outlives a deleted session id. A user's
+  workers share every `flowIsolation` cell. A lineage board can't reach a worker on another flow.
+- **Changed:** [D3](#d3)'s third Layer 1 change is definite, as server-owned session state.
+  FIX-1788 also keys a worker's private state by the worker and moves the per-seat cells
+  ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). A board whose rows cross a flow
+  lives at the owner's user scope ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt),
+  FIX-1794; [D5](#d5)). The FIX-1788 and FIX-1794 split holds. Variants: none.
 
 ## How it got here
 
@@ -173,5 +186,9 @@ session board as its owner on today's Layer 1, which settles D3's third change.
   code on `main`. FIX-1788 to FIX-1797 filed; FIX-1787 kept as the inventory.
 - **The inventory landed (Oct 6)** while drafting: Q2 and Q3 reference its two asks, the
   carries into FIX-1791 and FIX-1794 are recorded, and #2759 lands first.
+- **POC (Oct 6)**: D3's third change became definite, as server-owned session state, and
+  FIX-1788 gained the worker key, because the run showed a caller-seeded link to the caller's own
+  other worker is honoured and a singleton's isolated cells are shared by every worker. ER-9
+  gained the flow-boundary rule, because a cross-flow child roots its own lineage.
 
 **Open: Q1.**

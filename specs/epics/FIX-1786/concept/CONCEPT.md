@@ -298,7 +298,7 @@ Work moves down through boards, and status comes back up. Every step runs in a s
 
 ![How work flows · one workstream, down to a harness](../figures/concept-6-work-flows.svg)
 
-The boards below the workstream are session-scoped and shared down their lineage, so a task session can settle its row on the board that assigned it. Task boards already hand off work this way today (`sharedToLineage`).
+The boards below the workstream are session-scoped and shared down their lineage, so a task session can settle its row on the board that assigned it. Task boards already hand off work this way today (`sharedToLineage`). A lineage stops at a flow, though: a row handed to a worker on another flow, such as a lead coordinator's row to an agent, lives on a board at the owner's user scope instead ([the end-state POC](../poc/singleton-worker-link/README.md), leg C1).
 
 Everything in Alice's chain is hers. Bob's workers never appear in it: Bob's part of the project is his own workstream.
 
@@ -453,7 +453,7 @@ These terms are in today's code and docs, and go away in the refactor. Counts ar
 | Delegates can be added and removed, directly or by the coordinator | A mailbox's members are fixed when it opens, with no join or leave |
 | Answers don't re-route except in a bounded group chat | A worker's post wakes nobody (`seatAuthored`), so workers can't talk back and forth at all |
 | Transcripts are a resource, kept only when needed | A mailbox's transcript is its session's items. Project rooms keep `room-lines` |
-| Boards belong to sessions, shared down their lineage | Session boards with `sharedToLineage` exist. Workforce boards belong to mailboxes and are org-scoped |
+| Boards belong to sessions, shared down their lineage | Session boards with `sharedToLineage` exist, within one flow. Workforce boards belong to mailboxes and are org-scoped |
 | A workstream is a project entry plus its lead's session | A workstream is a mailbox id on a project row |
 | Tasks are assigned down the owner's chain, and run as the owner | A task's assignee names a board worker. A drain runs as whoever triggers it |
 | Long-lived sessions with configurable memory management | A fixed turn window (`historyWindow`, `core/src/types/flow.ts`) and the memory package's tiers. Nothing compacts a session's own history |
