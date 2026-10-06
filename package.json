@@ -21,6 +21,7 @@
     "docs:serve": "pnpm --filter @flow-state-dev/docs serve",
     "storybook": "pnpm --filter @flow-state-dev/ui storybook",
     "kitchen-sink:dev": "pnpm --filter @flow-state-dev/kitchen-sink dev",
+    "shift-manager:dev": "pnpm --filter @flow-state-dev/shift-manager dev",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm release:build && changeset publish --provenance",
