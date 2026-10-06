@@ -13,7 +13,7 @@ epics that establish it.
 |---|---|
 | **Winning when** | Someone stands up a working team of agents from files alone — no TypeScript to declare a channel, a resource, or a skill — and Layer 1 stays fully available to anyone who wants past the conventions |
 | **The read** | Layer 2 nouns that still require code to declare. Five at the start, and the count only moves when a convention ships with a reader and a proof |
-| **Now** | **8 epics done** · 0 in flight · 1 not started. The support desk wrapped on Sep 29: in kitchen-sink a person asks one routed channel a question and, with no reload, the one specialist whose purpose fits starts work and answers there. The team is declared in five files, four `WORKER.md` and a `CHANNEL.md` that opts into routing; the app's TypeScript still wires the route's model and the escalation tool. **No epic is running.** W1 is the only one not done. 218 work issues, of which **114 have no parent** |
+| **Now** | **8 epics done** · 0 in flight · 1 not started. The support desk wrapped on Sep 29: in kitchen-sink a person asks one routed channel a question and, with no reload, the one specialist whose purpose fits starts work and answers there. The team is declared in five files, four `WORKER.md` and a `CHANNEL.md` that opts into routing; the app's TypeScript still wires the route's model and the escalation tool. **No epic is running.** W1 is the only one not done. 222 work issues, of which **117 have no parent**. FIX-1786, approved Oct 6 in Workforce: Shift Manager, supersedes PD-6 in part: recorded as a tension ([Decisions](DECISIONS.md) → Open) |
 | **Kill line** | If real apps turn out to want to assemble Layer 2 themselves, this project is mis-shaped rather than unfinished: what changes is that the conventions become examples, not the remaining epic list |
 
 ![The territory](figures/territory.svg)
@@ -22,7 +22,7 @@ Above the fence is what this project owns; below it is the substrate it assemble
 own. The fence is one question — *is there exactly one of it?* — and it is the test every epic
 under this project is checked against.
 
-## The epics — derived live 2026-09-29 00:40 UTC
+## The epics — derived live 2026-10-06 18:10 UTC
 
 | Epic | What it owns | State | Issues |
 |---|---|---|---|
@@ -42,8 +42,8 @@ implementation PRs each refresh; none is carried forward.
 **The two halves agree on every wrapped epic.** Each reads Done in Linear, and each wrap record
 names its merged implementations; this pass re-checked the support desk's twenty one by one, and
 each has its implementation PR merged. Two old gaps stay as Linear has them, because the
-discrepancy is the signal: FIX-1359 is done with 8 of 11 closed, three Backlog issues that should
-have left it or a wrap that outran them, and W3's twentieth is a Duplicate. The kitchen-sink
+discrepancy is the signal: FIX-1359 is done with 8 of 11 done, two Backlog issues that should
+have left it or a wrap that outran them and one since canceled, and W3's twentieth is a Duplicate. The kitchen-sink
 rebuild now reads 16 of 16: two fixes attached after its wrap, and FIX-1469 left it with no parent.
 
 **The support desk wrapped on Sep 29, 20 of 20**, Done in Linear a minute after its closure,

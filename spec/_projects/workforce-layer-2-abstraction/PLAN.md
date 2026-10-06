@@ -8,11 +8,11 @@ deliberately not next. Each epic's own plan owns its checks.
 ![The arc](figures/arc.svg)
 
 Twenty-one days, not three months. The project opened in June, but every epic here was filed from
-**Sep 8** onward, and 114 work issues still have no parent. W4 and W3 wrapped three minutes apart
+**Sep 8** onward, and 117 work issues still have no parent. W4 and W3 wrapped three minutes apart
 on Sep 20, and three more closed on Sep 24: plane isolation, W5, and the kitchen-sink rebuild.
 **The support desk is the last bar**, filed on Sep 25, re-scoped on Sep 27 after the owner's real-model
-test, and wrapped at 00:27 UTC on Sep 29 when its closure merged. It ends on the now line and does
-not cross it. Nine lanes: eight closed, and one that never opened.
+test, and wrapped at 00:27 UTC on Sep 29 when its closure merged. Nothing has run here since: the
+now line, Oct 6, sits a week past the last bar. Nine lanes: eight closed, and one that never opened.
 
 ## What each epic consumes and releases
 
@@ -110,7 +110,7 @@ routed channel never answers ([Decisions](DECISIONS.md) → *Recorded at the wra
   **unowned**: W4 met PR-5 with a check over its own diff and named the repo-wide pass out at its
   wrap.
 - **Tasks, Skills internals, Memory implementation.** Own projects; this one owns the vocabulary.
-- **Re-parenting the 114 unparented issues.** Most are the pre-epic era; the rest are the wrap
+- **Re-parenting the 117 unparented issues.** Most are the pre-epic era; the rest are the wrap
   follow-ups above. Sweeping them under epics
   retroactively would make the arc look tidier and tell you less about what actually happened.
 - **A second harness or transport for the MCP door.** W1 has not started; widening it before it

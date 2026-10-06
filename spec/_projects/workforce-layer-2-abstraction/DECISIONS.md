@@ -124,7 +124,7 @@ Answers settled at project altitude, so no later epic reopens them.
 | What is a seat's package, and where do documents live? | One format, **authored in Markdown**, scoped to instructions and tools, two attachment modes (seat always-on, library opt-in), and **not disk-only** — packages will eventually be LLM-authored and stored as a resource, which binds the design now. **Documents are org-scoped**: v1 carries no per-seat document slot, and the exclusion is structural — a package attaches to one seat, a document installs at org scope | W4 ER-2, the owner's ratify Sep 19 · builds outside W4 as **FIX-1459** |
 | What does a hireable worker kind have to accept? | **Four imposed keys, not three** — `instructions`, `teamInstructions`, `seatSkills`, `seatTools`. Compose `workerConfigSchema()`; a file that authors one is refused by name (PR-6) | Read off `packages/workforce/src/worker-config.ts` on `main`; `teamInstructions` shipped with FIX-1377 ([#1911](https://github.com/fixpoint-labs/flow-state-dev/pull/1911)) |
 | Does `teams/<id>/` fence what a seat reads, or only address it? | **It addresses; it does not fence**, and the halves differ mechanically. Team *instructions* reach only that team's seats — they ride each seat's own config. Team *documents* install on a worker **kind**, so every seat of that kind reaches every team's | FIX-1377 shipped as written, FIX-1368 done, and the docs teach both rules out loud. **Settled by what shipped, not by a recorded ruling** — below |
-| What is a seat, what is a kind, and is an Agent a Layer 1 type? | Seat = hired durable worker instance · Kind = the replaceable flow shape it names · Agent = an opinion, **not** substrate (PD-6). No thin/fat | Stated identically in FIX-1359's wrap, W4's and W5's EM fences, and FIX-1455's; verified against `packages/workforce/src` |
+| What is a seat, what is a kind, and is an Agent a Layer 1 type? | Seat = hired durable worker instance · Kind = the replaceable flow shape it names · Agent = an opinion, **not** substrate (PD-6). No thin/fat | Stated identically in FIX-1359's wrap, W4's and W5's EM fences, and FIX-1455's; verified against `packages/workforce/src`. ***Superseded in part by FIX-1786 ([specs/epics/FIX-1786/](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1786) on main)***: a tension, not a decision here ([Open](#fix-1786-supersedes-pd-6-in-part--a-tension-recorded-not-decided)) |
 | Is the kitchen-sink rebuild part of W5? | **No — its own epic** under this project (FIX-1455), sibling to W5, not nested under W4 either. It is the always-on **reference consumer**, which is a Proof of the project's outcome rather than a member of W5's release-QA set; re-nesting it under W5 is W5's named invent-kill | The owner's call, Sep 20, un-parenting it from FIX-1457; recorded as W5's D9 at the same day's re-cut |
 | Is the W3 → W4 → W5 chain still holding ship work back? | **No — the floor is down.** W3 is done 19/20 and W4's first-cut children (FIX-1385, FIX-1405, FIX-1408) are all done, with W4 itself wrapped. **Every epic here that fenced its *ship* work on "after W4's first cut" is released** — W5 and FIX-1455 both. What remains is each epic's own sequencing | Derived Sep 20 from both halves: Linear child states plus [#1905](https://github.com/fixpoint-labs/flow-state-dev/pull/1905) closed unmerged |
 | Is a private team portable across orgs? | **No.** A hired seat stays in the org it was built in, and portability, even as an explicit opt-in, is out of scope. Only a new product call reopens it | The owner, Sep 23, recorded on [#2070](https://github.com/fixpoint-labs/flow-state-dev/pull/2070) as decision 1; FIX-1528 carried it as locked input and wrapped on it Sep 24 |
@@ -279,3 +279,18 @@ been pricing it, and that is worth knowing before it is scheduled.
 
 **Cost of being wrong:** small now, large later. Today it is one line in a list. After the
 propagation pass it is a renamed authoring surface in every app and doc that copied the convention.
+
+### FIX-1786 supersedes PD-6 in part — a tension, recorded not decided
+
+[FIX-1786](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1786), in Workforce:
+Shift Manager, had its objective approved and its spec merged to `main` on Oct 6 (#2795). For
+Workforce it retires *seat*, *hired seat*, *kind* (channel-kind paths stay), *mailbox*, *room* and
+*flow instance* (its concept's retired list, held by its ER-12), and makes a worker a user-scoped resource
+run by the singleton flow it names (its ER-1). That overturns PD-6's *Seat* and *Kind* rows and
+the *decided once* row that restates them. *Agent is an opinion, not a type* is not touched.
+
+**Recorded, not decided.** PD-6's card is left as it was made; this note and the marked row are
+where a reader learns it no longer holds in full. The supersession is FIX-1786's call, approved at
+its gate, not one this project ratifies. Other *decided once* rows rest on the retired nouns, the
+owner-pin fence and a seat's per-(org, person) cell among them; they are not marked one by one.
+Whether FIX-1786 belongs in this project is asked in Shift Manager's [Decisions → Open](https://github.com/fixpoint-labs/flow-state-dev/blob/project/workforce-app-lab/spec/_projects/workforce-app-lab/DECISIONS.md#open), ask 2.
