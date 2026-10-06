@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 476" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Q1, open: where does an author say this flow runs workers? Recommended, a list the installation keeps; the alternative, which Jake leans to, a defineWorkerFlow wrapper. The row that decides it, who sets standard-only: under the list the installation sets it per entry and keeps it when agent is replaced; under the wrapper the flow's author sets it, so an installation can't keep its own policy. Second row, when a broken flow is refused: the list at boot, before any worker runs, with an exported check a library calls itself; the wrapper where the flow is written. Third row, authorities: the list keeps one, the schema's own refusal; the wrapper adds a mark and refuses a flow that meets every requirement without it. Fourth row, existing flows: both move agent's skills drawer; the wrapper also moves agent and every app flow onto a new export. Locks in: standard-only is installation policy, and a wrapper can be added later as sugar with no mark. Flips if standard-only is a property of the flow, the same in every installation.">
+     aria-label="Q1, decided by Jake on 2026-10-06: where does an author say this flow runs workers? Chosen, a list the installation keeps; instead of a defineWorkerFlow wrapper, which Jake had leaned to. The row that decided it, who sets standard-only: under the list the installation sets it per entry and keeps it when agent is replaced; under the wrapper the flow's author sets it, so an installation can't keep its own policy. Second row, when a broken flow is refused: the list at boot, before any worker runs, with an exported check a library calls itself; the wrapper where the flow is written. Third row, authorities: the list keeps one, the schema's own refusal; the wrapper adds a mark and refuses a flow that meets every requirement without it. Fourth row, existing flows: the list leaves them where they are; the wrapper moves agent and every app flow onto a new export. Locks in: standard-only is installation policy, and a wrapper can be added later as sugar with no mark. Would have flipped if standard-only were a property of the flow, the same in every installation.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -10,7 +10,7 @@
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
     .bg     { fill:var(--surface); }
     .ask    { fill:var(--surface-2); }
-    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 4; }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
     .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
     .decide { fill:var(--accent-soft); }
     .bar    { fill:var(--accent); }
@@ -34,15 +34,15 @@
   <rect class="bg" x="0" y="0" width="940" height="476"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q1 · OPEN, ON A POC OF BOTH · THE CALL</text>
+    <text class="t-lbl" x="32" y="32">Q1 · DECIDED · JAKE, 2026-10-06 · THE CALL</text>
     <text class="t-q" x="32" y="52">Where does an author say “this flow runs workers”?</text>
   </g>
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
     <text class="t-h c-code" x="228" y="112">A list the installation keeps</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="592" y="93">THE ALTERNATIVE · JAKE LEANS HERE</text>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">A defineWorkerFlow() wrapper</text>
   </g>
   <g id="row-1">
@@ -50,7 +50,7 @@
     <rect class="bar" x="16" y="134" width="4" height="62"/>
     <text class="t-lbl" x="32" y="156">WHO SETS</text>
     <text class="t-lbl" x="32" y="169">STANDARD-ONLY</text>
-    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDED IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">The installation, per entry</text>
     <text class="t-s" x="248" y="179">kept when agent is replaced (F3)</text>
@@ -82,11 +82,11 @@
   </g>
   <g id="row-4">
     <text class="t-lbl" x="32" y="334">EXISTING FLOWS</text>
-    <text class="mark tie" x="228" y="340">=</text>
-    <text class="t-b" x="248" y="339">agent moves its skills drawer</text>
-    <text class="t-s" x="248" y="357">needed under both (G1)</text>
+    <text class="mark plus" x="228" y="340">+</text>
+    <text class="t-b" x="248" y="339">Stay where they are</text>
+    <text class="t-s" x="248" y="357">a hand-built flow registers (H1)</text>
     <text class="mark minus" x="592" y="340">−</text>
-    <text class="t-b" x="612" y="339">That, and every flow moves</text>
+    <text class="t-b" x="612" y="339">Every flow moves</text>
     <text class="t-s" x="612" y="357">onto a new public export (G2)</text>
     <line class="row" x1="16" y1="370" x2="924" y2="370"/>
   </g>
@@ -98,8 +98,8 @@
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="386" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="494" y="407">FLIPS IF</text>
-    <text class="t-b" x="494" y="427">Standard-only is a property of the flow</text>
+    <text class="t-lbl" x="494" y="407">WOULD HAVE FLIPPED IF</text>
+    <text class="t-b" x="494" y="427">Standard-only were a property of the flow</text>
     <text class="t-s" x="494" y="445">the same in every installation that runs it</text>
   </g>
 </svg>

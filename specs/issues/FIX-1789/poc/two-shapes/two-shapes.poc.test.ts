@@ -18,6 +18,8 @@
  *   F  standard-only   the flag, the no-flow default, and replacing `agent`
  *   R  runtime         declared shared state with attribution; and the CONTROL (R3, R4):
  *                      undeclared org scope state, which both shapes admit
+ *   K  after the gate  the three review findings on the merged checks, and the
+ *                      contract as decided (Q2: org scope is not refused)
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -27,7 +29,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { defineAgentWorkerFlow } from "../../src/agent-worker-flow";
 import { workerConfigSchema } from "../../src/worker-config";
-import { contractProblems, sharedResource, writeShared, CONTRACT_KEYS } from "./contract";
+import { attributionSchema, contractProblems, sharedResource, writeShared, workerFlowProblems, CONTRACT_KEYS } from "./contract";
 import * as A from "./list";
 import * as B from "./wrapper";
 
@@ -344,5 +346,94 @@ describe("R · runtime, on the real engine", () => {
     await run("alice", "alice's secret");
     const bob = await run("bob", "hello");
     expect(bob.before).toEqual({ lastMessage: "alice's secret" });
+  });
+});
+
+// ─── K · after the gate (2026-10-06) ─────────────────────────────────────
+
+/** An org-scoped collection whose `writtenBy` is declared some other way than the contract's. */
+const looselySigned = (writtenBy: z.ZodTypeAny) =>
+  defineResourceCollection({ pattern: "loose-notes/*", scope: "org", stateSchema: z.object({ text: z.string(), writtenBy }) });
+
+describe("K · the review findings on the merged checks, and the contract as decided", () => {
+  it("K1 a flow naming every configuration key, with a type no real hire supplies, is refused at registration, naming the key", () => {
+    const wrongType = defineFlow({
+      kind: "counter",
+      cardinality: "collection",
+      configSchema: workerConfigSchema().extend({ seatId: z.number().optional() }),
+      actions: door(echo)
+    });
+    // What a real hire does with it: the worker's id is a string, and the mint refuses.
+    expect(() => (wrongType as any)({ id: "counter", config: { seatId: "w1" } })).toThrow(/seatId/);
+    expect(workerFlowProblems("counter", wrongType)).toEqual([
+      `flow "counter" does not accept the value a worker's hire supplies for \`seatId\`: compose workerConfigSchema()`
+    ]);
+  });
+
+  it("K2 a declared writtenBy that isn't the contract's complete field is refused at registration", () => {
+    for (const loose of [z.any().optional(), attributionSchema.optional(), z.object({ userId: z.string().optional() }), z.string()]) {
+      const flow = defineFlow({
+        kind: "loose",
+        cardinality: "collection",
+        configSchema: workerConfigSchema(),
+        resources: { notes: looselySigned(loose) },
+        actions: door(echo)
+      });
+      // The merged private-state check read the name only, and admitted every one of these.
+      expect(contractProblems("loose", flow)).toEqual(workerFlowProblems("loose", flow));
+      expect(workerFlowProblems("loose", flow)).toEqual([
+        `flow "loose" declares \`writtenBy\` on "notes" (loose-notes/*), but not as the contract's field: it must require \`{ userId, workerId? }\` on every entry. Use sharedResource()`
+      ]);
+    }
+  });
+
+  it("K2b what the loose field lets through at run time: an unsigned entry is stored", async () => {
+    const unsigned = handler({
+      name: "unsigned-write",
+      inputSchema: message,
+      outputSchema: reply,
+      resources: { notes: looselySigned(z.any().optional()) },
+      execute: async (i, ctx: any) => {
+        await ctx.resources.notes.create("raw", { text: i.message });
+        return { reply: "wrote" };
+      }
+    });
+    const flow = defineFlow({ kind: "loose", cardinality: "collection", configSchema: workerConfigSchema(), actions: door(unsigned) });
+    const { run, stores } = await boot(flow);
+    await run("alice", "unsigned");
+    expect((await stores.resourceState.get("org", "acme", "loose-notes/raw"))?.state).toEqual({ text: "unsigned" });
+  });
+
+  it("K3 the stamp is the helper's, not the store's: flow code writing directly can name another user", async () => {
+    const forger = handler({
+      name: "forger",
+      inputSchema: message,
+      outputSchema: reply,
+      resources: { notes },
+      execute: async (i, ctx: any) => {
+        await ctx.resources.notes.create("forged", { text: i.message, writtenBy: { userId: "bob" } });
+        return { reply: "wrote" };
+      }
+    });
+    const flow = defineFlow({ kind: "forger", cardinality: "collection", configSchema: workerConfigSchema(), actions: door(forger) });
+    expect(workerFlowProblems("forger", flow)).toEqual([]);
+    const { run, stores } = await boot(flow);
+    await run("alice", "signed as bob");
+    expect((await stores.resourceState.get("org", "acme", "team-notes/forged"))?.state).toEqual({
+      text: "signed as bob",
+      writtenBy: { userId: "bob" }
+    });
+  });
+
+  it("K4 as decided, org scope is not refused: today's agent, with and without a board, and the leaky flow register", () => {
+    const builtIn = defineAgentWorkerFlow() as unknown as AnyFlow;
+    const withTasks = defineAgentWorkerFlow({ taskLists: ["support-help-board"] }) as unknown as AnyFlow;
+    expect(workerFlowProblems("agent", builtIn)).toEqual([]);
+    expect(workerFlowProblems("agent", withTasks)).toEqual([]);
+    expect(workerFlowProblems("leaky", asA.leaky)).toEqual([]);
+    // Configuration and the door are unchanged by the decision.
+    expect(workerFlowProblems("mute", asA.mute)).toEqual(contractProblems("mute", asA.mute));
+    expect(workerFlowProblems("bare", asA.bare)).toEqual(contractProblems("bare", asA.bare));
+    expect(workerFlowProblems("scribe", asA.scribe)).toEqual([]);
   });
 });

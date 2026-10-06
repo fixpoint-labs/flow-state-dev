@@ -1,9 +1,13 @@
 # POC · the worker contract, as a list and as a wrapper
 
 An experiment retained as evidence for [FIX-1789](../../SPEC.md)'s
-[Q1](../../DECISIONS.md#q1) and [Q2](../../DECISIONS.md#q2). Not production code: nothing imports
-it, it has no package manifest, and it is outside default build, test, lint and knip discovery
-([specs/README.md](../../../../README.md)).
+[Q1](../../DECISIONS.md#q1) and [Q2](../../DECISIONS.md#q2), both decided on 2026-10-06. Not
+production code: nothing imports it, it has no package manifest, and it is outside default build,
+test, lint and knip discovery ([specs/README.md](../../../../README.md)).
+
+**After the gate.** Review of the merged POC found three gaps in the shared checks; the
+[K legs](#after-the-gate-2026-10-06) pin them and the fixes. The legs above them are unchanged and
+still record what the two shapes were compared on.
 
 ## The question
 
@@ -55,7 +59,7 @@ On `fbecfe6f2`: **19 passed**. Each assertion pins what is true, so a change sho
 | R1–R2 | Shared state with attribution | An entry written through the helper lands in the org's cell naming `alice` and her worker. An entry written without `writtenBy` is refused by the resource's own schema |
 | R3–R4 | **Control:** a flow that declares nothing and writes the org scope record | **Passes both shapes**, and bob's run reads alice's write (R3). Declaring a strict, empty org schema doesn't stop it either (R4). No declaration shows this path |
 
-Size, code lines without comments: the shared checks 75, A 41, B 63.
+Size, code lines without comments: the shared checks 75 (110 after the K fixes), A 41, B 63.
 
 ## What it showed
 
@@ -80,3 +84,25 @@ sugar over the list, with no mark. The reverse, removing a mark every flow carri
 
 **The question the choice turns on:** is standard-only a property of a flow, or of an installation?
 If a flow, B's placement is right and its costs are the price.
+
+**Decided, 2026-10-06:** the list (Q1), and no engine rule for org scope (Q2). See
+[DECISIONS.md](../../DECISIONS.md).
+
+<a name="after-the-gate-2026-10-06"></a>
+## After the gate · 2026-10-06
+
+The spec merged before its first review round was folded. Codex found three gaps in the shared
+checks on [#2811](https://github.com/fixpoint-labs/flow-state-dev/pull/2811); Jake decided Q2 the
+other way from the recommendation. Five legs were added, on `f71b9b55b`. **24 passed** after the
+fixes. Before them, K1 and K2 failed: the merged checks returned no problem for any of their flows.
+
+| Leg | Question | Observed |
+|---|---|---|
+| K1 | A flow that names all six keys, with `seatId: z.number()` | A real hire's mint refuses it. **The merged check admitted it**: it read only "not a declared setting". Now any refusal naming a contract key is a problem, and the probe's lists are not empty |
+| K2 | `writtenBy` declared as `z.any().optional()`, the attribution made optional, `userId` optional, or a string | **The merged check admitted all four**: it read the field's name. Now the field must take a user, with or without a worker, and refuse an entry with no user |
+| K2b | What the loose field lets through | An unsigned entry is stored in the org's cell |
+| K3 | Flow code writing a shared entry directly with `writtenBy: { userId: "bob" }` while alice runs | **Stored, naming bob.** The stamp is the helper's, not the store's. Attribution is as trustworthy as the registered flow's code |
+| K4 | The contract as decided (Q2): configuration, one door, complete attribution where declared | Today's `agent`, with and without a mailbox board, and the `leaky` flow all pass: org scope is not refused. Configuration and door verdicts are the same as before |
+
+`workerFlowProblems` in `contract.ts` is the decided contract. `contractProblems` is kept as the
+spec went to its gate, so the S, G and R legs still read as they were run.

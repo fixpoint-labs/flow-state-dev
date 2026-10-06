@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 472" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two panels, today and after, in the same five cases. Today the flows passed to the hire are the allowlist and each worker's mint checks configuration only: a flow with no door is hired and takes no message, private data at org scope is hired and every member reads it, the org's shared record is written and every member reads it, a shared entry says nothing of who wrote it, and there is no way to keep a flow for standard workers. After, the installation registers its worker flows with standard-only per entry, and three checks run once per flow at boot: the flow with no door and the private data at org scope are refused at boot by name, the org's shared record is refused when it runs if Q2 holds, a shared entry names the user and the worker, and a user's own worker on a kept flow is refused naming the flow.">
+     aria-label="Two panels, today and after, in the same five cases. Today the flows passed to the hire are the allowlist and each worker&#39;s mint checks configuration only: a flow with no door is hired and takes no message, a flow whose settings take the wrong type is refused only when a worker is hired on it, the built-in agent keeps each worker&#39;s skills drawer at org scope where every member&#39;s workers can reach it, a shared entry says nothing of who wrote it, and there is no way to keep a flow for standard workers. After, the installation registers its worker flows with standard-only per entry, and the checks run once per flow at boot: the flow with no door and the wrong-typed flow are refused at boot by name, the agent&#39;s drawer is in its user&#39;s scope, a shared entry names the user and the worker, and a user&#39;s own worker on a kept flow is refused naming the flow.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -46,7 +46,7 @@
     <path class="head" d="M696 114 L701 122 L706 114 Z"/>
     <rect class="n-new" x="494" y="124" width="414" height="50" rx="5"/>
     <text class="t-h" x="510" y="145">Three checks, once per flow, at boot</text>
-    <text class="t-s" x="510" y="163">configuration · one door · private state</text>
+    <text class="t-s" x="510" y="163">configuration a real hire supplies · one door · attribution</text>
   </g>
   <g id="case-1">
     <text class="t-lbl" x="32" y="216">A FLOW WITH NO DOOR</text>
@@ -55,15 +55,15 @@
     <line class="row" x1="16" y1="250" x2="924" y2="250"/>
   </g>
   <g id="case-2">
-    <text class="t-lbl" x="32" y="270">PRIVATE DATA KEPT AT ORG SCOPE</text>
-    <text class="t-old" x="32" y="290">Hired; every member reads it</text>
+    <text class="t-lbl" x="32" y="270">A FLOW WHOSE SETTINGS TAKE THE WRONG TYPE</text>
+    <text class="t-old" x="32" y="290">Refused per worker, when one is hired</text>
     <text class="t-new" x="494" y="290">Refused at boot, by name</text>
     <line class="row" x1="16" y1="304" x2="924" y2="304"/>
   </g>
   <g id="case-3">
-    <text class="t-lbl" x="32" y="324">THE ORG'S SHARED RECORD, WRITTEN WITH NOTHING DECLARED</text>
-    <text class="t-old" x="32" y="344">Written; every member reads it</text>
-    <text class="t-new" x="494" y="344">Refused when it runs (Q2)</text>
+    <text class="t-lbl" x="32" y="324">THE BUILT-IN AGENT'S OWN SKILLS DRAWER</text>
+    <text class="t-old" x="32" y="344">At org scope</text>
+    <text class="t-new" x="494" y="344">In its user's scope</text>
     <line class="row" x1="16" y1="358" x2="924" y2="358"/>
   </g>
   <g id="case-4">
