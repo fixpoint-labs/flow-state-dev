@@ -20,7 +20,7 @@
  * later pass treats the task as a dead dependency. Stamping it on a task some
  * other actor settled first spreads a skip through work nothing showed blocked.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -161,6 +161,11 @@ describe("cascadeSkipDependents — the skipped label lands on the task it cance
 });
 
 describe("cascadeSkipDependents — a declined cancel is left alone (FIX-985)", () => {
+  // An interleaving that never fired must not leak into the next case.
+  afterEach(() => {
+    interleave.current = undefined;
+  });
+
   /** Seed a → b → c with `a` errored, so `b` is the cascade's first target. */
   const seedChain = handler({
     name: "seed-chain",
@@ -230,6 +235,65 @@ describe("cascadeSkipDependents — a declined cancel is left alone (FIX-985)", 
     expect(result.output).toEqual({
       b: { status: "cancelled", labels: [], error: "stopped by operator" },
       c: { status: "pending", labels: [], error: null },
+    });
+  });
+
+  it("still cascades in the same call when a rival cascade cancelled the task first", async () => {
+    // Two cascades on one board (two drains tapping it): the rival's cancel
+    // and label land on `b` first, so ours is declined. `b` is now a skipped
+    // dependency by the same rule the block seeds from, so the chain must
+    // keep walking here rather than wait for a later pass to read the label.
+    interleave.current = {
+      beforeCancelOf: "b",
+      run: async (collection) => {
+        await collection.cancel("b", "dep a failed");
+        await collection.addLabel("b", "skipped");
+      },
+    };
+
+    const pipeline = sequencer({ name: "cascade-rival" })
+      .tap(seedChain)
+      .tap(cascade)
+      .step(readChain);
+
+    const result = await testBlock(pipeline, { input: undefined });
+
+    expect(interleave.current).toBeUndefined();
+    expect(result.error).toBeNull();
+    expect(result.output).toEqual({
+      b: { status: "cancelled", labels: ["skipped"], error: "dep a failed" },
+      c: { status: "cancelled", labels: ["skipped"], error: "dep b failed" },
+    });
+  });
+
+  it("a dep-blocked task cannot be failed in the window, so its dependents are still reached", async () => {
+    // The race a review raised: another actor blocks `b`, then fails it, so
+    // the cascade's cancel would be declined with `b` errored and `c` left
+    // behind. The substrate refuses the second half — `blocked → errored` is
+    // not a transition, and every route to `errored` runs through a claim,
+    // which needs every dep `completed` — so `b` is still cancellable and the
+    // chain is walked in full.
+    const attempted: { blocked?: string; failed?: string } = {};
+    interleave.current = {
+      beforeCancelOf: "b",
+      run: async (collection) => {
+        attempted.blocked = (await collection.block("b", "held")).outcome;
+        attempted.failed = (await collection.fail("b", "boom", { ifAllowed: true })).outcome;
+      },
+    };
+
+    const pipeline = sequencer({ name: "cascade-block-then-fail" })
+      .tap(seedChain)
+      .tap(cascade)
+      .step(readChain);
+
+    const result = await testBlock(pipeline, { input: undefined });
+
+    expect(attempted).toEqual({ blocked: "recorded", failed: "declined" });
+    expect(result.error).toBeNull();
+    expect(result.output).toEqual({
+      b: { status: "cancelled", labels: ["skipped"], error: "dep a failed" },
+      c: { status: "cancelled", labels: ["skipped"], error: "dep b failed" },
     });
   });
 
