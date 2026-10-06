@@ -512,7 +512,7 @@ if (task?.run) {
 }
 ```
 
-The run writes it, not the drain, because only the run knows for certain which session it landed in. Under `per-worker` or a shared `key`, several tasks name the same session and each names its own request. A board drained from two conversations still gives each row the run that took it.
+Each row names the run that took it. Under `per-worker` or a shared `key`, several tasks name the same session and each names its own request. Two rows can share a session, but never a request.
 
 To open the run, read the session first. A seat can hand its tasks to another flow, so the run doesn't always belong to the flow you read the board through. The session knows its owner:
 
@@ -521,7 +521,7 @@ const session = await client.getSession(task.run.sessionId);
 const flowKind = session.flowId; // the run's flow, never the board's
 ```
 
-Every session a run is dispatched into records its flow, so there is nothing to fall back to. Don't substitute the board's flow. Pass that `flowKind` to `useSession` and to the request reads. Through any other flow, the run's request stream answers 404.
+Every session a run is dispatched into records its flow, so `flowId` is always there to read. Don't substitute the board's flow. Pass that `flowKind` to `useSession` and to the request reads. Through any other flow, the run's request stream answers 404.
 
 The `run_linked` change is published on the run's own session, like everything else the run writes to the task. A view following a different session, such as the conversation that drained the board, sees `run` the next time it reads the board.
 
