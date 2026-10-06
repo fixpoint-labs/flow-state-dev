@@ -12,7 +12,8 @@
  * After the gate (2026-10-06): the configuration check reads a wrong VALUE for
  * a contract key as well as a missing key, the attribution check reads the
  * field's behaviour rather than its name, and `workerFlowProblems` is the
- * contract as decided (Q2: org scope is not refused).
+ * contract as decided (Q2: org scope is not refused). The pre-Q2 set is kept as
+ * `preQ2ContractProblems`, for the legs that record the gate.
  */
 import { z } from "zod";
 import { defineResourceCollection } from "@flow-state-dev/core";
@@ -189,8 +190,11 @@ export function workerFlowProblems(kind: string, flow: AnyFlow): string[] {
   );
 }
 
-/** All three, as the spec went to its gate, in the order an author reads them. */
-export function contractProblems(kind: string, flow: AnyFlow): string[] {
+/**
+ * All three, as the spec went to its gate, in the order an author reads them.
+ * Superseded by Q2: evidence only. Registration uses {@link workerFlowProblems}.
+ */
+export function preQ2ContractProblems(kind: string, flow: AnyFlow): string[] {
   return [
     configProblem(kind, flow),
     doorProblem(kind, flow),

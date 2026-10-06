@@ -4,8 +4,9 @@
 
 Three calls, all decided. Jake answered Q1 and Q2 on 2026-10-06, at this spec's gate. The epic asked
 this spec to settle the first on a POC of both shapes ([FIX-1786 Q1](../../epics/FIX-1786/DECISIONS.md#q1));
-the POC raised the second. Q1 binds the set once the epic's amendment records it
-([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)); Q2 changes nothing the epic decided.
+the POC raised the second. Both bind the set once the epic amendment
+[#2813](https://github.com/fixpoint-labs/flow-state-dev/pull/2813) records them
+([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)); Q2 narrows the epic's ER-2 and ER-11.
 
 ## The tree
 
@@ -33,7 +34,7 @@ None. Q1 and Q2 were answered at the gate.
 
 **Jake, 2026-10-06:** the list. The installation keeps the map of its worker flows, checks each one
 at registration, exports the checks, and marks standard-only per entry. Recorded for the set in
-[the epic's Q1](../../epics/FIX-1786/DECISIONS.md#q1) by a separate epic amendment.
+[the epic's Q1](../../epics/FIX-1786/DECISIONS.md#q1) by [#2813](https://github.com/fixpoint-labs/flow-state-dev/pull/2813).
 
 **The fork.** Keep today's map of flows the installation passes to the hire, check each flow on it
 when the installation starts, and let each entry carry a standard-only flag. Or give authors a
@@ -90,8 +91,9 @@ registration refusing org-scoped collections that carry no attribution and any d
 Its case was the write nothing declares ([R3–R4](poc/two-shapes/README.md#what-was-observed)). After
 this call that write is what org scope is, documented, not a hole in a promise.
 
-**What it moves.** No fourth Layer 1 change: the epic's [D3](../../epics/FIX-1786/DECISIONS.md#d3)
-stays three. The engine surfaces, the org refusals and the mailbox-ledger allowance leave the plan;
+**What it moves.** It narrows the epic's ER-2 and ER-11, recorded with Q1 in
+[#2813](https://github.com/fixpoint-labs/flow-state-dev/pull/2813). No fourth Layer 1 change: the epic's
+[D3](../../epics/FIX-1786/DECISIONS.md#d3) stays three. The engine surfaces, the org refusals and the mailbox-ledger allowance leave the plan;
 the ledgers need no allowance once nothing at org scope is refused
 ([K4](poc/two-shapes/README.md#after-the-gate-2026-10-06)). The issue stays one package.
 

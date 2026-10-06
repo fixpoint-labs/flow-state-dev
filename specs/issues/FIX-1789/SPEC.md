@@ -6,7 +6,7 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **writes a flow for workers** | Learns of a problem only when a worker's hire refuses it. A flow with no door hires and takes no message | Learns at boot, by name, every requirement the flow misses: the configuration a real hire supplies, one door, and the full attribution field on anything it shares |
+| **writes a flow for workers** | Learns of a problem only when a worker's hire refuses it. A flow with no door hires and takes no message | Learns at boot, by name, every requirement the flow misses: the configuration a real hire supplies, one door, and any `writtenBy` it declares |
 | **runs an installation** | Every flow passed to the hire is open to every worker | Registers its worker flows, and can keep any for standard workers. A user's own worker on one is refused |
 | **shares an org with other users** | The built-in `agent` keeps each worker's skills drawer at org scope | The built-in `agent` keeps its own state in its user's scopes. Org scope stays shared with the whole org by design: a flow writes there because its author built it to ([Q2](DECISIONS.md#q2)) |
 | **reads what another user's worker shared** | Nothing says who wrote it | Each entry written through the shared-write helper names the user, and the worker when one wrote it |
@@ -16,7 +16,7 @@
 
 **An installation runs a worker only on a flow it registered as a worker flow. Before any worker
 runs, each registered flow is proved to take the configuration a real hire supplies, to have one
-door, and to declare attribution in full wherever it shares. A flow kept for standard workers
+door, and to declare any `writtenBy` as the contract's whole field. A flow kept for standard workers
 refuses a user's own. The built-in `agent` keeps its own state off org scope, and an entry written
 through the shared-write helper names who wrote it.**
 
@@ -132,9 +132,11 @@ fail every hire, or call attribution unforgeable when flow code can write its ow
    when one wrote it, stamped from the session.** If wrong: a persisted field to rename with a
    migration.
 
-Q1 binds the set once the epic's amendment records it in
-[FIX-1786 Q1](../../epics/FIX-1786/DECISIONS.md#q1) ([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)).
-Q2 changes nothing the epic decided: [D3](../../epics/FIX-1786/DECISIONS.md#d3) stays at three
-Layer 1 changes.
+Q2 narrows the epic's [ER-2 and ER-11](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt):
+privacy covers a worker's own state and user-scoped data, not org scope, and attribution is as
+trustworthy as the registered flow's code. The epic amendment
+[#2813](https://github.com/fixpoint-labs/flow-state-dev/pull/2813) records Q1 and Q2 together
+([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)); D3 stays at three Layer 1
+changes. Implementation waits for #2813 and this amendment to merge.
 
 Feature · `workforce` · medium · 1 PR · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)

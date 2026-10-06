@@ -16,7 +16,7 @@ the list the installation keeps ([Q1](DECISIONS.md#q1)), and for org scope as sh
 | BR-3 | A registered flow has no door | Refused at boot, naming the flow. Today it hires and takes no message | CI · goal leg a |
 | BR-4 | A registered flow has two doors | Refused at boot, naming both. Today it hires with a warning | CI |
 | BR-5 | A registered flow declares `writtenBy` on a resource in any other shape than the contract's: optional, without a required user, or as `z.any()` | Refused at boot, naming the accessor and its key pattern | CI · goal leg a |
-| BR-6 | A registered flow keeps state at org scope, declared or not | Registered. Org scope is shared with the org by design, and the flow's author chose it | CI |
+| BR-6 | A registered flow keeps state at org scope, declared or not | Registered. The privacy promise covers a worker's own state and user-scoped data, not org scope: org scope is shared with the org by design, and a flow that writes there does so by its author's choice, which the framework doesn't refuse | CI |
 | BR-7 | Several flows fail, in several ways | One refusal names every problem. Nothing is registered and nothing is hired | CI |
 | BR-8 | A flow is registered under a name that isn't its kind | Refused, as today | Existing suite |
 | BR-9 | The built-in `agent` is registered, with or without mailbox boards | Registered, with no warning. A board's ledger stays where the board keeps it; FIX-1792 removes the boards | CI |
@@ -39,7 +39,7 @@ the list the installation keeps ([Q1](DECISIONS.md#q1)), and for org scope as sh
 |---|---|---|---|
 | BR-17 | Alice's worker runs on the built-in `agent` | Its own state, the skills drawer, is written in alice's scopes. The org's cells hold none of it. FIX-1788 keys it by worker | CI · goal leg b |
 | BR-18 | Bob's worker runs on the built-in `agent` after alice's | It reads none of alice's worker's own state | Goal leg b |
-| BR-19 | A worker flow writes org scope, declared or not | Written, and every member's runs can read it. Nothing refuses it; the docs say so ([Q2](DECISIONS.md#q2)) | CI |
+| BR-19 | A worker flow writes org scope, declared or not | Written, and every member's runs can read it. Org scope is shared with the org by design, and a flow that writes there does so by its author's choice, which the framework doesn't refuse; the docs say so ([Q2](DECISIONS.md#q2)) | CI |
 
 ## Shared writes
 
@@ -47,7 +47,7 @@ the list the installation keeps ([Q1](DECISIONS.md#q1)), and for org scope as sh
 |---|---|---|---|
 | BR-20 | A worker writes a shared resource through the helper | The entry names the session's user and the worker. Until FIX-1788's singleton cutover the worker is the per-hire id, `seatId`. After it, the worker is FIX-1788's server-owned session link, which FIX-1788 wires into the helper | CI · goal leg b |
 | BR-21 | A block writes a shared entry without `writtenBy` | Refused by the resource's own schema | CI |
-| BR-22 | A caller's input carries a `writtenBy` | Ignored by the helper: the stamp comes from the session, never the input (BP-031). Flow code that writes the resource directly can set its own, so attribution is as trustworthy as the registered flow's code. No framework or Workforce code reads `writtenBy` to decide who may write; that is scope and FIX-1793's owner rule | CI |
+| BR-22 | A caller's input carries a `writtenBy` | Ignored by the helper: the name is stamped from the session's identity, so a caller can't forge it from input (BP-031). It is as trustworthy as the registered worker flow's code: flow code that writes the resource directly can set its own. No framework or Workforce code reads `writtenBy` to decide who may write; that is scope and FIX-1793's owner rule | CI |
 | BR-23 | A person writes through the app with no worker involved | The entry names the user and no worker | CI |
 | BR-24 | Another user reads a shared entry | They see it, with who wrote it. Whether they may write it is FIX-1793's "owner writes, org reads" | CI |
 

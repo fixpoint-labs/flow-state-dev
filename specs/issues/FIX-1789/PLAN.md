@@ -11,7 +11,7 @@ list; Q2, no engine rule. **Build only once the epic has recorded Q1** (see *At 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
 | S1 | `workforce` · a contract module beside `worker-config.ts` | Three checks over a flow definition. Configuration: the flow's own refusal of the bag a real hire supplies, with non-empty lists, where any refusal naming a contract key counts, undeclared or by value (share that reading with `admissionHint`; don't copy it). Door: exactly one. Attribution: every declared `writtenBy` is the contract's whole field, judged by what it accepts and refuses. Exported as one function returning every problem. Its names and refusals say worker | BR-1–BR-5 |
-| S2 | `workforce` · the hire's worker-flow map | `HireOptions.kinds` becomes `workerFlows`: this issue changes it, so it renames it, and every caller in the repo moves in this PR (BP-034). Each entry may be a flow or `{ flow, standardOnly }`. S1 runs once per flow over the resolved map, `agent` included, before any mint; every problem collected, nothing registered on a refusal | BR-6–BR-8 BR-10 BR-16 |
+| S2 | `workforce` · the hire's worker-flow map | `HireOptions.kinds` and `SeatHireCapabilityOptions.kinds` (the same map, `seat-hire-blocks.ts`) become `workerFlows`: this issue changes them, so it renames both, and every caller in the repo moves in this PR (BP-034). The mailbox `kinds` (`MailboxKind`, `mailbox-binder.ts`, `mailboxInstances`) is a different map and stays. Each entry may be a flow or `{ flow, standardOnly }`. S1 runs once per flow over the resolved map, `agent` included, before any mint; every problem collected, nothing registered on a refusal | BR-6–BR-8 BR-10 BR-16 |
 | S3 | `workforce` · flow resolution | Default to `agent`, then apply standard-only. "Standard" is a worker from the installation's files; a runtime hire or a stored roster row is the user's own | BR-11–BR-14 |
 | S4 | `workforce` · the roster's per-row check | A stored row refused by S3 reports `refused` with S3's sentence; the row is untouched | BR-15 |
 | S5 | `workforce` · shared resources | A helper declaring an org-scoped collection whose entries carry a required `writtenBy`, and a write helper stamping it from the session's user and the worker. The worker is today's per-hire id; FIX-1788 switches it to its session link ([D1](DECISIONS.md#d1)) | BR-20–BR-24 |
@@ -40,7 +40,7 @@ either way. Land it before VG, which reads the drawer's cells.
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V0 | — | Before S2: run S1 over every worker-flow map in the repo (find them by `hireWorkforce(` and `kinds:`; kitchen-sink, Shift Manager's DevForce lab and the `goals/workforce-*` hosts at least). Record each failing flow in the PR; each is fixed here or named in a follow-up |
+| V0 | — | Before S2: run S1 over every worker-flow map in the repo (find them by `hireWorkforce(`, `createSeatHireCapability(`, `workerFlows:` and `kinds:`, skipping the mailbox `kinds` in `mailbox/` and `mailboxInstances`; kitchen-sink, Shift Manager's DevForce lab and the `goals/workforce-*` hosts at least). Record each failing flow in the PR; each is fixed here or named in a follow-up |
 | V1 | S1 | BR-2 to BR-5, each with the flow named. A flow hand-declaring the six keys passes, as today; one naming them with a type no hire supplies is refused (K1); each loose `writtenBy` of K2 is refused |
 | V2 | S2 | BR-7: two bad flows give one error naming both, and nothing is minted. BR-6: a flow keeping org data of its own registers. BR-10 |
 | V3 | S3 | BR-13 and BR-14, through the default and directly; BR-16, flag kept across a replacement |
@@ -57,7 +57,7 @@ One check per decision: Q1 by V2 and V3, Q2 by V2 (BR-6) and V6, D1 by V5. The s
 
 | Where | Name | Why pinned |
 |---|---|---|
-| The hire's option | `workerFlows` | Public; an installation types it. Replaces `kinds` |
+| The hire's option | `workerFlows` | Public; an installation types it. Replaces `HireOptions.kinds` and `SeatHireCapabilityOptions.kinds` |
 | A worker-flow entry | `standardOnly` | Public; an installation types it |
 | Each shared entry | `writtenBy: { userId, workerId? }` | Persisted, and FIX-1793 and FIX-1795 read it ([D1](DECISIONS.md#d1)) |
 
@@ -98,7 +98,7 @@ any other org write:                 allowed (Q2)
 ```
 
 **POC:** [`poc/two-shapes/`](poc/two-shapes/README.md), `bash specs/issues/FIX-1789/poc/two-shapes/run.sh`,
-19 legs on `fbecfe6f2` and 5 more after the gate on `f71b9b55b`, 24 passing. It built both shapes on
+19 legs on `fbecfe6f2` and 6 more after the gate on `f71b9b55b`, 25 passing. It built both shapes on
 one set of checks. It showed they refuse the same flows; the wrapper refuses a hand-built flow and
 can't hold an installation's standard-only policy; today's `agent` fails as gated; and the org
 record leaks with nothing declared, which raised Q2. After the gate, the K legs showed checks reading
@@ -107,7 +107,8 @@ write its own `writtenBy`.
 
 ## At implement time
 
-- **Read the epic's Q1 on `main` first.** The list binds once the epic's amendment records it
+- **Read the epic's Q1 on `main` first.** Q1 and Q2 bind once the epic amendment
+  [#2813](https://github.com/fixpoint-labs/flow-state-dev/pull/2813) merges
   ([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)). If it isn't recorded, stop:
   that is the coordinator's. The epic's D3 is unchanged.
 - FIX-1790 may have landed: user scope is then per org, and nothing here changes.
@@ -121,8 +122,8 @@ write its own `writtenBy`.
   it, since its own state stays off org scope (BR-17).
 - Old-term exports this issue only calls, left for FIX-1796: `resolvableKinds`,
   `missingKindRefusal`, `KindRefusedHireError`, `seatDoorOf`, `SeatDoor`, and the `seat*` keys of
-  `workerConfigSchema()`. If the work changes one, rename it in this PR. `HireOptions.kinds` is
-  renamed here: tell FIX-1796 it's done.
+  `workerConfigSchema()`. If the work changes one, rename it in this PR. `HireOptions.kinds` and
+  `SeatHireCapabilityOptions.kinds` are renamed here: tell FIX-1796 they are done.
 
 ## Notes from review
 
@@ -136,7 +137,7 @@ and fold it back, per the challenger discipline in `issue-implement`.
 
 ## Follow-ups
 
-- The POC's legs map onto V1 (its S legs, K1 and K2), V6 (G), V3 (F), and V5 (R1, R2, K3). Rewrite
+- The POC's legs map onto V1 (its S legs, K1 and K2), V2 (K5), V6 (G), V3 (F), and V5 (R1, R2, K3). Rewrite
   them under `tdd`; don't copy the experiment.
 - A `defineWorkerFlow()` authoring helper over the list, with no mark, stays available as a later
   additive change.
