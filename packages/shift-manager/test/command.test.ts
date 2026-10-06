@@ -131,14 +131,18 @@ describe("the shift-manager command", () => {
     expect(network.output()).not.toMatch(/App:\s+http/);
   }, 120_000);
 
-  it("boots on the shift it is given, by --shift or SHIFT_MANAGER_SHIFT, and on none when given neither (BR-11)", async () => {
-    const scheme = async (app: ReturnType<typeof run>) => meta(await page((await app.listening).origin), "shift-manager-color-scheme");
-    expect(await scheme(run(["--config", lab]))).toBeUndefined();
-    expect(await scheme(run(["--config", lab, "--shift", "night"]))).toBe("night");
-    expect(await scheme(run(["--config", lab, "--shift", "evening"]))).toBe("evening");
-    expect(await scheme(run(["--config", lab], { env: { SHIFT_MANAGER_SHIFT: "day" } }))).toBe("day");
+  it("boots on the theme of the shift it is given, by --shift or SHIFT_MANAGER_SHIFT, and on none when given neither (BR-11)", async () => {
+    const theme = async (app: ReturnType<typeof run>) => meta(await page((await app.listening).origin), "shift-manager-theme");
+    expect(await theme(run(["--config", lab]))).toBeUndefined();
+    expect(await theme(run(["--config", lab, "--shift", "night"]))).toBe("night");
+    expect(await theme(run(["--config", lab, "--shift", "evening"]))).toBe("evening");
+    expect(await theme(run(["--config", lab], { env: { SHIFT_MANAGER_SHIFT: "day" } }))).toBe("day");
     // The flag wins over the environment.
-    expect(await scheme(run(["--config", lab, "--shift", "day"], { env: { SHIFT_MANAGER_SHIFT: "night" } }))).toBe("day");
+    expect(await theme(run(["--config", lab, "--shift", "day"], { env: { SHIFT_MANAGER_SHIFT: "night" } }))).toBe("day");
+    // An older build of the pages (`--assets`) reads `light` or `dark` from its own meta.
+    const legacy = async (flag: string) => meta(await page((await run(["--config", lab, "--shift", flag]).listening).origin), "shift-manager-color-scheme");
+    expect(await legacy("day")).toBe("light");
+    expect(await legacy("night")).toBe("dark");
 
     const refused = run(["--config", lab, "--shift", "dusk"]);
     expect(await refused.exited).toBe(3);
@@ -199,7 +203,7 @@ describe("the shift-manager command", () => {
     expect(html).toContain("/@vite/client");
     expect(html).toContain("/src/main.tsx");
     expect(meta(html, "fsdev-devtool-url")).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
-    expect(meta(html, "shift-manager-color-scheme")).toBe("night");
+    expect(meta(html, "shift-manager-theme")).toBe("night");
     expect(html).toContain("bearerToken");
     // A module comes through Vite; the API answers on the same origin, no proxy.
     expect((await fetch(`${origin}/src/main.tsx`)).headers.get("content-type")).toContain("javascript");

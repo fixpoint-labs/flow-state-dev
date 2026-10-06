@@ -72,9 +72,9 @@
   --inspector: #f3f0e7;
 
   /* The three shifts' own colours, the same in every theme: the mark's petals and its sundial arc read them. */
-  --shift-day: #f8f6f0;
-  --shift-evening: #d9cfb2;
-  --shift-night: #16150f;
+  --theme-day: #f8f6f0;
+  --theme-evening: #d9cfb2;
+  --theme-night: #16150f;
 
   --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
@@ -129,10 +129,10 @@
  * day is set, so every other token is day's. The page is the design's surface
  * one step toward amber, the shell surfaces keep their step below it, and the
  * on-ink foregrounds follow the design's paper. `accent` is day's tint,
- * flattened over this page. Applies under `data-shift="evening"` on the root;
+ * flattened over this page. Applies under `data-theme="evening"` on the root;
  * night is `.dark`, and the two never apply together.
  */
-:root[data-shift=evening] {
+:root[data-theme=evening] {
   --background: #eee8d7;
   --card: #f5f0e2;
   --popover: #f5f0e2;

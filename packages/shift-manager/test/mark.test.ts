@@ -21,7 +21,7 @@ describe("the sundial", () => {
 });
 
 describe("what the mark says a click does", () => {
-  it("names the shift it's in, and the one a click moves to", () => {
+  it("names the theme it's in, and the one a click moves to", () => {
     expect(describeMark("day")).toBe("Theme: Day. Click for Evening.");
     expect(describeMark("evening")).toBe("Theme: Evening. Click for Night.");
     expect(describeMark("night")).toBe("Theme: Night. Click for Day.");

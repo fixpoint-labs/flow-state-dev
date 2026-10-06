@@ -15,7 +15,7 @@ import { useSyncExternalStore } from "react";
 import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { pickedTeam, seatStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type SeatState, type ShiftStatus } from "../lib/derive";
 import { readStatus } from "../lib/columns";
-import type { ShiftLook } from "../lib/shift";
+import { themeLabel, type ThemeLook } from "../lib/theme";
 import { useLab } from "../lib/lab-data";
 import { navigate } from "../lib/routes";
 import type { Gaps } from "../gaps";
@@ -56,9 +56,9 @@ function WaitEntry({ kind, id, what, when }: { kind: "task" | "ask"; id: string;
 }
 
 /** The look's name, following it as it changes; `null` when the page has no switch. */
-function useLookName(look: ShiftLook | undefined): string | null {
-  const shift = useSyncExternalStore(look?.subscribe ?? NEVER, () => look?.current());
-  return shift === undefined ? null : shift === "night" ? "Night shift" : shift === "evening" ? "Evening shift" : "Day shift";
+function useLookName(look: ThemeLook | undefined): string | null {
+  const theme = useSyncExternalStore(look?.subscribe ?? NEVER, () => look?.current());
+  return theme === undefined ? null : themeLabel(theme);
 }
 
 function WorkerRow({ state, gaps }: { state: SeatState; gaps: Gaps }) {
@@ -146,7 +146,7 @@ export function RosterView({
   snapshot: LoadedSnapshot;
   team: string | null;
   gaps: Gaps;
-  look?: ShiftLook;
+  look?: ThemeLook;
 }) {
   const { refresh } = useLab();
   const lookName = useLookName(look);

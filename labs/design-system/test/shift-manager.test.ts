@@ -18,7 +18,7 @@ const css = readFileSync(SHIFT_MANAGER_CSS, "utf8");
 const light = rule(css, ":root");
 const dark = rule(css, ".dark");
 /** Evening sets only what differs from day; everything else it reads from day. */
-const eveningOverrides = rule(css, ':root[data-shift=evening]');
+const eveningOverrides = rule(css, ':root[data-theme=evening]');
 const evening = { ...light, ...eveningOverrides };
 
 /** The token names the registry's `tokens` item installs, as custom properties. */
@@ -104,9 +104,9 @@ describe("evening", () => {
 
   it("names each shift's own colour once, the same in every theme", () => {
     for (const shift of ["day", "evening", "night"]) {
-      expect(light[`--shift-${shift}`], shift).toMatch(/^#[0-9a-f]{6}$/);
-      expect(dark[`--shift-${shift}`], shift).toBeUndefined();
-      expect(eveningOverrides[`--shift-${shift}`], shift).toBeUndefined();
+      expect(light[`--theme-${shift}`], shift).toMatch(/^#[0-9a-f]{6}$/);
+      expect(dark[`--theme-${shift}`], shift).toBeUndefined();
+      expect(eveningOverrides[`--theme-${shift}`], shift).toBeUndefined();
     }
   });
 });

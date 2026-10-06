@@ -2,7 +2,7 @@
  * The sidebar (S5): in order, the organization, Jump to, Shift Coordinator,
  * Inbox, Tasks and Roster with their counts, PROJECTS, TEAMS, and a footer
  * (BR-6) with the on-shift and on-call counts. A header above them all carries
- * the mark, which changes the theme with a click, and names the shift.
+ * the mark, which changes the theme with a click, and names the theme.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
  * opens always agree; every status and status count from its one
@@ -20,7 +20,7 @@
  * footer ends its counts with the person's initials (v2:52-113, 1173-1188).
  */
 import { useState, useSyncExternalStore, type ReactNode } from "react";
-import type { ShiftLook } from "../lib/shift";
+import { themeLabel, type ThemeLook } from "../lib/theme";
 import { navigate, NO_PROJECT, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { openRows, projectsOf, seatStates, shiftCounts, streamCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
@@ -28,7 +28,7 @@ import type { Workstream } from "../lib/reads";
 import { initialsOf, streamMark } from "../lib/shell";
 import { useChiefOfStaffWorking } from "../lib/working";
 import { Meta, PartialMark, SectionFailure, ShiftMark, StateSquare } from "../components/ui";
-import { ShiftManagerMark, shiftName } from "../components/ShiftManagerMark";
+import { ShiftManagerMark } from "../components/ShiftManagerMark";
 import type { Gaps } from "../gaps";
 
 function NavItem({
@@ -206,17 +206,16 @@ function OrgSwitcher({ orgId, onSwitch }: { orgId: string; onSwitch: () => void 
   );
 }
 
-/** The mark, the app's name, and the shift it's in: `Evening shift`. */
-function SidebarHeader({ look }: { look: ShiftLook }) {
-  const shift = useSyncExternalStore(look.subscribe, look.current);
-  const name = shiftName(shift);
+/** The mark, the app's name, and the theme it's in: `Evening shift`. */
+function SidebarHeader({ look }: { look: ThemeLook }) {
+  const theme = useSyncExternalStore(look.subscribe, look.current);
   return (
     <div className="flex items-center gap-2.5 border-b px-3.5 pt-3.5 pb-3" data-testid="sidebar-header">
       <ShiftManagerMark look={look} />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-bold tracking-tight">Shift Manager</p>
-        <Meta role="label" className="block truncate text-muted-foreground" testId="sidebar-shift-name">
-          {name} shift
+        <Meta role="label" className="block truncate text-muted-foreground" testId="sidebar-theme-name">
+          {themeLabel(theme)}
         </Meta>
       </div>
     </div>
@@ -285,7 +284,7 @@ function ProjectsSection({
   );
 }
 
-export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gaps; onJump: () => void; look?: ShiftLook }) {
+export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gaps; onJump: () => void; look?: ThemeLook }) {
   const { snapshot, refresh, clients } = useLab();
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
   const retry = () => void refresh();

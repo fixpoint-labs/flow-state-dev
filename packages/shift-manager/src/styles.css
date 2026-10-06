@@ -51,16 +51,16 @@
 }
 
 /*
- * A change of shift fades rather than flips. The class is on the root only
- * while the colours move, and its length (`--shift-xd`) is set by whoever
- * changed the shift: a pick is quick, the clock is slow.
+ * A change of theme fades rather than flips. The class is on the root only
+ * while the colours move (`FADE_MS` in `lib/theme.ts`). It carries no
+ * `!important`, so the mark's own inline transform transition still runs.
  */
-html.shift-fade,
-html.shift-fade * {
+html.theme-fade,
+html.theme-fade * {
   transition:
-    background-color var(--shift-xd) linear,
-    color var(--shift-xd) linear,
-    border-color var(--shift-xd) linear,
-    fill var(--shift-xd) linear,
-    stroke var(--shift-xd) linear !important;
+    background-color 320ms linear,
+    color 320ms linear,
+    border-color 320ms linear,
+    fill 320ms linear,
+    stroke 320ms linear;
 }

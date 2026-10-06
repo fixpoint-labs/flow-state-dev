@@ -9,7 +9,7 @@ already read. It holds values only. There are no components here; the app gets t
 ```
 
 Import it after the stylesheet that holds the registry's `tokens` defaults. Day applies by default.
-Put `data-shift="evening"` on the root element for evening, or `class="dark"` on an ancestor for night. The same stylesheet points
+Put `data-theme="evening"` on the root element for evening, or `class="dark"` on an ancestor for night. The same stylesheet points
 the navigator's and panels' `--fsd-nav-*` and `--fsd-panel-*` properties at the tokens, so they
 match the cards.
 

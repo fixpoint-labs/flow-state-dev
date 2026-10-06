@@ -11,8 +11,9 @@
  * its own, its address handed to the page as the `fsdev-devtool-url` meta.
  * Everything about serving, the network-bind guards and `--dev`'s restarts is
  * fsdev's. What is Shift Manager's own: the default port, and the shift
- * profile, whose shift goes to the page as the `shift-manager-color-scheme`
- * meta. `--assets <dir>` is fsdev's `--app <dir>` under the name this command
+ * profile, whose theme goes to the page as the `shift-manager-theme`
+ * meta (and, for an older build of the pages, `shift-manager-color-scheme`).
+ * `--assets <dir>` is fsdev's `--app <dir>` under the name this command
  * has always had: it serves another build of the pages (the tests' stand-in
  * build, or a person's own) in place of the package's.
  *
@@ -44,8 +45,19 @@ const APP = fileURLToPath(new URL(`./index${extname(fileURLToPath(import.meta.ur
 /** The environment variable `--shift` falls back to. */
 const SHIFT_ENV = "SHIFT_MANAGER_SHIFT";
 
-/** The meta tag the page reads a forced shift from (`readServedShift`). */
-const SCHEME_META = "shift-manager-color-scheme";
+/**
+ * The meta tag the page reads a forced theme from (`THEME_META` in
+ * `src/lib/theme.ts`, which this build can't import: it is rooted at `cli/`).
+ */
+const THEME_META = "shift-manager-theme";
+
+/**
+ * The meta tag the two-look build of the pages read, holding `light` or
+ * `dark`. It is still written so `--assets` can serve such a build.
+ */
+const LEGACY_SCHEME_META = "shift-manager-color-scheme";
+
+type Theme = "day" | "evening" | "night";
 
 /** A refusal: the message, and the exit code it stops the command with. */
 class Refusal extends Error {
@@ -58,19 +70,19 @@ class Refusal extends Error {
 }
 
 /**
- * The shift the shift profile `--shift` (or `SHIFT_MANAGER_SHIFT`) names, or
- * `undefined` when neither is set.
+ * The theme of the shift profile `--shift` (or `SHIFT_MANAGER_SHIFT`) names,
+ * or `undefined` when neither is set.
  *
  * @throws Refusal for a name with no profile, listing the known ones.
  */
-function shiftName(flag: string | undefined): "day" | "evening" | "night" | undefined {
+function profileTheme(flag: string | undefined): Theme | undefined {
   const name = flag ?? (process.env[SHIFT_ENV]?.trim() || undefined);
   if (name === undefined) return undefined;
   const known = readdirSync(PROFILES).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -".json".length)).sort();
   if (!known.includes(name)) throw new Refusal(`No shift "${name}". Known shifts: ${known.join(", ")}.`);
-  const shift = (JSON.parse(readFileSync(join(PROFILES, `${name}.json`), "utf8")) as { shift?: unknown }).shift;
-  if (shift !== "day" && shift !== "evening" && shift !== "night") throw new Refusal(`Shift profile ${name}.json has no shift of "day", "evening" or "night".`);
-  return shift;
+  const theme = (JSON.parse(readFileSync(join(PROFILES, `${name}.json`), "utf8")) as { theme?: unknown }).theme;
+  if (theme !== "day" && theme !== "evening" && theme !== "night") throw new Refusal(`Shift profile ${name}.json has no theme of "day", "evening" or "night".`);
+  return theme;
 }
 
 async function main(): Promise<void> {
@@ -94,7 +106,7 @@ async function main(): Promise<void> {
   }
 
   const invokedFrom = process.env.INIT_CWD ?? process.cwd();
-  const shift = shiftName(values.shift);
+  const theme = profileTheme(values.shift);
   // Found as `fsdev dev` finds it; with none, fsdev would fall back to flow discovery.
   const config = values.config ?? locateConfig({ cwd: invokedFrom });
   if (config === undefined) {
@@ -111,7 +123,7 @@ async function main(): Promise<void> {
     watch: values.dev === true,
     open: values["no-open"] !== true,
     app: values.assets === undefined ? APP : resolve(invokedFrom, values.assets),
-    pageMeta: shift === undefined ? undefined : { [SCHEME_META]: shift },
+    pageMeta: theme === undefined ? undefined : { [THEME_META]: theme, [LEGACY_SCHEME_META]: theme === "night" ? "dark" : "light" },
   });
 }
 
