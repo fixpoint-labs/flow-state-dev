@@ -157,7 +157,8 @@ FIX-1762's stack merged first (#2738 and #2748, 2026-10-06).
 **Jake, 2026-10-06:** yes. Asked on [the inventory](https://linear.app/fixpoint-labs/issue/FIX-1786#comment-9e837aa5),
 call 2. FIX-1774 is Canceled and FIX-1777 a Duplicate in Linear. FIX-1791 carries FIX-1774's
 dogfood legs and its *not done if* list, and FIX-1794 carries FIX-1777's "runs as the filer"
-rule, both restated on the new model.
+rule, both restated on the new model. FIX-1774's task legs later moved to FIX-1794
+([decided in review](#decided-in-review-recorded-so-no-child-reopens-them)).
 
 ## Who owns what
 
@@ -223,6 +224,12 @@ engine rule. The closure only checks.
   and its per-board table can use them. From FIX-1793's spec
   ([its decisions](../../issues/FIX-1793/DECISIONS.md#decided-not-asked)), bound to the set by
   this record ([ER-24](BUSINESS-RULES.md#how-the-set-is-run)).
+- **FIX-1794 builds filing tasks for delegates and following them through, not FIX-1791.** A
+  task needs a board, and FIX-1794 decides how a board whose rows cross a flow stays its own
+  (ER-9). So FIX-1774's task legs and FIX-1780's follow-through go to FIX-1794, and a coordinator
+  files no task until FIX-1794 ships. FIX-1791 keeps posts and delegates. Jake, 2026-10-06, at
+  FIX-1791's spec gate ([its Q1](../../issues/FIX-1791/DECISIONS.md#q1)), bound to the set by
+  this record ([ER-24](BUSINESS-RULES.md#how-the-set-is-run)).
 - **Checked against `main` at `74f9a4f68`:** a project room and the mailbox boards are as
   [EVOLUTION.md](EVOLUTION.md#where-todays-code-differs-checked-against-main) states; 33
   `MAILBOX.md` files, 15 with boards (the concept's 32 and 14 predate a FIX-1778 fixture).
@@ -286,6 +293,7 @@ engine rule. The closure only checks.
   doesn't block the closure (ER-27), so the wrap reports it as the one open child.
 - **FIX-1793's gate (Oct 6)**, in a fifth follow-up PR: Jake kept the shared half in the MVP, with
   only a shared project's members opening workstreams ([Q2](#q2)), and FIX-1792 now owns removing
-  project claims and a project row's mailbox list.
+  project claims and a project row's mailbox list. At FIX-1791's gate, filing tasks for
+  delegates and following them through moved to FIX-1794.
 
 **Open: none.**
