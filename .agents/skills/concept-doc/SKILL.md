@@ -48,10 +48,11 @@ Apply these; don't restate them in the doc or here.
 ## The shape
 
 Sections in this order. Title it `<Area>: How It Should Work` for a target model, or
-`<Area>: How It Works` when describing today.
+`<Area>: How It Works` when describing today. A "How It Works" doc has no target, so it drops
+section 10 and "what this replaces", and every claim in its body cites the code it was read from.
 
-1. **Why this doc.** Two or three sentences. What hurts, and that the doc describes the target
-   first and lists the gap to today last.
+1. **Why this doc.** Two or three sentences. What hurts, and, for a target model, that the doc
+   describes the target first and lists the gap to today last.
 2. **Base terms.** Declare the few terms everything rests on, once, as bold one-line statements:
    *"A user is always a person."* Then say "user" every time after.
 3. **The parts, in the order you meet them.** An ordered list, one line per part, saying what each
@@ -115,9 +116,10 @@ Sections in this order. Title it `<Area>: How It Should Work` for a target model
 
 ## Working on it with the user
 
-- **Medium.** When the user wants to iterate together with comments, write it as a Claude Docs
-  living doc (load the docs skill or the Claude Docs `guide` first). Otherwise a markdown file under
-  `docs/internal/design/`.
+- **Medium.** When the user wants to iterate together with comments and this harness has the
+  Claude Docs tools, write it as a Claude Docs living doc (load the docs skill or the Claude Docs
+  `guide` first). Otherwise, including in any harness without Claude Docs, a markdown file under
+  `docs/internal/design/`, iterated through PR comments.
 - **Verify every claim about current code** by reading it and citing the path. When the user's
   description of the code and the code disagree, say so in chat with the path; don't write either
   version into the doc until it's settled.
@@ -125,7 +127,8 @@ Sections in this order. Title it `<Area>: How It Should Work` for a target model
   touch before every edit, and keep their wording unless they ask otherwise.
 - **When the model changes, rewrite the affected sections.** Patching one sentence leaves the parts
   list, the diagrams, the rules, the vocabulary and the gap table describing the old model. After a
-  change, walk all of them, and the flow scenario, and bring each in line.
+  change, walk all of them, and the flow scenario, and bring each in line. A wording fix that
+  changes no part, rule or term needs none of this.
 - **Answer challenges in chat, not in the doc.** Push back when the code disagrees. The doc records
   where you landed, not the argument.
 
