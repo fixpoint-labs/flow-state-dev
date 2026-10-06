@@ -50,7 +50,7 @@ function devteamBooters(): string[] {
 export function manifest(): Entry[] {
   return [
     { id: "P3.1", path: "goals/hire-plane/repairs-a-seat-whose-kind-was-cut", controls: ["fire-keeps-inventory"] },
-    { id: "P3.2", path: "goals/org-seats/cos-changes-the-roster", controls: [], covered: "deny-fire (b3)" },
+    { id: "P3.2", path: "goals/org-seats/cos-changes-the-roster", controls: ["drop-member-from-discover"], covered: "deny-fire (b3)" },
     {
       id: "P3.3",
       path: "goals/shift-manager/it-groups-workstreams-under-their-projects",
