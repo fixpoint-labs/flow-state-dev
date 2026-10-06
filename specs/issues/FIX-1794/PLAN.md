@@ -4,8 +4,12 @@
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
 (BR-n) and [DECISIONS.md](DECISIONS.md). `tdd`. Three PRs, a GitHub stack (epic ER-26). P1 starts
-only after a follow-up epic PR records D1 (ER-9, ER-22, ER-24); P2 only after FIX-1788 and
-FIX-1791 merge (epic D4, ER-23).
+only after the epic's record of D1, its [D6](../../epics/FIX-1786/DECISIONS.md#d6) (amendment
+[#2831](https://github.com/fixpoint-labs/flow-state-dev/pull/2831); ER-9, ER-22, ER-24), merges.
+**P1 may start before FIX-1791 merges**: it touches only orchestration, on its own two-flow
+fixtures, and reads no delegate or worker. The epic's path, where FIX-1794 builds after
+FIX-1791, mirrors this exception. P2 starts only after FIX-1788 and FIX-1791 merge (epic D4,
+ER-23).
 
 ## Surfaces
 
@@ -15,15 +19,19 @@ FIX-1791 merge (epic D4, ER-23).
 | S2 | `orchestration` · hand-off and the receiving gate | `taskBoard` accepts S1 for seats that hand off. The hand-off puts the partition on the envelope, from the ref it claimed through. `taskLedgers` can resolve a ref over the partition the envelope names, at the running user's scope only; every gate check runs unchanged | BR-16 BR-21 |
 | S3 | `workforce` · the conversation's board | Each coordinator conversation keeps one board on S1, partitioned by the conversation's incarnation (the value FIX-1791 keys delegate sessions by). One `defaultWorker` seat hands every row to `work` on the flow its assignee names (FIX-1778's per-task target, narrowed to delegates), keyed by task and worker. The dispatched child's birth names the worker (FIX-1788 S1), the `taskId` criterion and the chain depth | BR-16–BR-18 |
 | S4 | `workforce` · filing and the check | `fileTask`, `reassignTask`, `cancelTask`, `listTasks` as public actions on any coordinator conversation and as the coordinator's tools; both call one module. The check: on this conversation's delegate list, without a target, passing FIX-1791's S2 check, flow takes tasks, depth under the limit. Run at filing and again at hand-over. Reassign and cancel are FIX-1780's BR-16 to BR-22 on this board | BR-1–BR-9, FIX-1780 BR-16–22 |
-| S5 | `workforce` · start on add | After an add commits, dispatch a run of this board into this conversation as its own request, rescued so the add never fails. A reassign does the same; a bare assign doesn't | BR-10 BR-23 |
-| S6 | `workforce` · the task entry | `work` (`WORKER_TASK_ENTRY`) on `agent` and the coordinator flow, `from` an S2 resolver over the conversation ledger. After the gate records an ending, one notice to the sender through `{ from: true }`, never an address from the row or payload | BR-16 BR-22 BR-24 BR-25 |
-| S7 | `workforce` · the conversation hears it | `onTaskSettled`, an internal entry on the coordinator flow. Deduped by task, attempt and ending. A retried attempt runs the board again, with no turn. An ending wakes the judgment turn, or lands as a line under a fixed policy. Refused when the conversation is gone or its worker fired | BR-22–BR-29 |
-| S8 | `workforce` · the split | A coordinator task session that filed pieces parks its own row on the board above, marked as waiting on its pieces; S7 sends no notice for that park. After any turn a piece's notice woke, if its board has no open piece, it settles that row from its pieces | BR-30–BR-32 |
-| S9 | `workforce` · the criterion | `taskId` on FIX-1788's `findWorkerSession` and `ensureWorkerSession` criteria, through their shared lookup. `ensure` with a `taskId` never creates | BR-19 BR-20 |
+| S5 | `workforce` · start on add | After an add commits, dispatch a run of this board into this conversation as its own request. The filing succeeds only once that wake is enqueued, or, when it is refused, once the row carries a server-written pending-wake marker; the next filing or action on the board retries an outstanding marker. Filing the id of a row still pending re-triggers the wake, idempotently. A reassign does the same; a bare assign doesn't. No sweeper | BR-9 BR-10 BR-10a BR-23 |
+| S6 | `workforce` · the task entry | `work` (`WORKER_TASK_ENTRY`) on `agent` and the coordinator flow, `from` an S2 resolver over the conversation ledger. The write that records an ending also writes a server-written pending-notice marker on the row; then one notice to the sender through `{ from: true }`, never an address from the row or payload. Only the notice's delivery clears the marker (a refusal under BR-28 clears it too, recorded on the task session). Any run of the board, or action on it, replays an outstanding marker into its own conversation: the row is the outbox | BR-16 BR-22 BR-24 BR-25 BR-26a |
+| S7 | `workforce` · the conversation hears it | `onTaskSettled`, an internal entry on the coordinator flow. Deduped by task, attempt and ending, which absorbs S6's replays. A retried attempt runs the board again, with no turn. An ending wakes the judgment turn, or lands as a line under a fixed policy. Refused when the conversation is gone or its worker fired | BR-22–BR-29 |
+| S8 | `workforce` · the split, **only if [Q](DECISIONS.md#q) keeps it here** | A coordinator task session that filed pieces parks its own row on the board above, marked as waiting on its pieces; S7 sends no notice for that park. Parking writes a parent binding, server-side and recoverable after a restart: the parked row's partition and its claim ticket, on the row and in the task session's server-written state. After any turn a piece's notice woke, if its board has no open piece, the `onTaskSettled` turn settles that row from its pieces through the owning board, using that binding and fenced by its ticket, never a coordinate a caller or payload supplies. If Q moves the split, S8 goes with it and S4 refuses any filing from a task session | BR-30–BR-32 |
+| S9 | `workforce` · the criterion | `taskId` on FIX-1788's `findWorkerSession` and `ensureWorkerSession` criteria, through their shared lookup, beside FIX-1791's `coordinatorSessionId` ([BR-20a](../FIX-1791/BUSINESS-RULES.md#answers-and-rounds)): the hand-off sets it server-side to the filing conversation's incarnation, so the task session's criteria are `{ worker, taskId, coordinatorSessionId }` and two conversations filing one task id for one worker get distinct sessions. `ensure` with a `taskId` never creates | BR-19 BR-20 |
 | S10 | `workforce` · depth | Counted from server-written data at each task session's birth (the parent's depth plus one), never from input | BR-7 BR-8 |
 | S11 | `shift-manager` | The chief of staff gains the four tools. Its Board shows the viewer's conversations' `listTasks`. The Lab reloads after each coordinator turn (#2720's floor); no tool name is special-cased (ER-19) | VG |
 | S12 | `goals/coordinators/files-tasks-down-the-owners-chain/` | The goal check and its two controls, per [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met) | goal |
 | S13 | Docs | [DOCS.md](DOCS.md); the `orchestration` and `workforce` READMEs; `minor` changesets for both | — |
+
+S1 and S2 are one invariant: every operation goes through the partition, and the hand-off
+carries the partition it claimed through. Build and check them together in P1; neither is done
+alone.
 
 **Removed here: nothing.** Mailbox boards, `mailboxTaskLists` and `runOwnerDispatcher`'s use on
 them go with FIX-1792's conversion, which moves each board onto S1 or a workstream.
@@ -32,8 +40,8 @@ them go with FIX-1792's conversion, which moves each board onto S1 or a workstre
 
 | PR | Delivers | Depends on |
 |---|---|---|
-| P1 · the conversation ledger | S1, S2, on orchestration fixtures with two flows and two users | The epic's record of D1 · FIX-1787's merge-first rows |
-| P2 · filing and the chain | S3–S10 | P1 · FIX-1788 and FIX-1791 merged |
+| P1 · the conversation ledger | S1, S2, on orchestration fixtures with two flows and two users | The epic's D6 merged · FIX-1787's merge-first rows · not FIX-1791 |
+| P2 · filing and the chain | S3–S10 (S8 and S10 only if [Q](DECISIONS.md#q) keeps the split) | P1 · FIX-1788 and FIX-1791 merged |
 | P3 · Shift Manager, the goal, the docs | S11–S13, VG | P2 |
 
 ```mermaid
@@ -58,17 +66,17 @@ flowchart TD
 | ID | Runs after | Passes when |
 |---|---|---|
 | V1 | S1 | BR-11 for every operation S1 lists, two sessions on one flow and on two flows; BR-13 with two users; BR-14 after delete and recreate; a partition function that reads input is refused at construction or has no input to read |
-| V2 | S2 | A cross-flow child settles, renews and parks its row in the named partition; an envelope naming another of the user's partitions fails the claim check (BR-21); the task entry is not a public action |
+| V2 | S2 | A cross-flow child settles, renews and parks its row in the named partition; an envelope naming another of the user's partitions fails the claim check (BR-21); the task entry is not a public action. BR-15 across a flow: kill a claimed cross-flow child, let its lease lapse, and the next run of its board reclaims the row through the partitioned path and runs it once more, within the abandonment allowance |
 | V3 | S4 | BR-1–BR-9 through the actions and the tools alike; BR-2 with two users, one answer for Bob's worker and a missing one; BR-3 after firing a delegate between filing and hand-over; FIX-1780 BR-16–BR-22 on this board |
-| V4 | S5 | BR-10 with no drain call in the test; the filing returns before the run starts; a failed start leaves the task pending and the add stored |
-| V5 | S6 S7 | BR-22–BR-29: each ending once, re-read after a grace period; a redelivered notice; a mid-turn notice; a notice to a deleted conversation |
-| V6 | S8 | BR-31, BR-32 with one piece completed and one errored; a reassign in the turn the errored notice woke keeps the task open |
-| V7 | S9 S10 | BR-19, BR-20; BR-7 at depth six, with a forged depth on the input ignored |
+| V4 | S5 | BR-10 with no drain call in the test; the filing returns before the run starts. BR-10a: a refused wake leaves the add stored and the marker on the row, and a re-file of the same id then starts the task, once; so does the next filing of another task |
+| V5 | S6 S7 | BR-22–BR-29: each ending once, re-read after a grace period; a redelivered notice; a mid-turn notice; a notice to a deleted conversation. BR-26a: kill after the ending's write and before the notice's dispatch; the next run of the board delivers the notice exactly once, and the marker is cleared |
+| V6 | S8, if kept | BR-31, BR-32 with one piece completed and one errored; a reassign in the turn the errored notice woke keeps the task open; the parent settles through its binding after a restart between park and the last piece's notice, and a coordinate on the input or payload is ignored |
+| V7 | S9 S10 | BR-19, BR-20; two conversations of one user filing the same task id for the same worker: two sessions, and each conversation's `findWorkerSession` finds its own. BR-7 at depth six, with a forged depth on the input ignored (or, if Q moves the split, a task session's filing refused) |
 | VG | P3 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/coordinators/files-tasks-down-the-owners-chain/run.mts` PASSES, after the same run FAILED leg c under `unpartitioned`, legs a and e under `no-follow-up`, and every leg on today's `main` |
 
 One check per decision: D1 by V1, V2 and VG leg c; D2 by V7. The second path (BP-035): a
-recreated conversation (V1), a fired delegate (V3), a failed start (V4), a duplicate and a late
-notice (V5), two users (V1, V3, VG), the off state of the follow-up (VG control).
+recreated conversation (V1), a dead cross-flow run (V2), a fired delegate (V3), a refused start
+and a re-file (V4), a duplicate, a late and a crash-lost notice (V5), two users (V1, V3, VG), the off state of the follow-up (VG control).
 
 ## Pinned names
 
@@ -76,12 +84,15 @@ notice (V5), two users (V1, V3, VG), the off state of the follow-up (VG control)
 |---|---|---|
 | Actions and tools | `fileTask`, `reassignTask`, `cancelTask`, `listTasks` | Public; an app sends them. Signatures are yours |
 | The criterion | `taskId` | FIX-1788 reserved it for this issue |
+| The task session's lookup key | `coordinatorSessionId`, beside `taskId` and `worker` | FIX-1791's key and value (the filing conversation's incarnation, set server-side), so a task session is found only within the conversation that filed it |
 | The notice entry | `onTaskSettled` | The goal check reads notices by it, as FIX-1780 pinned |
 | The depth limit | 5 | Public (D2) |
 | Controls | `GOAL_CONTROL=unpartitioned`, `GOAL_CONTROL=no-follow-up` | The goal check |
 
-S1's option name is the epic's to record with D1. Everything else is yours, in the new terms
-(worker, delegate, conversation; not seat, mailbox or member).
+S1's option name is FIX-1794's: the epic's [D6](../../epics/FIX-1786/DECISIONS.md#d6) records
+only the partition shape and leaves the name here, because no other child names it. Drafted as
+`partitionBy` in [DOCS.md](DOCS.md); pick the final name in P1. Everything else is yours, in the
+new terms (worker, delegate, conversation; not seat, mailbox or member).
 
 ## Guardrails
 
@@ -89,7 +100,8 @@ S1's option name is the epic's to record with D1. Everything else is yours, in t
 |---|---|
 | Every board operation goes through the partitioned ref, including the wake and exit counts (tenet 5) | A claim narrow alone leaves the read and the wake on every conversation's rows ([POC](poc/board-partition/README.md) E1) |
 | Partition, depth and owner come from server-written data, never input (BP-031, ER-17) | Each decides whose work a run touches |
-| Every ending gives exactly one notice, from one of two producers: the task session's gate, or the board's own run (a refused hand-over, an abandonment) | FIX-1780's *not done if*: none, or twice |
+| Every ending gives exactly one notice, from one of two producers: the task session's gate, or the board's own run (a refused hand-over, an abandonment). Both write the pending-notice marker with the ending, and a replay of it goes through S7's dedup | FIX-1780's *not done if*: none, or twice |
+| Every owed start and owed notice is a marker on the row, written in the same write as what owes it | A crash between the write and the dispatch otherwise strands the task, or its ending goes unheard |
 | The filing never waits for the run, and never fails because the start did | A coding run inside a tool call holds the coordinator; a failed add invites a second filing |
 | The assignee check runs at filing and at hand-over | A delegate fired between the two must not run |
 | No engine change, and no worker or delegate name in orchestration (ER-22, the layer split) | S1's partition is a function the composing layer supplies |
@@ -97,25 +109,28 @@ S1's option name is the epic's to record with D1. Everything else is yours, in t
 
 ## Docs
 
-Reconcile and publish [DOCS.md](DOCS.md) in P3, after V1 to V7 pass, against S1's recorded name
-and the shipped refusal wording.
+Reconcile and publish [DOCS.md](DOCS.md) in P3, after V1 to V7 pass, against the name P1 gave
+S1's option and the shipped refusal wording.
 
 ## Sketch · pseudocode, illustrative, react to the shape
 
 ```
 fileTask(goal, assignee) in conversation C:
     check assignee against C's delegates, live                       ← one module, app and tool
-    add the row to C's partition                                     ← partition = C's incarnation
-    dispatch "run my board" into C, own request; return             ← never waits
+    add the row to C's partition (or, same id still pending, keep it) ← partition = C's incarnation
+    dispatch "run my board" into C, own request                     ← never waits
+    refused? mark the row wake-owed; return                         ← next touch retries
 run my board, in C, as C's owner:
-    claim from C's partition only; hand each row to work on its worker's flow, key (task, worker)
+    replay any notice-owed marker into C; clear any wake-owed one
+    claim from C's partition only; hand each row to work on its worker's flow,
+        key (task, worker, coordinatorSessionId = C's incarnation)
 work, in the task session (any flow):
     gate reads the row in the partition the envelope names           ← at the owner's user scope
-    run; record; notify the sender { from: true }                   ← one notice per ending
+    run; record the ending + notice-owed, one write; notify { from: true }; clear on delivery
 onTaskSettled in C:
     retried → run my board again
-    ended   → the coordinator's turn; if C is itself a task session with no open piece,
-              settle its own row on the board above
+    ended   → the coordinator's turn; if C is itself a task session with no open piece (Q),
+              settle its own row on the board above through its parent binding
 ```
 
 **POC:** [`poc/board-partition/`](poc/board-partition/README.md), 4 legs. It confirmed an
@@ -125,9 +140,16 @@ back across a flow (F1). D1 rests on E1. No counted fact carries the design, so 
 
 ## At implement time
 
-- Take the epic's record of D1 and its name for S1's option, FIX-1788's dispatched-child birth
-  input and criteria shape, and FIX-1791's delegate check and incarnation function. If any
-  differ from this plan, change them there, once.
+- Take the epic's D6 (the partition shape; the option's name stays this issue's), FIX-1788's
+  dispatched-child birth input and criteria shape, and FIX-1791's delegate check, incarnation
+  function and `coordinatorSessionId` key. If any differ from this plan, change them there,
+  once.
+- How an app names the conversation in `findWorkerSession({ worker, taskId,
+  coordinatorSessionId })`: adopt FIX-1791's shape for the key. The incarnation's stamp is read
+  server-side from the conversation's record, never supplied by a caller.
+- Promote the POC's U1 and E1 into `packages/orchestration/test/task-board/hand-off-cross-flow.test.ts`
+  in P1, as a describe over the partitioned ledger (U1 green, E1's read and wake closed), so the
+  regression runs in default CI. Keep the retained POC as a pointer to it.
 - Where flow code reads a conversation's incarnation: FIX-1788's server-written data at birth
   first. If only the engine can supply it, that is part of the change the epic records.
 - S1's key layout: adopt only a partition's direct children and refuse an id containing `/`
@@ -143,6 +165,9 @@ back across a flow (F1). D1 rests on E1. No counted fact carries the design, so 
 
 - A task into a workstream's existing session (a delegate record with a target, BR-4): after
   FIX-1793, if a project coordinator needs to file rather than post.
-- A row whose run died is taken back only when its board runs again (BR-15). A sweeper that wakes
-  such boards is out of scope.
+- A row whose run died is taken back only when its board runs again (BR-15), and an owed start
+  or notice is sent only at the board's next touch (BR-10a, BR-26a). A sweeper that wakes such
+  boards is out of scope.
+- If [Q](DECISIONS.md#q) moves the split: a follow-up issue for S8, D2's limit (S10), BR-7 and
+  BR-30 to BR-32, V6, and goal leg b, on this board with the parent binding as written here.
 - A coding worker's harness task list (concept step 5) composes under FIX-1763.

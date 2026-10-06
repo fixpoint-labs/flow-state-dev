@@ -3,8 +3,8 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
 Reader-facing prose this issue publishes in P3, reconciled against the shipped names and refusal
-wording first. S1's collection option is drafted here as `partitionBy`; the epic records its
-final name with D1, and the prose follows it. Voice: [`CLAUDE.md`](../../../CLAUDE.md) →
+wording first. S1's collection option is drafted here as `partitionBy`; P1 picks its final name
+(the epic's D6 records only the shape), and the prose follows it. Voice: [`CLAUDE.md`](../../../CLAUDE.md) →
 "Writing Style". Watch for: framework terms on first use ("task session", "partition"), no issue
 numbers under `apps/docs/`, and no em-dash as a connector.
 
@@ -55,10 +55,20 @@ The page is FIX-1791's. This section lands after it does.
 > To open the session working a task, look it up with the task's id:
 >
 > ```ts
-> const run = await workforce.findWorkerSession({ worker: "researcher", taskId })
+> const run = await workforce.findWorkerSession({
+>   worker: "researcher",
+>   taskId,
+>   coordinatorSessionId: session.id,
+> })
 > ```
 >
+> Name the conversation that filed the task. Two conversations can file the same task id for the
+> same worker, and each finds only its own task's session.
+>
 > ### Splitting work
+>
+> *(Published only if the split ships in this issue, [Q](DECISIONS.md#q); otherwise the
+> follow-up publishes it.)*
 >
 > A delegate that is itself a coordinator can split its task. It files the pieces on its own task
 > session's board, for its own delegates, and its task waits until the last piece ends. Then it
@@ -118,7 +128,8 @@ And in "What the board requires", the `sharedToLineage` bullet becomes:
 > A coordinator conversation also keeps a task board. `fileTask` files a task for one of its
 > delegates, which starts at once in a task session of the delegate's; `listTasks`,
 > `reassignTask` and `cancelTask` follow it, and the conversation hears when each task ends.
-> `findWorkerSession({ worker, taskId })` finds a task's session. Chains stop five boards deep.
+> `findWorkerSession({ worker, taskId, coordinatorSessionId })` finds a task's session. Chains
+> stop five boards deep.
 > See [Handing out tasks](../../apps/docs/docs/workforce/coordinators.md#handing-out-tasks).
 
 ## UPDATE · `packages/orchestration/README.md` · "Task board", after the durable-collection paragraph

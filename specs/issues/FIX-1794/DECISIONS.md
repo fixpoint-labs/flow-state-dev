@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-What was considered, what was chosen, why, and what each choice locks in. Two decisions are the
-sign-off surface. The chain itself (tasks from delegates, a new task session per task, every
+What was considered, what was chosen, why, and what each choice locks in. Two decisions and one
+open question ([Q](#q), the split's scope) are the sign-off surface. The chain itself (tasks from delegates, a new task session per task, every
 session the owner's) is the PRD's and the epic's, and is not reopened here.
 
 ## The tree
@@ -15,9 +15,12 @@ flowchart TD
   D1 -.->|"rejected"| X1b["wire the engine's parent-task seam · a fourth engine change"]
   I --> D2["D2 · a chain stops five boards deep"]
   D2 -.->|"rejected"| X2["no limit · a loop of delegates spends until someone looks"]
+  I -.->|"open"| Q["Q · the split ships here, or in a follow-up issue"]
+  Q -.->|"if it moves"| D2
 ```
 
-Solid edges are what you're signing. Dashed edges lost, and the label says why.
+Solid edges are what you're signing. Dashed edges lost, and the label says why. [Q](#q) is
+open; if the split moves to a follow-up, D2 moves with it.
 
 <a name="d1"></a>
 ## D1 · A board whose tasks run on another flow keeps them at its owner's user scope, in a partition only its own conversation reaches
@@ -25,7 +28,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | (a) The board stays in its conversation's session, and the task session settles the row by replying to it · (b) the engine's declared parent-task seam, wired so a task session settles one row in its parent's session |
-| **Because** | A lineage stops at a flow, and every coordinator hands work to an `agent` worker. The owner's user scope crosses flows today, and the task session then reads, renews, parks and settles its row exactly as a same-flow run does: lease, retries, run link and park all work unchanged. Unpartitioned, one conversation takes another's tasks ([POC](poc/board-partition/README.md) U1); a claim narrow in Workforce holds the claim but not the read or the wake (E1). So the ledger itself is kept per conversation, named from the conversation's own server-written identity. (a) leaves a run nobody renews: a lapsed lease runs the task twice, a missing one strands it when the run dies. (b) changes the engine as well as the board, and the seam's verbs read and settle a row but don't renew, park or link a run |
+| **Because** | A lineage stops at a flow, and every coordinator hands work to an `agent` worker. The owner's user scope crosses flows today, and the task session then reads, renews, parks and settles its row exactly as a same-flow run does: lease, retries, run link and park all work unchanged. Unpartitioned, one conversation takes another's tasks ([POC](poc/board-partition/README.md) U1); a claim narrow at Layer 2, the shape of harness-manager's `runOwnerDispatcher`, holds the claim but not the read or the wake (E1). So the ledger itself is kept per conversation, named from the conversation's own server-written identity. (a) leaves a run nobody renews: a lapsed lease runs the task twice, a missing one strands it when the run dies. (b) changes the engine as well as the board, and the seam's verbs read and settle a row but don't renew, park or link a run |
 | **Locks in** | A change to the task board, Layer 1, so it binds only once the epic records it ([ER-9](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), [ER-22](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)). One shape for every board in the chain, same flow or not, so FIX-1792's converted boards and FIX-1793's workstream boards are built on it. The engine is untouched |
 
 ![D1: where a board keeps tasks a worker on another flow runs. At the owner's user scope, one partition per conversation, chosen, beside the board staying in its session and settled by a reply. Decides it: what still works when a run dies or waits; lease, retries and park work unchanged, where a reply-settled row can't be renewed. The price: a change to the task board, Layer 1, raised to the epic. A user's rows never reach another user under either. Locks in one board shape for the chain; flips if the engine gets a cross-session row seam](figures/d1-per-conversation.svg)
@@ -72,9 +75,23 @@ the docs state the cost per level.
 - **An unassigned task goes to the conversation's only delegate.** With none or several it
   waits, and the filing's answer says to assign it (FIX-1777 BR-4, BR-19).
 - **A task session is a child of the conversation that filed it**, born linked to its worker
-  (FIX-1788 BR-18) and keyed by the task and its worker, so a retry re-enters it and a reassign
-  opens a new one. It carries the `taskId` criterion: `findWorkerSession` finds it, and
+  (FIX-1788 BR-18) and keyed by the task, its worker and the filing conversation's incarnation,
+  so a retry re-enters it, a reassign opens a new one, and two conversations that file the same
+  task id for the same worker get two sessions. It carries the `taskId` criterion beside
+  FIX-1791's `coordinatorSessionId` ([BR-20a](../FIX-1791/BUSINESS-RULES.md#answers-and-rounds)), which the hand-off
+  sets server-side: `findWorkerSession` finds it within its conversation, and
   `ensureWorkerSession` with a `taskId` never creates one.
+- **Every ending is heard, even across a crash.** The write that records a task's ending also
+  writes a pending-notice marker on its row, server-side; only the notice's delivery clears it.
+  Any later run of the board, or action on it, replays an outstanding marker into the
+  conversation, and S7's dedup absorbs the replay. The row is the outbox; no sweeper.
+- **A filed task always gets its start.** A filing succeeds only once the board's wake is
+  enqueued, or the row carries a pending-wake marker that the next filing or action on the board
+  retries. Filing a still-pending task's id again re-triggers the wake, idempotently.
+- **If the split stays here ([Q](#q)), a waiting task settles through its own board.** Parking
+  it writes a parent binding, server-side and recoverable: the row's partition and its claim
+  ticket. The later `onTaskSettled` turn settles that row through the board that owns it, with
+  that binding, never with a coordinate a caller or a payload supplies.
 - **The partition is the conversation's incarnation**: its id plus a value minted at its birth
   that only the server writes, the same incarnation FIX-1791 keys delegate sessions by. A
   conversation deleted and created again starts with an empty board; the old rows stay in the
@@ -91,9 +108,59 @@ the docs state the cost per level.
 | `sharedToLineage` boards, as the PRD wrote | A lineage stops at a flow (epic POC C1); every coordinator-to-`agent` hand-off crosses one |
 | Lineage for same-flow hops, a partition for cross-flow ones | Two ways to keep one board, chosen by which flow a delegate names, so a delegate edited to another flow moves its tasks' storage |
 | One unpartitioned ledger at the owner's user scope | One conversation takes another's tasks ([POC](poc/board-partition/README.md) U1); struck by the epic in review |
-| A claim narrow in Workforce, the `runOwnerDispatcher` shape | Holds the claim only: the read lists, and the drain waits on, every conversation's rows (POC E1) |
+| A claim narrow at Layer 2, the shape of harness-manager's `runOwnerDispatcher` | Holds the claim only: the read lists, and the drain waits on, every conversation's rows (POC E1). Named so a Layer-2-only fix isn't proposed again |
 | The task session opened by `ensureWorkerSession`, then an `id` delivery | A second task-board change, and the session loses the parent link a workstream's runs walk up |
 | A per-task owner field, checked at claim | Orphaned by the partition: the row's scope is its owner |
+
+## Open
+
+<a name="q"></a>
+### Q · open · Does the split ship in this issue, or in a follow-up issue?
+
+**The fork.** A worker given a big task can split it: hand the pieces to its own delegates,
+wait for them, and finish from what they return. Build that here, or in a follow-up issue built
+straight after this one?
+
+**In plain terms.** Without the split, a coordinator files a task for a delegate, the delegate
+does it, and the conversation hears how it went: one level. With it, a delegate that is itself a
+coordinator hands pieces of its task to its own delegates; its task waits, with no notice, until
+the last piece ends, then finishes with what the pieces returned, and the conversation above
+hears that. If the split moves out, a delegate that tries to hand a piece on is told it can't
+yet, and does the work itself, so no task ever finishes before its pieces.
+
+**The trade-off.** Moving it: this issue ships filing, notices, reassign and cancel, and each
+conversation's board kept its own, one level deep. The split, its five-level limit
+([D2](#d2)) and goal leg b land in the follow-up, on the same board, with nothing stored
+reshaped. Keeping it: the PRD's chain ships whole, and this issue carries its largest new
+behaviour after D1, the one review's hardest finding landed on (a waiting task settled later,
+by a turn that no longer holds the authority to settle it).
+
+**My recommendation: move it to a follow-up issue.** The epic's MVP doesn't check it. Its leg b
+asks that every session in each owner's chain be theirs, and that two of Alice's boards that
+hand rows to another flow each drain only their own
+([epic goal](../../epics/FIX-1786/SPEC.md#the-goal-and-how-well-know-its-met)); a workstream
+lead filing for an `agent` delegate, and two conversations, meet both at one level.
+[FIX-1780](../FIX-1780/SPEC.md), whose notices and reassign this issue carries, has no split.
+The PRD does ask for it ("a worker that splits its task files the pieces on its own board"), and
+so does the concept ("as deep as the work needs"), so this is an amendment to this issue's
+outcome, said out loud, not a trim. It is the cheapest place to cut: one level proves the board
+and the notices in use before anything stacks on them, and the follow-up adds to the row rather
+than changing it.
+
+**What would change my mind.** Something before the MVP that needs a delegate to hand pieces
+on: the closure run scripted with a lead that splits a feature, or Shift Manager's coding work
+([FIX-1763](https://linear.app/fixpoint-labs/issue/FIX-1763)) expecting a lead to split a
+feature across coding workers before then. Or "as deep as the work needs" already shown or
+promised to someone. Then it stays here, with the parent binding in *decided, not asked*.
+
+**If wrong.** Low, and reversible either way. Cut wrongly: a user whose delegate needs to split
+waits one follow-up issue, and the delegate does the work itself meanwhile. Kept wrongly: a
+larger middle PR and a longer review for a part the MVP's check never runs.
+
+![Q, open: whether the split ships in this issue or a follow-up. A follow-up, recommended, beside building it here. Decides it: what the epic's MVP check needs, which one level meets. The price of moving: the PRD's chain ships one level deep for now, and a delegate that must split does the work itself. A tie: what is stored, since the follow-up adds to the row and reshapes nothing. Locks in: this issue ships one level; the split, D2 and goal leg b go to the follow-up. Flips if: something before the MVP needs a delegate to split](figures/open-split-scope.svg)
+
+It comes down to what the MVP checks: one level meets it, and the split is the riskiest part
+left.
 
 ## Settled
 
@@ -112,5 +179,9 @@ the docs state the cost per level.
   folded in (Jake, 2026-10-06). Per-conversation partitions at the owner's user scope over a reply
   or an engine seam, after a POC showed a Workforce-only narrow leaves the read and the wake
   open. A depth limit of five. Three PRs.
+- **Review round 1** (Codex, Cursor) — an ending's notice and a filing's start each made durable
+  by a marker on the row that the next touch of the board replays; a task session found within
+  its own conversation; a parked task given a server-written binding to settle through its own
+  board. The split's scope raised as [Q](#q).
 
-**Open: none.**
+**Open: [Q](#q)**, the split's scope.
