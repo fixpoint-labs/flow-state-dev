@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 392" role="img" aria-label="Two panels over a line of main commits. Today: eight children of FIX-1786, each green on its own commit and its own fixture, and about two dozen older goal checks that touch mailboxes, rooms or hires, never run together and never through the screens a person uses. After: a milestone run of leg c on FIX-1788's merge commit, then one main commit, picked after every child merges, carrying four stacked parts: legs a to c in Shift Manager with two users and a real model; the app-builder journey from the docs alone; every child check plus every older check the epic touched; the seam sweep. A finding is filed under FIX-1786 and sends the whole stack round again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-alone { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-old { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-part { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-mile { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .n-find { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .line  { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .tick  { fill:var(--ink-3); }
+    .pin   { fill:var(--accent); }
+    .loop  { stroke:var(--prose); stroke-width:1.3; fill:none; stroke-dasharray:5 3; }
+    .rule  { stroke:var(--rule); stroke-width:1; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-pr  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="392"/>
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · EACH CHECK ON ITS OWN COMMIT AND FIXTURE</text>
+    <rect class="n-alone" x="16" y="44" width="100" height="44" rx="5"/>
+    <text class="t-b" x="26" y="64">1789 · 1790</text>
+    <text class="t-s" x="26" y="80">contract, keys</text>
+    <rect class="n-alone" x="124" y="44" width="100" height="44" rx="5"/>
+    <text class="t-b" x="134" y="64">1788</text>
+    <text class="t-s" x="134" y="80">two hosts</text>
+    <rect class="n-alone" x="232" y="44" width="100" height="44" rx="5"/>
+    <text class="t-b" x="242" y="64">1791 · 1794</text>
+    <text class="t-s" x="242" y="80">SM over HTTP</text>
+    <rect class="n-alone" x="340" y="44" width="114" height="44" rx="5"/>
+    <text class="t-b" x="350" y="64">1793 · 1792</text>
+    <text class="t-s" x="350" y="80">SM · census</text>
+    <rect class="n-old" x="16" y="104" width="438" height="40" rx="5"/>
+    <text class="t-gone" x="28" y="122">~two dozen older checks touch mailboxes, rooms, hires</text>
+    <text class="t-s" x="28" y="137">FIX-1650's closure among them · nothing owns them for the set</text>
+    <path class="rule" d="M66 88 V320 M174 88 V320 M282 88 V320 M397 88 V320"/>
+    <text class="t-s" x="16" y="376">never run together · never in the screens</text>
+  </g>
+  <g id="divider">
+    <path class="rule" d="M470 16 V380"/>
+  </g>
+  <g id="after">
+    <text class="t-lbl" x="492" y="24">AFTER · A MILESTONE, THEN ONE COMMIT</text>
+    <rect class="n-mile" x="492" y="208" width="136" height="44" rx="5"/>
+    <text class="t-b" x="502" y="228">milestone</text>
+    <text class="t-s" x="502" y="244">leg c · at 1788</text>
+    <path class="rule" d="M520 252 V320"/>
+    <rect class="n-part" x="664" y="44" width="260" height="38" rx="5"/>
+    <text class="t-b" x="676" y="61">1 · legs a to c, then controls</text>
+    <text class="t-s" x="676" y="75">Shift Manager · two users · real model</text>
+    <rect class="n-part" x="664" y="90" width="260" height="38" rx="5"/>
+    <text class="t-b" x="676" y="107">2 · an app from the docs alone</text>
+    <text class="t-s" x="676" y="121">a docs-only writer · J1</text>
+    <rect class="n-part" x="664" y="136" width="260" height="38" rx="5"/>
+    <text class="t-b" x="676" y="153">3 · every child, every older check</text>
+    <text class="t-s" x="676" y="167">pass, or retired with a line</text>
+    <rect class="n-part" x="664" y="182" width="260" height="38" rx="5"/>
+    <text class="t-b" x="676" y="199">4 · the seam sweep</text>
+    <text class="t-s" x="676" y="213">one copy per flow · fence · docs</text>
+    <path class="rule" d="M644 63 H664 M644 109 H664 M644 155 H664 M644 201 H664 M644 63 V320"/>
+    <circle class="pin" cx="520" cy="320" r="6"/>
+    <circle class="pin" cx="644" cy="320" r="6"/>
+    <text class="t-acc" x="492" y="350">FIX-1788 merges</text>
+    <text class="t-acc" x="620" y="366">every child merged</text>
+    <rect class="n-find" x="712" y="262" width="212" height="40" rx="5"/>
+    <text class="t-pr" x="724" y="280">a finding · a child of FIX-1786</text>
+    <text class="t-pr" x="724" y="294">blocks FIX-1797 until fixed</text>
+    <path class="loop" d="M712 282 H690 Q680 282 680 296 V314 H652"/>
+    <text class="t-pr" x="760" y="320">the whole stack, again</text>
+  </g>
+  <g id="commit-line">
+    <path class="line" d="M16 320 H454"/>
+    <circle class="tick" cx="66" cy="320" r="4"/>
+    <circle class="tick" cx="174" cy="320" r="4"/>
+    <circle class="tick" cx="282" cy="320" r="4"/>
+    <circle class="tick" cx="397" cy="320" r="4"/>
+    <text class="t-lbl" x="16" y="350">MAIN, OLDER TO NEWER</text>
+    <path class="line" d="M492 320 H700"/>
+  </g>
+</svg>

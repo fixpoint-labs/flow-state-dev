@@ -1,0 +1,204 @@
+# FIX-1797 · Plan
+
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md)
+
+Written for the closure worker, which owns the step definitions. It runs twice in shape: the
+milestone when FIX-1788 merges (QR-2), and the final run when QR-1 holds. It adds only the goal
+check. Names below are directional: read every name off the children's **merged** specs on
+`main` and their shipped code. Where a merged spec or the code renames something, that name wins.
+
+## Surfaces
+
+| ID | Where | Change |
+|---|---|---|
+| S1 | `goals/workforce-privacy/two-users-share-a-project-and-nothing-else/` | `goal.md` from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met) in the `goals/README.md` format, with the on-demand posture (QR-5). `run.mts` is a thin orchestrator: build Shift Manager once, run the legs, the controls, J1, the part-3 manifest and the part-4 assertions, write the report. `GOAL_ONLY=milestone` runs [the milestone](#the-milestone) |
+| S2 | `goals/lib` | What the legs share: start, stop and restart Shift Manager over a run-scoped store; a browser context and a route client per user, each with only its own bearer; read the store through the install's routes. Promoted from `goals/shift-manager/one-person-runs-a-labs-projects-and-people/` and the children's checks where they hold it, never imported across goal directories |
+| S3 | `controls/` under S1 | The scratch patches: `org-scoped-workers`, `unpartitioned`, `no-roster-check`, and `second-org` when the commit has no second-org principal. Applied to a copy of the commit, never committed, printed in full in the report |
+| S4 | Part 3's manifest, under S1 | Each child's goal path with the controls still owed, and P3.9's list, computed on the commit (see [Part 3](#part-3--every-childs-check-and-every-older-check-the-epic-touched)). Each runs as its own subprocess |
+| S5 | J1's scratch app | A fresh directory the writer builds in; deleted after the run |
+| S6 | The closure PR | Only after a final run that files nothing: S1 to S4 with the verdict log, the report as its body. No changeset |
+
+## Sequence
+
+```mermaid
+flowchart TD
+  M0["FIX-1788 merges · the coordinator dispatches"] --> MS["the milestone · a1 a2, c1 to c3, c6 c7, org-scoped-workers"]
+  MS -->|"findings block FIX-1791 and FIX-1795"| W["wait for every child"]
+  W --> M["QR-1 holds · pick the commit · build"]
+  M --> A["leg a · roster, fork, coordinator, post · restart"]
+  A --> B["leg b · projects, workstreams, chains · restart"]
+  M --> C["leg c · Bob's reaches · second org · old store"]
+  B --> K["controls · each on a fresh store"]
+  C --> K
+  T["today's main · its own build"] -.->|"a control"| K
+  K --> J["part 2 · J1 · an app from the docs"]
+  J --> P3["part 3 · children's checks · older checks"]
+  P3 --> P4["part 4 · scripted seam assertions"]
+  P4 -->|"findings"| F["file each, blocking FIX-1797 · stop"]
+  P4 -->|"none"| PR["closure PR with the report"]
+```
+
+Legs a and b share one store and one server, because leg b uses the roster leg a built. Leg c
+runs on its own store and builds what it reaches for through the app first.
+
+## Checks
+
+Every row read on the page is compared by id with what the store returns through the install's
+routes, never with Shift Manager's state. Names marked *held-out* are picked at run time. The
+surface each step uses follows [D2](DECISIONS.md#d2); the column says which is expected.
+
+| ID | Surface | Passes when |
+|---|---|---|
+| a1 | screen | **Roster.** Alice's roster lists every standard worker, marked standard with its flow, and nothing of Bob's. Bob's lists the same standard workers and nothing of Alice's |
+| a2 | screen, else turn | **Fork.** Alice forks a standard worker under a held-out name. One new worker row at Alice's user scope naming the same flow; the standard worker unchanged; Bob's roster unchanged |
+| a3 | turn, then screen | **Coordinator.** Alice gets a coordinator on her roster with `best-fit` routing, and adds her fork and one standard worker as delegates in the delegates panel. Its session's delegates are exactly those two |
+| a4 | screen | **Post.** Alice posts a held-out ask that fits her fork. One delivery, to the fork's session; one routing record `by: best-fit`; the fork's answer on screen; every session the post created belongs to Alice and links the worker it names |
+| a5 | — | **Restart.** a1 to a4 read the same on a new process over the same store |
+| b1 | turn or screen | **Projects.** Alice creates a shared project P (held-out) with Bob as a member, and a private project Q. Both are on Alice's PROJECTS; P only on Bob's |
+| b2 | screen | **Workstreams.** Alice opens a workstream on P led by her fork; Bob opens one led by a worker on his roster. Each workstream session belongs to its owner; the project view, for each of them, counts two workstreams and both owners' objectives |
+| b3 | screen | **Chains.** Each asks their project coordinator for work. A task is filed down each owner's chain; every session in Alice's chain is hers and in Bob's is his; each completes; no session of one chain is the other's |
+| b4 | screen | **Two boards.** Two of Alice's conversations each file one task for a delegate on another flow. Each runs and lists only its own row, and its drain doesn't wait on the other's |
+| b5 | — | **Restart.** b1 to b4 read the same on a new process |
+| c1 | HTTP as Bob | **Session.** Bob opens Alice's coordinator conversation and posts to it: refused |
+| c2 | HTTP as Bob, then screen | **Worker.** Bob reads Alice's fork: refused, or not found. Bob's roster doesn't list it. Bob forks the same standard worker and asks his fork for a held-out word Alice's fork was given: his answer and his fork's state hold none of it |
+| c3 | HTTP as Bob | **Link.** Bob creates a session naming Alice's fork, and one seeding a worker link or delegates in the create's state: each refused |
+| c4 | screen and turn as Bob | **Delegate.** Bob names Alice's fork as a delegate on his own coordinator, in the panel and through its tool: refused like a missing worker |
+| c5 | HTTP as Bob | **Entry.** Bob writes Alice's workstream entry on P: refused through the app and through a worker's tool. Bob lists, opens or reads Q: refused |
+| c6 | screen as Alice | **Second org.** Alice in her second org sees none of her first org's workers, sessions, projects or user data |
+| c7 | HTTP | **Old store.** On the store `cad4e2780` wrote, after the published upgrade steps, Alice's earlier records read in one org at most, and none in her second org |
+
+## The milestone
+
+On FIX-1788's merge commit ([D1](DECISIONS.md#d1)): a1 and a2 as setup and graded, then c1, c2,
+c3, c6 and c7, then `org-scoped-workers`. Steps that need what FIX-1788 doesn't ship yet (the
+coordinator, projects) are left out, not failed. The report is posted on FIX-1797 and on
+FIX-1788's last PR; the code is pushed to `fix/FIX-1797`. A failure follows QR-15.
+
+## Controls
+
+Each runs on a fresh store and must fail its step and leave the rest of its leg green. One that
+fails at setup, reddens another step, or can't apply to the commit is a finding.
+
+| Control | Changes | Runs | Must fail | Stays green | Named by |
+|---|---|---|---|---|---|
+| Today's `main` | `cad4e2780`, its own build | a, b, c | a2 · b2 · c2 | — | Epic goal |
+| `org-scoped-workers` | The worker collection at org scope | c | c2, *Bob reads Alice's worker* | c6 · c7 | Epic goal; FIX-1788's name |
+| `unpartitioned` | One ledger per owner, no partition per conversation | b | b4, *each runs only its own* | b1 · b2 | FIX-1794's name |
+| `no-roster-check` | The delegate check skipped | c4 | c4, *Bob's delegate refused* | — | FIX-1791's name |
+
+## Part 2 · the team the legs don't walk
+
+| ID | Team | Passes when |
+|---|---|---|
+| J1 | **Builds an app on Workforce** | A writer that sees only the pages [DOCS.md](DOCS.md) lists, as published on the commit, builds S5 from nothing: registers a worker flow of its own on the installation's list, declares a standard worker on it and a coordinator that names it as a delegate. A step no page covers is a failed step, reason *doc silent* (QR-18). The app boots with no refusal; then, as two users over HTTP, Alice forks the worker and her coordinator routes a post to her fork, and Bob's c1 to c3 against it are each refused. `packages/shift-manager` is untouched |
+
+The epic's other four teams are legs a, b and c.
+
+## Part 3 · every child's check, and every older check the epic touched
+
+Each child's check runs on its **green path**. A control part 1 already failed on this commit
+stands for that child's control and is not run again.
+
+| ID | Check | Controls still run here | Covered by part 1 |
+|---|---|---|---|
+| P3.1 | FIX-1789 · `goals/worker-contract/runs-workers-only-on-registered-flows/` | its own | — |
+| P3.2 | FIX-1790 · `goals/user-scope/keeps-a-users-data-in-the-org-it-was-saved-in/` | `cross-org-key`, `fallback-read` | — |
+| P3.3 | FIX-1788 · `goals/workers-as-resources/keeps-each-users-workers-their-own/` | `caller-link` | `org-scoped-workers` (c2) |
+| P3.4 | FIX-1791 · `goals/coordinators/hands-each-post-to-its-delegates/` | `no-round-limit`, `no-delegate-read` | `no-roster-check` (c4) |
+| P3.5 | FIX-1793 · `goals/projects/a-shared-project-has-one-owner-per-workstream/` | `no-owner-rule`, `all-entries-delegate` | — |
+| P3.6 | FIX-1794 · its check, from its merged spec | `no-follow-up` | `unpartitioned` (b4) |
+| P3.7 | FIX-1792 · its check, from its merged spec | its own | — |
+| P3.8 | FIX-1796 · the retired-terms census, with `--control` | its control | — |
+| P3.9 | **Every other goal directory** whose code reaches `@flow-state-dev/workforce`, the task board or `packages/shift-manager`, computed on the commit by import. This closure's S1 excluded | their own, as each goal names | — |
+
+For P3.9, each directory passes, or is retired: deleted, or its `goal.md` marked retired, by a
+child's PR whose body names the rule that replaces it. The manifest records which PR retired it.
+Red, or gone with no line: QR-16. A keyword grep on today's `main`
+(`grep -rlE "MAILBOX\.md|openMailboxes|talkFor|room-lines|registerHiredSeat|brokenSeats|rehire" goals`)
+finds about two dozen directories; the import walk is the list, not the grep.
+
+## Part 4 · gap sweep
+
+Only what parts 1 to 3 don't grade. Each *required* row is a scripted assertion in `run.mts`:
+a grep, a parse, a boot, or a `git diff` from `cad4e2780` to the commit.
+
+**Required for PASS** (QR-13):
+
+| Check | The assertion |
+|---|---|
+| **One copy per flow (ER-1, ER-20)** | Booting the DevTeam install registers each worker flow once; no Workforce code under `packages/` calls a flow-instance register or sets an owner pin |
+| **The worker-flow list (Q1)** | `agent` and the coordinator flow are entries on the installation's list; no `defineWorkerFlow` export |
+| **No `MAILBOX.md` (ER-6)** | No tracked `MAILBOX.md`. One placed in a scratch copy of the DevTeam tree is refused at load, by its path, with the conversion in the message |
+| **Mailbox parts gone** | The mailbox flow, project claims and a project row's mailbox list are not exported and not read by Shift Manager |
+| **Server-only session data (D3)** | A session create carrying the worker link or delegates in its state is refused naming the field, for every worker flow on the list |
+| **Layer fence (ER-22)** | The diff adds no file under `packages/core` or `packages/engine` naming a worker, coordinator, workstream or project; Layer 1 changes are only epic D3's, as recorded on the commit |
+| **Docs published (ER-29)** | Every row of the epic's [ownership table](../../epics/FIX-1786/DOCS.md#ownership) exists on the commit with its section, except FIX-1795's; `mailboxes.md` is gone and `upgrading.md` exists |
+
+**Observations · filed off epic:** only what the run notices outside the epic's goal. Reported,
+never gating.
+
+## The report
+
+The closure PR's body, the comment a final run that files findings leaves on FIX-1797, and the
+milestone's comment, in the same shape:
+
+1. **Head.** Milestone or final, the run's number, the `main` SHA, each child's merge commit, the
+   model and its key's provider (never the key), each store file and its steps, Chromium's
+   version.
+2. **Part 1.** Per step: PASS or FAIL, the surface used, what the page showed, the store read it
+   was compared with by id. Per model turn: the words sent, the session id, each tool call and
+   result by item id. A screenshot of each leg's last step.
+3. **Controls.** Each patch in full, the step it failed at and the line.
+4. **J1.** The writer's files, its steps, each *doc silent* step.
+5. **Parts 3 and 4.** Each manifest entry's verdict; P3.9's list with each retirement's PR; each
+   required row's output; observations.
+6. **Findings.** Each with its Linear id, the step it came from, and the run that retested it;
+   one the owner closed, with the reason quoted.
+
+## Pinned names
+
+| Where | Name |
+|---|---|
+| Goal check | `goals/workforce-privacy/two-users-share-a-project-and-nothing-else/` |
+| Steps | `a1` to `a5`, `b1` to `b5`, `c1` to `c7`, `J1`, `P3.1` to `P3.9` |
+| Controls | `org-scoped-workers`, `unpartitioned`, `no-roster-check`; scratch patch `second-org` |
+| Subset | `GOAL_ONLY=milestone` |
+
+Everything else is yours to name.
+
+## Guardrails
+
+| Rule | Because |
+|---|---|
+| No product change, and no control switch in Shift Manager or any package | The closure proves what shipped; a switch written for a test is product code |
+| Every change through the app (D2); none by a store write or a block the check calls | The epic's anti-game; a fixture proves the fixture |
+| Bob's requests carry Bob's bearer only | A refusal under the wrong identity proves nothing about Bob |
+| Every row compared by id against the store, never Shift Manager's state | A shell that draws its own rows passes a check that reads the shell |
+| One graded turn per model step | A retry grades a coordinator nobody uses |
+| Part 4's required rows are executed, not read (BP-003) | A tired reader skips the row a script can't |
+| Scratch patches printed in full | A patch that changes more than it says is how a step passes hollow |
+| Every final check on the one commit; today's `main` only as a control | A pass elsewhere proves nothing about the set |
+| Findings are filed, never fixed here | The closure rule |
+
+## Docs
+
+No reader-facing change. [DOCS.md](DOCS.md) lists the pages J1 follows.
+
+## At implement time
+
+- Re-read every child's merged spec and amendments; FIX-1792 and FIX-1794 were not merged when
+  this was written, and the epic's amend-4 (D6, the per-conversation ledger) was in review.
+- Take the users' bearers and the store's env name from the DevTeam host as shipped
+  (`LAB_USERS` today); Alice's second org per *Decided, not asked*.
+- **The milestone needs a dispatch.** Report it in the status line on the spec gate, so the
+  coordinator arms it before FIX-1788's last PR merges.
+- **Tell the children D3 early.** Report it to the coordinator at the spec gate, so each child
+  retires or rewrites the checks it breaks in its own PR rather than at this run.
+- `goals/shift-manager/one-person-runs-a-labs-projects-and-people/` (FIX-1650's closure) asserts
+  rooms, mailboxes and hires. P3.9 expects FIX-1793 or FIX-1792 to rewrite or retire it.
+- Chromium is at `/opt/pw-browsers`; the model is `openai/gpt-5.4-mini`.
+
+## Follow-ups
+
+- **A milestone hook in the epic wake.** D1 is a manual coordinator action. If a second epic needs
+  one, it earns a hook; not this issue's.
