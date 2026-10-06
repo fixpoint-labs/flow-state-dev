@@ -471,8 +471,8 @@ export function createRequestStoreConformanceTests(
     // A get-returns-merged check across a same-request continuation (FIX-811).
     // The runtime persists incrementally via `persistItems` AND writes the
     // merged set onto the record at each transition via `set`; both adapter
-    // mechanisms (the in-memory record-backed no-op and a persistent store's
-    // UPSERT) must surface the full ordered log on a subsequent `get`.
+    // mechanisms (a record-backed merge and a persistent store's UPSERT) must
+    // surface the full ordered log on a subsequent `get`.
     it("get returns the full ordered item log after a continuation appends items", async () => {
       await withStore(async (store) => {
         const requestId = "req_merge_conformance";
@@ -501,6 +501,81 @@ export function createRequestStoreConformanceTests(
         expect(ids).toEqual(merged.map((item) => item.id));
         // No id appears twice — the append merges by id, it does not duplicate.
         expect(new Set(ids).size).toBe(ids.length);
+      });
+    });
+
+    // A running request's items are readable while it runs (FIX-1735). The
+    // runtime writes the record when the request starts and again when it
+    // settles; in between, `persistItems` is the only write its items get. A
+    // store that holds them only on the record shows a running request with no
+    // items, then every item at once when it settles.
+    it("get returns items persisted while the request runs, before its record is written again", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_inflight_conformance";
+        await store.set(requestId, makeRecord(requestId, "in_progress", []), "absent");
+
+        store.persistItems(requestId, [makeItem(requestId, 0)]);
+        await store.flushItems(requestId);
+        const first = await store.get(requestId);
+        expect((first?.items ?? []).map((item) => item.id)).toEqual([`item_${requestId}_0`]);
+
+        store.persistItems(requestId, [makeItem(requestId, 0), makeItem(requestId, 1)]);
+        await store.flushItems(requestId);
+        const second = await store.get(requestId);
+        expect((second?.items ?? []).map((item) => item.id)).toEqual([
+          `item_${requestId}_0`,
+          `item_${requestId}_1`
+        ]);
+        expect(await store.countItems(requestId)).toBe(2);
+      });
+    });
+
+    // A state write in the middle of a run writes the whole record, built
+    // from the snapshot the run took when it started (FIX-1735). Its items
+    // are stale, so it leaves them off, and the store keeps the items
+    // persisted since: a read would otherwise lose them until the request
+    // settled.
+    it("a set that leaves items off keeps the items persisted since", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_state_write_conformance";
+        const started = makeRecord(requestId, "in_progress", []);
+        await store.set(requestId, started, "absent");
+
+        store.persistItems(requestId, [makeItem(requestId, 0), makeItem(requestId, 1)]);
+        await store.flushItems(requestId);
+        const { items: _stale, ...withoutItems } = started;
+        const written = await store.set(
+          requestId,
+          { ...withoutItems, state: { phase: "editing" }, version: 1, updatedAt: Date.now() },
+          0
+        );
+        expect(written.ok).toBe(true);
+
+        const reread = await store.get(requestId);
+        expect(reread?.state).toEqual({ phase: "editing" });
+        expect((reread?.items ?? []).map((item) => item.id)).toEqual([
+          `item_${requestId}_0`,
+          `item_${requestId}_1`
+        ]);
+        expect(await store.countItems(requestId)).toBe(2);
+      });
+    });
+
+    // The merge is the contract, not a replace (FIX-811): a call that carries
+    // only some of the log adds to what is held rather than dropping the rest.
+    // (Calls coalesced before a flush may keep only the latest list: the
+    // runtime hands over the whole log on every call.)
+    it("persistItems unions a partial list into the held items", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_union_conformance";
+        await store.set(requestId, makeRecord(requestId, "in_progress", []), "absent");
+        const ids = (n: number[]) => n.map((i) => `item_${requestId}_${i}`);
+
+        store.persistItems(requestId, [makeItem(requestId, 0), makeItem(requestId, 1)]);
+        await store.flushItems(requestId);
+        store.persistItems(requestId, [makeItem(requestId, 2)]);
+        await store.flushItems(requestId);
+        expect(((await store.get(requestId))?.items ?? []).map((item) => item.id)).toEqual(ids([0, 1, 2]));
       });
     });
 

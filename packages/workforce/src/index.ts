@@ -26,15 +26,15 @@
  * resources a flow renders as a system prompt, and `createWorkforceCapability`,
  * which surfaces a roster through the capability system.
  *
- * The package also ships the **channel** floor: `channelFlow`, the one built-in
- * channel kind, and the two-phase binder (`channelInstances` at build time,
- * `openChannels` at runtime) that turns channel records into one registered
- * instance per kind and one named session per channel. A worker record and a
- * channel record look alike and bind differently, and the difference is worth
+ * The package also ships the **mailbox** floor: `mailboxFlow`, the one built-in
+ * mailbox kind, and the two-phase binder (`mailboxInstances` at build time,
+ * `openMailboxes` at runtime) that turns mailbox records into one registered
+ * instance per kind and one named session per mailbox. A worker record and a
+ * mailbox record look alike and bind differently, and the difference is worth
  * holding on to: hiring a worker MINTS a flow copy per record, while opening a
- * channel opens a SESSION per record on a shared one.
+ * mailbox opens a SESSION per record on a shared one.
  *
- * Beside the channel floor sits the **inventory**: three org-scoped resource
+ * Beside the mailbox floor sits the **inventory**: three org-scoped resource
  * collections holding what is actually open, which a folder of files cannot
  * answer at run time because a block does not walk folders. `inventory/
  * collections.ts` is canonical for what each one holds and how they join back
@@ -46,13 +46,21 @@
  * `roster/reload.ts` owns reading a whole roster back at the next boot, and
  * the two are a different contract from the inventory's on purpose — a roster
  * row is deletable because firing a seat is half of what a roster is for,
- * while an inventory row means *was registered here* and is never removed.
+ * while an inventory row means *was registered here*. A declared seat's
+ * inventory row is never removed; a runtime-hired seat's is removed by its
+ * fire, and only while it carries the incarnation fired. A mailbox's row stays
+ * until its `MAILBOX.md` becomes a project talk template (`mintFor:`), when
+ * the next `openInventory` retires it.
  */
 
 export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
-export { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "./seat-hire-keys";
+export {
+  HIRED_ROSTER_PRIVATE_RESOURCE,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE
+} from "./seat-hire-keys";
 export {
   createSeatHireCapability,
   createSeatHireBlocks,
@@ -60,17 +68,28 @@ export {
   registerHiredSeat,
   SEAT_HIRE_CAPABILITY,
   type HiredSeatOwnerPin,
+  type SeatHireAskData,
+  type SeatHireAskVerb,
   type SeatHireBlocks,
   type SeatHireCapabilityOptions,
+  type SeatHireToolOptions,
 } from "./seat-hire-capability";
 export {
-  channelPostCapability,
-  CHANNEL_POST_CAPABILITY,
-  POST_TO_CHANNEL_TOOL,
-  postToChannelInputSchema,
-  type PostToChannelInput,
-} from "./channel-post-capability";
+  mailboxPostCapability,
+  MAILBOX_POST_CAPABILITY,
+  POST_TO_MAILBOX_TOOL,
+  postToMailboxInputSchema,
+  type PostToMailboxInput,
+} from "./mailbox-post-capability";
 export { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
+export { WORKER_TASK_ENTRY } from "./worker-task-entry";
+export {
+  createWorkerLookup,
+  type WorkerLookup,
+  type WorkerLookupAnswer,
+  type WorkerLookupOptions
+} from "./worker-lookup";
+export { mergeSeatFlows } from "./merge-seat-flows";
 export { seatDoorOf, type SeatDoor } from "./seat-door";
 export { resourcesFromDocs } from "./resources-from-docs";
 export { referencesFromDocs, referenceBody } from "./references-from-docs";
@@ -85,9 +104,11 @@ export {
 } from "./clear-shadowed-references";
 export {
   SEAT_REFERENCES_KEY,
+  parseDeclaredSeatId,
   placeOfReference,
   placeOfSeat,
   referenceReachableBySeat,
+  type DeclaredSeatId,
   type TreePlace,
 } from "./seat-references";
 export { splitResourceModules, type ResourceModuleHalves } from "./split-resource-modules";
@@ -118,6 +139,7 @@ export {
   type WorkerConfig
 } from "./worker-config";
 export type { WorkerManifest, TeamManifest, ResourceDoc, PackageManifest } from "./manifest";
-export * from "./channel";
+export * from "./mailbox";
 export * from "./inventory";
 export * from "./roster";
+export * from "./projects";

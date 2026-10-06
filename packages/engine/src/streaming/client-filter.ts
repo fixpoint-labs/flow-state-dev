@@ -1,7 +1,8 @@
 /**
  * SSE client-visibility filter — prevents non-client items from reaching the
  * SSE transport. Items flagged with `client: false` (explicitly or via type
- * defaults) are suppressed, along with their associated content events.
+ * defaults) are suppressed, along with their associated content events and
+ * `item.updated` patches.
  *
  * The emitter still tracks all items for persistence and replay-from-store.
  * This filter only affects the live SSE connection to the end-user client.
@@ -11,11 +12,21 @@ import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
 
 /**
- * Stateful filter for a single SSE connection. Tracks suppressed item IDs
- * so that content events for non-client items are also suppressed.
+ * Stateful filter for a single SSE connection. Tracks suppressed item IDs so
+ * that content events for non-client items are also suppressed, and
+ * client-visible item IDs so that `item.updated` patches pass only for items
+ * this connection has already forwarded.
+ *
+ * Updates fail closed: a patch carries no `type` (it is an identity-invariant
+ * key), so an update for an item this connection never saw — a resumed stream
+ * that starts past the item's `item.added`, or a legacy update keyed by `id`
+ * whose value the emitter overwrote with the event id — is dropped. Every
+ * client-visible update is followed by the item's `item.done`, which carries
+ * the patched row, so a client that misses the patch still converges.
  */
 export function createClientEventFilter(): (event: RequestStreamEvent) => boolean {
   const suppressedItemIds = new Set<string>();
+  const clientItemIds = new Set<string>();
 
   return (event: RequestStreamEvent): boolean => {
     if (event.type === "item.added" || event.type === "item.done") {
@@ -26,6 +37,15 @@ export function createClientEventFilter(): (event: RequestStreamEvent) => boolea
         suppressedItemIds.add(item.id as string);
         return false;
       }
+      if (item) clientItemIds.add(item.id as string);
+    }
+
+    if (event.type === "item.updated") {
+      // Canonical updates name the item in `itemId`; legacy producers wrote
+      // `id`. Either way, forward only an item seen as client-visible.
+      const raw = event as Record<string, unknown>;
+      const itemId = typeof raw.itemId === "string" ? raw.itemId : raw.id;
+      return typeof itemId === "string" && clientItemIds.has(itemId);
     }
 
     if (

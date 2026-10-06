@@ -91,10 +91,12 @@ import {
   DispatchRefusedError,
   dispatchThroughSeam,
   markDispatcher,
+  resolveTaskFlowKind,
   taskDispatchInputSchema,
   taskSessionKeyFor,
   type DispatchAddress,
   type SessionTarget,
+  type TaskFlowTarget,
   type TaskSessionPolicy
 } from "../types/dispatch";
 import { handler } from "./handler";
@@ -198,8 +200,14 @@ export interface TaskDispatcherConfig<TPayload = unknown> {
    * The **other flow** this dispatcher hands off to. Omit for this flow's own
    * task entry. Same skip as an `internal` cross-flow address: `defineFlow`
    * cannot see the other flow's map, so the seam resolves it.
+   *
+   * Or a function, looked up once per task: `(task, ctx) => flowId`, handed
+   * the row's assignee, id and input. Use it when which flow serves a task is
+   * known only when the task is handed over (a flow registered after start,
+   * say). Answering `undefined` refuses the dispatch `flow-not-found`, naming
+   * the assignee. See {@link TaskFlowTarget}.
    */
-  flowKind?: string;
+  flowKind?: string | TaskFlowTarget;
   /** Which child session each row runs in. See {@link TaskSessionPolicy}. */
   session: TaskSessionPolicy<TPayload>;
   /** Hide this block's trace from clients. Default: false. */
@@ -241,7 +249,17 @@ export function dispatcher(
   };
 
   const flowKind = config.flowKind;
-  if (flowKind !== undefined && (typeof flowKind !== "string" || flowKind.length === 0)) {
+  if (typeof flowKind === "function" && resolveDispatcherType(config) !== "task") {
+    throw new Error(
+      `[dispatcher] "${name}" declares a computed flowKind on an internal dispatcher. Only a ` +
+        `task dispatcher looks its flow up per task; an internal address names its flow as a string.`
+    );
+  }
+  if (
+    flowKind !== undefined &&
+    typeof flowKind !== "function" &&
+    (typeof flowKind !== "string" || flowKind.length === 0)
+  ) {
     throw new Error(
       `[dispatcher] "${name}" declares an empty flowKind (${JSON.stringify(flowKind)}). ` +
         `A cross-flow address names the flow to resolve the entry on; omit it to address ` +
@@ -257,6 +275,17 @@ export function dispatcher(
           `or { key: (task) => string }.`
       );
     }
+    // A target looked up per task runs each task in a session of its own. The
+    // entry it reaches may keep session state (an agent's conversation), and
+    // a shared policy would run several tasks, possibly for different
+    // workers, through one child session.
+    if (typeof flowKind === "function" && session !== "per-task") {
+      throw new Error(
+        `[dispatcher] "${name}" looks its flow up per task but declares session ` +
+          `${JSON.stringify(typeof session === "string" ? session : "{ key }")}. A per-task ` +
+          `target hands each task over in a session of its own: declare \`session: "per-task"\`.`
+      );
+    }
     const address: DispatchAddress = {
       type: "task",
       action,
@@ -269,6 +298,12 @@ export function dispatcher(
       outputSchema: dispatchHandleSchema,
       execute: async (envelope, ctx): Promise<DispatchHandle> => {
         const key = taskSessionKeyFor(name, session, envelope, ctx);
+        const target = await resolveTaskFlowKind(
+          name,
+          address as Extract<DispatchAddress, { type: "task" }>,
+          { assignee: envelope.seat, taskId: envelope.taskId, input: envelope.payload },
+          ctx
+        );
         const outcome = await dispatchThroughSeam(ctx, {
           type: "task",
           action,
@@ -276,7 +311,7 @@ export function dispatcher(
           payload: envelope,
           from: name,
           provenance: { taskId: envelope.taskId },
-          ...(flowKind !== undefined ? { flowKind } : {})
+          ...(target !== undefined ? { flowKind: target } : {})
         });
         if (!outcome.ok) {
           throw new DispatchRefusedError(name, address, outcome.refused, outcome.detail);
@@ -292,7 +327,7 @@ export function dispatcher(
   const address: DispatchAddress = {
     type: "internal",
     action,
-    ...(flowKind !== undefined ? { flowKind } : {})
+    ...(flowKind !== undefined ? { flowKind: flowKind as string } : {})
   };
   const inputSchema = internal.inputSchema ?? z.unknown();
   const block = handler({

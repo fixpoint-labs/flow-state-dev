@@ -1,0 +1,73 @@
+<svg viewBox="0 0 940 440" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Shared work enters a private roster only through its owner. The shared project launch shows the docs workstream, owned by Alice and in progress, a status and results card where each entry names user and worker, and the pricing workstream, owned by Bob. The docs workstream is broken into tasks in Alice&#x27;s private workstream session, the lead&#x27;s board of tasks, which hands them to Alice&#x27;s writer, which works tasks as her and posts progress back. Pricing goes to Bob&#x27;s workers, in Bob&#x27;s private area, the same way.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg      { fill:var(--surface); }
+    .wall-sh { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .wall-pr { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.4; }
+    .wall-dz { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 4; }
+    .card    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .hot     { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .ln      { stroke:var(--ink-3); stroke-width:1.4; }
+    .ln-d    { stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:5 4; }
+    .rule    { stroke:var(--rule); stroke-width:1; }
+    .ah      { fill:var(--ink-3); }
+    .title   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:18px; }
+    .wl      { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .h       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .p       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:14px; }
+    .s       { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .lbl     { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .faint   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+  <text class="title" x="28" y="34">Shared work enters a private roster only through its owner</text>
+  <g id="shared">
+    <rect class="wall-sh" x="20" y="52" width="900" height="128" rx="10"/>
+    <text class="wl" x="36" y="76">Shared project: launch</text>
+    <rect class="card" x="36" y="92" width="270" height="70" rx="6"/>
+    <text class="h" x="50" y="118">Workstream: docs</text>
+    <text class="s" x="50" y="138">owner: Alice · in progress</text>
+    <rect class="card" x="326" y="92" width="270" height="70" rx="6"/>
+    <text class="h" x="340" y="118">Status and results</text>
+    <text class="s" x="340" y="138">each names user + worker</text>
+    <rect class="card" x="616" y="92" width="288" height="70" rx="6"/>
+    <text class="h" x="630" y="118">Workstream: pricing</text>
+    <text class="s" x="630" y="138">owner: Bob</text>
+  </g>
+  <g id="alice">
+    <rect class="wall-pr" x="20" y="240" width="640" height="180" rx="10"/>
+    <text class="wl" x="36" y="404">Alice: private</text>
+    <rect class="card" x="36" y="256" width="270" height="70" rx="6"/>
+    <text class="h" x="50" y="282">workstream session</text>
+    <text class="s" x="50" y="302">the lead&#x27;s board of tasks</text>
+    <rect class="card" x="346" y="256" width="298" height="70" rx="6"/>
+    <text class="h" x="360" y="282">writer (worker)</text>
+    <text class="s" x="360" y="302">Alice&#x27;s, works tasks as her</text>
+    <line class="ln" x1="306" y1="291" x2="344" y2="291"/>
+    <polygon class="ah" points="344,291 336.0,286.6 336.0,295.4"/>
+  </g>
+  <g id="bob">
+    <rect class="wall-pr" x="680" y="240" width="240" height="180" rx="10"/>
+    <text class="wl" x="696" y="404">Bob: private</text>
+    <rect class="card" x="696" y="256" width="208" height="70" rx="6"/>
+    <text class="h" x="710" y="282">Bob&#x27;s workers</text>
+    <text class="s" x="710" y="302">works pricing the same way</text>
+  </g>
+  <g id="crossings">
+    <line class="ln" x1="171" y1="162" x2="171" y2="254"/>
+    <polygon class="ah" points="171,254 175.4,246.0 166.6,246.0"/>
+    <text class="lbl" x="181" y="214">broken into tasks</text>
+    <line class="ln" x1="495" y1="256" x2="495" y2="164"/>
+    <polygon class="ah" points="495,164 490.6,172.0 499.4,172.0"/>
+    <text class="lbl" x="505" y="214">posts progress</text>
+    <line class="ln" x1="800" y1="162" x2="800" y2="254"/>
+    <polygon class="ah" points="800,254 804.4,246.0 795.6,246.0"/>
+  </g>
+</svg>

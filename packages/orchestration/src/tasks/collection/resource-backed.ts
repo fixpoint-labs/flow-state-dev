@@ -85,7 +85,7 @@
 import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
-import { updateStateWith } from "@flow-state-dev/core/helpers";
+import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
 import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
 import {
@@ -100,6 +100,7 @@ import type {
   TaskWriteOutcome,
 } from "./types";
 import {
+  ATTEMPT_OWNED_STATUSES,
   applyAbandonmentSettlement,
   applyClaimToTask,
   applyTransition,
@@ -191,11 +192,20 @@ export interface ResourceBackedOptions {
    */
   claimIdentity?: TaskClaimIdentity;
   /**
-   * Refuse every `setAssignee` on this collection (FIX-982).
+   * The user stamped onto every task this collection adds (`task.createdBy`).
+   * The factory reads it off the running session; omit it and tasks record
+   * no filer.
+   */
+  createdBy?: string;
+  /**
+   * Refuse `setAssignee` on a task an attempt holds (FIX-982, narrowed by
+   * FIX-1780 to `in_progress` and `parked`).
    *
    * Set by a task board with dispatcher seats. The assignee is what a
-   * handed-off task's routing key derives from, so reassigning after
-   * admission silently strands the task — see `TaskCollectionRef.setAssignee`.
+   * handed-off task's routing key derives from, so reassigning a task whose
+   * dispatch is in flight silently strands it — see `TaskCollectionRef.setAssignee`.
+   * A pending or blocked task is claimed afresh before it runs, so it can
+   * change hands; a parked one can once `unpark` ends its attempt.
    *
    * Only the resource backing carries this, and that is deliberate rather than
    * an omission: a handed-off board is refused at construction unless its backing
@@ -503,6 +513,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * failure-category audit and `cascadeSkipDependents`' `skipped` label). Making
    * this helper-wide would break both.
    *
+   * `patch` runs inside the same write, so it may decline too by throwing
+   * `WriteDeclined` (as `setAssignee`'s hand-off rule does).
+   *
    * The decline throws `WriteDeclined` out of the updater rather than returning
    * `current`, for the reason documented on that class: on this backing
    * returning `current` still persists and still notifies.
@@ -562,7 +575,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     maxTotalRetries: null,
 
     async addTask(init) {
-      const task = buildInitialTask<TInput, TOutput>(init, now());
+      const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy);
       const created = await options.collection.create(
         task.id,
         task as unknown as JsonObject
@@ -575,7 +588,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     async addTasks(inits) {
       const created: Task<TInput, TOutput>[] = [];
       for (const init of inits) {
-        const task = buildInitialTask<TInput, TOutput>(init, now());
+        const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy);
         const createdRef = await options.collection.create(
           task.id,
           task as unknown as JsonObject
@@ -919,32 +932,38 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async setAssignee(id, assignee) {
-      // FIX-982: on a handed-off board the assignee is fixed at admission, and
-      // this arm is checked FIRST because it holds whatever the task's status
-      // is (see `TaskWriteDeclineReason`). Answered without touching the store —
-      // the board either hands off or it does not, so there is nothing
-      // to read and nothing to race. The task must still exist, though: a
-      // decline for a task that was never there would be a different kind of
-      // lie, and every sibling patch throws on an unknown id.
-      if (options.immutableAssignee === true) {
-        const ref = mirror.get(id);
-        if (ref === undefined) {
-          throw new Error(`[tasks] task "${id}" not found`);
-        }
-        return {
-          outcome: "declined",
-          reason: "immutable-assignee",
-          status: readTaskState<TInput, TOutput>(ref).status,
-        };
-      }
       // The one guarded patch operation (FIX-976 / A1): reassigning a finished
-      // task is refused, because its work will never run again.
-      return patchRef(
-        id,
-        "assignee_changed",
-        (task) => (task.assignee === assignee ? undefined : { assignee }),
-        { declineOnTerminal: true }
-      );
+      // task is refused, because its work will never run again. On a handed-off
+      // board a task an attempt holds (`in_progress` or `parked`) is refused
+      // too (FIX-982, narrowed by FIX-1780): its dispatch is keyed by the
+      // assignee it was claimed with, and a parked attempt can still settle.
+      // The check runs inside the write, so a claim that lands first refuses
+      // the move rather than racing it.
+      const write = () =>
+        patchRef(
+          id,
+          "assignee_changed",
+          (task) => {
+            if (options.immutableAssignee === true && ATTEMPT_OWNED_STATUSES.has(task.status)) {
+              throw new WriteDeclined("immutable-assignee", task.status);
+            }
+            return task.assignee === assignee ? undefined : { assignee };
+          },
+          { declineOnTerminal: true }
+        );
+      const outcome = await write();
+      // A request reads a resource as the snapshot it first took, and a throw
+      // from the updater skips the store's check of that snapshot. Unlike
+      // `terminal`, an attempt-held status is one another request moves on,
+      // so confirm the decline against the committed row before reporting it.
+      if (outcome.outcome === "declined" && outcome.reason === "immutable-assignee") {
+        const ref = mirror.get(id);
+        if (ref !== undefined) {
+          await readCommitted(ref, () => undefined);
+          return write();
+        }
+      }
+      return outcome;
     },
 
     async setPriority(id, priority) {

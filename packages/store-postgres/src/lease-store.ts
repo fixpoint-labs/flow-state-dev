@@ -1,13 +1,13 @@
 /**
  * PostgreSQL-backed lease store for durable execution (FIX-140).
  *
- * One active lease per request. Acquire uses a transaction (when the
- * executor supports it) or a serializable upsert for atomicity.
+ * One active lease per request. Acquire is a single conditional upsert,
+ * so two concurrent acquirers cannot both win. Lease ids are UUIDs, so a
+ * stale holder's `release` cannot free a lease minted by another process.
  */
+import { randomUUID } from "node:crypto";
 import type { Lease, LeaseOptions, LeaseStore } from "@flow-state-dev/engine";
 import type { QueryExecutor } from "./types";
-
-let leaseCounter = 0;
 
 function rowToLease(row: Record<string, unknown>): Lease {
   return {
@@ -25,47 +25,18 @@ export function createPostgresLeaseStore(executor: QueryExecutor): LeaseStore {
       const now = Date.now();
       const lease: Lease = {
         requestId,
-        leaseId: `lease_${++leaseCounter}_${now}`,
+        leaseId: randomUUID(),
         holder: options.holder,
         acquiredAt: now,
         expiresAt: now + options.durationMs
       };
 
-      if (executor.beginTx) {
-        const tx = await executor.beginTx();
-        try {
-          const existing = await tx.query(
-            "SELECT lease_id, holder, acquired_at, expires_at FROM leases WHERE request_id = $1 FOR UPDATE",
-            [requestId]
-          );
-          const row = existing.rows[0];
-          if (row && Number(row.expires_at) > now && row.holder !== options.holder) {
-            await tx.rollback();
-            return null;
-          }
-
-          await tx.query(
-            `INSERT INTO leases (request_id, lease_id, holder, acquired_at, expires_at)
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (request_id) DO UPDATE SET
-               lease_id = EXCLUDED.lease_id,
-               holder = EXCLUDED.holder,
-               acquired_at = EXCLUDED.acquired_at,
-               expires_at = EXCLUDED.expires_at`,
-            [lease.requestId, lease.leaseId, lease.holder, lease.acquiredAt, lease.expiresAt]
-          );
-          await tx.commit();
-          return lease;
-        } catch (err) {
-          await tx.rollback();
-          throw err;
-        }
-      }
-
-      // Fallback for executors without transaction support (e.g. PGlite):
-      // Use a conditional upsert that only overwrites expired leases, then
-      // verify we actually won by reading back the row.
-      await executor.query(
+      // One statement decides the winner. A concurrent INSERT on the same
+      // request_id waits on the first one's row, then re-checks the WHERE
+      // against the committed row, so only one of them gets a row back.
+      // Atomic under READ COMMITTED; no transaction needed. RETURNING is the
+      // verdict: a separate read-back could see a later winner's row.
+      const result = await executor.query(
         `INSERT INTO leases (request_id, lease_id, holder, acquired_at, expires_at)
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (request_id) DO UPDATE SET
@@ -73,19 +44,11 @@ export function createPostgresLeaseStore(executor: QueryExecutor): LeaseStore {
            holder = EXCLUDED.holder,
            acquired_at = EXCLUDED.acquired_at,
            expires_at = EXCLUDED.expires_at
-         WHERE leases.expires_at <= $6 OR leases.holder = $7`,
+         WHERE leases.expires_at <= $6 OR leases.holder = $7
+         RETURNING lease_id`,
         [lease.requestId, lease.leaseId, lease.holder, lease.acquiredAt, lease.expiresAt, now, options.holder]
       );
-
-      // Verify we won the race by checking if our lease_id is the one stored.
-      const verify = await executor.query(
-        "SELECT lease_id FROM leases WHERE request_id = $1",
-        [requestId]
-      );
-      if (verify.rows[0]?.lease_id !== lease.leaseId) {
-        return null;
-      }
-      return lease;
+      return result.rows[0]?.lease_id === lease.leaseId ? lease : null;
     },
 
     async release(requestId: string, leaseId: string): Promise<void> {

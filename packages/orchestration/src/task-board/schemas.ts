@@ -90,6 +90,12 @@ export type TaskBoardWorkerState = z.infer<typeof taskBoardWorkerStateSchema>;
  */
 export const taskBoardWorkerBodyStateSchema = z.object({
   currentClaim: transientSlot(taskClaimTicketSchema.optional()),
+  /**
+   * The ledger id a gate served by many ledgers read the claimed row from, so
+   * its recorders settle the claim on that same ledger. Unset on a board's
+   * own drain and gate, whose ledger is fixed.
+   */
+  currentLedger: transientSlot(z.string().optional()),
 });
 
 export type TaskBoardWorkerBodyState = z.infer<

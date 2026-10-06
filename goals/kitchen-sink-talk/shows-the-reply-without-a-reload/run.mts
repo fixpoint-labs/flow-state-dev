@@ -10,12 +10,12 @@
  * (`[route:support.devices]`), which the scripted route picks; the second,
  * sent before the first is answered, goes to the same specialist. The
  * scripted specialist holds its answer about three seconds, so "working" has
- * time to show. Two posts from the channel's panel, the second while the
+ * time to show. Two posts from the mailbox's panel, the second while the
  * specialist works on the first; then a third, with the specialist's own
- * conversation for the channel open in a second tab. The page
+ * conversation for the mailbox open in a second tab. The page
  * is never reloaded until the last leg. Four legs, graded per post:
  *
- *   working  `support.devices is working` shows in the channel's panel
+ *   working  `support.devices is working` shows in the mailbox's panel
  *            before its line for the post does, and before the next post is sent
  *            (a Send re-reads the runs on any page); for the second post,
  *            after its line for the first is in, since the row is the same.
@@ -60,7 +60,7 @@ interface Seat {
 
 interface Fixture {
   port: number;
-  channel: Seat;
+  mailbox: Seat;
   replier: Seat;
   /** What a post carries to be routed to `replier`. */
   route: string;
@@ -102,12 +102,12 @@ async function openPage(page: Page, origin: string): Promise<void> {
   await page.locator('[data-testid="message-input"]:visible').waitFor({ state: "visible", timeout: 30_000 });
 }
 
-/** Open the channel's panel. */
-async function openChannel(page: Page, origin: string): Promise<void> {
+/** Open the mailbox's panel. */
+async function openMailbox(page: Page, origin: string): Promise<void> {
   await openPage(page, origin);
-  await open(page, fixture.channel.kind);
-  await row(page, fixture.channel.id).click();
-  await panel(page).getByTestId("channel-transcript").waitFor({ timeout: 15_000 });
+  await open(page, fixture.mailbox.kind);
+  await row(page, fixture.mailbox.id).click();
+  await panel(page).getByTestId("mailbox-transcript").waitFor({ timeout: 15_000 });
 }
 
 /** When the page read a session's snapshot (`GET …/sessions/<id>/state`). */
@@ -125,14 +125,14 @@ interface Line {
   text: string;
 }
 
-/** The channel's panel as drawn: whether the specialist shows as working, and every line. */
-async function readChannel(page: Page): Promise<{ at: number; working: boolean; lines: Line[] }> {
+/** The mailbox's panel as drawn: whether the specialist shows as working, and every line. */
+async function readMailbox(page: Page): Promise<{ at: number; working: boolean; lines: Line[] }> {
   const drawn = panel(page);
   const [working, lines] = await Promise.all([
     drawn.getByTestId("working-row").filter({ hasText: `${fixture.replier.id} is working` }).count(),
-    drawn.getByTestId("channel-line").evaluateAll((els) =>
+    drawn.getByTestId("mailbox-line").evaluateAll((els) =>
       els.map((el) => ({
-        label: el.querySelector('[data-testid="channel-line-label"]')?.textContent ?? "",
+        label: el.querySelector('[data-testid="mailbox-line-label"]')?.textContent ?? "",
         text: el.textContent ?? "",
       })),
     ),
@@ -160,7 +160,7 @@ const postsOf = (lines: Line[], token: string) =>
   lines.filter((l) => l.text.includes(token) && !l.text.includes(fixture.lineMarker));
 
 /**
- * Fold one reading of the channel into what each sent post has seen so far.
+ * Fold one reading of the mailbox into what each sent post has seen so far.
  *
  * A reading counts as the specialist working on a post only when nothing else
  * could have put the row there. The specialist working on an earlier post
@@ -192,11 +192,11 @@ function observe(posts: Post[], reading: { at: number; working: boolean; lines: 
   }
 }
 
-/** Post a line from the channel's panel once its composer is free, reading the panel meanwhile. */
+/** Post a line from the mailbox's panel once its composer is free, reading the panel meanwhile. */
 async function send(page: Page, posts: Post[], post: Post): Promise<void> {
-  const box = panel(page).getByLabel("Post to this channel");
+  const box = panel(page).getByLabel("Post to this mailbox");
   for (let waited = 0; waited < 10_000; waited += 100) {
-    observe(posts, await readChannel(page));
+    observe(posts, await readMailbox(page));
     if ((await box.isEnabled()) && (await box.inputValue()) === "") break;
     await sleep(100);
   }
@@ -233,28 +233,28 @@ await runGoal(async () => {
     const origin = server.origin;
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const reads = snapshotReads(page);
-    await openChannel(page, origin);
+    await openMailbox(page, origin);
 
     // ---- two posts, the second while the specialist works on the first -----
     await send(page, posts, first);
-    for (let r = await readChannel(page); ; r = await readChannel(page)) {
+    for (let r = await readMailbox(page); ; r = await readMailbox(page)) {
       observe(posts, r);
       if (first.workingAt !== undefined || first.lineAt !== undefined || Date.now() - first.sentAt > 2_000) break;
       await sleep(100);
     }
     await send(page, posts, second);
-    const channelPosts = [first, second];
+    const mailboxPosts = [first, second];
     const lastDeadline = second.sentAt + fixture.lineWithinMs;
-    while (Date.now() < lastDeadline && channelPosts.some((p) => p.lineAt === undefined)) {
-      observe(posts, await readChannel(page));
+    while (Date.now() < lastDeadline && mailboxPosts.some((p) => p.lineAt === undefined)) {
+      observe(posts, await readMailbox(page));
       await sleep(100);
     }
     // The specialist's run ends right after its line; give the row a few seconds to go.
     let clearedAt: number | undefined;
-    const lastLine = Math.max(...channelPosts.map((p) => p.lineAt ?? 0));
-    if (channelPosts.every((p) => p.lineAt !== undefined)) {
+    const lastLine = Math.max(...mailboxPosts.map((p) => p.lineAt ?? 0));
+    if (mailboxPosts.every((p) => p.lineAt !== undefined)) {
       while (Date.now() < lastLine + 5_000) {
-        const r = await readChannel(page);
+        const r = await readMailbox(page);
         observe(posts, r);
         if (!r.working) {
           clearedAt = r.at;
@@ -264,7 +264,7 @@ await runGoal(async () => {
       }
     }
 
-    for (const [i, post] of channelPosts.entries()) {
+    for (const [i, post] of mailboxPosts.entries()) {
       const name = `post ${i + 1} (${post.token})`;
       if (post.workingAt === undefined) {
         const after = i === 0 ? ", before the next post was sent" : `, once ${fixture.replier.id} had answered the earlier post`;
@@ -281,7 +281,7 @@ await runGoal(async () => {
       }
       evidence.push(`${name}: working ${secs(post.sentAt, post.workingAt)}, line ${secs(post.sentAt, post.lineAt)} under ${post.label ?? "nobody"}, ${window} snapshot reads`);
     }
-    if (channelPosts.every((p) => p.lineAt !== undefined)) {
+    if (mailboxPosts.every((p) => p.lineAt !== undefined)) {
       if (clearedAt === undefined) {
         fail("line", `"${fixture.replier.id} is working" still showed 5s after its last line`);
       } else {
@@ -295,11 +295,11 @@ await runGoal(async () => {
     await openPage(seatPage, origin);
     await open(seatPage, fixture.replier.kind);
     await open(seatPage, fixture.replier.id);
-    const runOfChannel = rail(seatPage)
+    const runOfMailbox = rail(seatPage)
       .locator(`ul[data-leaf="${fixture.replier.id}"]`)
-      .locator(`[data-dispatch-run-of="${fixture.channel.id}"]`);
-    await runOfChannel.first().waitFor({ timeout: 15_000 });
-    await runOfChannel.first().click();
+      .locator(`[data-dispatch-run-of="${fixture.mailbox.id}"]`);
+    await runOfMailbox.first().waitFor({ timeout: 15_000 });
+    await runOfMailbox.first().click();
     await readUntil(() => conversation(seatPage), (ms) => ms.length > 0, 10_000);
 
     await send(page, posts, third);
@@ -333,7 +333,7 @@ await runGoal(async () => {
     await readUntil(
       async () => {
         const res = await page.request.get(
-          `${origin}/api/flows/sessions/${fixture.channel.id}/state?include_items=true&item_types=component&limit=1000`,
+          `${origin}/api/flows/sessions/${fixture.mailbox.id}/state?include_items=true&item_types=component&limit=1000`,
         );
         const text = await res.text();
         return posts.every((p) => text.split(p.token).length - 1 >= 2);
@@ -342,9 +342,9 @@ await runGoal(async () => {
       20_000,
     );
     await page.reload();
-    await openChannel(page, origin);
+    await openMailbox(page, origin);
     const drawn = await readUntil(
-      async () => (await readChannel(page)).lines,
+      async () => (await readMailbox(page)).lines,
       (ls) => posts.every((p) => replies(ls, p.token).length > 0),
       10_000,
     );

@@ -14,12 +14,49 @@
  * `"skipped"`, so the label is what lets a multi-pass cascade keep walking a dep
  * chain across drains. That re-entry is the stronger of the two A1 bars — losing
  * it does not fail loudly, it just stops cascading one level down.
+ *
+ * A declined cancel earns no label (FIX-985): the cascade did not cancel the
+ * task, so no later pass may treat it as a dead dependency on that basis.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { getOrCreateTaskCollection } from "../../src/tasks";
+import { getOrCreateTaskCollection, type TaskCollectionRef } from "../../src/tasks";
+
+/** One-shot write that runs just before the cascade cancels the named task. */
+const { interleave } = vi.hoisted(() => ({
+  interleave: {
+    current: undefined as
+      | { beforeCancelOf: string; run: (collection: TaskCollectionRef) => Promise<unknown> }
+      | undefined,
+  },
+}));
+
+// Wrap the real barrel: every export stays genuine, and only `cancel` on the
+// returned ref gains the optional interleaving above.
+vi.mock("../../src/tasks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/tasks")>();
+  return {
+    ...actual,
+    getOrCreateTaskCollection: async (
+      ...args: Parameters<typeof actual.getOrCreateTaskCollection>
+    ) => {
+      const ref = await actual.getOrCreateTaskCollection(...args);
+      return {
+        ...ref,
+        cancel: async (...cancelArgs: Parameters<TaskCollectionRef["cancel"]>) => {
+          const pending = interleave.current;
+          if (pending !== undefined && pending.beforeCancelOf === cancelArgs[0]) {
+            interleave.current = undefined;
+            await pending.run(ref);
+          }
+          return ref.cancel(...cancelArgs);
+        },
+      };
+    },
+  };
+});
 import { createCascadeSkipDependents } from "../../src/task-board";
 
 const COLLECTION = "cascade-regression";
@@ -65,8 +102,8 @@ const seed = handler({
   },
 });
 
-/** Add `c` (deps: [b]) AFTER the first cascade pass, so pass two must re-derive. */
-const addDependentOfSkipped = handler({
+/** Add pending `c` (deps: [b]) on top of `seed`'s board. */
+const addC = handler({
   name: "add-c",
   inputSchema: z.unknown(),
   execute: async (_input, ctx) => {
@@ -102,7 +139,7 @@ describe("cascadeSkipDependents — the skipped label lands on the task it cance
     const pipeline = sequencer({ name: "cascade-twice" })
       .tap(seed)
       .tap(cascade)
-      .tap(addDependentOfSkipped)
+      .tap(addC)
       .tap(cascade)
       .step(reader("read-c", "c"));
 
@@ -110,5 +147,113 @@ describe("cascadeSkipDependents — the skipped label lands on the task it cance
 
     expect(result.error).toBeNull();
     expect(result.output).toEqual({ status: "cancelled", labels: ["skipped"] });
+  });
+});
+
+const taskDetail = taskShape.extend({ error: z.string().nullable() });
+
+/** Read `b` and `c`, including whichever cancel reason landed. */
+const readChain = handler({
+  name: "read-chain",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({ b: taskDetail, c: taskDetail }),
+  execute: async (_input, ctx) => {
+    const collection = await getOrCreateTaskCollection({
+      ctx,
+      backing: "state",
+      collectionId: COLLECTION,
+    });
+    const detail = (id: string) => {
+      const t = collection.get(id);
+      return {
+        status: t?.status ?? "missing",
+        labels: [...(t?.labels ?? [])],
+        error: t?.error ?? null,
+      };
+    };
+    return { b: detail("b"), c: detail("c") };
+  },
+});
+
+/** a → b → c with `a` errored and `c` already pending, then one cascade. */
+function cascadeChain(name: string) {
+  return sequencer({ name }).tap(seed).tap(addC).tap(cascade).step(readChain);
+}
+
+describe("cascadeSkipDependents — a declined cancel is left alone (FIX-985)", () => {
+  // An interleaving that never fired must not leak into the next case.
+  afterEach(() => {
+    interleave.current = undefined;
+  });
+
+  it("does not label or cascade off a task that went terminal before its cancel landed", async () => {
+    interleave.current = {
+      beforeCancelOf: "b",
+      run: (collection) => collection.cancel("b", "stopped by operator"),
+    };
+
+    const result = await testBlock(cascadeChain("cascade-declined"), { input: undefined });
+
+    expect(interleave.current).toBeUndefined(); // the interleaving actually ran
+    expect(result.error).toBeNull();
+    expect(result.output).toEqual({
+      b: { status: "cancelled", labels: [], error: "stopped by operator" },
+      c: { status: "pending", labels: [], error: null },
+    });
+  });
+
+  it("still cascades in the same call when a rival cascade cancelled the task first", async () => {
+    // A rival cascade's skip makes `b` a source by the seeding rule, so the
+    // chain keeps walking in this call.
+    interleave.current = {
+      beforeCancelOf: "b",
+      run: async (collection) => {
+        await collection.cancel("b", "dep a failed");
+        await collection.addLabel("b", "skipped");
+      },
+    };
+
+    const result = await testBlock(cascadeChain("cascade-rival"), { input: undefined });
+
+    expect(interleave.current).toBeUndefined();
+    expect(result.error).toBeNull();
+    expect(result.output).toEqual({
+      b: { status: "cancelled", labels: ["skipped"], error: "dep a failed" },
+      c: { status: "cancelled", labels: ["skipped"], error: "dep b failed" },
+    });
+  });
+
+  it("a dep-blocked task cannot be failed in the window, so its dependents are still reached", async () => {
+    // `blocked → errored` is not a transition, so `b` stays cancellable and
+    // the chain is walked in full.
+    const attempted: { blocked?: string; failed?: string } = {};
+    interleave.current = {
+      beforeCancelOf: "b",
+      run: async (collection) => {
+        attempted.blocked = (await collection.block("b", "held")).outcome;
+        attempted.failed = (await collection.fail("b", "boom", { ifAllowed: true })).outcome;
+      },
+    };
+
+    const result = await testBlock(cascadeChain("cascade-block-then-fail"), { input: undefined });
+
+    expect(attempted).toEqual({ blocked: "recorded", failed: "declined" });
+    expect(result.error).toBeNull();
+    expect(result.output).toEqual({
+      b: { status: "cancelled", labels: ["skipped"], error: "dep a failed" },
+      c: { status: "cancelled", labels: ["skipped"], error: "dep b failed" },
+    });
+  });
+
+  it("cascades the whole chain when nothing interferes (control)", async () => {
+    // A cascade that stopped at `b` would also leave `c` pending, so this
+    // control keeps the declined case from passing for the wrong reason.
+    const result = await testBlock(cascadeChain("cascade-control"), { input: undefined });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toEqual({
+      b: { status: "cancelled", labels: ["skipped"], error: "dep a failed" },
+      c: { status: "cancelled", labels: ["skipped"], error: "dep b failed" },
+    });
   });
 });

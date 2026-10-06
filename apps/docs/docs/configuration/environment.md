@@ -54,11 +54,12 @@ Full rules: [Models → Environment overrides](/docs/fundamentals/models).
 
 ## CLI and DevTool
 
-`fsdev dev` sets the first two if you have not set them.
+`fsdev dev` sets the first three if you have not set them. `fsdev serve` sets none of them.
 
 | Variable | What it does |
 |----------|----------------|
 | `FSDEV_DEBUG_ENDPOINTS` | `1` enables privileged debug routes (same as `debugEndpointsEnabled: true`). |
+| `FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL` | `1` lets debug routes accept requests with no `Origin` header, such as curl, a script, or a same-origin browser GET (same as `debugAllowAnonymousLocal: true`). Unset, or any other value including `true`, and those requests get 403. An explicit `debugAllowAnonymousLocal` option, including `false`, overrides it. Only set it for a server bound to loopback. |
 | `FSDEV_TRACING_LEVEL` | Observability verbosity for the CLI/dev router. `fsdev dev` defaults this to `verbose`. |
 | `FSDEV_TRACE_OBSERVABILITY` | `true` / `false` toggles `block_trace` capture. Defaults to on outside production. |
 

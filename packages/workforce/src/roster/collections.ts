@@ -8,12 +8,15 @@
  * it back through the same door the hire went through.
  *
  * **Not the seat inventory, and deliberately beside it rather than inside it.**
- * `inventory/seats/*` answers *was registered in this org* and never deletes a
- * row — which is right for browsing and wrong for a roster, because firing a
- * seat has to remove it. Two contracts, two collections; they join on the seat
- * id and nothing else. A runtime hire writes both: the roster row is who was
- * hired (and fire deletes it), the inventory row is *was registered here*
- * and stays. Discover joins file ∪ roster against inventory.
+ * `inventory/seats/*` answers *was registered in this org*, and its boot binder
+ * never deletes a row — which is right for browsing and wrong for a roster,
+ * because firing a seat has to remove it. Two contracts, two collections; they
+ * join on the seat id and nothing else. A runtime hire writes both: the roster
+ * row is who was hired, the inventory row is *was registered here*. Fire
+ * (`removeHiredSeat`) deletes the roster row first, then the seat's inventory
+ * row; a row an earlier fire left in the inventory has no roster row, and a
+ * team list that joins the two (`listedSeatRows`) hides it. Discover joins
+ * file ∪ roster against inventory.
  *
  * These keys are a public surface on the same terms the inventory's are:
  * moving the prefix breaks every deployment that has already hired.
@@ -21,17 +24,21 @@
 
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
+import { HIRED_ROSTER_BROWSER_PATTERN } from "../seat-hire-keys";
 
 /**
  * One hired seat, as it is stored.
  *
- * **The envelope is closed; `settings` is passthrough**, and the two halves
- * answer to different owners. The envelope's keys are this package's to
- * version, so this version declares all of them and Zod's default strip drops
- * anything else — safe here, and only here, because nothing ever
- * read-modify-writes one of these rows: a hire `create`s it once and a fire
- * deletes it, so a key a newer version added is never carried through an older
- * version's rewrite and lost.
+ * **The envelope is closed when read, kept whole when stored; `settings` is
+ * passthrough.** The envelope's keys are this package's to version, so this
+ * schema declares all of them and a parse (`parseHiredSeatRow`) hands back
+ * only those: logic never acts on a key it has no name for. But rows ARE
+ * read-modify-written — a re-hire replaces the row, and the fence a hire or
+ * re-hire runs before each side effect is itself a version-checked write — so
+ * the collections store through `storedHiredSeatRowSchema`, which passes
+ * unknown envelope keys through, and every rewrite starts from the stored row
+ * (`{ ...current, ... }`). A key a newer version added survives an older
+ * version's rewrite.
  *
  * `settings` is the opposite case and gets the opposite rule (BP-030). That
  * bag belongs to the flow kind's own `configSchema`, which is free to grow
@@ -48,8 +55,9 @@ import { z } from "zod";
  */
 export const hiredSeatRowSchema = z.object({
   /**
-   * The seat's id within its org — `"support.ada"`. Dotted, because a seat id
-   * is already `"<teamId>.<name>"`; the org is NOT part of it. The address is
+   * The seat's id within its org — `"support.ada"` for a team seat
+   * (`"<teamId>.<name>"`), or a bare `"<name>"` for a seat on no team; the org
+   * is NOT part of it. The address is
    * built by joining the two, which is why the ORG is the segment that has to
    * be dot-free (see `seatAddress`).
    */
@@ -81,20 +89,43 @@ export const hiredSeatRowSchema = z.object({
    * `owningOrgId`: matching one does not imply the other.
    */
   ownerUserId: z.string().nullable().default(null),
+  /**
+   * Set while a `rehire` that wrote this row has not yet registered the seat
+   * and published its inventory row; cleared once it has. A re-hire run again
+   * finishes only a row that carries it, so a working seat is never taken for
+   * an unfinished repair. `null` — the default — on every other row, and on a
+   * row written before the field existed (BP-023, BP-030). Server-side only:
+   * not in the browser projection.
+   */
+  pendingRepair: z.string().nullable().default(null),
+  /**
+   * The incarnation this row brought into being (see `incarnation.ts`): a
+   * fresh id on every hire and re-hire, stamped on the inventory row it
+   * publishes and the seat minted from it. `null` on a row written before the
+   * field (BP-023, BP-030), or by a writer that doesn't stamp one.
+   * Published to browsers by the org collection, beside `seatId`, `flow` and
+   * `instructions`, so a browser can join a roster row to its inventory row.
+   */
+  incarnation: z.string().nullable().default(null),
 });
 
 /** One stored roster row. @see hiredSeatRowSchema */
 export type HiredSeatRow = z.infer<typeof hiredSeatRowSchema>;
 
+/**
+ * The roster collections' `stateSchema`: {@link hiredSeatRowSchema} with
+ * unknown envelope keys passed through, so a key a newer version stored is
+ * not dropped when this version rewrites the row. Browser reads are unaffected:
+ * the org collection's `expose` list names what a browser sees.
+ */
+const storedHiredSeatRowSchema = hiredSeatRowSchema.passthrough();
+
 /** The collection's storage prefix, without its wildcard. Pinned; see the file header. */
 export const HIRED_ROSTER_PREFIX = "workforce/roster/";
 
-/**
- * The pattern of the org roster, the collection a browser may read. One
- * segment, so a nested `workforce/roster/~user/seat` key never matches it.
- * Pinned; see the file header.
- */
-export const HIRED_ROSTER_BROWSER_PATTERN = "workforce/roster/*";
+// The org roster's browser pattern lives in the leaf `../seat-hire-keys` so
+// the `./browser` entry can export it without this module's core import.
+export { HIRED_ROSTER_BROWSER_PATTERN };
 
 /**
  * The pattern of a user-owned roster row. Two segments, no browser read.
@@ -138,7 +169,7 @@ export function defineHiredRosterCollection() {
     pattern: HIRED_ROSTER_BROWSER_PATTERN,
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
-    stateSchema: hiredSeatRowSchema,
+    stateSchema: storedHiredSeatRowSchema,
     // A browser may read these rows. Without it the collection-state route
     // refuses every read with `403 State read not permitted`, and a roster
     // panel has no way to name the org's seats — an action's return value has
@@ -160,9 +191,11 @@ export function defineHiredRosterCollection() {
     // broadcast to every browser in the org. What a roster panel needs is who
     // the seat is, not how it was configured. The other three are the seat's
     // identity and are what "a user can see the workers in their org" means.
+    // `incarnation` is an opaque id the seat's inventory row publishes too; a
+    // team list matches the two by it (`listedSeatRows`).
     client: {
       state: { read: true },
-      expose: ["seatId", "flow", "instructions"],
+      expose: ["seatId", "flow", "instructions", "incarnation"],
     },
   });
 }
@@ -185,6 +218,6 @@ export function defineHiredRosterPrivateCollection() {
     ownerPrivate: { param: "owner" },
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
-    stateSchema: hiredSeatRowSchema,
+    stateSchema: storedHiredSeatRowSchema,
   });
 }

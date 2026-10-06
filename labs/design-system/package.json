@@ -3,14 +3,18 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Private lab: App Lab's light and dark theme, as values over the tokens FSD's components already read. No components.",
+  "description": "Private lab: Shift Manager's light and dark theme, as values over the tokens FSD's components already read. No components.",
   "exports": {
-    "./app-lab.css": "./app-lab.css"
+    "./shift-manager.css": "./shift-manager.css"
   },
-  "files": ["app-lab.css"],
+  "files": ["shift-manager.css"],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root ."
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.0",
+    "@fontsource/space-grotesk": "^5.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -145,6 +145,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/workforce`         | Seat factory (`hireWorkforce`), the `WORKER.md` loader, and personas (Layer 2 on orchestration) |
 | `@flow-state-dev/patterns`          | Higher-level composition patterns (built on the task board)             |
 | `@flow-state-dev/harness-manager`   | Task-board worker that turns a row into a supervised coding run — own checkout, verdict before settlement, question channel, and the coding harness as a slot |
+| `@flow-state-dev/shift-manager`     | The browser app a Workforce Lab is worked through, run as the `shift-manager` command over `fsdev dev --app` |
 | `@flow-state-dev/memory`            | Cross-turn memory system (working / episodic / semantic / digest tiers) |
 | `@flow-state-dev/ui`                | Component registry for flow UIs                                         |
 | `@thought-fabric/core`              | Cognitive architecture primitives (attention, identity)                 |

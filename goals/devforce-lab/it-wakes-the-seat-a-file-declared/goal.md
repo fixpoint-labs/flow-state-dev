@@ -24,8 +24,8 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
 
 0. every held-out token lives in exactly one convention file, in none of `lab/**/*.mts`, and in no
    part of the row the EM seat files — run **before** anything is built;
-1. one root produces exactly three seats on the two kinds their files name, two documents and one
-   channel; a tree naming an unregistered kind refuses the **whole** roster by name, and its
+1. one root produces exactly three team seats on the two kinds their files name, plus the org's
+   chief of staff on the built-in `agent` kind, two documents and one mailbox; a tree naming an unregistered kind refuses the **whole** roster by name, and its
    corrected twin hires cleanly *(BR-1, BR-2)*;
 2. each seat reports its own instructions, document ref and **exact** skill union from inside a
    running block, and the coordinator kind declares no task entry at all *(BR-3, BR-4)*;
@@ -39,7 +39,7 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
    provisions nothing *(BR-7)*;
 6. a run that finishes cleanly and leaves no commit re-pends the row with its reason attached, and
    errors it once the retry budget is spent *(BR-14)*;
-7. a `boards/` folder added to the tree changes nothing the loader produces while the `channels/`
+7. a `boards/` folder added to the tree changes nothing the loader produces while the `mailboxes/`
    folder beside it loads, and an org-less read is refused at the transport door while the same read
    through the same door, carrying the lab's verified bearer, lands with the seat's own facts
    *(BR-16, BR-17)*.
@@ -83,9 +83,7 @@ Needs `git` and a writable temp directory. No network, no model credential, no `
 It establishes that a board row can cross flows to a seat a Markdown file declared, that the seat's
 own documents and skills reach the prompt of the supervised run, and that the run works in a
 checkout derived from the row. It does **not** establish anything about a real coding agent — that
-is the sibling goal — and it does not establish that the extra board declaration the `coder` kind
-carries is the right shape. That declaration is an interim L1 tax (D1, soft→FIX-1408), labelled as
-one in the code that pays it.
+is the sibling goal.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -95,5 +93,5 @@ one in the code that pays it.
 | 2026-09-24 | ccb971b64 | n/a | PASS | FIX-1564: BR-17's positive half now goes through the same router as the refusal, carrying the lab's verified bearer on a fresh session, and is graded on the seat's own facts. Before this it was a direct `runAction` that never reached the resolver, so a door that refused everything passed. Three red states each go red: resolver refuses every bearer, bearer dropped (401), org-less probe given the bearer (answered, not refused). All seven legs green; all five controls red. |
 | 2026-09-22 | c76ac5969 | n/a | PASS | Option 1 (FIX-1515): lab host wires a fail-closed verified principal. Org-less HTTP read is 401 with "verified organization"; same read with an org lands. All seven legs green; all five controls red, each on clauses traceable to its one perturbation. |
 | 2026-09-17 | 4d7a5749f | n/a | PASS | All seven legs green; all five controls red, each on clauses traceable to its one perturbation. |
-| 2026-09-30 | a1b122eb1 | n/a | PASS | Rows now on the feature channel's board. All five controls fail at their named legs. |
+| 2026-09-30 | a1b122eb1 | n/a | PASS | Rows now on the feature mailbox's board. All five controls fail at their named legs. |
 | 2026-10-01 | a25134ebd+wip (FIX-1691/1692) | n/a | PASS | After the stub took optional narrated steps (unused here). All five controls FAIL. |

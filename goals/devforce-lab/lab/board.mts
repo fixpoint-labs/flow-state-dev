@@ -1,47 +1,42 @@
 /**
- * The feature board's two declarations: the EM's, whose worker hands a row to
- * the coder seat, and the coder's, which only lets that hand-off in.
+ * The feature board, and the door the coder takes its rows through.
  *
- * **The board itself belongs to the channel.** The feature channel's
- * `CHANNEL.md` names it by a plain local name (`boards: [work]`), and the
- * framework mints its id from where the channel sits (`<channel id>.<name>`),
+ * **The board itself belongs to the mailbox.** The feature mailbox's
+ * `MAILBOX.md` names it by a plain local name (`boards: [work]`), and the
+ * framework mints its id from where the mailbox sits (`<mailbox id>.<name>`),
  * so no file in the tree, and no line of this lab, writes that id.
- * The host resolves the ledger with `channelBoard(channel.id, boardName)`,
+ * The host resolves the ledger with `mailboxBoard(mailbox.id, boardName)`,
  * reading both off the tree, and hands it to the two kinds below. The ledger
- * is kept per organization, which is what lets App Lab show the workstream's
+ * is kept per organization, which is what lets Shift Manager show the workstream's
  * board to everyone working it.
  *
- * Two shapes, because the row crosses flows (D1 of the lab's own spec):
+ * The row crosses flows (D1 of the lab's own spec):
  *
- * - {@link coordinatorBoard} sits on the `em` kind. Its `coder` worker is a
- *   dispatcher naming *another flow instance* — the hired coder seat — so the
- *   row it claims is handed to the seat a `WORKER.md` declared.
- * - {@link recipientBoard} sits on the `coder` kind, and **is the framework's
- *   tax, not a convention.** It drains nothing. It exists because `defineFlow`
- *   refuses a flow that declares a task entry with no board reachable that
- *   hands off to it, and because the claim gate refuses a dispatch whose
- *   `boardId` differs from the one the recipient's own board was built with.
- *   Same `boardId`, same ledger, its own same-flow dispatcher.
- *
- * **Do not copy the second shape as "how boards are declared."** Where the
- * board lives is settled: on the channel, as its file says. The second
- * declaration is the cross-flow hand-off's cost, and removing it is the
- * framework's to do — FIX-1408 closed with it in place, and nothing owns it
- * now. `packages/orchestration/test/task-board/hand-off-cross-flow.test.ts`
- * documents the same constraint in its own header.
+ * - {@link coordinatorBoard} sits on the `em` kind and drains the ledger. Its
+ *   `coder` worker is a dispatcher naming *another flow instance* (the hired
+ *   coder worker), so the row it claims is handed to the worker a `WORKER.md`
+ *   declared. A row for any other name falls to the board's fallback, which
+ *   asks the Workforce lookup which worker holds that name right now.
+ * - {@link ledgerDoor} is the coder's side: its task entry takes rows from
+ *   this ledger, by the ledger's id, with no board of its own. The board
+ *   hands off under that id (`boardId: ledger.id`) for the door to find it.
  */
 
-import { dispatcher } from "@flow-state-dev/core";
-import type { DefinedTaskCollection, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
-import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { defineCapability, dispatcher } from "@flow-state-dev/core";
+import type { TaskBinding, TaskFlowTarget } from "@flow-state-dev/core/types";
+import {
+  getOrCreateTaskCollection,
+  hasFrozenLedgerAssignee,
+  resolveResourceCollection,
+  type DefinedTaskCollection,
+  type TaskWorkerInput,
+} from "@flow-state-dev/orchestration/tasks";
+import { taskBoard, taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import { runOwnerDispatcher } from "@flow-state-dev/harness-manager";
 
 /**
- * The board's own id, shared by both declarations.
- *
- * Not the ledger's id: this names the board (the claim gate compares it, so
- * the two declarations cannot drift), while the ledger it reads and writes is
- * the channel's, whose id the framework mints.
+ * The board's name: the capability key the EM's doors file through. It hands
+ * off under the ledger's id, not this one.
  */
 export const BOARD_ID = "devforce-feature-board";
 
@@ -49,9 +44,10 @@ export const BOARD_ID = "devforce-feature-board";
  * The board's assignee key — **pinned**. It is the routing key written on the
  * row, and BR-5/BR-8 grade on it.
  *
- * An assignee is not a Workforce seat (FIX-1385). It is the name the board
- * knows a worker slot by; which seat that slot reaches is the dispatcher's
- * `flowKind`, and keeping the two separable is what lets BR-8 be graded at all.
+ * The board routes this name itself, to the worker the host names in
+ * `coderWorkerId`, which is what lets BR-8 be graded at all: a control that
+ * points it at the wrong worker turns the check red. Every other name goes to
+ * the board's fallback and the Workforce lookup.
  */
 export const ASSIGNEE = "coder";
 
@@ -69,8 +65,8 @@ export const RESUME_ENTRY = "resume";
  * The ledger both declarations read and write, with the id it is registered
  * under.
  *
- * The host builds it — `channelBoard(channel.id, boardName)` — and passes the
- * one object to both kinds, so the channel, the EM's board and the coder's
+ * The host builds it — `mailboxBoard(mailbox.id, boardName)` — and passes the
+ * one object to both kinds, so the mailbox, the EM's board and the coder's
  * manager all hold the same declaration.
  */
 export interface FeatureLedger {
@@ -88,17 +84,19 @@ export interface FeatureRow {
 }
 
 export interface CoordinatorBoardOptions {
-  /** The ledger this board reads and writes — the channel's. */
-  collection: DefinedTaskCollection;
+  /** The ledger this board reads and writes — the mailbox's. */
+  ledger: FeatureLedger;
   /**
-   * The hired coder seat's **instance id** — where the row is handed.
-   *
-   * A static string, because `flowKind` on a dispatcher is an instance id and
-   * not a function: "look the assignee up and dispatch to it" is not a shape
-   * this seam offers. The host derives it from the tree rather than naming it,
-   * so no file is named in code.
+   * The hired coder worker's **instance id**, where a `coder` row is handed.
+   * The host derives it from the tree rather than naming it, so no file is
+   * named in code.
    */
   coderSeatId: string;
+  /**
+   * Which worker any other assignee names, asked per row: the Workforce
+   * lookup's `flowKind`. Absent, a row for any other name is never claimed.
+   */
+  findWorker?: TaskFlowTarget;
   /** Rows the board starts with. The EM files through the capability instead. */
   initialTasks?: FeatureRow[];
 }
@@ -118,41 +116,58 @@ export interface CoordinatorBoardOptions {
 export function coordinatorBoard(options: CoordinatorBoardOptions) {
   return taskBoard({
     name: BOARD_ID,
-    boardId: BOARD_ID,
-    collection: options.collection,
+    // The ledger's id, which is what the coder's door resolves.
+    boardId: options.ledger.id,
+    collection: options.ledger.collection,
     concurrency: 1,
     dispatcher: runOwnerDispatcher(),
     workers: {
       [ASSIGNEE]: dispatcher<TaskWorkerInput>({
         name: `${BOARD_ID}-hand-off`,
-        // The seat's own flow instance. This one line is the whole of D1.
+        // The worker's own flow instance. This one line is the whole of D1.
         flowKind: options.coderSeatId,
         action: WORK_ENTRY,
         session: "per-task",
       }),
     },
+    ...(options.findWorker === undefined
+      ? {}
+      : {
+          defaultWorker: dispatcher<TaskWorkerInput>({
+            name: `${BOARD_ID}-hand-over`,
+            flowKind: options.findWorker,
+            action: WORK_ENTRY,
+            session: "per-task",
+          }),
+        }),
     ...(options.initialTasks === undefined ? {} : { initialTasks: options.initialTasks }),
   });
 }
 
 /**
- * The recipient's board — declared so the claim gate has something to verify
- * against, and drained by nobody.
+ * The coder's door: its task entry takes rows from this ledger, read by the
+ * id each hand-off carries. Any other id is refused before a row is read.
  *
- * **The framework's tax.** See this module's header.
+ * Pass as the entry's `from`; the flow then needs no board of its own.
  */
-export function recipientBoard(collection: DefinedTaskCollection) {
-  return taskBoard({
-    name: BOARD_ID,
-    boardId: BOARD_ID,
-    collection,
-    concurrency: 1,
-    workers: {
-      [ASSIGNEE]: dispatcher<TaskWorkerInput>({
-        name: `${BOARD_ID}-gate`,
-        action: WORK_ENTRY,
-        session: "per-task",
-      }),
+export function ledgerDoor(ledger: FeatureLedger): TaskBinding {
+  return taskLedgers({
+    name: `${BOARD_ID}-door`,
+    resolve: async (id, ctx) => {
+      if (id !== ledger.id) return undefined;
+      const collection = resolveResourceCollection(ctx, id);
+      return collection === undefined
+        ? undefined
+        : getOrCreateTaskCollection({
+            ctx,
+            backing: "resource",
+            collectionId: id,
+            collection,
+            // The EM's board hands rows off, which freezes their assignee; the
+            // door must agree, as every board-mediated path to the ledger does.
+            immutableAssignee: hasFrozenLedgerAssignee(ledger.collection),
+          });
     },
+    uses: [defineCapability({ name: `${BOARD_ID}-ledger`, resources: { [ledger.id]: ledger.collection } })],
   });
 }

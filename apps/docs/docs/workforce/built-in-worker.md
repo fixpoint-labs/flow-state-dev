@@ -34,9 +34,9 @@ The settings a worker writes for itself are `instructions`, `model`, `tools`, th
 
 ## Tools
 
-A worker names its tools by key in `tools:`, and each key is resolved against what is registered for that worker: its own `blocks/` folder first, then its team's, then the kind's **catalog**. That last one is a map from key to tool your app passes when it builds the kind, since a file on disk can only carry a name. The first match wins. A block in a [package](./packages-on-disk.md) the worker holds can be named there too; a name that is both a package block and a catalog tool is refused at the hire, naming both. A key nothing registers is refused at the hire, by name, and the refusal names both doors. An empty `tools:` means no tools, whatever is registered.
+A worker names its tools by key in `tools:`, and each key is resolved against what is registered for that worker: its own `blocks/` folder first, then its team's, then the kind's **catalog**. That last one is a map from key to tool your app passes when it builds the kind, since a file on disk can only carry a name. The first match wins. An org seat, one under `org/workers/`, has no team and no `blocks/` folder of its own, so its tools come from the catalog and from the packages it holds. A block in a [package](./packages-on-disk.md) the worker holds can be named there too; a name that is both a package block and a catalog tool is refused at the hire, naming both. A key nothing registers is refused at the hire, by name, and the refusal names both doors. An empty `tools:` means no tools, whatever is registered.
 
-**Registering a name is not granting it.** Dropping a block into a worker's own folder makes the name resolvable for that worker and nothing more; until the file lists it, the model is never handed it. [Blocks a worker can call](./code-on-disk.md#blocks-a-worker-can-call) covers where a folder may sit and the two rules that keep a registered name honest.
+**Registering a name is not granting it.** Dropping a block into a team seat's own `blocks/` folder makes the name resolvable for that worker and nothing more; until the file lists it, the model is never handed it. [Blocks a worker can call](./code-on-disk.md#blocks-a-worker-can-call) covers where a folder may sit and the two rules that keep a registered name honest.
 
 A written `tools:` list is the whole of what a worker can call. With no list, a worker can call the tools of the presets it selected in [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool) and the blocks of the packages it holds, and nothing else. A capability you attach through [`defineAgentWorkerFlow`'s `uses`](#configuring-the-kind) can carry tools of its own, and a preset the kind switches on gives its tools only to the workers that select it. Memory is the case you meet first. Its `recall` and `connect` presets are on by default, and a worker that selected nothing and named no tools reaches the model with no tools. To give a worker one of them, select the preset in its `capabilities:`, or put the tool in the catalog and let the worker name it in `tools:`.
 
@@ -85,6 +85,7 @@ const seats = hireWorkforce(workers, {
 | `model` | The model a worker uses when its own file names none. |
 | `classifierModel` | The model behind `skills.enableLlmClassifier`, an optional per-turn check that decides whether a skill applies. [Using them](#using-them) covers what it costs. |
 | `confidenceThreshold` | How sure that check must be before it counts a skill as matching. Defaults to `0.65`. |
+| `taskLists` | The mailbox boards this kind's workers take tasks from, by id (`mailboxBoardIds(mailboxes)`). Left out, the kind takes no tasks. See [Taking a task](#taking-a-task). |
 | `uses` | Capabilities every worker of this kind carries, attached to the generator that answers. |
 | `afterAnswer` | A block that runs after the worker answers, without changing the reply. |
 | `isolateUserState` | Give each worker its own user-scoped storage instead of one shared cell. |
@@ -93,11 +94,35 @@ const seats = hireWorkforce(workers, {
 
 A replacement declares `kind: "agent"`, like any other kind passed under its own name. It also declares `cardinality: "collection"`, which is what lets one definition have many copies. Leave that out and each seat mints, then is refused when you register it.
 
+## Taking a task
+
+A worker on this kind can be handed a task from a mailbox's board, by name, when you build the kind with `taskLists`:
+
+```ts
+import { defineAgentWorkerFlow, hireWorkforce, mailboxBoardIds } from "@flow-state-dev/workforce";
+
+const boardIds = mailboxBoardIds(mailboxes);
+
+const hired = hireWorkforce(workers, {
+  kinds: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) },
+});
+```
+
+Each task runs as one turn, in a session of its own when the board hands tasks over `per-task`. The worker answers with its own instructions, tools and model. The message is the task's title, goal and context. The answer is stored as the task's result, and the task completes. If the turn fails, the attempt fails, and the task's `maxAttempts` decides whether it runs again. Nothing is posted to a mailbox unless the worker's own tools post it.
+
+Without `taskLists` the kind takes no tasks, and that includes the built-in you get when you pass no `kinds`. A task given to one of its workers is refused, saying the worker takes no tasks. The board side, and who a task's name can reach, is in [Handing a row to the worker it names](./mailboxes.md#handing-a-row-to-the-worker-it-names).
+
+## What a worker keeps
+
+A conversation keeps its recent turns, the organization keeps the worker's skills, and memory, once you add it, is kept per person.
+
+![A conversation holds recent turns, a worker's skills are kept per organization, and memory is kept per person](./built-in-worker-memory.svg)
+
 ## Skills
 
-A worker's skills are that worker's, stored at organization scope. Two workers on one roster never read each other's instructions. Two organizations do not share one seat's skills. Send `userId` with the input. The skills read are the ones stored for the organization the caller already belongs to. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) is where that organization comes from.
+A worker's skills are that worker's, stored at organization scope. Send `userId` with the input. The skills read are the ones stored for the organization the caller already belongs to. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) is where that organization comes from.
 
-Which skills a worker gets is decided by where the folders sit. Three places feed one worker:
+Which skills a worker gets is decided by where the folders sit. Three places feed a worker on a team:
 
 ```
 workforce/
@@ -119,6 +144,8 @@ workforce/
 ```
 
 The `tester` worker holds all three. The `qa` lead next door holds the first two. Nobody on another team holds `regression` at all, and no one anywhere else holds `write-regression`.
+
+An org seat is fed by two: `org/skills/` and its own `org/workers/<name>/skills/`.
 
 `readWorkforce` resolves that union per worker. [Reading the tree](./workers-on-disk.md#reading-the-tree) covers the walk and what it reports.
 
@@ -244,6 +271,8 @@ tools: [memory/recall]
 ### What isolation does and does not give you
 
 `isolateUserState: true` keys each worker's storage on that worker's id, so two workers serving the same person do not read each other's memory. Leave it off and they share one, per organization for [workers hired at runtime](./durable-hire.md#what-a-seat-saves-for-a-person).
+
+![Where a hired seat keeps what it learns about alice. Inside the acme organization: one shared cell for alice in acme, holding her user record, which every hired seat in acme shares unless it is flow-isolated, and her user-scoped resources, shared by the seats that declare them; and one cell per seat address for flow-isolated data, such as alice at acme.support.ada. In globex, alice has a separate cell of her own, which acme's seats cannot read. Outside hired seats, alice's own data, keyed by her id alone and kept by your app's other flows, is a third place that no hired seat reads or writes. Nothing moves between organizations. A projected resource is stored by your own hooks, so key its rows by the organization too.](./seat-person-data.svg)
 
 It is a decision for the whole kind. A roster is all-separate or all-shared; you cannot keep one shared store across the team while giving each worker its own of something else.
 

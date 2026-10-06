@@ -234,6 +234,82 @@ describe.each([
       })
     ).rejects.toBeInstanceOf(ConcurrentModificationError);
   });
+
+  describe("no-op skip is verified against the store", () => {
+    // A context that read mode "chat", lost to a writer of "agent", then
+    // deliberately writes "chat" again. Its cache equals what it writes; the
+    // store does not. Skipping on the cache alone would drop the write.
+    type State = { mode: string };
+
+    async function seedMovedStore(id: string) {
+      const store = createStore();
+      const base = makeSession(id, 0, { mode: "chat" });
+      await store.set(id, base, "any");
+      await store.set(id, { ...base, version: 1, state: { mode: "agent" } }, 0);
+      const reread = async () => {
+        const record = await store.get(id);
+        return record && { state: record.state as State, version: record.version };
+      };
+      return { store, base, reread };
+    }
+
+    it("refreshes and re-runs the mutator when the stored version moved", async () => {
+      const { store, base, reread } = await seedMovedStore("s8");
+      const stale = createStateContainer<State>({ mode: "chat" }, 0);
+      const seen: string[] = [];
+
+      const result = await runWithCAS({
+        container: stale,
+        mutator: (state) => {
+          seen.push(state.mode);
+          return { mode: "chat" };
+        },
+        persist: makePersist(store, "s8", base),
+        reread,
+        options: { maxRetries: 3, baseDelayMs: 0 }
+      });
+
+      expect(result).toEqual({ state: { mode: "chat" }, committed: true });
+      expect(seen).toEqual(["chat", "agent"]);
+      expect(await store.get("s8")).toMatchObject({ version: 2, state: { mode: "chat" } });
+    });
+
+    it("sends an unverifiable no-op to persist when no reread is given", async () => {
+      const { store, base } = await seedMovedStore("s9");
+      const stale = createStateContainer<State>({ mode: "chat" }, 0);
+
+      const result = await runWithCAS({
+        container: stale,
+        mutator: () => ({ mode: "chat" }),
+        persist: makePersist(store, "s9", base),
+        options: { maxRetries: 3, baseDelayMs: 0 }
+      });
+
+      expect(result.committed).toBe(true);
+      expect(await store.get("s9")).toMatchObject({ version: 2, state: { mode: "chat" } });
+    });
+
+    it("skips persist when the reread confirms the held version", async () => {
+      const { store, reread } = await seedMovedStore("s10");
+      const current = createStateContainer<State>({ mode: "agent" }, 1);
+      let persisted = 0;
+
+      const result = await runWithCAS({
+        container: current,
+        mutator: () => ({ mode: "agent" }),
+        persist: async () => {
+          persisted += 1;
+          return { ok: true, version: 99 };
+        },
+        reread,
+        options: { maxRetries: 3, baseDelayMs: 0 }
+      });
+
+      expect(result).toEqual({ state: { mode: "agent" }, committed: false });
+      expect(persisted).toBe(0);
+      expect((await store.get("s10"))?.version).toBe(1);
+    });
+  });
 });
 
 describe("Store CAS contract — filesystem adapter", () => {

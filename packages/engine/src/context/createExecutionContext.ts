@@ -42,7 +42,11 @@ import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
-import { createScopePersist } from "../stores/scope-persist";
+import {
+  createScopePersist,
+  createScopeReread,
+  type ScopeStoreLike
+} from "../stores/scope-persist";
 import { toBareState, toBareStates, toVersions } from "../stores/resource-state-views";
 import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
@@ -79,7 +83,6 @@ import {
   type ErrorCaptureIdentity
 } from "../errors/error-capture";
 import { SuspensionError, SuspensionRejectedError } from "@flow-state-dev/core";
-import type { ResumeContext } from "@flow-state-dev/core/types";
 import { DISPATCH_SEAM, SUSPENSION_SKIPPED } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
@@ -1679,9 +1682,8 @@ export async function createExecutionContext<
       async getByPrefix(keyPrefix: string): Promise<LazyLoadOutcome> {
         // FIX-735: the collection's prefix resolves to its isolation bucket.
         const scopeId = resolveResourceStorageScopeId(scope, keyPrefix)!;
-        if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) {
-          return { fetched: false, durationMs: 0 };
-        }
+        // A loaded ancestor prefix (the whole collection) already covers a sub-prefix.
+        if (isMissAuthoritative(scope, keyPrefix)) return { fetched: false, durationMs: 0 };
         let fetched = false;
         let durationMs = 0;
         await runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
@@ -2083,10 +2085,17 @@ export async function createExecutionContext<
         deletedStateKeys[scope].add(key);
         return true;
       },
+      /**
+       * Content is last-write-wins (`ContentStore`), so every call writes —
+       * there is deliberately no "unchanged" short-circuit. The only thing a
+       * skip could compare against is `contentRef`, this context's own last
+       * read or write, which another writer may have replaced since; skipping
+       * on it silently drops the latest write. Re-reading the store first
+       * would cost the same round trip as the write and still race it.
+       */
       persistResourceContentKey: async (key: string, content: string): Promise<void> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
         if (scopeId === undefined) return;
-        if (contentRef.current[key] === content) return;
         await stores.content.set(storageScopeOf(scope, scopeId), scopeId, key, content);
         contentRef.current[key] = content;
       },
@@ -2142,18 +2151,37 @@ export async function createExecutionContext<
       ? options.response.getItemCount()
       : 0;
 
+  // The request store as the request-state write sees it: a full-record
+  // write leaves `items` off, because the record's are the snapshot from when
+  // the run started and the store keeps the ones persisted since only when
+  // the write leaves them off (FIX-1735). Off in the write only: the record
+  // this context keeps after it still carries them, since with no response
+  // emitter `readLiveItems` reads them from there.
+  const request = stores.request;
+  const requestStateStore: ScopeStoreLike<RequestRecord> = {
+    patchField: request.patchField?.bind(request),
+    incField: request.incField?.bind(request),
+    pushToArray: request.pushToArray?.bind(request),
+    deleteField: request.deleteField?.bind(request),
+    set: (id, value, expectedVersion) => {
+      const { items: _snapshotItems, ...record } = value;
+      return request.set(id, record, expectedVersion);
+    }
+  };
+
   const requestOps = createScopeStateOps(requestContainer, {
     serialize: true,
     persist: createScopePersist<TRequestState, RequestRecord>(
       requestRef,
-      stores.request,
+      requestStateStore,
       (expectedVersion, state) => ({
         ...requestRef.current,
         state: state as TRequestState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
       })
-    )
+    ),
+    reread: createScopeReread<TRequestState, RequestRecord>(requestRef, stores.request)
   });
 
   const userOps = createScopeStateOps(userContainer, {
@@ -2167,7 +2195,8 @@ export async function createExecutionContext<
         version: expectedVersion + 1,
         updatedAt: Date.now()
       })
-    )
+    ),
+    reread: createScopeReread<TUserState, UserRecord>(userRef, stores.user)
   });
 
   const sessionOps = createScopeStateOps(sessionContainer, {
@@ -2181,7 +2210,8 @@ export async function createExecutionContext<
         version: expectedVersion + 1,
         updatedAt: Date.now()
       })
-    )
+    ),
+    reread: createScopeReread<TSessionState, SessionRecord>(sessionRef, stores.session)
   });
 
   const orgOps = (():
@@ -2211,7 +2241,8 @@ export async function createExecutionContext<
           return { ok: true, version: expectedVersion + 1 };
         }
         return inner(state, expectedVersion, hint);
-      }
+      },
+      reread: createScopeReread<TOrgState, OrgRecord>(orgRef, stores.org)
     });
   })();
 
@@ -3077,16 +3108,6 @@ export async function createExecutionContext<
   // because every nested ctx shares the same `_runtimeHooks` reference.
   const blockTraceMap = new Map<string, BlockTraceItem>();
 
-  // Run-scoped guard for the legacy resume fallback (FIX-811). When a bare
-  // `resumeContext` (no `pendingBlockLogicalId`) is threaded — the pre-Step-3
-  // two-request / direct-`runAction` path — the payload must be consumed at the
-  // FIRST gate reached and re-suspend at every later gate. Without this shared
-  // flag a multi-gate legacy resume would re-inject the same approval at every
-  // gate and skip required approvals. Lives in the outer closure so all
-  // per-scope `suspend` closures (each built by `createContext`) share it. The
-  // Step-3 same-request path sets `pendingBlockLogicalId` and never touches it.
-  let legacyResumeConsumed = false;
-
   // Run-scoped cursor for replaying ALREADY-resolved gates across a restart. On
   // a continuation that replays the sequencer from the top, a `ctx.suspend()`
   // re-reached at a gate that was resolved on a PRIOR continuation must return
@@ -3094,7 +3115,7 @@ export async function createExecutionContext<
   // otherwise a multi-gate sequencer resumed at a later gate bounces back to the
   // earlier one forever. Keyed by logical block id; the value counts how many of
   // that gate's recorded resolutions this replay has consumed. Shared across all
-  // per-scope `suspend` closures, like `legacyResumeConsumed`.
+  // per-scope `suspend` closures.
   const resolvedResumeCursor = new Map<string, number>();
 
   // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
@@ -3396,7 +3417,10 @@ export async function createExecutionContext<
       // distinct, monotonic index that continues the prior log on resume.
       _reserveItemIndex: () => emittedItemCount++,
       suspend: async (suspendOpts) => {
-        const resumeCtx = options.metadata?.resumeContext as ResumeContext | undefined;
+        // The typed resolution `runAction` threads on a same-request
+        // continuation — never `options.metadata`, which callers control
+        // (BP-031, FIX-1707).
+        const resumeCtx = options.resumeContext;
         // The suspending block's logical id is the attempt-independent prefix
         // of its blockInstanceId — `${requestId}:${path}`. `parentChain.parent`
         // is the scope this `suspend` was created for (the calling block). The
@@ -3446,25 +3470,13 @@ export async function createExecutionContext<
           // other gate reached during the same replay falls through and
           // re-suspends, which is what makes multi-gate and loop-iteration
           // flows resume one gate at a time without a shared "consumed" flag.
+          // A resolution with no `pendingBlockLogicalId` matches no gate: there
+          // is no first-reached-gate fallback (FIX-1707).
           const isResolvingGate =
             resumeCtx.pendingBlockLogicalId !== undefined &&
             resumeCtx.pendingBlockLogicalId === callerLogicalId;
 
-          // Legacy fallback: the old two-request resume path threaded a
-          // resumeContext without `pendingBlockLogicalId`. Preserve its
-          // first-reached-gate-consumes behavior there — but ONLY once per run,
-          // via the shared `legacyResumeConsumed` flag, so a multi-gate legacy
-          // resume re-suspends at later gates instead of re-injecting the same
-          // payload and skipping their approvals (FIX-811). The Step-3
-          // same-request continuation always sets `pendingBlockLogicalId` (see
-          // runAction), so this branch is dead on that path — it exists only for
-          // callers that pass a bare resumeContext directly to runAction.
-          const isLegacyFirstGate =
-            resumeCtx.pendingBlockLogicalId === undefined && !legacyResumeConsumed;
-
-          if (isResolvingGate || isLegacyFirstGate) {
-            // Mark the legacy payload consumed so later gates re-suspend.
-            if (isLegacyFirstGate) legacyResumeConsumed = true;
+          if (isResolvingGate) {
             if (resumeCtx.action === "reject") {
               throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
             }

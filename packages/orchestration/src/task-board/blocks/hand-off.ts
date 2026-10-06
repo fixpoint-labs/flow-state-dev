@@ -55,6 +55,7 @@ import {
   DispatchRefusedError,
   dispatchThroughSeam,
   markDispatcher,
+  resolveTaskFlowKind,
   taskSessionKeyFor,
 } from "@flow-state-dev/core/types";
 import type { BlockDefinition, TaskBinding, TaskDispatchInput } from "@flow-state-dev/core/types";
@@ -70,8 +71,12 @@ export interface HandOffOptions {
   name: string;
   /** The declaring board's stable id — half of the durable address. */
   boardId: string;
-  /** The seat this hand-off stands in for — the row's assignee. */
-  seat: string;
+  /**
+   * The seat this hand-off stands in for — the row's assignee. Omitted for
+   * the board's fallback, which stands in for every assignee the board does
+   * not name: each row is handed over under the assignee it was claimed with.
+   */
+  seat?: string;
   /** The seat's dispatcher address: the entry it hands off to and the session policy. */
   address: TaskSeatAddress;
   /** The board's claim gate, bound onto this block for `defineFlow` to apply to the entry. */
@@ -102,8 +107,22 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
         // before any route runs. Named because reaching here would otherwise
         // dispatch a request with no row behind it.
         throw new Error(
-          `[task-board] "${boardId}" cannot hand off seat "${seat}": no claim is on the ` +
+          `[task-board] "${boardId}" cannot hand off seat "${seat ?? "(fallback)"}": no claim is on the ` +
             `worker body state. This block must run inside the board's drain, after the claim.`
+        );
+      }
+      // The fallback hands each row over under the assignee it was claimed
+      // with, so the receiving gate's assignee check holds. A row with none has
+      // nothing to address the hand-over by: refused with the claim still held,
+      // so the row fails through the board's ordinary error path.
+      const assignee = seat ?? claim.assignee;
+      if (assignee === undefined) {
+        throw new DispatchRefusedError(
+          name,
+          address,
+          "flow-not-found",
+          `[task-board] "${boardId}" could not hand off task "${claim.taskId}": it names no ` +
+            `assignee, and the fallback hands a row over by the name on it.`
         );
       }
 
@@ -126,7 +145,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
 
       const envelope: TaskDispatchInput = {
         boardId,
-        seat,
+        seat: assignee,
         taskId: claim.taskId,
         // The claim's identity, carried so the child's gate can VERIFY it
         // against the row — not so it can trust it. Every field comes off the
@@ -142,6 +161,21 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
       };
 
       const key = taskSessionKeyFor(name, address.session, envelope, ctx);
+
+      // Which flow takes it, looked up now when the seat's target is per task.
+      // A refusal here is decided before anything is dispatched, with the
+      // claim still held, like the seam's own refusals below.
+      const flowKind = await resolveTaskFlowKind(
+        name,
+        address,
+        {
+          assignee,
+          taskId: claim.taskId,
+          input: snapshot,
+          ...(claim.createdBy !== undefined ? { filedBy: claim.createdBy } : {}),
+        },
+        ctx
+      );
 
       // Release BEFORE the point of no return — see the file header.
       await ctx.sequencer!.patchState({ currentClaim: undefined });
@@ -160,7 +194,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
         // A seat may name another flow. The author-facing dispatcher() already
         // forwards this; omitting it here made the seam resolve on the sender
         // and refuse `no-entry` against the wrong map.
-        ...(address.flowKind !== undefined ? { flowKind: address.flowKind } : {}),
+        ...(flowKind !== undefined ? { flowKind } : {}),
       });
 
       if (!outcome.ok) {
@@ -177,7 +211,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
           address,
           outcome.refused,
           `[task-board] "${boardId}" could not hand off task "${claim.taskId}" from seat ` +
-            `"${seat}": ${outcome.detail}`
+            `"${assignee}": ${outcome.detail}`
         );
       }
 

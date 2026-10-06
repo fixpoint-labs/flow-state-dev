@@ -217,6 +217,12 @@ importers:
       '@xyflow/react':
         specifier: ^12.10.1
         version: 12.10.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      acorn:
+        specifier: ^8.12.1
+        version: 8.16.0
+      acorn-jsx:
+        specifier: ^5.3.2
+        version: 5.3.2(acorn@8.16.0)
       ai:
         specifier: ^7.0.103
         version: 7.0.114(zod@3.25.76)
@@ -682,6 +688,9 @@ importers:
       '@flow-state-dev/workforce':
         specifier: workspace:*
         version: link:../packages/workforce
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../packages/workspace
       '@openai/codex-sdk':
         specifier: 0.152.1
         version: 0.152.1
@@ -704,127 +713,6 @@ importers:
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
-
-  labs/app-lab:
-    dependencies:
-      '@flow-state-dev/client':
-        specifier: workspace:*
-        version: link:../../packages/client
-      '@flow-state-dev/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@flow-state-dev/design-system':
-        specifier: workspace:*
-        version: link:../design-system
-      '@flow-state-dev/devtool':
-        specifier: workspace:*
-        version: link:../../packages/devtool
-      '@flow-state-dev/engine':
-        specifier: workspace:*
-        version: link:../../packages/engine
-      '@flow-state-dev/fsdev':
-        specifier: workspace:*
-        version: link:../../packages/cli
-      '@flow-state-dev/node':
-        specifier: workspace:*
-        version: link:../../packages/node
-      '@flow-state-dev/react':
-        specifier: workspace:*
-        version: link:../../packages/react
-      '@flow-state-dev/workforce':
-        specifier: workspace:*
-        version: link:../../packages/workforce
-      '@radix-ui/react-use-controllable-state':
-        specifier: ^1.2.2
-        version: 1.2.2(@types/react@19.2.14)(react@19.2.4)
-      '@streamdown/cjk':
-        specifier: ^1.0.2
-        version: 1.0.2(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2)(react@19.2.4)(unified@11.0.5)
-      '@streamdown/code':
-        specifier: ^1.0.3
-        version: 1.0.3(react@19.2.4)
-      '@streamdown/math':
-        specifier: ^1.0.2
-        version: 1.0.2(react@19.2.4)
-      '@streamdown/mermaid':
-        specifier: ^1.0.2
-        version: 1.0.2(react@19.2.4)
-      class-variance-authority:
-        specifier: ^0.7.1
-        version: 0.7.1
-      clsx:
-        specifier: ^2.1.1
-        version: 2.1.1
-      lucide-react:
-        specifier: ^0.575.0
-        version: 0.575.0(react@19.2.4)
-      motion:
-        specifier: ^12.34.3
-        version: 12.34.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      radix-ui:
-        specifier: ^1.4.3
-        version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      react:
-        specifier: ^19.1.1
-        version: 19.2.4
-      react-dom:
-        specifier: ^19.1.1
-        version: 19.2.4(react@19.2.4)
-      react-markdown:
-        specifier: ^10.1.0
-        version: 10.1.0(@types/react@19.2.14)(react@19.2.4)
-      shiki:
-        specifier: ^3.22.0
-        version: 3.22.0
-      streamdown:
-        specifier: ^2.3.0
-        version: 2.3.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      tailwind-merge:
-        specifier: ^3.5.0
-        version: 3.5.0
-    devDependencies:
-      '@flow-state-dev/orchestration':
-        specifier: workspace:*
-        version: link:../../packages/orchestration
-      '@tailwindcss/postcss':
-        specifier: ^4.1.12
-        version: 4.2.0
-      '@testing-library/react':
-        specifier: ^16.3.2
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.13
-      '@types/react':
-        specifier: ^19.1.12
-        version: 19.2.14
-      '@types/react-dom':
-        specifier: ^19.1.9
-        version: 19.2.3(@types/react@19.2.14)
-      '@vitejs/plugin-react':
-        specifier: ^5.0.0
-        version: 5.1.4(vite@7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))
-      happy-dom:
-        specifier: ^20.8.3
-        version: 20.8.3
-      tailwindcss:
-        specifier: ^4.1.12
-        version: 4.3.0
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vite:
-        specifier: ^7.1.3
-        version: 7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
-      vitest:
-        specifier: ^3.2.4
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
-      zod:
-        specifier: ^3.25.76
-        version: 3.25.76
 
   labs/conductor:
     dependencies:
@@ -864,6 +752,13 @@ importers:
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
 
   labs/design-system:
+    dependencies:
+      '@fontsource/ibm-plex-mono':
+        specifier: ^5.2.0
+        version: 5.3.0
+      '@fontsource/space-grotesk':
+        specifier: ^5.2.0
+        version: 5.3.0
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -1263,6 +1158,9 @@ importers:
       '@flow-state-dev/orchestration':
         specifier: workspace:*
         version: link:../orchestration
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../workspace
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -1401,6 +1299,9 @@ importers:
         specifier: ^4.6.14
         version: 4.12.27
     devDependencies:
+      '@flow-state-dev/client':
+        specifier: workspace:*
+        version: link:../client
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
@@ -1516,6 +1417,130 @@ importers:
       vitest:
         specifier: ^3.0.0
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
+
+  packages/shift-manager:
+    dependencies:
+      '@flow-state-dev/devtool':
+        specifier: workspace:*
+        version: link:../devtool
+      '@flow-state-dev/fsdev':
+        specifier: workspace:*
+        version: link:../cli
+    devDependencies:
+      '@flow-state-dev/client':
+        specifier: workspace:*
+        version: link:../client
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../core
+      '@flow-state-dev/design-system':
+        specifier: workspace:*
+        version: link:../../labs/design-system
+      '@flow-state-dev/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@flow-state-dev/node':
+        specifier: workspace:*
+        version: link:../node
+      '@flow-state-dev/orchestration':
+        specifier: workspace:*
+        version: link:../orchestration
+      '@flow-state-dev/react':
+        specifier: workspace:*
+        version: link:../react
+      '@flow-state-dev/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
+      '@flow-state-dev/workforce':
+        specifier: workspace:*
+        version: link:../workforce
+      '@radix-ui/react-use-controllable-state':
+        specifier: ^1.2.2
+        version: 1.2.2(@types/react@19.2.14)(react@19.2.4)
+      '@streamdown/cjk':
+        specifier: ^1.0.2
+        version: 1.0.2(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2)(react@19.2.4)(unified@11.0.5)
+      '@streamdown/code':
+        specifier: ^1.0.3
+        version: 1.0.3(react@19.2.4)
+      '@streamdown/math':
+        specifier: ^1.0.2
+        version: 1.0.2(react@19.2.4)
+      '@streamdown/mermaid':
+        specifier: ^1.0.2
+        version: 1.0.2(react@19.2.4)
+      '@tailwindcss/vite':
+        specifier: ^4.2.0
+        version: 4.3.0(vite@7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
+      '@types/react':
+        specifier: ^19.1.12
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.1.9
+        version: 19.2.3(@types/react@19.2.14)
+      '@vitejs/plugin-react':
+        specifier: ^5.0.0
+        version: 5.1.4(vite@7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))
+      class-variance-authority:
+        specifier: ^0.7.1
+        version: 0.7.1
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      happy-dom:
+        specifier: ^20.8.3
+        version: 20.8.3
+      lucide-react:
+        specifier: ^0.575.0
+        version: 0.575.0(react@19.2.4)
+      motion:
+        specifier: ^12.34.3
+        version: 12.34.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      radix-ui:
+        specifier: ^1.4.3
+        version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: ^19.1.1
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.1.1
+        version: 19.2.4(react@19.2.4)
+      react-markdown:
+        specifier: ^10.1.0
+        version: 10.1.0(@types/react@19.2.14)(react@19.2.4)
+      shiki:
+        specifier: ^3.22.0
+        version: 3.22.0
+      streamdown:
+        specifier: ^2.3.0
+        version: 2.3.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      tailwind-merge:
+        specifier: ^3.5.0
+        version: 3.5.0
+      tailwindcss:
+        specifier: ^4.1.12
+        version: 4.3.0
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^7.1.3
+        version: 7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
 
   packages/store-postgres:
     dependencies:
@@ -1707,6 +1732,12 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^4.3.0
         version: 4.7.0(vite@6.4.2(@types/node@25.3.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))
+      acorn:
+        specifier: ^8.12.1
+        version: 8.16.0
+      acorn-jsx:
+        specifier: ^5.3.2
+        version: 5.3.2(acorn@8.16.0)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1829,6 +1860,9 @@ importers:
       '@flow-state-dev/orchestration':
         specifier: workspace:*
         version: link:../orchestration
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../workspace
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -1839,6 +1873,9 @@ importers:
       '@flow-state-dev/memory':
         specifier: workspace:*
         version: link:../memory
+      '@flow-state-dev/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing
@@ -3741,6 +3778,12 @@ packages:
 
   '@floating-ui/utils@0.2.10':
     resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
+
+  '@fontsource/ibm-plex-mono@5.3.0':
+    resolution: {integrity: sha512-eTgnZjZEGk1QtD3ZstF+Vclo2HLAni8YMy34/DxllwZvyz1lR/1RF/xTiAquOBO7MvqBx8D2Ig2WCPMVfdZu7Q==}
+
+  '@fontsource/space-grotesk@5.3.0':
+    resolution: {integrity: sha512-ksnGizDPXIDuvqcTYTSrmZ+evx9sDlS8rp7+42BQ7wU+spt3twEoXfbJz672C+5CLg6VeUQwRy5RXshWb67LcQ==}
 
   '@hapi/hoek@9.3.0':
     resolution: {integrity: sha512-/c6rf4UJlmHlC9b5BaNvzAcFv7HZ2QHaV0D4/HNlBdvFnvQq8RI4kYdhyPCl7Xj+oWvTWQ8ujhqS53LIgAe6KQ==}
@@ -14650,6 +14693,10 @@ snapshots:
 
   '@floating-ui/utils@0.2.10': {}
 
+  '@fontsource/ibm-plex-mono@5.3.0': {}
+
+  '@fontsource/space-grotesk@5.3.0': {}
+
   '@hapi/hoek@9.3.0': {}
 
   '@hapi/topo@5.1.0':
@@ -16705,6 +16752,13 @@ snapshots:
       '@tailwindcss/oxide': 4.3.0
       tailwindcss: 4.3.0
       vite: 6.4.2(@types/node@25.3.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
+
+  '@tailwindcss/vite@4.3.0(vite@7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))':
+    dependencies:
+      '@tailwindcss/node': 4.3.0
+      '@tailwindcss/oxide': 4.3.0
+      tailwindcss: 4.3.0
+      vite: 7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
 
   '@tavily/core@0.7.2':
     dependencies:

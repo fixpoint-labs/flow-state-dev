@@ -128,6 +128,37 @@ It applies here unchanged. If your work arrives as rows on a task board, the
 [harness manager](/docs/orchestration/harness-manager) derives and provisions the
 checkout for you.
 
+## Environment variables
+
+Leave `client.env` unset and the Codex CLI process starts with your server's
+entire `process.env`: every API key, token and connection string in it, readable
+by any shell command the model runs. Setting `client.env` replaces that
+environment. It does not add to it.
+
+To hand the run only what it needs, build `client.env` with `harnessEnv` from
+`@flow-state-dev/core`:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { codexAgent } from "@flow-state-dev/codex";
+
+codexAgent({
+  cwd: (ctx) => workspacePathFor(ctx),
+  client: { env: harnessEnv({ pass: ["PATH", "HOME", "CODEX_API_KEY"] }) },
+});
+```
+
+Only the named variables are passed. Nothing is implicit, so name `PATH` and
+`HOME` yourself; the run's shell commands and git are found through `PATH`. A
+named variable that isn't set on the server is left out, and one set to an empty
+string is kept. Values are read once, when `harnessEnv` is called. Called inline
+as above, that is when the block is built, so a variable set after that never
+reaches the run.
+
+To add a fixed value, spread the allowlist and set it beside it:
+`{ ...harnessEnv({ pass: [...] }), CI: "1" }`. Spreading `process.env` there
+hands the run every secret the server holds.
+
 ## Continuing a thread
 
 Codex calls a conversation a thread. Continuing one is two halves, and you write
@@ -201,8 +232,8 @@ A turn the model itself fails is not in that list. It comes back as a handle wit
 - No images and no structured output.
 - No approval prompts. A headless run is configured not to ask, so the sandbox
   and approval policy you set are the whole of the permission story.
-- The `env` option on `client` replaces the CLI process's environment rather than
-  adding to it. Spread `process.env` if you meant to add.
+- With `client.env` unset, the run can read every variable in your server's
+  environment. See [Environment variables](#environment-variables).
 
 ## Related
 

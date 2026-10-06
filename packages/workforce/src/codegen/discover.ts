@@ -48,9 +48,10 @@ import {
   type DiscoveredPackageBlock,
 } from "./discover-package-blocks";
 import { typescriptExtension } from "./typescript-module";
+import { PRE_RENAME_NAMES, preRenameKindNameProblem, preRenameKindsFolderProblem } from "../mailbox/pre-rename";
 
 /** Which locked folder a discovered file came from. */
-export type CodeSlotId = "worker" | "channel" | "block";
+export type CodeSlotId = "worker" | "mailbox" | "block";
 
 /**
  * One locked folder, and what a file in it becomes.
@@ -68,7 +69,7 @@ export interface CodeSlot {
   /** Path under the workforce root, POSIX, relative. Owner-locked. */
   readonly dir: string;
   /** The map this slot's files are rendered onto. Public: an app imports it. */
-  readonly exportName: "kinds" | "channelKinds" | "blocks";
+  readonly exportName: "kinds" | "mailboxKinds" | "blocks";
   /** What a basename here names, for a refusal to say. */
   readonly label: SegmentLabel;
 }
@@ -82,7 +83,7 @@ export interface CodeSlot {
  */
 export const CODE_SLOTS: readonly CodeSlot[] = Object.freeze([
   Object.freeze({ id: "worker", dir: "flows/workers", exportName: "kinds", label: "Kind" }),
-  Object.freeze({ id: "channel", dir: "flows/channels", exportName: "channelKinds", label: "Kind" }),
+  Object.freeze({ id: "mailbox", dir: "flows/mailboxes", exportName: "mailboxKinds", label: "Kind" }),
   Object.freeze({ id: "block", dir: "blocks", exportName: "blocks", label: "Block" }),
 ] as const);
 
@@ -266,6 +267,13 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
         continue;
       }
 
+      // A kind named for the old built-in: every session on it would read as
+      // data from before the rename.
+      if (slot.id !== "block" && name === PRE_RENAME_NAMES.kind) {
+        problems.push(preRenameKindNameProblem(`"${relative}"`));
+        continue;
+      }
+
       // One basename means one thing. Scoped so a worker kind and a block may
       // share a name — they feed different maps on different calls — while the
       // two FLOW folders share a scope, because one name meaning two kinds is
@@ -289,6 +297,12 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
       });
     }
   }
+
+  // Kinds left in the folder they sat in before the rename. Refused rather than
+  // skipped: a kind nobody generates is a mailbox that fails to open later,
+  // for a reason a long way from here.
+  const oldKinds = await classify(path.join(root, ...PRE_RENAME_NAMES.kindsFolder.split("/")));
+  if (oldKinds.kind !== "absent") problems.push(preRenameKindsFolderProblem());
 
   // Door B, over the same root. Run before anything is thrown, so an author
   // holding a bad block file AND a bad resource module sees both in one run —

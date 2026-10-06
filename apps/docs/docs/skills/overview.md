@@ -148,9 +148,10 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 ## Where skills folders live
 
 `readSkillsDirectory` takes a root, so a skills folder can sit wherever you point it. In an app that
-describes its workers in folders (see [Workers on disk](/docs/workforce/workers-on-disk)), one
-worker's skills are spread across three folders: the whole app's, its team's, and any sitting beside
-the worker itself. The same tree holds a team's shared documents, in
+describes its workers in folders (see [Workers on disk](/docs/workforce/workers-on-disk)), a
+worker on a team has its skills spread across three folders: the whole app's, its team's, and any
+sitting beside the worker itself. An org seat, one under `org/workers/`, has two: the whole
+app's and its own. The same tree holds a team's shared documents, in
 [`resources/`](/docs/workforce/documents-on-disk).
 
 ```
@@ -159,7 +160,7 @@ workforce/teams/pentest/skills/port-scan/SKILL.md
 workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md
 ```
 
-`readSeatSkills` from `@flow-state-dev/workforce/loader` reads all three for one worker:
+`readSeatSkills` from `@flow-state-dev/workforce/loader` reads them for one worker:
 
 ```ts
 import { readSeatSkills } from "@flow-state-dev/workforce/loader";
@@ -170,8 +171,12 @@ const { skills, errors } = await readSeatSkills("./workforce", {
 });
 ```
 
-Every skill folder at those three levels is read, so nothing has to be listed anywhere for a skill to
-be included. The records come back level by level — org, then team, then the worker's own — and each
+Leave `team` out for an org seat, and it reads `org/skills/` and
+`org/workers/<worker>/skills/` instead.
+
+Every skill folder at those levels is read, so nothing has to be listed anywhere for a skill to
+be included. The records come back level by level — org, then team when there is one, then the
+worker's own — and each
 one is the `{ name, skillMd, files }` shape `readSkillsDirectory` returns. Skill names stay bare,
 with no team prefix.
 

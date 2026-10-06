@@ -1,26 +1,28 @@
 /**
- * The seats and channels manifest sources (FIX-817) — the workforce's two
+ * The seats and mailboxes manifest sources (FIX-817) — the workforce's two
  * projections into the discovery door.
  *
  * ## Two layers, joined, because neither one alone is an honest answer
  *
- * The **declared** layer (a tree of `WORKER.md` and `CHANNEL.md`) is the only
+ * The **declared** layer (a tree of `WORKER.md` and `MAILBOX.md`) is the only
  * place a *purpose* is written: a seat's `description:` is what an orchestrator
- * picks on. It cannot say what is live — a file has no idea whether its channel
+ * picks on. It cannot say what is live — a file has no idea whether its mailbox
  * was ever opened.
  *
- * The **live** layer (FIX-1405's `inventory/seats/*` and `inventory/channels/*`)
+ * The **live** layer (FIX-1405's `inventory/seats/*` and `inventory/mailboxes/*`)
  * knows what actually got registered in this org. It cannot say what anything is
- * for: a row carries an id, a kind, and for a channel its members. And it is
+ * for: a row carries an id, a kind, and for a mailbox its members. And it is
  * **append-only** — `open-inventory.ts` is explicit that "a row means *was
- * registered in this org*, not *still declared*", and nothing ever reconciles or
- * deletes. So a row on its own cannot mean *open*.
+ * registered in this org*, not *still declared*", and nothing reconciles or
+ * deletes a row for going missing. So a row on its own cannot mean *open*. A
+ * mailbox declaration that became a project talk template (`mintFor:`) is not a
+ * mailbox, so it is never the declaration behind a row here.
  *
  * An entry is therefore projected only where BOTH layers answer. That is the
  * liveness filter (BR-12a) and it is also what makes a well-formed entry
  * possible at all: a row with no declaration behind it has no purpose line, and
  * an entry whose purpose reads "unknown" is exactly the entry an orchestrator
- * must not plan against. An orchestrator is never handed a channel that has
+ * must not plan against. An orchestrator is never handed a mailbox that has
  * closed — closing removes the declaration, and the row alone no longer
  * qualifies.
  *
@@ -48,8 +50,9 @@
 import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { resolveResourceCollection } from "@flow-state-dev/orchestration";
-import type { ChannelManifest, WorkerManifest } from "./manifest";
-import type { ChannelInventoryRow, SeatInventoryRow } from "./inventory/collections";
+import { isTalkTemplate } from "./mailbox/mailbox-binder";
+import type { MailboxManifest, WorkerManifest } from "./manifest";
+import type { MailboxInventoryRow, SeatInventoryRow } from "./inventory/collections";
 import { hiredSeatManifestFromStored } from "./roster/rows";
 
 /**
@@ -64,8 +67,8 @@ import { hiredSeatManifestFromStored } from "./roster/rows";
 export interface DeclaredWorkforce {
   /** One record per declared worker. */
   workers: readonly WorkerManifest[];
-  /** One record per declared channel. */
-  channels: readonly ChannelManifest[];
+  /** One record per declared mailbox. */
+  mailboxes: readonly MailboxManifest[];
 }
 
 /**
@@ -74,14 +77,14 @@ export interface DeclaredWorkforce {
  *
  * A key is how a source finds its collection at call time; a domain whose key
  * is omitted registers no source at all, so the door simply carries one domain
- * fewer. That is the ordinary state for an app that opened channels but wired
+ * fewer. That is the ordinary state for an app that opened mailboxes but wired
  * no seat inventory, and it reads as "nothing here" rather than as a fault.
  */
 export interface InventoryKeys {
   /** Registry key for the seat inventory (`defineSeatInventoryCollection`). */
   seats?: string;
-  /** Registry key for the channel inventory (`defineChannelInventoryCollection`). */
-  channels?: string;
+  /** Registry key for the mailbox inventory (`defineMailboxInventoryCollection`). */
+  mailboxes?: string;
 }
 
 export interface WorkforceManifestSourceOptions {
@@ -104,7 +107,7 @@ export interface WorkforceManifestSourceOptions {
  * One line saying what a declared record is for — its `description:`, or
  * for a runtime hire its instructions.
  *
- * Required on a `CHANNEL.md` by the reader and conventional on a `WORKER.md`
+ * Required on a `MAILBOX.md` by the reader and conventional on a `WORKER.md`
  * (the hire step reserves the key). A record that carries none falls back to
  * its id, which is all the declaration actually says.
  */
@@ -143,7 +146,7 @@ function orgOf(ctx: BlockContext): string | undefined {
  * **This lists the whole collection and keeps a subset, which is the thing
  * BP-033 tells you not to do.** Stated here rather than left for a reader to
  * find: an inventory row is never deleted, so the listed set grows with every
- * seat and channel ever registered in the org while the kept set stays bounded
+ * seat and mailbox ever registered in the org while the kept set stays bounded
  * by what the tree currently declares — and this sits behind a tool a model may
  * call on every step.
  *
@@ -230,39 +233,43 @@ function seatsSource(
 }
 
 /**
- * The channels domain: registered channels that are still declared.
+ * The mailboxes domain: registered mailboxes that are still declared as mailboxes.
  *
  * `members` and `openedAt` are `== null`-guarded rather than assumed: both
  * carry defaults for rows written before they existed (BP-030), and a row that
  * predates them projects normally instead of failing the entry.
  *
  * **The contract states addressing, never liveness.** A manifest entry means
- * the channel is declared and has an inventory row — both survive a closed or
+ * the mailbox is declared and has an inventory row — both survive a closed or
  * deleted session, because the declaration map is built at boot and the
  * inventory is append-only (FIX-1485: rows never close). So the entry says how
- * the channel is addressed and stops there. Telling the model to post to it
+ * the mailbox is addressed and stops there. Telling the model to post to it
  * would be the catalog claiming something it cannot see, and the model has no
  * way to learn otherwise until the post fails. `openedAt` is kept because it is
  * a recorded past event rather than a claim about now.
  */
-function channelsSource(roster: DeclaredWorkforce, key: string): BlockManifestSource {
-  const declared = new Map(roster.channels.map((channel) => [channel.id, channel]));
+function mailboxesSource(roster: DeclaredWorkforce, key: string): BlockManifestSource {
+  // A project talk template (`mintFor:`) is not a mailbox, so a row an earlier
+  // boot wrote under its id when it was one is never advertised.
+  const declared = new Map(
+    roster.mailboxes.filter((mailbox) => !isTalkTemplate(mailbox)).map((mailbox) => [mailbox.id, mailbox])
+  );
   return {
-    domain: "channels",
+    domain: "mailboxes",
     origin: "createWorkforceCapability",
     entries: async (ctx: BlockContext): Promise<ManifestEntry[]> => {
       const entries: ManifestEntry[] = [];
-      for (const row of await listRows<ChannelInventoryRow>(ctx, key, "channels")) {
+      for (const row of await listRows<MailboxInventoryRow>(ctx, key, "mailboxes")) {
         const id = row.state?.id;
         if (typeof id !== "string" || id === "") continue;
-        const channel = declared.get(id);
-        if (channel === undefined) continue;
+        const mailbox = declared.get(id);
+        if (mailbox === undefined) continue;
         const members = row.state.members ?? [];
         const openedAt = row.state.openedAt;
         entries.push({
           id,
-          kind: "channel",
-          purpose: purposeOf(channel.declared, id, "channel"),
+          kind: "mailbox",
+          purpose: purposeOf(mailbox.declared, id, "mailbox"),
           contract:
             `${members.length} member${members.length === 1 ? "" : "s"}` +
             `${members.length > 0 ? `: ${members.join(", ")}` : ""}. ` +
@@ -293,8 +300,8 @@ export function workforceManifestSources(
   if (options.inventory.seats !== undefined) {
     sources.push(seatsSource(options.roster, options.inventory.seats, options.hiredRoster));
   }
-  if (options.inventory.channels !== undefined) {
-    sources.push(channelsSource(options.roster, options.inventory.channels));
+  if (options.inventory.mailboxes !== undefined) {
+    sources.push(mailboxesSource(options.roster, options.inventory.mailboxes));
   }
   return sources;
 }

@@ -251,7 +251,20 @@ A seat keeps what it saves for a person under a user-scope key for its organizat
 Copying is optional and offline, with writers quiesced and a backup taken, as in the [owner attribution procedure](#who-owns-a-record) above. It copies only data you can show a seat wrote.
 
 1. **List the keys.** For each seat kind, the user-scoped resources and collections it declares without `flowIsolation: true`. Strike the keys a flow that is not a hired seat also declares, and the person's `users` row. Those stay where they are, so the seat starts without them. Copy a struck key only if your own records show a seat wrote it.
-2. **List the people and their organizations.** Hired seat addresses start with their organization (`acme.research`, `acme.~alice.research`). Include seats you have since fired. Their addresses remain in `sessions.flow_id`, so `SELECT DISTINCT flow_id FROM sessions WHERE flow_id LIKE 'acme.%'` lists every address used in `acme`. Keep the ones that were hired seats.
+2. **List the people and their organizations.** A hired seat's address is `<escaped org>.<seat id>`, or `<escaped org>.~<escaped user>.<seat id>` for a [seat only one member can reach](/docs/workforce/durable-hire#hiring-a-seat-only-one-member-can-reach). Include seats you have since fired. Their addresses remain in `sessions.flow_id`, so a prefix match lists every address used in an organization. Keep the ones that were hired seats.
+
+   1. Build the escaped organization prefix. Lowercase letters, digits and `-` stay as they are. Every other character becomes `%XX`, the uppercase hex of its UTF-8 bytes, so `acme` stays `acme`, `org_pentest_lab` becomes `org%5Fpentest%5Flab` and `Acme.EU` becomes `%41cme%2E%45%55`. Or let `seatAddress` from `@flow-state-dev/workforce` do it: `seatAddress(orgId, "x")` without the trailing `x` is the prefix, ending in `.`.
+   2. In that prefix, escape the characters `LIKE` treats specially: `\` becomes `\\`, `%` becomes `\%` and `_` becomes `\_`.
+   3. Match with `ESCAPE '\'`, which SQLite and Postgres both accept. For `org_pentest_lab`:
+
+      ```sql
+      SELECT DISTINCT flow_id FROM sessions
+      WHERE flow_id LIKE 'org\%5Fpentest\%5Flab.%' ESCAPE '\';
+      ```
+
+      For `acme` nothing needs escaping: `LIKE 'acme.%' ESCAPE '\'`.
+
+   Then count the organizations each person appears in:
 
    ```sql
    SELECT user_id, COUNT(DISTINCT org_id) AS orgs, GROUP_CONCAT(DISTINCT org_id) AS which

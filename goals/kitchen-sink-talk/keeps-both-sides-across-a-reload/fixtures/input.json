@@ -1,5 +1,5 @@
 {
   "port": 3037,
-  "channel": { "kind": "channel", "id": "support.help", "label": "devuser" },
+  "mailbox": { "kind": "mailbox", "id": "support.help", "label": "devuser" },
   "seat": { "kind": "agent", "id": "support.devices", "marker": "[scenario:talk-to-seat]", "replyMarker": "[reply:talk-to-seat]" }
 }

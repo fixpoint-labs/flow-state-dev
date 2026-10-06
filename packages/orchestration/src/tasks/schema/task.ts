@@ -316,6 +316,16 @@ export const taskSchema = z.object({
    * withholds rather than guessing when either side lacks it (BP-030).
    */
   incarnationId: z.string().optional(),
+  /**
+   * The user whose request added this task, stamped by the substrate from the
+   * running session when the task is built and never patched. Not a field a
+   * caller supplies (`TaskInit` has none), so a hand-over can resolve "the
+   * filer's own" worker against it (BP-031). Absent on a task added with no
+   * user in the session, and on any task persisted before it shipped: read it
+   * as "filer unknown", never as a match (BP-030). Server-only: never emitted
+   * to a client (`SERVER_ONLY_TASK_FIELDS`).
+   */
+  createdBy: z.string().optional(),
 
   createdAt: z.number(),
   updatedAt: z.number(),

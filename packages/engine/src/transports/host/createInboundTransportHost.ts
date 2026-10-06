@@ -258,7 +258,7 @@ function createPrincipalResolution(options: {
     if (resolvedOrgId === undefined) {
       throw new PrincipalResolutionError(
         "Request requires a verified organization: authentication.resolvePrincipal " +
-          "returned no usable orgId. Return a nonempty orgId from the resolver.",
+          "returned no usable orgId. Return a nonempty, well-formed orgId from the resolver.",
         { status: 401 }
       );
     }

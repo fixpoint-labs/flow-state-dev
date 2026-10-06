@@ -29,6 +29,12 @@ Use the higher-level wrappers when their shape fits:
 
 Drop to the board only when none of those fit.
 
+## The parts
+
+The board is a handle you drain. Its tasks are rows in a collection. Workers are blocks keyed by assignee.
+
+![The board is a handle that drains, the task collection holds the rows, and workers are blocks keyed by assignee](./task-board-parts.svg)
+
 ## Block composition
 
 ```
@@ -307,7 +313,7 @@ There is no `defaultWorker` unless you pass one. The skills delegation surface a
 
 A delegation board catches a bad assignee earlier than that. Its roster is the skill's declared agents plus the tools it allows, and `addTask` with an assignee naming neither returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. The check needs a roster to check against. A delegation board with no agents and an empty catalog has none, and neither does a `taskBoard` you wire yourself, so on those boards every assignee is accepted and an unmatched one takes the fallback path above.
 
-A registry seat can also run its tasks somewhere other than the request that claimed them. See [Seats that hand off](#seats-that-hand-off).
+A registry seat can also run its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Seats that hand off](#seats-that-hand-off).
 
 ## Seats that hand off
 
@@ -387,6 +393,82 @@ task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } 
 
 The in-process dispatcher applies that policy, and so do queue workers that share a lease backend. On a deployment that hands dispatches to an external queue without one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
+### Sending a task to a flow chosen per task
+
+A task dispatcher's `flowKind` can be a function instead of a string. The board calls it when it hands a task over, with the task's `assignee`, `taskId` and `input` and the running context, and sends the task to the flow id it returns. It may be async. Such a dispatcher must use `session: "per-task"`, so each task runs in a session of its own; any other policy throws when the dispatcher is built. Reach for it when the flow that should run a task is only known at that moment, such as a flow registered after the app started.
+
+Put such a dispatcher at `defaultWorker`. Assignees with an entry of their own in `workers` keep it, and every other task is handed over under the assignee it names:
+
+```ts
+import { dispatcher } from "@flow-state-dev/core";
+import type { BlockContext, TaskTargetQuery } from "@flow-state-dev/core/types";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+
+// Your own lookup: the flow id that serves this assignee, or undefined.
+declare function findFlowFor(assignee: string, ctx: BlockContext): Promise<string | undefined>;
+
+const board = taskBoard({
+  name: "support-work",
+  boardId: "support-work",
+  collection: supportWork,                 // a defineTaskCollection()
+  workers: {
+    triage: dispatcher({ name: "hand-off-triage", flowKind: "support-triage", action: "work", session: "per-task" }),
+  },
+  defaultWorker: dispatcher({
+    name: "hand-off-by-assignee",
+    action: "work",
+    session: "per-task",
+    flowKind: (task: TaskTargetQuery, ctx: BlockContext) => findFlowFor(task.assignee, ctx),
+  }),
+});
+```
+
+When the function returns `undefined` or an empty string, the hand-over is refused with a `DispatchRefusedError` whose `refused` is `"flow-not-found"`, naming the assignee, and the attempt fails through the board's ordinary error path. A task with no assignee is refused the same way, since the fallback hands a task over by the name on it. A function that throws fails the attempt with its own error.
+
+Only a `task` dispatcher takes a function. An `internal` dispatcher given one throws when you build it. The flow the function returns is cross-flow, so `defineFlow` can't check it ahead of time; the entry named by `action` has to exist on whichever flow it returns, or the dispatch is refused `no-entry`. Workforce's worker lookup is one of these functions: see [Handing a row to the worker it names](../workforce/mailboxes.md#handing-a-row-to-the-worker-it-names).
+
+### A task entry served by many boards
+
+A task entry is normally reached by one board in its own flow, which puts its claim check in front of it. An entry can instead say where its tasks come from, with `from`. Its flow then needs no board at all, and any board in any flow can hand it tasks, as long as `from` knows that board's ledger.
+
+`taskLedgers` builds the `from` value. Its `resolve` gets the ledger id each incoming task names and returns that ledger, or `undefined` for a ledger the entry takes nothing from:
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
+import { getOrCreateTaskCollection, resolveResourceCollection } from "@flow-state-dev/orchestration/tasks";
+
+export const reviewer = defineFlow({
+  kind: "reviewer",
+  actions: {},
+  resources: { [frontendQueue.id]: frontendQueue, [backendQueue.id]: backendQueue },
+  task: {
+    actions: {
+      work: {
+        block: review,
+        from: taskLedgers({
+          name: "review-queues",
+          // Answer only for ledgers this flow declares.
+          resolve: async (ledgerId, ctx) => {
+            const collection = resolveResourceCollection(ctx, ledgerId);
+            if (collection === undefined) return undefined;
+            return getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: ledgerId, collection });
+          },
+        }),
+      },
+    },
+  },
+})();
+```
+
+The ledger id is the `boardId` the sending board hands off under. So a board sending into a `from` entry sets `boardId` to its ledger's id, which is what `resolve` looks up.
+
+Each arriving task gets the same checks a board's own entry runs: same attempt, same row, still `in_progress`, still for this assignee. A ledger id `resolve` doesn't answer for is refused before any row is read, with an `UnknownTaskLedgerError` (`code: "unknown-task-ledger"`) naming the entry, the task and the ledger. The id travels with the dispatch, so treat it as untrusted: answer from `ctx`, for ledgers the running request may read, never from a map of every ledger in the process.
+
+`taskLedgers` also takes `uses` (capabilities that declare the ledgers as resources, in place of `resources` on the flow), `onError` (`"skip"` by default, as on a board), and `allowSessionState`, which accepts an entry whose blocks keep session state. Leave that off unless the entry is handed tasks `per-task`, or its session state has the same shape for every task.
+
+An entry with `from` that a board in the same flow also hands off to is refused when the flow is defined. Declare a separate entry for that board.
+
 ### What the board requires
 
 `taskBoard()` throws, naming the board and the seat, unless all of these hold for a board with any seat that hands off:
@@ -394,15 +476,15 @@ The in-process dispatcher applies that policy, and so do queue workers that shar
 - **`boardId` is set.** It is part of every dispatch run's session identity, so renaming it orphans work already in flight.
 - **The collection is a `defineTaskCollection()`.** The request, sequencer, and factory backings are refused: the run settles its row after the request that claimed it is gone.
 - **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the run resolves an empty ledger and never finds its row. `user` and `org` scope need nothing extra.
-- **The seat is a named registry entry.** A uniform `workers` block and `defaultWorker` have no assignee to route by, so neither can be a dispatcher.
+- **The dispatcher is a named registry entry or `defaultWorker`.** A uniform `workers` block has no assignee to route by, so it can't be a dispatcher. `defaultWorker` can: it hands each task over under the assignee the task names.
 
-`defineFlow()` throws for a dispatcher seat whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board hands off to, for a task dispatcher reachable from an action without sitting on a board, for two boards handing off to the same entry, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a handed-off worker's state on the task.
+`defineFlow()` throws for a dispatcher seat whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board hands off to and no `from` serves, for a task dispatcher reachable from an action without sitting on a board, for two boards handing off to the same entry, for an entry with `from` that a board in the same flow also hands off to, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a handed-off worker's state on the task. An entry with `from` can accept session state with `allowSessionState`; see [A task entry served by many boards](#a-task-entry-served-by-many-boards).
 
-A board with any seat that hands off fixes each task's assignee at admission: `setAssignee` declines with reason `immutable-assignee`. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value declines too.
+A board that hands tasks off fixes a task's assignee while an attempt holds it: `setAssignee` on an *in progress* or *parked* task declines with reason `immutable-assignee`. A pending or blocked task can change hands. To move a parked task, `unpark` it first. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value follows it too.
 
 ### What the drain reports
 
-`board.handedOff` lists the dispatcher seats in declaration order, each with its `name`, `label` (`assignee:<name>`), and `dispatch` address. It is empty on a board with no dispatcher seat.
+`board.handedOff` lists the dispatcher seats in declaration order, each with its `name`, `kind` (`"named"`), `label` (`assignee:<name>`), and `dispatch` address. A `defaultWorker` dispatcher comes last, with an empty `name`, kind `"floor"` and the label `floor`. Branch on `kind`; `label` is for messages. The list is empty on a board with no dispatcher.
 
 The drain's final `task-board-meta` item reports `terminationReason: "handed-off"` when every outstanding task is running in a dispatch run, with `counts.in_progress` saying how many. The drain returned; the work did not finish. See [Termination](#termination-onidle-modes).
 
@@ -430,7 +512,7 @@ if (task?.run) {
 }
 ```
 
-The run writes it, not the drain, because only the run knows for certain which session it landed in. Under `per-worker` or a shared `key`, several tasks name the same session and each names its own request. A board drained from two conversations still gives each row the run that took it.
+Each row names the run that took it. Under `per-worker` or a shared `key`, several tasks name the same session and each names its own request. Two rows can share a session, but never a request.
 
 To open the run, read the session first. A seat can hand its tasks to another flow, so the run doesn't always belong to the flow you read the board through. The session knows its owner:
 
@@ -439,7 +521,7 @@ const session = await client.getSession(task.run.sessionId);
 const flowKind = session.flowId; // the run's flow, never the board's
 ```
 
-Every session a run is dispatched into records its flow, so there is nothing to fall back to. Don't substitute the board's flow. Pass that `flowKind` to `useSession` and to the request reads. Through any other flow, the run's request stream answers 404.
+Every session a run is dispatched into records its flow, so `flowId` is always there to read. Don't substitute the board's flow. Pass that `flowKind` to `useSession` and to the request reads. Through any other flow, the run's request stream answers 404.
 
 The `run_linked` change is published on the run's own session, like everything else the run writes to the task. A view following a different session, such as the conversation that drained the board, sees `run` the next time it reads the board.
 
@@ -707,11 +789,12 @@ These are public actions. Anyone who can call your flow can call them, so add th
 
 ## Collection backing
 
-A board stores its tasks in one of three places. You choose once; nothing downstream restates it.
+A board stores its tasks in one of four places. You choose once; nothing downstream restates it.
 
 - **Request (default)** — tasks live on `ctx.request` and survive every block boundary in the request, including re-entry across an outer loop (Plan and Execute replans this way) and adds from sibling steps before or during the drain. Omit `collection` entirely, or pass `{ collectionId }` to name it (the id defaults to the board name).
 - **Durable (resource-backed)** — tasks outlive the request. Declare the collection with `defineTaskCollection` and pass it as `collection`; the board registers and resolves it for you. Don't count on a running request seeing a write made by another request; a later request reads it.
 - **Sequencer** — tasks live on the board's own sequencer state, which lasts one `board.drain` invocation. Opt in with `{ backing: "sequencer", collectionId }`. Calling the board twice gives two independent collections.
+- **Factory** — tasks live in a store you manage. Pass a function `(ctx) => TaskCollectionRef` as `collection`; the rules for writing that ref are below.
 
 ```ts
 // Request default — nothing to restate.
@@ -755,23 +838,23 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 
 `id` names the collection (it forms the resource pattern and the board's `collectionId`), `scope` sets its lifetime, and `stateSchema` types each task's `input` payload. The rest of the task envelope is validated for you. The board installs the collection on both its own drain and `board.capability`, so a sibling action that lists `board.capability` in `uses` reads and writes the same durable tasks.
 
-### A board a channel holds
+### A board a mailbox holds
 
-A [channel](../workforce/channels.md) can keep a durable board of its own, declared in its `CHANNEL.md` rather than in TypeScript. The channel owns the ledger and gains two actions for filing and reading rows; a worker that claims those rows resolves the same collection with `channelBoard` and drains it like any other durable board.
+A [mailbox](../workforce/mailboxes.md) can keep a durable board of its own, declared in its `MAILBOX.md` rather than in TypeScript. The mailbox owns the ledger and gains two actions for filing and reading rows; a worker that claims those rows resolves the same collection with `mailboxBoard` and drains it like any other durable board.
 
 ```ts
-import { channelBoard } from "@flow-state-dev/workforce";
+import { mailboxBoard } from "@flow-state-dev/workforce";
 
-const followups = channelBoard("engineering.incidents", "followups");
+const followups = mailboxBoard("engineering.incidents", "followups");
 const board = taskBoard({ name: "followups", collection: followups, workers });
 ```
 
-The collection is org-scoped, so its rows sit in the organization the channel runs in. The channel id and board name in that call are retyped, and a typo resolves a second, empty ledger rather than failing; the unattended-board warning at hire is what catches it. See [holding a board](../workforce/channels.md#holding-a-board).
+The collection is org-scoped, so its rows sit in the organization the mailbox runs in. The mailbox id and board name in that call are retyped, and a typo resolves a second, empty ledger rather than failing; the unattended-board warning at hire is what catches it. See [holding a board](../workforce/mailboxes.md#holding-a-board).
 
 ## See also
 
 - [Configuration](./configuration) — every `taskBoard` field, including defaults.
-- [Channels](../workforce/channels.md#holding-a-board) — declaring a durable board on a channel in Markdown, and reaching it from a worker.
+- [Mailboxes](../workforce/mailboxes.md#holding-a-board) — declaring a durable board on a mailbox in Markdown, and reaching it from a worker.
 - [Task substrate](./task-substrate.md) — the `Task` record, the status state machine, and the collection API underneath.
 - [GoalSeekLoop](./goal-seek-loop) — a config-driven, judge-gated loop over the board's drain.
 - [Block State](../advanced/block-state) — the primitive behind the board's sequencer-scoped task collection; see [The durability boundary](../advanced/block-state#the-durability-boundary) for what survives a resume.

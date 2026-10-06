@@ -97,6 +97,10 @@ const config: Config = {
             from: "/docs/tools/claude-code-cli",
             to: "/docs/tools/claude-code-sdk",
           },
+          {
+            from: "/docs/workforce/channels",
+            to: "/docs/workforce/mailboxes",
+          },
         ],
       },
     ],

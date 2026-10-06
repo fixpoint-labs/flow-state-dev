@@ -48,7 +48,7 @@ import { launchChromium } from "../../lib/playwright.mts";
 
 interface Fixture {
   port: number;
-  channel: { kind: string; id: string; board: string };
+  mailbox: { kind: string; id: string; board: string };
   seat: string;
   specialists: string[];
   /** What a post carries for the scripted specialist to file it. */
@@ -63,8 +63,8 @@ interface Fixture {
 const fixture = loadFixture<Fixture>(import.meta.url);
 const SEAT = process.env.GOAL_SEAT ?? fixture.seat;
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CHANNEL = fixture.channel.id;
-const BOARD_REF = `${CHANNEL}.${fixture.channel.board}`;
+const MAILBOX = fixture.mailbox.id;
+const BOARD_REF = `${MAILBOX}.${fixture.mailbox.board}`;
 
 /** The legs each control must redden, and only those. */
 const EXPECTED: Record<string, string[]> = {
@@ -106,12 +106,12 @@ async function openPage(page: Page, origin: string): Promise<void> {
   await page.locator('[data-testid="message-input"]:visible').waitFor({ state: "visible", timeout: 30_000 });
 }
 
-/** Open the channel's panel. */
-async function openChannel(page: Page, origin: string): Promise<void> {
+/** Open the mailbox's panel. */
+async function openMailbox(page: Page, origin: string): Promise<void> {
   await openPage(page, origin);
-  await open(page, fixture.channel.kind);
-  await row(page, CHANNEL).click();
-  await panel(page).getByTestId("channel-transcript").waitFor({ timeout: 15_000 });
+  await open(page, fixture.mailbox.kind);
+  await row(page, MAILBOX).click();
+  await panel(page).getByTestId("mailbox-transcript").waitFor({ timeout: 15_000 });
 }
 
 /** The escalations board in the team panel. */
@@ -159,9 +159,9 @@ function boardReads(page: Page): number[] {
   return at;
 }
 
-/** Post a line from the channel's panel once its composer is free. Returns when Send was pressed. */
+/** Post a line from the mailbox's panel once its composer is free. Returns when Send was pressed. */
 async function send(page: Page, line: string): Promise<number> {
-  const box = panel(page).getByLabel("Post to this channel");
+  const box = panel(page).getByLabel("Post to this mailbox");
   await readUntil(async () => (await box.isEnabled()) && (await box.inputValue()) === "", (free) => free, 10_000);
   await box.fill(line);
   await panel(page).getByRole("button", { name: "Send" }).click();
@@ -178,9 +178,9 @@ type Line = { author?: string; body: string };
 async function settled(page: Page, origin: string, token: string): Promise<void> {
   await readUntil(
     async () => {
-      const res = await page.request.get(`${origin}/api/flows/sessions/${CHANNEL}/state?include_items=true&item_types=component&limit=1000`);
+      const res = await page.request.get(`${origin}/api/flows/sessions/${MAILBOX}/state?include_items=true&item_types=component&limit=1000`);
       const items = ((await res.json()) as { items?: Array<{ component?: string; data?: Line }> }).items ?? [];
-      return items.filter((item) => item.component === "channel-post").map((item) => item.data!);
+      return items.filter((item) => item.component === "mailbox-post").map((item) => item.data!);
     },
     (lines) => {
       const at = lines.findIndex((l) => l.author === undefined && l.body.includes(token));
@@ -189,7 +189,7 @@ async function settled(page: Page, origin: string, token: string): Promise<void>
     20_000,
   );
   await readUntil(
-    async () => (await page.request.get(`${origin}/api/flows/sessions/${CHANNEL}/resources/${BOARD_REF}`)).text(),
+    async () => (await page.request.get(`${origin}/api/flows/sessions/${MAILBOX}/resources/${BOARD_REF}`)).text(),
     (body) => body.includes(token),
     10_000,
   );
@@ -279,7 +279,7 @@ await runGoal(async () => {
 
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const pageReads = boardReads(page);
-    await openChannel(page, origin);
+    await openMailbox(page, origin);
     await boardDrawn(page);
 
     const tabs: Tab[] = [

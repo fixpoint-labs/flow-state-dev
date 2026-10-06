@@ -12,6 +12,7 @@
  */
 import {
   createModelResolver,
+  firstInProcess,
   type CreateModelResolverOptions,
   type FlowStateSettings
 } from "@flow-state-dev/core";
@@ -904,9 +905,11 @@ class InternalFlowState<TSettings extends object>
 
     // Diagnostic on stderr (like the worker/dispose logs below): stdout is
     // reserved for data streams such as `fsdev run`'s NDJSON, which a config
-    // load must not corrupt.
-    // eslint-disable-next-line no-console
-    console.error(`[flowstate] active profile: "${profileName}"`);
+    // load must not corrupt. Once per process per profile (see `firstInProcess`).
+    if (firstInProcess(`engine/active-profile/${profileName}`)) {
+      // eslint-disable-next-line no-console
+      console.error(`[flowstate] active profile: "${profileName}"`);
+    }
 
     const modelResolver =
       this.#options.modelResolver ??
@@ -1154,6 +1157,7 @@ class InternalFlowState<TSettings extends object>
       adapters: this.#options.adapters,
       resolvePrincipal: this.#options.resolvePrincipal,
       debugEndpointsEnabled: this.#options.debugEndpointsEnabled,
+      debugAllowAnonymousLocal: this.#options.debugAllowAnonymousLocal,
       staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
       queuedGraceMs: this.#options.queuedGraceMs,

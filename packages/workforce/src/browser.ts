@@ -2,7 +2,7 @@
  * `@flow-state-dev/workforce/browser` — the names a browser component needs
  * from this package, and nothing that runs a seat.
  *
- * The package root is not safe to bundle for a browser: the channel floor
+ * The package root is not safe to bundle for a browser: the mailbox floor
  * reaches the orchestration task board, which imports `node:async_hooks`. A
  * bundler that drops unused re-exports hides that until a client component
  * asks for one name that sits beside the runtime, and then the page fails to
@@ -12,10 +12,15 @@
  * the workspace packages it reaches, and fails on any Node built-in.
  */
 
-export { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "./seat-hire-keys";
-export { splitSeatAddress } from "./roster/address";
 export {
-  CHANNEL_POST_COMPONENT,
-  channelTranscriptLineSchema,
-  type ChannelTranscriptLine
-} from "./channel/channel-post-line";
+  HIRED_ROSTER_BROWSER_PATTERN,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE
+} from "./seat-hire-keys";
+export { seatAddress, splitSeatAddress } from "./roster/address";
+export { isHiredSeatRow, listedSeatRows } from "./inventory/listed-seats";
+export {
+  MAILBOX_POST_COMPONENT,
+  mailboxTranscriptLineSchema,
+  type MailboxTranscriptLine
+} from "./mailbox/mailbox-post-line";

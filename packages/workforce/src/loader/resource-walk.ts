@@ -142,7 +142,7 @@ export async function* walkResourcePlaces(
   // The org root. Opened structurally rather than merely classified, so a
   // symlinked or unreadable `org/` is reported the way `teams/` is. Absence is
   // silent: an app may declare nothing at the organisation level. It stays in
-  // this walk rather than in `walkTeams`, which the channels reader also rides
+  // this walk rather than in `walkTeams`, which the mailboxes reader also rides
   // and which must not hand it an `org/` scope it is not allowed to use.
   const orgDir = path.join(root, "org");
   const org = await openStructuralDirectory(orgDir, "org");
@@ -158,13 +158,11 @@ export async function* walkResourcePlaces(
       atWorkerRoot: false,
       mintRef: (name) => mintResourceRef(undefined, undefined, name),
     };
-    // Org workers are rare shared-infra seats, and their files load for the
-    // reason a team worker's do. Their ref drops `org/`, exactly as an org
-    // file's does. No seat can be hired at that address yet — the roster reader
-    // passes over `org/workers/` in silence and a worker id requires a team —
-    // which is a larger gap than this walk closes, and not a reason for the
-    // files to go on being unread.
-    yield* walkWorkers(orgDir, "org", undefined, ORG_WORKER_PLACE, options);
+    // Org workers are rare shared seats, and their files load for the reason
+    // a team worker's do. Their ref drops `org/`, exactly as an org file's
+    // does, and names the seat the roster reader mints from the same folder:
+    // the bare folder name.
+    yield* walkWorkers(orgDir, "org", undefined, options);
   }
 
   // `walkTeams` reports through a callback, and a generator cannot yield from
@@ -184,17 +182,20 @@ export async function* walkResourcePlaces(
       atWorkerRoot: false,
       mintRef: (name) => mintResourceRef(team.id, undefined, name),
     };
-    yield* walkWorkers(team.dir, team.path, team.id, TEAM_WORKER_PLACE, options);
+    yield* walkWorkers(team.dir, team.path, team.id, options);
   }
   yield* pending.splice(0);
 }
 
 /**
- * Yield every worker's folder under one parent — `org/` or a team folder.
+ * Yield every worker's folder under one parent — `org/` (`teamId` undefined)
+ * or a team folder.
  *
  * One function called twice rather than two copies: the two parents differ only
  * in the team id handed to the ref minter, and a second copy is how the levels
- * of a tree start disagreeing about what a symlink means.
+ * of a tree start disagreeing about what a symlink means. Exported for the
+ * roster reader, which walks the same slots for `WORKER.md`, so the roster and
+ * the resources doors cannot disagree about what a worker slot is.
  *
  * This level is the worker reader's rule: a `workers/` level holds folders, so a
  * *file* in it occupies no slot and is passed over in silence. Inside a worker's
@@ -204,13 +205,13 @@ export async function* walkResourcePlaces(
  * the roster reader's question, answered and reported separately; the doors are
  * answering a question about a file.
  */
-async function* walkWorkers(
+export async function* walkWorkers(
   parentDir: string,
   parentPath: string,
   teamId: string | undefined,
-  pattern: string,
   options: ResourceWalkOptions,
 ): AsyncGenerator<ResourceWalkStep> {
+  const pattern = teamId === undefined ? ORG_WORKER_PLACE : TEAM_WORKER_PLACE;
   const workersPath = `${parentPath}/${WORKERS_LEVEL}`;
   const workers = await openStructuralDirectory(path.join(parentDir, WORKERS_LEVEL), workersPath);
   if (workers.refusal !== undefined) {

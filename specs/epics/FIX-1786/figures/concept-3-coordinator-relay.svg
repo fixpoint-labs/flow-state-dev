@@ -1,0 +1,76 @@
+<svg viewBox="0 0 940 470" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A coordinator hands each post to one of its delegates, all private to Alice. Alice posts to her launch coordinator, a worker on her roster with delegates researcher and writer, best-fit routing and an optional transcript resource. It relays the post to the researcher, which works it in its own session and answers; the writer is not picked for this post. Below, no coordinator needed: the writer, needing one fact checked, asks the researcher directly, which answers in a new session.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg      { fill:var(--surface); }
+    .wall-sh { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .wall-pr { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.4; }
+    .wall-dz { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 4; }
+    .card    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .hot     { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .ln      { stroke:var(--ink-3); stroke-width:1.4; }
+    .ln-d    { stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:5 4; }
+    .rule    { stroke:var(--rule); stroke-width:1; }
+    .ah      { fill:var(--ink-3); }
+    .title   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:18px; }
+    .wl      { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .h       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .p       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:14px; }
+    .s       { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .lbl     { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .faint   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+  <text class="title" x="28" y="34">A coordinator hands each post to one of its delegates</text>
+  <g id="wall">
+    <rect class="wall-pr" x="20" y="52" width="900" height="400" rx="10"/>
+    <text class="faint" x="36" y="74">all private to Alice</text>
+  </g>
+  <g id="relay">
+    <rect class="card" x="40" y="140" width="170" height="56" rx="6"/>
+    <text class="p" x="125.0" y="173.0" text-anchor="middle">Alice (user)</text>
+    <rect class="hot" x="290" y="92" width="300" height="172" rx="6"/>
+    <text class="h" x="306" y="118">launch (coordinator)</text>
+    <text class="s" x="306" y="142">a worker on Alice&#x27;s roster</text>
+    <text class="s" x="306" y="166">delegates: researcher, writer</text>
+    <text class="s" x="306" y="190">routing: best fit</text>
+    <text class="s" x="306" y="214">transcript resource: optional</text>
+    <rect class="card" x="660" y="96" width="240" height="70" rx="6"/>
+    <text class="h" x="674" y="122">researcher (worker)</text>
+    <text class="s" x="674" y="142">works the post in its session</text>
+    <rect class="card" x="660" y="196" width="240" height="70" rx="6"/>
+    <text class="h" x="674" y="222">writer (worker)</text>
+    <text class="s" x="674" y="242">not picked for this post</text>
+    <line class="ln" x1="210" y1="168" x2="288" y2="168"/>
+    <polygon class="ah" points="288,168 280.0,163.6 280.0,172.4"/>
+    <text class="lbl" x="228" y="160">posts</text>
+    <line class="ln" x1="590" y1="116" x2="658" y2="116"/>
+    <polygon class="ah" points="658,116 650.0,111.6 650.0,120.4"/>
+    <text class="lbl" x="600" y="108">relays</text>
+    <line class="ln" x1="660" y1="148" x2="592" y2="148"/>
+    <polygon class="ah" points="592,148 600.0,152.4 600.0,143.6"/>
+    <text class="lbl" x="600" y="166">answers</text>
+    <line class="ln-d" x1="590" y1="231" x2="658" y2="231"/>
+    <polygon class="ah" points="658,231 650.0,226.6 650.0,235.4"/>
+  </g>
+  <g id="direct">
+    <line class="rule" x1="40" y1="300" x2="900" y2="300"/>
+    <text class="h" x="40" y="340">No coordinator needed</text>
+    <text class="s" x="40" y="360">one worker asking another</text>
+    <rect class="card" x="290" y="320" width="300" height="64" rx="6"/>
+    <text class="h" x="304" y="346">writer (worker)</text>
+    <text class="s" x="304" y="366">needs one fact checked</text>
+    <rect class="card" x="660" y="320" width="240" height="64" rx="6"/>
+    <text class="h" x="674" y="346">researcher (worker)</text>
+    <text class="s" x="674" y="366">answers in a new session</text>
+    <line class="ln" x1="590" y1="352" x2="658" y2="352"/>
+    <polygon class="ah" points="658,352 650.0,347.6 650.0,356.4"/>
+    <text class="lbl" x="608" y="344">asks</text>
+  </g>
+</svg>

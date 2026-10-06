@@ -79,6 +79,7 @@
  * changed and does not change with the scope: a copy, never a source.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
+import { readCommitted, type UpdateStateRunner } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 
 /** Accessor key and storage prefix for the run record. */
@@ -112,6 +113,44 @@ export const runRecordStateSchema = z.object({
   workspacePath: z.string().nullable().default(null),
   /** The branch that checkout is on. */
   branch: z.string().nullable().default(null),
+  /**
+   * The repository the run's branch was cut from, as the workspace host's
+   * source named it when the run was first provisioned.
+   *
+   * **Kept across attempts, and read back.** A row that started on one
+   * repository stays on it: a retry provisions from this value rather than
+   * asking the source again, so changing a project's repository applies to new
+   * rows and never moves a run already under way. `null` on a row written
+   * before this field existed, or before the run was first provisioned; such a
+   * row asks the source (BP-030).
+   */
+  remote: z.string().nullable().default(null),
+  /** The branch {@link remote}'s run branch was cut from, recorded with it. */
+  baseRef: z.string().nullable().default(null),
+  /**
+   * The run was first provisioned with no repository: its kept files alone.
+   * Kept across attempts for the reason {@link remote} is, so a project that
+   * gains a repository later never moves a files run onto a checkout and away
+   * from the files it saved. `null` on a row written before this field
+   * existed, or before the run was first provisioned (BP-030).
+   */
+  filesOnly: z.boolean().nullable().default(null),
+  /**
+   * What the last save of the run's kept files did, when the run has any.
+   *
+   * A conflict is an outcome, not a failure: the files named here were changed
+   * by someone else too and were left as they were. A failed save is
+   * recorded here rather than failing the run, and the next save point tries
+   * again. Cleared by every attempt's opening write.
+   */
+  lastSave: z
+    .object({
+      at: z.number(),
+      conflicts: z.array(z.string()),
+      error: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
   /** How the last attempt ended. */
   outcome: runOutcomeSchema.nullable().default(null),
   /** Why, in the harness's own words or the throw's message. */
@@ -239,6 +278,7 @@ const ATTEMPT_SCOPED_CLEAR = {
   reason: null,
   childSessionId: null,
   requestId: null,
+  lastSave: null,
 } as const;
 
 /** What {@link writeRunRow} did. */
@@ -476,14 +516,60 @@ export async function readRunRow(
 }
 
 /**
+ * The session `record` says attempt `attempt` (or a later one) confirmed, or
+ * `null`. A session left by an earlier attempt is not this attempt's: it opens
+ * by clearing it, so until then the attempt has confirmed nothing. A record
+ * written before attempts were recorded counts its session as the current one.
+ */
+export function sessionConfirmedBy(
+  record: { sessionId?: string | null; attempt?: number | null } | undefined,
+  attempt: number,
+): string | null {
+  if (typeof record?.sessionId !== "string") return null;
+  if (record.attempt != null && record.attempt < attempt) return null;
+  return record.sessionId;
+}
+
+/**
+ * The session attempt `attempt` (or a later one) has confirmed, as STORED now,
+ * or `null` while it has confirmed none (FIX-1735).
+ *
+ * {@link readRunRow} answers from what this request read first, which is right
+ * for a decision made once and wrong for a wait: the harness confirms its
+ * session from another request, and this one would never see it. A conditional
+ * update that returns what it finds and changes nothing reads the committed
+ * row, and writes nothing. A row this request never saw stays unseen, since
+ * its absence is remembered too; the door keeps its turn before it reads, so
+ * an attempt that opens a row it never saw takes that turn itself.
+ */
+export async function readConfirmedSession(
+  ctx: CollectionHoldingContext,
+  topic: string,
+  attempt: number,
+): Promise<string | null> {
+  const ref = await collectionRef(ctx, RUNS).getOptional(topic);
+  if (ref === undefined) return null;
+  const sessionId = await readCommitted<Record<string, unknown>, string | null>(ref, (current) =>
+    sessionConfirmedBy(current as { sessionId?: string | null; attempt?: number | null } | undefined, attempt),
+  );
+  return sessionId ?? null;
+}
+
+/**
  * The slice of a collection ref this module uses, resolved by accessor key.
  *
  * Structural rather than typed against `ResourceCollectionRef` so the board's
  * ledger — whose row shape is the substrate's `Task`, not ours — resolves
  * through the same helper.
  */
+/** One row as {@link ReadableCollection.getOptional} hands it back: its state, and the write a committed read runs through. */
+interface CollectionRow extends UpdateStateRunner<Record<string, unknown>> {
+  state: unknown;
+  path: string;
+}
+
 interface ReadableCollection {
-  getOptional(key: string): Promise<{ state: unknown; path: string } | undefined>;
+  getOptional(key: string): Promise<CollectionRow | undefined>;
   upsert(key: string, update: Record<string, unknown>): Promise<unknown>;
   list(prefix?: string): Promise<Array<{ state: unknown; path: string }>>;
 }

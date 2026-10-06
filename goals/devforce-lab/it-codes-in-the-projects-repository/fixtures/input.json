@@ -1,0 +1,7 @@
+{
+  "marker": { "path": "MARKER-A.txt" },
+  "note": { "path": "notes/storefront-plan.md", "body": "What the storefront run learned, kept beside its checkout.\n" },
+  "code": { "path": "src/greeting.js", "body": "export const greeting = \"hello from the storefront run\";\n" },
+  "sandboxFile": { "path": "app/index.html", "body": "<h1>A prototype from scratch</h1>\n" },
+  "disallowedRemote": "https://git.example.com/acme/platform.git"
+}

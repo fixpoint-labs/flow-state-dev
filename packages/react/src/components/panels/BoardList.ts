@@ -151,7 +151,7 @@ function defaultRowBody({ card }: BoardCardRow): ReactNode {
 export function BoardList(props: BoardListProps): ReactNode {
   const { sessionId, boardRef, resourceClient, fetcher, limit, live = false, slots = {} } = props;
 
-  const providerBaseUrl = useFlowContext().baseUrl;
+  const { baseUrl: providerBaseUrl, apiPath } = useFlowContext();
   const baseUrl = props.baseUrl ?? providerBaseUrl;
   const source = usePanelSource(resourceClient, { baseUrl, fetcher });
 
@@ -161,7 +161,7 @@ export function BoardList(props: BoardListProps): ReactNode {
     boardRef,
     limit,
     "Failed to load this board",
-    live ? { baseUrl, fetcher } : undefined
+    live ? { baseUrl, apiPath, fetcher } : undefined
   );
   const rows = useMemo(() => newestFirst(cardRows(state.rows)), [state.rows]);
 

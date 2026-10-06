@@ -232,15 +232,22 @@ const sidebars: SidebarsConfig = {
         "workforce/overview",
         "workforce/workers-on-disk",
         "workforce/built-in-worker",
-        "workforce/channels",
-        "workforce/inventory",
         "workforce/documents-on-disk",
         "workforce/code-on-disk",
         "workforce/capabilities-on-disk",
         "workforce/packages-on-disk",
+        "workforce/mailboxes",
+        "workforce/projects",
+        "workforce/inventory",
         "workforce/durable-hire",
+        "workforce/chief-of-staff",
         "workforce/ui",
       ],
+    },
+    {
+      type: "category",
+      label: "Shift Manager",
+      items: ["shift-manager/overview"],
     },
     {
       type: "category",
@@ -332,6 +339,7 @@ const sidebars: SidebarsConfig = {
         "api/cli",
       ],
     },
+    "glossary",
   ],
 };
 

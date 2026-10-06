@@ -640,6 +640,8 @@ Do not implement it as a version CAS. Terminal transitions persist `version` **u
 
 How you store the flag is yours. The shipped adapters differ: in-memory and the SQL pair keep it on the record and force the stored value through on `set`; the filesystem adapter keeps a marker file beside the record, because its `get()` loads inline items and would break the O(1) bound. Whichever you pick, `get()` must still surface the flag on the returned record.
 
+**A `set` that leaves `items` off keeps the stored items.** The runtime writes the whole request record when a block changes request state, and it leaves `items` off that record, because its copy is from when the run started. If your adapter keeps items on the record and `set` replaces the record, carry the stored items through whenever `value.items` is absent, or every item persisted since the run started disappears until the request settles. An adapter that keeps items out of `set`, as the SQLite and Postgres adapters do, already holds this. A record that does carry `items` may still replace them.
+
 The cross-store conformance suite (`createRequestStoreConformanceTests`, from `@flow-state-dev/engine/testing`) covers all of this.
 
 ## Custom model resolution
@@ -706,7 +708,8 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 **Registry/routes:**
 - `createFlowRegistry` — Register flow instances
 - `createFlowApiRouter` — Generate HTTP route handlers from a registry
-- `parseFlowRoute` — Parse incoming request paths
+- `parseFlowRoute` — Parse an incoming method and decoded path segments
+- `decodePathSegments` — Turn a raw, still-encoded URL path into those decoded segments
 
 **Cross-flow schema validation:**
 
@@ -805,7 +808,7 @@ Conflicts report what actually happened rather than collapsing into one error:
 | A delete's version check failed against a live row | `ConcurrentModificationError` — nothing was deleted |
 | Retry budget exhausted | `ConcurrentModificationError` |
 
-The driver is deliberately separate from the one the four scope stores use (`runWithCAS`), which treats every conflict as retryable, suppresses a no-op before checking any version, and has no cancellation. The full policy table lives in the `stores/resource-cas.ts` module header. Resource writes honour the request's background abort signal, so a user-requested abort stops them — while a client disconnect does not, since background `.sideChain()` tasks keep running and their writes must land.
+The driver is deliberately separate from the one the four scope stores use (`runWithCAS`), which treats every conflict as retryable and has no cancellation. Both suppress a no-op only after re-reading the stored version. The full policy table lives in the `stores/resource-cas.ts` module header. Resource writes honour the request's background abort signal, so a user-requested abort stops them — while a client disconnect does not, since background `.sideChain()` tasks keep running and their writes must land.
 
 ### A resource `stateSchema` must parse its own output unchanged
 
@@ -988,7 +991,7 @@ const provider = createCheckpointDurabilityProvider({
 
 The interface methods are `saveCheckpoint`, `loadCheckpoint`, `suspend`, `loadSuspension`, `listSuspended`, `acquireLease`, `releaseLease`, `cleanup`, plus the retention seams `cleanupCheckpoints` (delegates to `CheckpointStore.deleteForRequest`) and `pruneSuspensions` (delegates to `SuspensionStore.pruneTerminalBefore`). `createCheckpointDurabilityProvider` delegates each to the matching store from `StoreRegistry`.
 
-`SuspensionStore` and `LeaseStore` ship with in-memory, filesystem, SQLite, and Postgres adapters. See the [Durable Execution guide](https://flow-state.dev/docs/advanced/durable-execution) for usage patterns.
+`SuspensionStore` and `LeaseStore` ship with in-memory, filesystem, SQLite, and Postgres adapters. A custom `LeaseStore` can run `createLeaseStoreConformanceTests({ name, createStore })`, from `@flow-state-dev/engine/testing`. It checks that concurrent acquires of one key grant exactly one lease, that each lease id is a fresh UUID, and that a holder whose lease expired can't release the lease that replaced it. See the [Durable Execution guide](https://flow-state.dev/docs/advanced/durable-execution) for usage patterns.
 
 A suspension inside a router's chosen branch resumes the same branch: the recorded `router_decision` is validated against the re-run selector before dispatch (a mismatch fails with `RouteUnavailableError`), and completed work inside the branch replays from the durable log instead of re-executing.
 
@@ -1066,6 +1069,8 @@ The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/r
 
 The endpoint is off by default. Opt in with `debugEndpointsEnabled: true` on `createFlowApiRouter`, or set `FSDEV_DEBUG_ENDPOINTS=1` in the environment. By default the route accepts only loopback origins; widen with `debugAllowedOrigins` for non-loopback DevTool hosts.
 
+A request with no `Origin` header (curl, a script, or a same-origin GET from a browser) is rejected with `403 { "error": "debug_endpoints_origin_rejected", "origin": null }`. `Origin: null` counts as no header. To accept these requests, pass `debugAllowAnonymousLocal: true` to `createFlowApiRouter` or `createFlowState`, or set `FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL=1`. Only the value `1` turns it on. An explicit option, including `false`, overrides the env var. Opting in doesn't widen the origin check: a request whose `Origin` is neither loopback nor in `debugAllowedOrigins` is still rejected.
+
 ```ts
 const router = createFlowApiRouter({
   registry,
@@ -1074,7 +1079,9 @@ const router = createFlowApiRouter({
 });
 ```
 
-The DevTool's Resources panel uses this surface. `fsdev dev` enables it automatically on loopback. Don't ship it enabled to production without auditing the origin allowlist and gating the route behind whatever authentication your host already enforces.
+The DevTool's Resources panel uses this surface. `fsdev dev` enables it automatically on loopback and turns on `debugAllowAnonymousLocal` so the DevTool can reach it; `fsdev serve` does neither. Don't ship it enabled to production without auditing the origin allowlist and gating the route behind whatever authentication your host already enforces.
+
+The origin check doesn't identify the caller. Any local process can send a loopback `Origin` and pass, and with `debugAllowAnonymousLocal` on, any client that can reach the port gets in without one. Only turn that option on for a server bound to loopback, and don't expose debug endpoints on a network you don't trust.
 
 See [Debug vs client state](https://flow-state.dev/docs/devtool/debug-vs-client-state) for the full mental model.
 
@@ -1132,7 +1139,7 @@ A store has to implement the matching operation for the write to go the right-ha
 
 Every store refuses a write against a record that does not exist before it compares versions, unchecked writes included. So an increment against a deleted scope record returns `false` and creates nothing.
 
-`false` from a mutator means "nothing was written". It does not mean the store already holds the value. Three things produce it: the proposed state matched what **this container last read** (the deep-equal short-circuit runs against the cached read, ahead of any store round-trip), the record no longer exists, or a full-record fallback write lost its version check.
+`false` from a mutator means "nothing was written". It does not mean the store already holds the value. Three things produce it: the proposed state matched the current state, the record no longer exists, or a full-record fallback write lost its version check. On a version-checked write the match is confirmed against the store: the record is re-read, and if its version moved since this container read it, the mutator re-runs against the stored value and the write lands. On an unchecked write the match is against what **this container last read**, ahead of any store round-trip, so a write that only equals a stale cache is skipped.
 
 The table above is scope state. Every *state* mutation through a resource handle takes the version check; `writeContent` carries no version and overwrites the stored body.
 

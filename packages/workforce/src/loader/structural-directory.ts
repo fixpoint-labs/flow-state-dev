@@ -2,7 +2,7 @@
  * The walk primitives every workforce-tree reader shares.
  *
  * A workforce tree is read by more than one loader — workers from
- * `teams/<id>/workers/`, a seat's skills from three `skills/` folders — and
+ * `org/workers/` and `teams/<id>/workers/`, a seat's skills from three `skills/` folders — and
  * each of them needs the same three answers about a path before it can walk it:
  * is it a symlink (never followed), is it simply absent (silent), or is it
  * there and unreadable (reported)? Those answers live here, once, so a second
@@ -56,7 +56,7 @@ function withoutTrailingSeparators(target: string): string {
  * Names that never denote a thing in the tree — editor and OS droppings, which
  * appear at every enumerated level and are skipped before they are read as a
  * name. One list rather than one per reader: a name that is not a team to one
- * reader is not a worker, channel or document to another.
+ * reader is not a worker, mailbox or document to another.
  *
  * Published as a view that cannot be written to, not as the set the readers
  * consult. One list shared by every reader in the process is exactly the thing
@@ -302,7 +302,7 @@ function collapsesThroughAnAncestor(root: string): boolean {
  * Open the configured workforce root, or throw.
  *
  * The root is the one level whose failure is a wiring mistake rather than a
- * missing seat, channel or document, so it throws where everything below it is
+ * missing seat, mailbox or document, so it throws where everything below it is
  * collected: a reader that returned an empty result for a root that is not
  * there would hand an app a silent zero-worker roster.
  *

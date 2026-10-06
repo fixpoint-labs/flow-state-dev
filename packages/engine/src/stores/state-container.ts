@@ -34,7 +34,8 @@ import {
   isCommutativeHint,
   type CASMutationHint,
   type CASPersist,
-  type CASPersistResult
+  type CASPersistResult,
+  type CASReread
 } from "./cas";
 import { withScopeLock } from "./scope-lock";
 
@@ -101,6 +102,8 @@ export type ScopeStateOpsOptions<TState extends object> = {
    * `ConcurrentModificationError`.
    */
   persist?: CASPersist<TState>;
+  /** See `RunWithCASOptions.reread`. Ignored when `persist` is omitted. */
+  reread?: CASReread<TState>;
   /**
    * When true with `persist` set, mutators serialize through
    * `withScopeLock`, and the durable write runs under that lock. Request
@@ -233,6 +236,7 @@ async function runDurableMutation<TState extends object>(
     container,
     mutator,
     persist,
+    reread: options?.reread,
     options: options?.cas,
     hint
   });

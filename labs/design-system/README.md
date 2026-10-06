@@ -1,11 +1,11 @@
 # Design system
 
-The look of App Lab, the Labs' app: a light and a dark theme over the tokens FSD's components
+The look of Shift Manager, the Labs' app: a light (day) and a dark (night) theme over the tokens FSD's components
 already read. It holds values only. There are no components here; the app gets those from
 `@flow-state-dev/react` and the `@flow-state-dev/ui` registry, unedited.
 
 ```css
-@import "@flow-state-dev/design-system/app-lab.css";
+@import "@flow-state-dev/design-system/shift-manager.css";
 ```
 
 Import it after the stylesheet that holds the registry's `tokens` defaults. The light theme
@@ -13,15 +13,21 @@ applies by default. Put `class="dark"` on an ancestor for the dark one. The same
 the navigator's and panels' `--fsd-nav-*` and `--fsd-panel-*` properties at the tokens, so they
 match the cards.
 
-Two rules the values keep. Yellow (`attention`) means only that a person must act. Corners are
-square.
+It also sets two values no FSD token covers: `--sidebar`, the app's navigation column, and
+`--inspector`, its right-hand panel. Both are a step darker than the page. An app that doesn't
+use them can ignore them.
 
-Fonts are named, not bundled: Space Grotesk for the interface, Archivo for display, IBM Plex
-Mono for labels and ids. Load them in your app, or the system fallbacks show.
+Yellow (`attention`) means only that a person must act. Corners are square.
+
+Fonts come with it: Space Grotesk for the interface and headings, IBM Plex Mono for labels
+and ids. The stylesheet imports their Latin faces from the `@fontsource` packages, so your bundler
+serves the font files with your app and no page fetches them from a font CDN. That needs a
+CSS pipeline that rebases `url()`s inside imported stylesheets; in Vite, run Tailwind as
+`@tailwindcss/vite` rather than through PostCSS.
 
 Nothing in FSD's own packages may carry one of these values; `pnpm --filter
-@flow-state-dev/design-system test` fails if one does. The values are drafts until the final
-design hand-back.
+@flow-state-dev/design-system test` fails if one does. The values come from the final Claude
+Design hand-back, kept with the epic spec at `specs/epics/FIX-1649/assets/design/v2/`.
 
 The goal check `goals/design-system/skins-reused-components-from-one-token-set/` installs the
 registry into a fresh app, loads this stylesheet and reads what a browser paints.

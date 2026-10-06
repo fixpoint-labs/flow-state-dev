@@ -70,7 +70,7 @@ async function setupCtx(
     await stores.suspensions.set(record);
   }
   const debug = resolveDebugConfig(
-    debugConfig ?? { debugEndpointsEnabled: true }
+    debugConfig ?? { debugEndpointsEnabled: true, debugAllowAnonymousLocal: true }
   );
   return { registry, stores, debug };
 }

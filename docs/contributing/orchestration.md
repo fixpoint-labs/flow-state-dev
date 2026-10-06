@@ -164,8 +164,18 @@ git checkout -B <branch> origin/main        # e.g. spec/<ISSUE-ID> or fix/<ISSUE
   paths apart.
 - **Exception — a dependent sub-PR** bases on its dependency's branch, not `main`, so review
   can start before the dep merges: `git fetch origin <dep branch> && git checkout -B <sub-PR
-  branch> origin/<dep branch>` (rebase onto the dep when it merges). See `issue-lifecycle` →
-  Multi-PR issues.
+  branch> origin/<dep branch>`. See `issue-lifecycle` → Multi-PR issues.
+- **A GitHub stack for that PR.** The git base is the dependency, and so is the GitHub base:
+  create with `--base <dep branch>`, then `gh stack link <dep PR> <this PR>` (the
+  `github/gh-stack` extension) so GitHub links the two as a stack. No `DO NOT MERGE` title;
+  the stack shows the merge order. Body names the dependency PR. When the dependency merges,
+  GitHub retargets this PR to `main` and rebases it. Done is GitHub `baseRefName` `main` and
+  the diff only this slice; a PR that still names the old base was never linked, and the
+  worker retargets it and says so. `issue-multi-pr` does not clear `stackedOn` until the
+  worker reports `baseRefName: main`. Do not surface ready to merge while the
+  GitHub base is not main. The worker procedure is `issue-implement` Step 9 and the
+  `issue-multi-pr` build/rebase prompts; the coordinator's only new action is the
+  PR_FEEDBACK refusal.
 
 This lives here so `issue-spec` and `issue-implement` share one guarantee rather than each
 half-solving it.

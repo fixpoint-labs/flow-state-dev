@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * The picked session's panel: what a channel shows, and what each composer
+ * The picked session's panel: what a mailbox shows, and what each composer
  * sends to which action.
  *
  * The page's sends are the whole contract here. A composer that sends the
@@ -14,8 +14,8 @@
  *   - drop the `text.length === 0` guard on Send: the whitespace case fails.
  *   - clear the draft when the send resolves, not when the stream settles:
  *     the refused-post case fails (the text is gone).
- *   - send `{ body, author: "devuser" }` from the channel composer: the
- *     channel case fails on the recorded input.
+ *   - send `{ body, author: "devuser" }` from the mailbox composer: the
+ *     mailbox case fails on the recorded input.
  *   - point `agent` at `answer`: the agent case fails.
  *   - settle on the session's `isStreaming` rather than the send's own
  *     request's status: the settles-on-its-own-request case fails (the text
@@ -68,7 +68,7 @@ function session(
 const line = (id: string, body: string, who: { author?: string; principal?: string } = {}): Item => ({
   id: `item-${id}`,
   type: "component",
-  component: "channel-post",
+  component: "mailbox-post",
   requestId: `req-${id}`,
   data: { id, at: 1, authorVerified: false, body, ...who },
 });
@@ -91,10 +91,10 @@ async function type(label: string, text: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value: text } });
 }
 
-describe("a channel's panel", () => {
+describe("a mailbox's panel", () => {
   it("shows the transcript oldest first, each line under its author, else its principal, else unattributed", () => {
     panel(
-      "channel",
+      "mailbox",
       session({
         items: [
           line("1", "from a seat", { author: "support.devices", principal: "devuser" }),
@@ -104,27 +104,27 @@ describe("a channel's panel", () => {
         ],
       }),
     );
-    const labels = screen.getAllByTestId("channel-line-label").map((el) => el.textContent);
-    const bodies = screen.getAllByTestId("channel-line-body").map((el) => el.textContent);
+    const labels = screen.getAllByTestId("mailbox-line-label").map((el) => el.textContent);
+    const bodies = screen.getAllByTestId("mailbox-line-body").map((el) => el.textContent);
     expect(bodies).toEqual(["from a seat", "from the page", "from the digest kind"]);
     expect(labels).toEqual(["support.devices", "devuser", "unattributed"]);
-    // The stream is not drawn for a channel: its transcript is.
+    // The stream is not drawn for a mailbox: its transcript is.
     expect(screen.queryByTestId("stream-items")).toBeNull();
   });
 
-  it("shows an empty transcript and still posts, when the session holds no channel-post item", async () => {
+  it("shows an empty transcript and still posts, when the session holds no mailbox-post item", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
-    panel("channel", session({ items: [{ id: "x", type: "message", role: "assistant", content: [] }], sendAction }));
-    expect(screen.queryAllByTestId("channel-line")).toHaveLength(0);
-    await type("Post to this channel", "hello");
+    panel("mailbox", session({ items: [{ id: "x", type: "message", role: "assistant", content: [] }], sendAction }));
+    expect(screen.queryAllByTestId("mailbox-line")).toHaveLength(0);
+    await type("Post to this mailbox", "hello");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
   });
 
-  it("posts the body alone to the channel's own post action", async () => {
+  it("posts the body alone to the mailbox's own post action", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
-    panel("channel", session({ sendAction }));
-    await type("Post to this channel", "  a line  ");
+    panel("mailbox", session({ sendAction }));
+    await type("Post to this mailbox", "  a line  ");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
     expect(sendAction.mock.calls[0]).toEqual(["post", { body: "a line" }]);
@@ -132,8 +132,8 @@ describe("a channel's panel", () => {
 
   it("will not send whitespace", async () => {
     const sendAction = vi.fn();
-    panel("channel", session({ sendAction }));
-    await type("Post to this channel", "   \n  ");
+    panel("mailbox", session({ sendAction }));
+    await type("Post to this mailbox", "   \n  ");
     const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
     expect(send.disabled).toBe(true);
     fireEvent.submit(screen.getByTestId("picked-composer"));
@@ -142,8 +142,8 @@ describe("a channel's panel", () => {
 
   it("shows a refused post's reason and keeps the text, then clears it once a post is kept", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-refused" } }));
-    const view = panel("channel", session({ sendAction, isStreaming: true }));
-    await type("Post to this channel", "please keep me");
+    const view = panel("mailbox", session({ sendAction, isStreaming: true }));
+    await type("Post to this mailbox", "please keep me");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
 
@@ -152,22 +152,22 @@ describe("a channel's panel", () => {
       <PickedSessionPanel
         session={session({
           sendAction,
-          items: [{ id: "e", type: "error", requestId: "req-refused", message: "channel-not-bound: not an open channel" }],
+          items: [{ id: "e", type: "error", requestId: "req-refused", message: "mailbox-not-bound: not an open mailbox" }],
         })}
-        kind="channel"
+        kind="mailbox"
         requestStatus={requestStatus}
         conversation={null}
       />,
     );
-    expect((await screen.findByRole("alert")).textContent).toContain("channel-not-bound");
-    expect((screen.getByLabelText("Post to this channel") as HTMLTextAreaElement).value).toBe("please keep me");
+    expect((await screen.findByRole("alert")).textContent).toContain("mailbox-not-bound");
+    expect((screen.getByLabelText("Post to this mailbox") as HTMLTextAreaElement).value).toBe("please keep me");
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
 
     // A send the door refuses outright says why, and keeps the text too.
     sendAction.mockRejectedValueOnce(new Error("Request failed (409)"));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     expect((await screen.findByRole("alert")).textContent).toContain("409");
-    expect((screen.getByLabelText("Post to this channel") as HTMLTextAreaElement).value).toBe("please keep me");
+    expect((screen.getByLabelText("Post to this mailbox") as HTMLTextAreaElement).value).toBe("please keep me");
 
     // A post the server keeps clears the composer.
     statuses["req-kept"] = "completed";
@@ -180,13 +180,13 @@ describe("a channel's panel", () => {
           sendAction,
           items: [line("k", "please keep me", { principal: "devuser" })],
         })}
-        kind="channel"
+        kind="mailbox"
         requestStatus={requestStatus}
         conversation={null}
       />,
     );
     await waitFor(() =>
-      expect((screen.getByLabelText("Post to this channel") as HTMLTextAreaElement).value).toBe(""),
+      expect((screen.getByLabelText("Post to this mailbox") as HTMLTextAreaElement).value).toBe(""),
     );
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -195,8 +195,8 @@ describe("a channel's panel", () => {
 describe("a send settles on its own request", () => {
   it("keeps the text while another request ends, and shows the failure when its own does", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-mine" } }));
-    const view = panel("channel", session({ sendAction, isStreaming: true }));
-    await type("Post to this channel", "not yet kept");
+    const view = panel("mailbox", session({ sendAction, isStreaming: true }));
+    await type("Post to this mailbox", "not yet kept");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
 
@@ -205,13 +205,13 @@ describe("a send settles on its own request", () => {
     view.rerender(
       <PickedSessionPanel
         session={session({ sendAction, isStreaming: false })}
-        kind="channel"
+        kind="mailbox"
         requestStatus={requestStatus}
       />,
     );
     // This send is still running, so nothing settles.
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect((screen.getByLabelText("Post to this channel") as HTMLTextAreaElement).value).toBe("not yet kept");
+    expect((screen.getByLabelText("Post to this mailbox") as HTMLTextAreaElement).value).toBe("not yet kept");
     expect(screen.queryByRole("alert")).toBeNull();
     // It asked the server about this send, not about the session.
     expect(requestStatus).toHaveBeenCalledWith("req-mine");
@@ -220,7 +220,7 @@ describe("a send settles on its own request", () => {
     // shows once the next check sees it, and the text stays.
     statuses["req-mine"] = "failed";
     expect((await screen.findByRole("alert", undefined, { timeout: 2000 })).textContent).toContain("failed");
-    expect((screen.getByLabelText("Post to this channel") as HTMLTextAreaElement).value).toBe("not yet kept");
+    expect((screen.getByLabelText("Post to this mailbox") as HTMLTextAreaElement).value).toBe("not yet kept");
   });
 });
 
@@ -267,42 +267,42 @@ describe("who is working", () => {
   const rerender = (view: ReturnType<typeof panel>, kind: string, s: never) =>
     view.rerender(<PickedSessionPanel session={s} kind={kind} requestStatus={requestStatus} conversation={null} />);
 
-  it.each(["channel", "agent"])("a %s panel names each unfinished run by its flow", (kind) => {
+  it.each(["mailbox", "agent"])("a %s panel names each unfinished run by its flow", (kind) => {
     panel(kind, session({ childSessions: [{ id: "run-1", flowId: "support.devices", status: "active" }] }));
     expect(rows()).toEqual(["support.devices is working"]);
   });
 
   it("clears the row when the run finishes, however it ends, and keeps the line it posted", () => {
     const working = [{ id: "run-1", flowId: "support.devices", status: "active" }];
-    const view = panel("channel", session({ childSessions: working }));
+    const view = panel("mailbox", session({ childSessions: working }));
     expect(rows()).toEqual(["support.devices is working"]);
 
     for (const status of ["completed", "failed", "incomplete", "aborted"]) {
-      rerender(view, "channel", session({ childSessions: working }));
+      rerender(view, "mailbox", session({ childSessions: working }));
       expect(rows()).toEqual(["support.devices is working"]);
       rerender(
         view,
-        "channel",
+        "mailbox",
         session({
           childSessions: [{ id: "run-1", flowId: "support.devices", status }],
           items: [line("o", "refunds post on Fridays", { author: "support.devices" })],
         }),
       );
       expect(rows()).toEqual([]);
-      expect(screen.getAllByTestId("channel-line-body").map((el) => el.textContent)).toEqual([
+      expect(screen.getAllByTestId("mailbox-line-body").map((el) => el.textContent)).toEqual([
         "refunds post on Fridays",
       ]);
     }
   });
 
   it("reads a run with no status, which has no run to speak of, as not working", () => {
-    panel("channel", session({ childSessions: [{ id: "run-1", flowId: "support.devices" }] }));
+    panel("mailbox", session({ childSessions: [{ id: "run-1", flowId: "support.devices" }] }));
     expect(rows()).toEqual([]);
   });
 
   it("shows two seats working on one post as two rows, each clearing on its own", () => {
     const view = panel(
-      "channel",
+      "mailbox",
       session({
         childSessions: [
           { id: "run-1", flowId: "support.devices", status: "active" },
@@ -313,7 +313,7 @@ describe("who is working", () => {
     expect(rows()).toEqual(["support.devices is working", "support.accounts is working"]);
     rerender(
       view,
-      "channel",
+      "mailbox",
       session({
         childSessions: [
           { id: "run-1", flowId: "support.devices", status: "completed" },
@@ -325,7 +325,7 @@ describe("who is working", () => {
   });
 
   it("shows a run with no recorded flow as background work, not a seat", () => {
-    panel("channel", session({ childSessions: [{ id: "run-1", status: "active" }] }));
+    panel("mailbox", session({ childSessions: [{ id: "run-1", status: "active" }] }));
     expect(rows()).toEqual(["Background work is running"]);
   });
 
@@ -336,24 +336,24 @@ describe("who is working", () => {
       { id: "run-1", flowId: "support.devices", status: "active" },
       { id: "run-2", status: "active" },
     ];
-    const view = panel("channel", session({ childSessions: working, childSessionsStale: true }));
+    const view = panel("mailbox", session({ childSessions: working, childSessionsStale: true }));
     expect(rows()).toEqual([
       "support.devices was working at the last check",
       "Background work was running at the last check",
     ]);
 
-    rerender(view, "channel", session({ childSessions: working }));
+    rerender(view, "mailbox", session({ childSessions: working }));
     expect(rows()).toEqual(["support.devices is working", "Background work is running"]);
   });
 
   it("keeps no timer of its own, and keeps the draft, as lines land and runs end", async () => {
     vi.useFakeTimers();
     try {
-      const view = panel("channel", session({ childSessions: [{ id: "run-1", flowId: "support.devices", status: "active" }] }));
-      fireEvent.change(screen.getByLabelText("Post to this channel"), { target: { value: "half a thought" } });
+      const view = panel("mailbox", session({ childSessions: [{ id: "run-1", flowId: "support.devices", status: "active" }] }));
+      fireEvent.change(screen.getByLabelText("Post to this mailbox"), { target: { value: "half a thought" } });
       rerender(
         view,
-        "channel",
+        "mailbox",
         session({
           childSessions: [{ id: "run-1", flowId: "support.devices", status: "completed" }],
           items: [line("o", "refunds post on Fridays", { author: "support.devices" })],
@@ -361,7 +361,7 @@ describe("who is working", () => {
       );
       expect(vi.getTimerCount()).toBe(0);
       // Not remounted: the draft is still there.
-      expect((screen.getByLabelText("Post to this channel") as HTMLTextAreaElement).value).toBe("half a thought");
+      expect((screen.getByLabelText("Post to this mailbox") as HTMLTextAreaElement).value).toBe("half a thought");
     } finally {
       vi.useRealTimers();
     }

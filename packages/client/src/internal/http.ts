@@ -21,17 +21,27 @@ export function resolveFetch(fetcher?: ClientFetch): ClientFetch {
   return globalThis.fetch.bind(globalThis);
 }
 
+/** The mount every client route is written against, and the server's default. */
+const DEFAULT_API_PATH = "/api/flows";
+
 /**
- * Builds an `/api/flows` URL with optional base URL and query params.
+ * Builds a flow-API URL with optional base URL, API mount and query params.
+ *
+ * `path` is written against the default `/api/flows` mount. When `apiPath` is
+ * given, that leading mount is swapped for it, so a server mounted elsewhere
+ * (the Node host's `basePath`) is reached at the same route. Unset, the URL is
+ * `baseUrl` + `path`, untouched.
  */
 export function buildFlowApiUrl(options: {
   path: string;
   baseUrl?: string;
+  apiPath?: string;
   query?: Record<string, QueryValue>;
 }): string {
-  const normalizedPath = options.path.startsWith("/")
+  const rootedPath = options.path.startsWith("/")
     ? options.path
     : `/${options.path}`;
+  const normalizedPath = remount(rootedPath, options.apiPath);
   const searchParams = new URLSearchParams();
 
   for (const [key, value] of Object.entries(options.query ?? {})) {
@@ -75,6 +85,20 @@ export async function requestJson<TValue>(options: {
   }
 
   return parsed as TValue;
+}
+
+function remount(path: string, apiPath: string | undefined): string {
+  if (apiPath === undefined) {
+    return path;
+  }
+  const atMount =
+    path === DEFAULT_API_PATH || path.startsWith(`${DEFAULT_API_PATH}/`);
+  if (!atMount) {
+    return path;
+  }
+  const trimmed = apiPath.endsWith("/") ? apiPath.slice(0, -1) : apiPath;
+  const mount = trimmed.length === 0 || trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return `${mount}${path.slice(DEFAULT_API_PATH.length)}`;
 }
 
 function normalizeBaseUrl(baseUrl: string | undefined): string {

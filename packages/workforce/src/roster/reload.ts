@@ -38,9 +38,9 @@
 
 import { withTimeout } from "@flow-state-dev/core/helpers";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { hireWorkforce, type HireOptions } from "../hire";
+import type { HireOptions } from "../hire";
+import { checkHiredSeatRow } from "./check";
 import { HIRED_ROSTER_PREFIX } from "./collections";
-import { hiredSeatManifestFromStored } from "./rows";
 
 /**
  * The slice of a runtime's resource-state store this reads through.
@@ -157,10 +157,6 @@ export interface HiredRosterOrgReload {
   problems: string[];
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * Read each organization's stored roster and hire what it names.
  *
@@ -218,29 +214,15 @@ export async function reloadHiredSeats(
       const stored = rowsByKey[key]!;
       const where = `organization "${orgId}", row "${key}"`;
 
-      // Unreadable, stamped for another org, or unaddressable: one named skip.
-      // Left on disk exactly as it is. A boot that repaired a row it did not
-      // understand would destroy the evidence of why it did not.
-      const record = hiredSeatManifestFromStored(orgId, stored.state);
-      if ("problem" in record) {
-        org.problems.push(`${where} — ${record.problem}`);
-        continue;
-      }
-
-      // **One manifest per call, not one call for the roster.** `hireWorkforce`
-      // refuses the WHOLE roster when any record is bad — it throws and hires
-      // nothing — so a batch call would turn one stale row into a boot with no
-      // seats at all. Hiring per row is what turns every one of its refusals
-      // (a kind that is gone, settings the kind now rejects, a contract key a
-      // past version wrote) into one named skip, which is what the degrade
-      // path requires. A kind pre-check would cover only the first of those
-      // three; this covers all of them, and reuses the refusal wording that is
-      // already the careful one.
-      try {
-        const hired = hireWorkforce([record.manifest], { kinds: options.kinds });
-        org.seats.push(...hired);
-      } catch (error) {
-        org.problems.push(`${where} — ${messageOf(error)}`);
+      // One shared check (`./check.ts`), the same one `brokenSeats` reads
+      // through, so the list a person repairs from is this list. A row it
+      // refuses is left on disk exactly as it is: a boot that repaired a row
+      // it did not understand would destroy the evidence of why it did not.
+      const checked = checkHiredSeatRow(orgId, stored.state, options.kinds, key);
+      if (checked.ok) {
+        org.seats.push(checked.seat);
+      } else {
+        org.problems.push(`${where} — ${checked.detail}`);
       }
     }
     org.seats.sort((left, right) => left.id.localeCompare(right.id));

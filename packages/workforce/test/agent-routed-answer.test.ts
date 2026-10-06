@@ -2,39 +2,39 @@
  * The agent kind on a routed delivery: what its turn sees, and where its
  * answer lands.
  *
- * Run on the real kinds, in one in-process host: the built-in channel kind
- * built with `routeByPurpose`, and agent seats carrying the channel-post
+ * Run on the real kinds, in one in-process host: the built-in mailbox kind
+ * built with `routeByPurpose`, and agent seats carrying the mailbox-post
  * capability, hired through `hireWorkforce`. The route's evaluation is scripted
  * by block name (`[route:<member>]` picks); the seats' answers are scripted by
  * a marker in the post: `[answer:text]` replies in text, `[answer:tool]` posts
  * through the tool once, `[answer:tool-twice]` twice, `[answer:tool-then-away]`
- * once and then into a channel nobody opened, `[answer:tool-then-empty]` once
+ * once and then into a mailbox nobody opened, `[answer:tool-then-empty]` once
  * and then replies with nothing, `[answer:empty]` replies with nothing. Every
- * landing assertion is on the lines the channel stored.
+ * landing assertion is on the lines the mailbox stored.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1610/BUSINESS-RULES.md`, V3):
  *   BR-9  a text reply lands as the seat: one line, `author` its seat id;
  *   BR-10 the tool's first post for the post is the line; a second posts
- *         nothing and says the answer was handed over; the channel keeps one
+ *         nothing and says the answer was handed over; the mailbox keeps one
  *         answer per post, so a second delivery lands no second line, two at
  *         once land one, and one whose first hand-off was refused while
  *         another answered lands one; a hand-off refused before or by the
- *         channel leaves the post unanswered, so it is answered when
- *         delivered again, or by the turn's reply when the channel took the
+ *         mailbox leaves the post unanswered, so it is answered when
+ *         delivered again, or by the turn's reply when the mailbox took the
  *         tool's answer and could not keep it;
- *         an answer whose line the channel kept is the answer even when its
- *         request failed; a refused post into another channel leaves an
+ *         an answer whose line the mailbox kept is the answer even when its
+ *         request failed; a refused post into another mailbox leaves an
  *         answered post answered; only a dispatch reaches `answer`;
  *   BR-11 an empty reply lands nothing and fails the run, unless the turn
  *         answered through the tool first;
  *   BR-12 the landed line wakes no seat and takes no route;
- *   BR-13 the routed heard turn says the reply is posted to the channel; the
+ *   BR-13 the routed heard turn says the reply is posted to the mailbox; the
  *         unrouted one is unchanged;
- *   BR-14 an unrouted channel, and direct talk, land nothing on their own;
+ *   BR-14 an unrouted mailbox, and direct talk, land nothing on their own;
  *   BR-24/BR-25 the routed turn's system message carries the lines before the
  *         post; the stored conversation does not;
  *   BR-26 the public `run` action takes no lines;
- *   BR-27 a channel's first post has no lines, so no section at all.
+ *   BR-27 a mailbox's first post has no lines, so no section at all.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -48,21 +48,21 @@ import {
   type MockGeneratorScriptStep
 } from "@flow-state-dev/testing";
 import {
-  POST_TO_CHANNEL_TOOL,
-  channelInstances,
-  channelNotifyInputSchema,
-  channelPostCapability,
+  POST_TO_MAILBOX_TOOL,
+  mailboxInstances,
+  mailboxNotifyInputSchema,
+  mailboxPostCapability,
   defineAgentWorkerFlow,
-  defineChannelFlow,
+  defineMailboxFlow,
   hireWorkforce,
   routeByPurpose,
   wakeMemberSeats,
-  type ChannelManifest,
-  type ChannelNotifyInput,
+  type MailboxManifest,
+  type MailboxNotifyInput,
   type WorkerManifest
 } from "../src/index";
-import { CHANNEL_ANSWER_ACTION, channelAnswerInputSchema } from "../src/channel/channel-flow";
-import { failLineWrite, postedLines } from "./channel-post-lines";
+import { MAILBOX_ANSWER_ACTION, mailboxAnswerInputSchema } from "../src/mailbox/mailbox-flow";
+import { failLineWrite, postedLines } from "./mailbox-post-lines";
 
 const USER_ID = "devuser";
 const HELP = "support.help";
@@ -74,7 +74,7 @@ type AnswerCall = { system: string; turn: string; sent: string };
 
 /**
  * The scripted answer model. Reads the marker in the turn's last user
- * message; a tool step calls `post-to-channel` into the turn's own channel,
+ * message; a tool step calls `post-to-mailbox` into the turn's own mailbox,
  * with no text, so the real tool runs. Each request keeps its own cursor,
  * keyed on the messages array the tool loop hands every call of one request.
  */
@@ -97,10 +97,10 @@ function scriptedAnswers(): MockGeneratorInstance & { answers: AnswerCall[] } {
       const step = cursor.get(messages) ?? 0;
       cursor.set(messages, step + 1);
       if (step === 0) answers.push({ system, turn, sent: JSON.stringify(messages) });
-      const channel = / in ([a-z.]+): /.exec(turn)?.[1] ?? "support.nowhere";
+      const mailbox = / in ([a-z.]+): /.exec(turn)?.[1] ?? "support.nowhere";
       const said = turn.replace(/\[[a-z-]+:[a-z.-]+\]\s*/g, "").split(": ").slice(1).join(": ").split("\n")[0];
-      const toolCall = (body: string, into = channel) => ({
-        toolCalls: [{ toolCallId: `tc_${step}_${Math.random().toString(36).slice(2)}`, toolName: POST_TO_CHANNEL_TOOL, args: { channel: into, body } }]
+      const toolCall = (body: string, into = mailbox) => ({
+        toolCalls: [{ toolCallId: `tc_${step}_${Math.random().toString(36).slice(2)}`, toolName: POST_TO_MAILBOX_TOOL, args: { mailbox: into, body } }]
       });
       if (turn.includes("[answer:empty]")) return { text: "" };
       if (turn.includes("[answer:tool-then-away]") && step === 0) return toolCall("From the tool.");
@@ -128,47 +128,47 @@ function scriptedRoute() {
 function workers(): WorkerManifest[] {
   return MEMBERS.map((id) => ({
     id,
-    declared: { description: `The ${id.split(".")[1]} desk.`, tools: [POST_TO_CHANNEL_TOOL] },
+    declared: { description: `The ${id.split(".")[1]} desk.`, tools: [POST_TO_MAILBOX_TOOL] },
     body: "You answer questions."
   }));
 }
 
-const manifests: ChannelManifest[] = [
+const manifests: MailboxManifest[] = [
   { id: HELP, declared: { members: MEMBERS, routing: { fallback: "support.general" } }, body: "Ask support." },
   { id: LOUNGE, declared: { members: MEMBERS }, body: "Chat." }
 ];
 
-/** A test-only sender standing in for a channel's fan-out: one delivery to one seat, keyed as the wake keys it. */
+/** A test-only sender standing in for a mailbox's fan-out: one delivery to one seat, keyed as the wake keys it. */
 function redeliverFlow(seatId: string) {
   return defineFlow({
     kind: "redeliver-test",
     actions: {
       deliver: {
-        inputSchema: channelNotifyInputSchema,
+        inputSchema: mailboxNotifyInputSchema,
         block: dispatcher({
           name: "redeliver-seat",
           flowKind: seatId,
-          action: "onChannelPost",
-          inputSchema: channelNotifyInputSchema,
-          session: { key: (post: ChannelNotifyInput) => `channel:${post.channelId}` }
+          action: "onMailboxPost",
+          inputSchema: mailboxNotifyInputSchema,
+          session: { key: (post: MailboxNotifyInput) => `mailbox:${post.mailboxId}` }
         })
       }
     }
   })({ id: "redeliver-test" });
 }
 
-/** A test-only sender standing in for a seat's landing: one answer dispatched into the channel's own `answer`. */
+/** A test-only sender standing in for a seat's landing: one answer dispatched into the mailbox's own `answer`. */
 function answerFlow() {
   return defineFlow({
     kind: "answer-test",
     actions: {
       answer: {
-        inputSchema: channelAnswerInputSchema,
+        inputSchema: mailboxAnswerInputSchema,
         block: dispatcher({
-          name: "answer-channel",
-          flowKind: "channel",
-          action: CHANNEL_ANSWER_ACTION,
-          inputSchema: channelAnswerInputSchema,
+          name: "answer-mailbox",
+          flowKind: "mailbox",
+          action: MAILBOX_ANSWER_ACTION,
+          inputSchema: mailboxAnswerInputSchema,
           session: { id: () => HELP }
         })
       }
@@ -177,11 +177,11 @@ function answerFlow() {
 }
 
 function host() {
-  const agent = defineAgentWorkerFlow({ uses: [channelPostCapability] });
+  const agent = defineAgentWorkerFlow({ uses: [mailboxPostCapability] });
   const seats = hireWorkforce(workers(), { kinds: { agent } });
-  const [channel] = channelInstances(manifests, {
+  const [mailbox] = mailboxInstances(manifests, {
     kinds: {
-      channel: defineChannelFlow({
+      mailbox: defineMailboxFlow({
         notify: wakeMemberSeats(seats),
         route: routeByPurpose(seats, { model: "test/route" })
       }) as never
@@ -192,7 +192,7 @@ function host() {
   const answerer = answerFlow();
   const state = createFlowState({
     flows: {
-      [channel!.id]: channel!,
+      [mailbox!.id]: mailbox!,
       [redeliver.id]: redeliver,
       [answerer.id]: answerer,
       ...Object.fromEntries(seats.map((seat) => [seat.id, seat]))
@@ -200,12 +200,12 @@ function host() {
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: { "agent-answer": answers },
-      evaluators: { "channel-route": scriptedRoute() },
+      evaluators: { "mailbox-route": scriptedRoute() },
       policy: "allow"
     })
   });
   const seat = (id: string) => seats.find((s) => s.id === id)!;
-  return { channel: channel!, state, answers, seat, redeliver, answerer };
+  return { mailbox: mailbox!, state, answers, seat, redeliver, answerer };
 }
 
 async function bind(stores: StoreRegistry, sessionId: string) {
@@ -214,8 +214,8 @@ async function bind(stores: StoreRegistry, sessionId: string) {
     sessionId,
     {
       id: sessionId,
-      flowKind: "channel",
-      flowId: "channel",
+      flowKind: "mailbox",
+      flowId: "mailbox",
       userId: USER_ID,
       orgId: DEFAULT_ORG_ID,
       state: { members: MEMBERS, instructions: "Charter.", transcript: [] },
@@ -229,10 +229,10 @@ async function bind(stores: StoreRegistry, sessionId: string) {
   );
 }
 
-async function post(runtime: FlowStateRuntime, channel: FlowInstance, sessionId: string, body: string) {
+async function post(runtime: FlowStateRuntime, mailbox: FlowInstance, sessionId: string, body: string) {
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
-    flow: channel,
+    flow: mailbox,
     actionName: "post",
     input: { body },
     userId: USER_ID,
@@ -261,7 +261,7 @@ async function quiet(runtime: FlowStateRuntime): Promise<void> {
     }
     return true;
   }, "every request to settle");
-  // A landing dispatches into the channel, whose fan-out dispatches again: settle twice over.
+  // A landing dispatches into the mailbox, whose fan-out dispatches again: settle twice over.
   await new Promise((resolve) => setTimeout(resolve, 50));
   await until(async () => {
     const sessions = await runtime.stores.session.list({ parentage: "all" });
@@ -273,10 +273,10 @@ async function quiet(runtime: FlowStateRuntime): Promise<void> {
   }, "every request to settle, again");
 }
 
-/** The seat's conversation in a channel: its requests there, with items. */
-async function seatRequests(runtime: FlowStateRuntime, seatId: string, channelId: string) {
+/** The seat's conversation in a mailbox: its requests there, with items. */
+async function seatRequests(runtime: FlowStateRuntime, seatId: string, mailboxId: string) {
   const sessions = await runtime.stores.session.list({ parentage: "all" });
-  const session = sessions.find((s) => s.flowId === seatId && s.parentSessionId === channelId);
+  const session = sessions.find((s) => s.flowId === seatId && s.parentSessionId === mailboxId);
   if (session === undefined) return [];
   return runtime.stores.request.list({ sessionId: session.id, withItems: true });
 }
@@ -298,7 +298,7 @@ async function deliver(runtime: FlowStateRuntime, redeliver: FlowInstance, postI
     orgId: DEFAULT_ORG_ID,
     flow: redeliver,
     actionName: "deliver",
-    input: { channelId: HELP, member: "support.devices", postId, body, principal: USER_ID, routed: true, recent: [] },
+    input: { mailboxId: HELP, member: "support.devices", postId, body, principal: USER_ID, routed: true, recent: [] },
     userId: USER_ID,
     sessionId: "redeliver-session",
     stores: runtime.stores,
@@ -329,11 +329,11 @@ async function answerInto(
 }
 
 /**
- * Hold the first dispatch into `channelId` at its session lookup until
+ * Hold the first dispatch into `mailboxId` at its session lookup until
  * `release`, then answer it as a session nobody opened: that one hand-off is
- * refused, and every later one finds the channel.
+ * refused, and every later one finds the mailbox.
  */
-function refuseFirstHandOff(stores: StoreRegistry, channelId: string) {
+function refuseFirstHandOff(stores: StoreRegistry, mailboxId: string) {
   const get = stores.session.get.bind(stores.session);
   let release!: () => void;
   const released = new Promise<void>((resolve) => {
@@ -341,7 +341,7 @@ function refuseFirstHandOff(stores: StoreRegistry, channelId: string) {
   });
   let held = false;
   stores.session.get = async (...args: Parameters<typeof get>) => {
-    if (!held && args[0] === channelId) {
+    if (!held && args[0] === mailboxId) {
       held = true;
       await released;
       return undefined;
@@ -352,16 +352,16 @@ function refuseFirstHandOff(stores: StoreRegistry, channelId: string) {
 }
 
 /**
- * Fail the first write of `channelId`'s state that records a post's answer:
- * the channel took the answer's hand-off, then could not keep it, so its
+ * Fail the first write of `mailboxId`'s state that records a post's answer:
+ * the mailbox took the answer's hand-off, then could not keep it, so its
  * request fails with no line.
  */
-function failAnswerWrite(stores: StoreRegistry, channelId: string) {
+function failAnswerWrite(stores: StoreRegistry, mailboxId: string) {
   const set = stores.session.set.bind(stores.session);
   let armed = true;
   stores.session.set = async (...args: Parameters<typeof set>) => {
     const state = (args[1] as { state?: Record<string, unknown> }).state;
-    if (armed && args[0] === channelId && state?.channelAnsweredPosts !== undefined) {
+    if (armed && args[0] === mailboxId && state?.mailboxAnsweredPosts !== undefined) {
       armed = false;
       throw new Error("the store could not keep the answer");
     }
@@ -369,13 +369,13 @@ function failAnswerWrite(stores: StoreRegistry, channelId: string) {
   };
 }
 
-describe("a routed agent's answer lands in the channel", () => {
+describe("a routed agent's answer lands in the mailbox", () => {
   it("posts a text reply as the seat, one line, which wakes no seat and takes no route (BR-9, BR-12)", async () => {
-    const { channel, state, answers } = host();
+    const { mailbox, state, answers } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
-      await post(runtime, channel, HELP, "[route:support.devices] [answer:text] my laptop won't join the wifi");
+      await post(runtime, mailbox, HELP, "[route:support.devices] [answer:text] my laptop won't join the wifi");
       await quiet(runtime);
 
       expect(await lines(runtime, HELP)).toEqual([
@@ -390,11 +390,11 @@ describe("a routed agent's answer lands in the channel", () => {
   });
 
   it("keeps the tool's post as the line and lands nothing after it (BR-10)", async () => {
-    const { channel, state } = host();
+    const { mailbox, state } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
-      await post(runtime, channel, HELP, "[route:support.devices] [answer:tool] my laptop won't join the wifi");
+      await post(runtime, mailbox, HELP, "[route:support.devices] [answer:tool] my laptop won't join the wifi");
       await quiet(runtime);
 
       expect((await lines(runtime, HELP)).slice(1)).toEqual([{ author: "support.devices", body: "From the tool." }]);
@@ -404,11 +404,11 @@ describe("a routed agent's answer lands in the channel", () => {
   });
 
   it("ends a turn that answered through the tool and then said nothing as answered, not failed (BR-10, BR-11)", async () => {
-    const { channel, state, seat } = host();
+    const { mailbox, state, seat } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
-      await post(runtime, channel, HELP, "[route:support.devices] [answer:tool-then-empty] my laptop won't join the wifi");
+      await post(runtime, mailbox, HELP, "[route:support.devices] [answer:tool-then-empty] my laptop won't join the wifi");
       await quiet(runtime);
 
       expect((await lines(runtime, HELP)).slice(1)).toEqual([{ author: "support.devices", body: "From the tool." }]);
@@ -419,15 +419,15 @@ describe("a routed agent's answer lands in the channel", () => {
     }
   });
 
-  // The tool's dispatch returns once the channel takes the hand-off, before the
-  // channel keeps (or refuses) the line, so the turn's reply still goes in.
-  it("lands the turn's reply when the channel took the tool's answer and could not keep it: one line (BR-10)", async () => {
-    const { channel, state } = host();
+  // The tool's dispatch returns once the mailbox takes the hand-off, before the
+  // mailbox keeps (or refuses) the line, so the turn's reply still goes in.
+  it("lands the turn's reply when the mailbox took the tool's answer and could not keep it: one line (BR-10)", async () => {
+    const { mailbox, state } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
       failAnswerWrite(runtime.stores, HELP);
-      await post(runtime, channel, HELP, "[route:support.devices] [answer:tool] my laptop won't join the wifi");
+      await post(runtime, mailbox, HELP, "[route:support.devices] [answer:tool] my laptop won't join the wifi");
       await quiet(runtime);
 
       const answered = (await runtime.stores.request.list({ sessionId: HELP })).filter((r) => r.actionName === "answer");
@@ -439,16 +439,16 @@ describe("a routed agent's answer lands in the channel", () => {
   });
 
   it("posts only the tool's first call for the post; the second says the answer was handed over (BR-10)", async () => {
-    const { channel, state, seat } = host();
+    const { mailbox, state, seat } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
-      await post(runtime, channel, HELP, "[route:support.devices] [answer:tool-twice] my laptop won't join the wifi");
+      await post(runtime, mailbox, HELP, "[route:support.devices] [answer:tool-twice] my laptop won't join the wifi");
       await quiet(runtime);
 
       expect((await lines(runtime, HELP)).slice(1)).toEqual([{ author: "support.devices", body: "From the tool, 1." }]);
       const kept = JSON.stringify(await seatRequests(runtime, seat("support.devices").id, HELP));
-      expect(kept).toMatch(/already handed to the channel/);
+      expect(kept).toMatch(/already handed to the mailbox/);
     } finally {
       await state.dispose();
     }
@@ -466,7 +466,7 @@ describe("a routed agent's answer lands in the channel", () => {
           flow: redeliver,
           actionName: "deliver",
           input: {
-            channelId: HELP,
+            mailboxId: HELP,
             member: "support.devices",
             postId: "p_redelivered",
             body: "[answer:text] my laptop won't join the wifi",
@@ -500,7 +500,7 @@ describe("a routed agent's answer lands in the channel", () => {
           flow: redeliver,
           actionName: "deliver",
           input: {
-            channelId: HELP,
+            mailboxId: HELP,
             member: "support.devices",
             postId: `p_${n}`,
             body: `[answer:text] question ${n}`,
@@ -554,7 +554,7 @@ describe("a routed agent's answer lands in the channel", () => {
       await bind(runtime.stores, HELP);
       const first = refuseFirstHandOff(runtime.stores, HELP);
       await deliver(runtime, redeliver, "p_overlap", "[answer:text] my laptop won't join the wifi");
-      await until(async () => first.held(), "the first hand-off to reach the channel");
+      await until(async () => first.held(), "the first hand-off to reach the mailbox");
       // The second delivery's turn runs to its end while the first hand-off is held.
       await deliver(runtime, redeliver, "p_overlap", "[answer:text] my laptop won't join the wifi");
       await until(
@@ -580,11 +580,11 @@ describe("a routed agent's answer lands in the channel", () => {
   it.each([
     ["the landing", "[answer:text]", "Re: my laptop won't join the wifi"],
     ["the tool", "[answer:tool]", "From the tool."]
-  ])("answers a post delivered again after the channel refused %s's hand-off: one line (BR-10)", async (_how, marker, line) => {
+  ])("answers a post delivered again after the mailbox refused %s's hand-off: one line (BR-10)", async (_how, marker, line) => {
     const { state, redeliver, seat } = host();
     try {
       const runtime = await state.getRuntime();
-      // The channel's session is not open yet, so the first hand-off is refused.
+      // The mailbox's session is not open yet, so the first hand-off is refused.
       await deliver(runtime, redeliver, "p_refused", `${marker} my laptop won't join the wifi`);
       await quiet(runtime);
       const [first] = await seatRequests(runtime, seat("support.devices").id, "redeliver-session");
@@ -600,7 +600,7 @@ describe("a routed agent's answer lands in the channel", () => {
     }
   });
 
-  it("leaves the post answered when a post into another channel is refused: delivered again, it lands nothing more (BR-10)", async () => {
+  it("leaves the post answered when a post into another mailbox is refused: delivered again, it lands nothing more (BR-10)", async () => {
     const { state, redeliver } = host();
     try {
       const runtime = await state.getRuntime();
@@ -617,11 +617,11 @@ describe("a routed agent's answer lands in the channel", () => {
   });
 
   it("lands nothing on an empty reply and fails the run, recorded in the seat's conversation (BR-11)", async () => {
-    const { channel, state, seat } = host();
+    const { mailbox, state, seat } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
-      await post(runtime, channel, HELP, "[route:support.devices] [answer:empty] my laptop won't join the wifi");
+      await post(runtime, mailbox, HELP, "[route:support.devices] [answer:empty] my laptop won't join the wifi");
       await quiet(runtime);
 
       expect(await lines(runtime, HELP)).toHaveLength(1);
@@ -634,7 +634,7 @@ describe("a routed agent's answer lands in the channel", () => {
   });
 });
 
-describe("the channel keeps one answer per post", () => {
+describe("the mailbox keeps one answer per post", () => {
   it("lands one line for two answers to one post at once, the first kept (BR-10)", async () => {
     const { state, answerer } = host();
     try {
@@ -655,14 +655,14 @@ describe("the channel keeps one answer per post", () => {
   });
 
   it("takes an answer only by dispatch: a caller cannot name a post and take its answer (BP-031)", async () => {
-    const { channel, state } = host();
+    const { mailbox, state } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
       // No `source`: resolved as a caller-addressed request would be.
       const attempt = runAction({
         orgId: DEFAULT_ORG_ID,
-        flow: channel,
+        flow: mailbox,
         actionName: "answer",
         input: { postId: "p_taken", body: "Not the desk.", author: "support.devices" },
         userId: USER_ID,
@@ -677,7 +677,7 @@ describe("the channel keeps one answer per post", () => {
     }
   });
 
-  it("writes nothing for an answer the channel refused, so the post answered again lands one line (BR-10)", async () => {
+  it("writes nothing for an answer the mailbox refused, so the post answered again lands one line (BR-10)", async () => {
     const { state, answerer } = host();
     try {
       const runtime = await state.getRuntime();
@@ -697,8 +697,8 @@ describe("the channel keeps one answer per post", () => {
   });
 
   // The failed request's record keeps every item it emitted, so an answer whose
-  // event write failed is still the channel's line for the post.
-  it("counts an answer whose event write failed as the post's answer, since the channel keeps its line: one line (BR-10)", async () => {
+  // event write failed is still the mailbox's line for the post.
+  it("counts an answer whose event write failed as the post's answer, since the mailbox keeps its line: one line (BR-10)", async () => {
     const { state, answerer } = host();
     try {
       const runtime = await state.getRuntime();
@@ -721,13 +721,13 @@ describe("the channel keeps one answer per post", () => {
 
 describe("what a routed agent's turn sees", () => {
   it("hands the turn the lines before the post as context, which the conversation does not keep (BR-24, BR-25)", async () => {
-    const { channel, state, answers, seat } = host();
+    const { mailbox, state, answers, seat } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
-      await post(runtime, channel, HELP, "[route:support.devices] [answer:text] my laptop won't join the wifi");
+      await post(runtime, mailbox, HELP, "[route:support.devices] [answer:text] my laptop won't join the wifi");
       await quiet(runtime);
-      await post(runtime, channel, HELP, "[route:support.general] [answer:text] where can I buy it?");
+      await post(runtime, mailbox, HELP, "[route:support.general] [answer:text] where can I buy it?");
       await quiet(runtime);
 
       const general = answers.answers.find((a) => a.turn.includes("buy it"))!;
@@ -743,12 +743,12 @@ describe("what a routed agent's turn sees", () => {
     }
   });
 
-  it("says in the routed heard turn that the reply is posted to the channel (BR-13)", async () => {
-    const { channel, state, answers } = host();
+  it("says in the routed heard turn that the reply is posted to the mailbox (BR-13)", async () => {
+    const { mailbox, state, answers } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
-      await post(runtime, channel, HELP, "[route:support.devices] [answer:text] my laptop won't join the wifi");
+      await post(runtime, mailbox, HELP, "[route:support.devices] [answer:text] my laptop won't join the wifi");
       await quiet(runtime);
 
       const [turn] = answers.answers.map((a) => a.turn);
@@ -761,12 +761,12 @@ describe("what a routed agent's turn sees", () => {
     }
   });
 
-  it("has no lines on a channel's first post: no section at all (BR-27)", async () => {
-    const { channel, state, answers } = host();
+  it("has no lines on a mailbox's first post: no section at all (BR-27)", async () => {
+    const { mailbox, state, answers } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP);
-      await post(runtime, channel, HELP, "[route:support.devices] [answer:text] my laptop won't join the wifi");
+      await post(runtime, mailbox, HELP, "[route:support.devices] [answer:text] my laptop won't join the wifi");
       await quiet(runtime);
 
       expect(answers.answers[0]!.system).not.toMatch(/recent lines/i);
@@ -777,12 +777,12 @@ describe("what a routed agent's turn sees", () => {
 });
 
 describe("an agent that was not routed", () => {
-  it("answers an unrouted channel's post in the turn FIX-1590 hears, and lands nothing on its own (BR-13, BR-14)", async () => {
-    const { channel, state, answers } = host();
+  it("answers an unrouted mailbox's post in the turn FIX-1590 hears, and lands nothing on its own (BR-13, BR-14)", async () => {
+    const { mailbox, state, answers } = host();
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, LOUNGE);
-      await post(runtime, channel, LOUNGE, "[answer:text] lunch?");
+      await post(runtime, mailbox, LOUNGE, "[answer:text] lunch?");
       await quiet(runtime);
 
       expect(answers.answers.map((a) => a.turn).sort()).toEqual([

@@ -257,7 +257,9 @@ The counter you bumped in step 2 lives in session state. To surface it in the UI
 
 You wrote four things: a generator, a handler, a sequencer that chains them, and a flow that exposes the sequencer over HTTP. The framework gave you streaming, history, validation, persistence, and a React rendering layer.
 
-The shape of every flow you write will be the same. You'll add more blocks, sometimes new kinds (a router for branching, a sequencer-of-sequencers for sub-pipelines), sometimes more scopes (user state, resources, work-pool jobs).
+![Three places took part in your first flow. Your browser runs page.tsx: FlowProvider names the flow hello-chat and the user, useFlow picks this user's session or creates one, useSession holds its items, the state you exposed and whether it is streaming, and ItemsRenderer draws the items. The browser sees only the items marked for the client and the state you expose. Your server, in lib/flowstate.ts and the route, holds hello-chat registered with its chat action and runs the chat pipeline, the generator then the counter, streaming each item back as it is made. The store holds one session: its state, messageCount, and its items, your messages and replies, which history reads on the next turn. A page reload reads it back from the store. This example's store is in memory, so a server restart loses it; SQLite or Postgres keeps it. The browser holds a view, not the session: your page sends the chat action with the message, the flow registered on the server runs it, and a reload or the next turn reads the session back from the store](./first-flow-homes.svg)
+
+Three places took part. Your browser holds a session's items and any state you expose. The server runs the flow you registered. The store keeps the session, so a reload picks up where you were; this example's store is in memory, so restarting the server starts over.
 
 ## Where to go from here
 

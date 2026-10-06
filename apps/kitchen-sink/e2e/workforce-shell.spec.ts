@@ -1,14 +1,14 @@
 /**
- * The rebuilt shell, against the built app: the rail browses channels and
+ * The rebuilt shell, against the built app: the rail browses mailboxes and
  * seats to the depth each flow declares, a seat opens into its kind, what it
  * handles and its instructions, the panel stands beside the stream, and the
  * three regions give way in the right order as the window narrows.
  *
  * These open the app as `devuser`, not a per-test user, because that is who
- * the boot opens the channels for: a fresh user would see no channel
- * conversations at all. Nothing here writes to a channel, so sharing the user
+ * the boot opens the mailboxes for: a fresh user would see no mailbox
+ * conversations at all. Nothing here writes to a mailbox, so sharing the user
  * across parallel tests is safe. The first test does store a session for a
- * channel the tree no longer declares, as a store kept across an upgrade
+ * mailbox the tree no longer declares, as a store kept across an upgrade
  * would; the rail never draws it, and no scenario posts to it.
  *
  * The network half of the first test is what makes it more than a picture.
@@ -24,8 +24,8 @@ import type { Browser, Locator, Page, Request } from "@playwright/test";
 import { test, expect, openKitchenSink } from "./fixtures";
 
 const SEAT = "support.devices";
-/** A channel the old roster declared and this one does not. */
-const RETIRED_CHANNEL = "support.desk";
+/** A mailbox the old roster declared and this one does not. */
+const RETIRED_MAILBOX = "support.desk";
 
 /** Session-list requests, recorded from the moment this is called. */
 function sessionListRequests(page: Page): { take: () => string[] } {
@@ -49,11 +49,11 @@ function requestsMatching(page: Page, pattern: RegExp): { take: () => string[] }
 
 /**
  * What a store kept across an upgrade still holds from the old roster: a
- * session of the channel kind for a channel the tree no longer declares.
+ * session of the mailbox kind for a mailbox the tree no longer declares.
  */
-async function seedRetiredChannel(page: Page): Promise<void> {
-  const response = await page.request.post(`/api/flows/channel/sessions`, {
-    data: { userId: "devuser", sessionId: RETIRED_CHANNEL },
+async function seedRetiredMailbox(page: Page): Promise<void> {
+  const response = await page.request.post(`/api/flows/mailbox/sessions`, {
+    data: { userId: "devuser", sessionId: RETIRED_MAILBOX },
   });
   // Already there from an earlier scenario on this server is as good.
   expect([200, 201, 409], await response.text()).toContain(response.status());
@@ -77,34 +77,34 @@ async function openShell(page: Page): Promise<void> {
 const rail = (page: Page) => page.getByTestId("rail");
 const row = (page: Page, name: string) => rail(page).getByRole("button", { name, exact: true });
 
-test("the rail opens a channel kind into conversations and a seat kind into seats, reading only leaves", async ({
+test("the rail opens a mailbox kind into conversations and a seat kind into seats, reading only leaves", async ({
   page,
   consoleErrors: _consoleErrors,
 }) => {
   const seatSessionId = await seedSeatSession(page);
-  await seedRetiredChannel(page);
+  await seedRetiredMailbox(page);
   const requests = sessionListRequests(page);
   await openShell(page);
-  await expect(rail(page).getByRole("list", { name: "Channels" })).toBeVisible();
+  await expect(rail(page).getByRole("list", { name: "Mailboxes" })).toBeVisible();
   await expect(rail(page).getByRole("list", { name: "Seats" })).toBeVisible();
   // Drawing the rail reads no session list of its own. The one read at load
   // is the assistant's, for the conversation the stream opens on. The team
-  // panel's live board holds its channel's stream open, so the page never goes
+  // panel's live board holds its mailbox's stream open, so the page never goes
   // network-idle: wait for the board's first read, then the half-second quiet
   // that network-idle means.
   await expect(page.getByTestId("board-support.help.escalations").locator('[data-panel="board"]')).toBeVisible();
   await page.waitForTimeout(500);
   expect(requests.take().filter((url) => !url.includes("flowKind=chat-agent"))).toEqual([]);
 
-  // A channel kind is a singleton: its row is the leaf, so opening it lands
-  // straight on the channel conversations. It is ONE read, of the channel the
-  // tree declares, by id: the kind is never listed, so a channel the store
+  // A mailbox kind is a singleton: its row is the leaf, so opening it lands
+  // straight on the mailbox conversations. It is ONE read, of the mailbox the
+  // tree declares, by id: the kind is never listed, so a mailbox the store
   // still holds from the old roster is never drawn.
-  const channelReads = requestsMatching(page, /\/api\/flows\/sessions\/support\.help$/);
-  await row(page, "channel").click();
+  const mailboxReads = requestsMatching(page, /\/api\/flows\/sessions\/support\.help$/);
+  await row(page, "mailbox").click();
   await expect(row(page, "support.help")).toBeVisible();
-  await expect(row(page, RETIRED_CHANNEL)).toHaveCount(0);
-  expect(channelReads.take()).toHaveLength(1);
+  await expect(row(page, RETIRED_MAILBOX)).toHaveCount(0);
+  expect(mailboxReads.take()).toHaveLength(1);
   expect(requests.take()).toEqual([]);
 
   // A seat kind is a collection: opening it lists the seats and reads nothing.
@@ -123,15 +123,15 @@ test("the rail opens a channel kind into conversations and a seat kind into seat
 
 /**
  * The header's model is the assistant's own preference, and only the assistant
- * answers with it. A channel or a seat answers through its model intents, which
+ * answers with it. A mailbox or a seat answers through its model intents, which
  * an `FSDEV_*` override can point anywhere, and its replies carry the model
  * that ran. So on those views the header names no model: one it named could
  * contradict every reply beneath it.
  *
  * Red state produced before this was trusted: pass the assistant's model to the
- * header whatever is picked, and the channel assertion fails (the label is still there).
+ * header whatever is picked, and the mailbox assertion fails (the label is still there).
  */
-test("the header names the assistant's model on the assistant only, never on a channel or a seat", async ({
+test("the header names the assistant's model on the assistant only, never on a mailbox or a seat", async ({
   page,
   consoleErrors: _consoleErrors,
 }) => {
@@ -144,7 +144,7 @@ test("the header names the assistant's model on the assistant only, never on a c
   const expand = async (name: string) => {
     if ((await row(page, name).getAttribute("aria-expanded")) !== "true") await row(page, name).click();
   };
-  await expand("channel");
+  await expand("mailbox");
   await row(page, "support.help").click();
   await expect(page.locator('[data-testid="picked-session"]:visible')).toBeVisible();
   await expect(headerModel).toHaveCount(0);
@@ -633,7 +633,7 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
 }) => {
   test.setTimeout(180_000);
   // A seat with a conversation that has no title, one with a title too long
-  // for the rail, a seat with none, and the singleton channels the boot opens.
+  // for the rail, a seat with none, and the singleton mailboxes the boot opens.
   await seedSeatSession(page);
   await seedSeatSession(page, LONG_TITLE);
 
@@ -651,7 +651,7 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
   expect((await measureRows(shellNav)).scrollers).toBe(1);
   await checkRail(page, shellNav, "/", {
     hoverRow: `[data-kind="${SHELL_KIND}"]`,
-    quietRow: '[data-kind="channel"]',
+    quietRow: '[data-kind="mailbox"]',
     container: rail(page),
     file: "rail-kitchen-sink.png",
   });
@@ -753,7 +753,7 @@ for (const { width, rail: railShown, panel: panelShown } of [
     if (!railShown) {
       await page.getByRole("button", { name: "Browse" }).click();
       await expect(rail(page)).toBeVisible();
-      await expect(row(page, "channel")).toBeVisible();
+      await expect(row(page, "mailbox")).toBeVisible();
     }
   });
 }

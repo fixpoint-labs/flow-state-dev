@@ -97,6 +97,13 @@ starts fresh instead of re-sending a session that is gone.
 Both are background-path only. In session the block already resumes and records
 the id itself, so passing either without `detached: true` throws at construction.
 
+#### Cancelling a run
+
+When the block's signal fires, the block tells the agent to stop, then waits for
+its process to exit before it rejects. The agent writes the session's transcript
+until it exits, so a run you cancel and resume straight away finds its
+conversation. The wait lasts at most 5 seconds; past that the block rejects anyway.
+
 ### Giving a run its own working directory
 
 By default a run works in whatever directory the server process is running in.
@@ -162,9 +169,10 @@ claudeCodeAgent({
   // Which filesystem settings the run loads. Omitted, it loads all of them,
   // exactly as the CLI does.
   settingSources: ["user"],
-  // The run's environment. This REPLACES the process environment rather than
-  // adding to it — spread `process.env` when you mean to add.
-  env: { ...process.env, CI: "1" },
+  // The run's environment. Unset, the run inherits your server's whole
+  // `process.env`. Set, it REPLACES that environment: here, only the named
+  // variables reach the run (`harnessEnv` is from `@flow-state-dev/core`).
+  env: harnessEnv({ pass: ["PATH", "HOME", "ANTHROPIC_API_KEY"] }),
   // The SDK's sandbox settings (`SandboxSettings`, an open object — the Agent
   // SDK is an optional peer here, so its own type is not imported). A value or
   // a resolver: the settings that confine a run name the directory it works
@@ -189,6 +197,14 @@ that directory is one your server assembled — from resources your application'
 users can write — then those files are user input, and the run reading
 configuration out of them means your users configure your agent. Pass `[]` to
 load none, or list only the sources you control.
+
+**`env` decides what the run can read.** Leave it unset and the Claude Code
+process starts with your server's entire `process.env`: every API key, token and
+connection string in it, readable by any shell command the model runs. Setting
+`env` replaces that environment instead of adding to it, so
+`harnessEnv({ pass: [...] })` from `@flow-state-dev/core` is the way to hand the
+run only what it needs. Nothing is passed unless it is named, `PATH` and `HOME`
+included, and a named variable that is unset is left out.
 
 **`allowWrite` is not a fence.** The SDK documents it as *additional* paths to
 allow writing, merged with the paths that `Edit(...)` permission rules already

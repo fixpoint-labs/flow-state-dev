@@ -4,14 +4,15 @@
  * Computed styles come back in several colour spaces (`rgb()`, `color(srgb …)`,
  * `oklab()`, `oklch()`); these turn each into sRGB so a painted colour can be
  * compared with a declared one. Also here: reading the custom properties a
- * stylesheet declares on one selector, and App Lab's theme values read from
+ * stylesheet declares on one selector, and Shift Manager's theme values read from
  * the design-system package itself, so no goal restates them.
  *
  * Kept out of `index.mts`: only the goals that read a page's colours need it.
  *
- *   import { parseColour, near, readAppLabTheme } from "../../lib/colour.mts";
+ *   import { parseColour, near, readShiftManagerTheme } from "../../lib/colour.mts";
  */
 import { readFileSync } from "node:fs";
+import { stripImportsAndComments } from "../../labs/design-system/test/theme.ts";
 import { repoPath } from "./paths.mts";
 
 /** An sRGB colour, 0 to 255 per channel. */
@@ -74,10 +75,10 @@ export const near = (a: Rgb, b: Rgb): boolean => a.every((v, i) => Math.abs(v - 
 /** A colour as `#rrggbb`. */
 export const hex = ([r, g, b]: Rgb): string => `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 
-/** The custom properties `css` declares on exactly `selector` (comments ignored). */
+/** The custom properties `css` declares on exactly `selector` (comments and `@import`s ignored). */
 export function declarations(css: string, selector: string): Record<string, string> {
   const out: Record<string, string> = {};
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const stripped = stripImportsAndComments(css);
   for (const m of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (m[1]!.split(",").map((s) => s.trim()).join(", ") !== selector) continue;
     for (const d of m[2]!.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) out[d[1]!] = d[2]!.trim();
@@ -85,8 +86,8 @@ export function declarations(css: string, selector: string): Record<string, stri
   return out;
 }
 
-/** App Lab's theme as the design-system package declares it. */
-export interface AppLabTheme {
+/** Shift Manager's theme as the design-system package declares it. */
+export interface ShiftManagerTheme {
   /** Every colour value per variant, as written (`#rrggbb`). */
   light: string[];
   dark: string[];
@@ -97,9 +98,9 @@ export interface AppLabTheme {
   families: string[];
 }
 
-/** Read App Lab's values off `labs/design-system/app-lab.css`. */
-export function readAppLabTheme(): AppLabTheme {
-  const css = readFileSync(repoPath("labs/design-system/app-lab.css"), "utf8");
+/** Read Shift Manager's values off `labs/design-system/shift-manager.css`. */
+export function readShiftManagerTheme(): ShiftManagerTheme {
+  const css = readFileSync(repoPath("labs/design-system/shift-manager.css"), "utf8");
   const light = declarations(css, ":root");
   const dark = declarations(css, ".dark");
   const colours = (d: Record<string, string>) => Object.values(d).filter((v) => /^#[0-9a-f]{3,8}$/i.test(v));
@@ -108,6 +109,6 @@ export function readAppLabTheme(): AppLabTheme {
     dark: colours(dark),
     attentionLight: light["--attention"]!,
     attentionDark: dark["--attention"]!,
-    families: [...new Set([...css.matchAll(/"([^"]+)"/g)].map((m) => m[1]!))],
+    families: [...new Set([...stripImportsAndComments(css).matchAll(/"([^"]+)"/g)].map((m) => m[1]!))],
   };
 }

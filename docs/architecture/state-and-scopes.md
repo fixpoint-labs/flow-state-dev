@@ -113,6 +113,8 @@ separates them is whether the hint carries a *delta* or an *absolute* value.
 
 Every write helper compares the proposed next state against the current state via structural equality. When the mutation produces a value deep-equal to the current state, the framework suppresses the persist call and the corresponding `state_change` SSE emission, and the helper resolves to `false` instead of `true`. CAS retry semantics are preserved — only the commit phase is short-circuited.
 
+On the CAS path (`runWithCAS`) "current state" is the container's cached read, which another writer may have replaced, so the skip is verified first: the scope's `reread` loads the stored record, and the write is skipped only when the stored version is still the one the container holds. If it moved, the container is refreshed and the mutator re-runs against the stored value, as after a conflict — a deliberate write that only equals a stale cache lands. The commutative path (`runCommutative`) still compares against the cached read alone.
+
 Comparison rules: `Object.is` for primitives (NaN equals NaN; +0 != -0), recursive structural equality for plain objects/arrays, `Date.getTime()` for dates. Non-JSON shapes (Map, Set, RegExp, functions) raise `TypeError` — state must be JSON-shaped.
 
 ### Transient state slots
@@ -157,7 +159,7 @@ It removes tombstones only, never a live row — state written under a scope id 
 
 Resource state does **not** reuse `runWithCAS`, and the reason is policy rather than shape. It has its own driver (`stores/resource-cas.ts`), placed at the registry's read/mutate seam rather than at the persister: the persister is value-only, and by the time a write reaches it the caller's intent has already been materialized into an object, so a retry there could only overwrite a concurrent writer's field. The driver takes each write op's real mutator and re-runs it against refreshed state.
 
-Six of `runWithCAS`'s decisions do not transfer: a conflict against a tombstone and a losing create-if-absent are **terminal** here rather than retryable, cancellation is honoured, a no-op is suppressed only against a re-read version, and nothing on the commutative path is inherited. **The policy table lives in one place — the `stores/resource-cas.ts` module header** — beside the code it governs and with the source citations that go stale the moment `cas.ts` is edited. Read it there rather than a copy; `cas.ts` carries the matching pointer back, so a reader arriving at either driver can see there are two and why.
+Five of `runWithCAS`'s decisions do not transfer: a conflict against a tombstone and a losing create-if-absent are **terminal** here rather than retryable, cancellation is honoured, and nothing on the commutative path is inherited. One that does: both drivers suppress a no-op only against a re-read version. **The policy table lives in one place — the `stores/resource-cas.ts` module header** — beside the code it governs and with the source citations that go stale the moment `cas.ts` is edited. Read it there rather than a copy; `cas.ts` carries the matching pointer back, so a reader arriving at either driver can see there are two and why.
 
 The trap worth knowing at this altitude: `createScopeStateOps` lives in `state-container.ts`, and four of its seven ops — `patchState` / `setState` / `incState` / `pushState` — carry exactly the names the registry's resource ops carry. Reaching for the scope ones is the natural move and the wrong one, because the shared name is not a shared guarantee: for `incState` / `pushState` the two sides disagree about whether the write is version-checked at all, which the split below works through. The same goes for `createScopePersist`, which downgrades `expectedVersion` to `"any"` for commutative hints on adapters advertising a delta verb.
 
@@ -243,7 +245,9 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
   first-touch memoize rather than an updater — it patches a single key only when that key is absent
   — so it follows `patchState`, not `updateState`; concurrent callers for one key inside a request
   are single-flighted. `writeContent` carries no version predicate at all — `ContentStore.set`
-  creates or overwrites — so it is last-writer-wins outright.
+  creates or overwrites — so it is last-writer-wins outright. It also has no no-op skip: every call
+  writes, even when the body equals what this request last read or wrote, because that copy may
+  already be stale. A `writeContent` that resolves means the store held that body at commit.
 
 ### Delta verb routing (FIX-405)
 
@@ -770,7 +774,7 @@ Two shapes make that precedence load-bearing rather than cosmetic:
 State and resource mutations emit streaming events:
 
 - `state_change` items track each scope operation
-- `resource_change` items track resource mutations. Content writes (`writeContent`) emit on both single resources and collection instances (FIX-756 parity) — always without a delta, since content carries no state projection; clients take the batched-refetch path for content
+- `resource_change` items track resource mutations. Content writes (`writeContent`) emit on both single resources and collection instances (FIX-756 parity) — always without a delta, since content carries no state projection; clients take the batched-refetch path for content. A content `resource_change` signals that a write was made, not that the stored body differs from before — rewriting the same body still emits one
 - `state_snapshot` items capture the full sequencer state at each step boundary (initial + after every step)
 - `state_change` and `resource_change` items are **invalidation signals** — clients should refetch snapshots for source-of-truth reads
 - In production mode, these items are transient (stream-only, not persisted)

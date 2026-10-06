@@ -58,7 +58,8 @@ server checks it on reads and on execution alongside the user.
 It comes from one of two places, and never from the caller:
 
 - **A configured resolver** returns the organization it verified. If it
-  returns none, a blank one, or the reserved default below, the request is
+  returns none, a blank one, one that isn't well-formed Unicode, or the
+  reserved default below, the request is
   refused with 401. Returning `null` is refused too: `defaultUserId` fills in
   a user, never an organization.
 - **No configured resolver at all**, which is the development case. The
@@ -97,10 +98,11 @@ await runAction({
 });
 ```
 
-Organizations are opaque, nonempty strings. A whitespace-only id is rejected
-rather than trimmed, and a valid one is stored exactly as given. That check is
-`isValidOrgId`, exported from `@flow-state-dev/core`, so a resolver can apply
-the same rule and refuse with its own message.
+An organization id can be any string except an empty one, a whitespace-only
+one, or one that isn't well-formed Unicode (a lone UTF-16 surrogate). Those are
+rejected, not trimmed or repaired. Every other string is stored exactly as
+given. `isValidOrgId`, exported from `@flow-state-dev/core`, applies the same
+check, so a resolver can use it and refuse with its own message.
 
 A session's organization is fixed when the session is created, like its user.
 Reopening cannot move it; create a new session instead.

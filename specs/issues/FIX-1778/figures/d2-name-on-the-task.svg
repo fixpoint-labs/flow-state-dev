@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D2: what does a task write to say who runs it? Chosen: the worker's name, checked when the task is filed. Instead of: the worker's full address. It comes down to what the coordinator can write: it knows names, not addresses. The price: the organization and member come from whoever runs the list, not from the task. A member's own worker resolves for that member either way. Locks in: names are the routing key on tasks. Flips if: tasks must route across organizations."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What does a task write to say which worker runs it?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The worker's name, checked at filing</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">The worker's full address</text>
+  </g>
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT THE</text>
+    <text class="t-lbl" x="32" y="169">COORDINATOR KNOWS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Names, from discover and hire</text>
+    <text class="t-s" x="248" y="179">eng.coder, frontend</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Org and owner in the string</text>
+    <text class="t-s" x="612" y="179">it has to build them</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="222">WHO RUNS</text>
+    <text class="t-lbl" x="32" y="235">THE LIST</text>
+    <text class="mark minus" x="228" y="225">−</text>
+    <text class="t-b" x="248" y="224">Decides the org and member</text>
+    <text class="t-s" x="248" y="242">the name resolves for the runner</text>
+    <text class="mark plus" x="592" y="225">+</text>
+    <text class="t-b" x="612" y="224">The task fixes where it goes</text>
+    <text class="t-s" x="612" y="242">whoever runs the list</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="280">A MEMBER'S</text>
+    <text class="t-lbl" x="32" y="293">OWN WORKER</text>
+    <text class="mark tie" x="228" y="283">=</text>
+    <text class="t-b" x="248" y="282">Found for that member only</text>
+    <text class="t-s" x="248" y="300">derived from who runs it</text>
+    <text class="mark tie" x="592" y="283">=</text>
+    <text class="t-b" x="612" y="282">Found for that member only</text>
+    <text class="t-s" x="612" y="300">the address says so</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">Names are the routing key on tasks</text>
+    <text class="t-s" x="32" y="389">open tasks don't follow a renamed worker</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">Tasks must route across organizations</text>
+    <text class="t-s" x="494" y="389">then the name alone is not enough</text>
+  </g>
+</svg>

@@ -20,6 +20,7 @@ export type FlowContextValue = {
   sessionId?: string;
   userId?: string;
   baseUrl?: string;
+  apiPath?: string;
   renderers?: RendererRegistry;
 };
 
@@ -31,6 +32,12 @@ export type FlowProviderProps = {
   sessionId?: string;
   userId?: string;
   baseUrl?: string;
+  /**
+   * Where the server mounts the flow API, after `baseUrl`. Default
+   * `"/api/flows"`. Set it to the server's mount when that differs, such as
+   * the Node host's `basePath`. A nested provider inherits its parent's.
+   */
+  apiPath?: string;
   renderers?: RendererRegistry;
   children: ReactNode;
 };
@@ -83,15 +90,18 @@ export function FlowProvider(props: FlowProviderProps): ReactNode {
       sessionId: props.sessionId ?? parent.sessionId,
       userId: props.userId ?? parent.userId,
       baseUrl: props.baseUrl ?? parent.baseUrl,
+      apiPath: props.apiPath ?? parent.apiPath,
       renderers: mergeRenderers(parent.renderers, props.renderers)
     };
   }, [
     parent.baseUrl,
+    parent.apiPath,
     parent.renderers,
     parent.flowKind,
     parent.sessionId,
     parent.userId,
     props.baseUrl,
+    props.apiPath,
     props.renderers,
     props.flowKind,
     props.sessionId,

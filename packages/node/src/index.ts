@@ -12,7 +12,9 @@
  * AWS Lambda (see the `./aws-lambda` subpath).
  */
 export { serve } from "./serve";
-export type { ServeOptions, ServeHandle } from "./serve";
+export type { ServeOptions, ServeHandle, PageHandler } from "./serve";
+export { createPageHtmlTransform } from "./page-html";
+export type { PageHtmlOptions } from "./page-html";
 export { createServerApp } from "./app";
 export type { ServerApp, ServerAppOptions } from "./app";
 export { isLoopbackHost, assertNetworkBindIsAuthenticated } from "./bind-guard";

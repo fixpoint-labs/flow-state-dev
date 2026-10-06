@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { describe, it, expect, vi } from "vitest";
+import { spawn as spawnChild, type ChildProcess } from "node:child_process";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { mkdir as mkdirAsync, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,6 +11,7 @@ import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import { defineCapability, handler, isAbortLike, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
+  abortExitGrace,
   claudeCodeAgent,
   forwardSignalToController,
   runNamespace,
@@ -457,7 +459,21 @@ describe("claudeCodeAgent", () => {
   // stdout to close, and the Claude Code SDK path has the same shape — so the
   // block must stop WAITING on its own signal rather than on the SDK's
   // generator settling.
+  //
+  // The block does wait a bounded grace for the vendor's process to exit (see
+  // the nested describe below). The vendors in these tests never exit, so they
+  // run with a short grace: what they pin is that the bound, not the vendor,
+  // decides when the block settles.
   describe("stops on ctx.signal firing, not on the SDK stream settling", () => {
+    const shippedGraceMs = abortExitGrace.ms;
+    /** A grace far inside each test's 500ms race bound. */
+    beforeEach(() => {
+      abortExitGrace.ms = 50;
+    });
+    afterEach(() => {
+      abortExitGrace.ms = shippedGraceMs;
+    });
+
     /** A `query` whose generator never advances past its first message, abort
      * or no abort — the fake vendor stream that never closes. */
     function hangingQueryAfterFirstMessage(onFirstMessage: () => void): ResolveClaudeAgent {
@@ -538,6 +554,156 @@ describe("claudeCodeAgent", () => {
       ).toBe("sess_seen_before_abort");
     });
 
+    // A run stopped right after it starts is the run a host resumes next — and
+    // the vendor's process keeps writing that session's transcript for a while
+    // after it is told to stop. Settling before it has exited hands the host a
+    // session id the vendor cannot find yet ("No conversation found").
+    describe("waits, bounded, for the vendor's process to exit before settling", () => {
+      /** A `query` shaped like the real SDK on abort: it honors the forwarded
+       * `abortController`, but its stream only ends once the process has
+       * exited — `lateWriteMs` after the abort, the window in which the
+       * transcript is still being written. Never ends without an abort. */
+      function vendorStillWritingAfterAbort(lateWriteMs: number) {
+        const state = { transcriptComplete: false, sawFirstMessage: Promise.resolve() };
+        let sawFirst: () => void = () => {};
+        state.sawFirstMessage = new Promise<void>((resolve) => {
+          sawFirst = resolve;
+        });
+        const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+          query: async function* (args) {
+            const signal = args.options!.abortController!.signal;
+            yield { type: "system", subtype: "init", session_id: "sess_early" } as SdkMessageLike;
+            sawFirst();
+            await new Promise<void>((resolve) => {
+              const exitLater = () =>
+                setTimeout(() => {
+                  state.transcriptComplete = true;
+                  resolve();
+                }, lateWriteMs);
+              if (signal.aborted) exitLater();
+              else signal.addEventListener("abort", exitLater, { once: true });
+            });
+            throw new DOMException("Claude Code process aborted by user", "AbortError");
+          },
+        });
+        return { state, resolveClaudeAgent };
+      }
+
+      it("does not settle an aborted run until the vendor's transcript is complete", async () => {
+        abortExitGrace.ms = shippedGraceMs;
+        const vendor = vendorStillWritingAfterAbort(100);
+        const block = claudeCodeAgent({ resolveClaudeAgent: vendor.resolveClaudeAgent });
+        const runtime = await createTestContext({ declaredResources: block.declaredResources });
+        const controller = new AbortController();
+        (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        await vendor.state.sawFirstMessage;
+        controller.abort();
+
+        const caught = await withRaceTimeout(
+          runPromise!.then(
+            () => null,
+            (err) => err,
+          ),
+          2_000,
+        );
+        expect(isAbortLike(caught)).toBe(true);
+        // The id the host will resume from is persisted, and by the time the
+        // block hands control back the vendor has finished writing it.
+        expect(
+          (runtime.ctx.session.state as Record<string, unknown>)[SDK_SESSION_ID_KEY],
+        ).toBe("sess_early");
+        expect(vendor.state.transcriptComplete).toBe(true);
+      });
+
+      it("waits for the process itself, not the SDK stream, which can end while the process is still writing", async () => {
+        // The SDK's shutdown is bounded at ~2s: past that its stream ends (and
+        // its `return()` resolves) whether or not the process has exited. So
+        // this fake ends its stream the moment it is aborted, while the real
+        // child process it spawned — through the block's spawn hook, as the
+        // SDK does — finishes "writing" 150ms after its stdin closes.
+        abortExitGrace.ms = shippedGraceMs;
+        const state = { transcriptComplete: false };
+        let sawFirst: () => void = () => {};
+        const sawFirstMessage = new Promise<void>((resolve) => {
+          sawFirst = resolve;
+        });
+        const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+          query: async function* (args) {
+            const opts = args.options!;
+            const spawnOptions = {
+              command: process.execPath,
+              args: [
+                "-e",
+                "process.stdin.resume(); process.stdin.on('end', () => setTimeout(() => process.exit(0), 150));",
+              ],
+              env: { ...process.env },
+              signal: new AbortController().signal,
+            };
+            const child = (opts.spawnClaudeCodeProcess?.(spawnOptions) ??
+              spawnChild(spawnOptions.command, spawnOptions.args, {
+                stdio: ["pipe", "pipe", "pipe"],
+              })) as ChildProcess;
+            child.once("exit", () => {
+              state.transcriptComplete = true;
+            });
+            const signal = opts.abortController!.signal;
+            const aborted = new Promise<void>((resolve) => {
+              if (signal.aborted) resolve();
+              else signal.addEventListener("abort", () => resolve(), { once: true });
+            });
+            yield { type: "system", subtype: "init", session_id: "sess_early" } as SdkMessageLike;
+            sawFirst();
+            await aborted;
+            child.stdin!.end(); // what the SDK's close() does first
+            throw new DOMException("Claude Code process aborted by user", "AbortError");
+          },
+        });
+        const block = claudeCodeAgent({ resolveClaudeAgent });
+        const runtime = await createTestContext({ declaredResources: block.declaredResources });
+        const controller = new AbortController();
+        (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        await sawFirstMessage;
+        controller.abort();
+
+        const caught = await withRaceTimeout(
+          runPromise!.then(
+            () => null,
+            (err) => err,
+          ),
+          2_000,
+        );
+        expect(isAbortLike(caught)).toBe(true);
+        expect(state.transcriptComplete).toBe(true);
+      });
+
+      it("with no grace, settles on the signal without waiting for the exit", async () => {
+        abortExitGrace.ms = 0;
+        const vendor = vendorStillWritingAfterAbort(200);
+        const block = claudeCodeAgent({ resolveClaudeAgent: vendor.resolveClaudeAgent });
+        const runtime = await createTestContext({ declaredResources: block.declaredResources });
+        const controller = new AbortController();
+        (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        await vendor.state.sawFirstMessage;
+        controller.abort();
+
+        const caught = await withRaceTimeout(
+          runPromise!.then(
+            () => null,
+            (err) => err,
+          ),
+          100,
+        );
+        expect(isAbortLike(caught)).toBe(true);
+        expect(vendor.state.transcriptComplete).toBe(false);
+      });
+    });
+
     it("rejects immediately when ctx.signal is already aborted before the first message", async () => {
       let neverCalled = true;
       const resolveClaudeAgent: ResolveClaudeAgent = () => ({
@@ -546,7 +712,9 @@ describe("claudeCodeAgent", () => {
           await new Promise(() => {}); // never resolves
         },
       });
-      const block = claudeCodeAgent({ resolveClaudeAgent });
+      const block = claudeCodeAgent({
+        resolveClaudeAgent,
+      });
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = AbortSignal.abort();
 
@@ -1114,7 +1282,7 @@ describe("claudeCodeAgent", () => {
 describe("claudeCodeAgent — task attribution", () => {
   // A run inside a task-board task entry: the entry's leading tap marks the task
   // scope, and the agent runs as a later step. Every item the run produces must
-  // carry that taskId, or it is missing from the task's own view (App Lab's task
+  // carry that taskId, or it is missing from the task's own view (Shift Manager's task
   // screen reads items by taskId). Driven through the real block over a
   // scripted SDK stream, so every emit site the stream reaches is covered, not
   // just the ones a per-site test happens to name.

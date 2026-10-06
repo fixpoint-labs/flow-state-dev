@@ -5492,6 +5492,35 @@ check('a stacked sub-PR is not offered for merge before its rebase', async () =>
   assert.deepEqual(result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 41, subPr: 'a' }], 'only the unstacked slice is mergeable')
 })
 
+check('a cleared stack marker still withholds merge when GitHub base is not main', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a', stackedOn: null },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b', stackedOn: null },
+          ],
+          assembledGoal: { passed: false },
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrStates: [
+            { id: 'a', merged: false, readyToMerge: true, baseRefName: 'main' },
+            { id: 'b', merged: false, readyToMerge: true, baseRefName: 'fix/a' },
+          ],
+        },
+      },
+    }),
+  })
+  assert.deepEqual(result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 41, subPr: 'a' }], 'observed non-main base withholds the gate')
+})
+
 check('activity reported with no timestamp withholds the work rather than consuming it', async () => {
   // Dispatching anyway consumes the batch (a round spent, or PR fixes applied) while the cursor
   // stays put, so the next wake rediscovers exactly the same feedback and does it again.
@@ -8441,6 +8470,10 @@ check('a dependent stacks on its open dependency so review can start', async () 
   assert.deepEqual(calls.map((c) => c.label), ['build:b'])
   assert.match(calls[0].prompt, /based on fix\/FIX-9-a/)
   assert.match(calls[0].prompt, /stacking on an unmerged dependency/)
+  assert.match(calls[0].prompt, /gh stack link 1 <this PR>/)
+  assert.match(calls[0].prompt, /no `DO NOT MERGE` prefix/)
+  assert.match(calls[0].prompt, /--base fix\/FIX-9-a/)
+  assert.match(calls[0].prompt, /GitHub base is not main/)
   // The worker response here deliberately omits `stackedOn` (the common case — it's optional).
   // The marker must come from the base the SCRIPT chose, or the later rebase never schedules
   // and the sub-PR keeps its dependency's commits in its own diff.
@@ -8646,7 +8679,7 @@ check('a dead assembled-goal agent retries instead of filing a phantom gap', asy
   assert.match(logs.join('\n'), /incomplete attempt, retrying next wake. No gap filed/)
 })
 
-check('a merged dependency triggers a rebase off the stack and clears the marker', async () => {
+check('a merged dependency triggers a rebase off the stack', async () => {
   const { result, calls } = await run('issue-multi-pr.js', {
     args: multiArgs({
       subPrs: [
@@ -8659,7 +8692,45 @@ check('a merged dependency triggers a rebase off the stack and clears the marker
   assert.deepEqual(calls.map((c) => c.label), ['rebase:b'])
   assert.match(calls[0].prompt, /rebase it onto fresh origin\/main/)
   assert.match(calls[0].prompt, /Do not merge it/)
-  assert.equal(result.subPrs.find((n) => n.id === 'b').stackedOn, null)
+  assert.match(calls[0].prompt, /gh pr view 2 --json baseRefName` is main/)
+  assert.match(calls[0].prompt, /gh pr edit 2 --base main/)
+  assert.match(calls[0].prompt, /GitHub retargets it to main when the dependency merges/)
+  assert.match(calls[0].prompt, /Report `baseRefName: main`/)
+  assert.equal(result.subPrs.find((n) => n.id === 'b').stackedOn, 'fix/FIX-9-a', 'open without baseRefName: main does not unstack')
+})
+
+check('a rebase that reports open without GitHub base main keeps the stack marker', async () => {
+  const cases = [
+    { label: 'omitted', extra: {} },
+    { label: 'old branch', extra: { baseRefName: 'fix/FIX-9-a' } },
+  ]
+  for (const { label, extra } of cases) {
+    const { result } = await run('issue-multi-pr.js', {
+      args: multiArgs({
+        subPrs: [
+          node('a', { status: 'merged', branch: 'fix/FIX-9-a' }),
+          node('b', { dependsOn: ['a'], status: 'open', stackedOn: 'fix/FIX-9-a', branch: 'fix/FIX-9-b', pr: 2 }),
+        ],
+      }),
+      respond: multiResponder({ build: { b: { status: 'open', pr: 2, branch: 'fix/FIX-9-b', ...extra } } }),
+    })
+    assert.equal(
+      result.subPrs.find((n) => n.id === 'b').stackedOn,
+      'fix/FIX-9-a',
+      `${label}: marker stays so the rebase retries`,
+    )
+  }
+
+  const cleared = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        node('a', { status: 'merged', branch: 'fix/FIX-9-a' }),
+        node('b', { dependsOn: ['a'], status: 'open', stackedOn: 'fix/FIX-9-a', branch: 'fix/FIX-9-b', pr: 2 }),
+      ],
+    }),
+    respond: multiResponder({ build: { b: { status: 'open', pr: 2, branch: 'fix/FIX-9-b', baseRefName: 'main' } } }),
+  })
+  assert.equal(cleared.result.subPrs.find((n) => n.id === 'b').stackedOn, null, 'only an observed main base clears it')
 })
 
 check('the last merge is not DONE — the assembled goal runs first', async () => {

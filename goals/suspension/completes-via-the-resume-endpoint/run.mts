@@ -47,6 +47,7 @@ await runGoal(() => {
     env: {
       FSD_ENV: "dev",
       FSDEV_DEBUG_ENDPOINTS: "1",
+      FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL: "1",
       KS_GOAL_REQUEST: fixture.request,
       KS_GOAL_NOTE: fixture.note,
     },

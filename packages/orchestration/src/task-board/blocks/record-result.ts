@@ -6,7 +6,7 @@
  * - `recordSuccess` — `.tap()`-shaped (per BP-012, no `outputSchema`,
  *   no `return input`). Reads `currentClaim` from worker state, takes
  *   the worker's output as input, calls `collection.complete`. Clears
- *   `currentClaim` when done so a stale claim can't leak into a later
+ *   `currentClaim` (and the `currentLedger` beside it) when done so a stale claim can't leak into a later
  *   iteration on retry.
  *
  * - `recordError` — invoked via `.rescue()` on the worker body
@@ -395,7 +395,7 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
         // worker returned normally. Leaving the driver running would renew a
         // lease on a row the lease has deliberately stopped governing.
         stopLeaseRenewal();
-        await ctx.sequencer!.patchState({ currentClaim: undefined });
+        await ctx.sequencer!.patchState({ currentClaim: undefined, currentLedger: undefined });
         return;
       }
       // FIX-963. This call RETHROWS the write's own error untouched when the
@@ -438,7 +438,7 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
       // never reaches this line. The rule is not "stop on the way out", it is
       // "stop once no further fenced write can follow".
       stopLeaseRenewal();
-      await ctx.sequencer!.patchState({ currentClaim: undefined });
+      await ctx.sequencer!.patchState({ currentClaim: undefined, currentLedger: undefined });
 
       if (recorderFailure !== undefined) {
         // Awaited, and its own failure is caught by nothing — a board that
@@ -565,7 +565,7 @@ export function createRecordError(options: RecordErrorOptions) {
                 }),
             });
           }
-          await ctx.sequencer!.patchState({ currentClaim: undefined });
+          await ctx.sequencer!.patchState({ currentClaim: undefined, currentLedger: undefined });
         }
       } finally {
         // After the fenced write — including the release one — for the same

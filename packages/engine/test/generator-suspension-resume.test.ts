@@ -250,6 +250,254 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
     expect(JSON.stringify(step1[0]!.output)).toContain("denied");
   });
 
+  // 1b'. APPROVAL, then the request is cancelled inside the re-entered tool ---
+  it("approval then a cancel inside the re-entered tool: the abort stops the run, not a failed tool call, and no later sibling runs", async () => {
+    // A cancel while a re-entered tool runs is the request stopping. Turned
+    // into a model-visible tool failure, the resume would go on to run the
+    // step's later tools and ask the model again on a request already cancelled.
+    const controller = new AbortController();
+    let resumed = false;
+    const gate = handler({
+      name: "risky_op",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ran: z.boolean() }),
+      execute: async (_input, ctx) => {
+        await ctx.suspend!({ reason: "approval", message: "Run risky op?" });
+        resumed = true;
+        controller.abort();
+        const err = new Error("This operation was aborted");
+        err.name = "AbortError";
+        throw err;
+      },
+    });
+    const siblingRuns: string[] = [];
+    const sibling = handler({
+      name: "later_op",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ran: z.boolean() }),
+      // Gated too, so the live step leaves it pending and the resume re-enters it after risky_op.
+      execute: async (_input, ctx) => {
+        siblingRuns.push(resumed ? "after-resume" : "live");
+        await ctx.suspend!({ reason: "approval", message: "Run later op?" });
+        return { ran: true };
+      },
+    });
+
+    const { model, seen } = stepModel([
+      () => ({
+        toolCalls: [
+          { toolCallId: "c1", toolName: "risky_op", args: {} },
+          { toolCallId: "c2", toolName: "later_op", args: {} },
+        ],
+        finishReason: "tool-calls",
+      }),
+      () => ({ text: "never asked", finishReason: "stop" }),
+    ]);
+
+    const gen = generator({ name: "agent", model, prompt: "p", tools: [gate, sibling] });
+    const flow = defineFlow({
+      kind: "gen-approve-abort",
+      actions: { run: { block: sequencer({ name: "seq", durable: true }).step(gen), inputSchema: anyInput } },
+    })({ id: "gen-approve-abort" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow, actionName: "run", input: {}, userId: "u1", stores,
+      runtimeConfig: { durabilityProvider: provider },
+    });
+    const requestId = initial.requestId!;
+    const suspension = (await provider.listSuspended({ status: "pending" })).find((s) => JSON.stringify(s).includes("Run risky op?"));
+    await provider.suspend({ ...suspension!, status: "approved", resolvedAt: Date.now() });
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry: registryFor(flow),
+      resumeContext: { suspensionId: suspension!.suspensionId, action: "approve", resumedBy: "reviewer" },
+      runtimeConfig: { durabilityProvider: provider },
+      signal: controller.signal,
+    });
+    await finished.catch(() => undefined);
+
+    expect(resumed).toBe(true);
+    expect(siblingRuns.filter((run) => run === "after-resume")).toEqual([]);
+    expect(seen.length).toBe(1);
+    expect((await stores.request.get(requestId))?.status).toBe("interrupted");
+  });
+
+  // 1c. APPROVAL, then the tool refuses ----------------------------------------
+  it("approval then a tool error past the gate: a failed tool call the model is told about, as in the live loop", async () => {
+    // A gated tool re-checks after Approve and refuses (what it was asked
+    // about changed meanwhile). The live loop turns a thrown tool error into
+    // a failed tool call; resume must too, rather than fail the whole run.
+    const gate = handler({
+      name: "risky_op",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ran: z.boolean() }),
+      execute: async (_input, ctx) => {
+        await ctx.suspend!({ reason: "approval", message: "Run risky op?" });
+        throw new Error("what you approved changed, so nothing was done");
+      },
+    });
+
+    const { model, seen } = stepModel([
+      () => ({
+        toolCalls: [{ toolCallId: "c1", toolName: "risky_op", args: {} }],
+        finishReason: "tool-calls",
+      }),
+      () => ({ text: "it changed; nothing done", finishReason: "stop" }),
+    ]);
+
+    const gen = generator({ name: "agent", model, prompt: "p", tools: [gate] });
+    const flow = defineFlow({
+      kind: "gen-approve-refuse",
+      actions: { run: { block: sequencer({ name: "seq", durable: true }).step(gen), inputSchema: anyInput } },
+    })({ id: "gen-approve-refuse" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
+      flow, actionName: "run", input: {}, userId: "u1", stores,
+      runtimeConfig: { durabilityProvider: provider },
+    });
+    const requestId = initial.requestId!;
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    const resumed = await resolve(flow, stores, provider, requestId, suspension, "approve");
+
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+    expect(resumed.output).toBe("it changed; nothing done");
+    expect(seen.length).toBe(2);
+    const step1 = toolResultParts(seen[1]!.messages);
+    expect(step1).toHaveLength(1);
+    expect(step1[0]!.output).toEqual({
+      type: "error-text",
+      value: 'Tool "risky_op" failed: what you approved changed, so nothing was done',
+    });
+    // Recorded as a failed tool_output (beside the gate's own SUSPENSION one),
+    // so a later resume replays the failure instead of re-entering the tool.
+    const record = await stores.request.get(requestId);
+    const failed = (record!.items ?? []).filter(
+      (i) =>
+        i.type === "tool_output" &&
+        (i as { status?: string }).status === "failed" &&
+        (i as { error?: { code?: string } }).error?.code !== "SUSPENSION"
+    ) as Array<{ error?: { message?: string } }>;
+    expect(failed).toHaveLength(1);
+    expect(failed[0]!.error?.message).toBe("what you approved changed, so nothing was done");
+  });
+
+  // 1d. APPROVAL, then the tool's mapper throws ------------------------------
+  it("a mapper that throws after an approved gate fails the run, as it does in the live loop, rather than reaching the model as a failed tool call", async () => {
+    // Only the tool's own error is a failed tool call. A mapper failure is the
+    // framework's, and the live loop lets it fail the run; resume must match.
+    const mapped = (name: string, suspend: boolean) =>
+      handler({
+        name,
+        inputSchema: z.object({}),
+        outputSchema: z.object({ ok: z.boolean() }),
+        execute: async (_input, ctx) => {
+          if (suspend) await ctx.suspend!({ reason: "approval", message: "go?" });
+          return { ok: true };
+        },
+      }).mapModelOutput(() => {
+        throw new Error("mapper broke");
+      });
+
+    const runFlow = async (kind: string, suspend: boolean) => {
+      const { model } = stepModel([
+        () => ({ toolCalls: [{ toolCallId: "c1", toolName: "op", args: {} }], finishReason: "tool-calls" }),
+        () => ({ text: "carried on", finishReason: "stop" }),
+      ]);
+      const gen = generator({ name: "agent", model, prompt: "p", tools: [mapped("op", suspend)] });
+      const flow = defineFlow({
+        kind,
+        actions: { run: { block: sequencer({ name: "seq", durable: true }).step(gen), inputSchema: anyInput } },
+      })({ id: kind });
+      const { stores, provider } = createDurableStores();
+      const initial = await runAction({
+        orgId: DEFAULT_ORG_ID,
+        flow, actionName: "run", input: {}, userId: "u1", stores,
+        runtimeConfig: { durabilityProvider: provider },
+      });
+      const requestId = initial.requestId!;
+      if (suspend) {
+        const [suspension] = await provider.listSuspended({ status: "pending" });
+        await resolve(flow, stores, provider, requestId, suspension, "approve");
+      }
+      return stores.request.get(requestId);
+    };
+
+    const live = await runFlow("gen-mapper-live", false);
+    const resumed = await runFlow("gen-mapper-resumed", true);
+    expect(live?.status).toBe("failed");
+    expect(JSON.stringify(live?.result)).toContain("mapper broke");
+    expect(resumed?.status).toBe(live?.status);
+    expect(JSON.stringify(resumed?.result)).toContain("mapper broke");
+
+    // The record says what happened: the call did not complete. A completed
+    // `tool_output` here would let a later recovery replay it as a success.
+    for (const record of [live, resumed]) {
+      const ops = (record!.items ?? []).filter(
+        (i) =>
+          i.type === "tool_output" &&
+          (i as { blockName?: string }).blockName === "op" &&
+          (i as { error?: { code?: string } }).error?.code !== "SUSPENSION"
+      ) as Array<{ status?: string; error?: { code?: string; message?: string } }>;
+      expect(ops.map((o) => o.status)).toEqual(["failed"]);
+      expect(ops[0]!.error?.code).toBe("MODEL_OUTPUT_MAP_FAILED");
+      expect(ops[0]!.error?.message).toContain("mapper broke");
+    }
+  });
+
+  it("a step with a gate and a mapper failure fails the run; no approval is raised that could only fail", async () => {
+    // The mapper failure is already recorded, so approving the gate would
+    // fail at the resume anyway. The run fails now, and nobody is asked.
+    const gate = handler({
+      name: "risky_op",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ran: z.boolean() }),
+      execute: async (_input, ctx) => {
+        await ctx.suspend!({ reason: "approval", message: "Run risky op?" });
+        return { ran: true };
+      },
+    });
+    const broken = handler({
+      name: "mapped_op",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async () => ({ ok: true }),
+    }).mapModelOutput(() => {
+      throw new Error("mapper broke");
+    });
+    const { model } = stepModel([
+      () => ({
+        toolCalls: [
+          { toolCallId: "c1", toolName: "risky_op", args: {} },
+          { toolCallId: "c2", toolName: "mapped_op", args: {} },
+        ],
+        finishReason: "tool-calls",
+      }),
+      () => ({ text: "never asked", finishReason: "stop" }),
+    ]);
+    const gen = generator({ name: "agent", model, prompt: "p", tools: [gate, broken] });
+    const flow = defineFlow({
+      kind: "gen-gate-and-mapper",
+      actions: { run: { block: sequencer({ name: "seq", durable: true }).step(gen), inputSchema: anyInput } },
+    })({ id: "gen-gate-and-mapper" });
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow, actionName: "run", input: {}, userId: "u1", stores,
+      runtimeConfig: { durabilityProvider: provider },
+    });
+
+    const record = await stores.request.get(initial.requestId!);
+    expect(record?.status).toBe("failed");
+    expect(JSON.stringify(record?.result)).toContain("mapper broke");
+    expect(await provider.listSuspended({ status: "pending" })).toEqual([]);
+  });
+
   // 2a. REJECTION visibility — denial inherits the generator's itemVisibility --
   it("rejection denial tool_output inherits a history:false generator's visibility (no leak)", async () => {
     const gate = handler({

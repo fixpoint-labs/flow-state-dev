@@ -15,23 +15,23 @@ A hired worker is a **seat**: a flow instance with its own id. You open a sessio
 
 Reach for Workforce when you want a named roster you address by opening a session.
 
-Reach for [Orchestration](../orchestration/overview) when you want to coordinate units of work on a task board. A board worker is a block that claims tasks. A task's `assignee` never names a hired worker.
+Reach for [Orchestration](../orchestration/overview) when you want to coordinate units of work on a task board. A board worker is a block that claims tasks. A task's `assignee` can also name any of your hired workers, including one hired while the app runs. See [Giving a task to a worker](#giving-a-task-to-a-worker).
 
 ## What a Workforce app looks like
 
-A Workforce app is a roster, the channels that roster talks in, and the boards its work sits on. A board is a list of tasks, each one something somebody takes and finishes. You describe the roster in files, hire it, and open sessions against the seats you get back.
+![A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, hireWorkforce turns each record into a worker, a configured copy of a flow kind with its own id, and your app registers the workers. Sessions, state and resources a worker writes live in your store. A worker hired while the app runs is also written to the store as a roster row. A task's assignee can name any worker that takes tasks: the board runs the list, and Workforce finds the worker.](./workforce-overview.svg)
+
+Workforce reads your files and hires them. Each `WORKER.md` becomes a flow copy with its own address. Each `MAILBOX.md` becomes a named session on a mailbox kind, the built-in one unless the file names another. Sessions, resources and boards work as they do on any flow, and live where they always do.
 
 - **The roster outlives the process.** A team you hire while the app is running is still there after a restart or a redeploy, because the hire is written to the store your app uses. See [Hiring while the app runs](./durable-hire).
-- **A channel is what a reader opens.** A channel is a named session on a kind the framework ships, and its transcript is the part of that conversation a person or another agent should read. A routed channel sends each post to the one member whose job fits it. See [Channels](./channels).
+- **A mailbox is what a reader opens.** A mailbox is a named session on a kind the framework ships, and its transcript is the part of that conversation a person or another agent should read. A routed mailbox sends each post to the one member whose job fits it. See [Mailboxes](./mailboxes).
 - **The screens are importable.** One navigator browses the whole workforce, and the roster and a board, as columns or as a live list, ship beside it as components from `@flow-state-dev/react`. See [Workforce components](./ui).
 
-Files are the authoring path. A `WORKER.md` under `teams/` and a `CHANNEL.md` beside it are how a roster is written down. Hiring at runtime adds to that roster; it doesn't replace the tree.
-
-For a working example, the [kitchen-sink reference app](https://github.com/fixpoint-labs/flow-state-dev/tree/main/apps/kitchen-sink) is a support desk built this way: four specialists and one routed channel, declared under its `workforce/` folder, with a board for cases that need a person.
+For a working example, the [kitchen-sink reference app](https://github.com/fixpoint-labs/flow-state-dev/tree/main/apps/kitchen-sink) is a support desk built this way: four specialists and one routed mailbox, declared under its `workforce/` folder, with a board for cases that need a person.
 
 ## Hire a roster
 
-Each worker lives at `teams/<team>/workers/<name>/WORKER.md`. `teams/engineering/workers/lead/` hires as `engineering.lead`.
+A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`, so `teams/engineering/workers/lead/` hires as `engineering.lead`. An org seat belongs to no team: it lives at `org/workers/<name>/WORKER.md` and hires under its folder name alone, so `org/workers/chief-of-staff/` is `chief-of-staff`.
 
 ```md
 ---
@@ -95,20 +95,43 @@ Pass a flow under a key that is not its own `kind` and the hire is refused. [Wor
 
 `readWorkforce` is Node-only (`@flow-state-dev/workforce/loader`). Import `hireWorkforce` from `@flow-state-dev/workforce`.
 
+## Projects and the chief of staff
+
+A **workstream** is a mailbox and the boards it holds: one place for the conversation about a piece of work, and the tasks people take to do it. You declare it in a `MAILBOX.md`, like any mailbox.
+
+A **project** groups workstreams. It is a row your organization keeps, not a file: a title, an owner, its members, and the workstreams it groups. Everyone in the organization can see that a project exists. Only its members can read or post in its room, the one conversation they share with the workers your app puts there. See [Projects](./projects).
+
+The **chief of staff** is an org-level worker a person asks about the organization: who works here, who is in a mailbox. Ask it for another worker and it hires one. Ask it for one fewer and it puts the fire in front of you, and nothing is removed until you approve. Given the project tools, it also starts projects for the person who asks. A Lab that doesn't declare one doesn't have one. See [The chief of staff](./chief-of-staff).
+
+## Giving a task to a worker
+
+A task on a mailbox's board can name any of your workers that takes tasks, by the name `discover` lists: `engineering.lead`, or `frontend`, a worker hired a minute ago. When the board hands the task over, Workforce's worker lookup finds the worker of that name and the task runs on it, one run per task. The lookup reads the live registry, so a coordinator can hire a worker and give it work in the same conversation.
+
+A worker on the built-in `agent` kind runs a task as one turn: its own instructions and tools, the task's title, goal and context as the message, and its answer as the task's result. A kind you write takes tasks when it declares a `work` task entry.
+
+The name reaches your organization's workers, the ones your files declare, and the ones the member who filed the task hired for themselves, whoever later runs the list. It never reaches another member's own workers or another organization's. A name two of those workers share is refused as ambiguous. With the mailbox's filing check on, a task for a name nobody holds is refused when it is filed, naming it. A task whose worker was fired before it ran fails with the worker's name. No other worker picks it up.
+
+[Handing a row to the worker it names](./mailboxes.md#handing-a-row-to-the-worker-it-names) has the wiring: the lookup, the filing check, and the board that hands tasks over.
+
 ## What it will not do
 
-Workforce does not staff a task board. It does not replace flows, sessions, or resources. Sessions and resources live on the flow copy you hired.
+- It does not run your task boards. A board drains its rows. Workforce tells the board which worker a name means, and gives workers a way to take a task.
+- It does not replace flows, sessions, or resources. Sessions and resources live on the seat you hired.
+- Hiring at runtime writes no files. It stores the new seat as a row in the hired roster, which the app reads back at start alongside the seats your files declare, and the tree stays as you wrote it. See [Hiring while the app runs](./durable-hire.md).
 
 ## Related pages
 
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, and `hireWorkforce`.
 - [The built-in worker](./built-in-worker) — the `agent` kind a record with no `flow:` runs on: its settings, tools, skills, and memory.
-- [Channels](./channels) — several agents on one topic, with one durable transcript and nobody owning a row, optionally routing each post to one member.
-- [Inventory](./inventory) — a record of every seat and channel registered in an organization, readable by a block.
 - [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
 - [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
+- [Packages on disk](./packages-on-disk) — a folder of instructions and the blocks a worker needs to follow them.
+- [Mailboxes](./mailboxes) — several agents on one topic, with one durable transcript and nobody owning a row, optionally routing each post to one member.
+- [Projects](./projects) — a row that groups workstreams, with one room its members share.
+- [Inventory](./inventory) — a record of every seat and mailbox registered in an organization, readable by a block.
 - [Hiring while the app runs](./durable-hire) — a roster hired at runtime, written to your store, reloaded on the next boot.
+- [The chief of staff](./chief-of-staff) — the one seat a person asks to hire or fire, with a fire waiting for their approval.
 - [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.

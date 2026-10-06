@@ -1,8 +1,10 @@
 /**
  * The convention loader — read a workforce tree into neutral worker manifests.
  *
- * Walks `<root>/teams/<teamId>/workers/<workerName>/`, reads each worker's
- * `WORKER.md`, and returns one plain record per worker. Frontmatter is carried
+ * Walks `<root>/org/workers/<workerName>/` and
+ * `<root>/teams/<teamId>/workers/<workerName>/`, reads each worker's
+ * `WORKER.md`, and returns one plain record per worker. An org seat's id is its
+ * bare folder name; a team seat's is `<teamId>.<workerName>`. Frontmatter is carried
  * verbatim, so a key a consumer claims tomorrow arrives unchanged today; the
  * only keys it reads are the dialect's own — a required `description`, and the
  * one key it refuses by name. It builds no flow, no agent and no
@@ -10,10 +12,12 @@
  *
  * Two rules run through the whole walk. **Symlinks are never followed**, at any
  * level. And **only a worker slot is reported as a near-miss** — a directory
- * directly under `teams/<id>/workers/`; the rule is *the path occupies a worker
- * slot*, not *the path looks like a worker*, so a team's `resources/`,
- * `skills/` or `tools/` siblings and an org-level `workers/` are passed over in
- * silence.
+ * directly under `org/workers/` or `teams/<id>/workers/`; the rule is *the path
+ * occupies a worker slot*, not *the path looks like a worker*, so a team's
+ * `resources/`, `skills/` or `tools/` siblings are passed over in silence. The
+ * slots themselves come from the walk the resources doors ride
+ * (`resource-walk`'s `walkWorkers`), so the roster and the documents never
+ * disagree about what a worker slot is.
  *
  * Node-only (`node:fs`), which is why it ships behind the `./loader` subpath
  * rather than the package root.
@@ -40,9 +44,9 @@ import {
   TEAM_INSTRUCTIONS_KEY,
   type WorkerManifest,
 } from "../manifest";
+import { walkWorkers } from "./resource-walk";
 import { validateSegment } from "./segments";
 import {
-  IGNORED_ENTRIES,
   type PathReport,
   classify,
   openRoot,
@@ -65,7 +69,7 @@ const WORKER_MD = "WORKER.md";
  * every entry still carries the `path` it always did.
  */
 export type WorkerManifestErrorKind =
-  /** A structural folder — `teams`, a team, or a `workers/` slot — is a symlink or is there and could not be listed. Every worker under it is missing. */
+  /** A structural folder — `org`, `teams`, a team, or a `workers/` slot — is a symlink or is there and could not be listed. Every worker under it is missing. */
   | "unreadable-slot"
   /** One worker folder did not load: an unusable name, a symlinked folder, or a missing, unreadable or malformed `WORKER.md`. */
   | "worker-load-failed"
@@ -85,8 +89,9 @@ export interface ReadWorkforceDirectoryResult {
    * identity, because a folder that breaks the segment rules has no identity to
    * be reported under.
    *
-   * Usually a worker slot. It can also be a structural folder — `teams`,
-   * `teams/<id>`, `teams/<id>/workers` — when that folder is refused or
+   * Usually a worker slot. It can also be a structural folder — `org`,
+   * `org/workers`, `teams`, `teams/<id>`, `teams/<id>/workers` — when that
+   * folder is refused or
    * unreadable, because the seats beneath it cannot be enumerated to be named
    * individually and silence there would hide all of them at once.
    *
@@ -101,17 +106,17 @@ export interface ReadWorkforceDirectoryResult {
 }
 
 /**
- * Read every `<root>/teams/<teamId>/workers/<name>/` and return one neutral
- * manifest per worker.
+ * Read every `<root>/org/workers/<name>/` and
+ * `<root>/teams/<teamId>/workers/<name>/` and return one neutral manifest per
+ * worker — the org's seats first, then each team's, in walk order.
  *
  * Throws only when `root` itself is refused — a symlink, or a path that cannot
  * be read at all. A configured root that does not exist, or that would take the
  * walk somewhere else entirely, is a wiring mistake, not a per-worker one.
  *
- * A root with no `teams/`
- * is an empty result: an app may declare no workers in files. Everything else
- * that goes wrong lands in `errors`, so one bad folder never costs an app its
- * other workers.
+ * A root with no `org/workers/` and no `teams/` is an empty result: an app may
+ * declare no workers in files. Everything else that goes wrong lands in
+ * `errors`, so one bad folder never costs an app its other workers.
  */
 export async function readWorkforceDirectory(
   root: string,
@@ -121,64 +126,83 @@ export async function readWorkforceDirectory(
 
   await openRoot(root);
 
-  /** File a structural refusal the shared walk met on the way to a team. */
+  /** File a structural refusal met on the way to a `workers/` level. */
   const report = (at: string, error: Error): void => {
     errors.push({ path: at, error, kind: "unreadable-slot" });
   };
 
+  // The org level. Opened structurally so a symlinked or unreadable `org/` is
+  // reported rather than walked into or passed over: either hides every org
+  // seat at once. Absence is silent — most trees declare no org seats.
+  const orgDir = path.join(root, "org");
+  const org = await openStructuralDirectory(orgDir, "org");
+  if (org.refusal !== undefined) report("org", org.refusal.error);
+  if (org.entries !== undefined) {
+    await readWorkerSlots(orgDir, "org", undefined, workers, errors);
+  }
+
   for await (const team of walkTeams(root, report)) {
-    const workersPath = `${team.path}/workers`;
-    const workerSlots = await openStructuralDirectory(
-      path.join(team.dir, "workers"),
-      workersPath,
-    );
-    if (workerSlots.refusal !== undefined) {
-      errors.push({
-        path: workersPath,
-        error: workerSlots.refusal.error,
-        kind: "unreadable-slot",
-      });
-    }
-    if (workerSlots.entries === undefined) continue;
-
-    for (const workerName of workerSlots.entries) {
-      if (IGNORED_ENTRIES.has(workerName)) continue;
-
-      const workerDir = path.join(team.dir, "workers", workerName);
-      const entryPath = `${workersPath}/${workerName}`;
-      const slot = await classify(workerDir);
-      // A file under `workers/` does not occupy a worker slot — a slot is a
-      // directory — so it is skipped rather than reported.
-      if (slot.kind === "absent" || slot.kind === "file") continue;
-
-      let loaded: WorkerManifest;
-      try {
-        if (slot.kind === "symlink") throw refusedSymlink("worker folder", workerName);
-        if (slot.kind === "unreadable") {
-          throw unreadable("Worker folder", workerName, slot.error);
-        }
-        loaded = await readWorkerSlot(team.id, workerName, workerDir);
-      } catch (err) {
-        errors.push({ path: entryPath, error: err as Error, kind: "worker-load-failed" });
-        continue;
-      }
-
-      // A separate condition for a caller, so it is a separate branch: a folder
-      // that could not be read is an author's typo, and a file declaring what
-      // the framework imposes is an author's misunderstanding. Checked here
-      // rather than inside the parse so the two stay tellable apart by control
-      // flow, the way the channels and resources readers keep them apart.
-      const refused = refusedDeclaration(loaded.declared, workerName);
-      if (refused !== undefined) {
-        errors.push({ path: entryPath, error: refused, kind: "refused-declaration" });
-        continue;
-      }
-
-      workers.push(loaded);
-    }
+    await readWorkerSlots(team.dir, team.path, team.id, workers, errors);
   }
 
   return { workers, errors };
+}
+
+/**
+ * Read every worker slot under one parent — `org/` (`teamId` undefined) or a
+ * team folder — into `workers`, filing each failure in `errors`.
+ *
+ * The slots come from `walkWorkers`, the walk the resources doors ride: it
+ * opens the `workers/` level, skips ignored names and plain files (a file
+ * under `workers/` occupies no slot), and yields a symlinked or unreadable
+ * worker folder as a refusal. What this adds is the roster's own question:
+ * does the folder describe a seat.
+ */
+async function readWorkerSlots(
+  parentDir: string,
+  parentPath: string,
+  teamId: string | undefined,
+  workers: WorkerManifest[],
+  errors: WorkerManifestError[],
+): Promise<void> {
+  for await (const step of walkWorkers(parentDir, parentPath, teamId, {
+    workerOrder: (entries) => entries,
+  })) {
+    if (step.type === "refused") {
+      errors.push({ path: step.path, error: step.error, kind: "unreadable-slot" });
+      continue;
+    }
+    if (step.type === "worker-refused") {
+      errors.push({
+        path: step.path,
+        error: step.refusal(step.workerName),
+        kind: "worker-load-failed",
+      });
+      continue;
+    }
+
+    const workerName = path.basename(step.dir);
+    let loaded: WorkerManifest;
+    try {
+      loaded = await readWorkerSlot(teamId, workerName, step.dir);
+    } catch (err) {
+      errors.push({ path: step.path, error: err as Error, kind: "worker-load-failed" });
+      continue;
+    }
+
+    // A separate condition for a caller, so it is a separate branch: a folder
+    // that could not be read is an author's typo, and a file declaring what
+    // the framework imposes is an author's misunderstanding. Checked here
+    // rather than inside the parse so the two stay tellable apart by control
+    // flow, the way the mailboxes and resources readers keep them apart.
+    const refused = refusedDeclaration(loaded.declared, workerName);
+    if (refused !== undefined) {
+      errors.push({ path: step.path, error: refused, kind: "refused-declaration" });
+      continue;
+    }
+
+    workers.push(loaded);
+  }
 }
 
 /**
@@ -186,7 +210,7 @@ export async function readWorkforceDirectory(
  * one; the caller turns that into an `errors` entry keyed by the slot's path.
  */
 async function readWorkerSlot(
-  teamId: string,
+  teamId: string | undefined,
   workerName: string,
   workerDir: string,
 ): Promise<WorkerManifest> {
@@ -328,18 +352,22 @@ function refusedDeclaration(
 }
 
 /**
- * Mint a worker's whole identity from its folder: `"<teamId>.<workerName>"`.
+ * Mint a worker's whole identity from its folder: `"<teamId>.<workerName>"`
+ * for a team seat, the bare `"<workerName>"` for an org seat.
  *
  * The one place this string is built. Team-qualified so two teams can each have
  * a "lead" without coordinating names, and dot-joined because a `/` inside an
  * id survives registration and then fails to route — the identity is a flow
- * instance id, and a slashed one 404s on every flow route.
+ * instance id, and a slashed one 404s on every flow route. An org seat's id
+ * carries no dot, so it can never equal a team seat's: `chief-of-staff` and
+ * `eng.chief-of-staff` are two seats. `parseDeclaredSeatId` reads both shapes
+ * back.
  *
  * Throws when either segment breaks the rules, naming the rule: an id that
  * cannot be addressed is worse than a startup failure.
  */
-function mintWorkerId(teamId: string, workerName: string): string {
-  validateSegment(teamId, "Team");
+function mintWorkerId(teamId: string | undefined, workerName: string): string {
+  if (teamId !== undefined) validateSegment(teamId, "Team");
   validateSegment(workerName, "Worker");
-  return `${teamId}.${workerName}`;
+  return teamId === undefined ? workerName : `${teamId}.${workerName}`;
 }

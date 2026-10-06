@@ -1,8 +1,8 @@
 /**
- * Which harness a served DevForce Lab puts in the `coder` kind's slot.
+ * Which harness this tree puts in the `coder` kind's slot when it is served
+ * as the DevTeam team profile.
  *
- *     DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/app-lab start \
- *       --config goals/devforce-lab/lab/fsdev.config.mts
+ *     DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/shift-manager start
  *
  * Two choices, picked by {@link HARNESS_ENV} and nothing else:
  *
@@ -22,9 +22,10 @@
  * An unknown value is refused at startup rather than read as the default.
  */
 
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { harnessEnv } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
 import { harnessStub, type StubRun } from "./harness-stub.mts";
 import { commitAll } from "./scratch-repo.mts";
@@ -51,16 +52,52 @@ export interface SelectedHarness {
 }
 
 /**
+ * The only variables of the server's environment a Claude Code run on the Lab
+ * coding path can see.
+ *
+ * Without a list the run inherits all of it — the store path, any repository
+ * or tracker token the server was started with — and its model has a shell.
+ * What is named is what the run needs to work: `PATH` (its shell commands and
+ * git are found through it), `HOME`, `USER` and `SHELL` (its signed-in
+ * credentials, git identity and Bash tool), `TMPDIR`, the two ways it can be
+ * given a credential, and the proxy and CA settings a network that routes
+ * through a proxy needs. The proxy names come in both cases because the
+ * tools a run shells out to disagree: curl reads only lowercase `http_proxy`,
+ * git and most others take either. Add a name here, not a spread of
+ * `process.env`.
+ */
+const CLAUDE_CODE_PASS = [
+  "PATH",
+  "HOME",
+  "USER",
+  "SHELL",
+  "TMPDIR",
+  "ANTHROPIC_API_KEY",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "HTTP_PROXY",
+  "http_proxy",
+  "ALL_PROXY",
+  "all_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "NODE_EXTRA_CA_CERTS",
+] as const;
+
+/**
  * Claude Code in the slot, as the honesty check runs it.
  *
  * `detached: true` because the harness is a child block of the flow's gated
  * task entry, and the claim gate refuses an entry that authors session state
  * beneath it. `recordWork: true` keys the index of what the run touched to the
  * run's own checkout, which is what the task inspector's plan and files read.
+ * `env` passes only {@link CLAUDE_CODE_PASS}.
  */
 export function claudeCodeHarness(feeds: HarnessFeeds): HarnessBlock {
   return claudeCodeAgent({
     ...feeds,
+    env: harnessEnv({ pass: CLAUDE_CODE_PASS }),
     detached: true,
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash"],
@@ -78,10 +115,14 @@ function rowLine(prompt: string): string {
   return prompt.split("\n").find((line) => line.startsWith("Row ")) ?? "a row";
 }
 
-/** What the scripted run does in its checkout: one file, committed. */
+/**
+ * What the scripted run does where it works: one file, committed when that is
+ * a checkout. A project with no repository runs in its files (`workspace/`,
+ * no git), where the file itself is the work and the manager saves it back.
+ */
 function commitScriptedWork(run: StubRun): void {
   writeFileSync(join(run.cwd, "SCRIPTED-RUN.md"), `A scripted run, no model.\n\n${rowLine(run.prompt)}\n`);
-  commitAll(run.cwd, "scripted run: note the row");
+  if (existsSync(join(run.cwd, ".git"))) commitAll(run.cwd, "scripted run: note the row");
 }
 
 /**
