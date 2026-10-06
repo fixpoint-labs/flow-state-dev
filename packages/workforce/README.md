@@ -2095,8 +2095,8 @@ membershipPrefix("");
 ## Projects
 
 A project is a row in the organization's `projects` collection: a title, a brief, an owner, its
-`members`, the workstreams (declared mailboxes, from any team) it groups, and each member's talk
-session. Declare the collection once in `workforce/org/resources/projects.ts` with
+`members`, the workstreams (declared mailboxes, from any team) it groups, the git remote its code
+lives in (`repository`, or `null`), and each member's talk session. Declare the collection once in `workforce/org/resources/projects.ts` with
 `defineProjectsCollection()`. The guide is the docs site's Workforce → Projects page.
 
 ```ts
@@ -2106,13 +2106,26 @@ const projects = defineProjectBlocks();
 defineFlow({ kind: "lab", actions: { ...projects.actions } });
 ```
 
-- **`createProject { id, title, brief?, members?, workstreams? }`** writes a row with `create`.
+- **`createProject { id, title, brief?, members?, workstreams?, repository? }`** writes a row with `create`.
   The owner is the calling session's owner, and is always a member. An id held by another owner,
   `unassigned`, a workstream not in the mailbox inventory, and a workstream another project holds
   are each refused, and nothing is half written. The same owner re-sending an id gets the row back
   (`created: false`) and its talk session bound if it wasn't.
 - **`setWorkstreams { projectId, workstreams }`** replaces the list. Members only.
-- **As a seat's tools.** Put both in `defineAgentWorkerFlow({ catalog })` under the names a seat's
+- **`setRepository { projectId, repository }`** sets, changes or clears (`null`) the repository and
+  returns `{ project }`. Members only. Nothing else on the row moves, and of two members setting it
+  at once one value is kept whole. A value must be a remote, the address you'd pass to `git clone`:
+  both writes refuse a path, a value starting with `-`, a control character, a remote-helper address (`ext::…`), a user
+  or password on `http(s)`, and a password on any scheme, with `invalid-repository`, and never
+  repeat the value. `git@host:org/repo` and `ssh://git@host/org/repo` are accepted. Stored rows
+  aren't re-parsed on read: treat a missing `repository` as `null`, or read through
+  `projectRowSchema.parse`.
+- **`readProjectFiles { projectId }`** returns `{ files: [{ path, size }] }` (size in UTF-8 bytes,
+  never the body, since the output is logged as the tool result), the files the
+  project keeps in the org's `project-files` collection (`defineProjectFilesCollection()`), at
+  `project-files/<projectId>/<path>`. Members only. The collection is org-scoped, shared, lazy, and
+  has no browser read.
+- **As a worker's tools.** Put the writes in `defineAgentWorkerFlow({ catalog })` under the names a worker's
   `tools:` spells. A catalog key must be the tool's own name, so wrap each in a one-step
   `sequencer({ name: "createProject", inputSchema: createProjectInputSchema, outputSchema:
   createProjectOutputSchema }).step(projects.createProject)`. The owner is the session the seat
