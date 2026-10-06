@@ -97,7 +97,7 @@ what.
 **Load.** 104 waves over the 21 implementation artifacts (cycle 21: 29 over 29; cycle 20: 57 over
 15). **Seven PRs carry 81 of them**: #2651 13, #2652 13, #2649 12, #2645 11, #2655 11, #2706 11,
 #2702 10. About 237 acted
-threads in implementation, 65 in direction artifacts. No direction artifact took a third round.
+threads in implementation, 65 in direction artifacts. No direction artifact took a third round. Across cycles, compare wave counts only: this cycle's thread totals are counted mechanically and don't line up with cycle 21's hand-classed columns (see Method).
 Four direction artifacts were rewritten on the owner's direction call (#2609, #2613, #2622,
 #2625), which this entry records as `design-off` from the owner, not as rounds.
 
@@ -206,8 +206,8 @@ it touches `issue-multi-pr.js`, which `verify.mjs` covers. Flagged, not changed.
 
 | File | Now | Proposed |
 |---|---|---|
-| `.agents/skills/issue-implement/SKILL.md` · 10.3, the race trigger | *"…the next round will find the next gap. On the second such finding against the same structure, name the atomic operation…"* | *"…the next round will find the next gap. Whether your last fix closed the class is the next review's call, not yours: a second interleaving finding against a structure an earlier round already fixed is the trigger, even when that fix was a restructure you said closed the class. Then name the atomic operation…"* |
-| `goals/README.md` · technique 1 | ends after the `useSession` example | adds: grade data the system holds or a tool returns where the run left it (the tool's output item, the stored row), not the model's retelling; grade the answer only when the claim is about what the model does; a failing retelling is a lead, not a verdict, and prompting the model to recite never turns it green; a prompt names every input the claim isn't about, so a correct model's question can't read as a failure |
+| `.agents/skills/issue-implement/SKILL.md` · 10.3, the race trigger | *"…the next round will find the next gap. On the second such finding against the same structure, name the atomic operation…"* | *"…a fix that only narrows the gap (a re-read, a tag, an extra check) leaves the next gap for the next round. Whether your last fix closed the class is the next review's call, not yours: a second interleaving finding against a structure an earlier round already fixed is the trigger, even when that fix was a restructure you said closed the class. Then name the atomic operation…"* |
+| `goals/README.md` · techniques 1 and 2 | technique 1 ends after the `useSession` example | technique 1 adds: grade data the system holds or a tool returns where the run left it (the tool's output item, the stored row), not the model's retelling; grade the answer only when the claim is about what the model does; a failing retelling is a lead, not a verdict, and prompting the model to recite never turns it green; `cos-changes-the-roster` is the worked example. Technique 2 adds: the prompt names every input the claim isn't about, so a correct model's question can't read as a failure |
 
 The first re-aims cycle 20's fix rather than adding one. It removes the self-judgement the three
 tails show, and keeps everything else the trigger says. The second sharpens the line that licensed
