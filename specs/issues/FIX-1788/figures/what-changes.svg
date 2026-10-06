@@ -1,0 +1,85 @@
+<svg viewBox="0 0 940 486" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels, today and after, then five cases. Today each hire registers its own copy of a flow, carrying a pin and its configuration, and a session runs on that copy at an address with the org and the owner in it. After, each flow is registered once; a worker is a row its owner holds, or a standard worker read from the files; a session names its worker on its first turn and loads it on every turn. Cases: a worker hired for the whole org is reachable by every member today, and belongs to one user after. A hire on another process waits for a restart today, and is seen on the next turn after. A standard worker is changed by editing a file and restarting today, and forked into the user's own after. A session's worker is fixed by the copy's address today, and set once by the server after, never by the caller. Two workers on one flow each have their own memory, before and after.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-old { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-new { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-same{ fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="486"/>
+  <g id="panels">
+    <rect class="panel" x="16" y="14" width="446" height="176" rx="6"/>
+    <rect class="panel" x="478" y="14" width="446" height="176" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY</text>
+    <text class="t-lbl" x="494" y="34">AFTER</text>
+  </g>
+  <g id="today-path">
+    <rect class="n-box" x="32" y="46" width="414" height="50" rx="5"/>
+    <text class="t-h" x="48" y="67">Each hire registers its own copy of a flow</text>
+    <text class="t-s" x="48" y="85">with a pin and its configuration, in every process</text>
+    <path class="arrow" d="M239 96 L239 118"/>
+    <path class="head" d="M234 114 L239 122 L244 114 Z"/>
+    <rect class="n-box" x="32" y="124" width="414" height="50" rx="5"/>
+    <text class="t-h" x="48" y="145">A session runs on that copy</text>
+    <text class="t-s" x="48" y="163">at acme.~alice.researcher</text>
+  </g>
+  <g id="after-path">
+    <rect class="n-new" x="494" y="46" width="200" height="50" rx="5"/>
+    <text class="t-h" x="508" y="67">A worker is data</text>
+    <text class="t-s" x="508" y="85">the owner's row, or a file</text>
+    <rect class="n-new" x="708" y="46" width="200" height="50" rx="5"/>
+    <text class="t-h" x="722" y="67">One copy per flow</text>
+    <text class="t-s" x="722" y="85">agent, coordinator, …</text>
+    <path class="arrow" d="M701 96 L701 118"/>
+    <path class="head" d="M696 114 L701 122 L706 114 Z"/>
+    <rect class="n-new" x="494" y="124" width="414" height="50" rx="5"/>
+    <text class="t-h" x="510" y="145">A session names its worker once</text>
+    <text class="t-s" x="510" y="163">the server links it; every turn loads the worker</text>
+  </g>
+  <g id="case-1">
+    <text class="t-lbl" x="32" y="216">A WORKER HIRED FOR THE WHOLE ORG</text>
+    <text class="t-old" x="32" y="236">Every member can reach it</text>
+    <text class="t-new" x="494" y="236">Belongs to one user; nobody else reaches it</text>
+    <line class="row" x1="16" y1="250" x2="924" y2="250"/>
+  </g>
+  <g id="case-2">
+    <text class="t-lbl" x="32" y="270">A HIRE OR FIRE, SEEN BY ANOTHER PROCESS</text>
+    <text class="t-old" x="32" y="290">After that process restarts</text>
+    <text class="t-new" x="494" y="290">On its next turn</text>
+    <line class="row" x1="16" y1="304" x2="924" y2="304"/>
+  </g>
+  <g id="case-3">
+    <text class="t-lbl" x="32" y="324">A USER WANTS THEIR OWN VERSION OF A STANDARD WORKER</text>
+    <text class="t-old" x="32" y="344">Edit the file and restart, for everyone</text>
+    <text class="t-new" x="494" y="344">Fork it into a worker of their own</text>
+    <line class="row" x1="16" y1="358" x2="924" y2="358"/>
+  </g>
+  <g id="case-4">
+    <text class="t-lbl" x="32" y="378">WHICH WORKER A SESSION RUNS</text>
+    <text class="t-old" x="32" y="398">Fixed by the copy's address</text>
+    <text class="t-new" x="494" y="398">Set once by the server; a caller can't seed it</text>
+    <line class="row" x1="16" y1="412" x2="924" y2="412"/>
+  </g>
+  <g id="case-5">
+    <text class="t-lbl" x="32" y="432">TWO WORKERS ON ONE FLOW, EACH WITH PRIVATE NOTES</text>
+    <text class="t-same" x="32" y="452">Each reads only its own</text>
+    <text class="t-same" x="494" y="452">Each reads only its own, on the one copy</text>
+    <text class="t-s" x="494" y="470">kept per worker, not per copy</text>
+  </g>
+</svg>
