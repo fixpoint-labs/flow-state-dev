@@ -110,7 +110,11 @@ It comes down to new machinery: a mark is one field, a message is a coordinator 
 ## Decided, not asked
 
 - **A new version keeps the template's flow.** A worker on another flow makes a new template
-  (BR-19a), so taking an update keeps the copy's sessions running (FIX-1788 BR-10–13, BR-19b).
+  (BR-19a), so taking an update keeps the copy's sessions running (FIX-1788 BR-10–13, BR-19b),
+  unless the user moved the copy to another flow themselves; the offer says so (BR-22).
+- **A take is bound to the offer it was shown.** It carries the offered version and copy digest
+  and is refused if either changed, a compare-and-set with no lock (BR-20b): new grants are never
+  applied unseen.
 - **The copy record keeps a digest of what it took**, so the take warns only when the user's own
   edits would be lost: one field, against a warning on every update that users learn to ignore.
 - **Model variants are copied, never referenced**, as FIX-1788
@@ -142,5 +146,8 @@ It comes down to new machinery: a mark is one field, a message is a coordinator 
 - **Review round 1** — aligned to FIX-1788's amendment (sessions linked at create); a version
   keeps its template's flow; the digest kept and pinned; the take offer lists new grants; a
   drawer-only skill name refused at publish; the build sequenced after the MVP.
+- **Review round 2** — a take is bound to the version and copy its offer showed; the cross-flow
+  exception to session continuity is stated and warned; the read of older template shapes
+  dropped, since the library is new.
 
 **Open:** Q1, Q2.

@@ -68,11 +68,15 @@ sentence about the library.
 >
 > When a newer version exists, your roster marks your worker with it. *(Q2: how the mark reaches
 > you.)* Before you take it, the update lists anything the new version can reach that your
-> worker can't. Taking the update replaces your worker's configuration with the new version.
-> Your worker keeps its id, its conversations and what it remembers, and its conversations carry
-> on with the new version. If you edited your worker after adding it, the update warns you that
-> taking it replaces your edits. To keep your version and try the new one, add the template
-> again as a second worker.
+> worker can't. If the template or your worker changes while you're looking, taking it is
+> refused and you see the update again as it is now.
+>
+> Taking the update replaces your worker's configuration with the new version. Your worker keeps
+> its id, its conversations and what it remembers, and its conversations carry on with the new
+> version. If you edited your worker after adding it, the update warns you that taking it
+> replaces your edits. If your edit moved it to another flow, the update also warns you that it
+> moves it back: conversations started on your flow end, and your next one starts fresh. To keep
+> your version and try the new one, add the template again as a second worker.
 >
 > ## Changing or removing a template
 >

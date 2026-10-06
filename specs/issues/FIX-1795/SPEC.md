@@ -101,7 +101,8 @@ A copy is made by the same write as a hire, so it passes the same checks, and fr
 reads only its own row. A new version of a template always keeps its flow, so a copy's sessions
 keep running after an update: a worker on another flow published onto a template makes a new
 template instead ([FIX-1788](../FIX-1788/BUSINESS-RULES.md#a-sessions-worker) BR-10–13,
-BR-19b).
+BR-19b). The one exception is a copy its user moved to another flow; the take moves it back
+and says so first (BR-22). A take applies only the version and copy the user was shown (BR-20b).
 
 ## What stays as it is
 
