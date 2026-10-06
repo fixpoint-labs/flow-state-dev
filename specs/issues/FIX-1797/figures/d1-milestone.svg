@@ -95,7 +95,7 @@
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
     <text class="t-b" x="32" y="371">A bounded milestone dispatch on that commit</text>
-    <text class="t-s" x="32" y="389">FIX-1791 and FIX-1795 held until it reruns green</text>
+    <text class="t-s" x="32" y="389">FIX-1791 and FIX-1795 merge only once it runs green</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>

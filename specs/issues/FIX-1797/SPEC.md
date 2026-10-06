@@ -83,8 +83,8 @@ real model, three legs, a milestone at FIX-1788, every check the epic touched, o
 wrong: the epic wraps on checks that never met each other, or waits on a bar nobody asked for.
 
 1. **[D1](DECISIONS.md#d1) · The milestone run is its own dispatch on FIX-1788's merge commit,
-   made by the epic coordinator, and tracked as a sub-issue that blocks FIX-1791 and FIX-1795
-   until it runs green.** If wrong: the
+   made by the epic coordinator, and tracked as a sub-issue; FIX-1791 and FIX-1795 may build
+   meanwhile, but neither merges until it runs green.** If wrong: the
    coordinator and projects build on a privacy fix nobody checked in the app.
 2. **[D2](DECISIONS.md#d2) · "Through the app" means the screen where Shift Manager draws one,
    else a coordinator turn, else the app's own action as that user; a missing screen is a

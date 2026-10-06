@@ -24,7 +24,8 @@ check. Names below are directional: read every name off the children's **merged*
 flowchart TD
   M0["FIX-1788 merges · the coordinator dispatches"] --> MS["the milestone · m1 to m6, org-scoped-workers"]
   MS -->|"a finding · fix merges · rerun on the fix commit"| MS
-  MS -->|"green · sub-issue closes · FIX-1791 and FIX-1795 released"| W["wait for every child"]
+  MS -->|"green · sub-issue closes · FIX-1791 and FIX-1795 may merge"| W["wait for every child"]
+  M1["FIX-1791 and FIX-1795 build meanwhile"] -.->|"merge held while the sub-issue is open"| MS
   W --> M["QR-1 holds · pick the commit · build"]
   M --> A["leg a · roster, fork, coordinator, post · restart"]
   A --> B["leg b · projects, workstreams, hand-offs, boards · restart"]
@@ -86,9 +87,11 @@ needs one. These are not the final run's steps: leg c's are written for the fini
 
 Then `org-scoped-workers`: m3 FAILS on *Bob reads Alice's worker*, and m5 and m6 stay green. The
 report is posted on FIX-1797 and on FIX-1788's last PR; the code is pushed to `fix/FIX-1797` for
-the final run to extend. The milestone is tracked as a Linear sub-issue of FIX-1797 that blocks
-FIX-1791 and FIX-1795; it closes only on a green run. A finding follows QR-15: the milestone runs
-again on the fix's merge commit, and only a green rerun closes the sub-issue.
+the final run to extend. The milestone is tracked as a Linear sub-issue of FIX-1797, *related*
+to FIX-1791 and FIX-1795, not blocking them: their builds run in parallel, and the hold is at
+merge. Neither gets implementation merge authorization while the sub-issue is open, and it closes
+only on a green run. A finding follows QR-15: the milestone runs again on the fix's merge commit,
+and only a green rerun closes the sub-issue.
 
 ## Controls
 
@@ -227,9 +230,10 @@ No reader-facing change. [DOCS.md](DOCS.md) lists the pages J1 follows.
 - Take the users' bearers and the store's env name from the DevTeam host as shipped
   (`LAB_USERS` today); Alice's second org per *Decided, not asked*.
 - **The milestone needs a sub-issue and a dispatch.** When this spec merges, the coordinator
-  creates the milestone sub-issue of FIX-1797 and has it block FIX-1791 and FIX-1795. It
-  dispatches the run on FIX-1788's merge commit, and again on each milestone fix's merge (QR-15).
-  The closure worker does not create the sub-issue.
+  creates the milestone sub-issue of FIX-1797, related to FIX-1791 and FIX-1795 (never
+  *blocks*, which would stop their builds), and withholds their implementation merge
+  authorization while it is open. It dispatches the run on FIX-1788's merge commit, and again on
+  each milestone fix's merge (QR-15). The closure worker does not create the sub-issue.
 - **Tell the children D3 early.** Report it to the coordinator at the spec gate, so each child
   retires or rewrites the checks it breaks in its own PR rather than at this run.
 - `goals/shift-manager/one-person-runs-a-labs-projects-and-people/` (FIX-1650's closure) asserts
@@ -249,5 +253,5 @@ discarding one.
 ## Follow-ups
 
 - **A milestone hook in the epic wake.** D1's dispatch is a manual coordinator action; the
-  sub-issue holds the gate, not the trigger. If a second epic needs
+  sub-issue tracks the hold, not the trigger. If a second epic needs
   one, it earns a hook; not this issue's.

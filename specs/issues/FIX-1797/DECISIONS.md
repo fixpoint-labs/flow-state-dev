@@ -26,13 +26,13 @@ flowchart TD
 Solid edges are what was chosen. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · The milestone run is its own dispatch on FIX-1788's merge commit, made by the epic coordinator, and tracked as a sub-issue that blocks FIX-1791 and FIX-1795 until it runs green
+## D1 · The milestone run is its own dispatch on FIX-1788's merge commit, made by the epic coordinator, and tracked as a sub-issue; FIX-1791 and FIX-1795 may build meanwhile, but neither merges until it runs green
 
 | | |
 |---|---|
 | **Instead of** | (a) Counting FIX-1788's own goal check as the milestone. (b) Running leg c only in the final run |
 | **Because** | ER-30 asks for leg c's worker steps *in Shift Manager with two users*, on the commit FIX-1788 merges on. FIX-1788's check runs a goal-local tree over HTTP with two hosts: it proves the store refuses, not that the app a person signs into does. (b) is what ER-30 was written to stop: the coordinator, the chain and projects build on the privacy fix, so a hole found at the end is found under three children. Nothing in the epic wake fires on another child's merge, and this issue is blocked by every child, so the run happens only if the coordinator dispatches it |
-| **Locks in** | A coordinator action no workflow automates: on the wake that sees FIX-1788's last PR merge, dispatch this issue's worker with a bounded *milestone* assignment naming that merge commit. It opens no PR, so the blocked-by relations don't hold it. It runs [the milestone's own steps](PLAN.md#the-milestone), written for what that commit has (worker sessions and the app's own actions; no coordinator, no fork screen), and the `org-scoped-workers` control, posts its report on FIX-1797 and on FIX-1788's last PR, and pushes its code to `fix/FIX-1797` for the final run to extend. **The gate is a Linear relation, beside the hand dispatch:** a milestone sub-issue of FIX-1797 (not a child of the epic, so the epic's set doesn't change), created by the coordinator when this spec merges, blocks FIX-1791 and FIX-1795. The epic wake already won't dispatch implementation while a blocked-by relation is open, so nobody has to remember the hold. The sub-issue closes only on a green milestone run: on FIX-1788's merge commit, or, after a finding, on the fix's merge commit ([QR-15](BUSINESS-RULES.md#what-happens-to-a-finding)). A failure is a Bug child of FIX-1786 that blocks the sub-issue and this issue; when its fix merges, the coordinator dispatches the milestone again on that commit |
+| **Locks in** | A coordinator action no workflow automates: on the wake that sees FIX-1788's last PR merge, dispatch this issue's worker with a bounded *milestone* assignment naming that merge commit. It opens no PR, so the blocked-by relations don't hold it. It runs [the milestone's own steps](PLAN.md#the-milestone), written for what that commit has (worker sessions and the app's own actions; no coordinator, no fork screen), and the `org-scoped-workers` control, posts its report on FIX-1797 and on FIX-1788's last PR, and pushes its code to `fix/FIX-1797` for the final run to extend. **The hold is at merge, tracked beside the hand dispatch:** a milestone sub-issue of FIX-1797 (not a child of the epic, so the epic's set doesn't change), created by the coordinator when this spec merges, *related* to FIX-1791 and FIX-1795, never *blocks*, since a blocks relation would stop the wake dispatching their builds. Their builds run in parallel with the milestone, as [ER-30](../../epics/FIX-1786/BUSINESS-RULES.md#the-closure) and the epic's plan step 3 have it. The coordinator gives neither of them implementation merge authorization while the sub-issue is open, so a milestone that never ran also holds both, because nothing closes the sub-issue. It closes only on a green milestone run: on FIX-1788's merge commit, or, after a finding, on the fix's merge commit ([QR-15](BUSINESS-RULES.md#what-happens-to-a-finding)). A failure is a Bug child of FIX-1786 that blocks the sub-issue and this issue; when its fix merges, the coordinator dispatches the milestone again on that commit |
 
 **What would change my mind:** the epic wake gaining a milestone hook, or FIX-1791 merging before
 FIX-1788. Then the hook fires it, or the milestone folds into the final run with a line in the
@@ -129,8 +129,9 @@ anything rests on.
   made through the app; a milestone run of leg c dispatched on FIX-1788's merge; the older checks
   the epic breaks held to rewrite-or-retire by the child that broke them; the app-builder journey
   from the docs alone.
-- **Review round 1, architect pass** — the milestone's hold became a Linear sub-issue of
-  FIX-1797 that blocks FIX-1791 and FIX-1795 and closes only on a green run (D1). Retesting each
+- **Review round 1, architect pass** — the milestone became a Linear sub-issue of FIX-1797,
+  related to FIX-1791 and FIX-1795 and closed only on a green run; neither merges while it is
+  open, and their builds run in parallel, as ER-30 has it (D1). Retesting each
   finding on its own instead of rerunning the whole plan was not taken: the closure rule
   requires the whole plan.
 - **Review round 1** — the milestone got its own steps, limited to what FIX-1788's merge has, and
