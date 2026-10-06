@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Q1, live fork: which flows can run a user&#x27;s workers. Recommended: the installation lists its worker flows, with a standard-only flag per entry, and checks the private-state rule when the list is registered. Instead of: a new defineWorkerFlow wrapper on each flow. It comes down to the first row, authorities: with the list, today&#x27;s schema stays the one authority; the wrapper adds a second one over the same rule. Second row, what an author reads: the list puts the contract in two places, the flow and the list, where the wrapper puts it on the flow. Third row, existing flows: the built-in agent flow is unchanged with the list, and migrates with the wrapper. Locks in: a registration list as the public surface. Flips if the private-state rule can only be checked at run time.">
+     aria-label="Q1, chosen at FIX-1789&#x27;s spec gate on a POC that builds both, and recorded in the epic: where does an author say this flow runs workers? Jake leans to a defineWorkerFlow wrapper; also built, a list the installation keeps. His reason, the first row, contract integrity: the wrapper checks every requirement where the flow is written; the list checks them apart from the flow, when the installation registers it. Second row, authorities over the rule: the wrapper adds a marker worker-config.ts rejects today, a second authority beside the schema; the list keeps the schema as the one authority. Third row, existing flows: the built-in agent flow migrates under the wrapper, a new public export, and is unchanged under the list. Settled by: FIX-1789&#x27;s spec-poc builds both side by side; the call is made at its spec gate and recorded in the epic before FIX-1788 or FIX-1791 names a shape. The lean flips if the list catches every requirement as surely, or the wrapper only duplicates the schema&#x27;s rule.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -35,61 +35,61 @@
   <rect class="bg" x="0" y="0" width="940" height="418"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q1 · LIVE · THE CALL</text>
+    <text class="t-lbl" x="32" y="32">Q1 · CHOSEN AT FIX-1789&#x27;S SPEC GATE, ON A POC OF BOTH · THE CALL</text>
     <text class="t-q" x="32" y="52">Where does an author say “this flow runs workers”?</text>
   </g>
   <g id="options">
     <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">A list the installation keeps</text>
+    <text class="t-tag c-code" x="228" y="93">JAKE LEANS</text>
+    <text class="t-h c-code" x="228" y="112">A defineWorkerFlow() wrapper</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">A defineWorkerFlow() wrapper</text>
+    <text class="t-tag c-mute" x="592" y="93">ALSO BUILT</text>
+    <text class="t-h c-lost" x="592" y="112">A list the installation keeps</text>
   </g>
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">AUTHORITIES OVER</text>
-    <text class="t-lbl" x="32" y="169">THE RULE</text>
-    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="t-lbl" x="32" y="156">CONTRACT</text>
+    <text class="t-lbl" x="32" y="169">INTEGRITY</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ HIS REASON</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">One: today&#x27;s schema</text>
-    <text class="t-s" x="248" y="179">the list adds flags, not a marker</text>
+    <text class="t-b" x="248" y="161">Checked where the flow is written</text>
+    <text class="t-s" x="248" y="179">a flow can&#x27;t leave a requirement out</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Two: the schema and a marker</text>
-    <text class="t-s" x="612" y="179">worker-config.ts rejects one today</text>
+    <text class="t-b" x="612" y="161">Checked apart from the flow</text>
+    <text class="t-s" x="612" y="179">when the installation registers its list</text>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="218">WHAT AN AUTHOR</text>
-    <text class="t-lbl" x="32" y="231">READS</text>
+    <text class="t-lbl" x="32" y="218">AUTHORITIES OVER</text>
+    <text class="t-lbl" x="32" y="231">THE RULE</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Two places</text>
-    <text class="t-s" x="248" y="241">the flow, and the installation&#x27;s list</text>
+    <text class="t-b" x="248" y="223">Two: the schema and a marker</text>
+    <text class="t-s" x="248" y="241">worker-config.ts rejects one today</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">One place</text>
-    <text class="t-s" x="612" y="241">everything on the flow</text>
+    <text class="t-b" x="612" y="223">One: today&#x27;s schema</text>
+    <text class="t-s" x="612" y="241">the list adds flags, not a marker</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
   <g id="row-3">
     <text class="t-lbl" x="32" y="276">EXISTING FLOWS</text>
-    <text class="mark plus" x="228" y="282">+</text>
-    <text class="t-b" x="248" y="281">Unchanged</text>
-    <text class="t-s" x="248" y="299">the built-in agent flow keeps working</text>
-    <text class="mark minus" x="592" y="282">−</text>
-    <text class="t-b" x="612" y="281">Every author migrates</text>
-    <text class="t-s" x="612" y="299">a new public export</text>
+    <text class="mark minus" x="228" y="282">−</text>
+    <text class="t-b" x="248" y="281">The agent flow migrates</text>
+    <text class="t-s" x="248" y="299">a new public export</text>
+    <text class="mark plus" x="592" y="282">+</text>
+    <text class="t-b" x="612" y="281">Unchanged</text>
+    <text class="t-s" x="612" y="299">the built-in agent flow keeps working</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
-  <g id="locks-in">
+  <g id="settled-by">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">A registration list as the public surface</text>
-    <text class="t-s" x="32" y="387">a wrapper can still be added later, additively</text>
+    <text class="t-lbl" x="32" y="349">SETTLED BY</text>
+    <text class="t-b" x="32" y="369">FIX-1789&#x27;s spec-poc builds both, side by side</text>
+    <text class="t-s" x="32" y="387">chosen at that gate, recorded in the epic before others use it</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
-    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">The private-state rule needs a run-time gate</text>
-    <text class="t-s" x="494" y="387">then the wrapper earns its place</text>
+    <text class="t-lbl" x="494" y="349">THE LEAN FLIPS IF</text>
+    <text class="t-b" x="494" y="369">The list catches every requirement as surely</text>
+    <text class="t-s" x="494" y="387">or the wrapper only duplicates the schema&#x27;s rule</text>
   </g>
 </svg>

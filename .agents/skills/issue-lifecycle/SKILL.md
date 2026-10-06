@@ -381,7 +381,7 @@ Two things you must carry back verbatim:
 - **`stackedOn`** — set by the script from the base it chose, and it is what schedules the
   later rebase. Lose it and a stacked sub-PR silently keeps its dependency's commits in its own
   diff. It survives a *failed* rebase on purpose, so the next wake retries — including a rebase
-  that reports `open` without `baseRefName: main`. The GitHub mark and retarget procedure is
+  that reports `open` without `baseRefName: main`. The GitHub stack procedure is
   [`orchestration.md`](../../../docs/contributing/orchestration.md) → Worktree branching; this
   row only persists the marker. The PR_FEEDBACK refusal below is the coordinator's action.
 - **`fixPr` / `fixIssue`** — the repair a failed assembled goal opened. While either is set and

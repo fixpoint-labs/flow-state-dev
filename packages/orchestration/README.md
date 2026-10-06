@@ -156,7 +156,7 @@ emitted), `unchanged` (the task already held the state asked for, nothing writte
 or `declined` with a `reason` (`immutable-assignee` / `terminal` / `not-my-task` /
 `disallowed` / `parked` / `lost-claim`, resolved in that precedence order) and the
 `status` the task was in when the write was refused. `immutable-assignee` means the
-board hands rows off to a child session, where the assignee is fixed at admission; `not-my-task`
+board hands rows off to a child session and an attempt holds the task (`in_progress` or `parked`), where the assignee is fixed; `not-my-task`
 means the ticket names a different task, a different collection, or an id since
 reused; `parked` means the caller passed `refuseWhenParked` and the task is in
 `parked` — nobody took it, so unlike `lost-claim` the answer is not to
@@ -536,11 +536,12 @@ board and the fix:
 `sessionStateSchema`**, at its root or in a composed child. Keep the block's
 state on the task.
 
-A board that hands anything off fixes each task's assignee at admission: the seat
-name is what a row is routed by, so `setAssignee` declines with reason
-`immutable-assignee`. The rule belongs to the collection rather than the board, so a
-second board over the same `defineTaskCollection` value declines too. File a new row
-rather than reassigning one.
+A board that hands anything off fixes a task's assignee while an attempt holds it:
+the worker name is what a running row is routed by, so `setAssignee` on an
+`in_progress` or `parked` task declines with reason `immutable-assignee`. A pending
+or blocked task can still change hands, and a parked one can once `unpark` has
+ended its attempt. The rule belongs to the collection rather than
+the board, so a second board over the same `defineTaskCollection` value declines too.
 
 A claim carries a lease (two minutes by default), and nothing renews it between the
 hand-off and the child's first step. A child that starts after the lease has lapsed

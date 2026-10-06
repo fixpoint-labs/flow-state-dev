@@ -66,8 +66,10 @@ Codex refuses leaves the id you already hold untouched.
 are refused when the block is built: `workingDirectory` (the `cwd` resolver sets
 it) and `signal` (the block's own `ctx.signal` sets it).
 
-Note that `client.env` **replaces** the CLI process's environment rather than
-adding to it. That is the SDK's rule. Spread `process.env` to add.
+Leave `client.env` unset and the Codex CLI process inherits your server's entire
+`process.env`, secrets included. Setting it **replaces** that environment rather
+than adding to it (the SDK's rule), so `client: { env: harnessEnv({ pass: [...] }) }`,
+with `harnessEnv` from `@flow-state-dev/core`, passes only the variables you name.
 
 ## The handle
 

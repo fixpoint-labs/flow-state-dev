@@ -1,6 +1,6 @@
 ---
 title: Mailboxes
-sidebar_position: 4
+sidebar_position: 8
 sidebar_label: Mailboxes
 description: "A mailbox is one addressable conversation that several agents and people can post into, with one durable transcript. Posting hands nobody the work; a board the mailbox holds is where work someone takes and finishes lives."
 ---
@@ -220,7 +220,7 @@ That HTTP call is a client `post`. It may include `author`. The line keeps that 
 
 That line is a client `post` that set `author`. `authorVerified` is `false`. There is no `seatAuthored`. The same body through the dispatcher above is the same kind of line.
 
-`read` takes no input on a mailbox. An `after` cursor is ignored there: it only means something on a [project's talk session](#a-room-per-project).
+`read` takes no input on a mailbox. An `after` cursor is ignored there: it only means something on a [project's talk session](./projects.md#the-room-and-talk-sessions).
 
 The transcript is the mailbox's `mailbox-post` items and nothing else from its history, which also carries fan-out requests, dispatch handles and refusals. `read` returns the recent lines: the ones inside the session's history window, which is 50 requests by default. On a mailbox with a notify block, each post uses two of them.
 
@@ -832,7 +832,7 @@ const mailboxKinds = mailboxInstances(mailboxes, {
 });
 ```
 
-`instanceAt(address)` returns the flow registered at an address right now: `registry.get(address)` on the runtime, the same getter the hire tools take. [Adding a chief of staff](./chief-of-staff.md#adding-one) shows it added to the `registry-access.ts` from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate). The lookup reads it on every call, so a worker hired while the app runs is found the moment it is registered, and a fired one stops being found.
+`instanceAt(address)` returns the flow registered at an address right now: `registry.get(address)` on the runtime, the same getter the hire tools take. [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate) shows it in `registry-access.ts`. The lookup reads it on every call, so a worker hired while the app runs is found the moment it is registered, and a fired one stops being found.
 
 Then give the board that drains the ledger a `defaultWorker` that hands each row to whatever its name means:
 
@@ -907,81 +907,7 @@ task: {
 
 ## A room per project
 
-A [project](./projects.md) has one room, a conversation its members share. A room isn't a mailbox you declare. It's built from a **template**: the seats that answer in it and the charter they work under. Every project's room shares one template.
-
-The room runs on the same mailbox kind, but no session is the room: each member talks through their own session, and the lines are kept as organization data. [A room or a mailbox](./projects.md#a-room-or-a-mailbox) compares the two in one picture.
-
-The default template is declared once for the organization, beside the projects collection in `workforce/org/resources/projects.ts`:
-
-```ts
-import { defineProjectsCollection } from "@flow-state-dev/workforce";
-
-export default defineProjectsCollection({
-  talk: {
-    seats: ["engineering.lead", "chief-of-staff"],
-    charter: "Plan the work, and say what is blocked.",
-  },
-});
-```
-
-A seat is named by its full id from any team, like `engineering.lead`, or by an organization-level seat's own name, like `chief-of-staff`. These seats are not the project's members. Members are the people who can read and post; seats are who a post wakes.
-
-Pass the organization's resource map to `mailboxInstances`, so `mailboxInstances` can find the template:
-
-```ts
-const { resources } = splitResourceModules(resourceModules);
-const instances = mailboxInstances(mailboxes, { kinds, resources });
-```
-
-An app that doesn't run `fsdev gen` imports the file's default export and passes it in `resources` under a key of its choosing. `fsdev gen` uses `projects`, the basename of `projects.ts`, and so does this example:
-
-```ts
-import projectsCollection from "./workforce/org/resources/projects";
-
-// mailboxes and kinds as above
-const instances = mailboxInstances(mailboxes, {
-  kinds,
-  resources: { projects: projectsCollection },
-});
-```
-
-The other arguments are as in the snippet above. If you declare the template in a `MAILBOX.md` instead (below), its `mintFor:` must name the key you passed the collection under (`projects` here).
-
-Rooms run on the built-in mailbox kind, and that kind has to be able to wake seats, so build it with a notify block, as in `kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) }`. Left as the plain built-in, a template that names seats is refused, because no post would wake them.
-
-`wakeMemberSeats(seats)` wakes a member whose seat is in the `seats` list and whose kind hears mailbox posts, as the built-in `agent` kind does. A notify block you write yourself wakes only the members its own code wakes; `mailboxInstances` doesn't check that it reaches the template's seats. A seat hired after you built `wakeMemberSeats(seats)` isn't in its list and isn't woken.
-
-If your app already has a notify block, keep it by passing it as the fallback: `defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) })`. A chief of staff (the `agent` kind) in the template is then woken by a person's post in the room (a post from another worker wakes no worker), and your block handles every member whose worker can't hear posts. The table under [waking agent workers](#waking-agent-seats) shows which members the fallback gets.
-
-If your app calls `mailboxInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its mailbox kind with the same seats and charter. A call that finds a different template is refused.
-
-A team can declare the template in a `MAILBOX.md` instead, by marking it `mintFor: projects`. Its `members:` are the seats and its body is the charter:
-
-```md
----
-description: The room every project gets.
-mintFor: projects
-members: [engineering.lead, operations.lead]
----
-
-Plan the work, and say what is blocked.
-```
-
-That file is a template, not a mailbox. It's never opened, and it never shows up in the [inventory](./inventory.md). If the file used to be a mailbox, its old session is kept in the store, but every mailbox action on it, including inventory registration, is refused with `mailbox-is-a-template`.
-
-What a template does:
-
-- **It applies to every project's room, and edits land at the next restart.** The seats and charter are built onto the mailbox kind each time the app boots and are never copied into a session. An edit reaches every room, including ones that already exist.
-- **A post wakes each seat once, as the person who posted.** Each seat keeps one conversation per person per room, and gets the room's last 20 lines along with the post. Its reply goes into the room, where every member reads it. A seat answers a post once, even when the post reaches it twice, and only for itself: each delivery carries an `answerToken` for that seat, which the answer hands back as `token`. The built-in agent kind does this for you, and a kind of your own passes it through. The answer must come back through the poster's session. A member posts and reads through the one talk session the project lists for them, the one `join` returns; any other session is refused with `talk-session-not-listed`. A seat's reply wakes nobody.
-- **Other members' lines arrive on the next read, not live.** Your own post shows up when you post it. Everyone else's appears the next time your view calls `read`.
-- **It holds no board, routes no post, and picks no kind.** A template that declares `flow:`, `boards:`, `routing:` or `boardActions:` is refused.
-- **Rooms aren't in the inventory.** The inventory lists the mailboxes you declared, and no talk session is ever one of its rows.
-
-When a template is in place, any code that creates a project inside a flow turn also gets the creator's talk session ready, in the same turn. `createProject` does that with or without a template. A row your code writes outside a turn gets none, and its members reach the room through `join`.
-
-A room's lines aren't in any session's history. Read them with `read` on a member's talk session.
-
-`mailboxInstances` checks templates along with your mailboxes and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or names something other than the projects collection, a seat that isn't a seat id or is listed twice, seats on a kind that can't wake them, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `MAILBOX.md`.
+`mintFor: projects` makes a `MAILBOX.md` the template every [project](./projects.md)'s room is built from, instead of a mailbox. A room runs on the built-in mailbox kind, but no session is the room: each member talks through a talk session of their own, and the lines are kept as organization data. [Setting up the room](./projects.md#setting-up-the-room) covers the template, and [A room or a mailbox](./projects.md#a-room-or-a-mailbox) compares the two.
 
 ## Registering a kind of your own
 

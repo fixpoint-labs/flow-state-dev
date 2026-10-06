@@ -1,6 +1,6 @@
 ---
 title: Hiring while the app runs
-sidebar_position: 8
+sidebar_position: 11
 sidebar_label: Hiring at runtime
 description: "Store a seat hired at runtime, address it per organization, and read the roster back when the app next starts. What the framework gives you, and the admin action you build on top of it."
 ---
@@ -116,9 +116,27 @@ function withAdminResolver(seat: FlowInstance): FlowInstance {
 export function releaseSeat(id: string): boolean {
   return app?.unregister(id) ?? false;
 }
+
+let registry: Awaited<ReturnType<FlowState["getRuntime"]>>["registry"] | undefined;
+
+/** Call once, right after `createFlowState`, alongside `useFlowState`. */
+export async function useRegistry(next: FlowState): Promise<void> {
+  registry = (await next.getRuntime()).registry;
+}
+
+export const kindAt = (address: string): string | undefined => registry?.get(address)?.kind;
+export const instanceAt = (address: string): FlowInstance | undefined => registry?.get(address);
 ```
 
-If a function builds the `FlowState` and runs more than once per process, such as an `openApp()` each test calls, keep the binding in a local `let` so each call registers into its own state. Assign it after `createFlowState`, once the registry exists. The callbacks only run when a hire or fire happens. For what `kindAt` and `instanceAt` are for, see [Adding one](./chief-of-staff.md#adding-one).
+`kindAt(address)` returns the kind of the flow registered at an address, or `undefined`. `instanceAt(address)` returns the flow instance registered there, or `undefined`. The hire handlers and tools take both as options; [the options table](#the-ready-made-hire-and-fire-handlers) says what each one changes. Both read nothing until `useRegistry` has run, so call it where you call `useFlowState`:
+
+```ts
+const app = createFlowState(/* ... */);
+useFlowState(app);
+await useRegistry(app);
+```
+
+If a function builds the `FlowState` and runs more than once per process, such as an `openApp()` each test calls, keep the binding in a local `let` so each call registers into its own state. Assign it after `createFlowState`, once the registry exists. The callbacks only run when a hire or fire happens.
 
 ```ts
 import { createFlowState, type FlowState, type FlowStateRuntime } from "@flow-state-dev/engine";

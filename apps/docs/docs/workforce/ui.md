@@ -1,7 +1,7 @@
 ---
 title: Workforce components
 sidebar_label: Components
-sidebar_position: 9
+sidebar_position: 13
 description: Render a roster, its mailboxes and its boards with components from @flow-state-dev/react.
 ---
 

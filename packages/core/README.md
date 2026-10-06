@@ -213,6 +213,7 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
   - **Throws when defined, naming the problem, when given:** a key pattern with parameters, such as `[topic]/observations` (use a wildcard pattern like `tickets/*`); `writable: false`; `client.content.create` or `client.content.update`; your own `reactTo.contentUpdated` (`created`, `stateUpdated` and `deleted` are yours); a `stateSchema` that isn't a `z.object()`, or that already has `facets` or `indexedAs`; a question with the id `minConfidence`; a value that isn't an evaluator block, or an evaluator whose questions are a function; an evaluator whose input schema rejects a string (adapt the body with `connectInput`); an evaluator that declares `flowConfigSchema`, a resource under `name`, or a single resource (not a collection) with `prefetchMode: "lazy"`.
   - **Client access:** reads and deletes only. Write bodies through a flow action.
 - `isDefinedResourceCollection(value)` — Type guard for collection definitions
+- `isCollectionConfig(value)` / `resourceStorageKeys(configs)` (`@flow-state-dev/core/types`) — The storage-identity rule the engine persists by and `defineFlow`'s collision check applies. `isCollectionConfig` is structural: anything with a string `pattern` is stored as a collection, keyed on that pattern. `resourceStorageKeys` maps each accessor to the slot it persists to: a single resource's `ref`, else the first accessor its definition appears under.
 
 **Capabilities:**
 - `defineCapability(config)` — Bundle resources, state schemas, targets, and helper functions under a single name. Blocks declare capabilities via `uses: [cap]` and the framework merges everything transitively.
@@ -437,6 +438,7 @@ Set `client: { live: true }` to stream each mutation's projected `clientData` as
 
 - Runtime schemas, from the package root: `harnessRunInputSchema`, `harnessRunHandleSchema`, `harnessRunEnvelopeSchema`
 - Types, from `@flow-state-dev/core/types`: `HarnessBlock`, `HarnessRunInput`, `HarnessRunHandle`, `HarnessRunEnvelope`, `HarnessSource`, `HarnessRunStatus`, `HarnessRunOutcome`, `HarnessRunUsage`, `HarnessRunCost`, `HarnessCostBasis`, `HarnessResolver`, `HarnessSessionHook`, `HarnessCallbackContext`
+- `harnessEnv({ pass })`, from the package root (options type `HarnessEnvOptions`): builds a harness's `env` from an allowlist of variable names. A harness's agent runs as a child process, and with no `env` it inherits the server's entire `process.env`. The result holds exactly the named variables that are set, read when `harnessEnv` is called. Nothing else is passed, `PATH` and `HOME` included. Values come from `process.env` by default; pass `env` to read from another source. Where there is no `process` (a browser or edge runtime) and no `env` is given, the result is empty rather than an error.
 
 Two packages implement it: [`@flow-state-dev/claude-code`](../claude-code) (`claude-code/sdk`) and [`@flow-state-dev/codex`](../codex) (`codex/sdk`). [`@flow-state-dev/harness-manager`](../harness-manager) drives either. Full guide: [Coding agents](https://flow-state.dev/docs/tools/coding-agents).
 

@@ -310,7 +310,7 @@ const myFlow = defineFlow({
 Two collision modes are checked at flow-build time:
 
 1. **Same accessor key, different references** — same as before. Use the same `defineResource()` reference everywhere or pick distinct accessor keys.
-2. **Different accessor keys, same effective storage key** — two definitions that resolve to the same `(scope, ref, flowIsolation, flowInstanceId?)` tuple would silently share storage. Hard error. The isolated coordinate is the resolved instance id, not the kind (FIX-1323).
+2. **Different accessor keys, same effective storage key** — two definitions that resolve to the same `(scope, ref, flowIsolation, flowInstanceId?)` tuple would silently share storage. Hard error. The isolated coordinate is the resolved instance id, not the kind (FIX-1323). `ref` here is the cell the engine actually writes, resolved by the same rule the persistence path uses (`core/types/storage-identity.ts`): a collection keys on its `pattern` — and anything carrying a string `pattern` is a collection, whatever defined it — while a single resource keys on its `ref`, else the first accessor its definition appears under. A `ref` on a collection is never read, so two collections sharing a pattern collide whatever `ref` each carries (FIX-1257).
 
 Identity-equal re-registration is always safe (diamond dependencies through capabilities). Different accessor names pointing at the **same** `DefinedResource` reference share storage by design — the persisted slot is keyed by ref identity, not accessor name.
 

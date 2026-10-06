@@ -21,9 +21,11 @@ import type { TaskWriteToken } from "../write-provenance";
  * hold always reports the same one, and two callers cannot render two different
  * messages for the same refusal.
  *
- * - `immutable-assignee` — the board hands off work, where a task's
- *   assignee is fixed at admission. Reassignment is refused whatever the task's
- *   status is.
+ * - `immutable-assignee` — the board hands off work, and an attempt holds the
+ *   task (`in_progress` or `parked`): its dispatch is keyed by the assignee it
+ *   was claimed with, and a parked attempt can still settle. A pending or
+ *   blocked task can change hands, and a parked one once `unpark` has ended
+ *   its attempt (FIX-1780).
  * - `terminal` — the task had already reached `completed` / `errored` /
  *   `cancelled`. The majority of the exposure, but not all of it.
  * - `not-my-task` — the presented `claim` names a different board, a different
@@ -64,12 +66,10 @@ import type { TaskWriteToken } from "../write-provenance";
  * the same thing — do not redo the work — so the order is left where the guard
  * reads most simply rather than split to chase the rarer reason.
  *
- * **Why `immutable-assignee` sits above `terminal`.** It reads no mutable task
- * state at all — the board either hands off or it does not — so it is
- * safe at any position by the argument above. It goes first because it is the
- * only arm true of *every* status: reporting `terminal` for a finished task on a
- * handed-off board would imply a pending one could be reassigned, which is exactly
- * the wrong thing to tell a caller that is about to retry.
+ * **Where `immutable-assignee` sits.** It holds only for `in_progress` and `parked`, and
+ * `terminal` only for a settled task, so the two never compete and either order
+ * reports the same reason. It reads the status inside the atomic write, like
+ * `terminal`, so a claim that lands first is what the decline reports.
  */
 export type TaskWriteDeclineReason =
   | "immutable-assignee"
@@ -702,7 +702,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   // one helper.
   //
   // Exactly ONE of them refuses anything: `setAssignee`, which declines on a
-  // terminal task and — on a board that hands off — on every task.
+  // terminal task and — on a board that hands off — on a task an attempt holds.
   // The other four deliberately keep writing to terminal tasks — labelling,
   // re-prioritizing, or annotating a finished task is a real and used thing (a
   // post-drain failure audit, a cascade's `skipped` marker) — so they can only
@@ -715,14 +715,16 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Returns `unchanged` when the assignee already matches, `recorded` when it is
    * written.
    *
-   * **Declines every reassignment on a board that hands off**
-   * (`immutable-assignee`, FIX-982). The assignee is what a handed-off task's
-   * routing key is derived from, and the child session that key
-   * addresses is keyed the moment the work is dispatched. Changing it afterwards
-   * does not redirect anything: the work already in flight keeps running under
-   * the old coordinate, and the new one addresses a session nothing will ever
-   * wake. The failure is invisible from the caller's side — the write succeeds,
-   * the task simply never runs — so the write is refused instead.
+   * **Declines on a running task on a board that hands off**
+   * (`immutable-assignee`, FIX-982, narrowed by FIX-1780). The assignee is what
+   * a handed-off task's routing key is derived from, and the child session that
+   * key addresses is keyed the moment the work is dispatched. Changing it while
+   * the attempt runs does not redirect anything: the work in flight keeps
+   * running under the old coordinate, and the new one addresses a session
+   * nothing will ever wake. So an `in_progress` task is refused, and so is a
+   * `parked` one, whose attempt can still settle it. A pending or blocked task
+   * has no attempt; its next claim reads the new assignee, so it can change
+   * hands. `unpark` a parked task first to move it.
    */
   setAssignee(id: string, assignee: string): Promise<TaskWriteOutcome>;
   setPriority(id: string, priority: number): Promise<TaskWriteOutcome>;

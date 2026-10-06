@@ -9,8 +9,8 @@
 
 > **Where this differs from the epic, the epic binds.** This is the PRD as Jake wrote it; the
 > epic's [decisions](../DECISIONS.md) and [rules](../BUSINESS-RULES.md) settle what it leaves
-> open. One coordinator flow with a routing setting ([D2](../DECISIONS.md#d2)). The worker
-> contract is [Q1](../DECISIONS.md#q1), still open. A workstream is a project entry plus its
+> open. One coordinator flow with a routing setting ([D2](../DECISIONS.md#d2)). Where an author
+> declares a worker flow is [Q1](../DECISIONS.md#q1), whose shape is chosen at FIX-1789's spec gate on a POC of both and recorded in the epic. A workstream is a project entry plus its
 > lead's session; `MAILBOX.md` becomes `WORKER.md`; no transcript resource is built, so the
 > `transcript:` key below isn't either ([decided in review](../DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)).
 > The boards are per [D5](../DECISIONS.md#d5) and [ER-9](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt). A worker's
@@ -311,7 +311,7 @@ Work moves down through boards, and status comes back up. Every step runs in a s
 
 ![How work flows · one workstream, down to a harness](../figures/concept-6-work-flows.svg)
 
-The boards below the workstream are session-scoped and shared down their lineage, so a task session can settle its row on the board that assigned it. Task boards already hand off work this way today (`sharedToLineage`). A lineage stops at a flow, though: a row handed to a worker on another flow, such as a lead coordinator's row to an agent, lives on a board at the owner's user scope instead ([the end-state POC](../poc/singleton-worker-link/README.md), leg C1).
+The boards below the workstream are session-scoped and shared down their lineage, so a task session can settle its row on the board that assigned it. Task boards already hand off work this way today (`sharedToLineage`). A lineage stops at a flow, though ([the end-state POC](../poc/singleton-worker-link/README.md), leg C1): a row handed to a worker on another flow, such as a lead coordinator's row to an agent, can't sit on a board shared down the lineage. That board still stays its own, and only its own drains claim, wake on or settle its rows. How it does so is FIX-1794's to decide ([ER-9](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
 
 Everything in Alice's chain is hers. Bob's workers never appear in it: Bob's part of the project is his own workstream.
 

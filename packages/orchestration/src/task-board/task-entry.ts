@@ -366,7 +366,7 @@ function buildTaskGate(options: {
             );
           }
           // The row must still route to the seat that handed it off. A hand-off
-          // board freezes a task's assignee at admission precisely because it is
+          // board freezes a running task's assignee precisely because it is
           // the address the hand-off is reached by; a mismatch means that guard
           // was bypassed, and running would mix two workers' histories under one
           // child.

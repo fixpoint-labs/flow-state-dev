@@ -3,7 +3,8 @@
  * pieces it depends on (registry concurrency fix + cleanupBlock).
  */
 import { describe, it, expect, vi } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -26,6 +27,7 @@ import {
   MoatGrantsError,
   MoatRunStoppedError,
   MoatBinaryReadError,
+  MoatPathEscapeError,
   type SpawnFn as MoatSpawnFn,
   type SpawnResult as MoatSpawnResult,
 } from "../src/bash/adapters/moat";
@@ -763,6 +765,224 @@ describe("createMoatAdapter host-fs paths", () => {
     const content = await sandbox.readFile("/etc/passwd");
     expect(content).toBe("etc-data");
     expect(calls.some((c) => c.args[0] === "exec")).toBe(true);
+  });
+});
+
+// The host-fs fast path runs on the HOST, outside the container. Any path
+// that leaves the bind mount there reaches the developer's machine, not the
+// sandbox. These pin that the model can't steer it out, either by `..`
+// segments in the path it writes or by a symlink it plants from inside the
+// container (the bind mount is writable from both sides).
+describe("createMoatAdapter host-fs containment", () => {
+  async function setup() {
+    const root = await mkdtemp(path.join(os.tmpdir(), "fsdev-hostfs-escape-"));
+    const ws = path.join(root, "ws");
+    const outside = path.join(root, "outside");
+    await mkdir(ws, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(outside, "secret.txt"), "host-secret");
+    const { spawnFn, calls } = makeSpawnFn(({ args }) => {
+      if (args[0] === "exec" && args.includes("cat")) return ok("container-data");
+      return ok();
+    });
+    const sandbox = createMoatAdapter({
+      runName: "r1",
+      bin: "moat",
+      execTimeoutMs: 1000,
+      spawnFn,
+      stopped: false,
+      persist: false,
+      mountSource: ws,
+      mountTarget: "/workspace",
+    });
+    const execCalls = () => calls.filter((c) => c.args[0] === "exec");
+    return { root, ws, outside, sandbox, execCalls };
+  }
+
+  it("rejects a `..` read that climbs out of the bind mount", async () => {
+    const { root, sandbox, execCalls } = await setup();
+    try {
+      // The bash tool builds `${destination}/${modelPath}`, so a model path
+      // of `../outside/secret.txt` arrives exactly like this.
+      await expect(sandbox.readFile("/workspace/../outside/secret.txt")).rejects.toThrow(
+        MoatPathEscapeError,
+      );
+      await expect(
+        sandbox.readFile("/workspace/sub/../../outside/secret.txt"),
+      ).rejects.toThrow(MoatPathEscapeError);
+      expect(execCalls()).toHaveLength(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a `..` write that climbs out of the bind mount", async () => {
+    const { root, outside, sandbox, execCalls } = await setup();
+    try {
+      await expect(
+        sandbox.writeFile("/workspace/../outside/pwned.txt", "x"),
+      ).rejects.toThrow(MoatPathEscapeError);
+      expect(existsSync(path.join(outside, "pwned.txt"))).toBe(false);
+      expect(execCalls()).toHaveLength(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not follow a planted directory symlink out to the host", async () => {
+    const { root, ws, outside, sandbox, execCalls } = await setup();
+    try {
+      await symlink(outside, path.join(ws, "link"));
+
+      // Read: must not return the host file. The path is resolved inside the
+      // container instead, where the link can only reach container files.
+      const content = await sandbox.readFile("/workspace/link/secret.txt");
+      expect(content).not.toBe("host-secret");
+      expect(execCalls()).toHaveLength(1);
+
+      // Write: must not create anything in the host directory.
+      await sandbox.writeFile("/workspace/link/nested/pwned.txt", "x");
+      expect(existsSync(path.join(outside, "nested"))).toBe(false);
+      expect(execCalls()).toHaveLength(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not write through a planted file symlink to the host", async () => {
+    const { root, ws, outside, sandbox, execCalls } = await setup();
+    try {
+      await symlink(path.join(outside, "secret.txt"), path.join(ws, "notes.txt"));
+
+      await sandbox.writeFile("/workspace/notes.txt", "overwritten");
+      expect(await readFile(path.join(outside, "secret.txt"), "utf-8")).toBe("host-secret");
+      expect(execCalls()).toHaveLength(1);
+
+      expect(await sandbox.readFile("/workspace/notes.txt")).not.toBe("host-secret");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not create a host file through a planted dangling symlink", async () => {
+    const { root, ws, outside, sandbox, execCalls } = await setup();
+    try {
+      // The target doesn't exist yet: writing through the link on the host
+      // would create it outside the mount.
+      await symlink(path.join(outside, "new.txt"), path.join(ws, "draft.txt"));
+
+      await sandbox.writeFile("/workspace/draft.txt", "x");
+      expect(existsSync(path.join(outside, "new.txt"))).toBe(false);
+      expect(execCalls()).toHaveLength(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("still serves symlinks that stay inside the bind mount from the host", async () => {
+    const { root, ws, sandbox, execCalls } = await setup();
+    try {
+      await mkdir(path.join(ws, "real"), { recursive: true });
+      await writeFile(path.join(ws, "real", "a.txt"), "inside");
+      await symlink("real", path.join(ws, "alias"));
+
+      expect(await sandbox.readFile("/workspace/alias/a.txt")).toBe("inside");
+      await sandbox.writeFile("/workspace/alias/b.txt", "also-inside");
+      expect(await readFile(path.join(ws, "real", "b.txt"), "utf-8")).toBe("also-inside");
+      expect(execCalls()).toHaveLength(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// The capability's `bashWriteFile` tool for MOAT is a host-fs leaf that never
+// boots the container, so it must hold the same line as the adapter: a model
+// path cannot reach the developer's machine outside the bind mount, by `..`
+// or by a symlink planted from inside the container.
+describe("MOAT bashWriteFile tool host-fs containment", () => {
+  async function setup() {
+    const root = await mkdtemp(path.join(os.tmpdir(), "fsdev-write-tool-escape-"));
+    const ws = path.join(root, "ws");
+    const outside = path.join(root, "outside");
+    await mkdir(ws, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(outside, "secret.txt"), "host-secret");
+    const { bashWriteFile } = createBashBlocks({
+      provider: { type: "moat", workspace: ws },
+      destination: "/workspace",
+    });
+    const ctx: any = {
+      request: { identity: { id: `req-${path.basename(root)}` } },
+      session: { identity: { id: `s-${path.basename(root)}`, userId: "u1" } },
+      resources: {},
+    };
+    const write = (p: string, content = "pwned") =>
+      runForTest(bashWriteFile, { path: p, content }, ctx);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cleanup = async () => {
+      warn.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    };
+    return { ws, outside, write, cleanup };
+  }
+
+  it("refuses a `..` path that climbs out of the bind mount", async () => {
+    const { outside, write, cleanup } = await setup();
+    try {
+      await expect(write("../outside/pwned")).rejects.toThrow(MoatPathEscapeError);
+      await expect(write("sub/../../outside/pwned")).rejects.toThrow(MoatPathEscapeError);
+      expect(existsSync(path.join(outside, "pwned"))).toBe(false);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("does not follow a planted directory symlink out to the host", async () => {
+    const { ws, outside, write, cleanup } = await setup();
+    try {
+      await symlink(outside, path.join(ws, "link"));
+      await expect(write("link/nested/pwned")).rejects.toThrow(MoatPathEscapeError);
+      expect(existsSync(path.join(outside, "nested"))).toBe(false);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("does not write through a planted file symlink to the host", async () => {
+    const { ws, outside, write, cleanup } = await setup();
+    try {
+      await symlink(path.join(outside, "secret.txt"), path.join(ws, "notes.txt"));
+      await expect(write("notes.txt", "overwritten")).rejects.toThrow(MoatPathEscapeError);
+      expect(await readFile(path.join(outside, "secret.txt"), "utf-8")).toBe("host-secret");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("does not create a host file through a planted dangling symlink", async () => {
+    const { ws, outside, write, cleanup } = await setup();
+    try {
+      await symlink(path.join(outside, "new.txt"), path.join(ws, "draft.txt"));
+      await expect(write("draft.txt")).rejects.toThrow(MoatPathEscapeError);
+      expect(existsSync(path.join(outside, "new.txt"))).toBe(false);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("still writes through symlinks that stay inside the bind mount", async () => {
+    const { ws, write, cleanup } = await setup();
+    try {
+      await mkdir(path.join(ws, "real"), { recursive: true });
+      await symlink("real", path.join(ws, "alias"));
+      await write("alias/b.txt", "inside");
+      await write("/leading-slash.txt", "rooted");
+      expect(await readFile(path.join(ws, "real", "b.txt"), "utf-8")).toBe("inside");
+      expect(await readFile(path.join(ws, "leading-slash.txt"), "utf-8")).toBe("rooted");
+    } finally {
+      await cleanup();
+    }
   });
 });
 

@@ -1,6 +1,6 @@
 ---
 title: The chief of staff
-sidebar_position: 8.5
+sidebar_position: 12
 sidebar_label: Chief of staff
 description: "One seat a person asks who works here, and asks to change it. Hires land at once; a fire waits for the person's approval. It can also start projects."
 ---
@@ -92,33 +92,22 @@ kinds.agent = defineAgentWorkerFlow({
 });
 ```
 
-Add `kindAt` and `instanceAt` to the `registry-access.ts` from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), next to `registerSeat` and `releaseSeat`. They use the `FlowInstance` and `FlowState` imports already in the file:
+`registerSeat`, `releaseSeat`, `kindAt` and `instanceAt` come from the `registry-access.ts` in [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate). The hire tools use `kindAt` to refuse a hire whose name a declared worker already has, and `instanceAt` so that a re-hire interrupted by a restart completes and `fire` releases only the worker it hired.
 
-```ts title="src/flows/workforce-admin/registry-access.ts"
-let registry: Awaited<ReturnType<FlowState["getRuntime"]>>["registry"] | undefined;
+The capabilities on the kind each add one part:
 
-/** Call once, right after `createFlowState`, alongside `useFlowState`. */
-export async function useRegistry(next: FlowState): Promise<void> {
-  registry = (await next.getRuntime()).registry;
-}
+- **Inventory and `discover`.** `createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. The small `mailbox-inventory` capability declares the mailbox inventory on the kind with `projectWritesMailboxInventory`, the declaration the [project tools](#starting-projects) need, so you can add them later without touching it. Passing its key, `mailboxInventory` here, as `inventory.mailboxes` lets `discover` answer who is in a mailbox too.
+- **Posting.** `mailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can answer in a mailbox it is a member of. A mailbox counts it as a member only when its `MAILBOX.md` `members:` lists it, by its own name for an org-level worker, as in `members: [eng.em, eng.coder, chief-of-staff]`. A post from a worker the mailbox doesn't list is refused with `author-not-a-member`.
+- **Hiring.** `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
 
-export const kindAt = (address: string): string | undefined => registry?.get(address)?.kind;
-export const instanceAt = (address: string): FlowInstance | undefined => registry?.get(address);
-```
+Build in this order:
 
-`kindAt(address)` returns the kind of the flow registered at that address, or `undefined`; the hire tools use it to refuse a declared seat by name. `instanceAt(address)` returns the flow instance registered there, or `undefined`. The hire tools use it to tell a seat they minted apart from another seat at the same address, so a re-hire interrupted by a restart completes, and `fire` releases only its own seat.
+1. Finish any edits or additions to the mailbox records.
+2. Build the `agent` kind above, which `hireWorkforce(workers, { kinds })` hires the chief of staff onto.
+3. Build the mailbox kind with `wakeMemberSeats(seats)`. It comes after `hireWorkforce`, because it takes the hired workers.
+4. Call `mailboxInstances` last.
 
-Both read nothing until `useRegistry` has run, so call it where you call `useFlowState`:
-
-```ts
-const app = createFlowState(/* ... */);
-useFlowState(app);
-await useRegistry(app);
-```
-
-`createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. The small `mailbox-inventory` capability declares the mailbox inventory as a resource on the kind. It uses `projectWritesMailboxInventory`, the same declaration the [project tools](#starting-projects) use, so you can add them without touching it. Passing its key, `mailboxInventory` here, as `inventory.mailboxes` lets `discover` answer who is in a mailbox too. `mailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can answer in a mailbox it is a member of. A mailbox counts it as a member only when its `MAILBOX.md` `members:` lists it, by its own name for an org-level worker, as in `members: [eng.em, eng.coder, chief-of-staff]`. A post from a worker the mailbox doesn't list is refused with `author-not-a-member`. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
-
-Build in this order: (1) finish any edits or additions to the mailbox records, (2) the `agent` kind above, which `hireWorkforce(workers, { kinds })` hires the chief of staff onto, (3) the mailbox kind with `wakeMemberSeats(seats)`, after `hireWorkforce` because it takes the hired workers, (4) `mailboxInstances`, last. `createWorkforceCapability` keeps the mailbox records it is given, so a record changed after step 2 never reaches `discover`. Pass `createWorkforceCapability` the same mailbox records you pass `mailboxInstances`, so `discover` answers from the mailboxes the app actually opens.
+`createWorkforceCapability` keeps the mailbox records it is given, so a record changed after step 2 never reaches `discover`. Pass `createWorkforceCapability` the same mailbox records you pass `mailboxInstances`, so `discover` answers from the mailboxes the app actually opens.
 
 `hire` asks the model for a kind, a seat id, and `settings`, but doesn't say which kinds require which settings. The chief of staff learns that from its `WORKER.md` body, so name each required setting and its value there, as the example file does for a `coder`. A hire missing a required setting is refused with the setting named and nothing written, so the model can call `hire` again with it.
 
@@ -126,7 +115,7 @@ In the snippet above, `coderFlow` requires a `document` setting through its `con
 
 Installing the tools on a kind doesn't hand them to every seat of it. A seat holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other. `refuseRosterAdmin: true` keeps them out of the seats the chief of staff hires, too. Leave it off and a hire may name them like any other tool.
 
-If your Lab has projects, add `chief-of-staff` to the project template's `seats` (or a team `MAILBOX.md` template's `members:`), so the chief of staff is in every project's room. Build the mailbox kind with `wakeMemberSeats(seats)` so a post in the room wakes it, and pass the template to `mailboxInstances` as [A room per project](./mailboxes.md#a-room-per-project) shows, including without `fsdev gen`.
+If your Lab has projects, add `chief-of-staff` to the project template's `seats` (or a team `MAILBOX.md` template's `members:`), so the chief of staff is in every project's room. Build the mailbox kind with `wakeMemberSeats(seats)` so a post in the room wakes it, and pass the template to `mailboxInstances` as [Setting up the room](./projects.md#setting-up-the-room) shows, including without `fsdev gen`.
 
 Read the seats it hired back when the app starts, as in [Reading the roster back at the next start](./durable-hire.md#reading-the-roster-back-at-the-next-start), and serve the app over a store that survives a restart. Otherwise a hire lasts only as long as the process.
 
@@ -152,7 +141,7 @@ member; put anyone else they name in `members`. Add workstreams only when they
 name them, by full mailbox id.
 ```
 
-The `mailbox-inventory` capability from [Adding one](#adding-one) already declares the inventory with `projectWritesMailboxInventory`. The project tools read that same collection, and the kind refuses a second declaration of it, such as a `defineMailboxInventoryCollection()` of your own.
+The `mailbox-inventory` capability from [Adding one](#adding-one) is the inventory declaration the project tools read. Don't add a second one, such as a `defineMailboxInventoryCollection()` of your own: [Giving the writes to a seat](./projects.md#giving-the-writes-to-a-seat) shows the error the kind throws.
 
 A workstream belongs to one project at most. When the person asks for one another project holds, the tool is refused, and the chief of staff can tell them which project has it.
 

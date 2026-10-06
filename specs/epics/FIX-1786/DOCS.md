@@ -14,8 +14,8 @@ what Workforce does, never what it used to do. Each child's own `DOCS.md` carrie
 > workflows, that work for that user and act as them.
 >
 > One rule covers who sees what. Everything is private to one user, and the only shared
-> things are shared resources. Your workers, your private projects and every session are
-> yours alone. A shared project, its workstream entries and the org's worker library are
+> things are shared resources. Your workers, your private projects and every session
+> are yours alone. A shared project, its workstream entries and the org's worker library are
 > shared, and each line written there names the user and the worker that wrote it.
 >
 > A **worker** is a configuration with an owner: its instructions, skills, tools, and the
