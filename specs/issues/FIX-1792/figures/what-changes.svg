@@ -1,0 +1,85 @@
+<svg viewBox="0 0 940 520" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels, today and after, for one support team. Today the team folder holds worker files and a mailboxes folder whose MAILBOX.md lists members and a board; the board's rows are an org row any member's session runs. After, the same team folder holds only worker files: the help desk is a WORKER.md on the coordinator flow with delegates, its board belongs to each conversation and its user, and a MAILBOX.md left in the tree stops the load with its conversion named. Case by case: how a coordinator is declared goes from its own file to a worker file; who keeps a board goes from the org to one conversation's user, or a workstream's owner; how a coding run finds its project goes from a claim row to its workstream; an old file goes from loading to stopping the load; tasks on an old board stay in the store, unread.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-old { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .fence { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; fill:none; }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-m   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-old { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-new { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="520"/>
+  <g id="panels">
+    <rect class="panel" x="16" y="14" width="446" height="206" rx="6"/>
+    <rect class="panel" x="478" y="14" width="446" height="206" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY · teams/support/</text>
+    <text class="t-lbl" x="494" y="34">AFTER · teams/support/</text>
+  </g>
+  <g id="today">
+    <rect class="n-box" x="32" y="46" width="414" height="38" rx="5"/>
+    <text class="t-m" x="48" y="69">workers/devices/WORKER.md · workers/accounts/WORKER.md</text>
+    <rect class="n-box" x="32" y="94" width="414" height="58" rx="5"/>
+    <text class="t-m" x="48" y="114">mailboxes/help/MAILBOX.md</text>
+    <text class="t-s" x="48" y="134">members · routing · boards: [escalations]</text>
+    <rect class="n-box" x="32" y="162" width="414" height="42" rx="5"/>
+    <text class="t-h" x="48" y="181">escalations · an org row</text>
+    <text class="t-s" x="48" y="197">any member's session runs it</text>
+  </g>
+  <g id="after">
+    <rect class="n-box" x="494" y="46" width="414" height="38" rx="5"/>
+    <text class="t-m" x="510" y="69">workers/devices/WORKER.md · workers/accounts/WORKER.md</text>
+    <rect class="n-new" x="494" y="94" width="414" height="58" rx="5"/>
+    <text class="t-m" x="510" y="114">workers/help/WORKER.md</text>
+    <text class="t-s" x="510" y="134">flow: coordinator · delegates · routing: best-fit</text>
+    <rect class="n-new" x="494" y="162" width="200" height="42" rx="5"/>
+    <text class="t-h" x="510" y="181">the board</text>
+    <text class="t-s" x="510" y="197">each conversation's own</text>
+    <rect class="n-old" x="708" y="162" width="200" height="42" rx="5"/>
+    <text class="t-old" x="722" y="181">MAILBOX.md left here</text>
+    <text class="t-s" x="722" y="197">stops the load, named</text>
+  </g>
+  <g id="case-1">
+    <text class="t-lbl" x="32" y="246">HOW A COORDINATOR IS DECLARED</text>
+    <text class="t-old" x="32" y="266">Its own file, its own loader</text>
+    <text class="t-new" x="494" y="266">A WORKER.md, like every worker</text>
+    <line class="row" x1="16" y1="280" x2="924" y2="280"/>
+  </g>
+  <g id="case-2">
+    <text class="t-lbl" x="32" y="300">WHO KEEPS A BOARD</text>
+    <text class="t-old" x="32" y="320">The org: any member's session runs it</text>
+    <text class="t-new" x="494" y="320">One conversation's user, or a workstream's owner</text>
+    <line class="row" x1="16" y1="334" x2="924" y2="334"/>
+  </g>
+  <g id="case-3">
+    <text class="t-lbl" x="32" y="354">HOW A CODING RUN FINDS ITS PROJECT</text>
+    <text class="t-old" x="32" y="374">A claim row on the mailbox</text>
+    <text class="t-new" x="494" y="374">Through its workstream</text>
+    <line class="row" x1="16" y1="388" x2="924" y2="388"/>
+  </g>
+  <g id="case-4">
+    <text class="t-lbl" x="32" y="408">AN OLD MAILBOX.md</text>
+    <text class="t-old" x="32" y="428">Loads</text>
+    <text class="t-new" x="494" y="428">Stops the load; file and conversion named</text>
+    <line class="row" x1="16" y1="442" x2="924" y2="442"/>
+  </g>
+  <g id="case-5">
+    <text class="t-lbl" x="32" y="462">TASKS ON AN OLD BOARD</text>
+    <text class="t-old" x="32" y="482">Waiting on the org row</text>
+    <text class="t-new" x="494" y="482">Left in the store, unread; re-file them</text>
+    <line class="row" x1="16" y1="496" x2="924" y2="496"/>
+  </g>
+</svg>

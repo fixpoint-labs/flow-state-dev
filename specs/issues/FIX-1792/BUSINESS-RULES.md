@@ -1,0 +1,69 @@
+# FIX-1792 · Business rules
+
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
+
+The cases, written as rules. A *tree* is a workforce folder an app loads; a *coordinator* is a
+worker on FIX-1791's coordinator flow; its *conversation's board* is FIX-1794's. The *proved by*
+column is the check the plan runs.
+
+## Loading a tree
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-1 | A team's `mailboxes/<name>/` folder holds a `MAILBOX.md` | The load stops and registers nothing. The message names the file, the `teams/<team>/workers/<name>/WORKER.md` it belongs at, each of its lines' conversion, and the upgrade page | CI · VG leg a |
+| BR-2 | A tree holds several, in several teams | Every one is named in the same stop, not the first only | CI |
+| BR-3 | A `mailboxes/` folder holds no `MAILBOX.md` | Passed over, like any folder that isn't a slot | CI |
+| BR-4 | The workforce root holds `flows/mailboxes/` | `fsdev gen` and the load refuse it by name, saying a flow that runs workers belongs in `flows/workers/` on the worker-flow list. The generated module has no `mailboxKinds` | CI · VG leg a |
+| BR-5 | A `WORKER.md` declares `members:`, `boards:`, `boardActions:` or `mintFor:` | Refused, naming each key and what replaced it: `delegates:`, the conversation's board, nothing (rooms are gone) | CI · VG leg b |
+| BR-6 | A team still holds a `channels/` folder or a `CHANNEL.md` | Refused by name as today; the message names the `WORKER.md` conversion, never `MAILBOX.md` | CI · VG leg a |
+
+## Converting a file
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-7 | A file is converted | Same id (`<team>.<name>`), same `description:` and body; `flow: coordinator`; `members:` becomes `delegates:` in the same order; `boards:` and `boardActions:` go | Each converted goal's re-run |
+| BR-8 | Its mailbox declared `routing:` with a `fallback:` | `routing: best-fit` and that `fallback:`; one post gets one answer, from the delegate best fit picks | `a-routed-post-gets-one-answer` re-run |
+| BR-9 | Its mailbox declared no `routing:` | `routing: everyone`; each delegate answers each post once, and no answer wakes anyone | `a-fresh-host-wakes-its-member-agents` re-run · VG leg c |
+| BR-10 | A converted coordinator names a delegate that no file declares | Refused at load, naming it (FIX-1791 BR-11). The pentest scenario asserts the refusal, not the old skip | `a-post-reaches-both-declared-seats` re-run |
+| BR-11 | A file declared `flow:` naming a kind of the tree's own | No conversion; [DECISIONS](DECISIONS.md#decided-not-asked) says where each such file goes | The checker |
+| BR-12 | A converted `WORKER.md` that isn't a coordinator is loaded | It keeps the flow it names; nothing moves onto `agent` | CI |
+
+## Boards
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-13 | Work used to go on a converted file's board | It goes on the coordinator's conversation's board, at its user's scope, never an org row ([D1](DECISIONS.md#d1)) | Each converted goal's re-run |
+| BR-14 | A kitchen-sink specialist escalates a case | One unassigned row on the help conversation's board; the team panel lists it in every tab on that conversation; another user's conversation lists nothing | `lists-a-filed-case-without-a-reload` re-run · CI with two users |
+| BR-15 | The DevTeam lab starts | The storefront project's two workstreams, led by `eng.feature` and `ops.release`, are opened by the lab's member through the project's own action, not written as rows | CI |
+| BR-16 | A coding run works for the feature workstream | It finds the project through the workstream; no claim is read or written | `it-codes-in-the-projects-repository` re-run |
+| BR-17 | Another member of the DevTeam org reads the feature workstream | Sees its entry, not its tasks | `it-keeps-its-rows-on-the-mailboxes-board`, rewritten |
+
+## Old data
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-18 | A store holds sessions on the `mailbox` flow | Left as they are. A request to one gets `Unknown flow "mailbox"`. No view lists them | CI · VG leg d |
+| BR-19 | A store holds org-scoped mailbox board rows, some pending | Left as they are, byte for byte. No run claims them and no conversation's board lists them ([D2](DECISIONS.md#d2)) | CI · VG leg d |
+| BR-20 | A store holds claim rows, or project rows that list mailboxes | Left as they are; nothing reads the list or the claims | CI |
+| BR-21 | A create or update of a project carries `workstreams` | Refused, naming the key and the workstream action that replaced it | CI |
+| BR-22 | A store holds the inventory's mailbox and membership rows | Left as they are; the inventory read lists none | CI |
+
+## The repository
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-23 | The last PR lands | No `MAILBOX.md` outside the refusal goal's fixtures, and nothing outside the refusal's own files names a removed export | `check.mjs --after` · VG leg e |
+| BR-24 | A goal ran on a mailbox | It runs on the converted files and passes, or the plan says why not and names what proves its outcome | VG leg e |
+| BR-25 | A converted host, fixture or test creates a session or a row | It carries an org; nothing gains a default org (FIX-1442) | CI · kitchen-sink's named-org test |
+
+## Failure taxonomy
+
+Every refusal at load is fatal, collects every problem, and registers nothing: a half-loaded lab
+is the quiet failure the refusal exists to prevent. Old data degrades: it stays in the store,
+unread, and nothing deletes or rewrites it. Nothing retries.
+
+## Acceptance criteria this issue owns
+
+[The goal](SPEC.md#the-goal-and-how-well-know-its-met): its goal check passes on one commit after
+failing under `GOAL_CONTROL=silent-skip` and on today's `main`, and every goal the plan marks
+convert or rewrite passes on that commit. ER-6's three clauses are BR-1, BR-7 and BR-10.
