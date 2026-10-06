@@ -27,8 +27,8 @@ builds after the MVP (Q2). The privacy fix is checked when workers merges, not o
 | **FIX-1795** library | spec now → impl PR after the MVP | ER-1's write path | Templates and copies, model variants (ER-10) | Nothing in the MVP; it builds once the closure run passes | Medium |
 | **FIX-1793** projects | spec → impl PRs | ER-4 · ER-3 · FIX-1762's locks · Q2 · FIX-1774's leg d | Private and shared projects (Q2); workstream resources, the row rule, the project coordinator; rooms and Shift Manager's Stream tab removed (ER-7, ER-8) | FIX-1792 | Large: about 2,200 lines out, one engine rule in |
 | **FIX-1794** chain | spec → impl PR | ER-4's delegates · FIX-1778 · FIX-1780's hand-off rule and follow-through · FIX-1777's rule · FIX-1774's leg e | Tasks filed for delegates down the owner's boards, drained as the owner and followed through, one level here, and FIX-1802 adds filing by any worker given the tool and the split (D8); every board in the chain keeps its rows at the owner's user scope, one partition per conversation (ER-9, D6) | FIX-1802 · FIX-1792 · FIX-1796 | Medium, with one task-board change (D6) |
-| **FIX-1802** filing and the split | spec → impl PRs | FIX-1794's conversation board and depth limit (D6) · D8 | Filing as an opt-in tool any worker can be granted; a filed task's worker files pieces in turn (D8) | FIX-1792's P3 · the closure | Unsized until its spec; spec being written |
-| **FIX-1792** `WORKER.md` | spec → impl PRs | ER-4 · D5 · FIX-1794's conversation board (D6) · FIX-1791's P2 (`everyone`, `rounds`) · FIX-1793's project code, for removing claims | 33 files converted, all 16 boards in 15 files on conversation boards, old files refused (ER-6); project claims and a project row's mailbox list removed, which FIX-1793 leaves deprecated; discovery's `mailboxes` domain removed | FIX-1796 | Large: five PRs as a stack. P1 after FIX-1791 through its P2 (`everyone`); P2 after FIX-1791's P2 (`rounds`) and FIX-1794; P3 after FIX-1791's P2, FIX-1794 and FIX-1793 (for S10); P4a after P1–P3; P4b after P4a |
+| **FIX-1802** filing and the split | spec → impl PRs | FIX-1794's conversation board and depth limit (D6) · D8 | Filing as an opt-in tool any worker can be granted; a filed task's worker files pieces in turn (D8) | FIX-1792's P2 and P3 · the closure | Unsized until its spec; spec being written |
+| **FIX-1792** `WORKER.md` | spec → impl PRs | ER-4 · ER-7 · D5 · FIX-1794's conversation board (D6) · FIX-1791's P2 (`everyone`) · FIX-1802's filing tools (D8) · FIX-1793's workstreams and project code | 33 files converted, all 16 boards in 15 files: 13 files keep a session board, the DevTeam's feature becomes a workstream, and kitchen-sink's escalations board goes with its feature, old files refused (ER-6); project claims and a project row's mailbox list removed, which FIX-1793 leaves deprecated; discovery's `mailboxes` domain removed | FIX-1796 | Large: five PRs as a stack. P1 · coordinators without boards: FIX-1791 merged, through its P2 (`everyone`). P2 · session boards: FIX-1791 through its P2, FIX-1794 and FIX-1802 merged. P3 · the DevTeam, its workstreams, and claims: FIX-1791 through its P2, FIX-1793, FIX-1794 and FIX-1802 merged. P4a · refuse: P1, P2, P3. P4b · remove: P4a |
 | **FIX-1796** terms | spec → impl PRs | Every child merged except FIX-1795, which is new code in the new terms (ER-25) | The sweep and the glossary (ER-12); discovery's `seats` domain renamed `workers` (D7) | The closure run | Medium, wide and mechanical |
 | **FIX-1797** closure · required | spec (the QA plan) → runs until clean → PR | Every other child except FIX-1795, on one `main` commit (ER-27) | The committed checks, an early leg-c run when FIX-1788 merges (ER-30), a QA report, a bug child per failure | The wrap | Medium, repeats per retest |
 
@@ -51,19 +51,19 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
    Until a run is green, a related sub-issue of FIX-1797 holds both from merging, though they
    build meanwhile; closing a bug child alone releases neither (FIX-1797's spec,
    [#2835](https://github.com/fixpoint-labs/flow-state-dev/pull/2835)).
-4. **FIX-1791 merges** → FIX-1793 and FIX-1794. FIX-1792 is five PRs as a stack
-   ([#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833)'s PLAN). P1, coordinators
-   without boards, waits for FIX-1791 through its P2, where `everyone` ships. P2, the
-   conversation boards, waits for FIX-1791's P2 (`rounds`) and FIX-1794, and moves each session
-   board onto FIX-1794's conversation board (D6). P3, the DevTeam and claims, waits for FIX-1791's
-   P2, FIX-1794 and FIX-1793, for its S10. P4a, the refusal, waits for P1 to P3, and P4b, the
-   removal, for P4a. The five coordinators P2 and P3 convert run `judgment` with `rounds: 1`, so
-   FIX-1791 must not cut `rounds`, or `everyone`, from its P2. One exception: FIX-1794's
-   first PR (the partitioned board, D6) touches only orchestration on its own fixtures, so it may
-   start now that D6 is recorded, without waiting for FIX-1791. FIX-1793's workstream boards
-   live on that partition, so its board-consuming slice merges only after FIX-1794's first PR.
-   FIX-1794 merges → FIX-1802 builds, and FIX-1792's P3 and the closure wait on it (D8). FIX-1792's
-   per-PR dependencies above are #2833's before D8; its spec is being folded again.
+4. **FIX-1791 merges** → FIX-1793 and FIX-1794. FIX-1794 merges → FIX-1802 builds (D8).
+   FIX-1792 is five PRs as a stack, depending as
+   [#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833)'s PLAN states:
+   P1 · coordinators without boards: FIX-1791 merged, through its P2 (`everyone`).
+   P2 · session boards: FIX-1791 through its P2, FIX-1794 and FIX-1802 merged.
+   P3 · the DevTeam, its workstreams, and claims: FIX-1791 through its P2, FIX-1793, FIX-1794 and
+   FIX-1802 merged. P4a · refuse: P1, P2, P3. P4b · remove: P4a.
+   FIX-1792 needs `everyone` from FIX-1791's P2, not `rounds`, so FIX-1791 must not cut
+   `everyone` from its P2. P2 moves each session board onto FIX-1794's conversation board (D6).
+   One exception: FIX-1794's first PR (the partitioned board, D6) touches only orchestration on
+   its own fixtures, so it may start now that D6 is recorded, without waiting for FIX-1791.
+   FIX-1793's workstream boards live on that partition, so its board-consuming slice merges only
+   after FIX-1794's first PR. The closure waits on FIX-1802 too (ER-27).
 5. **FIX-1792 merges** → FIX-1796. It merges → the closure's first run. The terms
    sweep doesn't wait on the library: the library is new code, written in the new terms (ER-25),
    so the sweep has nothing of it to remove.

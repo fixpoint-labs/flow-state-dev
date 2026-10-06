@@ -141,7 +141,7 @@ follow-up, [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802), into the
 |---|---|
 | **Instead of** | Filing as what makes a coordinator, one level deep: a task session refuses to file, and the split waits for FIX-1802 after the MVP (FIX-1794's Q, as answered) |
 | **Because** | Filing work is a capability, not a kind of worker. A worker given the filing tool files onto its own conversation's board, for the workers its file names, and a filed task's worker can file pieces in turn: the split. A coordinator is the flow built for routing work: an evaluator classifies first, and the flow acts as an agent only when no obvious path exists. It isn't the only thing that coordinates |
-| **Locks in** | Filing is opt-in per worker, in its `WORKER.md`; not every worker gets it. The split ships in the MVP as FIX-1802, under FIX-1794's depth limit ([its D2](../../issues/FIX-1794/DECISIONS.md#d2)). It builds after FIX-1794 and before FIX-1792's P3 and the closure, which it blocks ([ER-27](BUSINESS-RULES.md#how-the-set-is-run)). FIX-1791's best fit falls back to the coordinator's own judgment turn when no fallback delegate is set, and a configured fallback delegate still wins ([its D2](../../issues/FIX-1791/DECISIONS.md#d2), amended with this record). The DevTeam's feature board is a workstream on storefront, led by its EM as an ordinary worker with the filing tool ([D5](#d5)). If FIX-1802's spec changes the task board, that is a Layer 1 change, recorded here once the spec names it ([ER-22](BUSINESS-RULES.md#what-no-child-may-do)); [D3](#d3) doesn't count it yet |
+| **Locks in** | Filing is opt-in per worker, in its `WORKER.md`; not every worker gets it. The filing tools are a capability any worker flow can be granted, so a worker keeps the flow it names (the DevTeam's EM keeps `flow: em`). The split ships in the MVP as FIX-1802, under FIX-1794's depth limit ([its D2](../../issues/FIX-1794/DECISIONS.md#d2)). It builds after FIX-1794 and before FIX-1792's P2 and P3 and the closure, which it blocks ([ER-27](BUSINESS-RULES.md#how-the-set-is-run)). FIX-1791's best fit falls back to the coordinator's own judgment turn when no fallback delegate is set, and a configured fallback delegate still wins ([its D2](../../issues/FIX-1791/DECISIONS.md#d2), amended with this record). The DevTeam's feature board is a workstream on storefront, led by its EM as an ordinary worker with the filing tool ([D5](#d5)). If FIX-1802's spec changes the task board, that is a Layer 1 change, recorded here once the spec names it ([ER-22](BUSINESS-RULES.md#what-no-child-may-do)); [D3](#d3) doesn't count it yet |
 
 **What would reverse it:** the product owner, if FIX-1802's spec prices the split well past the
 other children. That comes back here as a question, not a child's call.
@@ -372,7 +372,7 @@ engine rule. The closure only checks.
   FIX-1797's milestone hold.
 - **The product owner's direction (Oct 6)**, in the same follow-up PR: filing work is a tool any
   worker can be granted, and the split is in the MVP ([D8](#d8)), so FIX-1802 joins the set
-  before FIX-1792's P3 and the closure, reversing FIX-1794's answer to its Q. FIX-1791's best fit
+  before FIX-1792's P2 and P3 and the closure, reversing FIX-1794's answer to its Q. FIX-1791's best fit
   now falls back to the coordinator's judgment when no fallback delegate is set (its D2, amended
   here). The DevTeam's feature board is a workstream again, so D5's wait on FIX-1793 holds, now
   with FIX-1802. Two of Cursor's review notes on the D1 figure were folded.
