@@ -129,7 +129,12 @@ jobs:
           restore-keys: |
             turbo-${{ runner.os }}-${{ github.job }}-${{ matrix.shard }}-
 
-      # Builds what the shard's packages depend on (`^build`), then tests them.
+      # Every package's own build, as the single job had before the split:
+      # `test` depends only on `^build`, and some tests read their own
+      # package's build output (Shift Manager's built pages).
+      - name: Build packages
+        run: pnpm packages:build
+
       - name: Test
         run: pnpm turbo run test --concurrency=1 $(node scripts/test-shards.mjs ${{ matrix.shard }})
 
