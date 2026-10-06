@@ -11,18 +11,20 @@ owner rule is on a PR this one can stack on (epic ER-16, D4).
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the library collection | Org scope, one row per template: name, description, version, the source worker's id, and the configuration in FIX-1788's stored shape (names, flow-owned settings), minus owner and copy record. Declared with FIX-1789's shared-resource helper, so `writtenBy` is required, and under FIX-1793's owner rule. No client write config: only S2, S5 and S6 write it. Old shapes read (BP-030) | BR-1 BR-6 BR-9–11 |
-| S2 | `workforce` · publish | Reads the session user's own worker at their scope (FIX-1788's roster read); refuses a standard worker or a missing one; runs FIX-1788's save check on the configuration; writes a new template, or the next version of one the user owns, through FIX-1789's stamping write. Copies names only: no session, memory or drawer read | BR-1–8 BR-19 BR-25 |
-| S3 | `workforce` · add | Reads a template at org scope; builds a hire from it; calls FIX-1788's one hire write (no second save path); sets the copy record on the new row | BR-12–18 |
-| S4 | `workforce` · the update mark | The roster listing (FIX-1788 BR-9) gains, per copy, whether a newer version exists and whether the copy was edited since it was taken (a digest of the configuration taken, kept in the copy record). Read from the template at list time, never at run time | BR-18 BR-20 BR-28 |
-| S5 | `workforce` · take update | Replaces the copy's configuration with the template's current version through FIX-1788's edit write and save check; keeps id, sessions, memory; updates the copy record | BR-21–24 |
+| S1 | `workforce` · the library collection | Org scope, one row per template: name, description, version, and the configuration in FIX-1788's stored shape (names, flow-owned settings), minus the worker row's owner and copy record. It declares whatever owner field FIX-1793's rule reads, set from the session user at publish. Declared with FIX-1789's shared-resource helper, so `writtenBy` is required, and it names; it never decides. No client write config: only S2, S5 and S6 write it. Old shapes read (BP-030) | BR-1 BR-6 BR-9–11 |
+| S2 | `workforce` · publish | Reads the session user's own worker at their scope (FIX-1788's roster read); refuses a standard worker or a missing one; runs FIX-1788's save check on the configuration; writes a new template, or the next version of one the user owns and names, through FIX-1789's stamping write. A worker on a flow other than the named template's makes a new template (BR-19a). Copies names only: no session, memory or drawer read | BR-1–8 BR-19 BR-19a BR-25 |
+| S3 | `workforce` · add | Reads a template at org scope; builds a hire from it; calls FIX-1788's one hire write (no second save path); sets the copy record on the new row, with the digest of the configuration as saved | BR-12–18 |
+| S4 | `workforce` · the update mark | The roster listing (FIX-1788 BR-9) gains, per copy, whether a newer version exists and whether the copy was edited since it was taken. One filtered read of the template ids the roster's copies name (BP-033), at list time, never at run time. The digest covers BR-1's configuration fields only, as the save check stored them, on both sides, so a save that normalizes an unedited copy reads as unedited. Kept in `workforce` beside the listing, not in Shift Manager, so every view reads one mark | BR-18 BR-20 BR-28 |
+| S5 | `workforce` · take update | Its offer, read before the take, lists the grants the current version adds over the copy (BR-20a) and carries S4's edited flag. The take replaces the copy's configuration with that version through FIX-1788's edit write and save check; keeps id, sessions, memory; updates the copy record and its digest | BR-20a BR-21–24 |
 | S6 | `workforce` · remove | Deletes a template under the owner rule. Changing one is S2's next version | BR-26–30 |
-| S7 | `workforce` · exports | One factory returning S2, S3, S5, S6 and a list block, beside the hire blocks. README entry. A `minor` changeset for `workforce` | — |
-| S8 | `shift-manager` · Roster | A Library list; *Add* on a template; *Share* on a worker of the user's own; the update mark with *Take update*, saying when edits will be replaced; *Remove* on the user's own template. Reloads after each, at least as well as FIX-1761's reload | BR-8 BR-20 BR-30 |
+| S7 | `workforce` · exports | S2, S3, S5, S6 and a list block, returned as `library` by FIX-1788's hire-block factory. README entry. A `minor` changeset for `workforce` | — |
+| S8 | `shift-manager` · Roster | A Library list, with what each template grants; *Add* on a template; *Share* on a worker of the user's own; the update mark with *Take update*, listing what the version adds and saying when edits will be replaced; *Remove* on the user's own template. Reloads after each, at least as well as FIX-1761's reload | BR-8 BR-20 BR-20a BR-30 |
 | S9 | goals | `goals/worker-library/a-copy-is-yours-and-stays-put/`, the goal check, both controls | VG |
 | S10 | Docs | [DOCS.md](DOCS.md) | — |
 
 ## Sequence · the PR plan
+
+The library is post-MVP (Jake, 2026-10-06): this spec takes its gate now, and P1 starts after the MVP ships.
 
 | PR | Delivers | Depends on |
 |---|---|---|
@@ -49,10 +51,10 @@ flowchart TD
 | ID | Runs after | Passes when |
 |---|---|---|
 | V1 | S1 | BR-9–11 on the real engine, two orgs; a resource-route write is refused |
-| V2 | S2 | BR-1–8; BR-2 with a worker holding a note, a session and a drawer skill: the stored template holds none |
+| V2 | S2 | BR-1–8; BR-2 with a worker holding a note, a session and a drawer skill: the stored template holds none, and a configuration naming the drawer skill is refused; BR-19a: the old template's copies keep running their sessions |
 | V3 | S3 | BR-12–17 through FIX-1788's write path; BR-15 for each of the three reasons; BR-17 with three variants |
-| V4 | S4 | BR-18, BR-20 (edited and unedited copies), BR-28 |
-| V5 | S5 | BR-21–24; BR-21 asserts the copy's memory reads after the take |
+| V4 | S4 | BR-18, BR-20 (edited and unedited copies, and an unedited copy the save check normalized), BR-28; one template read per listing |
+| V5 | S5 | BR-20a with a version that adds a tool; BR-21–24; BR-21 asserts the copy's memory reads after the take, on the session it had |
 | V6 | S6 | BR-26–30 under FIX-1793's rule; BR-27 by every write path, the resource routes included |
 | VG | P1 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) PASSES, after the same run FAILED under `GOAL_CONTROL=live-template` (leg b) and `GOAL_CONTROL=org-writes` (leg c), and leg a on today's `main` |
 
@@ -65,11 +67,13 @@ and the off state of every mark (V4).
 | Where | Name | Why pinned |
 |---|---|---|
 | The library collection | `workforce/library/*`, org scope | Persisted; FIX-1797's closure and Shift Manager read it |
-| The copy record on a worker row | `fromTemplate: { templateId, version }` | Persisted on FIX-1788's row (an additive field, BP-030) |
+| The copy record on a worker row | `fromTemplate: { templateId, version, digest }` | Persisted on FIX-1788's row (an additive field, BP-030); `digest` is the configuration as saved at add or take, which the edited flag compares |
 | A template's version | `version`, a whole number from 1 | Persisted; the mark compares it |
 
 Everything else is yours to name, in the new terms: template, worker library, worker, roster.
-The factory and action names in [SPEC.md](SPEC.md#what-changes) are proposals.
+`library` on the hire blocks and the action names in [SPEC.md](SPEC.md#what-changes) are
+proposals. FIX-1788's own pinned names are used as it pins them: `createWorkforceClient`,
+`ensureWorkerSession`, `findWorkerSession`, `worker` on a session create.
 
 ## Guardrails
 
@@ -93,15 +97,18 @@ Shift Manager section in P2. Reconcile wording with the shipped refusals and wit
 publish(worker, onto?):
     w ← the session user's own worker, else refuse        ← standard or missing refused
     check w's configuration as a save would
-    if onto: next version of a template the user owns      ← the owner rule decides
-    else: a new template, version 1
+    if onto and onto.flow = w.flow: next version of onto   ← the owner rule decides
+    else: a new template, version 1                        ← another flow is another template
     write through the stamping helper                      ← names the user, and the worker
 
 add(template, id?):
     t ← read template at org scope
-    hire(id ?? t.name, t's configuration) with fromTemplate ← t.id, t.version   ← FIX-1788's write
+    row ← hire(id ?? t.name, t's configuration)            ← FIX-1788's write and save check
+    row.fromTemplate ← t.id, t.version, digest(row's saved configuration)
 
-list roster:  for each copy: offer ← template.version > copy.version; edited ← digest differs
+list roster:
+    ts ← one read of the templates the copies name
+    for each copy: offer ← ts[id].version > copy.version; edited ← digest(row) ≠ copy.digest
 ```
 
 **POC:** none. Every premise is a sibling's surface that doesn't exist yet (FIX-1788's write
@@ -115,11 +122,12 @@ role, Q1).
 - Read FIX-1793's owner rule as merged. If it can't apply to a collection the library declares,
   stop and take it to the epic (ER-22): don't build a check beside it.
 - Read FIX-1788's merged write path, its roster listing and its copy of the save check; S3 and S5
-  call them, they don't wrap them.
+  call them, they don't wrap them. The goal check reaches each copy through its
+  `ensureWorkerSession`.
 - Read Q1 and Q2's answers on `main`. A different Q1 answer changes BR-26–29 and V6 only.
 - If FIX-1793's gate drops the shared half (epic Q2), this issue closes; nothing here is built.
-- Old-term exports this issue leaves in place for FIX-1796: it adds none. It calls
-  `createSeatHireBlocks` and FIX-1788's hire blocks under their current names.
+- Old-term exports: this issue adds none. It extends FIX-1788's hire-block factory under the
+  name FIX-1788 ships (today's `createSeatHireBlocks`, renamed there).
 
 ## Follow-ups
 
@@ -129,4 +137,10 @@ role, Q1).
 
 ## Notes from review
 
-None yet.
+Recorded verbatim for the implementer to weigh against real code; not folded into the design.
+
+- **Concurrent publish** (PR #2819, second look): "Two publishes onto the same template from two
+  tabs can both read version N and write N+1 (BP-035, concurrent 409). V2 needs one case."
+- **A removed template's id** (PR #2819, second look): "BR-28: a copy's `fromTemplate` still names
+  a removed template. The mark clears, but a later add of a different template with the same id
+  is impossible only because ids come from the server. Say so in one line."

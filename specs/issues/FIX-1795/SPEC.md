@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-## Six people, before and after
+## Six users, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
@@ -47,7 +47,7 @@ control, Bob's copy must change when Alice republishes.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/worker-library/a-copy-is-yours-and-stays-put/` · scripted model that answers with the instructions marker it was given (configuration is under test, not answers) · real HTTP router, SQLite · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: Bob lists Alice's template, naming her; his copy answers marker M1 in his session; it reads none of Alice's notes. b: Alice republishes with M2; Bob's next turn answers M1, his roster marks an update; he takes it; his next turn answers M2 and still reads the note his copy wrote. c: Bob changing or removing Alice's template, Alice publishing a standard worker, and Bob adding a template whose flow became standard-only are each refused with their reason; Carol lists nothing |
+| **Signal** | a: Bob lists Alice's template, naming her; his copy answers marker M1 in a session he starts with `ensureWorkerSession`; it reads none of Alice's notes. b: Alice republishes with M2; Bob's next turn answers M1, his roster marks an update; he takes it; his next turn on the same session answers M2 and still reads the note his copy wrote. c: Bob changing or removing Alice's template, Alice publishing a standard worker, and Bob adding a template whose flow became standard-only are each refused with their reason; Carol lists nothing |
 | **Input** | One standard worker, one worker Alice hires, three users across two orgs. A template on another worker flow must pass too |
 | **Anti-game** | No assertion on a stored row or a key. No template or copy written by a fixture: each is made through the app's actions |
 | **Control that must fail** | `GOAL_CONTROL=live-template`: leg b FAILS on *Bob's next turn answers M1*. `GOAL_CONTROL=org-writes` (the owner rule off): leg c FAILS on *Bob's change is refused*. Today's `main`: leg a FAILS, no library |
@@ -61,8 +61,8 @@ The band is the only shared place. Only configuration crosses it, and only by an
 **What an app wires, and what it sends:**
 
 ```diff
- const { hire, fork, fire } = createSeatHireBlocks({ workerFlows })
-+const library = createWorkerLibraryBlocks({ workerFlows })
+-const { hire, fork, fire } = createSeatHireBlocks({ workerFlows })
++const { hire, fork, fire, library } = createSeatHireBlocks({ workerFlows })  // FIX-1788's hire blocks, renamed there
 
  defineFlow({
    kind: "roster-admin",
@@ -79,8 +79,12 @@ The band is the only shared place. Only configuration crosses it, and only by an
 +await admin.sendAction("addFromLibrary", { template: templateId, id: "release-notes" }, { sessionId })
 ```
 
-The factory and action names are proposed, the implementer's to settle
-([PLAN](PLAN.md#pinned-names--the-only-three)). Hire, fork and fire are FIX-1788's.
+The library blocks come back from the hire blocks' own factory, so `workerFlows` and the save
+check are passed once. `library` and the action names are proposed, the implementer's to settle
+([PLAN](PLAN.md#pinned-names--the-only-three)). Hire, fork and fire are FIX-1788's. Bob then
+talks to his copy like any worker of his: FIX-1788's
+`createWorkforceClient({ userId, baseUrl }).ensureWorkerSession({ worker: "release-notes" })`
+finds or starts his session with it, linked when the session is created.
 
 ## How a copy is made
 
@@ -88,13 +92,16 @@ The factory and action names are proposed, the implementer's to settle
 flowchart LR
   W["Alice's worker"] -->|"its configuration, as names"| T["a template · org scope · names Alice"]
   T -->|"Bob adds it"| H["FIX-1788's hire path · its save check"]
-  H --> C["Bob's worker · records the template and version"]
+  H --> C["Bob's worker · records the template, version and a digest of what it took"]
   C -->|"every turn"| R["runs its own row · never the template"]
   T -.->|"a newer version"| M["Bob's roster marks it · he decides"]
 ```
 
 A copy is made by the same write as a hire, so it passes the same checks, and from then on it
-reads only its own row.
+reads only its own row. A new version of a template always keeps its flow, so a copy's sessions
+keep running after an update: a worker on another flow published onto a template makes a new
+template instead ([FIX-1788](../FIX-1788/BUSINESS-RULES.md#a-sessions-worker) BR-10–13,
+BR-19b).
 
 ## What stays as it is
 
@@ -120,6 +127,7 @@ issue goes with it.
 - **[Q1](DECISIONS.md#q1) · Who can change or remove a template?** I recommend: only the user
   who published it. If wrong: templates nobody can tidy once their publisher leaves.
 - **[Q2](DECISIONS.md#q2) · How does a user learn an update exists?** I recommend: a mark on the
-  copy in their roster, no new channel. If wrong: updates go unnoticed.
+  copy in their roster, no new channel, and a warning when they take it only if it would
+  overwrite their own edits. If wrong: updates go unnoticed.
 
-Feature · `workforce`, `shift-manager` · medium · 2 PRs, after FIX-1788 and FIX-1793's owner rule · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)
+Feature · `workforce`, `shift-manager` · medium · 2 PRs, after FIX-1788 and FIX-1793's owner rule · built after the MVP · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)

@@ -11,7 +11,7 @@ recommended answer and move with it.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-1 | Alice publishes a worker of her own | A template in acme's library: the worker's flow, instructions, team instructions, skill, tool, package and document names, the flow's own settings, a name, a description, version 1. It names Alice, and the worker too when a worker published it ([ER-11](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). Her worker is unchanged | CI · VG leg a |
-| BR-2 | Alice's worker has sessions, memory at any layer, or skills it wrote into its drawer | None of it is in the template. Only names cross | CI · VG leg a |
+| BR-2 | Alice's worker has sessions, memory at any layer, or skills it wrote into its drawer | None of it is in the template. Only names cross. A skill name only her worker's drawer holds fails the save check, so the publish is refused naming it (BR-5): a copy would get the name and not the skill | CI · VG leg a |
 | BR-3 | Alice publishes a standard worker | Refused: every user already has it; fork it, then publish the fork. Nothing written | CI · VG leg c |
 | BR-4 | Alice names a worker that isn't hers | Refused with the same answer as a worker that doesn't exist | CI |
 | BR-5 | Alice's worker no longer passes the checks a save runs (its flow gone or kept for standard workers, its configuration refused) | Refused with that check's reason. Nothing written | CI |
@@ -23,7 +23,7 @@ recommended answer and move with it.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-9 | Any member of acme lists the library | Every template in acme, each with its name, description, flow, version and who published it | CI · VG leg a |
+| BR-9 | Any member of acme lists the library | Every template in acme, each with its name, description, flow, version, who published it, and what it grants: its tools, skills, packages, documents and collections. That is what an add offers | CI · VG leg a |
 | BR-10 | Carol lists her library | Nothing from acme. A user in both orgs sees each org's own library | CI · VG leg c |
 | BR-11 | A caller writes a template through the app's resource routes | Not possible: only the library's own actions write templates | CI |
 
@@ -31,8 +31,8 @@ recommended answer and move with it.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-12 | Bob adds Alice's template | A new worker of Bob's from the template's configuration, through [FIX-1788](../FIX-1788/BUSINESS-RULES.md#holding-a-worker)'s hire write and its save check. Its id is the one Bob gives, or the template's name. It records the template and version it came from. The turn names the roster as written | CI · VG leg a |
-| BR-13 | Bob's copy runs | As Bob, in his sessions, with his own memory. It reads nothing of Alice's | CI · VG leg a |
+| BR-12 | Bob adds Alice's template | A new worker of Bob's from the template's configuration, through [FIX-1788](../FIX-1788/BUSINESS-RULES.md#holding-a-worker)'s hire write and its save check. Its id is the one Bob gives, or the template's name. It records the template and version it came from, and a digest of the configuration as saved. The turn names the roster as written | CI · VG leg a |
+| BR-13 | Bob's copy runs | As Bob, in sessions he finds or starts with `ensureWorkerSession`, linked to it at create (FIX-1788 BR-10), with his own memory. It reads nothing of Alice's | CI · VG leg a |
 | BR-14 | Bob adds the same template twice | Two workers. The second needs an id not on his roster; a taken id is refused, naming it (FIX-1788 BR-4) | CI |
 | BR-15 | The template's flow is no longer registered, is kept for standard workers ([FIX-1789](../FIX-1789/BUSINESS-RULES.md#naming-a-flow) BR-14), or the flow refuses its configuration | Refused at add, naming the template and the reason. Nothing written | CI · VG leg c |
 | BR-16 | The template grants a document or collection its flow doesn't declare | Refused at add, naming it (FIX-1788 BR-6a) | CI |
@@ -43,13 +43,15 @@ recommended answer and move with it.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-19 | Alice publishes her worker again onto her template | Version 2, naming Alice. Bob's copy is unchanged: his next turn runs version 1 | CI · VG leg b |
-| BR-20 | Bob lists his roster after that | His copy is marked: version 2 exists, and whether he edited the copy since he took version 1 (Q2) | CI · VG leg b |
-| BR-21 | Bob takes the update | His copy's configuration becomes version 2, through the same save check. Its id, sessions and memory stay ([D1](DECISIONS.md#d1)). His next turn runs version 2. The mark clears | CI · VG leg b |
-| BR-22 | Bob edited his copy before taking the update | His edits are replaced, and the offer said so beforehand. Nothing merges | CI |
+| BR-19 | Alice publishes a worker of hers on the template's flow onto her template | Version 2, naming Alice. Bob's copy is unchanged: his next turn runs version 1 | CI · VG leg b |
+| BR-19a | Alice publishes a worker of hers on another flow onto her template | A new template, version 1, and the reply names both flows. The old template and its copies are unchanged. A version never changes a template's flow, so no update can strand a copy's sessions ([FIX-1788](../FIX-1788/BUSINESS-RULES.md#a-sessions-worker) BR-10–13, BR-19b) | CI |
+| BR-20 | Bob lists his roster after that | His copy is marked: version 2 exists, and whether taking it would overwrite edits he made since he took version 1, read from the copy record's digest (Q2) | CI · VG leg b |
+| BR-20a | Bob opens the update before taking it | The offer lists what version 2 grants that his copy doesn't hold: tools, skills, packages, documents and collections. Nothing changes until he takes it | CI |
+| BR-21 | Bob takes the update | His copy's configuration becomes version 2, through the same save check. Its id, sessions and memory stay ([D1](DECISIONS.md#d1)), and its sessions keep running: the flow is the same (BR-19a). His next turn on any of them runs version 2. The mark clears | CI · VG leg b |
+| BR-22 | Bob edited his copy before taking the update | His edits are replaced, and the offer said so beforehand. Nothing merges. If his edit moved the copy to another flow, the take moves it back: sessions he started on that flow are refused, and his next `ensureWorkerSession` starts a fresh one (FIX-1788 BR-19b) | CI |
 | BR-23 | Bob never takes it | His copy never changes | CI · VG leg b |
 | BR-24 | Version 2 fails Bob's save check | The take is refused with the reason. His copy is unchanged | CI |
-| BR-25 | Alice fires the worker her template came from | The template and every copy stay as they are. Alice can still remove the template, or publish another worker of hers onto it | CI |
+| BR-25 | Alice fires the worker her template came from | The template and every copy stay as they are. Alice can still remove the template, or publish another worker of hers on its flow onto it | CI |
 
 ## Changing and removing
 
