@@ -512,7 +512,7 @@ if (task?.run) {
 }
 ```
 
-Each row names the run that took it. Under `per-worker` or a shared `key`, several tasks name the same session and each names its own request. A board drained from two conversations still gives each row its own run.
+Each row names the run that took it. Under `per-worker` or a shared `key`, several tasks name the same session and each names its own request. Two rows can share a session, but never a request.
 
 To open the run, read the session first. A seat can hand its tasks to another flow, so the run doesn't always belong to the flow you read the board through. The session knows its owner:
 
