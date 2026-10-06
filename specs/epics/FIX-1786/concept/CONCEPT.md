@@ -29,7 +29,7 @@ This doc describes how Workforce should work, from first principles, in terms a 
 
 **A user is always a person.** The framework doesn't own identity and has no system users. An app can create a "system user" of its own, and to the framework it's just another user.
 
-**Everything is private to one user. The only shared things are shared resources.** Every session belongs to one user, and nobody else can open it. Something is shared only when it's written to a shared resource, such as a channel's conversation or a shared project.
+**A worker's own state and user data are private to one user. Shared resources and org scope are shared, and a flow writes to org scope by its author's choice.** Every session belongs to one user, and nobody else can open it. Something is shared only when it's written to a shared resource, such as a channel's conversation or a shared project.
 
 The engine already works this way. What changes is that Workforce stops describing anything else as shared.
 

@@ -6,7 +6,7 @@
 
 | A team that… | Today | After this epic |
 |---|---|---|
-| **builds an app on Workforce** | Learns hires, mailboxes, rooms, talk sessions, flow instances and owner pins, and three meanings of "shared" | Learns one rule: everything is private to one user, and only shared resources are shared. Then workers, each naming the flow that runs it, coordinators and workstreams |
+| **builds an app on Workforce** | Learns hires, mailboxes, rooms, talk sessions, flow instances and owner pins, and three meanings of "shared" | Learns one rule: a worker's own state and user-scoped data are private to one user, while shared resources and org scope are shared, and a flow writes to org scope by its author's choice. Then workers, each naming the flow that runs it, coordinators and workstreams |
 | **runs an org with more than one user** | A hire locked to the org alone is reachable by every member. Mailbox boards are org rows no session narrows, and a drain runs as whoever triggers it | A worker belongs to one user and acts as them. Shared work enters a roster only through its owner |
 | **wants a worker of their own** | Edits a `WORKER.md` and restarts, or gets an org hire every member can reach | Forks a standard worker, or copies a template from the org's library. The copy is theirs alone |
 | **hands work between workers** | A mailbox's members are fixed when it opens, and workers can't answer each other | A coordinator routes by judgment, best fit, round robin or everyone, to delegates it can add and remove |
@@ -33,7 +33,7 @@ out of it ([D3](DECISIONS.md#d3), [ER-2](BUSINESS-RULES.md#what-a-team-gets-and-
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | Jake's PRD: one rule set, where everything is private to one user and the only shared things are shared resources. The model is the problem, not its docs. Under it sits a hole: an org-locked hire reaches every member |
+| **The real need** | Jake's PRD: one rule set, where a worker's own state and user-scoped data are private to one user, while shared resources and org scope, which a flow writes by its author's choice, are shared (Jake, 2026-10-06). The model is the problem, not its docs. Under it sits a hole: an org-locked hire reaches every member |
 | **Smaller, and rejected** | "The terms are renamed." FIX-1796 alone meets it, and the org-locked hire still reaches everyone. Or "workers are private": FIX-1788 alone, while boards and projects stay org rows any member's session drains |
 | **Bigger, and not this epic's** | Channels · user-to-user communication · transcript resources · files as migrations · long-lived session memory (FIX-1775) · removing flow instances and owner pins from the engine ([FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798), after FIX-1788) |
 | **Not done if** | Every child is Done and the closure check hasn't run · it ran with one user · Bob opens, names or writes any of Alice's workers, sessions, boards or workstream sessions · a task in Alice's chain runs as anyone else · one of Alice's boards claims another's rows · a user changes a standard worker · leg b never made a private project · a record stored before FIX-1790 reads in two orgs · a `MAILBOX.md` loads · Workforce still registers a flow instance or sets an owner pin · a retired term is left in an export or a published page ([ER-12](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) · a bug the closure run found is open |

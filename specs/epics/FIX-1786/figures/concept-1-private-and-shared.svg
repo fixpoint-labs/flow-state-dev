@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 600" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Workers are private; sharing happens only in shared resources. Above the org, the product files: the standard install every user starts with. Inside org acme, a shared area holds a channel whose lines name user and worker, a shared project whose workstreams have one owner each, and the worker library of templates to copy. Below it, Alice&#x27;s private area holds her standard researcher, a private project with workstreams and tasks, a coordinator and an analyst; Bob&#x27;s holds his own standard researcher, a writer he copied, a coordinator and a private project. Alice&#x27;s researcher answers in the channel as Alice; Alice owns a workstream of the shared project; Bob copied the writer from the library by choice.">
+     aria-label="Workers are private; sharing happens in shared resources and org scope. Above the org, the product files: the standard install every user starts with. Inside org acme, a shared area holds a channel whose lines name user and worker, a shared project whose workstreams have one owner each, and the worker library of templates to copy. Below it, Alice&#x27;s private area holds her standard researcher, a private project with workstreams and tasks, a coordinator and an analyst; Bob&#x27;s holds his own standard researcher, a writer he copied, a coordinator and a private project. Alice&#x27;s researcher answers in the channel as Alice; Alice owns a workstream of the shared project; Bob copied the writer from the library by choice.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -27,7 +27,7 @@
     .faint   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
   </style>
   <rect class="bg" x="0" y="0" width="940" height="600"/>
-  <text class="title" x="28" y="34">Workers are private; sharing happens only in shared resources</text>
+  <text class="title" x="28" y="34">Workers are private; sharing happens in shared resources and org scope</text>
   <g id="files">
     <rect class="wall-dz" x="28" y="52" width="884" height="44" rx="8"/>
     <text class="p" x="470" y="79" text-anchor="middle">Product files: the standard install every user starts with</text>
