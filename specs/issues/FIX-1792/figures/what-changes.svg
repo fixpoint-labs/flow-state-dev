@@ -44,7 +44,7 @@
     <text class="t-m" x="510" y="69">workers/devices/WORKER.md · workers/accounts/WORKER.md</text>
     <rect class="n-new" x="494" y="94" width="414" height="58" rx="5"/>
     <text class="t-m" x="510" y="114">workers/help/WORKER.md</text>
-    <text class="t-s" x="510" y="134">flow: coordinator · delegates · routing: best-fit</text>
+    <text class="t-s" x="510" y="134">flow: coordinator · delegates · routing: judgment · rounds: 1</text>
     <rect class="n-new" x="494" y="162" width="200" height="42" rx="5"/>
     <text class="t-h" x="510" y="181">the board</text>
     <text class="t-s" x="510" y="197">each conversation's own</text>

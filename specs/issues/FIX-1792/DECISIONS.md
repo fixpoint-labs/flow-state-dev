@@ -35,7 +35,7 @@ It comes down to boards nobody follows: as workstreams, each lab grows a project
 
 | Tree · coordinator | Board | What it is used for | Becomes |
 |---|---|---|---|
-| kitchen-sink · `support.help` | `escalations` | A specialist files a case that needs a person; nobody works it; the team panel lists it | Conversation board. The specialist's answer carries the case; the coordinator files it, an unassigned row |
+| kitchen-sink · `support.help` | `escalations` | A specialist files a case that needs a person; nobody works it; the team panel lists it | Conversation board. The coordinator runs `routing: judgment`, `rounds: 1`: a specialist's answer ends with an `Escalate:` line, and the coordinator's woken turn files the case, an unassigned row. Cost: one coordinator turn per answered post |
 | `mailbox-boards` hire goal · `ops.desk` | `work` | A coordinator hires a worker and files it a task by name | Conversation board |
 | `mailbox-boards` row goal · `eng.feature` | `triage`, `parked` | One worker files a row and another's board runs it; nobody drains `parked` | Conversation board; `parked` goes |
 | `manager-queue-lab` · `eng.queue` (lab and two refusal trees) | `work` | The manager files a row per desk; each desk's worker takes its own | Conversation board; a row names its delegate |
@@ -49,6 +49,13 @@ It comes down to boards nobody follows: as workstreams, each lab grows a project
 
 Every file, with or without a board, is a row in the checker; [PLAN](PLAN.md#the-files) lists the
 other 18.
+
+**Where a member filed on the board when a post reached it**, its coordinator takes the same
+shape as the help desk: `routing: judgment`, `rounds: 1`, the delegate's answer says what to file,
+and the coordinator's turn that the answer wakes files it (FIX-1791 BR-24). That is
+manager-queue-lab's manager, multi-seat-collab's planner, the row goal's filer, and the DevTeam's
+EM under the feature workstream's lead. Every other board is filed by the app, a test, or the
+coordinator's own turn on the post, and needs nothing.
 
 **What would change my mind:** kitchen-sink's support desk being meant to show one list of cases
 across all of a person's conversations. Then its escalations is a workstream, and kitchen-sink
@@ -111,6 +118,17 @@ converted coordinator's conversation as the user you name, and nothing reads old
   answer carries the case, and the help coordinator files it with `fileTask` and no assignee,
   FIX-1794 BR-6's pending, unassigned row. No delegate-session filing, no second path, and
   FIX-1794 and the epic's D6 stay as merged.
+- **How the coordinator hears the answer needs no change to FIX-1791.** The help coordinator runs
+  `routing: judgment` with `rounds: 1`, so when the post's first round closes its answers wake the
+  coordinator's turn once (FIX-1791 BR-24); a hand-off from that turn is in the last round, and
+  its answer wakes nothing (BR-25). The escalation is in the answer's text, not a field, because
+  FIX-1791 BR-27 ignores fields it doesn't define: each specialist's `WORKER.md` says to end the
+  answer with one line, `Escalate: <the case>`, and the coordinator's instructions say to file
+  that line's case with `fileTask`, no assignee, and to file nothing otherwise. The `escalate`
+  tool goes. The price is one coordinator turn per answered post, beside the turn that routes it.
+- **Kitchen-sink's help desk departs from the key-by-key conversion**: `routing: judgment` and
+  `rounds: 1` where best fit would follow. `fallback:` goes, since judgment doesn't read it; the
+  coordinator's instructions name `support.general` for a post that fits no one.
 - **A converted coordinator keeps its mailbox's id**, `<team>.<name>`, as a worker id; no tree on
   `main` has a worker by that name. Its conversation is found by `findWorkerSession({ worker })`,
   whose key-set match (FIX-1788 S5a) never returns a delegate's or a task's session.
@@ -149,7 +167,9 @@ converted coordinator's conversation as the user you name, and nothing reads old
   found 16 boards and two `flow:` lines naming a kind of the tree's own; D5 applied board by
   board, one workstream; old data left unread; four PRs.
 - **Review round 1** — `escalate` stopped filing from a delegate's session, because FIX-1794
-  refuses that caller: the coordinator files the case (the coordinator's decision, option 1). The
+  refuses that caller: the coordinator files the case (the coordinator's decision, option 1), on
+  `routing: judgment` with `rounds: 1`, keyed on an `Escalate:` line in the answer, so FIX-1791
+  doesn't change. The
   last PR split into refuse and remove. `flows/mailboxes/` gained a load-time refusal. Leg d's old
   store became a pinned fixture. The `--after` gate covers the full removed-export list and only
   the two pinned old files.

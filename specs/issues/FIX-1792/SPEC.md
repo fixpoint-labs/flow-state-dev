@@ -74,12 +74,15 @@ workstream it is, and the old file can't load by accident.
 + # teams/support/workers/help/WORKER.md
 + flow: coordinator
 + delegates: [support.devices, support.accounts, support.fsd, support.general]
-+ routing: best-fit
-+ fallback: support.general
++ routing: judgment
++ rounds: 1
   description: Ask the support team anything.
 ```
 
-A file with no `routing:` line gets `routing: everyone`, which is what its mailbox did. The
+The help desk is the one file that doesn't convert key by key. Its coordinator reads each round of
+answers, so a specialist's answer that ends `Escalate: …` becomes an open case on that
+conversation's board; that costs one coordinator turn per answered post. A file with no
+`routing:` line gets `routing: everyone`, which is what its mailbox did. The
 coordinator keeps the mailbox's id, `support.help`. The full table is the upgrade page in
 [DOCS.md](DOCS.md).
 
@@ -115,7 +118,8 @@ loader and call it a conversion while half the proof spine stops running.
 
 1. **[D1](DECISIONS.md#d1) · 14 of the 15 files with boards keep them on the coordinator's
    conversation; the DevTeam's feature board becomes a workstream, with `release` beside it.** In
-   kitchen-sink, a specialist's answer carries a case and the coordinator files it, unassigned.
+   kitchen-sink, a specialist's answer carries a case and the coordinator files it, unassigned, in
+   one more turn per answered post.
    The one to weigh. If wrong: work people follow is hidden in one conversation, or a fixture
    grows a project it never uses.
 2. **[D2](DECISIONS.md#d2) · Old mailbox data stays in the store, unread; no pending task carries

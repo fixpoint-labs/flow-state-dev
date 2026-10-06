@@ -18,10 +18,10 @@ classification changes.
 | S3 | `workforce` · the pre-rename module | The `CHANNEL.md` and `channels/` refusals name the `WORKER.md` conversion; the rename guard script's allow list follows | BR-6 |
 | S4 | goals · P1's files | The 10 board-less files in [the files](#the-files) marked P1, with their hosts and goals, on the coordinator flow | BR-7–BR-10 |
 | S5 | goals, Shift Manager test labs · P2's files | The 13 board files outside kitchen-sink and the DevTeam, and the 2 sibling coordinators marked P2. Each board's work goes on the conversation's board through FIX-1794's filing; desks become delegates | BR-13 |
-| S6 | kitchen-sink | `support.help` is a coordinator. `escalate` stops filing: the specialist's answer to the post carries the case, and when it lands the help coordinator files it on its own conversation's board with FIX-1794's `fileTask` and no assignee (FIX-1794 BR-6). No delegate session files and no second filing path is added. The mailbox notify, wiring and controls go or move to the coordinator; panels find the conversation by worker id (BR-7a) and read its board | BR-7a BR-14 BR-25 |
+| S6 | kitchen-sink | `support.help` is a coordinator on `routing: judgment`, `rounds: 1`, with no `fallback:`. The `escalate` tool goes: each specialist's `WORKER.md` ends an escalating answer with `Escalate: <the case>`, and the coordinator's instructions file that case on its own conversation's board with FIX-1794's `fileTask` and no assignee (FIX-1794 BR-6), in the turn the closed round wakes (FIX-1791 BR-24). No delegate session files and no second filing path is added; the `no-filing` control takes `fileTask` from the coordinator's turn. The mailbox notify, wiring and controls go or move to the coordinator; panels find the conversation by worker id (BR-7a) and read its board | BR-7a BR-14 BR-25 |
 | S7 | `shift-manager` · DevTeam | `eng.feature` and `ops.release` lead workstreams storefront's seed opens as the lab's member; `triage`, `oncall` are coordinators; the host, notify, board, `em` and `coder` move off mailboxes; the chief of staff loses `post-to-mailbox` and `setWorkstreams` | BR-15–BR-17 |
 | S8 | `shift-manager` · the app | Reads workstream entries and conversation boards, never mailboxes or claims; renders `coordinator-route` | BR-17 BR-18 |
-| S9 | `workforce`, `ui`, `devtool`, `react`, `contracts` · **removals** | The mailbox flow, binder, boards and `mailboxTaskLists`, route record, best-fit wrapper, wake, post lines (unless FIX-1791 took them), `post-to-mailbox`; the hire's `mailboxBoards` and `agent`'s mailbox `taskLists`; the inventory's mailbox and membership rows; discovery's mailboxes domain; their exports and tests. The checker's `REMOVED_EXPORTS` is the list ([poc/inventory](poc/inventory/README.md): 33 files, about 11,700 lines) | BR-18 BR-19 BR-22 BR-23 |
+| S9 | `workforce`, `ui`, `devtool`, `react`, `contracts` · **removals** | The mailbox flow, binder, boards and `mailboxTaskLists`, route record, best-fit wrapper, wake, post lines (unless FIX-1791 took them), `post-to-mailbox`; the hire's `mailboxBoards` and `agent`'s mailbox `taskLists`; the inventory's mailbox and membership rows; discovery's `mailboxes` domain: its entry in `MANIFEST_DOMAINS` (`contracts`), the workforce's mailboxes manifest source, and the domain in `discover`'s description (`core`), so the pinned list is `seats`, `skills`, `resources` (FIX-1796 renames `seats`); their exports and tests. The checker's `REMOVED_EXPORTS` is the list ([poc/inventory](poc/inventory/README.md): 29 files, about 11,700 lines) | BR-5a BR-18 BR-19 BR-22 BR-23 |
 | S10 | `workforce` · projects · **removals** | Claims stop being declared (rows kept); a project's `workstreams` list, `setWorkstreams`, `projectWritesMailboxInventory` and `projectWorkspace`'s claim path go; a write carrying `workstreams` is refused by name | BR-16 BR-20 BR-21 |
 | S11 | goals | The goal check folds in the pre-rename goal and its two old files move under it unchanged (P4a). Leg d's old store is a checked-in SQLite file, generated once by a committed script against the commit P4a branches from, with that SHA recorded beside it. [The goal table](#goals) re-runs in P4b; one goal retires there, on [its condition](#at-implement-time) | BR-24 · goal |
 | S12 | Docs | [DOCS.md](DOCS.md): the upgrade page in P4a, since every refusal links it; the rest in P4b. The READMEs it names; a `minor` changeset for `workforce` | — |
@@ -90,9 +90,9 @@ a verdict line; a REWRITE states its new outcome in `goal.md` and logs the old r
 | V2 | S2 | BR-4; no committed `workforce.gen.ts` renders `mailboxKinds` |
 | V3 | S3 | BR-6 names `WORKER.md`, never `MAILBOX.md` |
 | V4 | S4 | P1's goals PASS; BR-8, BR-9, BR-10 through them |
-| V5 | S5 S6 | BR-13; BR-14 with two users and two tabs: the case's row is filed in the help conversation's own request, by the coordinator, unassigned and pending, and the delegate's session made no filing call; BR-7a; P2's goals and kitchen-sink's suite PASS. **D1** |
+| V5 | S5 S6 | BR-13; BR-14 with two users and two tabs: an answer with an `Escalate:` line wakes the coordinator's turn once and that turn files one row, unassigned and pending; an answer without one files nothing; the delegate's session made no filing call; one coordinator turn per answered post, no more; BR-7a; P2's goals and kitchen-sink's suite PASS. **D1** |
 | V6 | S7 S10 | BR-15–BR-17, BR-21; no claim read anywhere (grep plus a test that deletes the claim rows and still runs); P3's goals PASS |
-| V7 | S9 | BR-18, BR-19, BR-22 on leg d's pinned old store, rows compared byte for byte. **D2** |
+| V7 | S9 | BR-18, BR-19, BR-22 on leg d's pinned old store, rows compared byte for byte; BR-5a. **D2** |
 | V8 | S9 | `check.mjs --after` PASSES on P4b, after it FAILED on `main` (BR-23). `--control` PASSES: the gate refuses a removed export it once missed and a fixture left at its old path |
 | V9 | S6 S7 | BR-25: kitchen-sink's named-org test and the DevTeam's legacy-org test PASS |
 | VG | S11 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/coordinators/refuses-a-mailbox-file-by-name/run.mts` legs a to d PASS on P4a, after FAILING under `GOAL_CONTROL=silent-skip` and on today's `main`. On P4b, every leg PASSES with leg e, and every CONVERT and REWRITE goal has a PASS line on that commit |
@@ -153,14 +153,17 @@ kind of the tree's own, and classified 196 files, 49 goal units and the removed 
 
 - Take FIX-1791's shipped keys, FIX-1794's filing action names and FIX-1793's workstream action. If
   any differ from this plan, use theirs and update the upgrade page.
-- How the case rides the specialist's answer to the landing step is yours. FIX-1791's answer
-  action ignores fields it doesn't define (its BR-27). If the case can't reach a step that runs in
-  the help conversation's own request, raise it on FIX-1791. Never let a specialist file.
+- The escalation rides the answer's text, never a field (FIX-1791 BR-27 ignores fields it doesn't
+  define). The help coordinator, on `routing: judgment` and `rounds: 1`, reads the answers in the
+  turn the closed round wakes (FIX-1791 BR-24) and files on an `Escalate:` line. The exact line
+  wording is yours; the specialists' `WORKER.md` files and the coordinator's instructions must
+  agree on it. Never let a specialist file.
 - Only a coordinator conversation files (FIX-1794 S4). A task session that files is refused until
-  FIX-1802 ships the split. Where a lab's non-coordinator worker filed on a mailbox board
-  (manager-queue-lab's manager, multi-seat-collab's planner, the DevTeam's `em`, the row goal's
-  filer), make it the coordinator or have the coordinator file for it. A leg that needs a delegate
-  to file waits for FIX-1802; it does not leave the goal.
+  FIX-1802 ships the split. Where a member filed on a mailbox board when a post reached it
+  (manager-queue-lab's manager, multi-seat-collab's planner, the DevTeam's EM, the row goal's
+  filer), give its coordinator the help desk's shape: judgment, `rounds: 1`, the delegate's answer
+  says what to file, the woken turn files it. A leg that needs a delegate's own task session to
+  file waits for FIX-1802; it does not leave the goal.
 - Before retiring `a-mailbox-holds-the-work-a-seat-drains` in P4b: FIX-1794's goal check and
   FIX-1791's must have PASS verdicts on `main`. Name each leg that still has a subject against a
   passing leg: V8's subset drain (FIX-1794 leg c), V14's writer half (FIX-1791's answers), V2's

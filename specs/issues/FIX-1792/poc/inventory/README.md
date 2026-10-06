@@ -29,19 +29,21 @@ The inventory scan matches these names as well as the surface patterns.
 
 `--after` is the implementation's check. The only `MAILBOX.md` files are `AFTER_FIXTURES`: the
 pre-rename goal's two old files, at their exact paths under the pinned goal check. Nothing
-outside the refusal's own files names a `REMOVED_EXPORTS` name.
+outside the refusal's own files names a `REMOVED_EXPORTS` name, and `MANIFEST_DOMAINS` no longer
+lists `mailboxes`.
 
 `--control` plants an unclassified source file that imports `openMailboxes`, a goal that says
 "mailbox" only in prose, and an unlisted mailbox-named export. The census must fail on all three.
 Then `--after` must fail on a plant that names `MAILBOX_ROUTE_COMPONENT`, `emitMailboxPostLine`,
-`MAILBOX_KIND` and `mailboxKinds`, and on the two old fixtures still at their pre-move paths. The
+`MAILBOX_KIND` and `mailboxKinds`, on the two old fixtures still at their pre-move paths, and on
+`MANIFEST_DOMAINS` as it is today. The
 plants are removed afterwards. The listing includes untracked files so the plants are seen without
 staging them.
 
 ## What was observed
 
 On `cad4e2780` (`main`, 2026-10-06): **PASS**. Re-run after review round 1, on `main` at
-`ce06cb5c7` merged into the spec branch: **PASS**, **CONTROL PASS**, `--after` **FAIL** (172).
+`ce06cb5c7` merged into the spec branch: **PASS**, **CONTROL PASS**, `--after` **FAIL** (173).
 
 - **33** `MAILBOX.md` files, **15** with `boards:`, **16** boards (one file declares two),
   **3** with `boardActions:`, **0** with `mintFor:`, **2** with `flow:` (both `digest`, a kind of
@@ -50,16 +52,18 @@ On `cad4e2780` (`main`, 2026-10-06): **PASS**. Re-run after review round 1, on `
 - Targets: **14** coordinators whose board becomes the conversation's own, **2** that lead a
   workstream (the DevTeam's `feature` and `release`), **14** coordinators with no board, **2** kept
   as old files for the refusal goal check, **1** removed with the legs it served.
-- **196** files outside `goals/` name the surface: 33 removed whole, 96 edited, 49 converted,
+- **196** files outside `goals/` name the surface: 34 removed whole, 96 edited, 48 converted,
   5 carry a refusal, 8 are FIX-1793's, 4 are FIX-1796's, 1 unrelated. The whole-file removals are
-  about 4,800 source lines, 6,900 test lines and 1,200 lines of docs and figures. Round 1 added
+  about 5,000 source lines, 6,900 test lines and 1,200 lines of docs and figures. Kitchen-sink's
+  `escalate` tool is one of them: an `Escalate:` line in the answer replaces it. Round 1 added
   seven: matching the full export list found files the surface patterns had missed.
 - **Exports:** 97 names removed, 27 kept with a reason; every export of a removed file is one
   or the other.
 - **49** goal units: 29 convert, 11 rewrite an outcome the epic changes, 6 edit a field or a word,
   1 is FIX-1793's, 1 retires and 1 folds into this issue's goal check.
-- **The control:** CONTROL PASS, all five cases caught, and nothing left behind.
-- **`--after` on today's `main`:** FAIL, 172 problems (130 before round 1). That is the red
+- **The control:** CONTROL PASS, all six cases caught, and nothing left behind.
+- **`--after` on today's `main`:** FAIL, 173 problems (130 before round 1), one of them
+  discovery's pinned domain list still naming `mailboxes`. That is the red
   state; it shows the end-state check reaches the code it covers.
 
 The census found two things no hand count had: the board count is 16, not 15, and the two `flow:`

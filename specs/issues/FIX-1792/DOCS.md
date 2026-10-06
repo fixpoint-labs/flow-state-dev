@@ -145,7 +145,7 @@ a mailbox" becomes "who a coordinator hands work to".
 | `workforce/workforce-overview.svg` | The `MAILBOX.md` file in the tree goes |
 | `shift-manager/overview.md` | A workstream is a project's workstream, not a mailbox |
 | `devtool/overview.md` | The registered-mailboxes row goes |
-| `orchestration/discovery.md` | The inventory's `mailboxes` key leaves the example |
+| `orchestration/discovery.md` | The inventory's `mailboxes` key leaves the example; the `discover: [seats, mailboxes]` example and the domain list drop `mailboxes` |
 | `client/react.md` | The example's `flowKind: "mailbox"` becomes `"coordinator"` |
 
 ## UPDATE · package READMEs

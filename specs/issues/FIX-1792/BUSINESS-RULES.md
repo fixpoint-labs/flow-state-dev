@@ -17,6 +17,7 @@ partition only that conversation reaches (epic [D6](../../epics/FIX-1786/DECISIO
 | BR-4 | `fsdev gen` runs on a workforce root that holds `flows/mailboxes/` | Refused by name, whatever the folder holds, saying a flow that runs workers belongs in `flows/workers/` on the worker-flow list. The generated module has no `mailboxKinds`. Unlike BR-3, the folder is a code slot: every file in it was a kind codegen registered, so the folder itself is the declaration | CI · V2 |
 | BR-4a | An app loads a workforce root that holds `flows/mailboxes/`, with or without a fresh generated module | The load stops and registers nothing, naming the folder and where its flows go, as BR-4. An upgraded app that never re-runs `fsdev gen`, or wires flows by hand, is still refused | CI · VG leg a |
 | BR-5 | A `WORKER.md` declares `members:`, `boards:`, `boardActions:` or `mintFor:` | Refused, naming each key and what replaced it: `delegates:`, the conversation's board, nothing (rooms are gone) | CI · VG leg b |
+| BR-5a | A `WORKER.md`'s `discover:`, or a `discover` call, names the `mailboxes` domain | Refused as a domain that isn't one, as any unknown domain is today. Discovery's domains no longer include `mailboxes`; who a coordinator hands work to is its delegate read | CI |
 | BR-6 | A team still holds a `channels/` folder or a `CHANNEL.md` | Refused by name as today; the message names the `WORKER.md` conversion, never `MAILBOX.md` | CI · VG leg a |
 
 ## Converting a file
@@ -36,7 +37,7 @@ partition only that conversation reaches (epic [D6](../../epics/FIX-1786/DECISIO
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-13 | Work used to go on a converted file's board | It goes on the coordinator's conversation's board, at its user's scope, never an org row ([D1](DECISIONS.md#d1)) | Each converted goal's re-run |
-| BR-14 | A kitchen-sink specialist escalates a case | Its answer to the post carries the case. When the answer lands, the help coordinator files it on its own conversation's board with FIX-1794's `fileTask` and no assignee: one pending, unassigned row (FIX-1794 BR-6). No delegate's session files, and there is no other filing path. The team panel lists the case in every tab on that conversation; another user's conversation lists nothing | `lists-a-filed-case-without-a-reload` re-run · CI with two users · V5 |
+| BR-14 | A kitchen-sink specialist escalates a case | Its answer to the post ends with an `Escalate:` line naming the case. The post's round closes and wakes the help coordinator's turn once (`routing: judgment`, `rounds: 1`, FIX-1791 BR-24). That turn files the case on its own conversation's board with FIX-1794's `fileTask` and no assignee: one pending, unassigned row (FIX-1794 BR-6). An answer with no such line files nothing. No delegate's session files, and there is no other filing path. The team panel lists the case in every tab on that conversation; another user's conversation lists nothing | `lists-a-filed-case-without-a-reload` re-run · CI with two users · V5 |
 | BR-15 | The DevTeam lab starts | The storefront project's two workstreams, led by `eng.feature` and `ops.release`, are opened by the lab's member through the project's own action, not written as rows | CI |
 | BR-16 | A coding run works for the feature workstream | It finds the project through the workstream; no claim is read or written | `it-codes-in-the-projects-repository` re-run |
 | BR-17 | Another member of the DevTeam org reads the feature workstream | Sees its entry, not its tasks | `it-keeps-its-rows-on-the-mailboxes-board`, rewritten |
@@ -49,7 +50,7 @@ partition only that conversation reaches (epic [D6](../../epics/FIX-1786/DECISIO
 | BR-19 | A store holds org-scoped mailbox board rows, some pending | Left as they are, byte for byte. No run claims them and no conversation's board lists them ([D2](DECISIONS.md#d2)) | CI · VG leg d |
 | BR-20 | A store holds claim rows, or project rows that list mailboxes | Left as they are; nothing reads the list or the claims | CI |
 | BR-21 | A create or update of a project carries `workstreams` | Refused, naming the key and the workstream action that replaced it | CI |
-| BR-22 | A store holds the inventory's mailbox and membership rows | Left as they are; the inventory read lists none | CI |
+| BR-22 | A store holds the inventory's mailbox and membership rows | Left as they are; the inventory read lists none, and discovery has no `mailboxes` domain to list them under | CI · `check.mjs --after` |
 
 ## The repository
 

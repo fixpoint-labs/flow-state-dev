@@ -33,8 +33,8 @@
  * on a plant naming exports the first `--after` missed, and on the two old
  * refusal fixtures still at their pre-move paths. It removes the plants.
  * `--after` asserts the end state: the only `MAILBOX.md` files are
- * AFTER_FIXTURES, under the pinned goal check, and no file outside
- * REFUSAL_HOMES names a REMOVED_EXPORTS name.
+ * AFTER_FIXTURES, under the pinned goal check, no file outside REFUSAL_HOMES
+ * names a REMOVED_EXPORTS name, and MANIFEST_DOMAINS has no `mailboxes`.
  *
  * Out of scope on purpose: the word "mailbox" in package source and docs that
  * name no removed surface. That sweep is FIX-1796's.
@@ -54,7 +54,7 @@ const SURFACE = new RegExp(
     "workstream-claims", "WORKSTREAM_CLAIMS", "[wW]orkstreamClaim", "setWorkstreams", "projectWritesMailboxInventory",
     "INVENTORY_REGISTER_MAILBOX", "INVENTORY_RETIRE_MAILBOXES", "inventoryMailbox", "MailboxPostLine", "MAILBOX_POST",
     "MAILBOX_SEAT_POST", "MailboxPostRefused", "mailboxSessionState", "/mailboxes/", "[\"'`]mailbox[\"'`]",
-    "\\.mailboxes\\b", "\\bmailboxes:", "inventory/mailboxes", "inventory/members",
+    "\\.mailboxes\\b", "\\bmailboxes:", "inventory/mailboxes", "inventory/members", "[\"'`]mailboxes[\"'`]",
   ].join("|"),
 );
 
@@ -131,6 +131,9 @@ const KEPT_EXPORTS = {
   inventorySeatsRegisteredSchema: "the seats inventory stays",
   inventoryWriterActions: "the seats inventory stays",
 };
+
+/** Where discovery's pinned domain list lives; `--after` requires it without `mailboxes` (S9). */
+const MANIFEST_DOMAINS_FILE = "packages/contracts/src/types/manifest.ts";
 
 /** A name that marks an export as part of the removed surface, wherever it is declared. */
 const SURFACE_NAME = /[Mm]ailbox|MAILBOX|[Ww]orkstreamClaim|WORKSTREAM_CLAIMS|[Ss]etWorkstreams/;
@@ -321,18 +324,19 @@ const FILE_CLASS = {
   "apps/kitchen-sink/test/picked-session-panel.test.tsx": "C · S6 · tests",
   "apps/kitchen-sink/test/support-desk.test.ts": "C · S6 · the unattended-board warning goes",
   "apps/kitchen-sink/test/workforce-shell.test.ts": "C · S6 · tests",
-  "apps/kitchen-sink/workforce/blocks/escalate.ts": "C · S6 · stops filing; the case rides the answer and the coordinator files it",
+  "apps/kitchen-sink/workforce/blocks/escalate.ts": "R · S6 · the tool goes; an Escalate: line in the answer replaces it",
   "apps/kitchen-sink/workforce/hire.ts": "C · S6 · mailbox binder calls go",
   "apps/kitchen-sink/workforce/mailbox-notify.ts": "R · S6 · the mailbox's notify block",
-  "apps/kitchen-sink/workforce/teams/support/workers/accounts/WORKER.md": "C · S6 · post-to-mailbox leaves its tools",
-  "apps/kitchen-sink/workforce/teams/support/workers/devices/WORKER.md": "C · S6 · post-to-mailbox leaves its tools",
-  "apps/kitchen-sink/workforce/teams/support/workers/fsd/WORKER.md": "C · S6 · post-to-mailbox leaves its tools",
-  "apps/kitchen-sink/workforce/teams/support/workers/general/WORKER.md": "C · S6 · post-to-mailbox leaves its tools",
+  "apps/kitchen-sink/workforce/teams/support/workers/accounts/WORKER.md": "C · S6 · post-to-mailbox and escalate leave its tools; an escalating answer ends with an Escalate: line",
+  "apps/kitchen-sink/workforce/teams/support/workers/devices/WORKER.md": "C · S6 · post-to-mailbox and escalate leave its tools; an escalating answer ends with an Escalate: line",
+  "apps/kitchen-sink/workforce/teams/support/workers/fsd/WORKER.md": "C · S6 · post-to-mailbox and escalate leave its tools; an escalating answer ends with an Escalate: line",
+  "apps/kitchen-sink/workforce/teams/support/workers/general/WORKER.md": "C · S6 · post-to-mailbox and escalate leave its tools; an escalating answer ends with an Escalate: line",
   "apps/kitchen-sink/workforce/workforce.gen.ts": "C · S6 · regenerated with no mailboxKinds",
   "docs/architecture/resource-collections.md": "E · S12 · mailboxTaskLists as the example",
   "docs/atlas/workforce.html": "W · — · the internal atlas; FIX-1796's sweep",
   "packages/cli/README.md": "E · S12 · fsdev gen's flows/mailboxes slot",
   "packages/contracts/src/types/manifest.ts": "E · S9 · MailboxManifest named in the header",
+  "packages/core/src/manifest/discovery-tools.ts": "E · S9 · discover's description drops the mailboxes domain",
   "packages/core/test/manifest-discovery.test.ts": "E · S9 · a mailboxes source as an out-of-scope example",
   "packages/devtool/src/react/components/workspace/inventory-view.tsx": "E · S9 · mailbox and membership rows go",
   "packages/devtool/src/react/lib/inventory.ts": "E · S9 · mailbox and membership rows go",
@@ -490,9 +494,9 @@ const GOALS = {
   "goals/devtool-workforce-visibility/works-a-task-from-its-row": "CONVERT · the task is on a conversation's board",
   "goals/hire-plane/discover-survives-an-unaddressable-row": "EDIT · a roster literal's mailboxes field",
   "goals/kitchen-sink-talk/a-person-talks-to-a-seat-a-mailbox-and-back": "CONVERT · the help coordinator",
-  "goals/kitchen-sink-talk/a-post-runs-each-member-agent-once": "CONVERT · best fit runs one delegate",
+  "goals/kitchen-sink-talk/a-post-runs-each-member-agent-once": "CONVERT · the coordinator's judgment hands each post to one delegate",
   "goals/kitchen-sink-talk/agent-replies-in-the-mailbox": "CONVERT · the delegate's answer lands in the conversation",
-  "goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it": "CONVERT · an escalation is a row on the conversation's board",
+  "goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it": "CONVERT · an Escalate: line becomes a row the coordinator files on its board",
   "goals/kitchen-sink-talk/keeps-both-sides-across-a-reload": "CONVERT · the help coordinator",
   "goals/kitchen-sink-talk/lists-a-filed-case-without-a-reload": "CONVERT · the conversation's board, in every tab on it",
   "goals/kitchen-sink-talk/shows-the-reply-without-a-reload": "CONVERT · the help coordinator",
@@ -614,6 +618,10 @@ function run(mode) {
     if (left.length > 0) problems.push(`still a MAILBOX.md: ${left.join(", ")}`);
     for (const f of AFTER_FIXTURES) if (!mailboxes.includes(f)) problems.push(`refusal fixture missing: ${f}`);
     for (const f of afterHits) problems.push(`names a removed export: ${f}`);
+    // S9: discovery's `mailboxes` domain leaves the pinned list (a value, not an export).
+    const domains = /MANIFEST_DOMAINS\s*=\s*\[([^\]]*)\]/.exec(read(MANIFEST_DOMAINS_FILE) ?? "");
+    if (!domains) problems.push(`MANIFEST_DOMAINS not found in ${MANIFEST_DOMAINS_FILE}`);
+    else if (/["'`]mailboxes["'`]/.test(domains[1])) problems.push(`MANIFEST_DOMAINS still lists mailboxes: ${MANIFEST_DOMAINS_FILE}`);
   } else {
     for (const [k, v] of Object.entries(EXPECT)) if (census[k] !== v) problems.push(`census ${k}: want ${v}, got ${census[k]}`);
     problems.push(...exportProblems(files));
@@ -657,6 +665,7 @@ if (MODE === "control") {
     "census · unlisted export": has(census, "mailboxControlPlant"),
     "after · newly covered exports": has(after, "__fix1792_after__.ts"),
     "after · fixtures at their old paths": oldFixtures.length === 2 && oldFixtures.every((f) => has(after, f)),
+    "after · the mailboxes discovery domain": has(after, "MANIFEST_DOMAINS still lists mailboxes"),
   };
   for (const [k, v] of Object.entries(checks)) console.log(`${v ? "caught" : "MISSED"} · ${k}`);
   const ok = Object.values(checks).every(Boolean);
