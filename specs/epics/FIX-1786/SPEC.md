@@ -74,7 +74,7 @@ blocked by FIX-1787 ([ER-23](BUSINESS-RULES.md#how-the-set-is-run)).
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | [FIX-1787](https://linear.app/fixpoint-labs/issue/FIX-1787) · inventory | A merge, close or untouched call for every open PR and active issue in the areas the refactor changes | The refactor starts from its result. Route: inventory, no spec, user-approved outside this gate | In Review · posted 2026-10-06 [on FIX-1786](https://linear.app/fixpoint-labs/issue/FIX-1786#comment-9e837aa5): 38 items, 13 merge first, 13 close, 12 untouched; its two owner calls answered 2026-10-06 ([Q2](DECISIONS.md#q2), [Q3](DECISIONS.md#q3)) |
-| [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789) · worker contract | Registered worker flows, the private-state rule, a standard-only flag | A worker's configuration must name a flow that keeps its state private | Backlog · spec route · its spec settles [Q1](DECISIONS.md#q1)'s shape on a POC of both |
+| [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789) · worker contract | Registered worker flows, the private-state rule, a standard-only flag | A worker's configuration must name a flow that keeps its state private | Backlog · spec route · [Q1](DECISIONS.md#q1)'s shape is chosen at its spec gate on a POC of both, then recorded in the epic |
 | [FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790) · user data per org | User-scoped data kept per (user, org), for every flow; records stored before moved to one org or refused | Without it a user's private workers show in every org they belong to | Backlog · spec route |
 | [FIX-1788](https://linear.app/fixpoint-labs/issue/FIX-1788) · workers as resources | A worker as a user-scoped resource, run by the singleton flow it names; standard workers projected from files; fork; a session link callers can't seed; instances and pins deprecated | The spine: privacy by construction | Backlog · spec route |
 | [FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791) · coordinator flow | Delegates in session state, four routing policies, one answer per delegate, a routing record | Replaces the mailbox with a worker, and fixes its fixed membership | Backlog · spec route · carries FIX-1774's dogfood legs and *not done if* list |
@@ -136,9 +136,11 @@ resources. If wrong: we rename the parts while a hire still reaches every member
    If wrong: a refactor that rebuilds under in-flight work, or one nobody needed this year.
 
 **Answered by Jake, 2026-10-06.** [Q1](DECISIONS.md#q1) · where an author says a flow runs
-workers: FIX-1789's spec settles it on a POC that builds both a list the installation keeps and a
-`defineWorkerFlow()` wrapper; Jake leans to the wrapper. [Q2](DECISIONS.md#q2) · private projects
-are in and FIX-1763's "projects stay org-level" is lifted; FIX-1762's stack merged first.
+workers: chosen at FIX-1789's spec gate on a POC that builds both a list the installation keeps
+and a `defineWorkerFlow()` wrapper, then recorded in the epic before FIX-1788 or FIX-1791 names
+one; Jake leans to the wrapper. [Q2](DECISIONS.md#q2) · private projects are in and FIX-1763's
+"projects stay org-level" is lifted; FIX-1762's stack merged first. Whether the shared half stays
+in the MVP is asked at FIX-1793's spec gate.
 [Q3](DECISIONS.md#q3) · FIX-1774 and FIX-1777 are closed into FIX-1791 and FIX-1794. Engineering calls I
 made as EM, for the record: [D2](DECISIONS.md#d2) to [D5](DECISIONS.md#d5). Rules:
 [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).

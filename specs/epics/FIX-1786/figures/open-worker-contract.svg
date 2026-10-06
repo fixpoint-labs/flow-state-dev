@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Q1, settled in FIX-1789&#x27;s spec on a POC that builds both: where does an author say this flow runs workers? Jake leans to a defineWorkerFlow wrapper; also built, a list the installation keeps. His reason, the first row, contract integrity: the wrapper checks every requirement where the flow is written; the list checks them apart from the flow, when the installation registers it. Second row, authorities over the rule: the wrapper adds a marker worker-config.ts rejects today, a second authority beside the schema; the list keeps the schema as the one authority. Third row, existing flows: the built-in agent flow migrates under the wrapper, a new public export, and is unchanged under the list. Settled by: FIX-1789&#x27;s spec-poc builds both side by side, and the call is made at its spec gate. The lean flips if the list catches every requirement as surely, or the wrapper only duplicates the schema&#x27;s rule.">
+     aria-label="Q1, chosen at FIX-1789&#x27;s spec gate on a POC that builds both, and recorded in the epic: where does an author say this flow runs workers? Jake leans to a defineWorkerFlow wrapper; also built, a list the installation keeps. His reason, the first row, contract integrity: the wrapper checks every requirement where the flow is written; the list checks them apart from the flow, when the installation registers it. Second row, authorities over the rule: the wrapper adds a marker worker-config.ts rejects today, a second authority beside the schema; the list keeps the schema as the one authority. Third row, existing flows: the built-in agent flow migrates under the wrapper, a new public export, and is unchanged under the list. Settled by: FIX-1789&#x27;s spec-poc builds both side by side; the call is made at its spec gate and recorded in the epic before FIX-1788 or FIX-1791 names a shape. The lean flips if the list catches every requirement as surely, or the wrapper only duplicates the schema&#x27;s rule.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -35,7 +35,7 @@
   <rect class="bg" x="0" y="0" width="940" height="418"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q1 · SETTLED IN FIX-1789&#x27;S SPEC, ON A POC OF BOTH · THE CALL</text>
+    <text class="t-lbl" x="32" y="32">Q1 · CHOSEN AT FIX-1789&#x27;S SPEC GATE, ON A POC OF BOTH · THE CALL</text>
     <text class="t-q" x="32" y="52">Where does an author say “this flow runs workers”?</text>
   </g>
   <g id="options">
@@ -84,7 +84,7 @@
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">SETTLED BY</text>
     <text class="t-b" x="32" y="369">FIX-1789&#x27;s spec-poc builds both, side by side</text>
-    <text class="t-s" x="32" y="387">the call is made on its evidence at that spec gate</text>
+    <text class="t-s" x="32" y="387">chosen at that gate, recorded in the epic before others use it</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>

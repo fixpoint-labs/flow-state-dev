@@ -10,7 +10,7 @@
 > **Where this differs from the epic, the epic binds.** This is the PRD as Jake wrote it; the
 > epic's [decisions](../DECISIONS.md) and [rules](../BUSINESS-RULES.md) settle what it leaves
 > open. One coordinator flow with a routing setting ([D2](../DECISIONS.md#d2)). Where an author
-> declares a worker flow is [Q1](../DECISIONS.md#q1), which FIX-1789's spec settles on a POC of both shapes. A workstream is a project entry plus its
+> declares a worker flow is [Q1](../DECISIONS.md#q1), whose shape is chosen at FIX-1789's spec gate on a POC of both and recorded in the epic. A workstream is a project entry plus its
 > lead's session; `MAILBOX.md` becomes `WORKER.md`; no transcript resource is built, so the
 > `transcript:` key below isn't either ([decided in review](../DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)).
 > The boards are per [D5](../DECISIONS.md#d5) and [ER-9](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt). A worker's
