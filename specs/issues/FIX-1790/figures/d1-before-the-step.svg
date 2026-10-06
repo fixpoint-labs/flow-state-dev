@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, what a person sees between the upgrade and the operator's copy step. Chosen: their old data is read by nothing, and they start empty. Instead of: refusing them with migration-required. It comes down to the first row: a person who worked in two orgs works in both under the chosen option and starts empty, while a refusal blocks them on every flow until someone resolves them by hand. The price is the second row: an operator who skips the step sees no error and people find their data looks empty, where a refusal is loud. The third row: the chosen option adds no read per request, because the old cell is unreachable, while a refusal reads the old cell on every run, which is a look across orgs. Locks in: an upgrade step for every deployment with saved user data, run with writers stopped. Flips if: a deployment cannot stop its writers."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, what a user sees between the upgrade and the operator's copy step. Chosen: their old data is read by nothing, and they start empty. Instead of: refusing them with migration-required. It comes down to the first row: a user who worked in two orgs works in both under the chosen option and starts empty, while a refusal blocks them on every flow until someone resolves them by hand. The price is the second row: an operator who skips the step sees no error and users find their data looks empty, where a refusal is loud. The third row: the chosen option adds no read per request, because the old cell is unreachable, while a refusal reads the old cell on every run, which is a look across orgs. Locks in: an upgrade step for every deployment with saved user data, run with writers stopped. Flips if: a deployment cannot stop its writers."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -35,7 +35,7 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">What does a person see between the upgrade and the operator's copy step?</text>
+    <text class="t-q" x="32" y="52">What does a user see between the upgrade and the operator's copy step?</text>
   </g>
 
   <g id="options">
@@ -50,7 +50,7 @@
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">A PERSON WHO</text>
+    <text class="t-lbl" x="32" y="156">A USER WHO</text>
     <text class="t-lbl" x="32" y="169">WORKED IN TWO ORGS</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
@@ -66,7 +66,7 @@
     <text class="t-lbl" x="32" y="229">SKIPS THE STEP</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">No error; data looks empty</text>
-    <text class="t-s" x="248" y="241">people notice before the operator does</text>
+    <text class="t-s" x="248" y="241">users notice before the operator does</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Loud</text>
     <text class="t-s" x="612" y="241">every affected request says why</text>

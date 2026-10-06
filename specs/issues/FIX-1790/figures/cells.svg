@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two panels with the same three callers: the app's chat flow for Alice in Acme, a hired worker for Alice in Acme, and the chat flow for Alice in Globex. Today both chat runs store into one cell named alice that follows her between orgs, so Globex reads what she saved in Acme, and the worker stores apart in its own cell for alice in acme. After, every flow stores into a cell for its person and org, drawn inside the Acme and Globex boxes: the chat flow and the worker share alice in acme, flow-isolated data adds the flow to that cell, and the Globex run has alice in globex. The old cell alice sits below a fence that no run or view crosses, and only the operator step copies it, into the one org its sessions name.">
+     aria-label="Two panels with the same three callers: the app's chat flow for Alice in Acme, a hired worker for Alice in Acme, and the chat flow for Alice in Globex. Today both chat runs store into one cell named alice that follows her between orgs, so Globex reads what she saved in Acme, and the worker stores apart in its own cell for alice in acme. After, every flow stores into a cell for its user and org, drawn inside the Acme and Globex boxes: the chat flow and the worker share alice in acme, flow-isolated data adds the flow to that cell, and the Globex run has alice in globex. The old cell alice sits below a fence that no run or view crosses, and only the operator step copies it, into the one org its sessions name.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -35,7 +35,7 @@
   <path class="split" d="M469 16 L469 314"/>
 
   <g id="today">
-    <text class="t-lbl" x="28" y="36">TODAY · A PERSON'S DATA FOLLOWS THEM INTO EVERY ORG</text>
+    <text class="t-lbl" x="28" y="36">TODAY · A USER'S DATA FOLLOWS THEM INTO EVERY ORG</text>
     <rect class="app" x="28" y="56" width="132" height="46" rx="4"/>
     <text class="t-b" x="38" y="76">Chat flow</text><text class="t-d" x="38" y="92">Alice in Acme</text>
     <rect class="worker" x="168" y="56" width="132" height="46" rx="4"/>
@@ -56,7 +56,7 @@
   </g>
 
   <g id="after">
-    <text class="t-lbl" x="496" y="36">AFTER · ONE CELL PER PERSON AND ORG, EVERY FLOW</text>
+    <text class="t-lbl" x="496" y="36">AFTER · ONE CELL PER USER AND ORG, EVERY FLOW</text>
     <rect class="app" x="496" y="56" width="132" height="46" rx="4"/>
     <text class="t-b" x="506" y="76">Chat flow</text><text class="t-d" x="506" y="92">Alice in Acme</text>
     <rect class="worker" x="636" y="56" width="132" height="46" rx="4"/>
