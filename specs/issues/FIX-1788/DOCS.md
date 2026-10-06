@@ -49,7 +49,8 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 >
 > `hire` takes an id, the flow the worker runs on, and its settings, the same keys a
 > `WORKER.md` accepts. The worker's flow checks the settings when the row is saved. A bad
-> value, a flow your installation doesn't run workers on, or an id already on the user's roster
+> value, a flow your installation doesn't run workers on or keeps for standard workers, or an id
+> already on the user's roster
 > is refused, and nothing is written. An id can't be a standard worker's: fork it instead.
 >
 > ## Forking a standard worker
@@ -126,10 +127,12 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 >
 > - A worker one user hired becomes that user's worker, with its memory and its conversations.
 > - A worker hired for a whole organization becomes a private copy for each member who has a
->   conversation with it, with that member's conversations. Members who never used it get none.
+>   conversation with it, with that member's conversations and a copy of its memory. Members
+>   who never used it get none.
 >   Each copy then changes on its own.
-> - A worker whose flow your app no longer runs, or whose id a member already uses, is
->   reported and left where it is.
+> - A worker whose id its new owner already uses comes across under a new id, and the report
+>   names both.
+> - A worker whose flow your app no longer runs is reported and left where it is.
 >
 > Nothing is deleted. The earlier rows stay, and running the step again changes nothing it
 > already moved.

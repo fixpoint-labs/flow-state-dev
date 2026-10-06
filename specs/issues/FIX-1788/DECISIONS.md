@@ -45,7 +45,7 @@ runs on a user's first load instead, with the old machinery kept until every use
 |---|---|
 | **Instead of** | Nobody's, until an operator names an owner · or a copy for every member of the org |
 | **Because** | An org-wide hire is the hole this epic closes, so it can't stay shared. Each member who talked to it already has conversations and memory with it that only they can read. A private copy each keeps exactly what each person had and gives nobody anything new. Nobody's breaks a worker a team uses daily; every member's adds workers people never asked for |
-| **Locks in** | One worker becomes several independent ones: a change one member makes reaches no other. What the worker remembered for the whole org is copied into each, and every one of them could already read it. The old row stays, reported, so it can become a library template once [FIX-1795](https://linear.app/fixpoint-labs/issue/FIX-1795) ships |
+| **Locks in** | One worker becomes several independent ones: a change one member makes reaches no other. What the worker remembered for the whole org is copied into each, and every one of them could already read it. A copy whose id the member already uses takes a derived id, reported. The old row stays, reported, so it can become a library template once [FIX-1795](https://linear.app/fixpoint-labs/issue/FIX-1795) ships |
 
 ![D2: where a worker hired for the whole org goes. A copy for each member who used it, chosen, beside nobody until an operator names one. Decides it: what each person already had. Price: one worker becomes several that drift apart. Flips if teams relied on one shared memory changing together](figures/d2-org-wide-hire.svg)
 
@@ -53,7 +53,8 @@ It comes down to what each person already had: nobody loses a worker, nobody gai
 
 **What would change my mind:** teams that rely on one org-wide worker's memory changing for
 everyone at once. Then the right home is the library or a shared resource, and the step should
-hold the hire for the operator instead.
+hold the hire for the operator instead. Or: no deployment uses an org-wide hire today beyond the
+chief-of-staff seat. Then nobody's costs no one a worker, and the step only reports them.
 
 ## Decided, not asked
 
