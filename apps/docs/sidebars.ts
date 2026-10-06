@@ -246,6 +246,11 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "Shift Manager",
+      items: ["shift-manager/overview"],
+    },
+    {
+      type: "category",
       label: "Ecosystem",
       items: [
         "ecosystem/overview",
@@ -334,6 +339,7 @@ const sidebars: SidebarsConfig = {
         "api/cli",
       ],
     },
+    "glossary",
   ],
 };
 

@@ -171,7 +171,7 @@ Both forms default to `scope: "org"`, so a persona is shared across users unless
 
 Workforce is a separate product. `hireWorkforce` turns a roster into configured flow copies you register and open a session against. A board's workers are blocks that claim tasks from a collection.
 
-A hired worker's flow can mount a board, and that board's workers are any of the three above. A task's `assignee` never names a hired worker. See [Workforce](../workforce/overview).
+A hired worker's flow can mount a board, and that board's workers are any of the three above. A task's `assignee` can also name a hired worker: a board whose `defaultWorker` asks Workforce's worker lookup hands the task to the worker of that name. See [Giving a task to a worker](../workforce/overview#giving-a-task-to-a-worker).
 
 ## Related pages
 
@@ -179,4 +179,4 @@ A hired worker's flow can mount a board, and that board's workers are any of the
 - [Authoring a delegating skill](/guides/agents-command-the-board) — one skill, start to finish.
 - [Context supply](./context-supply) — how much prior conversation a delegated agent reads.
 - [Task board](./task-board) — the concurrent drain underneath all of this.
-- [Workforce](../workforce/overview) — describe a roster, hire it, and register the copies. A hired worker is an address, not a board assignee.
+- [Workforce](../workforce/overview) — describe a roster, hire it, and register the copies. A hired worker is an address you open a session against, and a name you can give a task to.

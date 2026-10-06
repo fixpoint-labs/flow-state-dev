@@ -33,11 +33,13 @@
 
 import { defineCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
+import type { TaskBinding } from "@flow-state-dev/core/types";
 import {
   buildTaskToolsList,
   taskToolSuffix,
   type TaskCollectionResolver
 } from "@flow-state-dev/orchestration";
+import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
@@ -365,5 +367,40 @@ export function mailboxBoardTaskTools(board: MailboxBoardCollection) {
       },
       default: ["tools"]
     }
+  });
+}
+
+/**
+ * Where a worker kind takes tasks from: any of these mailbox task lists, read
+ * per task off the list the hand-over names.
+ *
+ * Pass it as a task entry's `from` (`task: { actions: { work: { block, from:
+ * mailboxTaskLists(boardIds) } } }`), or as the agent kind's `tasks`. The kind
+ * then needs no board of its own: a list hands a task over, and the entry
+ * re-reads it on that list and runs the same claim checks a board's own entry
+ * runs. Each list is declared on the entry, because a block reaches only the
+ * resources its flow declares.
+ *
+ * A list id the hand-over carries is resolved only among these ids, and only
+ * in the running organization (the lists are org-scoped), so a hand-over can't
+ * point a worker at another organization's rows. The row re-read there is what
+ * authorizes the run.
+ *
+ * @param boardIds The minted list ids, `mailboxBoardIds(mailboxes)`.
+ * @param options `allowSessionState`: accept an entry whose blocks keep session
+ *   state (see `taskLedgers`). The agent kind sets it for its own door.
+ * @returns The task source to put on the entry.
+ */
+export function mailboxTaskLists(
+  boardIds: readonly string[],
+  options: { allowSessionState?: boolean } = {}
+): TaskBinding {
+  const ids = new Set(boardIds);
+  const resources = Object.fromEntries([...ids].map((id) => [id, mailboxBoardLedger(id)]));
+  return taskLedgers({
+    name: "mailbox-task-lists",
+    resolve: async (listId, ctx) => (ids.has(listId) ? resolveMailboxBoard(ctx, listId) : undefined),
+    uses: [defineCapability({ name: "mailboxTaskLists", resources })],
+    ...(options.allowSessionState === true ? { allowSessionState: true } : {}),
   });
 }

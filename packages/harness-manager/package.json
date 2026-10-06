@@ -63,6 +63,7 @@
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
+    "@flow-state-dev/workspace": "workspace:*",
     "zod": "^3.25.76"
   },
   "devDependencies": {

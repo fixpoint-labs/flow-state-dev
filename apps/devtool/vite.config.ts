@@ -2,13 +2,16 @@ import path from "node:path";
 
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { recordBuildInputs } from "../../scripts/build-inputs.mjs";
 const apiUrl = process.env.VITE_API_URL ?? "http://localhost";
 const apiPort = process.env.VITE_API_PORT ?? "3000";
 
 const packageRoot = path.resolve(__dirname, "../../packages/devtool/src");
 
 export default defineConfig({
-  plugins: [react()],
+  // Records the source files the build was made from, so a server can tell a
+  // build that is older than its source (scripts/build-inputs.mjs).
+  plugins: [react(), recordBuildInputs({ repoRoot: path.resolve(__dirname, "../..") })],
   resolve: {
     // Resolve the panel package to source so Vite's HMR keeps working
     // without rebuilding `packages/devtool/dist` on every edit.

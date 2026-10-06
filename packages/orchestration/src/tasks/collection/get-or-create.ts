@@ -147,6 +147,8 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // path never holds a context. Optional-chained because mock contexts in
   // tests wire neither handle; the field then stays absent.
   const claimIdentity = readClaimIdentity(options.ctx);
+  // Who is adding tasks through this ref: the session owner, server-set.
+  const createdBy = options.ctx.session?.identity?.userId;
 
   const onChange = (event: TaskChangeEvent): void => {
     options.ctx.emit.component(
@@ -182,6 +184,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       getItems,
       now: options.now,
       claimIdentity,
+      ...(createdBy !== undefined ? { createdBy } : {}),
       maxTotalTasks: options.maxTotalTasks,
       maxEnqueuedTasks: options.maxEnqueuedTasks,
       maxTotalRetries: options.maxTotalRetries,
@@ -195,6 +198,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     getItems,
     now: options.now,
     claimIdentity,
+    ...(createdBy !== undefined ? { createdBy } : {}),
     immutableAssignee: options.immutableAssignee,
   });
 }

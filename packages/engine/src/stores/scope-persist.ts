@@ -15,7 +15,7 @@
  * current record so the next CAS attempt sees a fresh baseline.
  */
 
-import type { CASPersist, CASPersistResult } from "./cas";
+import type { CASPersist, CASPersistResult, CASReread } from "./cas";
 import { isCommutativeHint } from "./cas";
 import type { CASMutationHint } from "./cas";
 import type {
@@ -147,5 +147,32 @@ export function createScopePersist<
     const nextRecord = buildSetRecord(expectedVersion, state);
     const result = await store.set(id, nextRecord, expectedVersion);
     return handleResult(result, () => nextRecord);
+  };
+}
+
+/**
+ * `reread` for a scope record (see `RunWithCASOptions.reread`). `undefined`
+ * when the ref or the stored record is gone. Refreshes `ref.current` when the
+ * stored record is newer than the one held when the read returns, so the
+ * retry's full-record `set` is built from the stored record. A write that
+ * landed during the read keeps its newer record.
+ */
+export function createScopeReread<
+  TState,
+  TRecord extends { id: string; state: unknown; version: number }
+>(
+  ref: { current: TRecord | undefined },
+  store: { get(id: string): Promise<TRecord | undefined> }
+): CASReread<TState> {
+  return async () => {
+    const held = ref.current;
+    if (held === undefined) return undefined;
+    const record = await store.get(held.id);
+    if (record === undefined) return undefined;
+    const latest = ref.current;
+    if (latest === undefined || record.version > latest.version) {
+      ref.current = record;
+    }
+    return { state: record.state as TState, version: record.version };
   };
 }

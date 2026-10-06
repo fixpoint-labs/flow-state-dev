@@ -1,5 +1,5 @@
 /**
- * The goal's desk, as Shift Manager's start script loads it: the `asker` seat
+ * The goal's desk, as Shift Manager's command loads it: the `asker` seat
  * and the `chief-of-staff` seat on a real model, in one mailbox. See
  * `open-desk.mts`.
  */

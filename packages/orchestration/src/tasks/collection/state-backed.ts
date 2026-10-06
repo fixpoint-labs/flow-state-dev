@@ -96,6 +96,12 @@ export interface StateBackedOptions extends TaskCapOptions {
    * receives; omit it and claims record no coordinate.
    */
   claimIdentity?: TaskClaimIdentity;
+  /**
+   * The user stamped onto every task this collection adds (`task.createdBy`).
+   * The factory reads it off the running session; omit it and tasks record
+   * no filer.
+   */
+  createdBy?: string;
 }
 
 /**
@@ -433,7 +439,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     async addTask(init) {
       // Build the task once — id and createdAt are stable across CAS retries
       // so the emitted item matches what's in state on a successful write.
-      const task = buildInitialTask<TInput, TOutput>(init, now());
+      const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy);
       await casWrite((tasks) => {
         if (ownTask(tasks, task.id) !== undefined) {
           throw new Error(`[tasks] task with id "${task.id}" already exists`);
@@ -447,7 +453,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     },
 
     async addTasks(inits) {
-      const built = inits.map((init) => buildInitialTask<TInput, TOutput>(init, now()));
+      const built = inits.map((init) => buildInitialTask<TInput, TOutput>(init, now(), options.createdBy));
       if (built.length === 0) return [];
       await casWrite((tasks) => {
         const next = { ...tasks };

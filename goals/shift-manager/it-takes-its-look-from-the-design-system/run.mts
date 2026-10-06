@@ -7,7 +7,7 @@
  * Real path, no model, out of CI. See goal.md for the contract.
  *
  * Shift Manager is copied to a scratch directory, patched there (never in the
- * checkout), built with Vite, and served by its own start script over the
+ * checkout), built with Vite, and served by its own command over the
  * run-lab (`goals/shift-manager/it-shows-and-stops-a-task-run/lab/`), whose runs store
  * a message, a reasoning item and a tool call through the Claude Code harness's
  * emit path. Chromium opens a task from Tasks by clicking, opens its tool card,

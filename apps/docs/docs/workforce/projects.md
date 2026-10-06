@@ -11,7 +11,7 @@ A workstream is a mailbox you declare in a `MAILBOX.md`, with the boards it hold
 
 A project is data, not a file. You don't write a folder or a `MAILBOX.md` for one. It's a row in the organization's `projects` collection, created while the app runs, by your own code or by a seat acting for a person. It belongs to the organization rather than to a team, so one project usually gathers workstreams from several teams.
 
-Each project also has a **room**: one conversation its members share. Everyone on the project reads and posts in the same room, each through a session of their own.
+Each project also has a **room**: one conversation its members share. [The room and talk sessions](#the-room-and-talk-sessions) covers it, and [A room or a mailbox](#a-room-or-a-mailbox) compares it with a mailbox.
 
 ## How it fits together
 
@@ -141,7 +141,7 @@ A second declaration of the inventory beside the writes fails when the flow is b
 Resource collision in flow "agent": accessor keys "mailboxInventory" and "project-writes-mailbox-inventory" resolve to the same effective storage key (scope=org, ref=inventory/mailboxes/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
 ```
 
-[The chief of staff](./chief-of-staff.md#starting-projects) is a seat set up this way.
+[The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way: its `mailbox-inventory` capability in [Adding one](./chief-of-staff.md#adding-one) is this same declaration, so the setup works with or without the project tools.
 
 ## One project per workstream
 
@@ -190,3 +190,13 @@ Everyone in the organization can see the row. Only the people in its `members` c
 ![Everyone in the organization can list project rows. Only members can read or post in the room, through their own talk session, and every room call checks the session's server-recorded owner against members. Join binds the session and lists it on the row but never adds to members.](./project-room-membership.svg)
 
 Room lines aren't readable from the browser through the collection route. The only way to read them is `read` on a member's talk session.
+
+## A room or a mailbox
+
+![A mailbox and a room compared. Both usually run on the built-in mailbox flow kind; they differ in what the session is and where the talk is kept. A mailbox is declared in a MAILBOX.md in a team folder and opened at boot. The mailbox is one session on the mailbox kind, or on the kind its file names, such as support.desk. Its transcript is mailbox-post items in that one session. Its members are workers named in the file, fixed for that mailbox; when the kind has a notify block, a post wakes them. It can hold a board and route a post to one member. A room belongs to one project, created while the app runs; there is no file and it is never in the inventory. No session is the room: each member of the project has their own talk session on the built-in mailbox kind, and every one reaches the same room. The room's lines are organization data, the room-lines collection, and a member's view reads them; they are not pushed. Its members are the people on the project row, checked on every call. A post wakes the workers in the organization's talk template, which are not members. A room holds no board and routes nothing. Use a mailbox for a standing topic a team owns, set in files, with a board or routing. Use a room for the people on a project talking together, private to them](./mailbox-or-room.svg)
+
+A room and a mailbox usually run on the same built-in mailbox kind, but a mailbox is one declared session that holds its own transcript, and a room is the project's lines in organization data, reached through each member's own talk session. Use a mailbox for a standing topic a team owns. Use the project's room when the people on a piece of work need to talk among themselves.
+
+![How a post travels through a mailbox and through a project's room, as swimlanes with time running left to right. A mailbox: Alice owns the session support.desk, a session on the mailbox kind that holds the transcript. Alice posts, the line is kept in that session, the notify block wakes the worker in its own session keyed mailbox:support.desk, the worker's answer line lands back in support.desk, and Alice reads the transcript. Bob, another user, posts to support.desk and is refused with the same 404 as an unknown session, because the session belongs to Alice. A room: Alice and Bob are members of a project and each has their own talk session. Alice posts from hers, and the line is written to room-lines, organization data that holds the room's transcript. The template worker is woken as Alice, in a conversation it keeps per person, and its answer comes back through Alice's session as the next line in room-lines. Bob reads from his own session and gets both lines. Carol is in the organization but not a member, and her join is refused with not-a-member. Why a session per member: a session acts for one user, and anyone else is refused as if it did not exist, so people share a conversation through a room, each posting from their own session into one organization resource. A mailbox is one session, so only its owner can post to it or read it; it is how workers and one user talk](./mailbox-room-flow.svg)
+
+Why a room needs a session per member: a session acts for one user, and a post from anyone else is refused as if the session did not exist. A mailbox is one session, so only the user who opened it, and the workers it wakes, can post to it. A room is how several people share one conversation.

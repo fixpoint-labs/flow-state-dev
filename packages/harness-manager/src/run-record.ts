@@ -113,6 +113,44 @@ export const runRecordStateSchema = z.object({
   workspacePath: z.string().nullable().default(null),
   /** The branch that checkout is on. */
   branch: z.string().nullable().default(null),
+  /**
+   * The repository the run's branch was cut from, as the workspace host's
+   * source named it when the run was first provisioned.
+   *
+   * **Kept across attempts, and read back.** A row that started on one
+   * repository stays on it: a retry provisions from this value rather than
+   * asking the source again, so changing a project's repository applies to new
+   * rows and never moves a run already under way. `null` on a row written
+   * before this field existed, or before the run was first provisioned; such a
+   * row asks the source (BP-030).
+   */
+  remote: z.string().nullable().default(null),
+  /** The branch {@link remote}'s run branch was cut from, recorded with it. */
+  baseRef: z.string().nullable().default(null),
+  /**
+   * The run was first provisioned with no repository: its kept files alone.
+   * Kept across attempts for the reason {@link remote} is, so a project that
+   * gains a repository later never moves a files run onto a checkout and away
+   * from the files it saved. `null` on a row written before this field
+   * existed, or before the run was first provisioned (BP-030).
+   */
+  filesOnly: z.boolean().nullable().default(null),
+  /**
+   * What the last save of the run's kept files did, when the run has any.
+   *
+   * A conflict is an outcome, not a failure: the files named here were changed
+   * by someone else too and were left as they were. A failed save is
+   * recorded here rather than failing the run, and the next save point tries
+   * again. Cleared by every attempt's opening write.
+   */
+  lastSave: z
+    .object({
+      at: z.number(),
+      conflicts: z.array(z.string()),
+      error: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
   /** How the last attempt ended. */
   outcome: runOutcomeSchema.nullable().default(null),
   /** Why, in the harness's own words or the throw's message. */
@@ -240,6 +278,7 @@ const ATTEMPT_SCOPED_CLEAR = {
   reason: null,
   childSessionId: null,
   requestId: null,
+  lastSave: null,
 } as const;
 
 /** What {@link writeRunRow} did. */

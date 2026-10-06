@@ -9,6 +9,7 @@ export {
   type FlowApiRouter
 } from "./createFlowApiRouter";
 export {
+  decodePathSegments,
   parseFlowRoute,
   type ParsedFlowRoute
 } from "./parseFlowRoute";

@@ -22,7 +22,7 @@
  * one review that was true once.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const MANAGER = readFileSync(join(__dirname, "..", "src", "manager.ts"), "utf8");
@@ -79,10 +79,16 @@ describe("every fence's refusal is read", () => {
  * missed again at the two startup git queries in `guards.ts` — each found
  * by a review round rather than by the previous fix. A check over the set is
  * what makes the next door fail here instead.
+ *
+ * This package's own sources spawn nothing: its git runs in
+ * `@flow-state-dev/workspace` (`exec.ts`, and the startup queries in
+ * `repository.ts`), which is swept here as the code this package's runs depend
+ * on, and the last test below holds this package to spawning nothing itself.
  */
+const WORKSPACE_SRC = join(__dirname, "..", "..", "workspace", "src");
 const SPAWNING_FILES = [
-  join(__dirname, "..", "src", "guards.ts"),
-  join(__dirname, "..", "src", "exec.ts"),
+  join(WORKSPACE_SRC, "repository.ts"),
+  join(WORKSPACE_SRC, "exec.ts"),
   // This package's own goal check. A goal script spawns git and it is not
   // exempt: the sweep follows the files, not the directory.
   join(
@@ -139,6 +145,18 @@ describe("every child process is bounded", () => {
           `an unbounded spawn in ${file.split("/").pop()}: ${window.slice(0, 110)}`,
         ).toBe(true);
       }
+    }
+  });
+
+  it("starts no child process in this package: git goes through the workspace host", () => {
+    // One provisioning path means one place git runs. A spawn here would be a
+    // second copy of the host's rules — the budget, the refusals, the remote
+    // allowlist — that the host's own suite never exercises.
+    const src = join(__dirname, "..", "src");
+    const files = readdirSync(src).filter((name) => name.endsWith(".ts"));
+    expect(files.length).toBeGreaterThan(5);
+    for (const name of files) {
+      expect(readFileSync(join(src, name), "utf8"), name).not.toMatch(/node:child_process|\bexecFile/);
     }
   });
 });

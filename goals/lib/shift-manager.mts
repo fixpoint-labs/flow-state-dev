@@ -10,8 +10,11 @@
  *   there (never in the checkout) and built with Vite. Tailwind reads class
  *   names off the files on disk, so a patch has to land in a copy rather than
  *   in the bundler.
- * - {@link startShiftManager}: Shift Manager's own start script over a Lab's
+ * - {@link startShiftManager}: Shift Manager's own command over a Lab's
  *   `fsdev` config, from a scratch working directory.
+ * - {@link SHIFT_MANAGER_COMMAND} and {@link servedAddresses}: the command's
+ *   entry, and the addresses its banner prints, for a goal that starts it
+ *   itself.
  * - {@link labApi}: the Lab's HTTP routes, read with the goal's own requests,
  *   so a goal's oracle is the store and never Shift Manager's state.
  *
@@ -28,8 +31,27 @@ import { pathToFileURL } from "node:url";
 import { intentFreeEnv } from "./env.mts";
 import { REPO_ROOT, repoPath } from "./paths.mts";
 
-/** `labs/shift-manager`. */
-export const SHIFT_MANAGER: string = repoPath("labs", "shift-manager");
+/** `packages/shift-manager`. */
+export const SHIFT_MANAGER: string = repoPath("packages", "shift-manager");
+
+/** The `shift-manager` command's entry in the checkout, run with tsx. */
+export const SHIFT_MANAGER_COMMAND: string = join(SHIFT_MANAGER, "cli", "bin.ts");
+
+/**
+ * The addresses a running `shift-manager` (`fsdev dev --app`) printed, once
+ * its banner is complete: the pages' origin, with no trailing slash, and the
+ * DevTool's, with one, or `null` when it serves none. Both on `127.0.0.1`,
+ * where the default bind listens and the page's `fsdev-devtool-url` points;
+ * the banner shows that host as `localhost`. `undefined` until the banner's
+ * last line prints.
+ */
+export function servedAddresses(log: string): { origin: string; devtool: string | null } | undefined {
+  const app = /App:\s+(http:\/\/\S+)/.exec(log);
+  if (app === null || !/Data:/.test(log.slice(app.index))) return undefined;
+  const on127 = (url: string) => new URL(url.replace("//localhost:", "//127.0.0.1:"));
+  const devtool = /DevTool:\s+(http:\/\/\S+)/.exec(log);
+  return { origin: on127(app[1]!).origin, devtool: devtool === null ? null : on127(devtool[1]!).href };
+}
 
 /** `NODE_ENV` as it was before any in-process build changed it. */
 const NODE_ENV_AT_LOAD = process.env.NODE_ENV;
@@ -55,6 +77,9 @@ export async function buildShiftManagerCopy(scratch: string, name: string, patch
   // The copy sits outside the workspace; its tsconfig still extends the workspace's.
   const tsconfig = join(root, "tsconfig.json");
   writeFileSync(tsconfig, readFileSync(tsconfig, "utf8").replace('"../../tsconfig.base.json"', JSON.stringify(join(REPO_ROOT, "tsconfig.base.json"))));
+  // Its Vite config imports the workspace's build-inputs script the same way.
+  const viteConfig = join(root, "vite.config.ts");
+  writeFileSync(viteConfig, readFileSync(viteConfig, "utf8").replace('"../../scripts/build-inputs.mjs"', JSON.stringify(join(REPO_ROOT, "scripts", "build-inputs.mjs"))));
   const diff: string[] = [];
   for (const patch of patches) {
     const path = join(root, patch.file);
@@ -72,11 +97,11 @@ export async function buildShiftManagerCopy(scratch: string, name: string, patch
   return { pages, diff };
 }
 
-/** A Shift Manager start script serving a Lab. */
+/** A Shift Manager command serving a Lab. */
 export type ServedShiftManager = { origin: string; workDir: string; child: ChildProcess; log: () => string; exited: Promise<void>; stop: () => Promise<void> };
 
 /**
- * Shift Manager's start script over the Lab at `config`, serving `pages`, from
+ * Shift Manager's command over the Lab at `config`, serving `pages`, from
  * a fresh working directory under `<scratch>/labs`. `env` is added to the
  * child's environment; `GOAL_CONTROL` is always cleared, since a Lab's config
  * may read it too, and the intent ladder is stripped.
@@ -94,7 +119,7 @@ export async function startShiftManager(options: {
   if (NODE_ENV_AT_LOAD === undefined) delete env.NODE_ENV;
   else env.NODE_ENV = NODE_ENV_AT_LOAD;
   let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", options.config, "--port", "0", "--assets", options.pages], {
+  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", options.config, "--port", "0", "--no-open", "--assets", options.pages], {
     cwd: workDir,
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -113,13 +138,13 @@ export async function startShiftManager(options: {
     await exited;
   };
   for (let waited = 0; waited < 90_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, workDir, child, log: () => log, exited, stop };
+    const served = servedAddresses(log);
+    if (served !== undefined) return { origin: served.origin, workDir, child, log: () => log, exited, stop };
     if (gone) break;
     await sleep(250);
   }
   child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served ${options.label}. Log tail:\n${log.slice(-2000)}`);
+  throw new Error(`Shift Manager's command never served ${options.label}. Log tail:\n${log.slice(-2000)}`);
 }
 
 /** GET/POST against a Lab's routes, with the page's bearer when the Lab has one. */

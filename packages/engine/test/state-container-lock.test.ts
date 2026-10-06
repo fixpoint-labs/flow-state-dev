@@ -289,6 +289,7 @@ describe("applyMutation — persist + serialize (request-scope) branch", () => {
     const { persist, persistCount } = versionedPersist<State>();
     const ops = createScopeStateOps<State>(container, {
       persist,
+      reread: async () => ({ state: container.read() as State, version: storeVersion }),
       serialize: true
     });
 
@@ -356,6 +357,7 @@ describe("applyMutation — persist + serialize (request-scope) branch", () => {
     };
     const ops = createScopeStateOps<State>(container, {
       persist,
+      reread: async () => ({ state: container.read() as State, version: storeVersion }),
       serialize: true
     });
 

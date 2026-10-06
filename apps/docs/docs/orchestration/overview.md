@@ -31,7 +31,7 @@ Read it bottom-up.
 
 **Who does the work.** A board worker can be a plain block you wrote, a tool assigned by its catalog key, or an agent: a persona, a model, and a set of tools, declared in a skill's frontmatter and assigned board tasks by name. See [Agents](./agents) for the three and when each fits.
 
-Hired workers are [Workforce](../workforce/overview): describe a roster, hire it, and register the copies. Those seats are addresses you open a session against, not board assignees.
+Hired workers are [Workforce](../workforce/overview): describe a roster, hire it, and register the copies. Those workers are addresses you open a session against, and names a task can be given to.
 
 **Mailboxes.** When several agents work one topic and each reads what the others said, that conversation needs a durable home. A mailbox is a named session on a flow kind the framework ships, carrying its own members, charter and transcript. Reach for one when the exchange is back-and-forth; a one-shot instruction is a dispatch, and work that needs a claim and a settlement is a task board row. See [Mailboxes](../workforce/mailboxes).
 
@@ -67,7 +67,7 @@ A drain normally runs inside the request that mounted it, so every worker's task
 - [Patterns overview](../patterns/overview) — the coordination patterns built on the task board.
 - [Agents](./agents) — the three things that can do a unit of work on a board.
 - [Delegation](../skills/delegation) — the agent-first path and the `taskTools` surface.
-- [Workforce](../workforce/overview) — describing workers in folders and hiring them as addressable flow copies. A hired worker is an address you open a session against, not a board assignee.
+- [Workforce](../workforce/overview) — describing workers in folders and hiring them as addressable flow copies. A hired worker is an address you open a session against, and a name you can give a task to.
 - [Mailboxes](../workforce/mailboxes) — several agents on one topic, with one durable transcript and nobody owning a row.
 - [Harness manager](./harness-manager) — a board worker that drives a coding agent to a settled verdict.
 - [Coding agents](../tools/coding-agents) — the coding agents that worker drives, and the run handle they return.

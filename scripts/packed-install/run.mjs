@@ -16,7 +16,8 @@
  *      it and not to the last version on the registry;
  *   3. run each check in {@link CHECKS} against that project: the installed
  *      copies are the packed ones, every entry point imports, a server starts
- *      and answers an action, and DevTool serves its client assets;
+ *      and answers an action, DevTool serves its client assets, and Shift
+ *      Manager's installed command serves its pages beside a Lab;
  *   4. run the shared two-users-one-tenant HTTP suite against those installed
  *      copies, with a real Redis for its queue case (`suite.mjs` owns how).
  *
@@ -263,6 +264,13 @@ export const CHECKS = [
     // `pnpm pack` skips prepublishOnly, so a missing dist-client still packs and still imports.
     name: "DevTool serves its client assets from the installed copy",
     run: (project) => runFixture(project, "serve-devtool.mjs", "devtool"),
+  },
+  {
+    // What someone who installs Shift Manager runs: its command over a Lab of
+    // their own. Also reads the installed package's contents, since a tarball
+    // missing its pages still packs and imports.
+    name: "Shift Manager's installed command serves its pages and a Lab",
+    run: (project) => runFixture(project, "shift-manager.mjs", "shift-manager"),
   },
   {
     // Legs b and c: every hole's case, asked for over HTTP as the second user,

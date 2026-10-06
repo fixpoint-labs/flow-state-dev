@@ -21,14 +21,13 @@
  * Five pieces here are the lab's rather than the framework's, each because the
  * framework has no opinion at that spot:
  *
- * 1. **The board's two declarations** (`board.mts`): the EM's, which hands a
- *    row across flows, and the coder's, which the cross-flow claim gate
- *    requires. The ledger under both is the mailbox's.
- * 2. **The assignee → seat address.** A board's `workers` keys are assignees,
- *    not Workforce seats; which seat an assignee reaches is a dispatcher's
- *    `flowKind`, and it is a static instance id rather than a lookup. The
- *    caller supplies it, which is also what lets a control point it at the
- *    wrong seat and watch the negative claim go red.
+ * 1. **The board and the coder's door** (`board.mts`): the EM's board hands a
+ *    row across flows, and the coder takes it through a door on the same
+ *    ledger, with no board of its own. The ledger is the mailbox's.
+ * 2. **The assignee → worker address.** The board routes its own `coder`
+ *    assignee to the instance id the caller supplies, which is what lets a
+ *    control point it at the wrong worker and watch the negative claim go
+ *    red. Any other assignee goes to the Workforce worker lookup.
  * 3. **The harness slot**, handed to the `coder` kind. The one expression that
  *    differs between this lab's two checks.
  * 4. **The mailbox's address map** (`notify.mts`), and whether a mailbox is
@@ -66,6 +65,7 @@ import {
   mailboxPostCapability,
   createSeatHireCapability,
   createWorkforceCapability,
+  createWorkerLookup,
   defineAgentWorkerFlow,
   defineMailboxFlow,
   HIRED_ROSTER_RESOURCE,
@@ -99,7 +99,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { FeatureLedger } from "./board.mts";
+import { ASSIGNEE, type FeatureLedger } from "./board.mts";
 import { INSPECT_ENTRY, SEAT_FACTS_COMPONENT } from "./seat-config.mts";
 import { defineImplementPhase } from "./phase.mts";
 import { CODER_KIND, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
@@ -627,8 +627,17 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         };
   });
 
+  // Any assignee but the board's own `coder` is looked up per row, in the live
+  // registry, so a worker hired a moment ago is found and a fired one is not.
+  // The mailbox's `fileTask` asks the same lookup before it files. `registrar`
+  // is bound further down, before anything files or drains.
+  const workerLookup = createWorkerLookup({
+    instanceAt: (id) => registrar?.registry.get(id),
+    declared: roster.workers.map((worker) => worker.id),
+  });
   const emKind = defineEmWorkerFlow({
     coderSeatId: options.coderSeatId,
+    findWorker: workerLookup.flowKind,
     resources,
     ledger,
     ...(options.fileBeforeAsking === true ? { fileBeforeAsking: true } : {}),
@@ -743,6 +752,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ? undefined
       : defineMailboxFlow({
           notify: labNotify(options.mailboxes) as never,
+          checkAssignee: workerLookup.filingCheck({ [ledger.id]: [ASSIGNEE] }),
           ...(options.inventory === true ? { inventory: true } : {}),
         });
   // The org's resource modules: where the projects collection and its talk
