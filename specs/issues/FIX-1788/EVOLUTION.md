@@ -15,8 +15,13 @@ this record covers the shipped designs FIX-1788 changes in detail.
 | Seat data moves only by an operator step, and only data that provably belonged to a seat; [`../FIX-1538/DECISIONS.md#d2`](../FIX-1538/DECISIONS.md#d2) | **Retained**, extended | Same rule for per-copy cells and sessions: a copy's own cell and its sessions provably belong to it | [D1](DECISIONS.md#d1), S13 | The step ships as code (that card's *what would change my mind*) |
 | A worker's `resources:` grant narrows the resource map its copy is minted with, so a block nested in its action resolves only granted documents; FIX-1381, `packages/workforce/src/seat-resources.ts` header and `goals/workforce-seats/a-seat-reaches-the-documents-its-file-names/goal.md` (no retained spec) | **Amended** | A shared copy has one resource map. The grant now narrows what the worker's model reaches on each turn; the flow's own code is the app's | BR-24, S8 | The grants goal is rewritten to grade what the model reaches (V7). The `resources:` key and its `ro`/`rw` words are unchanged |
 | Each seat gets its own skills drawer, keyed by its flow-instance id under `flowIsolation`; `packages/workforce/src/agent-worker-flow.ts` (the `collectionConfig` comment) | **Superseded** | On a shared copy the instance id is the flow's, so every worker shares one drawer ([epic POC](../../epics/FIX-1786/poc/singleton-worker-link/README.md), I1, I2) | BR-23, S7 | The step moves each copy's drawer to its worker's key; nothing is orphaned |
-| CoS is one org admin seat whose hires belong to the org; [`../../epics/FIX-1650/DECISIONS.md#q2`](../../epics/FIX-1650/DECISIONS.md#q2), already superseded in part by the epic's EVOLUTION | **Superseded in part**, as the epic recorded | Workers are always private: a CoS hire is the hiring user's row | Epic ER-1, S9 | FIX-1719's shipped seat keeps hiring through S9, as the user's, until FIX-1791 replaces it |
+| CoS is one org admin seat whose hires belong to the org; [`../../epics/FIX-1650/DECISIONS.md#q2`](../../epics/FIX-1650/DECISIONS.md#q2), already superseded in part by the epic's EVOLUTION | **Superseded in part**, as the epic recorded | Workers are always private: a CoS hire is the hiring user's row | Epic ER-1, S9 | FIX-1719's shipped chief of staff keeps hiring through S9, as the user's, until FIX-1791 replaces it |
 
 None of these is wholly overturned in intent: each kept its permission boundary, and the
 boundary moved from a registered copy to a row and a link. Re-check each against current code
 before implementing; FIX-1789 and FIX-1790 may have moved two of them first.
+
+Forward lineage: the criteria object of `findWorkerSession` and `ensureWorkerSession` (PLAN S5a)
+is extended later by FIX-1794 (`taskId`), FIX-1793 (`workstreamId`) and FIX-1791 (the
+coordinator conversation a delegate's session belongs to; FIX-1791 names the key). Each later key
+is added to the same lookup path, not to a second helper.
