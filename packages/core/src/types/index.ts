@@ -261,6 +261,8 @@ export {
   ownerSegment,
 } from "./resource-collection";
 
+export { isCollectionConfig, resourceStorageKeys } from "./storage-identity";
+
 export type {
   FacetedClientConfig,
   FacetedCollection,

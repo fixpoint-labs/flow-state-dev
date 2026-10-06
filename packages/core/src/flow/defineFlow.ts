@@ -31,6 +31,7 @@ import type {
 } from "../types/flow";
 import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
+import { isCollectionConfig, resourceStorageKeys } from "../types/storage-identity";
 import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } from "../types/schedules";
 import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
@@ -946,7 +947,14 @@ function resolveDispatchTargets(
 /**
  * Effective storage tuple for a resource installed in a given flow.
  *
- * - `scope` and `ref` come from the resource definition.
+ * - `scope` comes from the resource definition.
+ * - `ref` is the cell the engine writes: a collection's `pattern` (collections
+ *   recognised structurally, as the engine does — any `ref` on one is never
+ *   read), otherwise the single resource's canonical key from
+ *   `resourceStorageKeys` (`ref`, else the first accessor its definition
+ *   appears under). Both come from `types/storage-identity.ts`, the rule the
+ *   persistence path uses, so this check cannot key a declaration somewhere
+ *   it is never written.
  * - `flowIsolation` defaults to `false`; flow-level `isolateUserState` /
  *   `isolateOrgState` flags promote unset user/org-scoped resources to
  *   isolated. Resource-level declarations always win.
@@ -955,13 +963,15 @@ function resolveDispatchTargets(
 function effectiveStorageTuple(
   entry: DeclaredResourceEntry,
   accessorKey: string,
+  storageKeys: Record<string, string>,
   flowKind: string,
   flowIsolateUserState: boolean,
   flowIsolateOrgState: boolean
 ): { scope: ResourceScope; ref: string; flowIsolation: boolean; flowKind?: string } {
   const scope = entry.scope as ResourceScope;
-  const ref = (entry as { ref?: string; pattern?: string }).ref
-    ?? (isDefinedResourceCollection(entry) ? entry.pattern : accessorKey);
+  const ref = isCollectionConfig(entry)
+    ? entry.pattern
+    : storageKeys[accessorKey] ?? accessorKey;
 
   let flowIsolation = entry.flowIsolation === true;
   if (entry.flowIsolation === undefined) {
@@ -1003,6 +1013,7 @@ function validateFlowResources(
   flowIsolateOrgState: boolean
 ): void {
   const seen = new Map<string, { accessor: string; entry: DeclaredResourceEntry }>();
+  const storageKeys = resourceStorageKeys(resources);
 
   for (const [accessor, entry] of Object.entries(resources)) {
     if (entry.scope === undefined) {
@@ -1030,6 +1041,7 @@ function validateFlowResources(
     const tuple = effectiveStorageTuple(
       entry,
       accessor,
+      storageKeys,
       flowKind,
       flowIsolateUserState,
       flowIsolateOrgState
@@ -1042,7 +1054,7 @@ function validateFlowResources(
         `"${accessor}" resolve to the same effective storage key (` +
         `scope=${tuple.scope}, ref=${tuple.ref}, flowIsolation=${tuple.flowIsolation}` +
         (tuple.flowKind === undefined ? "" : `, flowKind=${tuple.flowKind}`) +
-        `). Pick distinct refs or flowIsolation settings.`
+        `). Pick distinct refs (patterns, for collections) or flowIsolation settings.`
       );
     }
     seen.set(key, { accessor, entry });
