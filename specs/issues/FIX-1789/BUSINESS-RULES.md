@@ -47,7 +47,7 @@ the list the installation keeps ([Q1](DECISIONS.md#q1)), and for org scope as sh
 |---|---|---|---|
 | BR-20 | A worker writes a shared resource through the helper | The entry names the session's user and the worker. Until FIX-1788's singleton cutover the worker is the per-hire id, `seatId`. After it, the worker is FIX-1788's server-owned session link, which FIX-1788 wires into the helper | CI · goal leg b |
 | BR-21 | A block writes a shared entry without `writtenBy` | Refused by the resource's own schema | CI |
-| BR-22 | A caller's input carries a `writtenBy` | Ignored by the helper: the stamp comes from the session, never the input (BP-031). Flow code that writes the resource directly can set its own, so attribution is as trustworthy as the registered flow's code | CI |
+| BR-22 | A caller's input carries a `writtenBy` | Ignored by the helper: the stamp comes from the session, never the input (BP-031). Flow code that writes the resource directly can set its own, so attribution is as trustworthy as the registered flow's code. No framework or Workforce code reads `writtenBy` to decide who may write; that is scope and FIX-1793's owner rule | CI |
 | BR-23 | A person writes through the app with no worker involved | The entry names the user and no worker | CI |
 | BR-24 | Another user reads a shared entry | They see it, with who wrote it. Whether they may write it is FIX-1793's "owner writes, org reads" | CI |
 

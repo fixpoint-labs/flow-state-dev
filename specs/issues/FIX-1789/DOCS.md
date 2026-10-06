@@ -83,6 +83,9 @@ implementation ships.
 > resource directly can set its own value. So `writtenBy` is as trustworthy as the worker flows your
 > installation registers. An entry written without it is refused by the resource's own schema. Who
 > may change an entry after it is written is not decided here; every member can read it.
+>
+> `writtenBy` is for display and audit. The framework never uses it to decide who may write an
+> entry: that comes from the resource's scope and its ownership rules, never from this field.
 
 ## UPDATE · `apps/docs/docs/workforce/workers-on-disk.md` · "When a hire is refused", the closing paragraph
 
