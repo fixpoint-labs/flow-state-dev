@@ -984,7 +984,10 @@ export function createSessionStreamConformanceTests(
       }
 
       const live = await stream(r, "s1");
-      const opening = await live.waitFor((e) => e.type === "session.runs", 10_000);
+      // This case asserts which run is listed, not how fast. The filesystem
+      // adapter's first read over 100+ runs takes ~5s on its own, so a 10s
+      // wait failed whenever the machine was busy.
+      const opening = await live.waitFor((e) => e.type === "session.runs", 25_000);
       expect(runsOf(opening)).toEqual(["run_old"]);
       await delay(FAST_TIMINGS.intervalMs * 4);
       expect(latestRuns(live)).toEqual(["run_old"]);
