@@ -13,7 +13,9 @@
 > contract is [Q1](../DECISIONS.md#q1), still open. A workstream is a project entry plus its
 > lead's session; `MAILBOX.md` becomes `WORKER.md`; no transcript resource is built, so the
 > `transcript:` key below isn't either ([decided in review](../DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)).
-> The boards are per [D5](../DECISIONS.md#d5). The counts are 33 files and 15 boards today.
+> The boards are per [D5](../DECISIONS.md#d5) and [ER-9](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt). A worker's
+> configuration is stored data a flow reads per run ([ER-2](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+> The counts are 33 files and 15 boards today.
 
 *Jake Hoffner · Oct 5, 2026. Diagrams are snapshots; the original, with live diagrams: [https://claude.ai/code/artifact/07d17e2a-089f-478d-8553-e6dcd8c5cc94](<https://claude.ai/code/artifact/07d17e2a-089f-478d-8553-e6dcd8c5cc94>)*
 
@@ -456,7 +458,7 @@ These terms are in today's code and docs, and go away in the refactor. Counts ar
 | A worker is a resource, and sessions load its configuration | Each worker is a flow instance with its configuration in code, rebuilt at every start from roster rows |
 | Every flow is a singleton, and a worker names the one it runs on | A worker already names its flow, but each hire mints its own copy of that flow, registered under the worker's id (`hire.ts`). The `agent` flow does it as one kind with many instances (`cardinality: "collection"`) |
 | Access to a worker is access to its resource | Instances carry pins, and only Workforce uses them |
-| A worker contract decides which flows can run workers | Mostly there: a hireable flow's config schema accepts `workerConfigSchema()`, its door is found from its actions, and the flows passed to the hire are the allowlist. No standard-only flag, and no private-state rule |
+| A worker contract decides which flows can run workers | Mostly there: a hireable flow's config schema accepts `workerConfigSchema()`, its door is found from its actions, and the flows passed to the hire are the allowlist. No standard-only flag, and no private-state rule. The configuration arrives as the flow copy's frozen `ctx.flow.config`, with `seatTools` as live blocks, so a stored worker can't carry it as is |
 | Standard workers are a projected collection read from files | `WORKER.md` files become flow instances. Projected collections exist (`defineProjectedResourceCollection`), read-only |
 | Workers are always private | A hire locked to the org alone is reachable by every member |
 | Library templates are copied into your scope | There is no library |

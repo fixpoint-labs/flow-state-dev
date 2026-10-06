@@ -67,7 +67,9 @@ engine shows up here as a red test.
 - **A worker's private state needs its own key.** On a singleton, flow isolation separates flows,
   not workers (I1), and today's per-seat cells need a move (I2).
 - **A lineage board stops at a flow boundary** (C1). A coordinator handing a row to an agent-flow
-  worker crosses one every time, so that board belongs at the owner's user scope.
+  worker crosses one every time, so that board can't use its lineage. The owner's user scope,
+  suggested here, was struck in review: that ledger spans every session its owner has. ER-9 keeps
+  each board its own and leaves how to FIX-1794.
 
 Recorded in [DECISIONS.md → What the end-state POC showed](../../DECISIONS.md#what-the-end-state-poc-showed).
 

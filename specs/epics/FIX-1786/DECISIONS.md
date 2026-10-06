@@ -59,7 +59,7 @@ answer record in one shared module.
 |---|---|
 | **Instead of** | A Layer 1 worker noun with its own store · or per-org user keys faked inside Workforce |
 | **Because** | Workers, coordinators and workstreams compose what ships: resources, scopes, sessions, projected collections, boards. Three things Workforce cannot fake: a scope key, a row rule, session state a caller can't write. [The end-state POC](#what-the-end-state-poc-showed) settled the third: the public create persists a caller's session state, so a link held there accepts the caller's own other worker, and a row only flow code writes outlives a deleted session id |
-| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change whose old records move to one org by an operator step, never read in two ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session state a flow declares server-owned: the public create refuses caller state for it, and only flow code writes it. The worker link lives there, and so do a coordinator's delegates. FIX-1788 builds it, FIX-1791 consumes it. Flow instances and owner pins get deprecation markers, nothing more. A worker's own key for its private state is Layer 2, FIX-1788's. Any other Layer 1 change comes back to this epic |
+| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change whose old records move to one org by an operator step, never read in two ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session state a flow declares server-owned: the public create refuses caller state for it, and only flow code writes it. The worker link lives there, and so do a coordinator's delegates. FIX-1788 builds it, FIX-1791 consumes it. Flow instances and owner pins get deprecation markers, nothing more. A worker's own key for its private state is Layer 2, FIX-1788's, and so is reading a worker's configuration per run: a generator already resolves its tools per call ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). Any other Layer 1 change comes back to this epic |
 
 **What would change my mind:** a second consumer of a worker outside Workforce. Then a worker
 noun in core earns its place. For (3), FIX-1788's spec needing the link before any flow code
@@ -81,7 +81,7 @@ runs, at admission: then a server-only field on the session record instead.
 |---|---|
 | **Instead of** | One rule per file type (every lab board a workstream) · or keeping an org-scoped board as a third shape |
 | **Because** | An org-scoped board is the shape this epic removes: any member's session drains it, and the session's user doesn't narrow it. A session board is private and needs no project; a workstream costs a project. So FIX-1792 asks one question per board: does the work outlive one conversation, and does a person track it? Yes makes it a workstream; otherwise, and when unclear, a session board. Goal fixtures that test board mechanics become session boards |
-| **Locks in** | FIX-1792 waits on FIX-1793 for the workstream option. The per-board table is FIX-1792's spec. A session board that hands rows to a delegate on another flow is stored at its owner's user scope, not shared down the lineage, which stops at a flow ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Locks in** | FIX-1792 waits on FIX-1793 for the workstream option. The per-board table is FIX-1792's spec. A session board that hands rows to a delegate on another flow can't be shared down the lineage, which stops at a flow, and still stays its own board: never one ledger for all its owner's sessions. FIX-1794 decides how ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 <a name="q1"></a>
 ## Q1 · open · Which flows can run a user's workers: a list the installation keeps, or a new kind of flow?
@@ -171,6 +171,15 @@ engine rule. The closure only checks.
   agent, the coordinator, the app's own), each one singleton copy that every worker naming it
   shares. Making flows singletons doesn't put every worker on `agent` ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
   From review (Jake); the concept and its workers figure now say so.
+- **A board stays its own when its rows cross a flow.** A user-scoped ledger spans every session
+  its owner has, and a board takes any pending row in it, so one of Alice's sessions could claim
+  another's rows. ER-9 now requires that only a board's own drains claim its rows, and leaves how
+  to FIX-1794's spec; a task-board change comes back here. From review round 2 (Codex).
+- **A worker's configuration is data, read per run.** On a singleton, `ctx.flow.config` is one
+  frozen bag for every worker, and `seatTools` carries live blocks a stored row can't hold. So the
+  contract stores names, resolves them when a session loads its worker, and a flow reads that
+  configuration per run ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), FIX-1789).
+  From review round 2 (Codex).
 - **Shift Manager lives at `packages/shift-manager`.** #2759 (FIX-1770) moves it there and lands
   first among the merge-first rows; PRs that edit the lab rebase after it.
 - **Checked against `main` at `74f9a4f68`:** a project room and the mailbox boards are as
@@ -192,8 +201,9 @@ engine rule. The closure only checks.
 - **Changed:** [D3](#d3)'s third Layer 1 change is definite, as server-owned session state.
   FIX-1788 also keys a worker's private state by the worker and moves the per-seat cells
   ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). A board whose rows cross a flow
-  lives at the owner's user scope ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt),
-  FIX-1794; [D5](#d5)). The FIX-1788 and FIX-1794 split holds. Variants: none.
+  can't use its lineage ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), FIX-1794;
+  [D5](#d5)); the POC's answer, the owner's user scope, was struck in review round 2. The FIX-1788
+  and FIX-1794 split holds. Variants: none.
 
 ## How it got here
 
@@ -211,5 +221,9 @@ engine rule. The closure only checks.
   filed outside the epic to remove flow instances and owner pins after FIX-1788 (ER-20).
 - **A correction from review (Oct 6)**: the concept, the box and ER-1 now say each worker names its own
   flow, after Jake read the PRD as putting every worker on one flow. No decision moved.
+- **Review round 2 (Oct 6)**: ER-9 keeps each board its own, because the POC's user-scoped
+  answer let one of an owner's sessions claim another's rows; ER-2 makes a worker's
+  configuration stored data read per run; ER-7's private half waits on Q2, as the Q2 card said.
+  The flow-match check on a session link went to FIX-1788 as a note.
 
 **Open: Q1.**
