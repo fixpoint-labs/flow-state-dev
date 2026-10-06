@@ -130,8 +130,8 @@ It comes down to the removal: refusing it surprises a user over a setting they n
   criteria key FIX-1788 reserved for this spec to name: it enters the derived id and the lookup,
   so two conversations never share a delegate's session. It carries a token the answer hands back, and the round
   comes from the delivery record: the trust rule `seatAuthored` follows today.
-- **One delivery ledger, defined once in Workforce.** A record per post, round and delegate,
-  `pending` then `delivered` or `failed`, with a token and an answer claimed once. The
+- **One delivery ledger, defined once in Workforce.** A record per post, round and delegate
+  record (a worker plus an optional target the caller resolves), `pending` then `delivered` or `failed`, with a token and an answer claimed once. The
   coordinator keeps its records in server-written session state; FIX-1793's project coordinators
   reuse the same module. The `room-deliveries` and mailbox ledgers aren't ported: they go with
   their owners, FIX-1793 and FIX-1792.
