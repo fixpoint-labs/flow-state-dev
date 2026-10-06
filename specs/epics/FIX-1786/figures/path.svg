@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 500" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 6 October 2026, in phases rather than dates. Now: this spec is in review and the FIX-1787 inventory is posted, with its merge-first rows landing. After the gate every child&#x27;s spec can be written at once, and the closure&#x27;s QA plan beside them. Builds run in waves: the worker contract and per-org user data together; then workers as resources; then the coordinator beside the library; then projects and the assignment chain beside the library; then the WORKER.md conversion; then the terms sweep; then the closure run. When workers as resources merges, the closure runs leg c early, beside the coordinator and library builds. The critical path, dashed red, runs the inventory, the contract, workers, the coordinator, projects, the conversion, the terms and the closure run.">
+     aria-label="The path as of 6 October 2026, in phases rather than dates. Now: this spec is in review and the FIX-1787 inventory is posted, with its merge-first rows landing. After the gate every child&#x27;s spec can be written at once, and the closure&#x27;s QA plan beside them. Builds run in waves: the worker contract and per-org user data together; then workers as resources; then the coordinator; then projects beside the assignment chain; then the WORKER.md conversion; then the terms sweep; then the closure run. The library&#x27;s spec is written with the others, and its build follows the MVP, after the closure run. When workers as resources merges, the closure runs leg c early, beside the coordinator build. The critical path, dashed red, runs the inventory, the contract, workers, the coordinator, projects, the conversion, the terms and the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -74,8 +74,7 @@
     <text class="t-ln" x="16" y="264">FIX-1795 · library</text>
     <rect class="todo" x="292" y="251" width="110" height="20" rx="3"/>
     <text class="t-s" x="298" y="265">spec</text>
-    <rect class="todo" x="590" y="251" width="132" height="20" rx="3"/>
-    <text class="t-s" x="596" y="265">build</text>
+    <text class="t-s" x="916" y="265" text-anchor="end">build after the MVP →</text>
   </g>
   <g id="fix-1793">
     <text class="t-ln" x="16" y="296">FIX-1793 · projects</text>

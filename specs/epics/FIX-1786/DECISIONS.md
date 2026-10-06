@@ -75,7 +75,7 @@ noun in core earns its place.
 |---|---|
 | **Instead of** | Rename first, then refactor · or every child at once |
 | **Because** | FIX-1790 lands before FIX-1788: under today's cross-org user key, a user in two orgs would see one private roster in both. FIX-1789 lands before FIX-1788 because a configuration must name a registered worker flow. Terms go last because docs move with code (Jake, 2026-10-03): renaming ahead of behaviour documents parts that don't exist yet. So each child names its new surfaces in the new terms and documents its own behaviour; FIX-1796 removes what remains and publishes the glossary |
-| **Locks in** | A seven-step critical path ([PLAN.md](PLAN.md#the-path)). Parallel windows: FIX-1789 beside FIX-1790; FIX-1791 beside FIX-1795; FIX-1793, FIX-1794 and FIX-1795 together. Every spec can be written once this one merges; the order gates builds only |
+| **Locks in** | A seven-step critical path ([PLAN.md](PLAN.md#the-path)). Parallel windows: FIX-1789 beside FIX-1790; FIX-1793 beside FIX-1794. FIX-1795 builds after the MVP ([Q2](#q2)). Every spec can be written once this one merges; the order gates builds only |
 
 <a name="d5"></a>
 ## D5 · engineering · Each mailbox board becomes a session board, unless people track the work
@@ -138,11 +138,17 @@ FIX-1762's stack merged first (#2738 and #2748, 2026-10-06).
   private step and the docs phrase together.
 - **Where it points.** Jake expects org-level (shared) concepts may be a fast follow after the
   MVP, as a key unique feature of the platform, which is why private projects should be cheap to
-  build now. That moves nothing in this epic: the shared project, its workstreams and the
-  library stay in the goal as approved. FIX-1793's spec gate is where it is asked outright,
-  beside the cost check above: does the shared half (the shared project and its two owners, "owner
-  writes, org reads", and FIX-1795's library) stay in the MVP? Yes keeps the goal. No is an
-  amendment here that changes the goal, and takes leg b's two-owner half and FIX-1795 with it.
+  build now. The shared project and its workstreams stay in the goal as approved. FIX-1793's
+  spec gate is where that is asked outright, beside the cost check above: does the shared half
+  (the shared project and its two owners, "owner writes, org reads") stay in the MVP? Yes keeps
+  the goal. No is an amendment here that changes the goal, and takes leg b's two-owner half with
+  it.
+- **The library follows the MVP.** Jake, 2026-10-06: "post mvp is fine." FIX-1795's spec
+  ([#2819](https://github.com/fixpoint-labs/flow-state-dev/pull/2819)) goes through its gate now;
+  its build starts once the goal is met. The goal and leg a lose the library copy, FIX-1796 and
+  the closure stop waiting on FIX-1795 ([ER-27](BUSINESS-RULES.md#how-the-set-is-run)), and
+  FIX-1795's own tests prove [ER-10](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)
+  after the MVP. Nothing else moves out.
 
 <a name="q3"></a>
 ## Q3 · decided · FIX-1774 and FIX-1777 are closed into FIX-1791 and FIX-1794
@@ -266,6 +272,11 @@ engine rule. The closure only checks.
   user-scoped data, not org scope. From FIX-1788's spec (#2812): D3's third change holds the
   worker link in a server-only field set at create, so no action names a worker. "Seat" left the
   prose here, one name for one thing (Jake, #2810).
+- **The library follows the MVP (Oct 6)**, in a fourth follow-up PR: Jake answered the library's
+  half of the MVP question ([Q2](#q2)). The goal, leg a, the path and ER-10 now put FIX-1795's
+  build after the closure run. Two engineering calls: the terms sweep doesn't wait on the
+  library, which is new code written in the new terms (ER-25); and FIX-1795 stays a child but
+  doesn't block the closure (ER-27), so the wrap reports it as the one open child.
 
 **Open: none needing an answer now.** Whether the shared half stays in the MVP is asked at
-FIX-1793's spec gate ([Q2](#q2)).
+FIX-1793's spec gate ([Q2](#q2)). The library's half is answered: it follows the MVP.

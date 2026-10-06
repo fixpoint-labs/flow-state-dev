@@ -16,8 +16,8 @@ what Workforce does, never what it used to do. Each child's own `DOCS.md` carrie
 > One rule covers who sees what: a worker's own state and your user data are private to you,
 > while shared resources and org-scope data are shared with your org, and a flow writes to org
 > scope only when its author built it to. Your workers, your private projects and every session
-> are yours alone. A shared project, its workstream entries and the org's worker library are
-> shared, and each line written there names the user and the worker that wrote it.
+> are yours alone. A shared project and its workstream entries are shared, and each line
+> written there names the user and the worker that wrote it.
 >
 > A **worker** is a configuration with an owner: its instructions, skills, tools, and the
 > flow that runs it. Each worker names its own flow: the built-in agent, a coordinator, or a
@@ -27,8 +27,7 @@ what Workforce does, never what it used to do. Each child's own `DOCS.md` carrie
 >
 > Some workers are **standard**. Your installation's files define them, every user has them,
 > and nobody can edit them. To change one for yourself, fork it: you get a worker of your own
-> that starts from its configuration. You can also copy a template from your org's library.
-> Your copy doesn't change when the template does.
+> that starts from its configuration.
 >
 > A **coordinator** is a worker that hands work to other workers on your roster, its
 > **delegates**. It picks by its own judgment, by best fit, in turn, or sends to everyone.
@@ -42,7 +41,11 @@ what Workforce does, never what it used to do. Each child's own `DOCS.md` carrie
 > **What this doesn't do.** Users don't message each other through Workforce, and there are
 > no shared conversations between users yet. A worker never acts for anyone but its owner.
 
-The figure ships as the docs' own SVG, redrawn from this concept figure.
+The figure ships as the docs' own SVG, redrawn from this concept figure. The library follows
+the MVP, so the MVP release neither draws nor mentions it. When FIX-1795 ships, it adds the
+library to the figure's shared area, "the org's worker library" to the shared list above, and
+two sentences after forking: "You can also copy a template from your org's library. Your copy
+doesn't change when the template does."
 
 ## UPDATE · `apps/docs/docs/workforce/projects.md` · opening
 
@@ -86,7 +89,7 @@ The figure ships as the docs' own SVG, redrawn from this concept figure.
 | REMOVE `mailboxes.md`; CREATE `upgrading.md` above | FIX-1792 | Its `DOCS.md` |
 | `projects.md` opening above; the room figures removed; `shift-manager/overview.md`'s Project view | FIX-1793 | Its `DOCS.md` |
 | Giving a task to a worker, down the chain | FIX-1794 | Its `DOCS.md` |
-| CREATE `library.md` | FIX-1795 | Its `DOCS.md` |
+| CREATE `library.md`; the library's lines in the overview opening and its figure | FIX-1795, with its build after the MVP | Its `DOCS.md` and the note above |
 | `glossary.md` → the Workforce section; every remaining retired term | FIX-1796 | Its `DOCS.md` |
 
 Each specific publishes with its implementation. The overview opening waits until the
