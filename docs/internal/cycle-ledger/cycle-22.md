@@ -206,8 +206,8 @@ it touches `issue-multi-pr.js`, which `verify.mjs` covers. Flagged, not changed.
 
 | File | Now | Proposed |
 |---|---|---|
-| `.agents/skills/issue-implement/SKILL.md` · 10.3, the race trigger | *"…the next round will find the next gap. On the second such finding against the same structure, name the atomic operation…"* | *"…the next round will find the next gap. Whether your last fix closed the class is the next review's call, not yours: a second interleaving finding against a structure an earlier round already fixed is the trigger, even when that fix was a restructure you said closed the class. Then name the atomic operation…"* |
-| `goals/README.md` · technique 1 | ends after the `useSession` example | adds: grade data the system holds or a tool returns where the run left it (the tool's output item, the stored row), not the model's retelling; grade the answer only when the claim is about what the model does; a failing retelling is a lead, not a verdict, and prompting the model to recite never turns it green; a prompt names every input the claim isn't about, so a correct model's question can't read as a failure |
+| `.agents/skills/issue-implement/SKILL.md` · 10.3, the race trigger | *"…the next round will find the next gap. On the second such finding against the same structure, name the atomic operation…"* | *"…the next round will find the next gap. On the second such finding against the same structure, including after a fix you said closed the class, name the atomic operation…"* |
+| `goals/README.md` · technique 1 | ends after the `useSession` example | qualifies the returned answer as only when the claim is about what the model does; grade data the system holds or a tool returns where the run left it (the tool's output item or the stored row), not the model's retelling; a failing retelling is a lead, not a verdict; a prompt names every input the claim isn't about, so a correct model's question can't read as a failure |
 
 The first re-aims cycle 20's fix rather than adding one. It removes the self-judgement the three
 tails show, and keeps everything else the trigger says. The second sharpens the line that licensed
