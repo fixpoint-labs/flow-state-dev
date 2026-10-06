@@ -135,10 +135,17 @@ instant cache hit instead of a full recompile.
 
 `pnpm test` runs package test tasks **serially** (`--concurrency=1`). Each
 package's vitest already parallelizes across its own files using all cores;
-running multiple packages' vitests at once oversubscribes CI runners and makes
-tests flake on the default 5s timeout. Serial execution matches the prior
-`pnpm -r test` behavior and still benefits from turbo's caching (unchanged
-packages are skipped). Build and typecheck stay fully parallel.
+running multiple packages' vitests at once oversubscribes the machine and makes
+tests flake on the default 5s timeout. Serial execution still benefits from
+turbo's caching (unchanged packages are skipped). Build and typecheck stay fully
+parallel.
+
+CI gets its parallelism from runners instead: the `Test (n/3)` jobs each run a
+shard of the packages serially, split by `scripts/test-shards.mjs`. Its named
+shards hold the slowest packages; the last shard is every other package, so a
+new package needs no entry. Rebalance the named shards when one job runs much
+longer than the others. `Typecheck & Test` stays the single check to require:
+it passes only when the typecheck and every shard pass.
 
 You don't order builds by hand. The one explicit edge in `turbo.json` is
 `@flow-state-dev/engine#build`, pinned to `core` only: `testing` is a dev-only
@@ -182,6 +189,24 @@ pnpm test:watch
 # Watch mode (single package)
 pnpm --filter @flow-state-dev/core test:watch
 ```
+
+### Shared module cache
+
+`engine`, `core`, `orchestration` and `integration-tests` run their test files on
+a shared module cache (`isolate: false`) instead of re-importing every file's
+module graph, which was most of their run time. The split lives in
+`scripts/vitest-isolation.mjs`:
+
+- A file that calls `vi.mock` or `vi.doMock` runs isolated automatically. A mock
+  only takes effect on a module's first import, so it needs a fresh cache.
+- A file that depends on module state another file changes first (a warn-once
+  flag, a module-level registry) goes in that package's `alsoIsolate` list in
+  its `vitest.config.ts`.
+
+If a test in one of these packages passes on its own but fails in the full run,
+it is the second kind: restore the state it changes, or add the file to
+`alsoIsolate`. `vitest run --sequence.shuffle.files` reproduces order-dependent
+failures.
 
 The testing package (`@flow-state-dev/testing`) provides framework-specific harnesses:
 - `testBlock`, `testSequencer`, `testRouter`, `testFlow` — block/flow test helpers

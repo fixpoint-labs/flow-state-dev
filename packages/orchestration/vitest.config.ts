@@ -1,9 +1,12 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
+import { sharedModuleCache } from "../../scripts/vitest-isolation.mjs";
 
 const root = resolve(import.meta.dirname, "../..");
 
 export default defineConfig({
+  // Most files share one module cache per worker; see scripts/vitest-isolation.mjs.
+  test: sharedModuleCache(import.meta.dirname),
   resolve: {
     alias: {
       "@flow-state-dev/core/resource-template": resolve(root, "packages/core/src/resource-template/resource-template.ts"),

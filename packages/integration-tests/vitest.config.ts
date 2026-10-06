@@ -1,4 +1,12 @@
 import { defineConfig } from "vitest/config";
+import { sharedModuleCache } from "../../scripts/vitest-isolation.mjs";
+
+const include = [
+  "src/scenarios/**/*.test.ts",
+  // The two-users-one-tenant HTTP suite: one case per boundary, over a real server.
+  "src/two-users-one-tenant/**/*.test.ts",
+  "test/**/*.test.ts"
+];
 
 export default defineConfig({
   test: {
@@ -12,11 +20,8 @@ export default defineConfig({
     // honest and avoids cross-scenario interleaving in console output.
     sequence: { concurrent: false },
     reporters: ["default"],
-    include: [
-      "src/scenarios/**/*.test.ts",
-      // The two-users-one-tenant HTTP suite: one case per boundary, over a real server.
-      "src/two-users-one-tenant/**/*.test.ts",
-      "test/**/*.test.ts"
-    ]
+    include,
+    // Most files share one module cache per worker; see scripts/vitest-isolation.mjs.
+    ...sharedModuleCache(import.meta.dirname, { include })
   }
 });

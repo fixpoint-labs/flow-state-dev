@@ -22,26 +22,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
-    name: Typecheck & Test
+  typecheck:
+    name: Typecheck
     runs-on: ubuntu-latest
-
-    # A real Redis for the BullMQ cases: the queue path's concurrency tests
-    # and the two-users queue-delivery case. They fail rather than skip when
-    # `CI` is set and `REDIS_URL` is not, so losing this service fails the job.
-    services:
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-
-    env:
-      REDIS_URL: redis://127.0.0.1:6379
 
     steps:
       - uses: actions/checkout@v4
@@ -93,11 +76,80 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
-
       - name: OMP mailbox regressions
         run: node --test .omp/test/mailbox.test.mjs
+
+  # The package tests, split across runners by scripts/test-shards.mjs. Each
+  # shard runs its packages one at a time, as `pnpm test` does: two at once on
+  # one runner oversubscribe it and tests start timing out.
+  test:
+    name: Test (${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+
+    # A real Redis for the BullMQ cases: the queue path's concurrency tests
+    # and the two-users queue-delivery case. They fail rather than skip when
+    # `CI` is set and `REDIS_URL` is not, so losing this service fails the job.
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      REDIS_URL: redis://127.0.0.1:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Keyed per shard as well as per job, so the shards don't clobber one
+      # another's cache entry.
+      - name: Restore Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.job }}-${{ matrix.shard }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ github.job }}-${{ matrix.shard }}-
+
+      # Every package's own build, as the single job had before the split:
+      # `test` depends only on `^build`, and some tests read their own
+      # package's build output (Shift Manager's built pages).
+      - name: Build packages
+        run: pnpm packages:build
+
+      - name: Test
+        run: pnpm turbo run test --concurrency=1 $(node scripts/test-shards.mjs ${{ matrix.shard }})
+
+  # Keeps the check name branch protection and reviewers already know: green
+  # only when the typecheck and every test shard are.
+  ci:
+    name: Typecheck & Test
+    runs-on: ubuntu-latest
+    needs: [typecheck, test]
+    if: always()
+    steps:
+      - name: Typecheck and every test shard passed
+        run: |
+          test "${{ needs.typecheck.result }}" = success
+          test "${{ needs.test.result }}" = success
 
   # What a consumer gets from `npm install`: every publishable package packed
   # the way `changeset publish` packs it, installed into an empty ESM project,

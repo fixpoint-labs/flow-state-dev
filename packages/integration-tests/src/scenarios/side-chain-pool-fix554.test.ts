@@ -2,17 +2,17 @@
  * FIX-554 — request-scoped side-chain pool.
  *
  * Verifies that `.sideChain()` tasks dispatched inside an inner sequencer no
- * longer block the parent's next step. Two parallel branches each call
- * `.sideChain()` on a slow handler; total wall time should approximate the
- * single-branch duration, not the sum.
+ * longer block the parent's next step. Two sibling branches each call
+ * `.sideChain()`; the second branch's task must start while the first's is
+ * still running.
  *
  * Also covers:
  * - SSE stream lifetime: the request stays open until the pool drains, so
  *   items emitted by background work after the main chain finishes still
  *   reach the response.
- * - Backwards-compat: the first scenario passes the existing test suite,
- *   which doubles as a regression check on the old per-sequencer path —
- *   it would have completed in ≈ 2× SLEEP_MS under the legacy model.
+ * - Backwards-compat: the first scenario doubles as a regression check on the
+ *   old per-sequencer path, under which the second branch could not start
+ *   until the first branch's task had finished.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
@@ -21,27 +21,45 @@ import { z } from "zod";
 
 const SLEEP_MS = 80;
 
-const sleepHandler = (name: string, ms: number, marker: { done: boolean }) =>
-  handler({
-    name,
-    inputSchema: z.unknown(),
-    outputSchema: z.number(),
-    execute: async () => {
-      await new Promise((r) => setTimeout(r, ms));
-      marker.done = true;
-      return ms;
-    }
-  });
-
 describe("FIX-554: request-scoped side-chain pool", () => {
-  it("sibling sequencers' .sideChain() tasks run concurrently — wall time ≈ max, not sum", async () => {
-    const aDone = { done: false };
-    const bDone = { done: false };
+  it("sibling sequencers' .sideChain() tasks run concurrently: the second starts while the first is still running", async () => {
+    // A holds until B's task has started. Under the pool, B starts while A is
+    // still running, so A is released at once. Under the legacy per-sequencer
+    // auto-await, branch B could not start until A had finished, so A sits out
+    // its fallback and reports no overlap. Ordering, not wall time, so CPU load
+    // cannot fail it.
+    let bStarted!: () => void;
+    const started = new Promise<void>((resolve) => (bStarted = resolve));
+    let overlapped: boolean | undefined;
+    let bRan = false;
 
-    const branchA = sequencer({ name: "branch-a", inputSchema: z.unknown() })
-      .sideChain(sleepHandler("slow-a", SLEEP_MS, aDone));
-    const branchB = sequencer({ name: "branch-b", inputSchema: z.unknown() })
-      .sideChain(sleepHandler("slow-b", SLEEP_MS, bDone));
+    const slowA = handler({
+      name: "slow-a",
+      inputSchema: z.unknown(),
+      outputSchema: z.number(),
+      execute: async () => {
+        let fallback: ReturnType<typeof setTimeout> | undefined;
+        overlapped = await Promise.race([
+          started.then(() => true),
+          new Promise<boolean>((resolve) => (fallback = setTimeout(() => resolve(false), 2_000)))
+        ]);
+        clearTimeout(fallback);
+        return 0;
+      }
+    });
+    const slowB = handler({
+      name: "slow-b",
+      inputSchema: z.unknown(),
+      outputSchema: z.number(),
+      execute: async () => {
+        bRan = true;
+        bStarted();
+        return 0;
+      }
+    });
+
+    const branchA = sequencer({ name: "branch-a", inputSchema: z.unknown() }).sideChain(slowA);
+    const branchB = sequencer({ name: "branch-b", inputSchema: z.unknown() }).sideChain(slowB);
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
       .step(branchA)
@@ -52,7 +70,6 @@ describe("FIX-554: request-scoped side-chain pool", () => {
       actions: { run: { block: root } }
     })({ id: "test" });
 
-    const start = Date.now();
     const result = await testFlow({
       flow,
       action: "run",
@@ -60,15 +77,11 @@ describe("FIX-554: request-scoped side-chain pool", () => {
       input: undefined,
       unmockedGeneratorPolicy: "allow"
     });
-    const elapsed = Date.now() - start;
 
     expect(result.error).toBeUndefined();
     expect(result.status).toBe("completed");
-    expect(aDone.done).toBe(true);
-    expect(bDone.done).toBe(true);
-    // Both tasks ran concurrently. Allow generous slack for CI overhead.
-    // Under the legacy per-sequencer auto-await this would be ≥ 2 × SLEEP_MS.
-    expect(elapsed).toBeLessThan(SLEEP_MS * 2 - 10);
+    expect(bRan).toBe(true);
+    expect(overlapped).toBe(true);
   });
 
   it("SSE stream stays open until background work completes — slow .sideChain() still surfaces", async () => {
