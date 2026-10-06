@@ -13,7 +13,7 @@
  *      share a key, including ids carrying `:`, `\` or the literal `~org`.
  *
  * And one convenience it confirms: the shared key is byte-identical to the
- * owner-pinned cell FIX-1538 already writes, so a seat's shared data does not
+ * owner-pinned cell FIX-1538 already writes, so a hired worker's shared data does not
  * move.
  *
  * The encoder below mirrors `encodeScopeKeyComponent` in
@@ -40,7 +40,7 @@ const enc = (value) => value.replace(/[\\:]/g, "\\$&");
 /** Today's forms, which stay on disk until an operator moves them. */
 const legacyShared = (user) => enc(user);
 const legacyIsolated = (user, flow) => `${enc(user)}:${enc(flow)}`;
-/** FIX-1538's owner-pinned cell, written today for hired seats. */
+/** FIX-1538's owner-pinned cell, written today for hired workers. */
 const pinnedShared = (user, org) => `${enc(user)}:~org:${enc(org)}`;
 
 /** The proposed forms. */

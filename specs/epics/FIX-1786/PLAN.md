@@ -20,10 +20,10 @@ privacy fix is checked when workers merges, not only at the end (ER-30). The gra
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
 | **FIX-1787** inventory | inventory, no spec | Every open PR and active issue in the areas | 38 calls: 13 merge first, 13 close, 12 untouched | Every refactor child | Done as a table; its merges are the work |
-| **FIX-1789** contract | spec → impl PR | `workerConfigSchema()`, the door · Q1, chosen at its spec gate on a POC of both shapes | Registered worker flows, the private-state rule, standard-only, attribution; a worker's configuration as stored data read per run (ER-2, ER-11) | FIX-1788 | Small, plus the two-shape POC |
+| **FIX-1789** contract | spec → impl PR | `workerConfigSchema()`, the door · Q1, decided at its spec gate on its POC of both shapes: the list | Worker flows on the installation's list, checked at registration by exported checks (configuration by value, a door, a full `writtenBy` shape); standard-only per entry, attribution; a worker's configuration as stored data read per run (ER-2, ER-11) | FIX-1788 | Small, plus the two-shape POC |
 | **FIX-1790** per-org data | spec → impl PR | The engine's user key | User data per (user, org); old records moved to the one org they belong to by an operator step, or refused, never read in two (ER-3) | FIX-1788 | Medium: a persisted key every flow uses, and its migration |
-| **FIX-1788** workers | spec → impl PRs | ER-2 · ER-3 · projected collections · Q1's shape, once recorded | Worker resources on singleton flows, standard projection, fork, deprecations; the session link in server-owned session state (D3's third change); a worker's own key for its private state, with today's per-seat cells moved (ER-1) | FIX-1791 · FIX-1795 | Large |
-| **FIX-1791** coordinator | spec → impl PRs | ER-1 · FIX-1779's join and leave · FIX-1774's legs · Q1's shape, once recorded | The coordinator flow, delegates, four policies, the records (ER-4, ER-5); the chief of staff as a standard coordinator | FIX-1793 · FIX-1794 · FIX-1792 | Medium to large |
+| **FIX-1788** workers | spec → impl PRs | ER-2 · ER-3 · projected collections · Q1's list | Worker resources on singleton flows, standard projection, fork, deprecations; the session link, set and checked at create where only the server writes (D3's third change); a worker's own key for its private state, with today's per-worker cells moved (ER-1) | FIX-1791 · FIX-1795 | Large |
+| **FIX-1791** coordinator | spec → impl PRs | ER-1 · FIX-1779's join and leave · FIX-1774's legs · Q1's list | The coordinator flow, delegates, four policies, the records (ER-4, ER-5); the chief of staff as a standard coordinator | FIX-1793 · FIX-1794 · FIX-1792 | Medium to large |
 | **FIX-1795** library | spec → impl PR | ER-1's write path | Templates and copies, model variants (ER-10) | FIX-1796 | Medium |
 | **FIX-1793** projects | spec → impl PRs | ER-4 · ER-3 · FIX-1762's locks · Q2 | Private and shared projects (Q2); workstream resources, the row rule, the project coordinator; rooms and Shift Manager's Stream tab removed (ER-7, ER-8) | FIX-1792 | Large: about 2,200 lines out, one engine rule in |
 | **FIX-1794** chain | spec → impl PR | ER-4's delegates · FIX-1778 · FIX-1780's hand-off rule · FIX-1777's rule | Tasks down the owner's boards, drained as the owner; a board whose rows cross a flow stays its own board, never one ledger for the owner's sessions (ER-9) | FIX-1796 | Medium; larger if that needs a task-board change |
@@ -40,9 +40,9 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
 
 ## What unblocks what, from here
 
-1. **This spec merges** → every child's spec can start. Builds still wait on step 2. FIX-1788's
-   and FIX-1791's specs name a worker-flow declaration only after FIX-1789's gate chooses one and
-   a follow-up here records it (Q1).
+1. **This spec merges** → every child's spec can start. Builds still wait on step 2. FIX-1789's gate
+   chose the list, recorded here (Q1), so FIX-1788's and FIX-1791's specs register their flows on
+   it.
 2. **The inventory's merge-first rows land or close**, #2759 first, then the PRs that rebase on
    it → FIX-1789 and FIX-1790 builds start.
 3. **Both merge** → FIX-1788 builds. It merges → FIX-1791 and FIX-1795 build, and FIX-1797 runs
@@ -63,10 +63,10 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
 |---|---|---|
 | The `agent` flow (`agent-worker-flow.ts`) | FIX-1788, FIX-1791, FIX-1794 | FIX-1788 lands the singleton shape first; the others build on it |
 | The hire and roster write path | FIX-1788, FIX-1795 | FIX-1788 owns the write; the library calls it |
-| The worker-flow declaration | FIX-1789, FIX-1788, FIX-1791 | FIX-1789's gate chooses it (Q1); the epic records it; the other two name it only after |
+| The worker-flow declaration | FIX-1789, FIX-1788, FIX-1791 | The installation's list (Q1, decided). FIX-1789 builds it and its checks; the other two register on it |
 | The user scope key | FIX-1790, FIX-1788, FIX-1793 | FIX-1790 merges first; nothing user-scoped ships before it |
 | A board whose rows cross a flow | FIX-1794, FIX-1791, FIX-1792, FIX-1793 | FIX-1794 decides how it stays its own board (ER-9); the others build their boards on that answer |
-| Server-owned session state | FIX-1788, FIX-1791 | FIX-1788 lands it with the link; the coordinator keeps its delegates there |
+| Session data only the server writes | FIX-1788, FIX-1791 | FIX-1788 lands it with the link, set at create; the coordinator keeps its delegates where only the server writes |
 | The mailbox flow and its files | FIX-1791, FIX-1792 | FIX-1791 ships the coordinator beside the mailbox flow; FIX-1792 converts every file and removes the mailbox flow in one change |
 | `packages/shift-manager` | FIX-1788, FIX-1793, FIX-1796 | The second lander adapts; the TEAMS view reads worker resources, the Project view the coordinator session |
 | `apps/docs/docs/workforce/` | Every child | Each child its own page ([DOCS.md](DOCS.md#ownership)); FIX-1796 the overview and glossary |

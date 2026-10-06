@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Q2, open: close the org's shared record in the engine, or check declarations only? Recommended, an engine rule that refuses the write when it runs; the alternative, check declarations only and document the gap. The row that decides it, a write nothing declares: the engine rule refuses it and names the flow, so bob reads nothing of alice's; declarations only admit it, and every member reads it, as the POC's R3 and R4 showed. Second row, what changes: the engine rule is a fourth Layer 1 change, opt-in per flow, the epic's call; declarations only touch Workforce alone. Third row, size: the issue grows from small to medium, against small. Locks in: worker flows declare no org record, and app flows outside Workforce are untouched. Flips if no worker flow will ever write that record, and no capability can be configured to.">
+     aria-label="D1: how hires made before the upgrade come across. Chosen: one operator step moves each hire, its memory and its conversations. Instead of: reading the old shape at run time. The row that decides it, the old per-worker copies: the step lets them go after one run, while a run-time read keeps that machinery alive for good. Second row, until it runs: under the step old hires wait and the boot says how many; read at run time, they work at once. Third row, what an operator does: run one step beside FIX-1790&#x27;s, against nothing. Locks in one documented step per deployment with hires, nothing deleted, safe to run twice. Flips if a deployment has no operator to run a step.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -10,7 +10,8 @@
               --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
     .bg     { fill:var(--surface); }
     .ask    { fill:var(--surface-2); }
-    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 4; }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
     .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
     .decide { fill:var(--accent-soft); }
     .bar    { fill:var(--accent); }
@@ -25,6 +26,7 @@
     .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
     .plus   { fill:var(--code); }
     .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
     .c-code { fill:var(--code); }
     .c-mute { fill:var(--ink-3); }
     .c-lost { fill:var(--ink-2); }
@@ -33,60 +35,61 @@
   <rect class="bg" x="0" y="0" width="940" height="418"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q2 · OPEN, RAISED BY THE POC · THE CALL</text>
-    <text class="t-q" x="32" y="52">Close the org's shared record in the engine, or check declarations only?</text>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">How do hires made before the upgrade come across?</text>
   </g>
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">An engine rule, refused when it runs</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">One operator step</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="592" y="93">THE ALTERNATIVE</text>
-    <text class="t-h c-lost" x="592" y="112">Declarations only, gap documented</text>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Read the old shape at run time</text>
   </g>
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">A WRITE NOTHING</text>
-    <text class="t-lbl" x="32" y="169">DECLARES</text>
+    <text class="t-lbl" x="32" y="156">THE OLD</text>
+    <text class="t-lbl" x="32" y="169">PER-WORKER COPIES</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Refused, naming the flow</text>
-    <text class="t-s" x="248" y="179">bob reads nothing of alice's</text>
+    <text class="t-b" x="248" y="161">They go, after one run</text>
+    <text class="t-s" x="248" y="179">the shared copy is all that&#x27;s left</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Admitted; every member reads it</text>
-    <text class="t-s" x="612" y="179">what the POC's R3 and R4 showed</text>
+    <text class="t-b" x="612" y="161">Kept alive for good</text>
+    <text class="t-s" x="612" y="179">the machinery FIX-1798 removes</text>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="218">WHAT CHANGES</text>
+    <text class="t-lbl" x="32" y="218">UNTIL IT RUNS</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">A fourth Layer 1 change</text>
-    <text class="t-s" x="248" y="241">opt-in per flow; the epic's call (D3)</text>
+    <text class="t-b" x="248" y="223">Old hires wait</text>
+    <text class="t-s" x="248" y="241">the boot says how many</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Workforce alone</text>
-    <text class="t-s" x="612" y="241">the epic's three changes stay three</text>
+    <text class="t-b" x="612" y="223">Old hires work at once</text>
+    <text class="t-s" x="612" y="241">no wait</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
   <g id="row-3">
-    <text class="t-lbl" x="32" y="276">THIS ISSUE'S SIZE</text>
+    <text class="t-lbl" x="32" y="276">WHAT AN OPERATOR</text>
+    <text class="t-lbl" x="32" y="289">DOES</text>
     <text class="mark minus" x="228" y="282">−</text>
-    <text class="t-b" x="248" y="281">Medium</text>
-    <text class="t-s" x="248" y="299">an engine flag and its tests</text>
+    <text class="t-b" x="248" y="281">Runs one step</text>
+    <text class="t-s" x="248" y="299">beside FIX-1790&#x27;s, same upgrade</text>
     <text class="mark plus" x="592" y="282">+</text>
-    <text class="t-b" x="612" y="281">Small</text>
-    <text class="t-s" x="612" y="299">ships sooner</text>
+    <text class="t-b" x="612" y="281">Nothing</text>
+    <text class="t-s" x="612" y="299">no step to run</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">Worker flows declare no org record</text>
-    <text class="t-s" x="32" y="387">app flows outside Workforce are untouched</text>
+    <text class="t-b" x="32" y="369">One step per deployment with hires</text>
+    <text class="t-s" x="32" y="387">nothing deleted; safe to run twice</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">No worker flow will ever write that record</text>
-    <text class="t-s" x="494" y="387">and no capability can be configured to</text>
+    <text class="t-b" x="494" y="369">A deployment has no operator</text>
+    <text class="t-s" x="494" y="387">then the move runs on a user&#x27;s first load</text>
   </g>
 </svg>
