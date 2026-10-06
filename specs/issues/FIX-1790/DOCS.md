@@ -64,7 +64,7 @@ becomes:
 
 > A hired worker keeps what it learns about a user in the same place every flow in the organization
 > does: one cell for that user in that organization. With flow isolation, it keeps one cell per
-> user per worker, still inside the organization. A resource's own `flowIsolation` decides which
+> user per hired worker, still inside the organization. A resource's own `flowIsolation` decides which
 > applies; a resource that doesn't set it follows the flow's `isolateUserState`.
 >
 > If you are upgrading an app that already saved user data, see [Upgrading: moving user data into
