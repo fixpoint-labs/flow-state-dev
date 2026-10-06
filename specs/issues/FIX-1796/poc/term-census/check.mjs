@@ -26,7 +26,10 @@
  * packages and pages, plus any file that imports Workforce or Shift Manager.
  * The task board keeps "seat" (D1): its named types strip anywhere, and its
  * bare word strips only in the board's own files, a closed list that may
- * never touch Workforce's ground. "Hired seat" counts everywhere.
+ * never touch Workforce's ground. "Hired seat" counts everywhere. The
+ * discovery domain `seats` is Workforce's seat, not the board's (D4), so it
+ * counts like any other. "Person" is scanned on Workforce's ground, where a
+ * person who isn't the signed-in user is pinned by file and phrase.
  *
  * `--control` adds planted files to the scan (in memory; the tree is not
  * touched) and requires each planted line to fail for the term it hides, and a
@@ -76,7 +79,7 @@ const TERMS = [
   { id: "thread", re: /\bthreads?\b/gi, ground: "workforce", say: "the delegate's session, where it means a mailbox thread" },
   { id: "room", re: /\b[Rr]ooms?\b|room-(?:lines|seq|answers|deliveries)|Room[A-Z]\w*|\broom[A-Z]\w*|\bROOM_\w*/g, say: "the project coordinator" },
   { id: "talk-session", re: /talk[ _-]?sessions?|talk-?template|talkFor\b|\bTALK_\w+/gi, say: "the project coordinator" },
-  { id: "person", re: /\bpersons?\b|\bperson's\b/gi, say: "user, where it means the signed-in user" },
+  { id: "person", re: /\bpersons?\b|\bperson's\b/gi, ground: "workforce", say: "user, where it means the signed-in user" },
   { id: "kind", re: /kind/gi, ground: "workforce", say: "worker flow, where it means the flow a worker runs on" },
   { id: "owner-pin", re: /owner[ _-]?pins?/gi, ground: "workforce", say: "access to the worker resource" },
   { id: "flow-instance", re: /flow[ _-]?instances?|cardinality:\s*"collection"/gi, ground: "workforce", say: "worker resource, run by the singleton flow it names" },
@@ -97,8 +100,8 @@ const EXCEPTIONS = [
   { id: "stored-key-names", terms: ["seat", "mailbox", "room", "hired-roster", "member"], strip: /(?<=["'`])(?:inventory\/(?:seats|mailboxes|members)|workforce\/roster|room-(?:lines|seq|answers|deliveries)|hiredRoster(?:Private)?)[\w\/*.:${}-]*/g, why: "D2: a name only storage sees keeps its string; the key strips, never the rest of its literal" },
   { id: "board-seat-names", terms: ["seat"], strip: /\b(?:TaskSeat|HandOffSeat)\w*|\b\w*ToolSeats?\w*|\btoolSeat\w*|\btool[ -]seats?\b|\bhandOffBySeat\b|\binlineSeats\b/g, why: "D1: the task board's named types keep seat, wherever they are used" },
   { id: "board-seat-words", terms: ["seat"], files: BOARD_FILES, strip: /(?<!hired[ _-]?|[Ww]orkforce[ _-]?)\b[Ss]eats?\b/g, why: "D1: the board's own word, in the board's own files; a hired seat still counts" },
-  { id: "manifest-domain-names", terms: ["seat", "mailbox"], strip: /(?<=(?:MANIFEST_DOMAINS|\bdomains?\b)[^\n]*?)["'](?:seats|mailboxes)["']/g, why: "D1: the discovery tool's domain names are pinned, model-facing strings (ER-22)" },
   { id: "project-member", terms: ["member"], strip: /\b(?:project|org|organization|team)(?:'s)?\s+members?\b|\b(?:project|org)Members?\b/gi, why: "a project's or an org's member is a user, not a mailbox's" },
+  { id: "person-any-human", terms: ["person"], files: /^apps\/kitchen-sink\/workforce\/teams\/support\/workers\/[^/]+\/WORKER\.md$/, strip: /\bneeds a person\b/g, why: "a person who isn't the signed-in user stays, pinned by file and phrase (BR-5)" },
   { id: "chat-thread", terms: ["thread"], strip: /\bchat[ -]threads?\b/gi, why: "a chat thread in the UI, not a mailbox's" },
 ];
 
@@ -257,6 +260,10 @@ const PLANTS = {
   ].join("\n"),
   // Inside the board's own files, its bare word strips; a hired seat still counts.
   "packages/orchestration/src/task-board/zz-planted.ts": "// a dispatcher seat hands this row to a hired seat\n",
+  // A pinned "any human" phrase strips; the signed-in person beside it still counts.
+  "apps/kitchen-sink/workforce/teams/support/workers/zz/WORKER.md": "When a case needs a person, tell the person who signed in.\n",
+  // The discovery domain is Workforce's seat (D4): a domain value still counts.
+  "packages/workforce/src/zz-planted-domain.ts": 'export const domains = ["seats", "skills"];\n',
   "zz-planted-folder/notes.md": "Nothing retired here.\n", // totality: no area
 };
 
@@ -273,6 +280,8 @@ if (process.argv.includes("--control")) {
     { file: "apps/kitchen-sink/components/zz-planted-pane.tsx", line: 2, term: "seat" },
     { file: "apps/kitchen-sink/components/zz-planted-pane.tsx", line: 3, term: "kind" },
     { file: "packages/orchestration/src/task-board/zz-planted.ts", line: 1, term: "seat" },
+    { file: "apps/kitchen-sink/workforce/teams/support/workers/zz/WORKER.md", line: 1, term: "person" },
+    { file: "packages/workforce/src/zz-planted-domain.ts", line: 1, term: "seat" },
   ];
   const caught = want.map((w) => (r.unsweptByFile.get(w.file) ?? []).some((h) => h.line === w.line && h.term === w.term));
   const folder = r.unscoped.includes("zz-planted-folder/notes.md");

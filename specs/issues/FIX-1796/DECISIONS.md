@@ -4,7 +4,7 @@
 
 The vocabulary itself is decided in the epic's [concept](../../epics/FIX-1786/concept/CONCEPT.md#vocabulary)
 and not reopened here. These are the three calls the Architect's guidance on the issue said to
-put to the owner, priced. The owner answered D1 in review.
+put to the owner, priced, and a fourth that review found. The owner answered D1 in review.
 
 ## The tree
 
@@ -16,6 +16,8 @@ flowchart TD
   D2 -.->|"rejected · moves or double-reads saved records"| X2["rename saved names too"]
   I --> D3["D3 · renamed exports break, with a table"]
   D3 -.->|"rejected · an alias is a retired word in an export"| X3["deprecated aliases for a release"]
+  I --> D4["D4 · the discovery domain seats becomes workers"]
+  D4 -.->|"rejected · a model would still read seat as a worker"| X4["pin seats as a model-facing name"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -25,9 +27,9 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 | | |
 |---|---|
-| **Instead of** | Renaming the task board's seat to assignee too: its `TaskSeat…` and `HandOffSeat` types, the hand-off record's `seat` field, and the discovery tool's domain names |
+| **Instead of** | Renaming the task board's seat to assignee too: its `TaskSeat…` and `HandOffSeat` types and the hand-off record's `seat` field |
 | **Because** | The product owner's answer (2026-10-06): "seat" is a fair word for a place on a board. An assignee is a seat on one specific task, so it names something else. Once the Workforce sweep lands, "seat" has one meaning in the codebase, the board's, and the glossary defines it there and nowhere else. Nothing in the epic's Layer 1 changes (ER-22), so the epic's "Task boards … consumed as they ship" holds, no epic decision is needed, and FIX-1794's new board text stands as written |
-| **Locks in** | The board's types, the hand-off record's `seat` field and `MANIFEST_DOMAINS` keep their names; no board app changes. The guard needs a board-seat exception scoped to the board's surface: its named types anywhere, its bare word only in its own files, and a Workforce "seat" counts even on the same line |
+| **Locks in** | The board's types and the hand-off record's `seat` field keep their names; no board app changes. The discovery tool's `seats` domain is Workforce's seat, not the board's, and is [D4](#d4)'s. The guard needs a board-seat exception scoped to the board's surface: its named types anywhere, its bare word only in its own files, and a Workforce "seat" counts even on the same line |
 
 ![D1: only Workforce's seat goes, chosen, beside a board's seat becomes its assignee. Decides it: what a seat is on a board. Price: the guard needs a board-seat exception. Flips if readers still take a board's seat for a worker after the sweep](figures/d1-board-keeps-seat.svg)
 
@@ -70,13 +72,29 @@ It comes down to ER-12: an alias is a retired word in an export, so the closure 
 **What would change my mind:** an app outside this repo pinned to these exports and promised a
 deprecation window. Then alias for one release, and the closure waits for their removal.
 
+<a name="d4"></a>
+## D4 · The discovery domain `seats` becomes `workers`
+
+| | |
+|---|---|
+| **Instead of** | Keeping `seats` in `MANIFEST_DOMAINS` (`contracts`) as a pinned, model-facing name |
+| **Because** | The domain lists Workforce's workers, so it is Workforce's seat, not the board's, and the owner's rule is seat for boards, not workers. It is the one surface a model reads by name, so a surviving `seats` would teach a model the meaning the sweep removes. D3 rules out an alias |
+| **Locks in** | `MANIFEST_DOMAINS`, core's discovery tool and Workforce's `discover:` key say `workers`. A saved prompt, skill or eval that passes `seats` gets the "unknown domain" listing, and a worker file with `discover: [seats]` is refused when it is minted, listing the known domains. `patch` changesets for `contracts`, `core` and `workforce` name that cost. **Binds once the epic records it** in its next amendment (amend-5): it is a Layer 1 public name (ER-22) |
+
+![D4: seats becomes workers, chosen, beside pin seats as a model-facing name. Decides it: what a model reads by name. Price: saved prompts that pass seats get the unknown-domain listing. Flips if the epic declines the rename](figures/d4-workers-domain.svg)
+
+It comes down to what a model reads by name: pinned, "seats" keeps a Workforce meaning that only a model sees.
+
+**What would change my mind:** the epic declining the rename at amend-5. Then `seats` is pinned
+with that cost named, and it goes to the product owner at the gate, because it reverses part of
+his answer to D1.
+
+The `mailboxes` domain is not decided here: FIX-1792 removes it ([its PLAN S9](https://github.com/fixpoint-labs/flow-state-dev/pull/2833)).
+
 ## Decided, not asked
 
 - **The list is derived.** Each child names the old exports it leaves ([PLAN.md](PLAN.md#at-implement-time));
   the census on the build commit finds the rest. Nothing a sibling is about to delete is renamed.
-- **The discovery tool's domain names stay** with D1: `seats` and `mailboxes` are pinned,
-  model-facing strings in `contracts` (ER-22). What the tool and its page say about each domain
-  is reworded to worker and coordinator; the guard strips only the domain value.
 - **Scope** is the issue's (package source, published docs, labs, apps) plus package tests,
   READMEs, examples, `docs/architecture/` and the root README: they describe current behaviour,
   and BP-034 already makes a rename reach them. `goals/`, process files and history keep their words.
@@ -84,8 +102,11 @@ deprecation window. Then alias for one release, and the closure waits for their 
   only.** The engine keeps its flow `kind`, its flow instances and owner pins until FIX-1798; a
   project's member and a chat thread keep theirs. Ground is a surface, not a folder: Workforce's
   own packages and pages, plus any file that imports Workforce or Shift Manager.
-- **"Person" goes where it means the signed-in user**, everywhere in scope; where it means any
-  human (an author, a reviewer), it stays, pinned by file and phrase in the guard.
+- **"Person" stays guarded, on Workforce's ground.** The owner's standing rule is "user, not
+  person", so the permanent guard keeps it, on Workforce's ground only. A person who isn't the
+  signed-in user (an author, someone a case goes to) is an exception pinned by file and phrase.
+  This answers the architecture review's point 2, which asked to drop "person" from the
+  permanent guard.
 - **"Target" is not scanned.** It never reached Workforce code; the engine's dispatch target stays.
 - **Template and library enter the glossary with FIX-1795**, which builds after the MVP. The
   issue's outcome lists them; the epic's later call moves them ([Q2](../../epics/FIX-1786/DECISIONS.md#q2)).
@@ -112,8 +133,8 @@ deprecation window. Then alias for one release, and the closure waits for their 
 ## Settled
 
 - **The counts this spec rests on** are re-derived by the census, not counted by hand: on
-  `cad4e2780`, 22,627 unswept lines in 650 files; every one of 5,802 tracked files has an area;
-  `--control` refuses all eleven plants ([README](poc/term-census/README.md#what-was-observed)).
+  `cad4e2780`, 22,247 unswept lines in 556 files; every one of 5,802 tracked files has an area;
+  `--control` refuses all thirteen plants ([README](poc/term-census/README.md#what-was-observed)).
 - **The channel-kind paths the issue fences don't exist on `main`**: CONFIRMED, no
   `flows/channels/` path is tracked at all, and `CHANNEL.md` appears only in one goal fixture and
   two retained specs. So the guard carries no exception for them: one that strips nothing fails it. Channels were renamed to mailboxes before this epic; today
@@ -127,6 +148,8 @@ deprecation window. Then alias for one release, and the closure waits for their 
   goes, so the board PR dropped out (two PRs) and no epic decision is needed. The census now
   scopes ground and the board's seat by surface, scans "member", "thread" and lower-camel
   `room…` names, strips a stored key without the rest of its literal, and fails on a stale
-  exception, so the unused channel-path exception went.
+  exception, so the unused channel-path exception went. Then the architect and the epic's
+  coordinator split the discovery domain from the board: `seats` lists workers, so it becomes
+  `workers` (D4), and "person" keeps its permanent guard, on Workforce's ground.
 
 **Open: none.**

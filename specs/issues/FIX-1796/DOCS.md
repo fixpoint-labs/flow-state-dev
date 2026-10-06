@@ -95,9 +95,9 @@ Workforce worker says worker.
 > One tool call that tells an agent what is in scope for it right now: the workers it can hand
 > work to, the skills it can load, and the resources it can read.
 
-The **seat** and **mailbox** definitions go; a **worker** links to the glossary. The domain names
-`seats` and `mailboxes` stay, because the tool takes them as input ([D1](DECISIONS.md#d1)); the
-page describes each one in the new terms, read off the tool at publish.
+The **seat** definition goes; a **worker** links to the glossary. The `seats` domain is now
+`workers` ([D4](DECISIONS.md#d4)), in the examples and in `discover:`; the `mailboxes` domain and
+its definition are FIX-1792's. The domain list is read off the tool at publish.
 
 ## UPDATE · `apps/docs/docs/workforce/upgrading.md` · new section
 
@@ -109,13 +109,16 @@ page describes each one in the new terms, read off the tool at publish.
 > | Package | Was | Now |
 > |---|---|---|
 > | `@flow-state-dev/workforce` | `seatId`, `seatSkills`, `seatTools`, `seatPackages` | `workerId`, `workerSkills`, `workerTools`, `workerPackages` |
+> | `@flow-state-dev/contracts`, `core` | the discovery domain `seats` | `workers` |
 > | every package | the rest | the package's changelog for this release |
 >
 > A worker flow whose configuration schema composes `workerConfigSchema()` gets the new keys with
 > no change. One that declares them by hand is refused at startup, and the message names the
-> key it is missing. Saved data keeps its stored names, so nothing needs moving.
+> key it is missing. A prompt, skill or eval that asks discovery for `seats` gets the list of
+> known domains instead, and a worker file with `discover: [seats]` is refused when it loads,
+> naming `workers`. Saved data keeps its stored names, so nothing needs moving.
 
-The rows are completed from the changesets when P1 is built; the one above is pinned.
+The rows are completed from the changesets when P1 is built; the two above are pinned.
 
 ## PUBLISH · `apps/docs/docs/workforce/overview.md` · the opening
 
@@ -126,7 +129,8 @@ library lines, and each sentence checked against `main`.
 ## Every other page
 
 A sentence that uses a retired term keeps its meaning with the new term: no section is added,
-moved or removed. Those pages are not copied here. "Person" stays where it means any human.
+moved or removed. Those pages are not copied here. On Workforce's pages, "person" says user where it
+means the signed-in user, and stays where it means someone else.
 
 ## Ownership
 
