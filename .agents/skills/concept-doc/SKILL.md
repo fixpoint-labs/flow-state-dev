@@ -31,11 +31,10 @@ needs the same picture.
 
 Apply these; don't restate them in the doc or here.
 
-- **The bar:** [`specs/epics/FIX-1786/concept/CONCEPT.md`](../../../specs/epics/FIX-1786/concept/CONCEPT.md),
-  the Workforce concept doc this skill was distilled from. Read all of it before writing, and
-  match its depth: every part answered concretely, one cast of examples throughout, costs stated,
-  a cited gap table. (Its opening banner and source comment exist because it was copied into an
-  epic spec; a new concept doc doesn't need them.)
+- **The bar:** [`example/CONCEPT.md`](example/CONCEPT.md), the Workforce concept doc this skill
+  was distilled from, kept beside this file with its figures. Read all of it before writing, and
+  match its depth: every part answered concretely, one cast of examples throughout, costs stated.
+  Its header comment names where it falls short of this skill; don't copy those gaps.
 - [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → "Density".
 - [`user-docs.md`](../../../docs/contributing/user-docs.md) → "Voice" and the tells table.
 - [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) for any open

@@ -1,0 +1,91 @@
+<svg viewBox="0 0 940 600" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Workers are private; sharing happens only in shared resources. Above the org, the product files: the standard install every user starts with. Inside org acme, a shared area holds a channel whose lines name user and worker, a shared project whose workstreams have one owner each, and the worker library of templates to copy. Below it, Alice&#x27;s private area holds her standard researcher, a private project with workstreams and tasks, a coordinator and an analyst; Bob&#x27;s holds his own standard researcher, a writer he copied, a coordinator and a private project. Alice&#x27;s researcher answers in the channel as Alice; Alice owns a workstream of the shared project; Bob copied the writer from the library by choice.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg      { fill:var(--surface); }
+    .wall-sh { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .wall-pr { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.4; }
+    .wall-dz { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 4; }
+    .card    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .hot     { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .ln      { stroke:var(--ink-3); stroke-width:1.4; }
+    .ln-d    { stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:5 4; }
+    .rule    { stroke:var(--rule); stroke-width:1; }
+    .ah      { fill:var(--ink-3); }
+    .title   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:18px; }
+    .wl      { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .h       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .p       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:14px; }
+    .s       { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .lbl     { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .faint   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="600"/>
+  <text class="title" x="28" y="34">Workers are private; sharing happens only in shared resources</text>
+  <g id="files">
+    <rect class="wall-dz" x="28" y="52" width="884" height="44" rx="8"/>
+    <text class="p" x="470" y="79" text-anchor="middle">Product files: the standard install every user starts with</text>
+  </g>
+  <g id="org">
+    <rect class="wall-dz" x="20" y="110" width="900" height="474" rx="10"/>
+    <text class="faint" x="36" y="130">org acme</text>
+  </g>
+  <g id="shared">
+    <rect class="wall-sh" x="40" y="142" width="860" height="120" rx="8"/>
+    <text class="wl" x="56" y="164">Shared</text>
+    <rect class="card" x="56" y="176" width="260" height="70" rx="6"/>
+    <text class="h" x="70" y="202">Channel</text>
+    <text class="s" x="70" y="222">lines name user + worker</text>
+    <rect class="card" x="336" y="176" width="260" height="70" rx="6"/>
+    <text class="h" x="350" y="202">Shared project</text>
+    <text class="s" x="350" y="222">workstreams, one owner each</text>
+    <rect class="card" x="616" y="176" width="268" height="70" rx="6"/>
+    <text class="h" x="630" y="202">Worker library</text>
+    <text class="s" x="630" y="222">templates to copy</text>
+  </g>
+  <g id="alice">
+    <rect class="wall-pr" x="40" y="330" width="420" height="234" rx="8"/>
+    <text class="wl" x="56" y="550">Alice: private</text>
+    <rect class="card" x="56" y="346" width="190" height="60" rx="6"/>
+    <text class="h" x="70" y="372">researcher</text>
+    <text class="s" x="70" y="392">worker (standard)</text>
+    <rect class="card" x="258" y="346" width="190" height="60" rx="6"/>
+    <text class="h" x="272" y="372">private project</text>
+    <text class="s" x="272" y="392">workstreams + tasks</text>
+    <rect class="card" x="56" y="418" width="190" height="48" rx="6"/>
+    <text class="p" x="151.0" y="447.0" text-anchor="middle">coordinator (worker)</text>
+    <rect class="card" x="258" y="418" width="190" height="48" rx="6"/>
+    <text class="p" x="353.0" y="447.0" text-anchor="middle">analyst (worker)</text>
+  </g>
+  <g id="bob">
+    <rect class="wall-pr" x="480" y="330" width="420" height="234" rx="8"/>
+    <text class="wl" x="496" y="550">Bob: private</text>
+    <rect class="card" x="496" y="346" width="190" height="60" rx="6"/>
+    <text class="h" x="510" y="372">researcher</text>
+    <text class="s" x="510" y="392">worker (standard)</text>
+    <rect class="card" x="698" y="346" width="186" height="60" rx="6"/>
+    <text class="h" x="712" y="372">writer</text>
+    <text class="s" x="712" y="392">worker (copied)</text>
+    <rect class="card" x="496" y="418" width="190" height="48" rx="6"/>
+    <text class="p" x="591.0" y="447.0" text-anchor="middle">coordinator (worker)</text>
+    <rect class="card" x="698" y="418" width="186" height="48" rx="6"/>
+    <text class="p" x="791.0" y="447.0" text-anchor="middle">private project</text>
+  </g>
+  <g id="crossings">
+    <line class="ln" x1="150" y1="346" x2="150" y2="248"/>
+    <polygon class="ah" points="150,248 145.6,256.0 154.4,256.0"/>
+    <text class="lbl" x="160" y="300">answers as Alice</text>
+    <line class="ln" x1="400" y1="248" x2="400" y2="344"/>
+    <polygon class="ah" points="400,344 404.4,336.0 395.6,336.0"/>
+    <text class="lbl" x="410" y="300">a workstream she owns</text>
+    <line class="ln-d" x1="790" y1="248" x2="790" y2="344"/>
+    <polygon class="ah" points="790,344 794.4,336.0 785.6,336.0"/>
+    <text class="lbl" x="780" y="300" text-anchor="end">copied by choice</text>
+  </g>
+</svg>
