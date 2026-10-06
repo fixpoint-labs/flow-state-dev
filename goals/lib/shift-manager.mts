@@ -20,14 +20,12 @@
  * turns trace items off and stubs `node:` built-ins. The value this module saw
  * when it loaded is what every Lab it starts gets.
  *
- * A goal that drives Shift Manager the way a person does also has the
- * second set: {@link buildShiftManagerPages} builds the checkout as it
- * stands, {@link serveLab} serves a Lab on a store file the goal owns (so a
- * restart is a stop and a start on the same file), {@link labRoutes} reads
- * the Lab as one verified user, and {@link personPage} opens a browser
- * context as a given person. Those take the Shift Manager checkout they run,
- * so a goal can serve an older commit's Shift Manager from a scratch tree.
- * They type against Playwright; only those goals open a browser.
+ * A goal that drives Shift Manager the way a person does also has
+ * {@link buildShiftManagerPages} (the checkout as it stands), {@link labRoutes}
+ * ({@link labApi} read as one verified user) and {@link personPage}.
+ * {@link startShiftManager} serves another checkout when given `root`, `tsx`
+ * and `timeoutMs`. `personPage` types against Playwright; only those goals
+ * open a browser.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
@@ -92,7 +90,8 @@ export type ServedShiftManager = { origin: string; workDir: string; child: Child
  * Shift Manager's start script over the Lab at `config`, serving `pages`, from
  * a fresh working directory under `<scratch>/labs`. `env` is added to the
  * child's environment; `GOAL_CONTROL` is always cleared, since a Lab's config
- * may read it too, and the intent ladder is stripped.
+ * may read it too, and the intent ladder is stripped. `root` and `tsx` serve
+ * another checkout (default: this one); `timeoutMs` defaults to 90s.
  */
 export async function startShiftManager(options: {
   scratch: string;
@@ -100,14 +99,22 @@ export async function startShiftManager(options: {
   config: string;
   pages: string;
   env?: Record<string, string>;
+  /** Shift Manager checkout whose start script runs. Default: this one. */
+  root?: string;
+  /** `tsx` that runs the start script. Default: this workspace's. */
+  tsx?: string;
+  /** How long the start may take before it is refused. Default: 90s. */
+  timeoutMs?: number;
 }): Promise<ServedShiftManager> {
+  const root = options.root ?? SHIFT_MANAGER;
+  const tsx = options.tsx ?? TSX;
   mkdirSync(join(options.scratch, "labs"), { recursive: true });
   const workDir = mkdtempSync(join(options.scratch, "labs", `${options.label}-`));
   const env = intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", ...options.env });
   if (NODE_ENV_AT_LOAD === undefined) delete env.NODE_ENV;
   else env.NODE_ENV = NODE_ENV_AT_LOAD;
   let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", options.config, "--port", "0", "--assets", options.pages], {
+  const child = spawn(tsx, [join(root, "bin", "start.mts"), "--config", options.config, "--port", "0", "--assets", options.pages], {
     cwd: workDir,
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -125,7 +132,7 @@ export async function startShiftManager(options: {
     child.kill("SIGTERM");
     await exited;
   };
-  for (let waited = 0; waited < 90_000; waited += 250) {
+  for (let waited = 0; waited < (options.timeoutMs ?? 90_000); waited += 250) {
     const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
     if (match !== null) return { origin: match[1]!, workDir, child, log: () => log, exited, stop };
     if (gone) break;
@@ -213,75 +220,6 @@ export async function buildShiftManagerPages(outDir: string, root: string = SHIF
   return outDir;
 }
 
-/** A Lab Shift Manager's start script is serving. */
-export interface ServedLab {
-  origin: string;
-  child: ChildProcess;
-  /** Everything the process has printed so far. */
-  log(): string;
-  /** Stop the process and wait for it to exit. */
-  stop(): Promise<void>;
-}
-
-/** What {@link serveLab} starts. */
-export interface ServeOptions {
-  /** The Lab's fsdev config. */
-  config: string;
-  /** Shift Manager's built pages ({@link buildShiftManagerPages}). */
-  pages: string;
-  /** A scratch directory; the process runs in a fresh directory under it. */
-  scratch: string;
-  /** Extra environment, on top of the intent-free one. */
-  env?: Record<string, string>;
-  /** The Shift Manager checkout whose start script runs. Default: this one. */
-  root?: string;
-  /** The `tsx` binary that runs it. Default: the repository root's of `root`'s workspace. */
-  tsx?: string;
-  /** How long the start may take before it is refused. */
-  timeoutMs?: number;
-}
-
-/**
- * Start Shift Manager's own start script over a Lab, as a person would, and
- * wait for it to say where it serves.
- */
-export async function serveLab(options: ServeOptions): Promise<ServedLab> {
-  const root = options.root ?? SHIFT_MANAGER;
-  const tsx = options.tsx ?? join(REPO_ROOT, "node_modules", ".bin", "tsx");
-  mkdirSync(join(options.scratch, "runs"), { recursive: true });
-  const workDir = mkdtempSync(join(options.scratch, "runs", "lab-"));
-  const env = intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", ...(options.env ?? {}) });
-  if (NODE_ENV_AT_LOAD === undefined) delete env.NODE_ENV;
-  else env.NODE_ENV = NODE_ENV_AT_LOAD;
-  let log = "";
-  const child = spawn(tsx, [join(root, "bin", "start.mts"), "--config", options.config, "--port", "0", "--assets", options.pages], {
-    cwd: workDir,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  child.stdout!.on("data", (d) => (log += String(d)));
-  child.stderr!.on("data", (d) => (log += String(d)));
-  let gone = false;
-  const exited = new Promise<void>((resolve) =>
-    child.on("exit", () => {
-      gone = true;
-      resolve();
-    }),
-  );
-  const stop = async () => {
-    if (!gone) child.kill("SIGTERM");
-    await exited;
-  };
-  for (let waited = 0; waited < (options.timeoutMs ?? 120_000); waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, child, log: () => log, stop };
-    if (gone) break;
-    await sleep(250);
-  }
-  await stop();
-  throw new Error(`Shift Manager's start script never served ${options.config}. Log tail:\n${log.slice(-3000)}`);
-}
-
 /** One verified person, as the Lab's door knows them. */
 export interface LabUser {
   userId: string;
@@ -310,69 +248,34 @@ export type StoredItem = {
 const RUNNING = ["pending", "queued", "in_progress", "running"];
 
 /**
- * The Lab's routes, read as `user`. Every read a goal grades goes through
- * these, never through Shift Manager's own state.
+ * {@link labApi} read as `user`. Collections are addressed by the key pattern
+ * the session's manifest publishes. The fetch and the row paging are `labApi`'s.
  */
 export function labRoutes(origin: string, user: LabUser) {
+  const api = labApi(origin, user.bearer === "" ? undefined : user.bearer);
   const enc = encodeURIComponent;
-  const call = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
-    const response = await fetch(`${origin}/api/flows${path}`, {
-      method,
-      headers: { "content-type": "application/json", ...(user.bearer === "" ? {} : { authorization: `Bearer ${user.bearer}` }) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const text = await response.text();
-    let parsed: unknown = null;
-    try {
-      parsed = text.length === 0 ? null : JSON.parse(text);
-    } catch {
-      parsed = text;
-    }
-    return { status: response.status, body: parsed };
-  };
-  const get = async (path: string): Promise<any> => {
-    const { status, body } = await call("GET", path);
-    if (status !== 200) throw new Error(`GET ${path}: ${status} ${JSON.stringify(body)}`);
-    return body;
-  };
   /** The collection ref a session's manifest publishes for a key pattern, or `undefined`. */
   const refOf = async (sessionId: string, pattern: string): Promise<string | undefined> => {
-    const manifest = await get(`/sessions/${enc(sessionId)}/manifest`);
+    const manifest = await api.get(`/sessions/${enc(sessionId)}/manifest`);
     return (manifest.resources as Array<{ kind: string; pattern?: string; ref: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
   };
   /** Every row of the collection at `pattern`, read through `sessionId`. Throws when the session declares none. */
   const collection = async (sessionId: string, pattern: string): Promise<Array<Record<string, any>>> => {
     const ref = await refOf(sessionId, pattern);
     if (ref === undefined) throw new Error(`session ${sessionId} declares no collection ${pattern}`);
-    const rows: Array<Record<string, any>> = [];
-    let cursor: string | undefined;
-    for (let page = 0; page < 100; page += 1) {
-      const body = await get(`/sessions/${enc(sessionId)}/resources/${enc(ref)}?limit=200${cursor === undefined ? "" : `&cursor=${enc(cursor)}`}`);
-      rows.push(...((body.items ?? []) as Array<{ clientData?: Record<string, any> }>).map((i) => i.clientData ?? {}));
-      if (body.nextCursor === undefined || body.nextCursor === null || body.nextCursor === cursor) break;
-      cursor = body.nextCursor;
-    }
-    return rows;
+    return api.collection(sessionId, ref);
   };
   /** Every item of `types` (comma-separated) in one session, in stored order. */
-  const items = async (sessionId: string, types: string): Promise<StoredItem[]> => {
-    const out: StoredItem[] = [];
-    for (let offset = 0, page = 0; page < 50; page += 1) {
-      const body = await get(`/sessions/${enc(sessionId)}/state?include_items=true&item_types=${types}&offset=${offset}&limit=200`);
-      out.push(...(body.items ?? []));
-      if (body.pagination?.hasMore !== true) break;
-      offset = body.pagination.nextOffset ?? offset + 200;
-    }
-    return out;
-  };
+  const items = (sessionId: string, types: string): Promise<StoredItem[]> =>
+    api.items(sessionId, types === "" ? [] : types.split(",")) as Promise<StoredItem[]>;
   /** The user's sessions, dispatch runs included. */
   const sessions = async (): Promise<Array<{ id: string; flowId?: string; flowKind?: string; parentSessionId?: string | null; createdAt: number }>> =>
-    (await get(`/sessions?userId=${enc(user.userId)}&include=dispatch-runs`)).sessions ?? [];
+    (await api.get(`/sessions?userId=${enc(user.userId)}&include=dispatch-runs`)).sessions ?? [];
   /** The requests one session holds, newest last as the route lists them. */
   const requests = async (sessionId: string): Promise<Array<Record<string, any>>> => {
     const out: Array<Record<string, any>> = [];
     for (let offset = 0; offset < 5000; offset += 200) {
-      const listed = await get(`/sessions/${enc(sessionId)}/requests?include_result_output=true&limit=200&offset=${offset}`);
+      const listed = await api.get(`/sessions/${enc(sessionId)}/requests?include_result_output=true&limit=200&offset=${offset}`);
       const page = (listed.requests ?? []) as Array<Record<string, any>>;
       out.push(...page);
       if (page.length < 200) break;
@@ -381,7 +284,7 @@ export function labRoutes(origin: string, user: LabUser) {
   };
   /** A request's status. */
   const status = async (flowId: string, requestId: string): Promise<string | undefined> =>
-    (await call("GET", `/${enc(flowId)}/requests/${enc(requestId)}/status`)).body?.status as string | undefined;
+    (await api.call("GET", `/${enc(flowId)}/requests/${enc(requestId)}/status`)).body?.status as string | undefined;
   /** Wait for a request to leave the running states (and `suspended`, when `pastSuspended`). */
   const settle = async (flowId: string, requestId: string, timeoutMs: number, pastSuspended = false): Promise<string> => {
     const running = [...RUNNING, ...(pastSuspended ? ["suspended"] : [])];
@@ -393,14 +296,14 @@ export function labRoutes(origin: string, user: LabUser) {
   };
   /** Run one action and wait for it to end: its status, and its output or error. */
   const act = async (kind: string, sessionId: string, action: string, input: unknown): Promise<{ status: string; output: any; error: string | undefined }> => {
-    const posted = await call("POST", `/${enc(kind)}/${enc(sessionId)}/actions/${enc(action)}`, { userId: user.userId, input });
+    const posted = await api.call("POST", `/${enc(kind)}/${enc(sessionId)}/actions/${enc(action)}`, { userId: user.userId, input });
     if (posted.status !== 202) return { status: `http ${posted.status}`, output: undefined, error: JSON.stringify(posted.body) };
     const requestId = String(posted.body?.request?.id);
     const settled = await settle(kind, requestId, 60_000);
     const found = (await requests(sessionId)).find((r) => r.id === requestId);
     return { status: settled, output: found?.result?.output, error: found?.result?.error?.message };
   };
-  return { user, call, get, refOf, collection, items, sessions, requests, status, settle, act };
+  return { user, call: api.call, get: api.get, refOf, collection, items, sessions, requests, status, settle, act };
 }
 
 /** What {@link labRoutes} returns. */

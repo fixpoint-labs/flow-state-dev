@@ -20,7 +20,7 @@ import { dirname, join, resolve } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import type { Browser } from "playwright";
 import { REPO_ROOT } from "../../lib/index.mts";
-import { labRoutes, personPage, serveLab, openShiftManager } from "../../lib/shift-manager.mts";
+import { labRoutes, personPage, startShiftManager, openShiftManager } from "../../lib/shift-manager.mts";
 import { askCos, callsTo, hex, projectsDrawn, quote, readRoom, RunRecord, sleep, teamsSeats, visible, World } from "./steps.mts";
 
 /** The pages D3's writer sees, as published on the commit (DOCS.md). */
@@ -171,7 +171,7 @@ export async function j4(browser: Browser, scratch: string, pages: string, shots
     // ---- Shift Manager over the copy: the person asks CoS for a project and a seat ----
     let served;
     try {
-      served = await serveLab({ config: join(copy, "fsdev.config.mts"), pages, scratch, timeoutMs: 120_000 });
+      served = await startShiftManager({ scratch, label: "j4", config: join(copy, "fsdev.config.mts"), pages, timeoutMs: 120_000 });
     } catch (error) {
       failures.push(`J4: Shift Manager over the writer's Lab did not boot: ${(error as Error).message.slice(0, 1500)}`);
       return { ok: false, failures, notes, steps, silent, diff, record };
