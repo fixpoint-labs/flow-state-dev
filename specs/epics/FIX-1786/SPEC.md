@@ -72,7 +72,7 @@ makes leg c's PASS mean something.
 
 ![What's in the box: workers, coordinators and projects, each private to one user; composed from what ships; the app's own standard install and users; below a fence, what is not built, from channels to a session shared between users](figures/end-state.svg)
 
-Everything in the box composes what ships, plus four Layer 1 changes the box names
+Everything in the box composes what ships, plus five Layer 1 changes the box names
 ([D3](DECISIONS.md#d3)). The fence is the PRD's out-of-scope list and the locks the Architect
 carried: what would turn a privacy refactor into a collaboration product. The library in the
 box builds after the MVP.
@@ -132,10 +132,12 @@ chain.
 ## What stays as it is
 
 - **Sessions stay private to one user.** The engine's session ownership doesn't change.
-- **Channels**: their kinds at `workforce/flows/channels/<kind>.ts` and `CHANNEL.md`'s `flow:`,
-  untouched; channels are a later feature ([ER-20](BUSINESS-RULES.md#what-no-child-may-do)).
+- **Channels** are a later feature, and nothing here renames them
+  ([ER-21](BUSINESS-RULES.md#what-no-child-may-do)). They have no paths on `main` to keep: no
+  `flows/channels/` path is tracked, and `CHANNEL.md` is refused by name as a pre-mailbox file.
 - **Task boards** and `sharedToLineage`, consumed as they ship, except one change: a ledger kept
-  per conversation at the owner's user scope ([D6](DECISIONS.md#d6)).
+  per conversation at the owner's user scope ([D6](DECISIONS.md#d6)). A board keeps its word
+  "seat", a place on a board ([D7](DECISIONS.md#d7)).
 - **Flow instances and owner pins** stay in the engine, deprecated; Workforce stops using them.
   Their removal is [FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798), outside this epic.
 - **Memory**: the memory package's tiers, and long-lived session memory, which is FIX-1775's.
@@ -159,7 +161,9 @@ FIX-1795's spec continues, and its build waits until the goal is met. At FIX-179
 the shared half stays in the MVP.
 [Q3](DECISIONS.md#q3) · FIX-1774 and FIX-1777 are closed into FIX-1791 and FIX-1794. At FIX-1789's
 gate, no engine rule on org-scope writes. At FIX-1794's, [D6](DECISIONS.md#d6) · a board keeps its
-tasks per conversation, the fourth Layer 1 change in [D3](DECISIONS.md#d3). Engineering calls I
+tasks per conversation, a Layer 1 change in [D3](DECISIONS.md#d3). At FIX-1796's,
+[D7](DECISIONS.md#d7) · discovery's `seats` domain becomes `workers` with no alias, the fifth
+Layer 1 change, and a task board keeps "seat". Engineering calls I
 made as EM, for the record: [D2](DECISIONS.md#d2) to [D5](DECISIONS.md#d5). Rules:
 [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).
 
