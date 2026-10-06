@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from "react";
 import { GAPS, type Gaps } from "./gaps";
-import type { ShiftLook } from "./lib/color-scheme";
+import type { ShiftLook } from "./lib/shift";
 import type { LabClients } from "./lib/connection";
 import type { LoadedSnapshot } from "./lib/derive";
 import { LabProvider, useLab } from "./lib/lab-data";

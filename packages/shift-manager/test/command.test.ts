@@ -134,14 +134,15 @@ describe("the shift-manager command", () => {
   it("boots on the shift it is given, by --shift or SHIFT_MANAGER_SHIFT, and on none when given neither (BR-11)", async () => {
     const scheme = async (app: ReturnType<typeof run>) => meta(await page((await app.listening).origin), "shift-manager-color-scheme");
     expect(await scheme(run(["--config", lab]))).toBeUndefined();
-    expect(await scheme(run(["--config", lab, "--shift", "night"]))).toBe("dark");
-    expect(await scheme(run(["--config", lab], { env: { SHIFT_MANAGER_SHIFT: "day" } }))).toBe("light");
+    expect(await scheme(run(["--config", lab, "--shift", "night"]))).toBe("night");
+    expect(await scheme(run(["--config", lab, "--shift", "evening"]))).toBe("evening");
+    expect(await scheme(run(["--config", lab], { env: { SHIFT_MANAGER_SHIFT: "day" } }))).toBe("day");
     // The flag wins over the environment.
-    expect(await scheme(run(["--config", lab, "--shift", "day"], { env: { SHIFT_MANAGER_SHIFT: "night" } }))).toBe("light");
+    expect(await scheme(run(["--config", lab, "--shift", "day"], { env: { SHIFT_MANAGER_SHIFT: "night" } }))).toBe("day");
 
     const refused = run(["--config", lab, "--shift", "dusk"]);
     expect(await refused.exited).toBe(3);
-    expect(refused.output()).toMatch(/No shift "dusk".*day, night/);
+    expect(refused.output()).toMatch(/No shift "dusk".*day, evening, night/);
   }, 180_000);
 
   it("finds the config in the directory it ran in, and without one refuses, naming --config (BR-2)", async () => {
@@ -198,7 +199,7 @@ describe("the shift-manager command", () => {
     expect(html).toContain("/@vite/client");
     expect(html).toContain("/src/main.tsx");
     expect(meta(html, "fsdev-devtool-url")).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
-    expect(meta(html, "shift-manager-color-scheme")).toBe("dark");
+    expect(meta(html, "shift-manager-color-scheme")).toBe("night");
     expect(html).toContain("bearerToken");
     // A module comes through Vite; the API answers on the same origin, no proxy.
     expect((await fetch(`${origin}/src/main.tsx`)).headers.get("content-type")).toContain("javascript");

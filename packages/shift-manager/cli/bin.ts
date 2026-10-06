@@ -2,7 +2,7 @@
 /**
  * `shift-manager` — open a Lab in Shift Manager.
  *
- *     shift-manager [--config <path>] [--port <n>] [--host <host>] [--shift <day|night>]
+ *     shift-manager [--config <path>] [--port <n>] [--host <host>] [--shift <day|evening|night>]
  *                   [--dev] [--assets <dir>] [--no-open]
  *
  * A thin wrapper over `fsdev dev`'s app hook (`executeDevCommand`) with this
@@ -11,7 +11,7 @@
  * its own, its address handed to the page as the `fsdev-devtool-url` meta.
  * Everything about serving, the network-bind guards and `--dev`'s restarts is
  * fsdev's. What is Shift Manager's own: the default port, and the shift
- * profile, whose scheme goes to the page as the `shift-manager-color-scheme`
+ * profile, whose shift goes to the page as the `shift-manager-color-scheme`
  * meta. `--assets <dir>` is fsdev's `--app <dir>` under the name this command
  * has always had: it serves another build of the pages (the tests' stand-in
  * build, or a person's own) in place of the package's.
@@ -44,7 +44,7 @@ const APP = fileURLToPath(new URL(`./index${extname(fileURLToPath(import.meta.ur
 /** The environment variable `--shift` falls back to. */
 const SHIFT_ENV = "SHIFT_MANAGER_SHIFT";
 
-/** The meta tag the page reads a forced scheme from (`readServedColorScheme`). */
+/** The meta tag the page reads a forced shift from (`readServedShift`). */
 const SCHEME_META = "shift-manager-color-scheme";
 
 /** A refusal: the message, and the exit code it stops the command with. */
@@ -58,19 +58,19 @@ class Refusal extends Error {
 }
 
 /**
- * The scheme the shift profile `--shift` (or `SHIFT_MANAGER_SHIFT`) names, or
+ * The shift the shift profile `--shift` (or `SHIFT_MANAGER_SHIFT`) names, or
  * `undefined` when neither is set.
  *
  * @throws Refusal for a name with no profile, listing the known ones.
  */
-function shiftScheme(flag: string | undefined): "light" | "dark" | undefined {
+function shiftName(flag: string | undefined): "day" | "evening" | "night" | undefined {
   const name = flag ?? (process.env[SHIFT_ENV]?.trim() || undefined);
   if (name === undefined) return undefined;
   const known = readdirSync(PROFILES).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -".json".length)).sort();
   if (!known.includes(name)) throw new Refusal(`No shift "${name}". Known shifts: ${known.join(", ")}.`);
-  const scheme = (JSON.parse(readFileSync(join(PROFILES, `${name}.json`), "utf8")) as { colorScheme?: unknown }).colorScheme;
-  if (scheme !== "light" && scheme !== "dark") throw new Refusal(`Shift profile ${name}.json has no colorScheme of "light" or "dark".`);
-  return scheme;
+  const shift = (JSON.parse(readFileSync(join(PROFILES, `${name}.json`), "utf8")) as { shift?: unknown }).shift;
+  if (shift !== "day" && shift !== "evening" && shift !== "night") throw new Refusal(`Shift profile ${name}.json has no shift of "day", "evening" or "night".`);
+  return shift;
 }
 
 async function main(): Promise<void> {
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
   }
 
   const invokedFrom = process.env.INIT_CWD ?? process.cwd();
-  const scheme = shiftScheme(values.shift);
+  const shift = shiftName(values.shift);
   // Found as `fsdev dev` finds it; with none, fsdev would fall back to flow discovery.
   const config = values.config ?? locateConfig({ cwd: invokedFrom });
   if (config === undefined) {
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
     watch: values.dev === true,
     open: values["no-open"] !== true,
     app: values.assets === undefined ? APP : resolve(invokedFrom, values.assets),
-    pageMeta: scheme === undefined ? undefined : { [SCHEME_META]: scheme },
+    pageMeta: shift === undefined ? undefined : { [SCHEME_META]: shift },
   });
 }
 
