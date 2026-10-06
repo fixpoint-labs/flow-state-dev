@@ -16,11 +16,19 @@
  * exception or counted as unswept, and any unswept match fails the run.
  *
  * Exceptions STRIP a token from the line; they never pass a whole line or a
- * whole file. So a second retired word on an excepted line still counts. Each
- * exception names the terms it may strip, and the rule or decision behind it.
- * An exception that strips nothing is reported as stale, not fatal.
+ * whole file. So a second retired word on an excepted line still counts, and
+ * a stored key strips alone, never the rest of the quoted literal it opens.
+ * Each exception names the terms it may strip, and the rule or decision
+ * behind it. An exception that strips nothing fails the run: an exception
+ * nobody needs is a hole waiting for a live use.
  *
- * `--control` adds three planted files to the scan (in memory; the tree is not
+ * Ground is decided by SURFACE, not by folder. Workforce's ground is its own
+ * packages and pages, plus any file that imports Workforce or Shift Manager.
+ * The task board keeps "seat" (D1): its named types strip anywhere, and its
+ * bare word strips only in the board's own files, a closed list that may
+ * never touch Workforce's ground. "Hired seat" counts everywhere.
+ *
+ * `--control` adds planted files to the scan (in memory; the tree is not
  * touched) and requires each planted line to fail for the term it hides, and a
  * planted folder to fail totality. A green run nobody has seen go red proves
  * nothing (tenet 7).
@@ -44,15 +52,29 @@ const AREAS = [
   { id: "reference-docs", scope: true, re: /^docs\/architecture\/|^README\.md$/ },
 ];
 
-/** Where a word also has a live meaning elsewhere, it is retired only on Workforce's ground. */
-const WORKFORCE_GROUND = /^packages\/(workforce|shift-manager)\/|^apps\/docs\/docs\/(workforce|shift-manager)\/|^apps\/docs\/docs\/glossary|workforce/i;
+/**
+ * Where a word also has a live meaning elsewhere, it is retired only on Workforce's ground:
+ * Workforce's own paths, or any file that imports Workforce or Shift Manager (a consumer such as
+ * kitchen-sink's seat pane, or a React panel, is Workforce's surface wherever it sits).
+ */
+const WORKFORCE_PATHS = /^packages\/(workforce|shift-manager)\/|^apps\/docs\/docs\/(workforce|shift-manager)\/|^apps\/docs\/docs\/glossary|workforce/i;
+const WORKFORCE_IMPORT = /["']@flow-state-dev\/(?:workforce|shift-manager)(?:\/[^"']*)?["']/;
+const onWorkforceGround = (path, text) => WORKFORCE_PATHS.test(path) || WORKFORCE_IMPORT.test(text);
+
+/**
+ * The task board's own files (D1: the board keeps "seat"). A closed list, by module, never by a
+ * folder a Workforce consumer could fall into; a listed file on Workforce's ground fails the run.
+ */
+const BOARD_FILES = /^packages\/orchestration\/(?:src|test)\/task-board\/|^packages\/core\/src\/types\/dispatch\.ts$|^apps\/docs\/docs\/orchestration\/(?:task-board\.md|task-board-parts\.svg|configuration\.md)$/;
 
 /** The retired terms (the epic concept's table). `ground: "workforce"` scans only WORKFORCE_GROUND. */
 const TERMS = [
   { id: "seat", re: /seat/gi, say: "worker; on a task board, assignee" },
   { id: "hired-roster", re: /hired[ _-]?roster/gi, say: "roster" },
   { id: "mailbox", re: /mailbox/gi, say: "coordinator; a member is a delegate" },
-  { id: "room", re: /\b[Rr]ooms?\b|room-(?:lines|seq|answers|deliveries)|Room[A-Z]\w*|\bROOM_\w*/g, say: "the project coordinator" },
+  { id: "member", re: /\b[Mm]embers?\b|\bMEMBERS?\b|[Mm]ember(?=[A-Z_])|(?<=[a-z])Members?\b/g, ground: "workforce", say: "delegate, where it means a mailbox member" },
+  { id: "thread", re: /\bthreads?\b/gi, ground: "workforce", say: "the delegate's session, where it means a mailbox thread" },
+  { id: "room", re: /\b[Rr]ooms?\b|room-(?:lines|seq|answers|deliveries)|Room[A-Z]\w*|\broom[A-Z]\w*|\bROOM_\w*/g, say: "the project coordinator" },
   { id: "talk-session", re: /talk[ _-]?sessions?|talk-?template|talkFor\b|\bTALK_\w+/gi, say: "the project coordinator" },
   { id: "person", re: /\bpersons?\b|\bperson's\b/gi, say: "user, where it means the signed-in user" },
   { id: "kind", re: /kind/gi, ground: "workforce", say: "worker flow, where it means the flow a worker runs on" },
@@ -69,11 +91,15 @@ const EXCEPTIONS = [
   { id: "field-named-kind", terms: ["kind"], strip: /\bflowKinds?\b|\bkind\s*\??:|\.kind\b|\bkind\s*[!=]==?|["']kind["']/g, why: "a field named kind: the engine's flow kind or a type discriminant (ER-22)" },
   { id: "english-kind-of", terms: ["kind"], strip: /\b(?:a|an|any|one|the same|this|that|what|which|some|every|each|another|other|same|no)\s+kinds?\s+of\b|\bkinds\s+of\b|\bkindly\b/gi, why: "the English 'a kind of'" },
   { id: "other-kinds", terms: ["kind"], strip: /\b(?:block|item|content|event|channel|part|tool|error|message|node|trace|step)[ -]kinds?\b/gi, why: "another subsystem's kind" },
-  { id: "channel-kind-paths", terms: ["kind"], strip: /flows\/channels\/<kind>/g, why: "ER-20: channel-kind paths stay" },
   { id: "core-flow-instance-type", terms: ["flow-instance"], strip: /\b(?:Any)?FlowInstance\w*|\bisFlowInstance\b|\bcreateFlowInstance\b/g, why: "core's type for any registered flow; the engine keeps the term (FIX-1798)" },
   { id: "mailbox-md-refusal", terms: ["mailbox"], strip: /MAILBOX\.md(?=.*WORKER\.md)|(?<=WORKER\.md.*)MAILBOX\.md/g, why: "ER-6: the refusal and the conversion name the old file" },
   { id: "english-room", terms: ["room"], strip: /\b(?:make|makes|making|made|leave|leaves|leaving|left|have|has|had|ran out of|run out of|out of|given|give|gives|enough|reserve|reserves|reserved|no|more|less|little|plenty of)\s+room\b|\broom\s+(?:for|to)\b|room-temperature/gi, why: "the English 'room for'" },
-  { id: "stored-key-names", terms: ["seat", "mailbox", "room", "hired-roster"], strip: /(["'`])(?:inventory\/(?:seats|mailboxes|members)|workforce\/roster|room-(?:lines|seq|answers|deliveries)|hiredRoster(?:Private)?)[^"'`]*\1/g, why: "D2: a name only storage sees keeps its string" },
+  { id: "stored-key-names", terms: ["seat", "mailbox", "room", "hired-roster", "member"], strip: /(?<=["'`])(?:inventory\/(?:seats|mailboxes|members)|workforce\/roster|room-(?:lines|seq|answers|deliveries)|hiredRoster(?:Private)?)[\w\/*.:${}-]*/g, why: "D2: a name only storage sees keeps its string; the key strips, never the rest of its literal" },
+  { id: "board-seat-names", terms: ["seat"], strip: /\b(?:TaskSeat|HandOffSeat)\w*|\b\w*ToolSeats?\w*|\btoolSeat\w*|\btool[ -]seats?\b|\bhandOffBySeat\b|\binlineSeats\b/g, why: "D1: the task board's named types keep seat, wherever they are used" },
+  { id: "board-seat-words", terms: ["seat"], files: BOARD_FILES, strip: /(?<!hired[ _-]?|[Ww]orkforce[ _-]?)\b[Ss]eats?\b/g, why: "D1: the board's own word, in the board's own files; a hired seat still counts" },
+  { id: "manifest-domain-names", terms: ["seat", "mailbox"], strip: /(?<=(?:MANIFEST_DOMAINS|\bdomains?\b)[^\n]*?)["'](?:seats|mailboxes)["']/g, why: "D1: the discovery tool's domain names are pinned, model-facing strings (ER-22)" },
+  { id: "project-member", terms: ["member"], strip: /\b(?:project|org|organization|team)(?:'s)?\s+members?\b|\b(?:project|org)Members?\b/gi, why: "a project's or an org's member is a user, not a mailbox's" },
+  { id: "chat-thread", terms: ["thread"], strip: /\bchat[ -]threads?\b/gi, why: "a chat thread in the UI, not a mailbox's" },
 ];
 
 const TERM_IDS = new Set(TERMS.map((t) => t.id));
@@ -94,7 +120,7 @@ function areaOf(path) {
 /** Scan one in-scope file. Returns [{ term, line, text }] unswept, and counts exemptions. */
 function scanFile(path, text, exemptCounts, totals) {
   const unswept = [];
-  const workforce = WORKFORCE_GROUND.test(path);
+  const workforce = onWorkforceGround(path, text);
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
     for (const term of TERMS) {
@@ -106,6 +132,7 @@ function scanFile(path, text, exemptCounts, totals) {
       let line = raw;
       for (const e of EXCEPTIONS) {
         if (!e.terms.includes(term.id)) continue;
+        if (e.files && !e.files.test(path)) continue;
         e.strip.lastIndex = 0;
         const stripped = line.replace(e.strip, " ");
         if (stripped !== line) {
@@ -139,6 +166,7 @@ function census(extra = {}) {
   const exemptCounts = {};
   const totals = {};
   const unsweptByFile = new Map();
+  const boardOnWorkforce = [];
   for (const path of files) {
     const area = areaOf(path);
     if (!area) {
@@ -153,6 +181,7 @@ function census(extra = {}) {
     } catch {
       continue; // a tracked file deleted in the working tree
     }
+    if (BOARD_FILES.test(path) && onWorkforceGround(path, text)) boardOnWorkforce.push(path);
     const hits = scanFile(path, text, exemptCounts, totals);
     if (hits.length > 0) unsweptByFile.set(path, hits);
     for (const h of hits) {
@@ -160,7 +189,8 @@ function census(extra = {}) {
       byArea[area.id] = (byArea[area.id] ?? 0) + 1;
     }
   }
-  return { files: files.length, unscoped, areaCounts, exemptCounts, totals, unsweptByFile };
+  const stale = EXCEPTIONS.filter((e) => !exemptCounts[e.id]).map((e) => e.id);
+  return { files: files.length, unscoped, areaCounts, exemptCounts, totals, unsweptByFile, boardOnWorkforce, stale };
 }
 
 function print(r) {
@@ -196,14 +226,17 @@ function print(r) {
   console.log("");
   for (const e of EXCEPTIONS) {
     const n = r.exemptCounts[e.id] ?? 0;
-    console.log(`exception ${e.id}: ${n} stripped${n === 0 ? " (stale: strips nothing)" : ""}`);
+    console.log(`exception ${e.id}: ${n} stripped${n === 0 ? " (STALE: strips nothing)" : ""}`);
   }
   console.log("");
   if (r.unscoped.length > 0) console.log(`UNSCOPED (no area): ${r.unscoped.join(", ")}`);
+  if (r.stale.length > 0) console.log(`STALE EXCEPTIONS (remove them): ${r.stale.join(", ")}`);
+  if (r.boardOnWorkforce.length > 0) console.log(`BOARD FILE ON WORKFORCE GROUND: ${r.boardOnWorkforce.join(", ")}`);
   const files = r.unsweptByFile.size;
   if (unsweptTotal > 0) console.log(`FAIL · ${unsweptTotal} unswept lines in ${files} files`);
-  if (r.unscoped.length === 0 && unsweptTotal === 0) console.log("PASS · every in-scope match is swept or excepted, and every file has an area");
-  return r.unscoped.length === 0 && unsweptTotal === 0;
+  const ok = r.unscoped.length === 0 && unsweptTotal === 0 && r.stale.length === 0 && r.boardOnWorkforce.length === 0;
+  if (ok) console.log("PASS · every in-scope match is swept or excepted, every exception strips something, and every file has an area");
+  return ok;
 }
 
 const PLANTS = {
@@ -212,21 +245,38 @@ const PLANTS = {
     "// The researcher runs on the agent kind of flow; its flowKind is unchanged.", // kind: 'agent kind' must count; flowKind and 'kind of' are not English here
     'export const refusal = "MAILBOX.md is refused: rename it to WORKER.md and post to the mailbox";', // mailbox: the file name strips, 'the mailbox' must count
     'const key = "inventory/seats/x"; // each seat is listed', // seat: the stored name strips, 'each seat' must count
+    'const note = "inventory/seats/x belongs to this mailbox";', // mailbox: two terms in one quote; only the key strips
+    "export const roomLineSchema = z.object({});", // room: a lower-camel identifier
+    "// wakeMemberWorkers remembers the thread", // member and thread: mailbox leftovers once 'mailbox' is gone
   ].join("\n"),
+  // Outside Workforce's folders, on its surface by import: a board's seat beside a Workforce one.
+  "apps/kitchen-sink/components/zz-planted-pane.tsx": [
+    'import { openRoster } from "@flow-state-dev/workforce";',
+    "const slot: TaskSeat = pick(row); // the seat this pane opens", // seat: TaskSeat strips, 'the seat' must count
+    "// the pane shows the worker's kind", // kind: on Workforce's ground by its import
+  ].join("\n"),
+  // Inside the board's own files, its bare word strips; a hired seat still counts.
+  "packages/orchestration/src/task-board/zz-planted.ts": "// a dispatcher seat hands this row to a hired seat\n",
   "zz-planted-folder/notes.md": "Nothing retired here.\n", // totality: no area
 };
 
 if (process.argv.includes("--control")) {
   const r = census(PLANTS);
-  const planted = r.unsweptByFile.get("packages/workforce/src/zz-planted.ts") ?? [];
   const want = [
-    { line: 1, term: "kind" },
-    { line: 2, term: "mailbox" },
-    { line: 3, term: "seat" },
+    { file: "packages/workforce/src/zz-planted.ts", line: 1, term: "kind" },
+    { file: "packages/workforce/src/zz-planted.ts", line: 2, term: "mailbox" },
+    { file: "packages/workforce/src/zz-planted.ts", line: 3, term: "seat" },
+    { file: "packages/workforce/src/zz-planted.ts", line: 4, term: "mailbox" },
+    { file: "packages/workforce/src/zz-planted.ts", line: 5, term: "room" },
+    { file: "packages/workforce/src/zz-planted.ts", line: 6, term: "member" },
+    { file: "packages/workforce/src/zz-planted.ts", line: 6, term: "thread" },
+    { file: "apps/kitchen-sink/components/zz-planted-pane.tsx", line: 2, term: "seat" },
+    { file: "apps/kitchen-sink/components/zz-planted-pane.tsx", line: 3, term: "kind" },
+    { file: "packages/orchestration/src/task-board/zz-planted.ts", line: 1, term: "seat" },
   ];
-  const caught = want.map((w) => planted.some((h) => h.line === w.line && h.term === w.term));
+  const caught = want.map((w) => (r.unsweptByFile.get(w.file) ?? []).some((h) => h.line === w.line && h.term === w.term));
   const folder = r.unscoped.includes("zz-planted-folder/notes.md");
-  for (const [i, w] of want.entries()) console.log(`plant line ${w.line} (${w.term}): ${caught[i] ? "refused" : "SLIPPED THROUGH"}`);
+  for (const [i, w] of want.entries()) console.log(`plant ${w.file}:${w.line} (${w.term}): ${caught[i] ? "refused" : "SLIPPED THROUGH"}`);
   console.log(`plant folder (totality): ${folder ? "refused" : "SLIPPED THROUGH"}`);
   const ok = caught.every(Boolean) && folder;
   console.log(ok ? "CONTROL PASS · every plant was refused" : "CONTROL FAIL");

@@ -10,13 +10,13 @@ from the last PR on.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | A retired term is on a line in scope: seat, hired seat, hired roster, mailbox, mailbox member or thread, room, talk session | It says the new term from the [epic's vocabulary](../../epics/FIX-1786/concept/CONCEPT.md#vocabulary): worker, roster, coordinator, delegate, the delegate's session, the project coordinator | The guard |
-| BR-2 | "Kind" for the flow a worker runs on, "owner pin" or "flow instance" for a worker, on Workforce's ground (Workforce and Shift Manager source and docs, the glossary, any `workforce/` folder) | It says worker flow, access to the worker, or worker | The guard, Workforce ground only |
-| BR-3 | "Seat" on a task board, in its types, its hand-off record, its docs or the discovery tool's text | It says assignee ([D1](DECISIONS.md#d1)) | The guard · typecheck |
+| BR-1 | A retired term is on a line in scope: seat (Workforce's), hired seat, hired roster, mailbox, mailbox member or thread, room, talk session | It says the new term from the [epic's vocabulary](../../epics/FIX-1786/concept/CONCEPT.md#vocabulary): worker, roster, coordinator, delegate, the delegate's session, the project coordinator | The guard; "member" and "thread" on Workforce's ground |
+| BR-2 | "Kind" for the flow a worker runs on, "owner pin" or "flow instance" for a worker, on Workforce's ground: Workforce and Shift Manager source and docs, the glossary, any `workforce/` folder, and any file that imports Workforce or Shift Manager wherever it sits | It says worker flow, access to the worker, or worker | The guard, Workforce ground only; a control plant in a kitchen-sink file |
+| BR-3 | "Seat" on a task board: a place in its registry, its `TaskSeat…` and `HandOffSeat` types, the hand-off record's `seat` field, the discovery tool's domain names | It stays ([D1](DECISIONS.md#d1)). Where a board's text means the seat on one task, it says assignee. Where it means a Workforce worker ("a hired seat"), it says worker. Saved and queued hand-offs are untouched | The guard's board-seat exceptions, and a control plant with both seats on one line |
 | BR-4 | "Person" means the signed-in user | It says user | The guard |
 | BR-5 | "Person" means any human: an author, a reviewer, someone a doubtful case goes to | It stays, pinned in the guard by file and phrase | Review of the exception list |
 | BR-6 | A message a person or a model reads uses a retired term: a refusal, a tool's description or input values, a UI label, a test that asserts the text | Reworded in the new term; the test follows | The guard · tests |
-| BR-7 | A docs heading is renamed ("Seats that hand off") | Every link to its anchor follows, across the site, guides and READMEs | Docs build, no broken-anchor warning |
+| BR-7 | A docs heading is renamed ("Reading one seat's skills") | Every link to its anchor follows, across the site, guides and READMEs | Docs build, no broken-anchor warning |
 
 ## What keeps its word
 
@@ -25,9 +25,9 @@ from the last PR on.
 | BR-8 | A file is history: a retained spec, a changelog, a changeset, `docs/internal/`, the dated atlas, a blog post | Unchanged | The guard's areas |
 | BR-9 | A file is in `goals/` | Its identifiers follow renamed exports; its words stay | Typecheck |
 | BR-10 | The engine's flow `kind`, `flowKind`, a type's `kind` field, block and item kinds, flow instances and owner pins, the dispatch target | Unchanged ([ER-20](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do), [ER-22](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)) | The guard's exceptions |
-| BR-11 | A stored key, collection pattern, id or resource name uses a retired word | Its string is unchanged; the constant that holds it is renamed, `LEGACY_` when only an upgrade reads it ([D2](DECISIONS.md#d2)) | A store written before the sweep reads the same records after it |
+| BR-11 | A stored key, collection pattern, id, resource name, or a field name inside a saved record, uses a retired word | Its string is unchanged; the constant or type that holds it is renamed, `LEGACY_` when only an upgrade reads it, and a renamed type reads the stored field through one mapper ([D2](DECISIONS.md#d2)) | A store written before the sweep reads the same records after it |
 | BR-12 | A refusal must name an old file or input: `MAILBOX.md`, a removed room action | It keeps naming it, with the conversion. Its module and test are listed by path | The guard's exceptions |
-| BR-13 | Channel paths and `CHANNEL.md`'s `flow:` | Nothing here adds, renames or removes one | The guard's `channel-kind-paths` exception |
+| BR-13 | Channel paths and `CHANNEL.md`'s `flow:` (ER-20) | None is tracked on `main`, and nothing here adds one, so the guard carries no exception for them | `git ls-files`: no `flows/channels/` path ([settled](DECISIONS.md#settled)) |
 
 ## Exports and upgrades
 
@@ -35,21 +35,20 @@ from the last PR on.
 |---|---|---|---|
 | BR-14 | An export is renamed | The old name is gone, with no alias. The package's changeset has a row, old to new, and the upgrading page lists it ([D3](DECISIONS.md#d3)) | Every name removed from a package's index appears in its changeset table |
 | BR-15 | A custom worker flow hand-writes the worker configuration keys under the old names | Refused at boot, naming the flow and the key it lacks, as a hand-written schema missing a key is today | CI |
-| BR-16 | A hand-off was saved or queued with `seat` before the upgrade | It runs and settles, read as `assignee`. Nothing new writes `seat` (BP-030) | CI, on a recorded record |
-| BR-17 | A caller supplies both `seat` and `assignee` on a hand-off | `assignee` wins; the old field is never authority over the new one | CI |
 
 ## The glossary
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-18 | A reader opens the glossary's Workforce section | Each term in the [vocabulary](../../epics/FIX-1786/concept/CONCEPT.md#vocabulary) that has shipped is defined once; template and library wait for FIX-1795 | Review against the vocabulary table |
-| BR-19 | Two glossary terms would mean one thing | One goes. Words that still mean two things (a board worker and a worker; Workforce's roster and Shift Manager's Roster screen) are listed together | Review |
-| BR-20 | An entry says what a worker or coordinator keeps | It names only memory its flow really keeps (ER-15) | Review against the flow |
+| BR-16 | A reader opens the glossary's Workforce section | Each term in the [vocabulary](../../epics/FIX-1786/concept/CONCEPT.md#vocabulary) that has shipped is defined once; template and library wait for FIX-1795 | Review against the vocabulary table |
+| BR-17 | A reader looks up "seat" or "assignee" | The task-board section defines both, once: a seat is a place on a board, an assignee is a seat on one task ([D1](DECISIONS.md#d1)) | Review |
+| BR-18 | Two glossary terms would mean one thing | One goes. Words that still mean two things (a board worker and a worker; Workforce's roster and Shift Manager's Roster screen) are listed together | Review |
+| BR-19 | An entry says what a worker or coordinator keeps | It names only memory its flow really keeps (ER-15) | Review against the flow |
 
 ## Failure taxonomy
 
-The guard is fatal in CI on any unswept line or any file without an area; an exception that
-strips nothing is a warning to remove it. A renamed export with no changeset row fails V5. A
+The guard is fatal in CI on any unswept line, any file without an area, any exception that
+strips nothing, and any board file on Workforce's ground. A renamed export with no changeset row fails V5. A
 record saved before the sweep that no longer reads is a bug: D2 promised nothing moves. Nothing
 retries.
 

@@ -24,6 +24,14 @@ behaviour isn't there is held, not published. Watch for: em-dashes as connectors
 
 > | **User** | core | A person, signed in, always inside one org. Every action is taken by one user. The framework has no system users: an app can make one, and to the framework it is just another user. | Principal |
 
+## UPDATE · `glossary.md` · task-board table, replacing **Assignee**
+
+A task board keeps "seat" ([D1](DECISIONS.md#d1)). Once Workforce's seat is gone, this is its
+only meaning, so the glossary defines it here and nowhere else, beside the assignee it is part of.
+
+> | **Seat** | orchestration | A place on a task board: a name in its registry that holds a board worker, or a dispatcher that hands the task to another session. See [Task board](./orchestration/task-board.md). | Board worker |
+> | **Assignee** | orchestration | The seat a task names: a seat on one specific task. A task whose assignee has no seat goes to the default worker, or fails. | Seat, task |
+
 ## REPLACE · `glossary.md` · "Workforce: workers, mailboxes, projects"
 
 > ## Workforce: workers, coordinators, projects
@@ -75,34 +83,21 @@ Template and the worker library are added by FIX-1795 when it ships; not here.
 coordinators and projects" where it says "workers and mailboxes"; `glossary/shift-manager.svg`
 loses its mailbox-board and room cells. Each keeps the projects-plates style ([FIX-1746](https://linear.app/fixpoint-labs/issue/FIX-1746)).
 
-## UPDATE · `apps/docs/docs/orchestration/task-board.md` · "Seats that hand off"
+## UPDATE · `apps/docs/docs/orchestration/task-board.md` · only Workforce's lines
 
-The heading becomes **Assignees that hand off**; every link to `#seats-that-hand-off` follows
-(`server/background-work.md`, `guides/background-work.md`, this page). The opening paragraphs:
-
-> An assignee in the registry normally runs its tasks inline: the drain claims a row, runs the
-> worker, records the result, and claims the next. An assignee can instead hand each claimed row
-> off to a **dispatch run** and move on. The drain finishes with the row still `in_progress`,
-> and the run settles it when the worker is done.
->
-> A dispatch run is an ordinary session, of this flow or of the flow the assignee names with
-> `flowKind`. Which session a row lands in comes from the assignee's session key together with
-> the identity of the session dispatching it.
->
-> An assignee hands off when the registry maps it to a `dispatcher({ action, session })` instead
-> of a worker block. The worker is declared once on the flow, under `task.actions`, and the
-> dispatcher names it by `action`. A board can mix assignees that hand off with ones that run inline.
-
-The rest of the page swaps seat for assignee with no change of meaning; `board.handedOff` lists
-`HandOffAssignee` entries.
+The page keeps "seat" and its "Seats that hand off" heading ([D1](DECISIONS.md#d1)). Its section
+"A board a mailbox holds" imports Workforce: it goes with the mailbox (FIX-1792), or, if it is
+still there, moves to the Workforce pages in the new terms. Any other line where a seat means a
+Workforce worker says worker.
 
 ## UPDATE · `apps/docs/docs/orchestration/discovery.md` · description and opening
 
 > One tool call that tells an agent what is in scope for it right now: the workers it can hand
 > work to, the skills it can load, and the resources it can read.
 
-The **seat** and **mailbox** definitions go; a **worker** links to the glossary. The domain list
-is read off the tool at publish.
+The **seat** and **mailbox** definitions go; a **worker** links to the glossary. The domain names
+`seats` and `mailboxes` stay, because the tool takes them as input ([D1](DECISIONS.md#d1)); the
+page describes each one in the new terms, read off the tool at publish.
 
 ## UPDATE · `apps/docs/docs/workforce/upgrading.md` · new section
 
@@ -113,22 +108,19 @@ is read off the tool at publish.
 >
 > | Package | Was | Now |
 > |---|---|---|
-> | `@flow-state-dev/orchestration` | `TaskSeat`, `TaskSeatRegistry`, `TaskSeatAddress`, `HandOffSeat` | `TaskAssignee`, `TaskAssigneeRegistry`, `TaskAssigneeAddress`, `HandOffAssignee` |
-> | `@flow-state-dev/core` | a hand-off's `seat` | `assignee` |
 > | `@flow-state-dev/workforce` | `seatId`, `seatSkills`, `seatTools`, `seatPackages` | `workerId`, `workerSkills`, `workerTools`, `workerPackages` |
 > | every package | the rest | the package's changelog for this release |
 >
 > A worker flow whose configuration schema composes `workerConfigSchema()` gets the new keys with
 > no change. One that declares them by hand is refused at startup, and the message names the
-> key it is missing. Hand-offs queued or saved before the upgrade still run, and saved data keeps
-> its stored names, so nothing needs moving.
+> key it is missing. Saved data keeps its stored names, so nothing needs moving.
 
-The rows are completed from the changesets when P2 is built; the three above are pinned.
+The rows are completed from the changesets when P1 is built; the one above is pinned.
 
 ## PUBLISH · `apps/docs/docs/workforce/overview.md` · the opening
 
 The epic's draft ([epic DOCS.md](../../epics/FIX-1786/DOCS.md#update--appsdocsdocsworkforceoverviewmd--opening-and-what-a-workforce-app-looks-like))
-is canonical and not copied here. Publish it in P3, with Q2's answer (private projects in), no
+is canonical and not copied here. Publish it in P2, with Q2's answer (private projects in), no
 library lines, and each sentence checked against `main`.
 
 ## Every other page

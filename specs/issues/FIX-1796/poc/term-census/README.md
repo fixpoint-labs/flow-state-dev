@@ -17,37 +17,72 @@ It reads every tracked file. **Totality, twice:** each file falls in exactly one
 or kept (history, process, `goals/`, root configuration), or the run fails naming it; and each
 match of a retired term on an in-scope line is either stripped by a named exception or counted
 as unswept. Exceptions strip a token, never a line, so a second retired word on the same line
-still counts. "Kind", "owner pin" and "flow instance" are scanned on Workforce's ground only.
+still counts; a stored key strips alone, never the rest of the quoted literal it opens. An
+exception that strips nothing fails the run.
 
-`--control` adds, in memory, one planted file whose three lines each hide a retired word behind
-an exception that covers its neighbour ("the agent kind" beside `flowKind`; "the mailbox" beside
-`MAILBOX.md … WORKER.md`; "each seat" beside the stored name `"inventory/seats/x"`), and one file
-in a folder no area names. Each must be refused.
+**Ground is a surface, not a folder.** "Kind", "owner pin", "flow instance", "member" and
+"thread" are scanned on Workforce's ground only: its own packages and pages, plus any file that
+imports Workforce or Shift Manager, wherever it sits (kitchen-sink's seat pane, the React
+panels). The task board keeps "seat" ([D1](../../DECISIONS.md#d1)): its named types
+(`TaskSeat…`, `HandOffSeat`, the tool-seat names) strip anywhere, and its bare word strips only
+in the board's own files, a closed list that fails the run if one of them is on Workforce's
+ground. "Hired seat" counts everywhere.
+
+`--control` adds, in memory, three planted files and one unscoped folder. Each planted line hides
+a retired word behind an exception that covers its neighbour, and each must be refused:
+
+| Plant | Must count |
+|---|---|
+| "the agent kind" beside `flowKind` and "kind of" | kind |
+| "the mailbox" beside `MAILBOX.md … WORKER.md` | mailbox |
+| "each seat" beside the stored name `"inventory/seats/x"` | seat |
+| `"inventory/seats/x belongs to this mailbox"`, two terms in one quote | mailbox |
+| `roomLineSchema`, a lower-camel identifier | room |
+| "wakeMemberWorkers remembers the thread" | member, thread |
+| `TaskSeat` beside "the seat this pane opens", in a kitchen-sink file that imports Workforce | seat |
+| "the worker's kind" in that same file | kind |
+| "a dispatcher seat hands this row to a hired seat", in a board file | seat |
+| a file in a folder no area names | totality |
 
 ## What was observed
 
-On `cad4e2780`: **FAIL**, as it must before the sweep. 5,790 tracked files, every one with an
-area; 21,436 unswept lines in 661 files.
+On `cad4e2780`, with this spec's own files tracked: **FAIL**, as it must before the sweep. 5,802
+tracked files, every one with an area; 22,627 unswept lines in 650 files.
 
 | Term | Lines | Files | Unswept lines |
 |---|---|---|---|
-| seat | 9,989 | 460 | 9,940 |
-| mailbox | 5,774 | 266 | 5,744 |
-| kind (Workforce ground) | 4,256 | 257 | 3,217 |
+| seat | 9,989 | 460 | 9,614 |
+| mailbox | 5,774 | 266 | 5,738 |
+| kind (Workforce ground) | 4,367 | 275 | 3,296 |
+| member (Workforce ground) | 1,407 | 158 | 1,378 |
+| room | 930 | 70 | 880 |
 | person | 898 | 289 | 898 |
-| room | 874 | 70 | 824 |
 | talk session | 298 | 37 | 298 |
-| hired roster | 282 | 55 | 278 |
-| flow instance (Workforce ground) | 333 | 95 | 128 |
-| owner pin (Workforce ground) | 109 | 24 | 109 |
+| hired roster | 282 | 55 | 279 |
+| flow instance (Workforce ground) | 348 | 102 | 129 |
+| owner pin (Workforce ground) | 111 | 26 | 111 |
+| thread (Workforce ground) | 10 | 7 | 6 |
 
-By folder: `workforce` 176 files, `shift-manager` 112, `kitchen-sink` 61, `orchestration` 48,
-`engine` 33, the Workforce docs 29, then a long tail. The exceptions stripped 1,288 field names
-called `kind`, 211 uses of core's `FlowInstance` type, 184 stored names (D2), 35 "a kind of", 33
-"room for", 15 `MAILBOX.md` beside `WORKER.md`, 3 other kinds; `channel-kind-paths` stripped
-nothing, because no such path is tracked.
+By folder: `workforce`, `shift-manager` and `kitchen-sink` hold most of it, then `orchestration`,
+`engine`, the Workforce docs, then a long tail. The exceptions stripped 1,329 field names called
+`kind`, 274 bare board seats in the board's own files and 104 board type names, 225 uses of
+core's `FlowInstance` type, 172 stored names (D2), 38 "a kind of", 33 "room for", 24 discovery
+domain names, 15 `MAILBOX.md` beside `WORKER.md`, 14 project and org members, 4 chat threads, 3
+other kinds. None strips nothing.
 
-`--control`: **CONTROL PASS**, all four plants refused.
+The run also names one board file on Workforce's ground: the task-board page's "A board a mailbox
+holds" section imports Workforce. That section goes with the mailbox (FIX-1792); if it hasn't,
+the sweep moves it to the Workforce pages rather than widening the board's list.
+
+"Member" counts project members' `isMember` and a coding harness's `thread:` option today; those
+are the implementer's exceptions to pin, one token at a time.
+
+`--control`: **CONTROL PASS**, all ten plants and the folder refused.
+
+**Before this round** the same commit read 21,436 unswept lines in 661 files. The difference is
+the fold: board seats no longer count (D1), "member", "thread" and lower-camel `room…` names now
+do, Workforce's ground now reaches the files that import it, and a stored key no longer hides
+the rest of its literal.
 
 Most of today's lines are in code the other children rewrite or remove first, so these are a
 baseline, not the sweep's size: re-run on the build commit.
