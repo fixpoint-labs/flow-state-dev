@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="D1: who says who wrote a shared entry? Chosen, stamped by the contract in a required field; instead of, left to each flow. The row that decides it, an unsigned write: the chosen field makes the resource's own schema refuse it, as the POC's R2 showed; left to each flow, it is stored unsigned and nothing checks it. Second row, where the name comes from: the session's user and worker, never the input, against whatever the flow writes. Third row, cost: one persisted field on every shared resource, carried by FIX-1793 and FIX-1795, against no new field. Locks in: writtenBy on every shared entry; renaming it later is a migration. Flips if the engine gains a writer stamp, which would make the field redundant.">
+     aria-label="D1: who says who wrote a shared entry? Chosen, stamped by the contract in a required field; instead of, left to each flow. The row that decides it, an unsigned write: the chosen field makes the resource's own schema refuse it, as the POC's R2 showed, and registration checks the field's whole shape, K2; left to each flow, it is stored unsigned and nothing checks it. Second row, where the name comes from: the helper stamps the session's user and worker, never the input, though flow code writing directly can set its own, K3; against whatever the flow writes. Third row, cost: one persisted field on every shared resource, carried by FIX-1793 and FIX-1795, against no new field. Locks in: writtenBy on every shared entry; renaming it later is a migration. Flips if the engine gains a writer stamp, which would make the field redundant.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -52,7 +52,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Refused by the resource's schema</text>
-    <text class="t-s" x="248" y="179">checked at boot, enforced at run time (R2)</text>
+    <text class="t-s" x="248" y="179">whole shape checked at boot (K2), enforced (R2)</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Stored unsigned</text>
     <text class="t-s" x="612" y="179">nothing checks it</text>
@@ -62,7 +62,7 @@
     <text class="t-lbl" x="32" y="231">NAME COMES FROM</text>
     <text class="mark plus" x="228" y="224">+</text>
     <text class="t-b" x="248" y="223">The session's user and worker</text>
-    <text class="t-s" x="248" y="241">never the input (BP-031)</text>
+    <text class="t-s" x="248" y="241">the helper never reads input (BP-031)</text>
     <text class="mark minus" x="592" y="224">−</text>
     <text class="t-b" x="612" y="223">Whatever the flow writes</text>
     <text class="t-s" x="612" y="241">a different shape per flow</text>

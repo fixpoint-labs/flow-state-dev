@@ -11,7 +11,7 @@
  * what the flow is, not which function built it (worker-config.ts's rule).
  */
 import type { FlowType } from "@flow-state-dev/core/types";
-import { contractProblems } from "./contract";
+import { workerFlowProblems } from "./contract";
 
 type AnyFlow = FlowType<any, any, any, any, any, any, any>;
 
@@ -27,10 +27,13 @@ export type WorkerFlowList = ReadonlyMap<string, { flow: AnyFlow; standardOnly: 
  *
  * @param entries By kind. The built-in `agent` sits underneath, as today; an
  *   entry under `agent` replaces it, and its `standardOnly` is the entry's.
+ * @param check The contract. Defaults to the decided one (Q2); the as-gated
+ *   legs pass `preQ2ContractProblems` to record what was compared at the gate.
  */
 export function registerWorkerFlows(
   entries: Record<string, WorkerFlowEntry>,
-  builtInAgent: AnyFlow
+  builtInAgent: AnyFlow,
+  check: (kind: string, flow: AnyFlow) => string[] = workerFlowProblems
 ): WorkerFlowList {
   const all: Record<string, WorkerFlowEntry> = { agent: builtInAgent, ...entries };
   const problems: string[] = [];
@@ -41,7 +44,7 @@ export function registerWorkerFlows(
       problems.push(`"${kind}" is registered with a flow of kind "${flow.kind}"`);
       continue;
     }
-    const found = contractProblems(kind, flow);
+    const found = check(kind, flow);
     if (found.length > 0) problems.push(...found);
     else list.set(kind, { flow, standardOnly });
   }

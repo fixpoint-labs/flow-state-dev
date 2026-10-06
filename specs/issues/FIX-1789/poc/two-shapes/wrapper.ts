@@ -12,7 +12,7 @@ import { z } from "zod";
 import { defineFlow } from "@flow-state-dev/core";
 import type { FlowType } from "@flow-state-dev/core/types";
 import { workerConfigSchema } from "../../src/worker-config";
-import { contractProblems, sharedResource } from "./contract";
+import { preQ2ContractProblems, sharedResource } from "./contract";
 
 type AnyFlow = FlowType<any, any, any, any, any, any, any>;
 
@@ -40,7 +40,7 @@ export function defineWorkerFlow(definition: WorkerFlowDefinition): AnyFlow & { 
     configSchema: workerConfigSchema().extend(config ?? {}),
     resources: { ...(rest.resources ?? {}), ...sharedResources }
   } as any) as AnyFlow;
-  const problems = contractProblems(rest.kind, flow);
+  const problems = preQ2ContractProblems(rest.kind, flow);
   if (problems.length > 0) throw new Error(`defineWorkerFlow("${rest.kind}") refused:\n  - ${problems.join("\n  - ")}`);
   return Object.assign(flow, { [WORKER_FLOW]: { standardOnly: standardOnly === true } }) as any;
 }

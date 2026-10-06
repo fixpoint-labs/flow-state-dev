@@ -1,0 +1,94 @@
+<svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Q2, decided by Jake on 2026-10-06: does the contract keep worker flows out of org scope? Chosen, no engine rule: org scope is shared by design, and the built-in flows keep a worker&#39;s own state out of it; instead of an engine rule refusing a worker flow&#39;s org writes, with registration refusing org-scoped state. The row that decided it, who knows when org data is relevant: the flow&#39;s author, so a worker built to share with the org can; under the rule the contract decides for every flow, and a worker built for org data is refused. Second row, who keeps a worker&#39;s own state private: under the choice, the built-in flows by design, and an author&#39;s own flow can write org data; under the rule, every worker flow, by a refusal at boot and when it runs. Third row, what changes: Workforce alone, the epic&#39;s Layer 1 changes stay three; against a fourth Layer 1 change and an engine flag. Locks in: org scope is shared, by the author&#39;s choice, and the docs say so. Would flip if a worker flow leaks one user&#39;s data by accident, or a customer needs workers kept out of org data.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">Q2 · DECIDED · JAKE, 2026-10-06 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Does the contract keep worker flows out of org scope?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">No: org scope is shared by design</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">An engine rule refusing org writes</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHO KNOWS WHEN</text>
+    <text class="t-lbl" x="32" y="169">ORG DATA MATTERS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDED IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">The flow's author</text>
+    <text class="t-s" x="248" y="179">a worker built to share with the org can</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">The contract, for every flow</text>
+    <text class="t-s" x="612" y="179">a worker built for org data is refused</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">WHO KEEPS A WORKER'S</text>
+    <text class="t-lbl" x="32" y="231">OWN STATE PRIVATE</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">The built-in flows, by design</text>
+    <text class="t-s" x="248" y="241">an author's own flow can write org data</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Every worker flow, by refusal</text>
+    <text class="t-s" x="612" y="241">at boot and when it runs</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">WHAT CHANGES</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">Workforce alone</text>
+    <text class="t-s" x="248" y="299">the epic's Layer 1 changes stay three</text>
+    <text class="mark minus" x="592" y="282">−</text>
+    <text class="t-b" x="612" y="281">A fourth Layer 1 change</text>
+    <text class="t-s" x="612" y="299">an engine flag and its tests</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">Org scope is shared, by the author's choice</text>
+    <text class="t-s" x="32" y="387">the docs say so; nothing refuses it</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">A worker flow leaks by accident</text>
+    <text class="t-s" x="494" y="387">or a customer needs workers kept out of org data</text>
+  </g>
+</svg>
