@@ -10,7 +10,7 @@
 > **Where this differs from the epic, the epic binds.** This is the PRD as Jake wrote it; the
 > epic's [decisions](../DECISIONS.md) and [rules](../BUSINESS-RULES.md) settle what it leaves
 > open. One coordinator flow with a routing setting ([D2](../DECISIONS.md#d2)). Where an author
-> declares a worker flow is [Q1](../DECISIONS.md#q1), whose shape is chosen at FIX-1789's spec gate on a POC of both and recorded in the epic. A workstream is a project entry plus its
+> declares a worker flow is [Q1](../DECISIONS.md#q1): a list the installation keeps, chosen at FIX-1789's spec gate on a POC of both. The contract's registration checks are the standard configuration, a door and a full `writtenBy` shape on shared writes; privacy is not one of them. The built-in worker flows keep a worker's own state out of org scope, and a custom worker flow's privacy is its author's. Org scope is shared with the org by design, and the framework doesn't refuse a flow's writes there ([ER-2](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), [D3](../DECISIONS.md#d3)). A workstream is a project entry plus its
 > lead's session; `MAILBOX.md` becomes `WORKER.md`; no transcript resource is built, so the
 > `transcript:` key below isn't either ([decided in review](../DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)).
 > The boards are per [D5](../DECISIONS.md#d5) and [ER-9](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt). A worker's
@@ -29,7 +29,7 @@ This doc describes how Workforce should work, from first principles, in terms a 
 
 **A user is always a person.** The framework doesn't own identity and has no system users. An app can create a "system user" of its own, and to the framework it's just another user.
 
-**Everything is private to one user. The only shared things are shared resources.** Every session belongs to one user, and nobody else can open it. Something is shared only when it's written to a shared resource, such as a channel's conversation or a shared project.
+**A worker's own state and user data are private to one user. Shared resources and org scope are shared, and a flow writes to org scope by its author's choice.** Every session belongs to one user, and nobody else can open it. Something is shared only when it's written to a shared resource, such as a channel's conversation or a shared project.
 
 The engine already works this way. What changes is that Workforce stops describing anything else as shared.
 
@@ -85,7 +85,7 @@ Not every flow can run a worker. A flow becomes available to workers only when i
 
 * **It accepts a worker's standard configuration:** instructions, skills, tools, packages and the worker's id, plus its own settings beside them.
 * **It has a door:** one public action that takes a message, so an app can talk to any worker without knowing its flow.
-* **It keeps a worker's state private.** Anything shared goes through a shared resource, with attribution.
+* **It signs what it shares.** Anything written to a shared resource carries attribution in full. The built-in worker flows keep a worker's own state out of org scope; a custom flow's privacy is its author's.
 
 The installation registers which flows are worker flows. A worker's configuration can only name a registered worker flow, and the installation can keep some flows for standard workers only, so a user can't hire a non-standard worker onto them.
 
@@ -402,7 +402,7 @@ One term, one thing. Retired: person (say user), seat, hired seat, hired roster 
 | Task | A unit of work assigned to a worker, worked in its own task session | Private |
 | Board | A list of tasks, belonging to a session | Private |
 | Standard install | What every user starts with, defined by files | Installation-level |
-| Worker contract | What a flow must meet to run workers: standard configuration, a door, private state | Installation-level |
+| Worker contract | What a flow must meet to run workers: standard configuration, a door, attribution on shared writes | Installation-level |
 | Door | The one public action that takes a message to a worker | Private |
 | Delegate | A worker a coordinator can hand posts to. Always on the same user's roster | Private |
 | Routing policy | How a coordinator picks delegates: judgment, best fit, round robin, or everyone | Private |
@@ -438,7 +438,7 @@ These terms are in today's code and docs, and go away in the refactor. Counts ar
 - [ ] **One coordinator** flow or two? Open. One flow if the styles share most of the flow, two if they diverge.
 - [X] **Where do a coordinator's delegates live?** Decided: in session state. Each session starts from the defaults in the coordinator's configuration and manages them from there, so the lock on standard workers never gets in the way.
 - [X] **Can the coordinator change its own delegates?** Decided: yes, in its session's state.
-- [ ] **The worker contract.** Recommend building on today's admission contract and door, and adding the private-state rule and a standard-only flag per flow.
+- [X] **The worker contract.** Decided ([Q1](../DECISIONS.md#q1)): today's admission contract and door, plus a full `writtenBy` shape on shared writes, on a list of worker flows the installation keeps, with standard-only set per entry on that list.
 - [ ] **Is a workstream a project entry plus its lead's workstream session?** Recommend yes. It needs no new flow, and its board is an ordinary session board. Store each workstream as its own resource under its project, and compute project progress from them.
 - [X] **How do long-lived sessions manage memory?** Moved to the memory epic, [FIX-1775](https://linear.app/fixpoint-labs/issue/FIX-1775/epic-memory-and-session-context-management), updated with what this doc found: what's kept word for word, when it summarizes, and what moves to the memory layers, configurable per flow and per worker.
 - [ ] **User-to-user communication.** Punted until we know we want it, and whether it belongs to the framework or the app.
@@ -458,7 +458,7 @@ These terms are in today's code and docs, and go away in the refactor. Counts ar
 | A worker is a resource, and sessions load its configuration | Each worker is a flow instance with its configuration in code, rebuilt at every start from roster rows |
 | Every flow is a singleton, and a worker names the one it runs on | A worker already names its flow, but each hire mints its own copy of that flow, registered under the worker's id (`hire.ts`). The `agent` flow does it as one kind with many instances (`cardinality: "collection"`) |
 | Access to a worker is access to its resource | Instances carry pins, and only Workforce uses them |
-| A worker contract decides which flows can run workers | Mostly there: a hireable flow's config schema accepts `workerConfigSchema()`, its door is found from its actions, and the flows passed to the hire are the allowlist. No standard-only flag, and no private-state rule. The configuration arrives as the flow copy's frozen `ctx.flow.config`, with `seatTools` as live blocks, so a stored worker can't carry it as is |
+| A worker contract decides which flows can run workers | Mostly there: a hireable flow's config schema accepts `workerConfigSchema()`, its door is found from its actions, and the flows passed to the hire are the allowlist. No standard-only flag, and no attribution check. The configuration arrives as the flow copy's frozen `ctx.flow.config`, with `seatTools` as live blocks, so a stored worker can't carry it as is |
 | Standard workers are a projected collection read from files | `WORKER.md` files become flow instances. Projected collections exist (`defineProjectedResourceCollection`), read-only |
 | Workers are always private | A hire locked to the org alone is reachable by every member |
 | Library templates are copied into your scope | There is no library |

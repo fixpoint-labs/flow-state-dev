@@ -4,8 +4,8 @@
 
 The calls above any single issue. D1 is the sign-off surface. This epic runs under `epic-em`:
 D2 to D5 are engineering calls I made and record here, with what would reverse each. Jake
-answered Q1 to Q3 on 2026-10-06, and no child reopens them. Q2 and Q3 are decided. Q1's answer
-decides who chooses its shape and on what evidence; the shape itself is recorded here once chosen. The
+answered Q1 to Q3 on 2026-10-06, and no child reopens them. All three are decided: Q1's shape,
+the list, was chosen at FIX-1789's spec gate on its POC and is recorded here. The
 model itself (workers as resources, delegates in session state, rooms removed, the vocabulary)
 is decided in the PRD and the [concept](concept/CONCEPT.md), and is not reopened here.
 
@@ -18,9 +18,11 @@ flowchart TD
   E --> D2["D2 · one coordinator flow, a routing setting"]
   D2 -.->|"rejected"| X2["coordinator and relay"]
   E --> D3["D3 · three Layer 1 changes, the rest Layer 2"]
+  D3 -.->|"rejected"| X3["a fourth · an engine rule on org-scope writes"]
   E --> D4["D4 · contract and org keys first, terms last"]
   E --> D5["D5 · a board is a session board unless people track it"]
-  E --> Q1["Q1 · answered · chosen at FIX-1789's gate, recorded here"]
+  E --> Q1["Q1 · decided · the list the installation keeps"]
+  Q1 -.->|"rejected"| XQ1["a defineWorkerFlow wrapper"]
   E --> Q2["Q2 · decided · private projects are in"]
   E --> Q3["Q3 · decided · FIX-1774 and FIX-1777 closed into children"]
 ```
@@ -30,9 +32,9 @@ flowchart TD
 
 | | |
 |---|---|
-| **Instead of** | Rename only (FIX-1796 alone) · or fix privacy in place: keep seats, mailboxes and rooms, and narrow the org-locked hire and the boards |
+| **Instead of** | Rename only (FIX-1796 alone) · or fix privacy in place: keep hires, mailboxes and rooms, and narrow the org-locked hire and the boards |
 | **Because** | A rename keeps the hole: an org-locked hire still reaches every member, and a drain still runs as whoever triggers it. A fix in place keeps six parts and three meanings of "shared", and each fix is a special case on a part the target model deletes. The inventory comes first because FIX-1763's mailbox children are in flight; starting under them makes each one a rebase |
-| **Locks in** | A refactor across Workforce, the engine (three changes, [D3](#d3)), Shift Manager and the docs. Implementation waits on FIX-1787's merge-first rows. Work built on seats, mailboxes and rooms merges first and is refactored here, or closes |
+| **Locks in** | A refactor across Workforce, the engine (three changes, [D3](#d3)), Shift Manager and the docs. Implementation waits on FIX-1787's merge-first rows. Work built on hires, mailboxes and rooms merges first and is refactored here, or closes |
 
 **What would change my mind:** no app needing a second user or a worker of its own this year.
 Then fix the hole in place and rename later.
@@ -59,13 +61,12 @@ answer record in one shared module.
 
 | | |
 |---|---|
-| **Instead of** | A Layer 1 worker noun with its own store · or per-org user keys faked inside Workforce |
-| **Because** | Workers, coordinators and workstreams compose what ships: resources, scopes, sessions, projected collections, boards. Three things Workforce cannot fake: a scope key, a row rule, session state a caller can't write. [The end-state POC](#what-the-end-state-poc-showed) settled the third: the public create persists a caller's session state, so a link held there accepts the caller's own other worker, and a row only flow code writes outlives a deleted session id |
-| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change whose old records move to one org by an operator step, never read in two ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session state a flow declares server-owned: the public create refuses caller state for it, and only flow code writes it. The worker link lives there, and so do a coordinator's delegates. FIX-1788 builds it, FIX-1791 consumes it. Flow instances and owner pins get deprecation markers, nothing more. A worker's own key for its private state is Layer 2, FIX-1788's, and so is reading a worker's configuration per run: a generator already resolves its tools per call ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). Any other Layer 1 change comes back to this epic |
+| **Instead of** | A Layer 1 worker noun with its own store · or per-org user keys faked inside Workforce · or a fourth change, an engine rule refusing a worker flow's writes to org scope (FIX-1789's Q2) |
+| **Because** | Workers, coordinators and workstreams compose what ships: resources, scopes, sessions, projected collections, boards. Three things Workforce cannot fake: a scope key, a row rule, session state a caller can't write. [The end-state POC](#what-the-end-state-poc-showed) settled the third: the public create persists a caller's session state, so a link held there accepts the caller's own other worker, and a row only flow code writes outlives a deleted session id. No fourth (Jake, 2026-10-06): org scope is shared with the org by design, a worker flow may write there if that is how it is built to work, and the framework can't know when org data is relevant. The built-in worker flows, `agent` and the coordinator, keep a worker's own state out of it; a custom worker flow's privacy is its author's, and the contract doesn't check it ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change whose old records move to one org by an operator step, never read in two ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session data only the server writes. The worker link takes the form this card's *what would change my mind* anticipated: a server-only field on the session record, set and checked when the session is created, never on a turn; a session's worker can't change, and no action names a worker (Jake, 2026-10-06, on FIX-1788's spec). A coordinator's delegates are held where only the server writes too, and the public create can't seed them. FIX-1788 picks the mechanism and builds it, FIX-1791 consumes it. Flow instances and owner pins get deprecation markers, nothing more. A worker's own key for its private state is Layer 2, FIX-1788's, and so is reading a worker's configuration per run: a generator already resolves its tools per call ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). Any other Layer 1 change comes back to this epic |
 
 **What would change my mind:** a second consumer of a worker outside Workforce. Then a worker
-noun in core earns its place. For (3), FIX-1788's spec needing the link before any flow code
-runs, at admission: then a server-only field on the session record instead.
+noun in core earns its place.
 
 <a name="d4"></a>
 ## D4 · engineering · The contract and per-org keys first; the terms last, with docs moving with code
@@ -86,40 +87,36 @@ runs, at admission: then a server-only field on the session record instead.
 | **Locks in** | FIX-1792 waits on FIX-1793 for the workstream option. The per-board table is FIX-1792's spec. A session board that hands rows to a delegate on another flow can't be shared down the lineage, which stops at a flow, and still stays its own board: never one ledger for all its owner's sessions. FIX-1794 decides how ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 <a name="q1"></a>
-## Q1 · answered, shape open · Where an author says "this flow runs workers" is chosen at FIX-1789's spec gate, on a POC of both, and recorded here
+## Q1 · decided · An author says "this flow runs workers" in a list the installation keeps, not a `defineWorkerFlow()` wrapper
 
-**Decided:** who chooses and on what evidence. **Not yet decided:** list or wrapper.
+**Jake, 2026-10-06**, at FIX-1789's spec gate
+([#2811](https://github.com/fixpoint-labs/flow-state-dev/pull/2811)), on its POC of both shapes
+([`two-shapes`](../../issues/FIX-1789/poc/two-shapes/README.md#what-was-observed)), as this
+card had asked. He had leaned to the wrapper for contract integrity; the POC showed the list
+holds it as surely.
 
-**Jake, 2026-10-06:** not decided at epic level. FIX-1789's spec builds both shapes side by side
-in a spec-poc, a list the installation keeps and a `defineWorkerFlow()` wrapper, and the call is
-made on that evidence at FIX-1789's spec gate. Jake leans to the wrapper for contract integrity:
-it makes a flow account for every requirement a worker flow has. Seeing how the list keeps code
-and holds the contract may change that. The epic recommended the list before this answer; it no
-longer recommends either.
+- **What it is.** Today's map of flows the installation passes to the hire. Each flow on it is
+  checked when the installation registers it, against
+  [ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)'s contract, by checks exported so
+  a library can call them in its own tests. Standard-only is carried per entry, set by the
+  installation.
+- **What decided it.** Both shapes refused the same flows before any worker ran (S1–S4), so
+  contract integrity was a tie. The wrapper lost an installation's standard-only setting when it
+  swapped in a library's `agent`, and needed two definitions of one flow for two installations
+  (F3, F4). It also refused a flow that meets every requirement but was written by hand: the
+  second authority `worker-config.ts` rejects on purpose (H1).
+- **How it binds the set.** From this record's merge
+  ([ER-24](BUSINESS-RULES.md#how-the-set-is-run)): FIX-1788's `agent` flow and FIX-1791's
+  coordinator flow register on the list, and neither moves onto a new export.
+  [ER-14](BUSINESS-RULES.md#what-no-child-may-do) holds: the list registers flows, not workers.
+- **What it leaves.** A wrapper may come later as sugar over the list, with no mark.
+  [D1](#d1)'s collapse trigger doesn't fire: FIX-1789's spec found the contract is more than a
+  registration list (three checks, attribution, moving `agent`'s skills drawer off org scope), so
+  it keeps its own issue.
 
-- **What both shapes must hold.** [ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)'s
-  contract: the flow composes `workerConfigSchema()`, has a door, keeps a worker's state private,
-  and can be kept for standard workers only. [ER-14](BUSINESS-RULES.md#what-no-child-may-do):
-  whichever shape wins registers flows, not workers.
-- **What the POC compares.** The figure's rows. Contract integrity: is every requirement checked
-  where the author writes the flow, or only when the installation registers its list? Authorities:
-  the wrapper is a marker `worker-config.ts` rejects on purpose today, a second authority over the
-  schema's rule. Existing flows: the built-in `agent` flow is unchanged under the list and migrates
-  under the wrapper. Under both: can the private-state rule be checked from what a flow declares,
-  or does it need a gate around resource writes at run time?
-- **How the choice binds the set.** The shape is cross-cutting: FIX-1788's `agent` flow and
-  FIX-1791's coordinator flow both declare themselves with it. So the winner at FIX-1789's gate
-  comes back here as a follow-up epic PR that records it in this card
-  ([ER-24](BUSINESS-RULES.md#how-the-set-is-run)), and it binds once that PR merges. Until then,
-  FIX-1788's and FIX-1791's specs build to ER-2's contract and name neither shape. Their builds
-  already wait on FIX-1789 ([D4](#d4)), so nothing re-sequences.
-- **What it moves.** If the list wins and is small, FIX-1789 may fold into FIX-1788
-  ([D1](#d1)'s collapse trigger). If the wrapper wins, it is a new public export, and FIX-1788
-  moves the `agent` flow onto it.
+![Q1, decided at FIX-1789's spec gate on a POC of both: a list the installation keeps, chosen, beside a defineWorkerFlow wrapper. Decides it: who sets standard-only, kept by the installation per entry and lost under the wrapper when an installation swaps in a library's agent. Contract integrity is a tie. The list's price: a library catches a broken flow only if it calls the exported check. Flips if standard-only is a property of the flow](figures/q1-worker-flow-list.svg)
 
-![Q1, chosen at FIX-1789's spec gate on a POC of both and recorded here: a defineWorkerFlow wrapper, which Jake leans to, beside a list the installation keeps. His reason: contract integrity, every requirement checked where the flow is written. The wrapper's price: a second authority over the schema's rule, and existing flows migrate. The lean flips if the list catches every requirement as surely](figures/open-worker-contract.svg)
-
-It comes down to contract integrity, Jake's reason for the wrapper, weighed against the second authority it adds.
+It comes down to who sets standard-only: under the wrapper, an installation can't keep its own policy.
 
 <a name="q2"></a>
 ## Q2 · decided · Private projects are in, and FIX-1763's "projects stay org-level" fence is lifted
@@ -161,8 +158,8 @@ rule, both restated on the new model.
 
 The matrix holds ER-1 to ER-12; ER-13 onward are fences and process that bind every child
 alike. FIX-1788 decides what a worker is, so the coordinator, the library and the conversion
-consume it rather than define their own. FIX-1789 owns attribution on shared writes, because it
-is the contract's private-state rule seen from the shared side. FIX-1793 owns the one new
+consume it rather than define their own. FIX-1789 owns attribution on shared writes, because a
+full `writtenBy` shape is one of the contract's registration checks. FIX-1793 owns the one new
 engine rule. The closure only checks.
 
 ## Decided in review, recorded so no child reopens them
@@ -189,8 +186,15 @@ engine rule. The closure only checks.
   library from merging ([ER-30](BUSINESS-RULES.md#the-closure)). From review (Jake).
 - **Private projects are proved.** Leg b makes one and Bob can't reach it; otherwise ER-7's
   private half would ship unchecked. From review (Jake, Cursor); unconditional since Q2.
-- **ER-14 forbids a second registry of workers**, not Q1's worker-flow declaration, whether a
-  list or a wrapper. From review.
+- **ER-14 forbids a second registry of workers**, not Q1's worker-flow declaration, the list.
+  From review.
+- **A shared entry's `writtenBy` is as trustworthy as the worker flow that wrote it.** With no
+  engine rule ([D3](#d3)), FIX-1789's shared-write helper stamps it from the session's identity;
+  it can't be forged from input, but flow code that writes the resource directly can set any
+  value (FIX-1789's BR-22; its K3 leg pins the bypass), and no doc may promise otherwise
+  ([ER-11](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). It is for display and audit
+  only, never an authorization input; who may write is FIX-1793's. From FIX-1789's gate, an
+  engineering call.
 - **A worker names the flow that runs it.** An installation has many worker flows (the built-in
   agent, the coordinator, the app's own), each one singleton copy that every worker naming it
   shares. Making flows singletons doesn't put every worker on `agent` ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
@@ -223,7 +227,7 @@ engine rule. The closure only checks.
   through the public create, and a flow-owned row outlives a deleted session id. A user's
   workers share every `flowIsolation` cell. A lineage board can't reach a worker on another flow.
 - **Changed:** [D3](#d3)'s third Layer 1 change is definite, as server-owned session state.
-  FIX-1788 also keys a worker's private state by the worker and moves the per-seat cells
+  FIX-1788 also keys a worker's private state by the worker and moves today's per-worker cells
   ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). A board whose rows cross a flow
   can't use its lineage ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), FIX-1794;
   [D5](#d5)); the POC's answer, the owner's user scope, was struck in review round 2. The FIX-1788
@@ -256,7 +260,12 @@ engine rule. The closure only checks.
   FIX-1788 or FIX-1791 names a shape, because both declare their flows with it (Codex); the "fast
   follow" Jake expects for the shared half is asked at FIX-1793's spec gate, so it has an owner
   (the second look); ER-26 points at the orchestration contract's GitHub stacks.
+- **FIX-1789's gate (Oct 6)**, in a third follow-up PR: Q1 is the list, on FIX-1789's POC (#2811),
+  and ER-24 is met for it. FIX-1789's open call on an engine rule for org-scope writes is no: D3
+  stays three, and ER-2 and ER-11 say the privacy promise covers a worker's own state and
+  user-scoped data, not org scope. From FIX-1788's spec (#2812): D3's third change holds the
+  worker link in a server-only field set at create, so no action names a worker. "Seat" left the
+  prose here, one name for one thing (Jake, #2810).
 
-**Open: none needing an answer now.** Two asks have a set place. Q1's shape is chosen at
-FIX-1789's spec gate and recorded here before FIX-1788 or FIX-1791 names one. Whether the shared
-half stays in the MVP is asked at FIX-1793's spec gate ([Q2](#q2)).
+**Open: none needing an answer now.** Whether the shared half stays in the MVP is asked at
+FIX-1793's spec gate ([Q2](#q2)).

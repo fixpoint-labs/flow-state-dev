@@ -1,0 +1,114 @@
+<svg viewBox="0 0 940 478" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Q1, decided at FIX-1789&#x27;s spec gate on a POC of both shapes: where does an author say this flow runs workers? Chosen, a list the installation keeps, instead of a defineWorkerFlow wrapper. Decides it, who sets standard-only: under the list the installation sets it per entry and keeps it when it swaps in a library&#x27;s agent; under the wrapper it is the flow author&#x27;s, and that installation loses its own policy. A tie, contract integrity: both refuse the same flows before any worker runs. The list&#x27;s price: a library sees a broken flow only if it calls the exported check in its own tests, where the wrapper fails as the file loads. Authorities: the list keeps today&#x27;s schema as the one authority and registers a compliant hand-built flow; the wrapper adds a mark and refuses that flow. Locks in: the list is the declaration, and a wrapper may come later as sugar over it, with no mark. Flips if standard-only becomes a property of the flow, the same in every installation.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="478"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">Q1 · DECIDED AT FIX-1789&#x27;S SPEC GATE, ON A POC OF BOTH · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where does an author say “this flow runs workers”?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">A list the installation keeps</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">A defineWorkerFlow() wrapper</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHO SETS</text>
+    <text class="t-lbl" x="32" y="169">STANDARD-ONLY</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">The installation, per entry</text>
+    <text class="t-s" x="248" y="179">kept when it swaps in a library&#x27;s agent</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">The flow&#x27;s author</text>
+    <text class="t-s" x="612" y="179">an installation that swaps agent loses its policy</text>
+  </g>
+
+  <g id="row-tie">
+    <text class="t-lbl" x="32" y="218">CONTRACT</text>
+    <text class="t-lbl" x="32" y="231">INTEGRITY</text>
+    <text class="mark tie" x="228" y="224">=</text>
+    <text class="t-b" x="248" y="223">The same flows refused</text>
+    <text class="t-s" x="248" y="241">every one before any worker runs</text>
+    <text class="mark tie" x="592" y="224">=</text>
+    <text class="t-b" x="612" y="223">The same flows refused</text>
+    <text class="t-s" x="612" y="241">the POC&#x27;s seven flows, the same verdicts</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-price">
+    <text class="t-lbl" x="32" y="276">A BROKEN FLOW</text>
+    <text class="t-lbl" x="32" y="289">IN A LIBRARY</text>
+    <text class="mark minus" x="228" y="282">−</text>
+    <text class="t-b" x="248" y="281">Caught if the library calls the check</text>
+    <text class="t-s" x="248" y="299">an exported check, in its own tests</text>
+    <text class="mark plus" x="592" y="282">+</text>
+    <text class="t-b" x="612" y="281">Caught as its file loads</text>
+    <text class="t-s" x="612" y="299">no installation needed</text>
+    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+  </g>
+
+  <g id="row-authority">
+    <text class="t-lbl" x="32" y="334">AUTHORITIES OVER</text>
+    <text class="t-lbl" x="32" y="347">THE RULE</text>
+    <text class="mark plus" x="228" y="340">+</text>
+    <text class="t-b" x="248" y="339">One: today&#x27;s schema</text>
+    <text class="t-s" x="248" y="357">a compliant hand-built flow registers</text>
+    <text class="mark minus" x="592" y="340">−</text>
+    <text class="t-b" x="612" y="339">Two: the schema and a mark</text>
+    <text class="t-s" x="612" y="357">refuses that flow for lacking the mark</text>
+    <line class="row" x1="16" y1="372" x2="924" y2="372"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="388" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="409">LOCKS IN</text>
+    <text class="t-b" x="32" y="429">The list is the declaration, checked at registration</text>
+    <text class="t-s" x="32" y="447">a wrapper may come later as sugar over it, with no mark</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="388" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="409">FLIPS IF</text>
+    <text class="t-b" x="494" y="429">Standard-only is a property of the flow</text>
+    <text class="t-s" x="494" y="447">the same in every installation that runs it</text>
+  </g>
+</svg>
