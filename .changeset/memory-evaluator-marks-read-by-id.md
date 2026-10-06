@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/memory": patch
+"@flow-state-dev/memory": minor
 ---
 
-Capture with an `evaluator` now marks read exactly the messages it judged, by id, in a new `readMessages` field on the `memorySystem` state (`MemorySystemState`). It used to move a positional watermark, so when two turns of one session overlapped, a late `skip` could mark read a turn whose evaluator call had failed, and that turn was never observed. Sessions captured before keep working: the first capture with an evaluator carries over what the watermark already covered. Without an evaluator, capture is unchanged (FIX-1555, BR-6).
+Capture with an `evaluator` now marks read only the messages it judged, so a turn whose evaluator call fails while another turn of the same session is being judged is no longer lost, and the exported `MemorySystemState` gains a required `readMessages` field (FIX-1555).

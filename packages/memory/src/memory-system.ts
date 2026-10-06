@@ -73,6 +73,12 @@ import type { RetrievalStrategy } from './tools/types'
 // Memory system tracking resource
 // ---------------------------------------------------------------------------
 
+/** One session message capture with an evaluator has judged: its item id and timestamp. */
+const readMessageSchema = z.object({ id: z.string(), ts: z.number() })
+
+/** A judged session message, as `readMessages` keeps it. */
+export type ReadMessage = z.infer<typeof readMessageSchema>
+
 /** Schema for the memory system tracking state. */
 export const memorySystemStateSchema = z.object({
   /** Index of the last processed session item. */
@@ -85,7 +91,7 @@ export const memorySystemStateSchema = z.object({
    * something, and after one without an evaluator: the watermark then says
    * what is read.
    */
-  readMessages: z.array(z.object({ id: z.string(), ts: z.number() })).nullable().default(null),
+  readMessages: z.array(readMessageSchema).nullable().default(null),
   /** Episodic writes since the last consolidation check. */
   episodicWritesSinceLastConsolidation: z.number().default(0),
   /** Persistent/permanent entries evicted since the last consolidation. */

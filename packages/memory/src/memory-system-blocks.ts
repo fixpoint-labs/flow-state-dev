@@ -22,7 +22,7 @@ import {
 import type { Edge } from '@flow-state-dev/core/graph'
 import type { ResolvedRelationsConfig } from './internal/config'
 import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFIG } from './memory-system'
-import type { MemorySystemState } from './memory-system'
+import type { MemorySystemState, ReadMessage } from './memory-system'
 import { findBestOverlap } from '@flow-state-dev/core/helpers'
 import { canonicalizeSubject, edgesOf } from './internal/helpers'
 import { createDigestMemoryResource } from './digest-memory'
@@ -479,10 +479,15 @@ export function buildObserveContext(
   allItems: ReadonlyArray<Record<string, any>>,
   lastProcessedIndex: number,
 ): string | undefined {
-  const newMessages = allItems.filter(
-    (item, idx) => idx > lastProcessedIndex && item.type === 'message',
-  )
-  return formatMessages(newMessages)
+  return formatMessages(messagesAfterWatermark(allItems, lastProcessedIndex))
+}
+
+/** The `message` items past the `lastProcessedIndex` watermark. */
+function messagesAfterWatermark(
+  allItems: ReadonlyArray<Record<string, any>>,
+  lastProcessedIndex: number,
+): Array<Record<string, any>> {
+  return allItems.filter((item, idx) => idx > lastProcessedIndex && item.type === 'message')
 }
 
 /** `[role] text` per message, one per line; `undefined` when there are none. */
@@ -511,9 +516,6 @@ function watermarkPast(allItems: ReadonlyArray<unknown>, current: number): numbe
   return allItems.length > 0 ? allItems.length - 1 : current
 }
 
-/** One judged session message, as `readMessages` keeps it. */
-type ReadMessage = { id: string; ts: number }
-
 /**
  * The session messages capture with an evaluator has yet to judge.
  *
@@ -528,9 +530,7 @@ function unreadMessages(
   allItems: ReadonlyArray<Record<string, any>>,
   state: MemorySystemState,
 ): Array<Record<string, any>> {
-  if (state.readMessages == null) {
-    return allItems.filter((item, idx) => idx > state.lastProcessedIndex && item.type === 'message')
-  }
+  if (state.readMessages == null) return messagesAfterWatermark(allItems, state.lastProcessedIndex)
   const read = new Set(state.readMessages.map((message) => message.id))
   return allItems.filter((item) => item.type === 'message' && !read.has(item.id))
 }
@@ -540,20 +540,27 @@ function unreadMessages(
  * `readMessages`, and the watermark moves to its boundary, as it does without
  * an evaluator, so an app that drops its evaluator picks up where this left
  * off. The first mark carries over the messages the watermark already
- * covered. Messages older than everything in this capture's view of the
- * session are dropped: no later window can reach them.
+ * covered.
+ *
+ * Messages older than every item in the completed history this capture loaded
+ * are dropped: no later window can reach them. The bound comes from that
+ * history alone, never from this request's own items: a turn still running
+ * when this capture loaded the session is missing from it, and its mark must
+ * survive. With no completed history loaded, nothing is dropped.
  */
 function markJudgedRead(
   s: MemorySystemState,
   window: Pick<JudgedWindow, 'boundary' | 'judged'>,
-  allItems: ReadonlyArray<Record<string, any>>,
+  items: { all?: (query?: { includeInFlight?: boolean }) => ReadonlyArray<Record<string, any>> } | undefined,
 ): MemorySystemState {
+  const allItems = items?.all?.() ?? []
+  const history = items?.all?.({ includeInFlight: false }) ?? []
   const carried: ReadMessage[] = s.readMessages ?? allItems
     .filter((item, idx) => idx <= s.lastProcessedIndex && item.type === 'message')
     .map(toReadMessage)
   const byId = new Map([...carried, ...window.judged].map((message) => [message.id, message]))
-  const oldest = allItems.length > 0
-    ? allItems.reduce((min: number, item) => Math.min(min, item.ts), Infinity)
+  const oldest = history.length > 0
+    ? history.reduce((min: number, item) => Math.min(min, item.ts), Infinity)
     : -Infinity
   return {
     ...s,
@@ -881,7 +888,7 @@ export function memorySystemReflect(
       const judgedWindow = readJudged?.(ctx)
       await sysRef.updateState((s: any) => ({
         ...(judgedWindow !== undefined
-          ? markJudgedRead(s, judgedWindow, allItems)
+          ? markJudgedRead(s, judgedWindow, ctx.session?.items)
           : {
               ...s,
               lastProcessedIndex: watermarkPast(allItems, s.lastProcessedIndex),
@@ -1761,6 +1768,8 @@ function evaluatedCapture(config: MemorySystemBlocksConfig, gate: CaptureEvaluat
       const allItems = ctx.session?.items?.all?.() ?? []
       const state = ctx.resources.memorySystem.state as MemorySystemState
       const unread = unreadMessages(allItems, state)
+      // With a `source` override the evaluator judges the source text, and the
+      // unread session messages are still marked read, as the watermark did.
       return {
         window: readObserveWindow(config.source, input, ctx, unread) ?? null,
         boundary: watermarkPast(allItems, state.lastProcessedIndex),
@@ -1774,8 +1783,7 @@ function evaluatedCapture(config: MemorySystemBlocksConfig, gate: CaptureEvaluat
     inputSchema: z.any(),
     resources: { memorySystem: memorySystemResource },
     execute: async (_input, ctx) => {
-      const allItems = ctx.session?.items?.all?.() ?? []
-      await ctx.resources.memorySystem.updateState((s: any) => markJudgedRead(s, judged(ctx), allItems))
+      await ctx.resources.memorySystem.updateState((s: any) => markJudgedRead(s, judged(ctx), ctx.session?.items))
     },
   })
 

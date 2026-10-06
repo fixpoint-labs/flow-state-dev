@@ -115,6 +115,25 @@ function racingModel(script: { hold: string; fail: string; skip: string }) {
   return Object.assign(model as unknown as EvaluationModel, { calls, held, release })
 }
 
+/**
+ * A point a mocked model call waits at: `reached` resolves once a call has
+ * arrived, and `open()` lets it, and every later call, through.
+ */
+function callGate() {
+  let reach!: () => void
+  let open!: () => void
+  const reached = new Promise<void>((resolve) => { reach = resolve })
+  const opened = new Promise<void>((resolve) => { open = resolve })
+  return {
+    reached,
+    open,
+    async pass() {
+      reach()
+      await opened
+    },
+  }
+}
+
 type TestStores = Awaited<ReturnType<typeof createTestContext>>['stores']
 
 type Overrides = Partial<Pick<MemorySystemConfig, 'evaluator' | 'source'>>
@@ -282,6 +301,54 @@ describe('capture with an evaluator', () => {
     expect(polled.status).toBe('completed')
     expect(model.calls).toHaveLength(1)
     expect(h.observer.calls).toHaveLength(0)
+  })
+
+  it('a skip never drops the mark of a turn that finished while it was judging', async () => {
+    // Turns A and C overlap and both are judged "skip"; A marks read first. C
+    // loaded the session's history before A finished, so A is not in C's view
+    // of the session. C's mark keeps A's: the next capture reads only turn D.
+    // Each turn gets its own millisecond, so A's message is older than all of
+    // C's items.
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_700_000_000_000 })
+    try {
+      const gateA = callGate()
+      const gateC = callGate()
+      const calls: string[] = []
+      const model = {
+        specificationVersion: 'v4',
+        provider: 'mock.evaluation',
+        modelId: 'gated',
+        supportedQuestionTypes: ['choice', 'score', 'boolean'],
+        async doEvaluate(call: { state: unknown }) {
+          const state = String(call.state)
+          calls.push(state)
+          if (state.includes('turn A')) await gateA.pass()
+          if (state.includes('turn C')) await gateC.pass()
+          const choice: Answer = state.includes('turn D') ? 'remember' : 'skip'
+          return mockEvaluationModel({ answers: { capture: { type: 'choice', choice } } }).doEvaluate(call as never)
+        },
+      } as unknown as EvaluationModel
+      const h = await harness({ evaluator: captureEvaluator(model) })
+
+      const first = h.say('small talk, turn A')
+      await gateA.reached
+      vi.setSystemTime(Date.now() + 1000)
+      const second = h.say('more small talk, turn C')
+      await gateC.reached
+      gateA.open()
+      expect(captureError((await first).items)).toBeUndefined()
+      gateC.open()
+      expect(captureError((await second).items)).toBeUndefined()
+
+      vi.setSystemTime(Date.now() + 1000)
+      await h.say('I work at Acme, turn D')
+      const lastJudged = calls[calls.length - 1]!
+      expect(lastJudged).toContain('turn D')
+      expect(lastJudged).not.toContain('turn A')
+      expect(lastJudged).not.toContain('turn C')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('an app that adds, drops and re-adds its evaluator reads each message once', async () => {
