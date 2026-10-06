@@ -16,10 +16,16 @@ export interface HarnessEnvOptions {
   /**
    * The variables the child may see, by exact name. Nothing else is passed:
    * not `PATH`, not `HOME`, not the harness's own credential, unless it is
-   * named here. A name that is unset in the server's environment is left out
-   * rather than passed empty.
+   * named here. A name that is unset in the source is left out rather than
+   * passed empty.
    */
   pass: readonly string[];
+  /**
+   * Where the values are read from. Default: `process.env` where there is a
+   * `process`, and an empty source where there is none (a browser or edge
+   * runtime), so calling this there returns `{}` instead of throwing.
+   */
+  env?: Record<string, string | undefined>;
 }
 
 /**
@@ -33,17 +39,22 @@ export interface HarnessEnvOptions {
  * });
  * ```
  *
- * The values are read from `process.env` when this is called — when the block
- * is built — so a variable set after that is not seen.
+ * The values are read when this is called — when the block is built — so a
+ * variable set after that is not seen. Only the source's own string-valued
+ * entries count: a name such as `toString` or `constructor` is not "set"
+ * because every object inherits one.
  *
- * @param options The names to pass.
- * @returns A new object holding exactly the named variables that are set.
+ * @param options The names to pass, and optionally the source to read them from.
+ * @returns A new null-prototype object holding exactly the named variables
+ *   that are set.
  */
 export function harnessEnv(options: HarnessEnvOptions): Record<string, string> {
-  const env: Record<string, string> = {};
+  const source = options.env ?? (typeof process !== "undefined" ? process.env : {});
+  const env = Object.create(null) as Record<string, string>;
   for (const name of options.pass) {
-    const value = process.env[name];
-    if (value !== undefined) env[name] = value;
+    if (!Object.hasOwn(source, name)) continue;
+    const value = source[name];
+    if (typeof value === "string") env[name] = value;
   }
   return env;
 }

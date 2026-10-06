@@ -46,6 +46,51 @@ describe("harnessEnv", () => {
     expect(harnessEnv({ pass: ["HARNESS_ENV_TEST_EMPTY"] })).toEqual({ HARNESS_ENV_TEST_EMPTY: "" });
   });
 
+  it("reads from an explicit source instead of process.env when one is given", () => {
+    vi.stubEnv("HARNESS_ENV_TEST_FROM_PROCESS", "process-value");
+
+    const env = harnessEnv({
+      pass: ["HARNESS_ENV_TEST_FROM_PROCESS", "TOKEN"],
+      env: { TOKEN: "from-source", OTHER: "not-named" },
+    });
+
+    expect({ ...env }).toEqual({ TOKEN: "from-source" });
+  });
+
+  it("returns an empty environment, rather than throwing, where there is no process global", () => {
+    // Core is isomorphic: a browser or edge runtime has no `process`.
+    vi.stubGlobal("process", undefined);
+    try {
+      expect({ ...harnessEnv({ pass: ["PATH", "HOME"] }) }).toEqual({});
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not treat names every object inherits as set", () => {
+    // `process.env.toString` is a function; passing it would hand the child
+    // something that is not a variable at all.
+    const env = harnessEnv({ pass: ["toString", "constructor", "hasOwnProperty"] });
+
+    expect(Object.keys(env)).toEqual([]);
+    expect(env.toString).toBeUndefined();
+  });
+
+  it("passes a variable literally named __proto__ as a variable, not a prototype", () => {
+    const source = JSON.parse('{"__proto__":"proto-value","PATH":"/bin"}') as Record<string, string>;
+
+    const env = harnessEnv({ pass: ["__proto__", "PATH"], env: source });
+
+    expect(Object.keys(env).sort()).toEqual(["PATH", "__proto__"]);
+    expect(Object.getOwnPropertyDescriptor(env, "__proto__")?.value).toBe("proto-value");
+  });
+
+  it("skips a named entry whose value is not a string", () => {
+    const source = { GOOD: "yes", BAD: 42 } as unknown as Record<string, string>;
+
+    expect({ ...harnessEnv({ pass: ["GOOD", "BAD"], env: source }) }).toEqual({ GOOD: "yes" });
+  });
+
   it("reads the values when called, so a later change does not leak in", () => {
     vi.stubEnv("HARNESS_ENV_TEST_LATER", "first");
     const env = harnessEnv({ pass: ["HARNESS_ENV_TEST_LATER"] });

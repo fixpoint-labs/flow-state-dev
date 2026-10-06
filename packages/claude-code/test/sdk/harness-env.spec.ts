@@ -10,7 +10,7 @@
  * secrets out of the run.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { testBlock } from "@flow-state-dev/testing";
@@ -38,9 +38,14 @@ async function envSeenByRun(env?: Record<string, string>): Promise<Record<string
     cwd: () => dir,
     ...(env !== undefined ? { env } : {}),
   });
-  // The fake exits non-zero once it has written the file; the run's failure is not under test.
-  await testBlock(block, { input: { prompt: "go" } }).catch(() => undefined);
-  return JSON.parse(readFileSync(join(dir, "seen-env.json"), "utf8")) as Record<string, string>;
+  // The fake exits 1 once it has written the file, so the run fails — for that
+  // reason and no other. Anything else (the SDK never reaching the spawn, a
+  // missing `node`) would leave no file and must not pass as "saw nothing".
+  const result = await testBlock(block, { input: { prompt: "go" } });
+  expect(String(result.error?.message)).toMatch(/exited with code 1/);
+  const file = join(dir, "seen-env.json");
+  expect(existsSync(file)).toBe(true);
+  return JSON.parse(readFileSync(file, "utf8")) as Record<string, string>;
 }
 
 afterEach(() => {

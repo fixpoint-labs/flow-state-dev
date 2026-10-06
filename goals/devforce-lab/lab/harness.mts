@@ -61,9 +61,12 @@ export interface SelectedHarness {
  * git are found through it), `HOME`, `USER` and `SHELL` (its signed-in
  * credentials, git identity and Bash tool), `TMPDIR`, the two ways it can be
  * given a credential, and the proxy and CA settings a network that routes
- * through a proxy needs. Add a name here, not a spread of `process.env`.
+ * through a proxy needs. The proxy names come in both cases because the
+ * tools a run shells out to disagree: curl reads only lowercase `http_proxy`,
+ * git and most others take either. Add a name here, not a spread of
+ * `process.env`.
  */
-export const CLAUDE_CODE_PASS = [
+const CLAUDE_CODE_PASS = [
   "PATH",
   "HOME",
   "USER",
@@ -72,8 +75,13 @@ export const CLAUDE_CODE_PASS = [
   "ANTHROPIC_API_KEY",
   "CLAUDE_CODE_OAUTH_TOKEN",
   "HTTPS_PROXY",
+  "https_proxy",
   "HTTP_PROXY",
+  "http_proxy",
+  "ALL_PROXY",
+  "all_proxy",
   "NO_PROXY",
+  "no_proxy",
   "NODE_EXTRA_CA_CERTS",
 ] as const;
 
