@@ -79,8 +79,9 @@ const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-task-run");
-const CONFIG = join(HERE, "lab", "fsdev.config.mts");
-const TREE = join(HERE, "lab", "workforce");
+const RUN_LAB = join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "run-lab");
+const CONFIG = join(RUN_LAB, "fsdev.config.mts");
+const TREE = join(RUN_LAB, "workforce");
 /** A gap line names who ships the missing piece, or says it isn't coming in the first cut. */
 const OWNED = /\bFIX-\d+\b|not planned in the first cut/;
 /** How soon a stored item must be drawn. */

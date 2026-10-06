@@ -26,8 +26,8 @@
  * ## The artifact's address (D1, S3)
  *
  * The temp-directory repository stays exactly as it was. What is new is an
- * optional **bare repository at a declared path** — {@link ARTIFACTS_ROOT},
- * inside the lab rather than under `tmpdir()` — wired as a remote on the source
+ * optional **bare repository at a declared path** — the caller's, outside
+ * `tmpdir()` — wired as a remote on the source
  * repository. Work pushed there resolves after the goal's process has exited
  * and its temporary directories are gone, which is the first of D1's three
  * properties and the one the temp directory fails.
@@ -45,7 +45,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { ASK_MARKER_IGNORE_RULE } from "@flow-state-dev/harness-manager";
 import { GIT_TIMEOUT_MS } from "@flow-state-dev/harness-manager/checkout";
 
@@ -61,15 +61,6 @@ export const BASE_REF = "main";
  */
 const ARTIFACT_REMOTE = "artifacts";
 
-/**
- * Where published artifacts live — the declared path, inside the lab.
- *
- * Under the lab and not under `tmpdir()`, deliberately: a temp directory is
- * swept, and an address that is gone by the time somebody looks fails D1's
- * first property exactly as today's commit-in-a-temp-directory does. Ignored by
- * `goals/devforce-lab/.gitignore`, so a run leaves no tracked change (BR-16).
- */
-export const ARTIFACTS_ROOT: string = fileURLToPath(new URL("../.artifacts/", import.meta.url));
 
 export interface ScratchRepo {
   /** The repository checkouts are cut from. */

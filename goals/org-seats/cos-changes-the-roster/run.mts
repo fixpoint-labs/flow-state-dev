@@ -62,8 +62,8 @@ import { join } from "node:path";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { HIRED_ROSTER_PREFIX } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { LAB_ORG_ID } from "../../devforce-lab/lab/host.mts";
-import { CODER_KIND } from "../../devforce-lab/lab/workforce/flows/workers/coder.mts";
+import { LAB_ORG_ID } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { CODER_KIND } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { ASKER, runSeatAsks } from "./seat-asks.mts";
@@ -86,7 +86,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 
 const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const DEVTEAM_CONFIG = join(SHIFT_MANAGER, "teams", "devteam", "fsdev.config.mts");
-const DEVTEAM_TREE = join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce");
+const DEVTEAM_TREE = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "workforce");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("org-seats-cos");
 /** The seat Shift Manager and FIX-1722 find the chief of staff by. */

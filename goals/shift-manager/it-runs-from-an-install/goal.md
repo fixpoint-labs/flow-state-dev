@@ -4,7 +4,7 @@
 
 **Outcome:** Someone outside this repository installs Shift Manager, opens their own Lab in the browser with one command and no build, and with `--dev` sees a saved change to their Lab take effect without restarting anything by hand.
 
-**Input:** every publishable package, built and packed the way a release packs it, npm-installed into an empty project. Beside it, a copy of the run-lab (`goals/shift-manager/it-shows-and-stops-a-task-run/lab/`): a config and a Workforce tree importing only installed packages. It is held out: `GOAL_LAB=<dir>` swaps in another Lab, and another tree or another changed file must pass a correct Shift Manager too. Every worker, mailbox and board name is read from the tree at run time. The change leg b saves is picked from the tree: one hand-off worker's `WORKER.md` moved onto the flow another hand-off worker is on.
+**Input:** every publishable package, built and packed the way a release packs it, npm-installed into an empty project. Beside it, a copy of the run-lab (`packages/shift-manager/test/fixtures/run-lab/`): a config and a Workforce tree importing only installed packages. It is held out: `GOAL_LAB=<dir>` swaps in another Lab, and another tree or another changed file must pass a correct Shift Manager too. Every worker, mailbox and board name is read from the tree at run time. The change leg b saves is picked from the tree: one hand-off worker's `WORKER.md` moved onto the flow another hand-off worker is on.
 
 **Signal:** each failure tagged with its assertion:
 

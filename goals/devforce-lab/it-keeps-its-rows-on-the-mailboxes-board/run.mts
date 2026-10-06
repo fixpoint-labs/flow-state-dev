@@ -37,11 +37,11 @@ import { harnessTaskId, joinIdentity, tenantSegment } from "@flow-state-dev/harn
 import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { runGoal, silentLogger } from "../../lib/index.mts";
-import { LAB_TREE, openLab, type Lab, type OpenLabOptions } from "../lab/host.mts";
-import { harnessStub, type StubRun } from "../lab/harness-stub.mts";
-import { createNotifyLog } from "../lab/notify.mts";
-import { BASE_REF, commitAll, createScratchRepo } from "../lab/scratch-repo.mts";
-import { PHASE } from "../lab/phase.mts";
+import { LAB_TREE, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { createNotifyLog } from "../../../packages/shift-manager/teams/devteam/notify.mts";
+import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["kind-ledger"] as const;
@@ -74,7 +74,7 @@ function pinsOf(id: string): RegExp {
 /** Fields a browser's read of a board may never carry. */
 const PRIVATE_ROW_FIELDS = ["input", "output", "metadata", "context", "claimedBy", "leaseUntil", "writeLog"];
 
-const LAB_ROOT = fileURLToPath(new URL("../lab", import.meta.url));
+const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Every file under a directory, recursively, as [relative path, contents]. */

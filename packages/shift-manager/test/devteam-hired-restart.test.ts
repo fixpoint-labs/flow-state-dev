@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { HIRED_ROSTER_PREFIX, seatAddress, toHiredSeatRow } from "@flow-state-dev/workforce";
-import { LAB_ORG_ID } from "../../../goals/devforce-lab/lab/host.mts";
+import { LAB_ORG_ID } from "../teams/devteam/host.mts";
 import { createLabClients } from "../src/lib/connection";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import { createLabReader, STAFF_TEAM } from "../src/lib/reads";

@@ -3,20 +3,18 @@
  * `no-tool`. `deny-fire` is a click, not a patch.
  *
  * Each is applied to a scratch copy of the commit's DevTeam Lab, never to the
- * Lab itself, and never committed: the DevTeam tree and host
- * (`goals/devforce-lab/lab/`) are copied beside themselves, and the DevTeam
- * profile (`packages/shift-manager/teams/devteam/`) beside itself with its imports
- * pointed at the copy. Copies sit where the originals sit, so every package
- * and relative import resolves as it does for the shipped Lab. The whole
- * difference from the commit is printed in the report ({@link ScratchLab.diff}),
- * and the copies are deleted when the run ends.
+ * Lab itself, and never committed: the DevTeam profile, which holds its tree
+ * and host (`packages/shift-manager/teams/devteam/`), is copied beside itself.
+ * The copy sits where the original sits, so every package and relative import
+ * resolves as it does for the shipped Lab. The whole difference from the commit
+ * is printed in the report ({@link ScratchLab.diff}), and the copy is deleted
+ * when the run ends.
  */
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { REPO_ROOT } from "../../../lib/index.mts";
 
-const LAB = join(REPO_ROOT, "goals", "devforce-lab", "lab");
 const PROFILE = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam");
 
 /** One edit to a scratch copy of the Lab: its name, and what it does to the copy at `lab`. */
@@ -81,31 +79,22 @@ export const noTool: Patch = {
 export interface ScratchLab {
   /** The copy's DevTeam profile config, for `--config`. */
   config: string;
-  /** `diff -ruN` from the commit to the copy, the profile's import rewrite included. */
+  /** `diff -ruN` from the commit to the copy. */
   diff: string;
   remove(): void;
 }
 
-/** Copy the Lab and its profile, apply `patches`, and say exactly what differs. */
+/** Copy the Lab's profile, apply `patches`, and say exactly what differs. */
 export function scratchLab(tag: string, patches: Patch[]): ScratchLab {
   const name = `${patches.map((p) => p.name).join("+")}-${tag}`;
-  const lab = `${LAB}-${name}`;
-  const profile = `${PROFILE}-${name}`;
-  cpSync(LAB, lab, { recursive: true });
-  cpSync(PROFILE, profile, { recursive: true });
-  const remove = () => {
-    rmSync(lab, { recursive: true, force: true });
-    rmSync(profile, { recursive: true, force: true });
-  };
+  const lab = `${PROFILE}-${name}`;
+  cpSync(PROFILE, lab, { recursive: true });
+  const remove = () => rmSync(lab, { recursive: true, force: true });
   try {
-    const config = join(profile, "fsdev.config.mts");
-    const text = readFileSync(config, "utf8");
-    const rewritten = text.replaceAll("goals/devforce-lab/lab/", `goals/devforce-lab/lab-${name}/`);
-    if (rewritten === text) throw new Error("the DevTeam profile imports nothing from goals/devforce-lab/lab/");
-    writeFileSync(config, rewritten);
+    const config = join(lab, "fsdev.config.mts");
     for (const patch of patches) patch.apply(lab);
-    const diffOf = (a: string, b: string) => spawnSync("diff", ["-ruN", a, b], { encoding: "utf8", maxBuffer: 1 << 24 }).stdout.replaceAll(REPO_ROOT + "/", "");
-    return { config, diff: diffOf(LAB, lab) + diffOf(PROFILE, profile), remove };
+    const diff = spawnSync("diff", ["-ruN", PROFILE, lab], { encoding: "utf8", maxBuffer: 1 << 24 }).stdout.replaceAll(REPO_ROOT + "/", "");
+    return { config, diff, remove };
   } catch (error) {
     remove();
     throw error;

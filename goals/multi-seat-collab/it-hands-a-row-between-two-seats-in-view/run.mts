@@ -31,14 +31,14 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
-import { LAB_USER_ID, readLabTree } from "../lab/host.mts";
-import { Scenario, actionOutputOf, serveLab, terminationReasonOf, type ActResult } from "../lab/run-scenario.mts";
-import { DRAIN_ENTRY, type WorkLine } from "../lab/workforce/flows/workers/worker.mts";
+import { LAB_USER_ID, readLabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { LAB_CONFIG, Scenario, actionOutputOf, serveLab, terminationReasonOf, type ActResult } from "../run-scenario.mts";
+import { DRAIN_ENTRY, type WorkLine } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
 
 type Fixture = {
   piece: { goal: string; desk: string; asks: string; then: { goal: string; desk: string } };
@@ -51,7 +51,7 @@ type Fixture = {
 const fixture = loadFixture<Fixture>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 /** Every file this proof ships — the lab and this goal — for V0's scan. */
-const PROOF_DIR = fileURLToPath(new URL("..", import.meta.url));
+const PROOF_DIRS = [fileURLToPath(new URL("..", import.meta.url)), dirname(LAB_CONFIG)];
 const SHOTS = goalTmpDir("multi-seat-collab");
 
 /**
@@ -228,7 +228,7 @@ async function main() {
   }
 
   // ---- V0. the board by name, and the mint in no file ----------------------
-  const files = treeFiles(PROOF_DIR);
+  const files = PROOF_DIRS.flatMap(treeFiles);
   const declaring = files.filter((path) => path.endsWith("MAILBOX.md") && readFileSync(path, "utf8").includes(tree.boardName));
   if (declaring.length === 0) fail("V0", `no MAILBOX.md under the proof declares the board "${tree.boardName}" by name`);
   for (const path of files) {

@@ -53,7 +53,7 @@ import type { Page } from "playwright";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { mailboxBoard } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { LAB_ORG_ID } from "../../devforce-lab/lab/host.mts";
+import { LAB_ORG_ID } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -79,7 +79,7 @@ const SCRATCH = goalTmpDir("shift-manager-turn");
 const RUNS_FILE = join(SCRATCH, `runs-${Date.now()}.ndjson`);
 const STORE_FILE = join(SCRATCH, `devteam-${Date.now()}.db`);
 const LABS = {
-  devteam: { config: join(HERE, "lab", "fsdev.config.mts"), tree: join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce") },
+  devteam: { config: join(HERE, "lab", "fsdev.config.mts"), tree: join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "workforce") },
   asker: { config: join(HERE, "lab", "asker", "fsdev.config.mts"), tree: join(HERE, "lab", "asker", "workforce") },
 } as const;
 type LabName = keyof typeof LABS;

@@ -43,11 +43,11 @@ import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { hashContent } from "@flow-state-dev/workspace";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
-import { harnessStub, type StubRun } from "../lab/harness-stub.mts";
-import { openLab, type Lab, type OpenLabOptions } from "../lab/host.mts";
-import { createNotifyLog } from "../lab/notify.mts";
-import { PHASE } from "../lab/phase.mts";
-import { BASE_REF, commitAll, createBareRemote, createScratchRepo } from "../lab/scratch-repo.mts";
+import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { createNotifyLog } from "../../../packages/shift-manager/teams/devteam/notify.mts";
+import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
+import { BASE_REF, commitAll, createBareRemote, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["fixed-source", "no-sync-back"] as const;

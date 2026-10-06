@@ -5,10 +5,10 @@
  *
  *     pnpm --filter @flow-state-dev/shift-manager start
  *
- * The team is the DevForce lab's tree (`goals/devforce-lab/lab/`), where the
- * checks that prove it live. One `FlowState`, default-exported, opened through
- * the same `openLab` those checks use, so a server and a check boot the same
- * tree the same way.
+ * The team is the tree beside this file, which the DevForce lab's checks
+ * (`goals/devforce-lab/`) prove. One `FlowState`, default-exported, opened
+ * through the same `openLab` those checks use, so a server and a check boot the
+ * same tree the same way.
  * What a long-lived server asks of it that a check doesn't:
  *
  * - **The mailbox and the inventory.** The feature mailbox is opened with its
@@ -49,27 +49,23 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import type { AskFeature } from "../../../../goals/devforce-lab/lab/ask.mts";
-import { ASSIGNEE } from "../../../../goals/devforce-lab/lab/board.mts";
-import { selectHarness } from "../../../../goals/devforce-lab/lab/harness.mts";
-import { boardMailboxOf, LAB_CROWD, LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "../../../../goals/devforce-lab/lab/host.mts";
-import { createNotifyLog } from "../../../../goals/devforce-lab/lab/notify.mts";
-import { createBareRemote } from "../../../../goals/devforce-lab/lab/scratch-repo.mts";
-import { CODER_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/coder.mts";
-import { EM_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/em.mts";
+import type { AskFeature } from "./ask.mts";
+import { ASSIGNEE } from "./board.mts";
+import { selectHarness } from "./harness.mts";
+import { boardMailboxOf, LAB_CROWD, LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
+import { createNotifyLog } from "./notify.mts";
+import { createBareRemote } from "./scratch-repo.mts";
+import { CODER_KIND } from "./workforce/flows/workers/coder.mts";
+import { EM_KIND } from "./workforce/flows/workers/em.mts";
 import { setAsideLegacyOrgStore, setAsidePreRenameStore } from "./legacy-org-store.mts";
 
 /**
- * The feature the EM seat asks a person to approve when the server opens: the
- * one the lab's asking check uses, read from its fixture at run time. Never
- * written here, because that check refuses a lab file that spells its
- * held-out feature.
+ * The feature the EM seat asks a person to approve when the server opens, from
+ * `ask.json` beside this file. Data, not code: the lab's asking check refuses a
+ * lab module that spells a feature, and brings its own held-out one. Its
+ * `issue` keys the ask's claim in the store, so changing it raises a new ask.
  */
-const ASK_FEATURE = (
-  JSON.parse(
-    readFileSync(fileURLToPath(new URL("../../../../goals/devforce-lab/it-waits-for-a-person-before-it-files/fixtures/input.json", import.meta.url)), "utf8"),
-  ) as { feature: AskFeature }
-).feature;
+const ASK_FEATURE = JSON.parse(readFileSync(fileURLToPath(new URL("./ask.json", import.meta.url)), "utf8")) as AskFeature;
 
 /** Where this Lab keeps what it was told, across restarts. */
 const STORE = process.env.DEVTEAM_STORE ?? fileURLToPath(new URL("../../.fsdev/devteam.sqlite", import.meta.url));

@@ -60,7 +60,7 @@ import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { RUN_STAMP, goalTmpDir, loadFixture, repoPath, runGoal } from "../../lib/index.mts";
-import { EM_KIND } from "../../devforce-lab/lab/workforce/flows/workers/em.mts";
+import { EM_KIND } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { hex, parseColour, type Rgb } from "../../lib/colour.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerCopy, labApi, startShiftManager, type LabApi, type Patch } from "../../lib/shift-manager.mts";
@@ -99,7 +99,7 @@ const V2 = repoPath("specs", "epics", "FIX-1649", "assets", "design", "v2", "shi
 const LABS = {
   devteam: {
     config: repoPath("packages", "shift-manager", "teams", "devteam", "fsdev.config.mts"),
-    tree: repoPath("goals", "devforce-lab", "lab", "workforce"),
+    tree: repoPath("packages", "shift-manager", "teams", "devteam", "workforce"),
     // Long enough that the filed row is still running while the sweep reads it, short
     // enough to finish inside the scripted run's 60s limit.
     // DevTeam on a fresh store each run, for a profile whose store outlives the process:

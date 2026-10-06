@@ -22,7 +22,7 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
 
 **Signal:** seven legs, each closing named rules (`BUSINESS-RULES.md` on the spec PR):
 
-0. every held-out token lives in exactly one convention file, in none of `lab/**/*.mts`, and in no
+0. every held-out token lives in exactly one convention file, in none of `packages/shift-manager/teams/devteam/**/*.mts`, and in no
    part of the row the EM seat files — run **before** anything is built;
 1. one root produces exactly three team seats on the two kinds their files name, plus the org's
    chief of staff on the built-in `agent` kind, two documents and one mailbox; a tree naming an unregistered kind refuses the **whole** roster by name, and its

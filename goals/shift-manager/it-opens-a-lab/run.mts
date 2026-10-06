@@ -54,8 +54,8 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { labApi, startShiftManager, type LabApi, type ServedShiftManager } from "../../lib/shift-manager.mts";
-import { Scenario, type ServedLab } from "../../multi-seat-collab/lab/run-scenario.mts";
-import { readLabTree } from "../../multi-seat-collab/lab/host.mts";
+import { Scenario, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
+import { readLabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["static-names", "optimistic-post", "unanswerable-asks", "queued-shown"] as const;
@@ -81,11 +81,11 @@ const SCRATCH = goalTmpDir("shift-manager");
 const LABS = {
   devteam: {
     config: join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "fsdev.config.mts"),
-    tree: join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce"),
+    tree: join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "workforce"),
   },
   "multi-seat-collab": {
-    config: join(REPO_ROOT, "goals", "multi-seat-collab", "lab", "fsdev.config.mts"),
-    tree: join(REPO_ROOT, "goals", "multi-seat-collab", "lab", "workforce"),
+    config: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-seat-collab", "fsdev.config.mts"),
+    tree: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-seat-collab", "workforce"),
   },
 } as const;
 type LabName = keyof typeof LABS;

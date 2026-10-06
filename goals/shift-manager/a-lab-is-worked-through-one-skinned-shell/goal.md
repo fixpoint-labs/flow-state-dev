@@ -4,7 +4,7 @@
 
 **Outcome:** On one `main` commit with every child merged, a person works the DevForce Lab through Shift Manager in a real browser. They answer an ask from Inbox, follow the task it started to its session and trace, reach every surface the shell promises, and talk to the coder seat while its task runs. The pentest Lab opens in the same shell from its README alone, with no shell code of its own, under the org its store names. With no Shift Manager theme loaded, no reused FSD component carries a Shift Manager value, in light or dark. Someone reusing FSD UI in their own app and a sibling epic's owner each get what the epic promised them, and every child's own check passes on the same commit.
 
-**Input:** `goals/devforce-lab/lab/`, opened as Shift Manager's DevTeam profile (`teams/devteam`) on the real harness (`DEVFORCE_LAB_HARNESS=claude-code`) for leg a, and on the lab's scripted harness for leg c. `goals/pentest-lab/lab/` through its committed `fsdev.config.mts` for leg b, a tree Shift Manager was never tested against. Kitchen-sink's tree stands in for neither. Every seat, team, mailbox and board name is read from the trees at run time.
+**Input:** `packages/shift-manager/teams/devteam/`, opened as Shift Manager's DevTeam profile on the real harness (`DEVFORCE_LAB_HARNESS=claude-code`) for leg a, and on the lab's scripted harness for leg c. `goals/pentest-lab/lab/` through its committed `fsdev.config.mts` for leg b, a tree Shift Manager was never tested against. Kitchen-sink's tree stands in for neither. Every seat, team, mailbox and board name is read from the trees at run time.
 
 **Signal:** each failure is tagged with its leg or part.
 

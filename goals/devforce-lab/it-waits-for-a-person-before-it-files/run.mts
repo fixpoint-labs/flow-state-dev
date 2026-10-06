@@ -49,11 +49,11 @@ import {
   openLab,
   type Lab,
   type OpenLabOptions,
-} from "../lab/host.mts";
-import { harnessStub, type StubRun } from "../lab/harness-stub.mts";
-import { BASE_REF, commitAll, createScratchRepo } from "../lab/scratch-repo.mts";
-import { RAISE_ASK_STEP, raiseAsk, seatSessionId } from "../lab/ask.mts";
-import { ASK_ENTRY } from "../lab/seat-config.mts";
+} from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { RAISE_ASK_STEP, raiseAsk, seatSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
+import { ASK_ENTRY } from "../../../packages/shift-manager/teams/devteam/seat-config.mts";
 
 stripIntentOverrides();
 
@@ -80,7 +80,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
   process.exit(2);
 }
 
-const LAB_ROOT = fileURLToPath(new URL("../lab", import.meta.url));
+const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
 const EM_SESSION = seatSessionId(fixture.coordinatorSeat);
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));

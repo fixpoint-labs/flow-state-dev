@@ -22,7 +22,7 @@ import {
   taskItems,
 } from "../src/lib/run";
 import { ClientHttpError } from "@flow-state-dev/client";
-import { openRunLab, RUN_LAB_USER_ID } from "../../../goals/shift-manager/it-shows-and-stops-a-task-run/lab/lab.mts";
+import { openRunLab, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 type Opened = Awaited<ReturnType<typeof openRunLab>>;

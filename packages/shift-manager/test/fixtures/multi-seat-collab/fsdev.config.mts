@@ -1,7 +1,7 @@
 /**
  * What `fsdev dev` serves — the whole of serving the hire.
  *
- *     fsdev dev --config goals/multi-seat-collab/lab/fsdev.config.mts
+ *     fsdev dev --config packages/shift-manager/test/fixtures/multi-seat-collab/fsdev.config.mts
  *
  * One `FlowState` holding the hired seats and the mailbox singleton, and
  * nothing else: no app, no wrapper, no route of the lab's own, and no package

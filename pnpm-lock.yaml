@@ -1427,6 +1427,9 @@ importers:
         specifier: workspace:*
         version: link:../cli
     devDependencies:
+      '@flow-state-dev/claude-code':
+        specifier: workspace:*
+        version: link:../claude-code
       '@flow-state-dev/client':
         specifier: workspace:*
         version: link:../client
@@ -1439,6 +1442,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
+      '@flow-state-dev/harness-manager':
+        specifier: workspace:*
+        version: link:../harness-manager
       '@flow-state-dev/node':
         specifier: workspace:*
         version: link:../node
@@ -1454,6 +1460,9 @@ importers:
       '@flow-state-dev/workforce':
         specifier: workspace:*
         version: link:../workforce
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../workspace
       '@radix-ui/react-use-controllable-state':
         specifier: ^1.2.2
         version: 1.2.2(@types/react@19.2.14)(react@19.2.4)

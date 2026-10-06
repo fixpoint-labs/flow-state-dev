@@ -8,7 +8,7 @@
  *
  * Shift Manager is copied to a scratch directory, patched there (never in the
  * checkout), built with Vite, and served by its own command over the
- * run-lab (`goals/shift-manager/it-shows-and-stops-a-task-run/lab/`), whose runs store
+ * run-lab (`packages/shift-manager/test/fixtures/run-lab/`), whose runs store
  * a message, a reasoning item and a tool call through the Claude Code harness's
  * emit path. Chromium opens a task from Tasks by clicking, opens its tool card,
  * and reads COMPUTED styles in a light pass and a dark pass, set through the browser's colour-scheme setting.
@@ -75,7 +75,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
   process.exit(2);
 }
 
-const RUN_LAB = join(REPO_ROOT, "goals", "shift-manager", "it-shows-and-stops-a-task-run", "lab");
+const RUN_LAB = join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "run-lab");
 const SCRATCH = goalTmpDir("shift-manager-theme");
 const THEME = readShiftManagerTheme();
 /** The design-system stylesheet. Its only imports are its fonts (the package's test holds it to that). */

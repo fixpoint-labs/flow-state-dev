@@ -27,20 +27,15 @@ import type {
 import { continueRequest, runAction } from "@flow-state-dev/engine";
 import { createSQLiteStores, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { HIRED_ROSTER_PREFIX, seatAddress, toHiredSeatRow } from "@flow-state-dev/workforce";
-import type { AskFeature } from "../../../goals/devforce-lab/lab/ask.mts";
-import { selectHarness } from "../../../goals/devforce-lab/lab/harness.mts";
-import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../../../goals/devforce-lab/lab/host.mts";
-import { createNotifyLog } from "../../../goals/devforce-lab/lab/notify.mts";
-import { BASE_REF, createScratchRepo } from "../../../goals/devforce-lab/lab/scratch-repo.mts";
+import type { AskFeature } from "../teams/devteam/ask.mts";
+import { selectHarness } from "../teams/devteam/harness.mts";
+import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
+import { createNotifyLog } from "../teams/devteam/notify.mts";
+import { BASE_REF, createScratchRepo } from "../teams/devteam/scratch-repo.mts";
 
-const ASK_FEATURE = (
-  JSON.parse(
-    readFileSync(
-      fileURLToPath(new URL("../../../goals/devforce-lab/it-waits-for-a-person-before-it-files/fixtures/input.json", import.meta.url)),
-      "utf8",
-    ),
-  ) as { feature: AskFeature }
-).feature;
+const ASK_FEATURE = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../teams/devteam/ask.json", import.meta.url)), "utf8"),
+) as AskFeature;
 
 const COS = "chief-of-staff";
 

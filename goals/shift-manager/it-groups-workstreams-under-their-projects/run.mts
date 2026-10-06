@@ -31,7 +31,7 @@
  *            member's, and the other legs grade every row as the owner's.
  *
  * Every run, the plain one and each control, serves the Lab with its checked
- * store writes held up to WRITE_LATENCY_MS (`devforce-lab/lab/write-latency.mts`)
+ * store writes held up to WRITE_LATENCY_MS (`packages/shift-manager/teams/devteam/write-latency.mts`)
  * and releases each burst from a barrier, so the bursts really race.
  *
  * Legs: `GOAL_LEG=model-free` runs screens, room and restart, `GOAL_LEG=cos`
@@ -68,7 +68,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, loadFixture, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { LAB_CROWD, LAB_USERS } from "../../devforce-lab/lab/host.mts";
+import { LAB_CROWD, LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["unread", "gap-tabs", "no-gate", "no-retry", "in-memory", "no-tool"] as const;
@@ -109,8 +109,8 @@ const SQLITE_SRC = join(REPO_ROOT, "packages", "store-sqlite", "src", "index.ts"
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-projects");
 const CONFIG = join(SHIFT_MANAGER, "teams", "devteam", "fsdev.config.mts");
-const TREE = join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce");
-const LAB_HOST = join(REPO_ROOT, "goals", "devforce-lab", "lab", "host.mts");
+const TREE = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "workforce");
+const LAB_HOST = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "host.mts");
 const SEAT_ANSWERS = "eng.em";
 /** The most a checked store write is held before it lands. */
 const WRITE_LATENCY_MS = 30;

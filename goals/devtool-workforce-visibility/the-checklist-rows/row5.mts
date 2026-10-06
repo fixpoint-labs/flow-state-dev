@@ -29,8 +29,8 @@ import { join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { MAILBOX_KIND } from "@flow-state-dev/workforce";
-import { LAB_DB_PATH, LAB_ORG_ID, type LabTree } from "../../multi-seat-collab/lab/host.mts";
-import { serveLab, type ServedLab } from "../../multi-seat-collab/lab/run-scenario.mts";
+import { LAB_DB_PATH, LAB_ORG_ID, type LabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { serveLab, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
 
 /** The three published key patterns, by the tab's section names. */
 const PATTERNS = {

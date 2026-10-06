@@ -50,10 +50,10 @@ import { z } from "zod";
 import { GIT_TIMEOUT_MS } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { LAB_TREE, openLab } from "../lab/host.mts";
-import { BASE_REF, createScratchRepo } from "../lab/scratch-repo.mts";
-import { claudeCodeHarness } from "../lab/harness.mts";
-import { PHASE } from "../lab/phase.mts";
+import { LAB_TREE, openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { BASE_REF, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
+import { claudeCodeHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
+import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
 
 stripIntentOverrides();
 
@@ -77,7 +77,7 @@ const PROMPT_TOKEN_HOMES = {
   "BRANCH-NAMING-1B9E7": "teams/eng/workers/coder/skills/branch-naming/SKILL.md",
 } as const;
 
-const LAB_ROOT = fileURLToPath(new URL("../lab", import.meta.url));
+const LAB_ROOT = fileURLToPath(new URL("../../../packages/shift-manager/teams/devteam", import.meta.url));
 
 const RUN_TIMEOUT_MS = 10 * 60_000;
 const SETTLE_TIMEOUT_MS = 12 * 60_000;
