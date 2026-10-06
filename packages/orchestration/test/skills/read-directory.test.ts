@@ -132,6 +132,16 @@ describe("readSkillsDirectory", () => {
     expect(errors.find((e) => e.name === "BadName")).toBeDefined();
   });
 
+  it("reports a skill folder named after a Windows device and still loads the rest", async () => {
+    await writeSkill("pdf-processing", `---\nname: pdf-processing\ndescription: ok\n---\n\nbody`);
+    await writeSkill("nul", `---\ndescription: device\n---\n\nbody`);
+    const { skills, errors } = await readSkillsDirectory(tmp);
+    expect(skills.map((s) => s.name)).toEqual(["pdf-processing"]);
+    expect(errors.find((e) => e.name === "nul")?.error.message).toMatch(
+      /reserved device name on Windows/,
+    );
+  });
+
   // A SKILL.md that is there and cannot be read is not a SKILL.md that is
   // absent: reporting the first as the second sends an author to look for a
   // file that is sitting right where they left it.
