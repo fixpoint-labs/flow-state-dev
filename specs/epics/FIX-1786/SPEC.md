@@ -29,7 +29,8 @@ except what was written to a shared resource or to org scope.**
 A worker's own state and user-scoped data never cross users. Org scope is shared with the org by
 design: a worker flow may write there if that is how its author built it, the framework doesn't
 refuse it, and other members' runs read it. The built-in worker flows keep a worker's own state
-out of it ([D3](DECISIONS.md#d3), [ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+out of it; a custom worker flow's privacy is its author's, not a registration check
+([D3](DECISIONS.md#d3), [ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
 
 | Is it the right goal? | |
 |---|---|
@@ -79,7 +80,7 @@ blocked by FIX-1787 ([ER-23](BUSINESS-RULES.md#how-the-set-is-run)).
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | [FIX-1787](https://linear.app/fixpoint-labs/issue/FIX-1787) · inventory | A merge, close or untouched call for every open PR and active issue in the areas the refactor changes | The refactor starts from its result. Route: inventory, no spec, user-approved outside this gate | In Review · posted 2026-10-06 [on FIX-1786](https://linear.app/fixpoint-labs/issue/FIX-1786#comment-9e837aa5): 38 items, 13 merge first, 13 close, 12 untouched; its two owner calls answered 2026-10-06 ([Q2](DECISIONS.md#q2), [Q3](DECISIONS.md#q3)) |
-| [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789) · worker contract | Registered worker flows on the installation's list, the private-state rule, a standard-only flag per entry | A worker's configuration must name a flow that keeps its state private | Spec merged ([#2811](https://github.com/fixpoint-labs/flow-state-dev/pull/2811)) · [Q1](DECISIONS.md#q1) decided at its gate: the list |
+| [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789) · worker contract | Registered worker flows on the installation's list, their registration checks, a standard-only flag per entry | A worker's configuration must name a flow the installation registered and checked | Spec merged ([#2811](https://github.com/fixpoint-labs/flow-state-dev/pull/2811)) · [Q1](DECISIONS.md#q1) decided at its gate: the list |
 | [FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790) · user data per org | User-scoped data kept per (user, org), for every flow; records stored before moved to one org or refused | Without it a user's private workers show in every org they belong to | Backlog · spec route |
 | [FIX-1788](https://linear.app/fixpoint-labs/issue/FIX-1788) · workers as resources | A worker as a user-scoped resource, run by the singleton flow it names; standard workers projected from files; fork; a session link callers can't seed; instances and pins deprecated | The spine: privacy by construction | Backlog · spec route |
 | [FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791) · coordinator flow | Delegates in session state, four routing policies, one answer per delegate, a routing record | Replaces the mailbox with a worker, and fixes its fixed membership | Backlog · spec route · carries FIX-1774's dogfood legs and *not done if* list |
