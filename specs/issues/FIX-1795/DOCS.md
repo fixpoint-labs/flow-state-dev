@@ -11,7 +11,7 @@ the shipped names and refusals, and with Q1 and Q2's answers (marked), before pu
 | Shipped names | |
 |---|---|
 | **Pinned** ([PLAN.md](PLAN.md#pinned-names--the-only-three)) | `workforce/library/*` · `fromTemplate: { templateId, version, digest }` · `version` · FIX-1788's `createWorkforceClient`, `ensureWorkerSession`, `findWorkerSession` |
-| **Drafts**, reconciled with the shipped code before publishing | `library` on the hire blocks and its `publish`, `add`, `takeUpdate`, `remove`, `list` · the action names · the hire-block factory's name (today's `createSeatHireBlocks`; FIX-1788 renames it) |
+| **Drafts**, reconciled with the shipped code before publishing | `library` on the hire blocks and its `publish`, `add`, `takeUpdate`, `remove`, `list` · the action names · the hire-block factory's name (`createWorkerHireBlocks`, FIX-1788's draft) |
 
 Voice watch for this page: no em-dash as a connector, no "seamless" or "powerful", introduce
 *template*, *roster* and *standard worker* in plain words on first use, and say "user", never
@@ -93,9 +93,9 @@ sentence about the library.
 >
 > ```ts
 > import { defineFlow } from "@flow-state-dev/core"
-> import { createSeatHireBlocks } from "@flow-state-dev/workforce"
+> import { createWorkerHireBlocks } from "@flow-state-dev/workforce"
 >
-> const { hire, fork, fire, library } = createSeatHireBlocks({ workerFlows })
+> const { hire, fork, fire, library } = createWorkerHireBlocks({ workerFlows })
 >
 > defineFlow({
 >   kind: "roster-admin",

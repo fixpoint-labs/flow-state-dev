@@ -61,8 +61,8 @@ The band is the only shared place. Only configuration crosses it, and only by an
 **What an app wires, and what it sends:**
 
 ```diff
--const { hire, fork, fire } = createSeatHireBlocks({ workerFlows })
-+const { hire, fork, fire, library } = createSeatHireBlocks({ workerFlows })  // FIX-1788's hire blocks, renamed there
+-const { hire, fork, fire } = createWorkerHireBlocks({ workerFlows })  // FIX-1788's hire blocks
++const { hire, fork, fire, library } = createWorkerHireBlocks({ workerFlows })
 
  defineFlow({
    kind: "roster-admin",
