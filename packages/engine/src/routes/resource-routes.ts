@@ -38,7 +38,7 @@ import {
 } from "../resources/normalize-resource-state";
 import { normalizeScopeResourceContent } from "../context/resource-registry";
 import { ValidationError } from "../errors/flow-error";
-import { OWNER_ROW_REFUSAL, ownerKeyAdmits, ownerWriteRefusal } from "../resources/owner-private";
+import { ownerKeyAdmits, ownerWriteRefusal } from "../resources/owner-private";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {

@@ -16,11 +16,17 @@ import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler, ownerSegment } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores } from "../src";
-import { ownerKeyAdmits, ownerKeyMaySeed, ownerWriteRefusal } from "../src/resources/owner-private";
+import {
+  OWNER_ROW_REFUSAL,
+  OWNER_WRITE_REFUSAL,
+  ownerKeyAdmits,
+  ownerKeyMaySeed,
+  ownerWriteRefusal,
+} from "../src/resources/owner-private";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
-const WRITE_REFUSAL = "A row of an owner-writes collection is written only by the user it belongs to.";
-const PRIVATE_REFUSAL = "A row of an owner-private collection is readable only by the user it belongs to.";
+const WRITE_REFUSAL = OWNER_WRITE_REFUSAL;
+const PRIVATE_REFUSAL = OWNER_ROW_REFUSAL;
 const ALICE_KEY = `entries/apollo/${ownerSegment("alice")}/checkout`;
 const ALICE_STATE = { status: "ALICE-ON-TRACK" };
 const passthrough = z.object({}).passthrough();
