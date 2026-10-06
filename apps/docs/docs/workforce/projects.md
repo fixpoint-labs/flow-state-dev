@@ -257,9 +257,11 @@ export default defineProjectsCollection({
 
 A seat is named by its full id from any team, like `engineering.lead`, or by an organization-level seat's own name, like `chief-of-staff`. These seats are not the project's members. Members are the people who can read and post; seats are who a post wakes.
 
-Pass the organization's resource map to `mailboxInstances`, so `mailboxInstances` can find the template:
+Pass the organization's resource map to `mailboxInstances`, so `mailboxInstances` can find the template. `mailboxes` is your mailbox roster ([Opening it](./mailboxes.md#opening-it-and-why-an-unopened-id-is-not-a-mailbox)), and `kinds` carries the mailbox kind built with a notify block, described just below:
 
 ```ts
+import { mailboxInstances, splitResourceModules } from "@flow-state-dev/workforce";
+
 const { resources } = splitResourceModules(resourceModules);
 const instances = mailboxInstances(mailboxes, { kinds, resources });
 ```
@@ -269,7 +271,7 @@ An app that doesn't run `fsdev gen` imports the file's default export and passes
 ```ts
 import projectsCollection from "./workforce/org/resources/projects";
 
-// mailboxes and kinds as above
+// mailboxes and kinds as in the snippet above
 const instances = mailboxInstances(mailboxes, {
   kinds,
   resources: { projects: projectsCollection },
