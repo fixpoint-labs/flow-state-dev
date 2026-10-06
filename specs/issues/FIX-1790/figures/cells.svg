@@ -1,0 +1,96 @@
+<svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels with the same three callers: the app's chat flow for Alice in Acme, a hired seat for Alice in Acme, and the chat flow for Alice in Globex. Today both chat runs store into one cell named alice that follows her between orgs, so Globex reads what she saved in Acme, and the seat stores apart in its own cell for alice in acme. After, every flow stores into a cell for its person and org, drawn inside the Acme and Globex boxes: the chat flow and the seat share alice in acme, flow-isolated data adds the flow to that cell, and the Globex run has alice in globex. The old cell alice sits below a fence that no run or view crosses, and only the operator step copies it, into the one org its sessions name.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .app   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .seat  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .cell  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .leak  { fill:var(--surface); stroke:var(--gone); stroke-width:1.6; }
+    .old   { fill:var(--surface-2); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .org   { fill:none; stroke:var(--ink-3); stroke-width:1; stroke-dasharray:5 3; }
+    .wire  { stroke:var(--ink-2); stroke-width:1.2; }
+    .wbad  { stroke:var(--gone); stroke-width:1.4; }
+    .step  { stroke:var(--accent); stroke-width:1.4; stroke-dasharray:5 3; fill:none; }
+    .head  { fill:var(--ink-2); }
+    .hbad  { fill:var(--gone); }
+    .hacc  { fill:var(--accent); }
+    .fence { stroke:var(--code); stroke-width:2; stroke-dasharray:6 4; }
+    .split { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-d   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-k   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-ok  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-go  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+  <path class="split" d="M469 16 L469 314"/>
+
+  <g id="today">
+    <text class="t-lbl" x="28" y="36">TODAY · A PERSON'S DATA FOLLOWS THEM INTO EVERY ORG</text>
+    <rect class="app" x="28" y="56" width="132" height="46" rx="4"/>
+    <text class="t-b" x="38" y="76">Chat flow</text><text class="t-d" x="38" y="92">Alice in Acme</text>
+    <rect class="seat" x="168" y="56" width="132" height="46" rx="4"/>
+    <text class="t-b" x="178" y="76">Hired seat</text><text class="t-d" x="178" y="92">Alice in Acme</text>
+    <rect class="app" x="308" y="56" width="132" height="46" rx="4"/>
+    <text class="t-b" x="318" y="76">Chat flow</text><text class="t-d" x="318" y="92">Alice in Globex</text>
+
+    <path class="wire" d="M234 102 L234 144"/><path class="head" d="M230 143 L238 143 L234 150 Z"/>
+    <rect class="cell" x="168" y="150" width="132" height="46" rx="4"/>
+    <text class="t-k" x="178" y="168">alice:~org:acme</text>
+    <text class="t-d" x="178" y="186">the seat's own cell</text>
+
+    <path class="wbad" d="M94 102 L94 224"/><path class="hbad" d="M90 223 L98 223 L94 230 Z"/>
+    <path class="wbad" d="M374 102 L374 224"/><path class="hbad" d="M370 223 L378 223 L374 230 Z"/>
+    <rect class="leak" x="28" y="230" width="412" height="46" rx="4"/>
+    <text class="t-b" x="40" y="250">alice</text>
+    <text class="t-go" x="40" y="266">one cell, every org · Globex reads what Acme saved</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="496" y="36">AFTER · ONE CELL PER PERSON AND ORG, EVERY FLOW</text>
+    <rect class="app" x="496" y="56" width="132" height="46" rx="4"/>
+    <text class="t-b" x="506" y="76">Chat flow</text><text class="t-d" x="506" y="92">Alice in Acme</text>
+    <rect class="seat" x="636" y="56" width="132" height="46" rx="4"/>
+    <text class="t-b" x="646" y="76">Hired seat</text><text class="t-d" x="646" y="92">Alice in Acme</text>
+    <rect class="app" x="776" y="56" width="132" height="46" rx="4"/>
+    <text class="t-b" x="786" y="76">Chat flow</text><text class="t-d" x="786" y="92">Alice in Globex</text>
+
+    <rect class="org" x="488" y="116" width="284" height="104" rx="6"/>
+    <text class="t-lbl" x="498" y="132">ACME</text>
+    <rect class="org" x="780" y="116" width="136" height="104" rx="6"/>
+    <text class="t-lbl" x="790" y="132">GLOBEX</text>
+
+    <path class="wire" d="M562 102 L562 144"/><path class="head" d="M558 143 L566 143 L562 150 Z"/>
+    <path class="wire" d="M702 102 L702 144"/><path class="head" d="M698 143 L706 143 L702 150 Z"/>
+    <rect class="cell" x="500" y="150" width="260" height="60" rx="4"/>
+    <text class="t-b" x="512" y="168">alice · acme</text>
+    <text class="t-k" x="600" y="168">alice:~org:acme</text>
+    <text class="t-d" x="512" y="184">every flow in Acme, the seat too</text>
+    <text class="t-ok" x="512" y="200">flow-isolated data adds :&lt;flow&gt;</text>
+
+    <path class="wire" d="M842 102 L842 144"/><path class="head" d="M838 143 L846 143 L842 150 Z"/>
+    <rect class="cell" x="788" y="150" width="120" height="60" rx="4"/>
+    <text class="t-b" x="798" y="168">alice · globex</text>
+    <text class="t-k" x="798" y="184">alice:~org:globex</text>
+    <text class="t-ok" x="798" y="200">starts empty</text>
+
+    <path class="fence" d="M488 236 L916 236"/>
+    <text class="t-ok" x="780" y="252">no run or view</text>
+    <text class="t-ok" x="780" y="265">crosses this line</text>
+
+    <rect class="old" x="500" y="258" width="260" height="46" rx="4"/>
+    <text class="t-b" x="512" y="277">alice</text>
+    <text class="t-k" x="550" y="277">the old cell · kept, read by nothing</text>
+    <text class="t-acc" x="512" y="294">copied by the operator step into one org</text>
+    <path class="step" d="M490 281 L480 281 L480 180 L494 180"/><path class="hacc" d="M493 176 L500 180 L493 184 Z"/>
+  </g>
+</svg>
