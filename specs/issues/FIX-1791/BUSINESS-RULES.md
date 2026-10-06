@@ -9,12 +9,14 @@ session on Alice's coordinator. The *proved by* column is the check the plan run
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | Alice's first turn in a new conversation | Its delegates are a copy of the coordinator's defaults, in server-owned state. The configuration is not written | CI |
-| BR-2 | Alice adds a worker on her roster, her own or a standard one, in the app or through the coordinator's tool | It joins this conversation's delegates, with an optional note on what it's good at. Her other conversations don't change | CI · VG leg d |
+| BR-1 | A linked conversation's delegates are read or changed for the first time, by a post or an action | They become a copy of the coordinator's defaults, in server-owned state. The configuration is not written | CI |
+| BR-1a | A delegate action names a conversation not yet linked to a coordinator worker | Refused, naming why. Nothing written | CI |
+| BR-2 | Alice adds a worker on her roster, her own or a standard one, with `addDelegate` in the app or through the coordinator's tool | It joins this conversation's delegates, with an optional note on what it's good at. Her other conversations don't change | CI · VG leg d |
 | BR-3 | Alice adds Bob's worker, or a name nobody holds | Refused with one answer for both, naming the id. Nothing written | CI · VG leg f |
 | BR-4 | Alice adds a worker whose flow can't take a delegated post | Refused, naming the flow. Nothing written | CI |
 | BR-5 | Alice adds a delegate already on the list, or a 26th | Refused, naming the delegate or the cap of 25 | CI |
-| BR-6 | Alice removes a delegate | It leaves this conversation's list. Posts already delivered to it still take their answer | CI · VG leg d |
+| BR-6 | Alice removes a delegate, including one fired since it was added | It leaves this conversation's list; removal checks the list, not the roster. Posts already delivered to it still take their answer. If it was the fallback, the conversation has none | CI · VG leg d |
+| BR-6a | Alice sets the fallback to a delegate on this conversation's list, or clears it, in the app or through the tool | It changes for this conversation only. A worker not on the list is refused, naming it | CI · VG leg e |
 | BR-7 | Two changes to one conversation's delegates arrive together | Both land, or one is refused as stale. Neither is lost | CI |
 | BR-8 | A conversation is created with delegates in the caller's state | Refused with 400, naming the field ([ER-4](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), FIX-1788 BR-15) | CI · VG leg f |
 | BR-9 | A delegate is fired while still on a list | The next post skips it and records why. Its entry stays until removed | CI |
@@ -42,10 +44,12 @@ session on Alice's coordinator. The *proved by* column is the check the plan run
 | BR-21 | One delivery reaches a delegate twice, or its answer is sent twice | One answer lands. The second writes nothing | CI · VG leg e |
 | BR-22 | An answer names a post or token it wasn't delivered | Refused. Nothing lands | CI |
 | BR-23 | `rounds:` is zero, or unset | An answer routes nowhere. Under judgment it doesn't wake the coordinator's turn | CI · VG leg e |
-| BR-24 | `rounds:` is *n*, and an answer lands in round *r* below *n* | The policy routes it again in round *r* + 1, never to its own author. Under everyone, each other delegate gets that round's answers in one delivery. Under judgment, it wakes the coordinator's turn | CI · VG leg e |
-| BR-25 | An answer lands in round *n* | It routes nowhere | CI · VG control `no-round-limit` |
+| BR-24 | `rounds:` is *n*, and an answer lands in round *r* below *n* | Under best fit and round robin, the policy routes it again in round *r* + 1, never to its own author. Under everyone, when round *r* closes, each delegate gets the others' answers from it in one delivery. Under judgment, when round *r* closes, its answers wake the coordinator's turn once | CI · VG leg e |
+| BR-24a | Under judgment, the coordinator hands off during a wake for round *r* | The hand-off is delivered in round *r* + 1, at most once per delegate; a second to the same delegate is skipped and recorded. The round comes from the wake, never from the tool's input | CI |
+| BR-24b | A round's deliveries are all answered or failed, or its deadline passes | The round closes. A delegate that never answered is left out of what goes on; its answer, if it comes later, lands once and routes nowhere | CI |
+| BR-25 | An answer lands in round *n*, or round *n* closes | It routes nowhere, and under judgment wakes nothing | CI · VG control `no-round-limit` |
 | BR-26 | A configuration sets `rounds:` above 3 | Refused when saved, or at load for a file, naming the ceiling ([D1](DECISIONS.md#d1)) | CI |
-| BR-27 | A post or answer carries a round, an author mark or a token field of its own | Ignored. The round comes from the delivery record alone | CI |
+| BR-27 | A post, an answer or a hand-off carries a round, an author mark or a token field of its own | Ignored. The round comes from the delivery record, or for a hand-off from its wake | CI |
 
 ## The record
 
@@ -73,8 +77,9 @@ session on Alice's coordinator. The *proved by* column is the check the plan run
 
 A refused change writes nothing and names why. A post nobody can take is recorded and said in the
 conversation, never an error to the poster. A failed evaluator call falls back once. A delegate
-that fails its turn leaves its delivery unanswered; nothing retries it, and a redelivery is
-answered once. Nothing here deletes a line, a record or a delegate's conversation.
+that fails its turn leaves its delivery unanswered; nothing retries it, its round closes without
+it at the deadline, and a redelivery is answered once. Nothing here deletes a line, a record or
+a delegate's conversation.
 
 ## Acceptance criteria this issue owns
 

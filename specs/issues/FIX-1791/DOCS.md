@@ -49,10 +49,14 @@ It is the second worker flow a reader meets. Front matter `sidebar_label: Coordi
 > changes to it stay in that conversation. You can change them two ways, and both are checked the
 > same way:
 >
-> - **From your app**, with the `delegates` action on the conversation:
+> - **From your app**, with the coordinator's actions on a conversation that is already open
+>   with it:
 >
 >   ```ts
->   await clients.actions("coordinator").sendAction("delegates", { add: "researcher", note: "license questions" }, { sessionId })
+>   const coordinator = createTypedClient({ flow: coordinatorFlow, userId })
+>   await coordinator.actions.addDelegate({ worker: "researcher", note: "license questions" }, { sessionId })
+>   await coordinator.actions.removeDelegate({ worker: "support.devices" }, { sessionId })
+>   await coordinator.actions.listDelegates({}, { sessionId })
 >   ```
 >
 > - **By the coordinator itself**, with its delegate tools, when you ask it to bring someone in.
@@ -62,15 +66,23 @@ It is the second worker flow a reader meets. Front matter `sidebar_label: Coordi
 > most 25 delegates, and the worker's flow must be able to take a delegated post. Ask a
 > coordinator who its delegates are and it reads the list; it doesn't guess.
 >
-> Removing a delegate doesn't take back what it was already handed. If you remove the
-> `fallback:` delegate, best fit has no fallback in that conversation until you set one.
+> Removing a delegate doesn't take back what it was already handed, and you can remove one
+> even after it was fired. If you remove the `fallback:` delegate, best fit has no fallback in
+> that conversation until you set one with `setFallback`, which takes any delegate on the list.
 >
 > ## Letting delegates answer each other
 >
 > By default an answer goes nowhere further. Set `rounds:` (at most 3) and each answer goes back
 > out by the same policy, never to its own author, for that many rounds. With `everyone`, each
-> delegate gets the round's answers together, once. A post then costs at most
-> delegates × (rounds + 1) turns.
+> delegate gets the others' answers from a round together, once, when the round closes. With
+> `judgment`, the coordinator reads a round's answers together and decides who hears them next.
+> A round closes when every delegate in it has answered or failed, or after *deadline as
+> shipped*, so one slow delegate doesn't hold up the rest.
+>
+> What it costs: each delegate gets at most one delivery per post per round, so a post costs at
+> most delegates × (rounds + 1) delegate turns. That is 100 at the limits of 25 delegates and
+> three rounds. `judgment` adds up to rounds + 1 turns of the coordinator's own, and `best-fit`
+> one model call per round.
 >
 > ## What it records
 >
@@ -109,7 +121,8 @@ names *as shipped*.
 
 > The built-in `coordinator` flow hands each post to delegates on the same user's roster, by
 > `judgment`, `best-fit`, `round-robin` or `everyone`. Delegates live in each conversation and
-> change through the `delegates` action or the coordinator's tools. See
+> change through the `addDelegate`, `removeDelegate` and `setFallback` actions, or the
+> coordinator's tools; `listDelegates` reads them. See
 > [Coordinators](../../apps/docs/docs/workforce/coordinators.md).
 
 ## UPDATE · `apps/docs/docs/shift-manager/overview.md` · "What you see", the Shift Coordinator row

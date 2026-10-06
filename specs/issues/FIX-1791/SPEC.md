@@ -47,7 +47,7 @@ never the reply's prose. Under the dashed control, Bob's worker must land on Ali
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/coordinators/hands-each-post-to-its-delegates/` · `openai/gpt-5.4-mini` for legs a to d, scripted delegates and evaluator for leg e · Shift Manager over HTTP with two users · run by the implementer at completion · verdict in the last implementation PR |
-| **Signal** | **a**: Alice asks the chief of staff for work her `eng.em` delegate does, with a held-out word: zero hires, one delivery to `eng.em` carrying the word, one `by: judgment` record, its session opens within 120 s. **b**: the same ask again: still zero hires, no second delivery. **c** ("audit our dependencies' licenses"): one hire on Alice's roster, added to this conversation's delegates, one delivery to it. **d**: Alice adds one delegate and removes one in the app; asked who its delegates are, the coordinator calls its delegate read, the output equals the session's list, and the reply names exactly those. **e**: best fit holds a follow-up and falls back on a failed call; after its fallback is removed, a failed call is recorded `unplaced`; round robin alternates over three posts; everyone with a limit of one gives four answers, then none; a redelivered post adds none. **f**: Bob's worker, named in the app and through the tool, is refused like a missing worker; a session create carrying delegates is refused |
+| **Signal** | **a**: Alice asks the chief of staff for work her `eng.em` delegate does, with a held-out word: zero hires, one delivery to `eng.em` carrying the word, one `by: judgment` record, its session opens within 120 s. **b**: the same ask again: still zero hires, and a second delivery, to `eng.em` again. **c** ("audit our dependencies' licenses"): one hire on Alice's roster, added to this conversation's delegates, one delivery to it; asked again, no second hire and a delivery to the same worker. **d**: Alice adds one delegate and removes one in the app; asked who its delegates are, the coordinator calls its delegate read, the output equals the session's list, and the reply names exactly those. **e**: best fit holds a follow-up and falls back on a failed call; after its fallback is removed, a failed call is recorded `unplaced`; round robin alternates over three posts; everyone with a limit of one gives four answers, then none; a redelivered post adds none. **f**: Bob's worker, named in the app and through the tool, is refused like a missing worker; a session create carrying delegates is refused |
 | **Input** | The DevTeam standard install, its chief of staff converted; two users through sign-in; a goal-local coordinator with two scripted workers for leg e. Asks and words held out at run time |
 | **Anti-game** | No delegate seeded by a fixture; every change goes through the app or the tool. Leg d grades tool output against state, not prose. Answer counts are read again after a grace period |
 | **Control that must fail** | `GOAL_CONTROL=no-roster-check`: leg f FAILS on *Bob's worker is a delegate*. `GOAL_CONTROL=no-round-limit`: leg e FAILS on *four answers, then none*. `GOAL_CONTROL=no-delegate-read`: leg d FAILS on *the reply equals the list*. Today's `main`: every leg FAILS |
@@ -75,15 +75,22 @@ user's own worker decides, from a list each conversation owns and both paths che
   description: Ask the support team anything.
 ```
 
-**And what an app writes to change one conversation's delegates:**
+**And what an app writes to change one conversation's delegates**, on the public typed client:
 
 ```diff
-+ await clients.actions("coordinator").sendAction("delegates", { add: "researcher" }, { sessionId })
++ const coordinator = createTypedClient({ flow: coordinatorFlow, userId })
++ // sessionId: a conversation already linked to Alice's chief of staff (FIX-1788's link)
++ await coordinator.actions.addDelegate({ worker: "researcher" }, { sessionId })
 + // refused, like a missing worker, unless researcher is on this user's roster
++ await coordinator.actions.setFallback({ worker: "researcher" }, { sessionId })
++ await coordinator.actions.removeDelegate({ worker: "researcher" }, { sessionId })
++ await coordinator.actions.listDelegates({}, { sessionId })   // the whole list, with notes
 ```
 
-How a flow declares itself a worker flow is left to the epic's record
-([epic Q1](../../epics/FIX-1786/DECISIONS.md#q1)); nothing here names a shape.
+The four actions work on a conversation that is already linked to a coordinator worker, and
+never name or set that worker. The coordinator flow goes on the list of worker flows the
+installation keeps ([epic Q1](../../epics/FIX-1786/DECISIONS.md#q1)), like `agent`, with no
+declaration shape of its own.
 
 ## How a post reaches a delegate
 
@@ -125,8 +132,9 @@ answers.
 **Decided:**
 
 1. **[D1](DECISIONS.md#d1) · Answers go back out only within a round limit: zero unless a
-   coordinator's configuration sets it, at most three.** If wrong: group chats nobody can turn on
-   per coordinator, or a cost per post nobody bounded.
+   coordinator's configuration sets it, at most three.** A post then costs at most
+   delegates × (rounds + 1) delegate turns, 100 at the caps. If wrong: group chats nobody can
+   turn on per coordinator, or a cost per post nobody bounded.
 2. **[D2](DECISIONS.md#d2) · Best fit's fallback is one of the conversation's delegates;
    removing it leaves posts it can't place recorded and told, never refused.** If wrong: a
    person's post sits unanswered after a removal they thought was harmless.
