@@ -311,7 +311,7 @@ Work moves down through boards, and status comes back up. Every step runs in a s
 
 ![How work flows · one workstream, down to a harness](../figures/concept-6-work-flows.svg)
 
-The boards below the workstream are session-scoped and shared down their lineage, so a task session can settle its row on the board that assigned it. Task boards already hand off work this way today (`sharedToLineage`). A lineage stops at a flow, though: a row handed to a worker on another flow, such as a lead coordinator's row to an agent, lives on a board at the owner's user scope instead ([the end-state POC](../poc/singleton-worker-link/README.md), leg C1).
+The boards below the workstream are session-scoped and shared down their lineage, so a task session can settle its row on the board that assigned it. Task boards already hand off work this way today (`sharedToLineage`). A lineage stops at a flow, though ([the end-state POC](../poc/singleton-worker-link/README.md), leg C1): a row handed to a worker on another flow, such as a lead coordinator's row to an agent, can't sit on a board shared down the lineage. That board still stays its own, and only its own drains claim, wake on or settle its rows. How it does so is FIX-1794's to decide ([ER-9](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
 
 Everything in Alice's chain is hers. Bob's workers never appear in it: Bob's part of the project is his own workstream.
 
