@@ -30,16 +30,21 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const REGISTRY = path.resolve(here, "../registry/components/chat-assistant.tsx");
 
 /**
- * Component types the substrate emits about itself. Mirrors the exclusion set
- * in `@flow-state-dev/contracts`' `items/task-attribution.ts` — the two lists
- * answer different questions (whose output is this, versus should a user see
- * it) but they are drawn from the same population, so a type added there
+ * Component types the substrate emits about itself. A superset of the exclusion
+ * set in `@flow-state-dev/contracts`' `items/task-attribution.ts` — the two
+ * lists answer different questions (whose output is this, versus should a user
+ * see it) but they are drawn from the same population, so a type added there
  * belongs here too.
  */
 const SUBSTRATE_COMPONENTS = [
   "task-change",
   "task-board-meta",
   "task-board-recorder-failure",
+  // `goalSeekLoop`'s stop reason and drain count, emitted once when the loop
+  // exits. It is emitted at loop level, never inside a worker, so it carries no
+  // `taskId` and is absent from the attribution list — but it is still the
+  // substrate reporting on itself.
+  "goal-seek-loop-termination",
 ];
 
 describe("the shipped chat registry names every substrate component type", () => {
@@ -57,6 +62,13 @@ describe("the shipped chat registry names every substrate component type", () =>
     // failure; the entry exists so the failure survives the run, not so
     // somebody reads it in a chat thread.
     expect(source).toMatch(/"task-board-recorder-failure":\s*false/);
+  });
+
+  it("suppresses the goal-seek loop's termination signal: it is for tooling, not a reader", () => {
+    // Tests and tooling read the stop reason off the stream. A user watching
+    // the loop finish has no use for it, and without this entry sees a JSON
+    // blob land in the thread the moment the loop concludes.
+    expect(source).toMatch(/"goal-seek-loop-termination":\s*false/);
   });
 
   it("suppresses a routed mailbox's route record: it is bookkeeping, never a line", () => {
