@@ -20,3 +20,8 @@ this record covers the shipped designs FIX-1788 changes in detail.
 None of these is wholly overturned in intent: each kept its permission boundary, and the
 boundary moved from a registered copy to a row and a link. Re-check each against current code
 before implementing; FIX-1789 and FIX-1790 may have moved two of them first.
+
+Forward lineage: the criteria object of `findWorkerSession` and `ensureWorkerSession` (PLAN S5a)
+is extended later by FIX-1794 (`taskId`), FIX-1793 (`workstreamId`) and FIX-1791 (the
+coordinator conversation a delegate's session belongs to; FIX-1791 names the key). Each later key
+is added to the same lookup path, not to a second helper.

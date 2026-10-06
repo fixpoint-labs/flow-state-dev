@@ -31,13 +31,13 @@ work.
 | BR-13 | A turn's input carries `worker`, or any route tries to change a session's link | Refused, naming the field. The link never changes: another worker is another session | CI · VG leg b |
 | BR-13a | Two `ensureWorkerSession` calls with the same criteria race | One session is created and both return it. Two plain creates make two sessions, each checked | CI |
 | BR-13b | A create uses a derived worker-session id that belongs to another user | Refused. Nobody can take Alice's id before her first `ensureWorkerSession` | CI |
-| BR-14 | A session on a worker flow is created with no worker, by the create or by an action on a session id that doesn't exist | Refused at the door, saying a worker must be named. No session written | CI · VG leg b |
+| BR-14 | A session on a worker flow is created with no worker, by the create, by an action on a session id that doesn't exist, or by `fsdev run` without `--worker` | Refused at the door, saying a worker must be named. No session written | CI · VG leg b |
 | BR-14a | Alice calls `findWorkerSession({ worker })`, or lists with a `worker` filter | Her sessions linked to that worker, most recent first for the helper; none if there are none. Never another user's | CI · VG leg b |
 | BR-15 | A session is created with caller state for the link or a server-written field | Refused with 400, naming the field. Nothing written | CI · VG control `caller-link` |
 | BR-16 | A session is deleted and its id created again | The new session's link is what its own create named and passed. Nothing carries over | CI |
 | BR-17 | Bob opens, reads or sends to a session of Alice's | Refused, as today (engine ownership) | Existing suite · VG leg b |
 | BR-18 | A task or a mailbox post opens a session for a worker | It names the worker at create, through the same check as BR-10 to BR-12, on the session's user. The worker comes from the dispatching flow's code, never the post's fields | CI |
-| BR-18a | A coordinator's session records its delegates after create | Held in server-written session state: flow code writes it, a caller can't (BR-15), and the link beside it stays fixed. FIX-1791 consumes it | CI, on a fixture flow |
+| BR-18a | A coordinator's session records its delegates after create | Held in server-written session state: flow code writes it, a caller can't (BR-15), and the link beside it stays fixed. FIX-1791 consumes it. Its delivery opens each delegate's session through `ensureWorkerSession`, with the worker and FIX-1791's coordinator-conversation key named; it can't post to a fresh id and rely on the turn (BR-14) | CI, on a fixture flow |
 | BR-19 | A linked worker is fired | The turn is refused, naming it as fired. The session stays readable | CI |
 | BR-19a | A linked worker's flow is no longer registered | The turn is refused. The session reads as a session of any unregistered flow reads today: this issue adds no engine read path (ER-22) | CI |
 | BR-19b | Alice edits a worker to name a different flow | The link holds. A turn on a session created before the edit is refused, naming both flows. New sessions are created on the new flow | CI |

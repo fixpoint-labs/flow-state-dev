@@ -6,9 +6,12 @@ FIX-1788 publishes the specifics the epic's [ownership table](../../epics/FIX-17
 gives it: standard and non-standard workers, forking, and a session's worker. The shared
 opening is the epic's, published by FIX-1796. Quoted prose follows the outsider rule
 ([`user-docs.md`](../../../docs/contributing/user-docs.md)) and uses the new terms: worker,
-worker flow, user. Pinned names are `PLAN.md`'s. Draft names, reconciled with the shipped code
-before publishing: `serverOwned`, `createCheck` and its `link` input, `createWorkerHireBlocks`,
-`fork`, the upgrade command. `workerFlows` is FIX-1789's.
+worker flow, user.
+
+| Shipped names | |
+|---|---|
+| **Pinned** ([PLAN.md](PLAN.md#pinned-names)) | `worker` on `createSession` · `worker` on `listSessions` · the roster's `flow` · `findWorkerSession` · `ensureWorkerSession` · `workerFlows` (FIX-1789's) |
+| **Drafts**, reconciled with the shipped code before publishing | `createCheck` and its `link` input · `serverOwned` · `createWorkerHireBlocks` · `fork` · `useFlow`'s `worker` · `fsdev run --worker` · the upgrade command |
 
 ## UPDATE · `apps/docs/docs/configuration/flow.md` · the `session` table, two new rows after `client`
 

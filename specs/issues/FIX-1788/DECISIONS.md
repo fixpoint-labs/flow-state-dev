@@ -100,7 +100,7 @@ message. The epic records this as D3 change 3's session-record form (#2813).
 
 ![D4: where a session learns its worker. At create, in a server-only field on the session record, chosen, beside on the first turn in server-owned state. Decides it: what carries the worker, the session once, so messages never name one. Price: an engine check on every way a session is made. Locks in a create check and worker on create and list; flips if an app must open a session before it knows its worker](figures/d4-link-at-create.svg)
 
-It comes down to what carries the worker: on the first turn, every message shape carries it.
+It comes down to what carries the worker: the session, once, at create, so messages never name one.
 
 **What would change my mind:** an app that must open a session before it knows which worker will
 run it, such as a triage chat that hands off later. That is a new session per worker today, and
@@ -108,45 +108,20 @@ would stay one.
 
 ## Decided, not asked
 
-- **Where create runs the check.** The engine calls the flow's declared create check before the
-  session record is written. Every path that writes a new record calls it: the create route, the
-  record an action writes for a session id that doesn't exist yet, and a transport's session
-  resolver. With no worker named, a worker flow refuses: a session without a worker is refused at
-  the door. The check reads the worker at the principal's own scope, else the standard
-  projection, and requires that it names this flow. Then the engine stores `workerId` on the
-  record, outside `state`. No route writes that field after create; only the upgrade step sets it
-  on a session made before it. Every path names the worker at create: a user's app, a task, a
-  mailbox post. Actions never carry `worker`.
-- **One mechanism holds the fixed link and what changes later.** S1 declares server data in two
-  parts: the create field above, fixed for the session's life, and server-written session-state
-  fields that the create refuses from a caller and only flow code writes. A coordinator's delegates
-  change after create, so they live in the second; [FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791)
-  consumes them.
-- **The app-facing API is today's client plus two helpers** (Jake, #2812). Roster rows carry
-  `flow`; `createSessionClient().listSessions` takes a `worker` filter and `createSession` a
-  `worker` option; `createClient({ flowKind }).sendAction(action, input, { sessionId })` is
-  unchanged. `findWorkerSession(criteria)` and `ensureWorkerSession(criteria)` are Workforce
-  exports over one lookup path and one criteria object. FIX-1788 ships `worker`;
-  [FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794) and
-  [FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793) add keys later. The engine knows no
-  worker: the client maps both options onto the generic create field and list filter.
-- **Racing `ensureWorkerSession` calls make one session.** When none is found, it creates at an id
-  derived from the caller's user, org and criteria. The create's insert-if-absent write already
-  answers the loser with 409 (on SQLite and Postgres, and within one filesystem store instance, as
-documented); the loser reads that id and returns the winner's session. The create
-  check refuses a derived id that isn't the caller's, so nobody takes another user's id first.
-- **When a worker changes under its sessions.** Edited to name a different flow: the link holds,
-  and the per-turn load refuses the turn because the worker no longer names this session's flow.
-  Forked: the fork is a new worker, and old sessions stay with the original. Fired, or its flow
-  removed: BR-19 and BR-19a.
-- **A worker's configuration is read on every turn**, from its row or its file, with names
-  resolved against what the installation registers ([ER-2](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
-  A non-standard one is checked when it is saved and again when it loads.
-- **A worker's private state is keyed by the worker** on every worker flow, the skills drawer
-  first. The skills library takes its key per run, a Layer 2 change; if a capability can't, it
-  goes back to the epic (ER-22).
-- **A worker's document and reference grants hold on every turn**, over what its model can
-  reach: tools and context. The flow's own code is the app's and is not narrowed per worker.
+The mechanism lives in [PLAN.md](PLAN.md#surfaces) and is not restated here. S1 covers the one
+session-birth function, the create check and the server-written state. S5 covers the link and
+the derived id, and S5a the app helpers and racing calls. BR-10 to BR-19c rule the sessions.
+What PLAN doesn't hold:
+
+- **Server-written session state ships here, not with FIX-1791.** Epic D3 *Locks in* (3) has
+  FIX-1788 pick and build the mechanism and FIX-1791 consume it. The create must also refuse those
+  fields before any app can seed them. FIX-1791's delegates ([#2815](https://github.com/fixpoint-labs/flow-state-dev/pull/2815))
+  are the consumer.
+- **The app-facing API is today's client plus two helpers** (Jake, #2812). Their criteria object
+  grows later: [FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794) adds `taskId`,
+  [FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793) adds `workstreamId`, and FIX-1791
+  adds a key for the coordinator conversation a delegate's session belongs to. The engine knows no
+  worker.
 - **Ids.** A worker's id is unique on its owner's roster and can't be a standard worker's id. A
   fork gets a new one.
 - **The upgrade step ships as code the operator runs**, not a SQL procedure like FIX-1538's: it
@@ -154,15 +129,6 @@ documented); the loser reads that id and returns the winner's session. The creat
   *what would change my mind* named this.
 - **Fork and the library's copy share one write path.** FIX-1788 owns it; FIX-1795 calls it
   for a template (the epic's coordination seams). No library work is pulled in here.
-- **A fire deletes the row.** Sessions linked to it stay readable and refuse new turns.
-- **A standard worker has no write path.** It is a read-only collection projected from the files.
-- **Every deprecation marker** on collection cardinality and owner pins names FIX-1798.
-- **The org-wide worker inventory stops listing hired workers**, which it showed to every member.
-- **Four PRs, a stack:** server-owned session data; the worker model beside today's; the
-  upgrade step; then the switch, every flow at once. Nothing existing changes shape before the
-  step is on `main`, so no single PR strands a hire ([PLAN.md](PLAN.md#sequence--the-pr-plan)).
-- **No worker-flow declaration shape is named here.** The epic's [Q1](../../epics/FIX-1786/DECISIONS.md#q1)
-  chose the list at FIX-1789's gate; the hire's option is `workerFlows` (FIX-1789).
 
 ## Considered and dropped
 
@@ -190,5 +156,8 @@ documented); the loser reads that id and returns the winner's session. The creat
   the first turn to session create (D4), on the review of the app example, with the whole app path
   on today's client plus `findWorkerSession` and `ensureWorkerSession`. The same mechanism holds a
   coordinator's delegates. A worker's later edit, fork or fire is ruled for its sessions.
+- **Review of #2818** — S1 became one session-birth function every path reaches, `fsdev run`
+  included (second look). FIX-1791's coordinator-conversation key was reserved in the criteria
+  object (architect). "Decided, not asked" was cut to what PLAN doesn't hold.
 
 **Open:** none.

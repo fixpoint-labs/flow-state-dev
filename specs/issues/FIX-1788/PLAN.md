@@ -10,17 +10,17 @@ start only after FIX-1789 and FIX-1790 merge and FIX-1787's merge-first rows lan
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `engine` + `core` + `client` + `react` · server-owned session data, at create | One declaration, two parts. **A create field:** the flow declares a create check; every path that writes a new session record for it (the create route, the record an action writes for a missing session id, a transport's session resolver) calls it with the verified principal and the create's input before the insert-if-absent write. It refuses, or returns a value the engine stores on the record outside `state`; no route writes it afterwards. A path with no input is refused. **Server-written state:** session-state fields the create refuses from a caller (400, naming the field) and only flow code writes; FIX-1791's delegates live here. The list route filters on the create field. The client's `createSession` takes `worker` and `listSessions` a `worker` filter, mapped onto that field; `useFlow` passes `worker` to both. The engine knows no worker. Undeclared means today | BR-13 BR-14 BR-15 BR-16 BR-18a |
+| S1 | `engine` + `core` + `client` + `react` · server-owned session data, at create | One declaration, two parts, behind **one session-birth function**. **Birth:** it owns the stale-state purge, the flow's create check and the insert-if-absent write. `handleCreateSession` and `ensureSessionRecord` become thin callers, so every path reaches it by construction: the create route, an action's write for a missing session id (`createExecutionContext`), the webhook session resolver, and `fsdev run` (`packages/cli/src/commands/run.ts`, through the exported `ensureSessionRecord`). Each caller keeps its choice over a lost race: the route answers 409, the action path adopts the winner's record without re-checking the loser's input, as intended. **A create field:** the check gets the verified principal and the create's input. It refuses, or returns a value the engine stores under a generic key on the record, outside `state`. No route writes the field afterwards. A birth with no input is refused. The async check runs on a miss only, never on a turn of an existing session. **Server-written state:** session-state fields the birth refuses from a caller (400, naming the field) and only flow code writes. They ship here because epic D3 *Locks in* (3) has FIX-1788 build the mechanism and FIX-1791 consume it, and the refusal must exist before any app can seed those fields. FIX-1791's delegates ([#2815](https://github.com/fixpoint-labs/flow-state-dev/pull/2815)) are the consumer; BR-18a and V4 drive it until FIX-1791's goal covers it. The list route filters on the create field. `fsdev run` takes `--worker <id>` for a new session on a worker flow, and refuses a new one without it; `--seed-session` refuses server-written fields. The client's `createSession` takes `worker` and `listSessions` a `worker` filter, mapped onto that field; `useFlow` passes `worker` to both. The engine knows no worker. Undeclared means today | BR-13 BR-14 BR-15 BR-16 BR-18a |
 | S2 | `core` + `engine` · collection cardinality, `register(flow, { pin })` | Deprecation markers (JSDoc and one boot note per process), each naming FIX-1798. Behaviour unchanged | BR-27 |
 | S3 | `workforce` · the worker collection | User scope (per org, FIX-1790), one row per worker: `flow`, `description`, the configuration as names (ER-2), flow-owned settings. Checked by the flow's schema and FIX-1789's standard-only flag when saved; old shapes read (BP-030) | BR-1 BR-4–6a BR-21 |
 | S4 | `workforce` · standard workers | A read-only collection projected from the loaded files, the same for every user; no write path | BR-3 BR-9 |
-| S5 | `workforce` · the link, one module | The create check every worker flow declares through S1: a worker is named; it is the principal's own (read at their scope) or a standard one; it names this flow; a derived worker-session id is the caller's. It returns `workerId`. The task entry and the mailbox wake open sessions through it, naming the worker from the dispatching flow's code. No turn sets or changes a link | BR-10–14 BR-13b BR-18 |
-| S5a | `workforce` · `findWorkerSession`, `ensureWorkerSession` | One lookup path over `listSessions({ …, worker })`, taking one criteria object. FIX-1788 ships `worker`; leave the object open for FIX-1794's and FIX-1793's keys, and define neither. `find` returns the caller's most recent matching session, or none. `ensure` finds, or creates on the flow the worker's roster row names, at an id derived from the caller's user, org and criteria; a 409 from the create means a racing call won, so it reads that id and returns it (the store's own create guarantee: SQLite, Postgres, one filesystem store instance). Where the helpers get the caller and transport is yours | BR-13a BR-14a |
+| S5 | `workforce` · the link, one module | The create check every worker flow declares through S1: a worker is named; it is the principal's own (read at their scope) or a standard one; it names this flow; a derived worker-session id is the caller's. It returns `workerId`, the value Workforce stores in S1's generic key. The id derivation is one exported function, used by both this check and `ensureWorkerSession`, and it runs on the tenant-resolved key. The task entry and the mailbox wake open sessions through it, naming the worker from the dispatching flow's code. No turn sets or changes a link. **S5 and S6 are one module**, with one interface: `resolveWorker` returns the worker plus its resolved configuration, beside the create check. The PR stack is the same | BR-10–14 BR-13b BR-18 |
+| S5a | `workforce` · `findWorkerSession`, `ensureWorkerSession` | One lookup path over `listSessions({ …, worker })`, taking one criteria object. FIX-1788 ships `worker`; leave the object open for later keys and define none: FIX-1794's `taskId`, FIX-1793's `workstreamId`, and FIX-1791's key for the coordinator conversation a delegate's session belongs to (FIX-1791 names it), so `ensureWorkerSession({ worker, <that key> })` gives one delegate session per coordinator conversation. A coordinator's delivery opens the delegate's session through `ensureWorkerSession` with the worker named: an action on a missing id names no worker and is refused (BR-14). `find` returns the caller's most recent matching session, or none. `ensure` returns what `find` returns, so with several matching sessions it is the most recent, not necessarily the derived one. Only when there is none does it create, on the flow the worker's roster row names, at an id derived (S5's function) from the caller's user, org and criteria. It creates through the create route, which owns the 409 contract: a 409 means a racing call won, so it reads that id and returns it (the store's own create guarantee: SQLite, Postgres, one filesystem store instance). Where the helpers get the caller and transport is yours | BR-13a BR-14a |
 | S6 | `workforce` · per-turn configuration | Load the linked worker each turn; resolve tool, skill, package, capability and worker-folder names against what the installation registers; refuse a turn whose worker is fired, now names another flow, has names that don't resolve, or runs on a flow now standard-only. Every read of a worker setting moves off `ctx.flow.config` to it | BR-19–22a |
 | S7 | `orchestration` + `workforce` · private state by worker | The skills library takes its key per run; every flow-isolated resource on a worker flow is keyed by the worker. The `agent` drawer first | BR-23 BR-25 |
 | S8 | `workforce` · grants per turn | A worker's document grants and reference wall narrow what its model reaches on each turn: tools and context. Replaces the per-copy narrowed resource map | BR-24 |
 | S9 | `workforce` · hire, fork, fire | Writes to S3, through the hire blocks and tool; fork is new beside them and copies per D3. The hire blocks take `workerFlows` (FIX-1789) and, since they change here, take a worker name (the docs draft `createWorkerHireBlocks`; not pinned). Each turn names the collection it wrote | BR-1 BR-2 BR-4 BR-7 BR-8 BR-19c |
-| S10 | `workforce` · registration | The hire registers one copy per flow, `agent` and every flow handed to it, with no per-worker copy and no pin. The `agent` flow becomes a singleton, in whichever declaration shape the epic recorded | BR-26 |
+| S10 | `workforce` · registration | The hire registers one copy per flow, `agent` and every flow handed to it, with no per-worker copy and no pin. The `agent` flow becomes a singleton and registers on the installation's `workerFlows` list (epic Q1) | BR-26 |
 | S11 | `workforce` · consumers | Worker lookup, task hand-off and the mailbox wake open sessions naming (flow, worker) at create, through S5. The shared-write stamp's `writtenBy.workerId` (FIX-1789 BR-20) comes from the link. The org-wide worker inventory stops listing hired workers | BR-18 BR-25a |
 | S12 | `shift-manager` · Roster and talk | Lists S3 and S4 for the signed-in user, each with its `flow`; opens sessions with `ensureWorkerSession`; reloads on BR-8 | BR-9 |
 | S13 | `workforce` · the upgrade step | An operator command: owned rows to workers, per-copy cells to worker keys, sessions moved onto the shared copy with their link set; org-wide rows per D2, memory copied to each member; a taken id gets a derived one; a report. Old rows stay | BR-28–33a |
@@ -69,10 +69,10 @@ so no deploy of any one PR strands a hire.
 | ID | Runs after | Passes when |
 |---|---|---|
 | V0 | before P4 | Rerun [`poc/flow-inventory/`](poc/flow-inventory/README.md) and list every flow handed to a `hireWorkforce` call (kitchen-sink, Shift Manager labs, `goals/*`). Each is in the PR as converted, or a refusal fixture that stays one |
-| V1 | S1 | BR-15, BR-16; the create check runs on the create route, an action's write for a missing session id and a resolver, and each refuses with no input; no route (state patch, metadata patch, action) writes the create field after create; flow code writes server-written state; the list filters on the create field; a flow that declares none behaves as today |
+| V1 | S1 | BR-15, BR-16; the create check runs, through the one birth function, on the create route, an action's write for a missing session id, the webhook resolver and `fsdev run` (with `--worker`, and refused without it on a worker flow), and each refuses with no input; a turn on an existing session makes no check call; a lost race answers 409 on the route and adopts on the action path; no route (state patch, metadata patch, action) writes the create field after create; flow code writes server-written state; the list filters on the create field; a flow that declares none behaves as today |
 | V2 | S2 | BR-27: markers present, existing instance and pin tests unchanged |
 | V3 | S3 S4 | BR-1, BR-3–6a (BR-6 on a standard-only flow too), BR-9, BR-21 on the real engine; BR-5 with two users |
-| V4 | S5 S5a | BR-10–14a through `createSession` and the helpers; BR-13a with two `ensureWorkerSession` calls in flight at once; BR-13b with Bob creating at Alice's derived id first; BR-18 through the task entry and the mailbox wake; BR-18a on a fixture coordinator flow |
+| V4 | S5 S5a | BR-10–14a through `createSession` and the helpers; BR-13a with two `ensureWorkerSession` calls in flight at once; BR-13b with Bob creating at Alice's derived id first; BR-16 through the helper: delete the derived session, `ensureWorkerSession` again, and the new session's link is set fresh by its own create, nothing inherited; BR-18 through the task entry and the mailbox wake; BR-18a on a fixture coordinator flow |
 | V5 | S6 | BR-19–19b; BR-20, BR-22 and BR-22a (a flag flipped after the row was saved) across two hosts on one store |
 | V6 | S7 S11 | BR-23 on `agent` and on one app flow; BR-25; BR-25a, two workers on one flow stamping two ids |
 | V7 | S8 | BR-24: `goals/workforce-seats/a-seat-reaches-the-documents-its-file-names/` rewritten to grade what the model reaches |
@@ -92,9 +92,9 @@ a second host (V5, V8), stored rows from today (V10), the off state of S1 (V1), 
 | Session create | `worker`, an option on `createSessionClient().createSession` | Public; an app sends it |
 | Session list | `worker`, a filter on `createSessionClient().listSessions` | Public |
 | The roster read | each worker's `flow` | Public; an app creates the session on it |
-| Workforce | `findWorkerSession(criteria)`, `ensureWorkerSession(criteria)` | Public; FIX-1794 and FIX-1793 add criteria keys |
+| Workforce | `findWorkerSession(criteria)`, `ensureWorkerSession(criteria)` | Public; FIX-1794, FIX-1793 and FIX-1791 add criteria keys, each pinned by its own issue |
 | The worker collection | `workforce/workers/*`, user scope | Persisted; FIX-1791 and FIX-1795 read and write it |
-| The session's link | `workerId`, in the record's server-only create field | Persisted; S13 writes it into old sessions; FIX-1789's `writtenBy.workerId` reads it |
+| The session's link | `workerId`, the value Workforce stores in the record's generic server-only create field (the engine's key is yours to name) | Persisted; S13 writes it into old sessions; FIX-1789's `writtenBy.workerId` reads it |
 
 Everything else is yours to name, in the new terms (worker, worker flow, user; not seat, kind or
 person). The engine container for the create field and the create check's name are yours.
@@ -103,7 +103,7 @@ person). The engine container for the create field and the create check's name a
 
 | Rule | Because |
 |---|---|
-| Every path that writes a new session record on a worker flow runs S5's one check, in S1's engine hook | A check on the create route alone is open at an action's implicit create and at the task entry (tenet 5) |
+| Every new session record is written by S1's one birth function, which runs S5's check | A check wired per call site is open at the next path someone adds, as `fsdev run` already is (tenet 5) |
 | No action input names a worker; no route but create (and S13) writes the link | The worker belongs to the session ([D4](DECISIONS.md#d4)) |
 | Access is read at the principal's own scope, never from the link or the input (ER-17, BP-031) | That is why pins aren't needed: a forged link reads nothing |
 | No worker setting is read from `ctx.flow.config` (ER-2) | The shared copy holds one bag for every worker |
@@ -121,17 +121,18 @@ refusal wording and the upgrade command's real name.
 ## Sketch · pseudocode, illustrative, react to the shape
 
 ```
-on any write of a new session record for a worker flow (create route, action on a missing id, resolver):
-    name ← the create's worker (an app's createSession / ensureWorkerSession) or the dispatcher's (task, mailbox)
+birth(record, input), the one function every new record goes through; misses only:
+    name ← the create's worker (createSession / ensureWorkerSession / fsdev run --worker) or the dispatcher's (task, mailbox)
     refuse if no name                                                            ← no session without a worker
     w ← read name at the principal's scope, else the standard projection          ← the whole check
     refuse unless w, w.flow = this flow
     refuse if the id is a derived worker-session id that isn't this caller's
-    write the record insert-if-absent, workerId in its server-only field         ← once, never again
+    purge stale state; write the record insert-if-absent, workerId under the generic key   ← once
+    on a lost race: the route answers 409, the action path adopts the winner
 
 ensureWorkerSession(criteria):
-    s ← findWorkerSession(criteria); return s if found
-    create at derive(user, org, criteria); on 409 return the session at that id   ← racing calls, one session
+    s ← findWorkerSession(criteria); return s if found                   ← the most recent match
+    create via the route at derive(user, org, criteria); on 409 return the session at that id
 
 on every turn:
     refuse if the input carries worker
@@ -148,9 +149,10 @@ flows over 94 files, PASS, the control failing. No new premise needed a POC.
 
 - **The epic's Q1 is the list** (FIX-1789's gate). The `agent` flow is one entry of the
   installation's `workerFlows`.
-- S1's create check must run before `purgeStaleResourceState` and the insert-if-absent write in
-  `handleCreateSession`, and inside `ensureSessionRecord`'s create callers
-  (`createExecutionContext`, the webhook session resolver); grep for others before you start.
+- S1's birth function absorbs what `handleCreateSession` (`engine/src/routes/session-routes.ts`)
+  and `ensureSessionRecord` (`engine/src/context/ensure-session-record.ts`, exported) each do
+  today: `purgeStaleResourceState`, then the insert-if-absent write. Today's `build` callback is
+  synchronous and runs on a miss only; the async check sits on that same miss path.
 - FIX-1789 S6 may have moved the `agent` drawer to user scope; S7 keys it by worker on top.
 - S7: if the skills library can't take a per-run key without a `core` or `engine` change, stop
   and take it to the epic. The same for S8.
@@ -175,5 +177,6 @@ Recorded verbatim for the implementer to weigh against real code; not folded int
 ## Follow-ups
 
 - FIX-1798 removes collection cardinality and owner pins once P4 lands.
-- FIX-1794 adds `taskId` and FIX-1793 adds `workstreamId` to the helpers' criteria (S5a).
+- FIX-1794 adds `taskId`, FIX-1793 adds `workstreamId`, and FIX-1791 adds and names its
+  coordinator-conversation key to the helpers' criteria (S5a).
 - FIX-1791 writes a coordinator's delegates into S1's server-written state (BR-18a).
