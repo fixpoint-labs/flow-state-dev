@@ -26,7 +26,7 @@ what they saved before the upgrade comes back in one org at most.**
 | **The real need** | The PRD: "what a user keeps in one org never appears in another", for every flow, nothing deleted. The epic set "data stored before still reads" to "in one org at most, after an operator step" ([ER-3](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 | **Smaller, and rejected** | "The key carries the org." A one-line change that leaves a view, the schedule resolver or the test harness on the old cell |
 | **Bigger, and not this issue's** | Workers and private projects as user data (FIX-1788, FIX-1793). Removing owner pins (FIX-1798) |
-| **Not done if** | The check ran with one person or one org · only on a hired seat, whose cell already had the org · without a record from before the upgrade · without user state or a flow-isolated resource · the copy step was never walked on a real store |
+| **Not done if** | The check ran with one person or one org · only on a hired seat, whose cell already had the org · without a record from before the upgrade · without user state or a flow-isolated resource · the copy step's SQL was published for a store it was never walked on (SQLite and Postgres both) |
 
 ```mermaid
 flowchart LR
@@ -100,8 +100,9 @@ private rosters on a key that still crosses orgs somewhere.
    copies it; until then each person starts empty in each org.** If wrong: a deployment that
    skips the step shows everyone empty preferences and collections, with no error.
 2. **[D2](DECISIONS.md#d2) · The step copies a saved cell into an org only when every session that
-   could have written it names that org.** If wrong: a person who worked in two orgs gets their
-   shared data back in neither, until someone decides by hand.
+   could have written it names that org, and the operator vouches none was deleted.** If wrong: a
+   person who worked in two orgs, or whose sessions were deleted, gets their shared data back in
+   neither, until someone decides by hand.
 
 **Open: none.** D1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).

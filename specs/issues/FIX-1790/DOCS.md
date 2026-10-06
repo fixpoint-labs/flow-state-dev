@@ -150,8 +150,10 @@ guard's paragraph:
 >    FROM sessions GROUP BY user_id;
 >    ```
 >
->    For a flow-isolated cell, only that person's sessions on that flow. A session written before
->    sessions recorded `flow_id` belongs to the flow named by its `flow_kind`:
+>    For a flow-isolated cell, only that person's sessions on that flow. If a collection flow
+>    still has sessions with no `flow_id`, finish [Attributing owners, once](#who-owns-a-record)
+>    first; until you do, the person's isolated cells on that kind are a stop. After it, a
+>    session with no `flow_id` is an ordinary single flow's, named by its `flow_kind`:
 >
 >    ```sql
 >    SELECT user_id, COALESCE(flow_id, flow_kind) AS flow, COUNT(DISTINCT org_id) AS orgs,
@@ -159,9 +161,11 @@ guard's paragraph:
 >    FROM sessions GROUP BY user_id, COALESCE(flow_id, flow_kind);
 >    ```
 >
->    On Postgres, write `COUNT(*) FILTER (WHERE org_id IS NULL)` for `unknown`. A cell is
->    attributed when `orgs` is one, `unknown` is zero, and your own records don't place those
->    runs anywhere else. Anything else, including a person with no sessions left, is a
+>    On Postgres, write `COUNT(*) FILTER (WHERE org_id IS NULL)` for `unknown`. A deleted
+>    session leaves no row, so these counts only see the sessions you still have. A cell is
+>    attributed when `orgs` is one, `unknown` is zero, and you can vouch for the rest: no
+>    session of that person was ever deleted, or your own records never placed them in another
+>    organization. Anything else, including a person with no sessions left, is a
 >    `migration-required` stop for that cell: write it down and leave it.
 > 3. **Check the destination.** The same raw read at `<person>:~org:<organization>` (and the flow
 >    id after it, for an isolated cell). If any key is already there, stop for that person and
@@ -207,6 +211,6 @@ scheduled README's hand-written resolver matches the `scheduled.md` example abov
 
 ## Publication ownership
 
-FIX-1790 publishes all of the above after V7 has walked the step on a real SQLite file and VG has
-passed. The Workforce overview and glossary stay FIX-1796's; FIX-1788 owns the seat pages' move to
+FIX-1790 publishes all of the above after V7 has walked the step on a SQLite file and on Postgres,
+and VG has passed. Only statements V7 ran are published. The Workforce overview and glossary stay FIX-1796's; FIX-1788 owns the seat pages' move to
 workers, and builds on this section's cell.

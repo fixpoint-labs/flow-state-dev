@@ -42,15 +42,15 @@ It comes down to a person who worked in two orgs: a refusal locks them out of ev
 shipped copy command earns its place, still offline per person, still never a runtime read.
 
 <a name="d2"></a>
-## D2 · The step copies a saved cell to an org only when every session that could have written it names that org
+## D2 · The step copies a saved cell to an org only when every session that could have written it names that org, and the operator vouches none was deleted
 
 | | |
 |---|---|
 | **Instead of** | The operator's membership records alone · the person's most recent org · a copy into every org the person belongs to |
-| **Because** | A session is the one record in the store that says which org a run happened in, and it says so per flow. The person's shared cell and user record could have been written by any of their sessions; a flow-isolated cell only by their sessions on that flow, so a hired seat's private data keeps its one org when its person works in two. Membership says where a person is now, not where they wrote: Alice, in Acme until June and in Globex since, would have Acme's data copied into Globex. The most recent org is a guess, and every org is the leak ER-3 closes |
-| **Locks in** | A person whose sessions name two orgs gets their shared data back in neither: it stays put, named in the upgrade record, until someone decides by hand. A person whose sessions retention deleted stops the same way. A deployment that only ever ran in one org, which includes every development app on the default org, gets everything back |
+| **Because** | A session is the one record in the store that says which org a run happened in, and it says so per flow. The person's shared cell and user record could have been written by any of their sessions; a flow-isolated cell only by their sessions on that flow, so a hired seat's private data keeps its one org when its person works in two. Membership says where a person is now, not where they wrote: Alice, in Acme until June and in Globex since, would have Acme's data copied into Globex. The most recent org is a guess, and every org is the leak ER-3 closes. A deleted session leaves no trace in the store, so the sessions that remain are evidence only when none of that person's is missing: if Alice's Globex sessions were deleted, the rest name Acme alone and the step would copy Globex data into Acme |
+| **Locks in** | A person whose sessions name two orgs gets their shared data back in neither: it stays put, named in the upgrade record, until someone decides by hand. The step also needs the operator to vouch that none of the person's sessions was deleted, or that their own records never placed the person in another org; membership can veto a copy, never choose its org. Without that, and for a person with no sessions left, it stops the same way. A deployment that only ever ran in one org, which includes every development app on the default org, gets everything back |
 
-![D2, where the step copies a saved cell: the one org its writers' sessions name, chosen, beside membership records. Decides it: Alice, who moved from Acme to Globex, would have Acme's data copied into Globex by membership. Price: a person whose sessions retention deleted stops. Locks in: a two-org person's shared data returns nowhere until decided by hand](figures/d2-attribution.svg)
+![D2, where the step copies a saved cell: the one org its writers' sessions name, chosen, beside membership records. Decides it: Alice, who moved from Acme to Globex, would have Acme's data copied into Globex by membership. Price: a person with any deleted session stops unless the operator's records clear every other org. Locks in: a two-org person's shared data returns nowhere until decided by hand](figures/d2-attribution.svg)
 
 It comes down to a person who changed orgs: membership copies the old org's data into the new one.
 
@@ -69,7 +69,10 @@ in. That record attributes a cell more finely than sessions do, and the step sho
 - **A missing or blank org throws.** No path builds the cross-org key (ER-13).
 - **Flow-isolated keys gain the org too.**
 - **A schedule's dispatch names the org**, and the row must name the same one: the id selects a
-  cell and grants nothing.
+  cell and grants nothing. It has to be in the id, not only on the index row: every producer,
+  the Vercel tick and BullMQ included, reaches the resolver through the one dispatch id, and
+  Alice can hold a schedule `daily` in Acme and in Globex. A two-part id names neither, and
+  finding it from the index would be a read across orgs.
 - **The harness seeds through the engine's derivation**, with the run's org.
 - **The step is a documented procedure per adapter**, not a command, and **the original cells
   stay**; removing them after read-back is the operator's call.
@@ -100,5 +103,9 @@ in. That record attributes a cell more finely than sessions do, and the step sho
 - **Draft** — framed as ER-3's attribution question; one (person, org) cell for every flow,
   reusing the seat's shape, with the org from the run or the stored session; old cells inert by
   construction and copied by a documented operator step that attributes per writing flow; one PR.
+- **Review round 1** — D2 now needs the operator to vouch that no session is missing, because a
+  deleted session leaves no trace and the ones left could name one org while the deleted ones
+  named another (Codex). The step's SQL is walked on Postgres as well as SQLite before it is
+  published (second look).
 
 **Open: none.**
