@@ -167,6 +167,10 @@ engine rule. The closure only checks.
 - **Private projects are proved if they are built.** If Q2 holds, leg b makes one and Bob can't
   reach it; otherwise ER-7's private half would ship unchecked. From review (Jake, Cursor).
 - **ER-14 forbids a second registry of workers**, not Q1's list of worker flows. From review.
+- **A worker names the flow that runs it.** An installation has many worker flows (the built-in
+  agent, the coordinator, the app's own), each one singleton copy that every worker naming it
+  shares. Making flows singletons doesn't put every worker on `agent` ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+  From review (Jake); the concept and its workers figure now say so.
 - **Shift Manager lives at `packages/shift-manager`.** #2759 (FIX-1770) moves it there and lands
   first among the merge-first rows; PRs that edit the lab rebase after it.
 - **Checked against `main` at `74f9a4f68`:** a project room and the mailbox boards are as
@@ -205,5 +209,7 @@ engine rule. The closure only checks.
   closure gained an early leg-c run at FIX-1788's merge (ER-30) and a private-project step if Q2
   holds; ER-14 names what it forbids. Issue-level notes went to the children, and FIX-1798 was
   filed outside the epic to remove flow instances and owner pins after FIX-1788 (ER-20).
+- **A correction from review (Oct 6)**: the concept, the box and ER-1 now say each worker names its own
+  flow, after Jake read the PRD as putting every worker on one flow. No decision moved.
 
 **Open: Q1.**

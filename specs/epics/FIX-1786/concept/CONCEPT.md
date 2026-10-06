@@ -1,7 +1,9 @@
 <!-- Source: the Linear document "Workforce: How It Should Work (concept doc)" attached to FIX-1786,
      https://linear.app/fixpoint-labs/document/workforce-how-it-should-work-concept-doc-167e8bbc8b1b ,
-     fetched 2026-10-06 (updated 2026-10-06T01:12Z). Text verbatim; its six snapshot images are redrawn
-     as SVGs in ../figures/concept-*.svg. Edit the source, not this copy. -->
+     fetched 2026-10-06 (updated 2026-10-06T01:12Z). Text verbatim except where review amended it: on
+     2026-10-06 Jake asked that it say plainly that each worker names its own flow (the roster, Workers,
+     Worker flows, the Flow and Worker terms, and the gap table's flow rows). Its six snapshot images are
+     redrawn as SVGs in ../figures/concept-*.svg. This copy is canonical now; edit it, not the source. -->
 
 # Workforce: How It Should Work
 
@@ -42,7 +44,7 @@ Alice and Bob each have a researcher from the standard install, and they are two
 Each part uses only the ones above it.
 
 1. **You.** A user, signed in, always inside one org.
-2. **Your roster.** The workers you've added. They work only for you and act as you. Some run on a special flow, such as a coordinator that hands work to other workers.
+2. **Your roster.** The workers you've added. They work only for you and act as you. Each one names the flow that runs it: the built-in agent, a coordinator that hands work to other workers, or a flow your app wrote.
 3. **Your private projects.** Your own work, split into workstreams and tasks your workers pick up.
 4. **Channels.** Shared conversations where users, and the workers acting for them, talk in the open. A later feature.
 5. **Shared projects.** Shared work, split into workstreams. Each workstream has one owner, whose roster does it.
@@ -51,22 +53,23 @@ Each part uses only the ones above it.
 
 **A worker is what might typically be referred to as an agent.** We call them workers because they might be a deterministic workflow, not a non-deterministically shaped flow which has its own true agency. A worker is backed up by a flow that controls how it runs, and is configured using a user-scoped resource. It names the flow that runs it and carries its own settings, such as instructions, tools and which memory it keeps. The resource belongs to one user.
 
-**The flow is a singleton.** There is one registered copy of each flow, such as `agent`, and it's the same for every worker. All of a flow's behavior lives there, including how it handles memory.
+**Each worker picks its flow, and each flow is a singleton.** An installation has many worker flows, and a worker's configuration names the one it runs on: `flow:` in its `WORKER.md`, or the same field on its resource. There is one registered copy of each flow, such as `agent` or the coordinator, and every worker that names it shares that copy. All of a flow's behavior lives there, including how it handles memory.
 
 **A session is where a worker works.** Each session records which worker it belongs to and loads that worker's configuration when it runs. The server sets that link when the session is created, from a worker the user can read. A caller can never supply or change it.
 
 ![Workers, their flow and their sessions](../figures/concept-2-workers-flow-sessions.svg)
 
-Alice's two workers are resources she owns, both run by the one `agent` flow. Bob's researcher runs on the same flow but is a different worker. Alice's writer was copied from a library template.
+Alice's three workers are resources she owns. Her researcher and writer each name the `agent` flow and share its one copy; her launch coordinator names the coordinator flow. Bob's researcher names `agent` too: the same flow, a different worker. Alice's writer was copied from a library template.
 
 ### Worker flows
 
-You learn one thing, a worker, and then a few special flows that work in a particular way.
+You learn one thing, a worker, and then the flows a worker can name. Two come built in, and an app adds its own.
 
 | Flow | What it does |
 | -- | -- |
-| Agent | Does open-ended work itself. The default |
+| Agent | Does open-ended work itself. The default when a worker names none |
 | Coordinator | Takes in work or messages and hands them to other workers, through its board or by a routing policy |
+| The app's own | Whatever the app wrote and registered as a worker flow, such as a coder that drives a harness or a triage step that's a fixed workflow |
 
 A coordinator can route by judgment, or by a fixed policy: best fit, round robin, or everyone answers. A coordinator with a fixed policy is what we used to call a mailbox. Someone has to be responsible for an inbox, and a coordinator is that someone.
 
@@ -381,8 +384,8 @@ One term, one thing. Retired: person (say user), seat, hired seat, hired roster 
 | User | A person, signed in. The framework has no system users |  |
 | Org | The boundary every user and resource sits inside |  |
 | Session | One private conversation or piece of work. It may be long-lived | Private |
-| Flow | The code that runs a worker. One registered copy of each, used by all its workers. A WORKER.md names it with flow: | Installation-level |
-| Worker | What's often called an agent: a configuration with an owner, run by a flow | Private |
+| Flow | The code that runs a worker. An installation has several, and each worker names one: a WORKER.md with flow:. One registered copy of each, shared by every worker that names it | Installation-level |
+| Worker | What's often called an agent: a configuration with an owner, run by the flow it names | Private |
 | Coordinator | A worker flow that hands work or messages to other workers, by judgment or by a fixed routing policy | Private |
 | Standard worker | A worker every user has, read from the installation's files | Private sessions, same configuration for all |
 | Non-standard worker | A worker a user hired, forked or copied, stored as a user-scoped resource | Private |
@@ -413,7 +416,7 @@ These terms are in today's code and docs, and go away in the refactor. Counts ar
 | Mailbox, `MAILBOX.md` | Coordinator | `mailboxFlow`, `openMailboxes`, `mailboxBoard`, `wakeMemberSeats`, the mailbox binder | 59 / 43 / 81 |
 | Mailbox member, mailbox thread | Delegate, and the delegate's session | `members:` in `MAILBOX.md`, a woken worker's `mailbox:<id>` session | counted with mailbox |
 | Room, talk session | The project coordinator. A conversation shared between members waits for channels | `projects/talk.ts`, `room-lines`, the talk template | 18 / 29 / 13 |
-| Flow instance, as a worker | Worker resource on a singleton flow | `cardinality: "collection"` | 4 / 13 / 3 |
+| Flow instance, as a worker | Worker resource, run by the singleton flow it names | `cardinality: "collection"` | 4 / 13 / 3 |
 | Owner pin | Access to the worker resource | `ownerPin`, `register(flow, { pin })` | 30 / 11 / 6 |
 | Hired roster | Roster: the user's hired workers, as worker resources | `defineHiredRosterCollection`, `workforce/roster/*` | 10 / 9 / 12 |
 | Workstream, meaning a mailbox on a project | Workstream, as its own resource | the project row's `workstreams`, `setWorkstreams`, `workstream-claims/*` | 4 / 2 / 0 |
@@ -451,7 +454,7 @@ These terms are in today's code and docs, and go away in the refactor. Counts ar
 | Target | Today |
 | -- | -- |
 | A worker is a resource, and sessions load its configuration | Each worker is a flow instance with its configuration in code, rebuilt at every start from roster rows |
-| Every flow is a singleton | The `agent` flow is the only one with many instances (`cardinality: "collection"`) |
+| Every flow is a singleton, and a worker names the one it runs on | A worker already names its flow, but each hire mints its own copy of that flow, registered under the worker's id (`hire.ts`). The `agent` flow does it as one kind with many instances (`cardinality: "collection"`) |
 | Access to a worker is access to its resource | Instances carry pins, and only Workforce uses them |
 | A worker contract decides which flows can run workers | Mostly there: a hireable flow's config schema accepts `workerConfigSchema()`, its door is found from its actions, and the flows passed to the hire are the allowlist. No standard-only flag, and no private-state rule |
 | Standard workers are a projected collection read from files | `WORKER.md` files become flow instances. Projected collections exist (`defineProjectedResourceCollection`), read-only |

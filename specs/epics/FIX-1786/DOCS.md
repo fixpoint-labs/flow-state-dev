@@ -19,8 +19,9 @@ what Workforce does, never what it used to do. Each child's own `DOCS.md` carrie
 > shared, and each line written there names the user and the worker that wrote it.
 >
 > A **worker** is a configuration with an owner: its instructions, skills, tools, and the
-> flow that runs it. The flow is registered once, and every worker on it shares that one
-> copy. Each piece of work gets its own session: one per conversation, one per task, and one
+> flow that runs it. Each worker names its own flow: the built-in agent, a coordinator, or a
+> flow your app registers. A flow is registered once, and every worker that names it shares
+> that copy. Each piece of work gets its own session: one per conversation, one per task, and one
 > lasting session for a workstream it leads.
 >
 > Some workers are **standard**. Your installation's files define them, every user has them,
