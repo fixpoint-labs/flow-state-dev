@@ -1,0 +1,84 @@
+<svg viewBox="0 0 940 500" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels, today and after, in the same five cases. Today a mailbox is its own flow, one session no worker owns, and the members it hands posts to are fixed when it opens and matched by name against the org's hires. After, a coordinator is a worker on the user's roster, run by the coordinator flow, and each conversation keeps its own delegates in server-owned state, copied from its defaults and checked against the user's roster live. Case by case: who hears a post goes from members fixed at open to delegates changed in the app or by the coordinator's own tool; how a post is placed goes from best fit or everyone to judgment, best fit, round robin or everyone; another user's worker goes from matched by name with a pin deciding to refused by one check on both paths; an answer goes from waking nobody to going back out within a round limit; a post delivered twice goes from one answer per routed post to one answer per delegate per round.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-old { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-new { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="500"/>
+  <g id="panels">
+    <rect class="panel" x="16" y="14" width="446" height="176" rx="6"/>
+    <rect class="panel" x="478" y="14" width="446" height="176" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY</text>
+    <text class="t-lbl" x="494" y="34">AFTER</text>
+  </g>
+  <g id="today-path">
+    <rect class="n-box" x="32" y="46" width="414" height="50" rx="5"/>
+    <text class="t-h" x="48" y="67">A mailbox · its own flow</text>
+    <text class="t-s" x="48" y="85">one session no worker owns</text>
+    <path class="arrow" d="M239 96 L239 118"/>
+    <path class="head" d="M234 114 L239 122 L244 114 Z"/>
+    <rect class="n-box" x="32" y="124" width="414" height="50" rx="5"/>
+    <text class="t-h" x="48" y="145">The members it opened with</text>
+    <text class="t-s" x="48" y="163">matched by name against the org's hires</text>
+  </g>
+  <g id="after-path">
+    <rect class="n-new" x="494" y="46" width="414" height="50" rx="5"/>
+    <text class="t-h" x="510" y="67">A coordinator · a worker on your roster</text>
+    <text class="t-s" x="510" y="85">run by the coordinator flow</text>
+    <path class="arrow" d="M701 96 L701 118"/>
+    <path class="head" d="M696 114 L701 122 L706 114 Z"/>
+    <rect class="n-new" x="494" y="124" width="414" height="50" rx="5"/>
+    <text class="t-h" x="510" y="145">This conversation's delegates</text>
+    <text class="t-s" x="510" y="163">server-owned, from its defaults, checked live</text>
+  </g>
+  <g id="case-1">
+    <text class="t-lbl" x="32" y="216">WHO HEARS A POST</text>
+    <text class="t-old" x="32" y="236">Members fixed when it opens</text>
+    <text class="t-new" x="494" y="236">Delegates changed in the app or by its tool</text>
+    <line class="row" x1="16" y1="250" x2="924" y2="250"/>
+  </g>
+  <g id="case-2">
+    <text class="t-lbl" x="32" y="270">HOW A POST IS PLACED</text>
+    <text class="t-old" x="32" y="290">Best fit, or everyone</text>
+    <text class="t-new" x="494" y="290">Judgment, best fit, round robin or everyone</text>
+    <line class="row" x1="16" y1="304" x2="924" y2="304"/>
+  </g>
+  <g id="case-3">
+    <text class="t-lbl" x="32" y="324">ANOTHER USER'S WORKER</text>
+    <text class="t-old" x="32" y="344">Matched by name; a pin decides</text>
+    <text class="t-new" x="494" y="344">Refused by one check, on both paths</text>
+    <line class="row" x1="16" y1="358" x2="924" y2="358"/>
+  </g>
+  <g id="case-4">
+    <text class="t-lbl" x="32" y="378">A DELEGATE'S ANSWER</text>
+    <text class="t-old" x="32" y="398">Wakes nobody, ever</text>
+    <text class="t-new" x="494" y="398">Goes back out within a round limit, zero by default</text>
+    <line class="row" x1="16" y1="412" x2="924" y2="412"/>
+  </g>
+  <g id="case-5">
+    <text class="t-lbl" x="32" y="432">A POST DELIVERED TWICE</text>
+    <text class="t-old" x="32" y="452">One answer per routed post</text>
+    <text class="t-new" x="494" y="452">One answer per delegate per round</text>
+    <line class="row" x1="16" y1="466" x2="924" y2="466"/>
+  </g>
+  <g id="record">
+    <text class="t-s" x="494" y="488">every decision leaves one coordinator-route record</text>
+  </g>
+</svg>
