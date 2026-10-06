@@ -32,7 +32,7 @@ work.
 | BR-13a | Two `ensureWorkerSession` calls with the same criteria race | One session is created and both return it. Two plain creates make two sessions, each checked | CI |
 | BR-13b | A create uses a derived worker-session id that belongs to another user | Refused. Nobody can take Alice's id before her first `ensureWorkerSession` | CI |
 | BR-14 | A session on a worker flow is created with no worker, by the create, by an action on a session id that doesn't exist, or by `fsdev run` without `--worker` | Refused at the door, saying a worker must be named. No session written | CI · VG leg b |
-| BR-14a | Alice calls `findWorkerSession({ worker })`, or lists with a `worker` filter | Her sessions linked to that worker, most recent first for the helper; none if there are none. Never another user's | CI · VG leg b |
+| BR-14a | Alice calls `findWorkerSession({ worker })`, or lists with a `worker` filter | Her sessions linked to that worker, most recent first for the helper; none if there are none. Never another user's. The helper matches on the key set (S5a): it returns only sessions that carry no criteria key it did not name, so plain talk never lands in a delegate, task or workstream session. The list filter is not narrowed | CI · VG leg b |
 | BR-15 | A session is created with caller state for the link or a server-written field | Refused with 400, naming the field. Nothing written | CI · VG control `caller-link` |
 | BR-16 | A session is deleted and its id created again | The new session's link is what its own create named and passed. Nothing carries over | CI |
 | BR-17 | Bob opens, reads or sends to a session of Alice's | Refused, as today (engine ownership) | Existing suite · VG leg b |

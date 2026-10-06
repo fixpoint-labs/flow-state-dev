@@ -25,3 +25,11 @@ Forward lineage: the criteria object of `findWorkerSession` and `ensureWorkerSes
 is extended later by FIX-1794 (`taskId`), FIX-1793 (`workstreamId`) and FIX-1791 (the
 coordinator conversation a delegate's session belongs to; FIX-1791 names the key). Each later key
 is added to the same lookup path, not to a second helper.
+
+Amended after merge (epic amendment #2831): the lookup matches on the key set, not only on
+values (S5a, BR-14a, V4). Without it, a narrower lookup returned a wider session: plain talk
+landed in a delegate or task session, and a delegate post in a task session (FIX-1794's spec
+review, round 2). The rule lives here once, so FIX-1791, FIX-1793 and FIX-1794 cite it. It is
+the session layer of the same isolation the epic's D6 gives the task ledger: D6 keeps one
+conversation's rows from another's board, and this keeps one purpose's session from another's
+lookup.
