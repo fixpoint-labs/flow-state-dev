@@ -1,0 +1,124 @@
+<svg viewBox="0 0 940 500" role="img" aria-label="What changes, in two panels. Today, inside the org: one project row, apollo, lists its members and the mailbox ids of its workstreams, and claim rows tie each mailbox to the project. The mailboxes' boards are org rows. The project's room keeps lines, answers, deliveries and a counter, and Alice and Bob each reach it through a talk session of their own. Any member can rewrite the row's workstreams, the room is one conversation for every member, and no project can be private. After: inside the org, the shared project apollo keeps its members and holds no workstreams; each workstream is its own entry keyed by its owner, Alice's checkout and Bob's release, and the org reads every entry while only its owner writes it. Old room rows stay in the store, unread. In Alice's own user scope sit her private project and her sessions: her project coordinator reads every entry in apollo and hands work only to her own workstream session, whose lead writes her entry as Alice."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F3E3E1; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A2321; } }
+    .bg     { fill:var(--surface); }
+    .panel  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .fence  { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 4; }
+    .box    { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .gone   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .coord  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .line   { stroke:var(--ink-2); stroke-width:1.3; fill:none; }
+    .line-a { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .line-r { stroke:var(--accent); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+    .head   { fill:var(--ink-2); }
+    .head-a { fill:var(--accent); }
+    .t-pan  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; letter-spacing:.12em; font-weight:600; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-e    { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:10px; font-style:italic; }
+    .t-minus{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-plus { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="500"/>
+
+  <!-- TODAY -->
+  <g id="today">
+    <text class="t-pan" x="24" y="28">TODAY</text>
+    <rect class="panel" x="16" y="38" width="446" height="450" rx="6"/>
+    <rect class="fence" x="32" y="54" width="414" height="318" rx="6"/>
+    <text class="t-lbl" x="44" y="72">THE ORG · EVERY MEMBER</text>
+
+    <rect class="box" x="48" y="82" width="382" height="50" rx="4"/>
+    <text class="t-h" x="60" y="102">projects/apollo</text>
+    <text class="t-s" x="60" y="120">members alice, bob · workstreams eng.checkout, ops.release</text>
+
+    <rect class="box" x="48" y="144" width="182" height="50" rx="4"/>
+    <text class="t-h" x="60" y="164">workstream claims</text>
+    <text class="t-s" x="60" y="182">a mailbox in one project</text>
+    <rect class="box" x="248" y="144" width="182" height="50" rx="4"/>
+    <text class="t-h" x="260" y="164">mailboxes, their boards</text>
+    <text class="t-s" x="260" y="182">org rows; no owner</text>
+
+    <rect class="gone" x="48" y="208" width="382" height="54" rx="4"/>
+    <text class="t-h" x="60" y="229">the project's room</text>
+    <text class="t-s" x="60" y="248">lines · answers · deliveries · a counter, read by members</text>
+
+    <rect class="box" x="48" y="304" width="182" height="50" rx="4"/>
+    <text class="t-h" x="60" y="324">Alice's talk session</text>
+    <text class="t-s" x="60" y="342">hers; reaches the room</text>
+    <rect class="box" x="248" y="304" width="182" height="50" rx="4"/>
+    <text class="t-h" x="260" y="324">Bob's talk session</text>
+    <text class="t-s" x="260" y="342">his; reaches the room</text>
+    <line class="line" x1="139" y1="304" x2="139" y2="270"/>
+    <polygon class="head" points="134,271 139,262 144,271"/>
+    <line class="line" x1="339" y1="304" x2="339" y2="270"/>
+    <polygon class="head" points="334,271 339,262 344,271"/>
+
+    <text class="t-minus" x="40" y="400">−  any member rewrites which workstreams a project holds</text>
+    <text class="t-minus" x="40" y="424">−  one room for every member; posts wake shared workers</text>
+    <text class="t-minus" x="40" y="448">−  no project can be private</text>
+  </g>
+
+  <!-- AFTER -->
+  <g id="after">
+    <text class="t-pan" x="486" y="28">AFTER</text>
+    <rect class="panel" x="478" y="38" width="446" height="450" rx="6"/>
+    <rect class="fence" x="494" y="54" width="414" height="186" rx="6"/>
+    <text class="t-lbl" x="506" y="72">THE ORG · A SHARED PROJECT</text>
+
+    <rect class="box" x="510" y="82" width="382" height="44" rx="4"/>
+    <text class="t-h" x="522" y="100">projects/apollo · shared</text>
+    <text class="t-s" x="522" y="117">members alice, bob · the row holds no workstreams</text>
+
+    <rect class="new" x="510" y="138" width="186" height="56" rx="4"/>
+    <text class="t-h" x="522" y="157">Alice's checkout entry</text>
+    <text class="t-s" x="522" y="173">workstreams/apollo/~alice/…</text>
+    <text class="t-s" x="522" y="187">the org reads · Alice writes</text>
+    <rect class="new" x="706" y="138" width="186" height="56" rx="4"/>
+    <text class="t-h" x="718" y="157">Bob's release entry</text>
+    <text class="t-s" x="718" y="173">workstreams/apollo/~bob/…</text>
+    <text class="t-s" x="718" y="187">the org reads · Bob writes</text>
+
+    <text class="t-e" x="712" y="214">progress: worked out from the entries</text>
+    <text class="t-e" x="712" y="230">old room rows: kept, unread</text>
+
+    <rect class="fence" x="494" y="256" width="414" height="168" rx="6"/>
+    <text class="t-lbl" x="506" y="274">ALICE ALONE · HER USER SCOPE AND HER SESSIONS</text>
+
+    <rect class="box" x="510" y="284" width="130" height="44" rx="4"/>
+    <text class="t-h" x="520" y="302">projects/notes</text>
+    <text class="t-s" x="520" y="319">private · hers alone</text>
+
+    <rect class="coord" x="510" y="350" width="170" height="56" rx="4"/>
+    <text class="t-h" x="520" y="370">project coordinator</text>
+    <text class="t-s" x="520" y="386">Alice's, for this project</text>
+    <text class="t-s" x="520" y="399">hands work only to hers</text>
+    <rect class="box" x="716" y="350" width="176" height="56" rx="4"/>
+    <text class="t-h" x="728" y="370">workstream session</text>
+    <text class="t-s" x="728" y="386">her lead and its board</text>
+    <text class="t-s" x="728" y="399">runs as Alice</text>
+
+    <line class="line-a" x1="680" y1="378" x2="707" y2="378"/>
+    <polygon class="head-a" points="707,373 716,378 707,383"/>
+    <text class="t-s" x="672" y="420">hands work</text>
+
+    <line class="line-r" x1="660" y1="350" x2="660" y2="249"/>
+    <polygon class="head-a" points="655,250 660,241 665,250"/>
+    <text class="t-s" x="560" y="342">reads every entry</text>
+    <line class="line" x1="800" y1="350" x2="633" y2="203"/>
+    <polygon class="head" points="632,210 627,197 640,201"/>
+    <text class="t-s" x="770" y="300">writes as Alice</text>
+
+    <text class="t-plus" x="502" y="448">+  each entry has one writer, enforced at the store</text>
+    <text class="t-plus" x="502" y="472">+  work reaches only the asker's own workstreams</text>
+  </g>
+</svg>

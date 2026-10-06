@@ -1,0 +1,82 @@
+# FIX-1793 · Business rules
+
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
+
+The cases, written as rules. *Proved by* names the kind of check; [PLAN.md](PLAN.md#checks) maps
+each to its run. A refusal writes nothing and names its reason.
+
+## Private and shared projects
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-1 | Alice creates a project with `visibility: "private"` | It is hers in this org: Bob can't list, open or read it, by the app, a worker's tool or the resource route; Alice in her second org doesn't see it | CI · VG leg a |
+| BR-2 | A create names no visibility | A shared project, as today | CI |
+| BR-3 | A private create lists other members | Refused, `private-has-members` | CI |
+| BR-4 | Alice has a private `apollo` and the org a shared one | Both exist; each is addressed by its visibility and id | CI |
+| BR-5 | A project row written before this is read | A shared project. Its members, repository and files read as before (BP-030) | CI, on a row today's `main` wrote |
+| BR-6 | Anyone in the org reads a shared project | They see its row, its repository included. A private project's row, repository and files are its owner's alone | CI |
+
+## Workstreams and the owner rule
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-7 | A member opens a workstream on a shared project, naming a lead on their own roster | An entry keyed to them, and the lead's workstream session, theirs, linked to the workstream when it is created. The entry names the session | CI · VG leg b |
+| BR-8 | Someone not a member opens one on a shared project | Refused, `not-a-member` ([Q2](DECISIONS.md#q2)'s answer sets who) | CI |
+| BR-9 | The owner opens one on their private project | As BR-7, in their user scope | CI |
+| BR-10 | The lead named is another user's worker, or no worker | Refused like a missing worker (FIX-1788's check) | CI |
+| BR-11 | Bob writes Alice's entry by any path: the app's action, a worker's tool, flow code writing the collection, a create under her key, a delete | Refused loudly, naming the owner rule. Nothing changes | CI at the engine · VG leg b |
+| BR-12 | Bob reads Alice's entry in a shared project | Allowed: title, owner, lead, status, due date, objectives, report. Never her workstream session, its board or its tasks | CI · VG leg b |
+| BR-13 | A flow declares a collection whose pattern reaches the entries | The app refuses to start, naming both | CI |
+| BR-14 | One owner opens the same workstream id twice at once | One entry, one session | CI |
+| BR-15 | A workstream id is empty or holds `/` | Refused. A project's listing takes its direct entries only | CI |
+| BR-16 | The lead updates the entry from its workstream session | It lands, as the owner; the server sets when | CI |
+| BR-17 | The owner marks a workstream done | It stays listed, as done. Nothing deletes an entry | CI |
+
+## Progress
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-18 | A project view opens | Progress is computed from the entries in one read: workstreams by status, objectives met of total, the next due date, stale entries. Nothing is stored on the row | CI · VG leg b |
+| BR-19 | An entry hasn't changed for seven days | It shows as stale | CI |
+| BR-20 | Two owners update their entries at once | Both land; neither waits on the other | CI |
+
+## The project coordinator
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-21 | Alice opens a project's coordinator | Her own session, created the first time and found after: one per user per project | CI · VG leg c |
+| BR-22 | Bob opens the same project's coordinator | His own session. He never reaches Alice's | CI |
+| BR-23 | A session create names a project its user can't read, or carries the link in its state | Refused | CI |
+| BR-24 | Alice asks about the project | The coordinator reads every entry, Bob's included, and answers from them | VG leg c |
+| BR-25 | Alice asks for work | It goes only to a lead of a workstream she owns here, delivered into that workstream session, once (FIX-1791) | VG leg c |
+| BR-26 | The coordinator picks Bob's workstream | Refused like a missing delegate, and recorded | CI · VG under its control |
+| BR-27 | Alice owns no workstream in the project | It answers from the entries and says it has nobody to hand work to. Nothing is opened for her | CI |
+| BR-28 | A coordinator turn finishes in Shift Manager | The Lab is read again, so a project or workstream it made shows. No tool name is special-cased | CI |
+
+## Rooms removed, and what stays
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-29 | A client calls `join`, or posts, reads or answers on a session that was a project's talk session | Refused, naming that rooms were removed. No room collection is read or written, and the session isn't treated as a mailbox | CI · VG leg d |
+| BR-30 | A store holds room lines, answers, deliveries and counters | Every row is still there, unchanged | VG leg d |
+| BR-31 | A `MAILBOX.md` carries `mintFor:`, or an app passes `talk` to the projects collection | Refused at load, naming the key and that rooms were removed | CI |
+| BR-32 | A row lists mailboxes, and claims hold them | They still group under the project and place their boards' coding runs, until FIX-1792. No new feature writes them | CI |
+
+## Coding runs
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-33 | A coding run works for a workstream | Its project's repository or files, by visibility: a private project's files are in its owner's user scope. FIX-1762's locks unchanged | CI |
+| BR-34 | The run's owner is not the workstream's owner | Refused, `not-the-owner` | CI |
+
+## Failure taxonomy
+
+Every refusal is fatal to its write and names its reason: `private-has-members`,
+`not-a-member`, `no-such-project`, a missing worker, `not-the-owner`, the engine's owner-rule
+error, and a removed key at load. A lost compare-and-swap is retried, as the row writes are
+today. Nothing is ignored silently, and nothing stored is deleted.
+
+## Acceptance criteria this issue owns
+
+[The goal](SPEC.md#the-goal-and-how-well-know-its-met): legs a to d pass on a real model with
+two users, and leg b fails under `no-owner-rule` and leg c under `all-entries-delegate`.
