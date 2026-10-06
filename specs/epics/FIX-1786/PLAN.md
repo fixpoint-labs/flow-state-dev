@@ -23,11 +23,11 @@ builds after the MVP (Q2). The privacy fix is checked when workers merges, not o
 | **FIX-1789** contract | spec → impl PR | `workerConfigSchema()`, the door · Q1, decided at its spec gate on its POC of both shapes: the list | Worker flows on the installation's list, checked at registration by exported checks (configuration by value, a door, a full `writtenBy` shape); standard-only per entry, attribution; a worker's configuration as stored data read per run (ER-2, ER-11) | FIX-1788 | Small, plus the two-shape POC |
 | **FIX-1790** per-org data | spec → impl PR | The engine's user key | User data per (user, org); old records moved to the one org they belong to by an operator step, or refused, never read in two (ER-3) | FIX-1788 | Medium: a persisted key every flow uses, and its migration |
 | **FIX-1788** workers | spec → impl PRs | ER-2 · ER-3 · projected collections · Q1's list | Worker resources on singleton flows, standard projection, fork, deprecations; the session link, set and checked at create where only the server writes (D3's third change); a worker's own key for its private state, with today's per-worker cells moved (ER-1) | FIX-1791 · FIX-1795 | Large |
-| **FIX-1791** coordinator | spec → impl PRs | ER-1 · FIX-1779's join and leave · FIX-1774's legs · Q1's list | The coordinator flow, delegates, four policies, the records (ER-4, ER-5); the chief of staff as a standard coordinator | FIX-1793 · FIX-1794 · FIX-1792 | Medium to large |
+| **FIX-1791** coordinator | spec → impl PRs | ER-1 · FIX-1779's join and leave · FIX-1774's legs a to c · Q1's list | The coordinator flow, delegates, four policies, the records (ER-4, ER-5); the chief of staff as a standard coordinator | FIX-1793 · FIX-1794 · FIX-1792 | Medium to large |
 | **FIX-1795** library | spec now → impl PR after the MVP | ER-1's write path | Templates and copies, model variants (ER-10) | Nothing in the MVP; it builds once the closure run passes | Medium |
-| **FIX-1793** projects | spec → impl PRs | ER-4 · ER-3 · FIX-1762's locks · Q2 | Private and shared projects (Q2); workstream resources, the row rule, the project coordinator; rooms and Shift Manager's Stream tab removed (ER-7, ER-8) | FIX-1792 | Large: about 2,200 lines out, one engine rule in |
-| **FIX-1794** chain | spec → impl PR | ER-4's delegates · FIX-1778 · FIX-1780's hand-off rule · FIX-1777's rule | Tasks down the owner's boards, drained as the owner; a board whose rows cross a flow stays its own board, never one ledger for the owner's sessions (ER-9) | FIX-1796 | Medium; larger if that needs a task-board change |
-| **FIX-1792** `WORKER.md` | spec → impl PR | ER-4 · ER-7 · D5 | 33 files converted, 15 boards resolved, old files refused (ER-6) | FIX-1796 | Medium |
+| **FIX-1793** projects | spec → impl PRs | ER-4 · ER-3 · FIX-1762's locks · Q2 · FIX-1774's leg d | Private and shared projects (Q2); workstream resources, the row rule, the project coordinator; rooms and Shift Manager's Stream tab removed (ER-7, ER-8) | FIX-1792 | Large: about 2,200 lines out, one engine rule in |
+| **FIX-1794** chain | spec → impl PR | ER-4's delegates · FIX-1778 · FIX-1780's hand-off rule and follow-through · FIX-1777's rule · FIX-1774's leg e | Tasks filed for delegates down the owner's boards, drained as the owner and followed through, so a coordinator files tasks only from here; a board whose rows cross a flow stays its own board, never one ledger for the owner's sessions (ER-9) | FIX-1796 | Medium; larger if that needs a task-board change |
+| **FIX-1792** `WORKER.md` | spec → impl PR | ER-4 · ER-7 · D5 | 33 files converted, 15 boards resolved, old files refused (ER-6); project claims and a project row's mailbox list removed, which FIX-1793 leaves deprecated | FIX-1796 | Medium |
 | **FIX-1796** terms | spec → impl PRs | Every child merged except FIX-1795, which is new code in the new terms (ER-25) | The sweep and the glossary (ER-12) | The closure run | Medium, wide and mechanical |
 | **FIX-1797** closure · required | spec (the QA plan) → runs until clean → PR | Every other child except FIX-1795, on one `main` commit (ER-27) | The committed checks, an early leg-c run when FIX-1788 merges (ER-30), a QA report, a bug child per failure | The wrap | Medium, repeats per retest |
 
@@ -55,11 +55,9 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
    fresh `main` commit once they merge (ER-27).
 7. **A run passes: the MVP** → FIX-1795 builds, on the spec approved at its own gate. Its tests
    prove ER-10; the closure's run never checked it.
-8. **FIX-1793's spec gate asks two things of Q2.** If private projects cost the MVP much more
-   than a scope configuration, dropping them is an amendment here that takes out leg b's
-   private-project step with them. And whether the shared half stays in the MVP: no is an
-   amendment to the goal that takes leg b's two-owner half with it. The library's half is
-   answered: it follows the MVP (step 7). Nothing re-sequences.
+8. **FIX-1793's spec gate answered what Q2 asked of it.** Private projects cost a scope
+   configuration, and the shared half stays in the MVP, so leg b keeps its private-project step
+   and its two-owner half. The library's half follows the MVP (step 7). Nothing re-sequences.
 
 ## Coordination seams to watch
 
@@ -71,7 +69,7 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
 | The user scope key | FIX-1790, FIX-1788, FIX-1793 | FIX-1790 merges first; nothing user-scoped ships before it |
 | A board whose rows cross a flow | FIX-1794, FIX-1791, FIX-1792, FIX-1793 | FIX-1794 decides how it stays its own board (ER-9); the others build their boards on that answer |
 | Session data only the server writes | FIX-1788, FIX-1791 | FIX-1788 lands it with the link, set at create; the coordinator keeps its delegates where only the server writes |
-| The mailbox flow and its files | FIX-1791, FIX-1792 | FIX-1791 ships the coordinator beside the mailbox flow; FIX-1792 converts every file and removes the mailbox flow in one change |
+| The mailbox flow, its files and project claims | FIX-1791, FIX-1793, FIX-1792 | FIX-1791 ships the coordinator beside the mailbox flow, and FIX-1793 leaves project claims and a project row's mailbox list deprecated; FIX-1792 converts every file and removes the mailbox flow, the claims and the list |
 | `packages/shift-manager` | FIX-1788, FIX-1793, FIX-1796 | The second lander adapts; the TEAMS view reads worker resources, the Project view the coordinator session |
 | `apps/docs/docs/workforce/` | Every child | Each child its own page ([DOCS.md](DOCS.md#ownership)); FIX-1796 the overview and glossary |
 
