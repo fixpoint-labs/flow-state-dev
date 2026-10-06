@@ -27,7 +27,7 @@
  * itself sends (`sessionStreamReads`), as `list-option-widenings.test.ts`
  * measures the child listing.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import type { SessionRecord } from "@flow-state-dev/engine";
 import { sessionStreamReads } from "@flow-state-dev/engine/testing";
@@ -128,25 +128,24 @@ const SEED_BATCHES = 4;
  * rolls back the rows a test adds and the statistics its `ANALYZE` writes, so
  * the next test sees the seed exactly as the first one did.
  */
-let seeded: Promise<PGlite> | undefined;
-let open: PGlite | undefined;
+let seeded: PGlite | undefined;
+
+beforeAll(async () => {
+  const db = await freshPglite();
+  await turn();
+  await seed(await connect(db, { initSchema: true, firstBatch: 0 }));
+  seeded = db;
+  // Its own budget: the seed's time is not any one test's, and on a busy
+  // machine it outruns a test's.
+}, 240_000);
 
 afterEach(async () => {
-  await open?.query("ROLLBACK");
-  open = undefined;
+  await seeded?.query("ROLLBACK");
 });
 
 async function harness(): Promise<Harness> {
-  seeded ??= (async () => {
-    const db = await freshPglite();
-    await turn();
-    await seed(await connect(db, { initSchema: true, firstBatch: 0 }));
-    return db;
-  })();
-  const db = await seeded;
-  await db.query("BEGIN");
-  open = db;
-  return connect(db, { initSchema: false, firstBatch: SEED_BATCHES });
+  await seeded!.query("BEGIN");
+  return connect(seeded!, { initSchema: false, firstBatch: SEED_BATCHES });
 }
 
 async function connect(
