@@ -25,7 +25,7 @@ is the session a task runs in. The *proved by* column is the check the plan runs
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-10 | A task is added | The conversation's board runs in a request of its own, in the conversation, as its owner. The filing doesn't wait for it, and nobody runs it by hand | CI · VG leg a |
-| BR-10a | The board's run is refused when the filing asks for it | The filing still succeeds, and the row records that its start is owed. The next filing or action on the board starts it, and so does filing the same id again (BR-9). An accepted filing is never left pending with nothing to start it | CI |
+| BR-10a | The board's run is refused when the filing asks for it, or the process dies before it is asked | The filing still succeeds: the add itself recorded that the row's start is owed, and only the board's run clears it. The next filing or action on the board starts it, and so does filing the same id again (BR-9). An accepted filing's start is never lost, but with no sweeper it waits for that next touch of the board | CI |
 | BR-11 | Alice has two conversations, each with a pending task for one delegate, and one runs | It claims, lists, waits on and settles only its own. The other's task stays pending until its own conversation runs | CI · VG leg c |
 | BR-12 | Bob opens, posts to or files on Alice's conversation | Refused, as today (engine ownership). Nothing claimed | Existing suite · VG leg d |
 | BR-13 | Bob's conversation runs a board declared exactly like Alice's | It reads and claims only Bob's rows ([POC](poc/board-partition/README.md) X1) | CI · VG leg d |
@@ -39,7 +39,7 @@ is the session a task runs in. The *proved by* column is the check the plan runs
 | BR-16 | A task is handed over | It runs in a new session, a child of the conversation, owned by Alice, born linked to the delegate (FIX-1788 BR-18), on the flow the delegate names. It reads and settles its row on the board that filed it | CI · VG legs a and b |
 | BR-17 | A task's second attempt is handed over | It re-enters the same task session | CI |
 | BR-18 | A task is reassigned to another worker | Its next attempt opens a new task session for the new worker; the old one keeps its history | CI |
-| BR-19 | Alice calls `findWorkerSession({ worker, taskId, coordinatorSessionId })` | The task's session, or none. Never another user's, and never another conversation's: two of her conversations that file the same task id for the same worker each find their own | CI · VG leg a |
+| BR-19 | Alice calls `findWorkerSession({ worker, taskId, coordinatorSessionId })` | The task's session, or none. Never another user's, and never another conversation's: two of her conversations that file the same task id for the same worker each find their own. A lookup naming no `taskId` never returns a task session (FIX-1788 S5a as amended in [#2831](https://github.com/fixpoint-labs/flow-state-dev/pull/2831)): a post to that worker in that conversation lands in its delegate session | CI · VG leg a |
 | BR-20 | Alice calls `ensureWorkerSession` with a `taskId` whose task has no session yet | Refused, saying a task's session is opened when the task is handed over. Nothing created | CI |
 | BR-21 | A task's input names another board, partition or task | It can't reach them. The row it settles is the one its hand-off named, checked against its claim | CI |
 
@@ -72,14 +72,14 @@ they move to its follow-up with goal leg b, and BR-33 holds at one level.
 |---|---|---|---|
 | BR-30 | A coordinator delegate's task session splits its task | It files the pieces on its own board, for its own delegates, under BR-1 to BR-9. The pieces are Alice's | CI · VG leg b |
 | BR-31 | It has filed its pieces and its turn ends | Its own task waits on the board above: parked, marked as waiting on its pieces, with no notice for that park. Nothing lapses while it waits | CI · VG leg b |
-| BR-32 | The last open piece ends, after any turn its notice woke | Its task settles on the board above: `completed` with the pieces' outputs when none failed for good, `errored` naming the ones that did. It settles through the binding written when it parked (that row's partition and claim ticket), never a coordinate from input or a payload, and still does after a restart. That board's conversation hears it | CI · VG leg b |
+| BR-32 | The last open piece ends, after any turn its notice woke | Its task settles on the board above: `completed` with the pieces' outputs when none failed for good, `errored` naming the ones that did. It settles through the binding written when it parked (that row's partition and claim ticket), never a coordinate from input or a payload, and still does after a restart. The last piece's ending writes the settle as owed; only the settle clears it, so if the turn its notice woke fails, the next touch of the board settles it, once. That board's conversation hears it | CI · VG leg b |
 | BR-33 | Any session in a chain is listed | Every one is Alice's. Bob's workers never appear, because every assignee passed BR-2 | VG legs b and d |
 
 ## Failure taxonomy
 
 A refused filing writes nothing and says why in the same answer. A failed attempt retries
 within the task's attempts, then ends `errored` and is heard once. A run that dies is taken back
-by the next run of its board. A start or a notice lost to a crash stays owed on its row, and the
+by the next run of its board. A start, a notice or a parent's settle lost to a crash or a failed turn stays owed on its row, and the
 next touch of the board sends it. A notice that can't land is recorded on the task session and
 changes nothing. Nothing here deletes a row, a session or a notice.
 

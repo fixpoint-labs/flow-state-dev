@@ -47,6 +47,7 @@ and the partition is dropped before it ships.
 | **Instead of** | No limit, "as deep as the work needs" (the PRD) · or a check that refuses only a worker already in the chain |
 | **Because** | Each level is a new session and at least one model turn, and a coordinator splits by judgment. Two delegates that hand each other the same work, or one that keeps splitting, spend a run per level with no person in the loop. A cycle check misses the second. Five covers the concept's own picture (a workstream, a feature, a piece, a coding run) with a level to spare |
 | **Locks in** | A public limit, refused at filing, said in the tool's answer so the coordinator does the piece itself or tells the person. Raising it later is cheap; lowering it breaks chains that use it |
+| **Breadth** | Depth bounds a loop, not a fan-out. If the split ships here, each conversation's board sets the task board's existing caps (`maxTotalTasks`, `maxEnqueuedTasks`, per partition under S1) as its breadth cap, values the implementer's; if [Q](#q) moves the split, the follow-up carries this with it |
 
 ![D2: how deep a chain can go. Five boards deep, chosen, beside no limit. Decides it: a coordinator that keeps splitting, or two delegates passing work back and forth, stops at five instead of spending until someone looks. The price: a real chain deeper than five is refused. Locks in a public limit; flips if a real use case needs a sixth level](figures/d2-depth.svg)
 
@@ -59,7 +60,8 @@ the docs state the cost per level.
 
 - **Filing is the hand-off** (FIX-1777, carried). A filing returns once the task is stored; the
   conversation's board runs in a request of its own, as its owner. Only an add starts a run, plus
-  a retry after a failed attempt and a reassign (FIX-1780 BR-6a, BR-16).
+  a retry after a failed attempt and a reassign (FIX-1780 BR-6a, BR-16), and any action on the
+  board that finds an owed marker and retries it (S5, S6).
 - **The filer is the board's conversation**, by construction. FIX-1780's filer record
   (`filingSession`, `filingWorker`) isn't needed: a task's notice goes to the session that
   dispatched it, through the engine's stamped sender (`{ from: true }`), never an address on the
@@ -85,13 +87,16 @@ the docs state the cost per level.
   writes a pending-notice marker on its row, server-side; only the notice's delivery clears it.
   Any later run of the board, or action on it, replays an outstanding marker into the
   conversation, and S7's dedup absorbs the replay. The row is the outbox; no sweeper.
-- **A filed task always gets its start.** A filing succeeds only once the board's wake is
-  enqueued, or the row carries a pending-wake marker that the next filing or action on the board
-  retries. Filing a still-pending task's id again re-triggers the wake, idempotently.
+- **A filed task always gets its start.** The add writes a pending-wake marker on the row in
+  the same write, and only the board's run clears it. A wake refused or lost to a crash leaves
+  it for the next filing or action on the board to retry; with no sweeper, it waits for that
+  touch. Filing a still-pending task's id again re-triggers the wake, idempotently.
 - **If the split stays here ([Q](#q)), a waiting task settles through its own board.** Parking
   it writes a parent binding, server-side and recoverable: the row's partition and its claim
-  ticket. The later `onTaskSettled` turn settles that row through the board that owns it, with
-  that binding, never with a coordinate a caller or a payload supplies.
+  ticket. After the `onTaskSettled` turn the last piece's notice woke, that row settles through the
+  board that owns it, with that binding, never with a coordinate a caller or a payload supplies.
+  The last piece's ending writes the settle as owed, and only the settle clears it, so a failed
+  turn leaves it for the next touch of the board, as an owed notice is.
 - **The partition is the conversation's incarnation**: its id plus a value minted at its birth
   that only the server writes, the same incarnation FIX-1791 keys delegate sessions by. A
   conversation deleted and created again starts with an empty board; the old rows stay in the
@@ -183,5 +188,9 @@ left.
   by a marker on the row that the next touch of the board replays; a task session found within
   its own conversation; a parked task given a server-written binding to settle through its own
   board. The split's scope raised as [Q](#q).
+- **Review round 2** (final) — a post to a delegate never lands in a task session, by FIX-1788's
+  lookup matching on the key set (amended in #2831); a split parent's settle made owed on the
+  row like a notice, so a failed turn can't strand it; the wake marker written with the add; a
+  breadth cap named beside D2.
 
 **Open: [Q](#q)**, the split's scope.
