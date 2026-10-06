@@ -6,17 +6,14 @@
  * the highlight through the results, the pointer highlights what it is over,
  * and Enter opens the highlighted one.
  *
- * A query that starts with `> ` is a message instead: the rest is sent to the
- * Shift Coordinator through the one send path, and the palette closes once the
- * session holds the line, on the coordinator's conversation. A line that can't
- * be sent leaves the palette open with the reason and the draft intact.
+ * A query that starts with `> ` is a message instead: the rest is handed to the
+ * Shift Coordinator's own composer, which sends it as if it were typed there.
+ * The palette closes and the Coordinator screen opens. A line that has no one to
+ * go to leaves the palette open with the reason and the draft intact.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { allRows, chiefOfStaffOf, type LoadedSnapshot } from "../lib/derive";
-import { currentConversation, newConversationId, sendToChiefOfStaff } from "../lib/cos";
-import { useLab } from "../lib/lab-data";
-import { describeFailure } from "../lib/reads";
-import { startChiefOfStaffWork } from "../lib/working";
+import { handToChiefOfStaff } from "../lib/outbox";
 import { navigate, type Route } from "../lib/routes";
 import type { Gaps } from "../gaps";
 
@@ -32,8 +29,6 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-  const { clients, refresh } = useLab();
-  const [sending, setSending] = useState(false);
   const [sendFailure, setSendFailure] = useState<string | null>(null);
   const messaging = query.startsWith(MESSAGE_PREFIX);
   useEffect(() => input.current?.focus(), []);
@@ -62,32 +57,16 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
     list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
   }, [highlighted]);
 
-  const sendMessage = async () => {
+  const sendMessage = () => {
     const message = query.slice(MESSAGE_PREFIX.length).trim();
-    if (message === "" || sending) return;
+    if (message === "") return;
     if (!snapshot.inventory.ok) return setSendFailure("The Lab's seats didn't load, so there is no one to send this to.");
     const cos = chiefOfStaffOf(snapshot.inventory.value.seats, snapshot.orgId);
     if (cos.kind !== "one") return setSendFailure("There isn't exactly one Shift Coordinator to send this to.");
     if (cos.seat.door === null) return setSendFailure(`${cos.seat.id} ${gaps.turn.noDoor}`);
-    const sessionId = currentConversation(snapshot.sessions, cos.seat.id, null) ?? newConversationId();
-    setSending(true);
-    setSendFailure(null);
-    const settled = startChiefOfStaffWork();
-    try {
-      await sendToChiefOfStaff(clients, { seatId: cos.seat.id, door: cos.seat.door, sessionId }, message, () => {
-        // The session holds the line: show the conversation while the reply is in flight.
-        void refresh();
-        navigate({ level: "cos" });
-        onClose();
-      });
-      void refresh();
-    } catch (error) {
-      void refresh();
-      setSendFailure(describeFailure(error).message);
-      setSending(false);
-    } finally {
-      settled();
-    }
+    handToChiefOfStaff(message);
+    navigate({ level: "cos" });
+    onClose();
   };
 
   const go = (entry: Entry) => {
@@ -109,7 +88,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
           onKeyDown={(e) => {
             if (e.key === "Escape") onClose();
             if (messaging) {
-              if (e.key === "Enter") void sendMessage();
+              if (e.key === "Enter") sendMessage();
               return;
             }
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -127,7 +106,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
         {messaging ? (
           <div className="p-4 text-sm" data-testid="jump-message">
             <p className="text-xs font-semibold tracking-wider text-muted-foreground">MESSAGE TO SHIFT COORDINATOR</p>
-            <p className="mt-1 text-muted-foreground">{sending ? "Sending…" : "Press Enter to send."}</p>
+            <p className="mt-1 text-muted-foreground">Press Enter to send.</p>
             {sendFailure !== null ? (
               <p className="mt-2 text-destructive" role="alert" data-testid="jump-message-failure">
                 {sendFailure}

@@ -226,6 +226,8 @@ export function TurnComposer({
   extra,
   suggestions,
   scale = "default",
+  autoSend,
+  onAutoSend,
 }: {
   testId: string;
   label: string;
@@ -249,6 +251,12 @@ export function TurnComposer({
   suggestions?: readonly string[];
   /** `cos`: Chief of Staff's larger composer (v2:175-178). */
   scale?: "default" | "cos";
+  /**
+   * A line handed in from elsewhere (the palette): sent as if typed, as soon as
+   * the composer isn't blocked. `onAutoSend` fires when it is taken.
+   */
+  autoSend?: string | null;
+  onAutoSend?: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const { state, run, reset } = useTurnSend();
@@ -256,11 +264,11 @@ export function TurnComposer({
   const sending = state.kind === "sending" || state.kind === "held";
   const canSend = blocked === null && draft.trim().length > 0 && !sending;
 
-  const submit = async (event?: FormEvent) => {
+  const submit = async (event?: FormEvent, line: string = draft) => {
     event?.preventDefault();
-    if (!canSend) return;
-    const submitted = draft;
-    const message = draft.trim();
+    if (blocked !== null || line.trim().length === 0 || sending) return;
+    const submitted = line;
+    const message = line.trim();
     let left = false;
     // The line leaves the draft once the session holds it: only the line that
     // was sent goes, and anything typed since stays.
@@ -281,6 +289,16 @@ export function TurnComposer({
       setDraft((current) => (current === "" ? submitted : current));
     }
   };
+
+  useEffect(() => {
+    if (autoSend == null || blocked !== null || sending) return;
+    onAutoSend?.();
+    // In the draft first, so a line that fails to send is kept there like a typed one.
+    setDraft(autoSend);
+    void submit(undefined, autoSend);
+    // Taken once: `onAutoSend` clears the line, so a re-run finds nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSend, blocked, sending]);
 
   return (
     <ComposerShell
