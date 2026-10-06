@@ -1,0 +1,89 @@
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Two panels, today and after, one org with Alice and Bob each in a private area. Today nothing joins them: Alice has a worker, and Bob has no way to get it. After, a shared library band sits above both areas and holds Alice's template, version 2, naming her. Publish carries only configuration up from Alice's worker; her sessions and memory stay in her area. Add copies version 1 down into Bob's area as a worker of his own, marked that version 2 exists. The copy runs its own row and never reads the template.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .panel  { fill:none; stroke:var(--rule); stroke-width:1.2; }
+    .priv   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .band   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .worker { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .tmpl   { fill:var(--surface); stroke:var(--accent); stroke-width:1.6; }
+    .stay   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .mark   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .arrow  { stroke:var(--accent); stroke-width:1.6; fill:none; }
+    .head   { fill:var(--accent); }
+    .none   { stroke:var(--gone); stroke-width:1.6; fill:none; stroke-dasharray:5 4; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-acc  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-h    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-pro  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="372"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="420" height="340" rx="8"/>
+    <text class="t-lbl" x="32" y="38">TODAY · ORG ACME</text>
+    <rect class="priv" x="32" y="176" width="186" height="164" rx="6"/>
+    <text class="t-lbl" x="44" y="196">ALICE · PRIVATE</text>
+    <rect class="worker" x="44" y="210" width="162" height="48" rx="5"/>
+    <text class="t-b" x="56" y="230">release-notes</text>
+    <text class="t-s" x="56" y="247">her worker</text>
+    <rect class="priv" x="234" y="176" width="186" height="164" rx="6"/>
+    <text class="t-lbl" x="246" y="196">BOB · PRIVATE</text>
+    <path class="none" d="M206 234 L 300 234"/>
+    <text class="t-gone" x="246" y="262">no way to get it</text>
+    <text class="t-gone" x="246" y="278">no library, no copy</text>
+    <text class="t-s" x="32" y="70">Workers are private. Nothing in the org</text>
+    <text class="t-s" x="32" y="86">is shared between Alice and Bob.</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="452" y="16" width="472" height="340" rx="8"/>
+    <text class="t-lbl" x="468" y="38">AFTER · ORG ACME</text>
+    <rect class="band" x="468" y="50" width="440" height="96" rx="6"/>
+    <text class="t-acc" x="480" y="70">THE ORG'S WORKER LIBRARY · SHARED</text>
+    <rect class="tmpl" x="600" y="80" width="176" height="52" rx="5"/>
+    <text class="t-b" x="612" y="100">release-notes · v2</text>
+    <text class="t-s" x="612" y="118">template · names Alice</text>
+  </g>
+
+  <g id="after-alice">
+    <rect class="priv" x="468" y="176" width="212" height="164" rx="6"/>
+    <text class="t-lbl" x="480" y="196">ALICE · PRIVATE</text>
+    <rect class="worker" x="480" y="210" width="188" height="48" rx="5"/>
+    <text class="t-b" x="492" y="230">release-notes</text>
+    <text class="t-s" x="492" y="247">her worker · published</text>
+    <rect class="stay" x="480" y="272" width="188" height="54" rx="5"/>
+    <text class="t-s" x="492" y="292">sessions · memory · drawer</text>
+    <text class="t-lbl" x="492" y="312">STAY HERE</text>
+  </g>
+
+  <g id="after-bob">
+    <rect class="priv" x="696" y="176" width="212" height="164" rx="6"/>
+    <text class="t-lbl" x="708" y="196">BOB · PRIVATE</text>
+    <rect class="worker" x="708" y="210" width="188" height="48" rx="5"/>
+    <text class="t-b" x="720" y="230">release-notes</text>
+    <text class="t-s" x="720" y="247">his worker · from v1</text>
+    <rect class="mark" x="708" y="272" width="188" height="28" rx="5"/>
+    <text class="t-pro" x="720" y="290">v2 AVAILABLE · HIS CALL</text>
+    <text class="t-s" x="708" y="320">never reads the template</text>
+  </g>
+
+  <g id="flows">
+    <path class="arrow" d="M574 210 L 574 140 L 600 116"/>
+    <path class="head" d="M600 116 L 590 117 L 596 125 Z"/>
+    <text class="t-acc" x="482" y="164">PUBLISH · CONFIGURATION ONLY</text>
+    <path class="arrow" d="M776 116 L 802 140 L 802 204"/>
+    <path class="head" d="M802 210 L 797 200 L 807 200 Z"/>
+    <text class="t-acc" x="812" y="164">ADD · A COPY</text>
+  </g>
+</svg>
