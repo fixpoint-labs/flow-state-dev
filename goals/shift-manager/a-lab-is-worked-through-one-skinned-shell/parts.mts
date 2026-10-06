@@ -252,7 +252,7 @@ export async function j4(scratch: string, pages: string, browser: Browser, repor
     }
     await setup.close();
     if (row === undefined) return fail("DevForce filed no row after its ask was approved");
-    const ch = tree.channels[0]!.id;
+    const ch = tree.mailboxes[0]!.id;
     const task = `/tasks/${encodeURIComponent(row.ref)}/${encodeURIComponent(row.id)}`;
     const addresses: Array<{ path: string; surface: string | string[]; owner: string }> = [
       { path: "/cos", surface: "cos", owner: "Chief of Staff (FIX-1719's seat; FIX-1722's view)" },
@@ -341,7 +341,7 @@ export function part4(base: string, report: Report): void {
   const routes = readFileSync(join(src, "lib", "routes.ts"), "utf8");
   const pinned: Array<[string, RegExp]> = [
     ["task", /if \(head === "tasks" && a !== undefined && b !== undefined\)[\s\S]*?level: "task", boardRef: a, taskId: b, tab: oneOf\(TASK_TABS/],
-    ["workstream", /if \(head === "w" && a !== undefined\) return \{ level: "workstream", channelId: a, tab: oneOf\(WORKSTREAM_TABS/],
+    ["workstream", /if \(head === "w" && a !== undefined\) return \{ level: "workstream", mailboxId: a, tab: oneOf\(WORKSTREAM_TABS/],
     ["project", /if \(head === "p" && a !== undefined\) return \{ level: "project", projectId: a, tab: oneOf\(PROJECT_TABS/],
   ];
   for (const [name, re] of pinned) if (!re.test(routes)) report.fail("P4:routes", `the ${name} route is not FIX-1662's pinned shape`);
@@ -372,7 +372,7 @@ export function part4(base: string, report: Report): void {
     }
   }
   const transcriptPost = /sendAction\("post"/.test(readFileSync(join(src, "lib", "transcript.ts"), "utf8"));
-  if (!transcriptPost) report.fail("P4:ER-15", "lib/transcript.ts sends something other than the channel's post");
+  if (!transcriptPost) report.fail("P4:ER-15", "lib/transcript.ts sends something other than the mailbox's post");
   // The project room (FIX-1718): talk.ts sends one action, through runTalkAction, and only read,
   // post or join; every caller hands its room functions the room kind. The person's own session, never a worker's.
   const talk = stripComments(readFileSync(join(src, "lib", "talk.ts"), "utf8"));
@@ -392,7 +392,7 @@ export function part4(base: string, report: Report): void {
   const creates = [...reads.matchAll(/\bcreateSession\(\s*\{([^}]*)\}/g)].map((m) => m[1]!);
   const createCount = reads.match(/\bcreateSession\(/g)?.length ?? 0;
   if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*ROOM_KIND\b/.test(args))) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than the room kind");
-  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), the channel's post (transcript.ts), the project room's ${talkCalls.join("/")} on the room kind (talk.ts; ${roomCalls.length} call(s)), the person's room session (reads.ts; ${creates.length} createSession on ROOM_KIND), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
+  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), the mailbox's post (transcript.ts), the project room's ${talkCalls.join("/")} on the room kind (talk.ts; ${roomCalls.length} call(s)), the person's room session (reads.ts; ${creates.length} createSession on ROOM_KIND), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
 
   // One ask rendering: Inbox's detail and the stream's card draw through AskCard.
   for (const surface of ["Inbox.tsx", "Stream.tsx", "ChiefOfStaff.tsx"]) {
@@ -408,20 +408,20 @@ export function part4(base: string, report: Report): void {
   const nouns = layerDiff
     .split("\n")
     .filter((l) => l.startsWith("+") && !l.startsWith("+++"))
-    .filter((l) => /\b(?:export\s+)?(?:interface|type|class|function|const)\s+(Agent|Team|Channel|MessageBoard|Project)\b/.test(l));
+    .filter((l) => /\b(?:export\s+)?(?:interface|type|class|function|const)\s+(Agent|Team|Mailbox|MessageBoard|Project)\b/.test(l));
   if (nouns.length > 0) report.fail("P4:fence", `an L1 noun added: ${nouns.slice(0, 3).join(" | ")}`);
   const ds = JSON.parse(readFileSync(join(REPO_ROOT, "labs", "design-system", "package.json"), "utf8")) as Record<string, Record<string, string> | undefined>;
   const dsDeps = Object.keys({ ...(ds.dependencies ?? {}), ...(ds.peerDependencies ?? {}) });
   if (dsDeps.some((d) => d.includes("workforce"))) report.fail("P4:fence", `the design-system package depends on ${dsDeps.join(", ")}`);
   if (/workforce/.test(readFileSync(join(REPO_ROOT, "labs", "design-system", "shift-manager.css"), "utf8"))) report.fail("P4:fence", "the design-system stylesheet names Workforce");
   const added = git("diff", "--name-only", "--diff-filter=A", `${base}..HEAD`).split("\n").filter(Boolean);
-  const channelsMd = added.filter((f) => /(^|\/)CHANNELS\.md$/.test(f));
-  if (channelsMd.length > 0) report.fail("P4:fence", `CHANNELS.md added: ${channelsMd.join(", ")}`);
+  const mailboxesMd = added.filter((f) => /(^|\/)MAILBOXES\.md$/.test(f));
+  if (mailboxesMd.length > 0) report.fail("P4:fence", `MAILBOXES.md added: ${mailboxesMd.join(", ")}`);
   const kindFront = git("diff", `${base}..HEAD`, "--", "*.md")
     .split("\n")
     .filter((l) => /^\+kind:\s/.test(l));
   if (kindFront.length > 0) report.fail("P4:fence", `\`kind:\` frontmatter added: ${kindFront.slice(0, 3).join(" | ")}`);
-  report.note(`P4 layer fence: ${layerDiff.split("\n").filter((l) => /^[+-][^+-]/.test(l)).length} changed lines under core/engine/client/react src since ${base.slice(0, 9)}, no Agent/Team/Channel/MessageBoard/Project noun; design-system deps [${dsDeps.join(", ")}]; no CHANNELS.md, no \`kind:\` frontmatter added`);
+  report.note(`P4 layer fence: ${layerDiff.split("\n").filter((l) => /^[+-][^+-]/.test(l)).length} changed lines under core/engine/client/react src since ${base.slice(0, 9)}, no Agent/Team/Mailbox/MessageBoard/Project noun; design-system deps [${dsDeps.join(", ")}]; no MAILBOXES.md, no \`kind:\` frontmatter added`);
 
   // Final visuals (ER-9): the theme's final values merged after the final hand-back.
   const handBack = git("log", "--diff-filter=A", "--format=%H", "HEAD", "--", "specs/epics/FIX-1649/assets/design/v2/README.md").trim().split("\n").at(-1) ?? "";

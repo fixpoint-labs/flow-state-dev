@@ -40,17 +40,25 @@ export const DEFAULT_ORG_ID = "__fsd_default_org__";
 /**
  * Whether `value` is usable as an organization id.
  *
- * Organization ids are opaque nonempty strings. A whitespace-only id is
+ * Organization ids are opaque strings: not empty, not whitespace-only, and
+ * well-formed Unicode (see below). A whitespace-only id is
  * rejected rather than trimmed, and a valid id is never rewritten — the
  * framework stores exactly what the trusted source supplied, so a stored id
  * and the identity that produced it compare equal.
+ *
+ * An id holding a lone UTF-16 surrogate is refused too: it has no UTF-8 form,
+ * so anything that encodes the id (a storage key, an address) would map it
+ * onto U+FFFD and give two distinct ids one encoding.
  *
  * The one definition both the host's principal normalization and trusted
  * direct execution validate against, so the two cannot drift.
  */
 export function isValidOrgId(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
+  return typeof value === "string" && value.trim().length > 0 && !LONE_SURROGATE.test(value);
 }
+
+/** A high surrogate with no low one after it, or a low one with no high one before it. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 /**
  * Resolved caller principal stamped onto every dispatched envelope. The
@@ -105,8 +113,9 @@ export interface PrincipalResolutionContext {
  * `defaultUserId` and enforce `requireUser`), or `null`.
  *
  * Whatever shape it returns, the framework requires a verified organization
- * before any effect: a resolver that yields no `orgId`, a whitespace-only one,
- * or the reserved {@link DEFAULT_ORG_ID} is refused at principal resolution
+ * before any effect: a resolver that yields no `orgId`, one {@link isValidOrgId}
+ * rejects (empty, whitespace-only, a lone surrogate), or the reserved
+ * {@link DEFAULT_ORG_ID} is refused at principal resolution
  * (FIX-1442). `null` is refused for the same reason — it cannot be repaired by
  * the `defaultUserId` fallback, which supplies a user and never an
  * organization. A machine transport returns `{ orgId }` and lets

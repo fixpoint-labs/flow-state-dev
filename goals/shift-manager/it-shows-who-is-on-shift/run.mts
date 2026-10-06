@@ -6,7 +6,7 @@
  * Real path, no model, out of CI. See goal.md for the contract.
  *
  * Shift Manager is built with Vite into a scratch directory, then served by its
- * own start script over the shift-lab (`lab/`), once per spread in the fixture:
+ * own command over the shift-lab (`lab/`), once per spread in the fixture:
  * which worker holds a running row, a parked row, a queued row, or a pending
  * ask. Chromium clicks Roster, then each team. What the page draws is graded
  * against the Lab's store, read through the Lab's HTTP routes by this script,
@@ -46,6 +46,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Browser, Page } from "playwright";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, loadFixture, runGoal } from "../../lib/index.mts";
+import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -63,7 +64,7 @@ type ShiftState = "held" | "parked" | "queued" | "ask";
 const fixture = loadFixture<{ spreads: Array<Record<string, ShiftState[]>> }>(import.meta.url);
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
+const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-roster");
 const CONFIG = join(HERE, "lab", "fsdev.config.mts");
@@ -123,12 +124,12 @@ async function buildShiftManager(control: string): Promise<string> {
 
 type Running = { origin: string; child: ChildProcess; exited: Promise<void> };
 
-/** Shift Manager's start script over the shift-lab, booted under `spread`. */
+/** Shift Manager's command over the shift-lab, booted under `spread`. */
 async function startLab(pages: string, spread: Record<string, ShiftState[]>): Promise<Running> {
   mkdirSync(join(SCRATCH, "labs"), { recursive: true });
   const workDir = mkdtempSync(join(SCRATCH, "labs", "shift-lab-"));
   let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", CONFIG, "--port", "0", "--assets", pages], {
+  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", CONFIG, "--port", "0", "--no-open", "--assets", pages], {
     cwd: workDir,
     env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", SHIFT_LAB_SPREAD: JSON.stringify(spread) }),
     stdio: ["ignore", "pipe", "pipe"],
@@ -143,13 +144,13 @@ async function startLab(pages: string, spread: Record<string, ShiftState[]>): Pr
     }),
   );
   for (let waited = 0; waited < 90_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, child, exited };
+    const served = servedAddresses(log);
+    if (served !== undefined) return { origin: served.origin, child, exited };
     if (gone) break;
     await sleep(250);
   }
   child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served the shift-lab. Log tail:\n${log.slice(-2000)}`);
+  throw new Error(`Shift Manager's command never served the shift-lab. Log tail:\n${log.slice(-2000)}`);
 }
 
 // ---- the store, read by this script ------------------------------------------
@@ -210,28 +211,28 @@ function seatOf(seats: string[], assignee: string): string | undefined {
 
 async function readStore(api: LabApi, userId: string): Promise<Store & { unmatched: string[] }> {
   const sessions = ((await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`)).sessions ?? []) as Array<Record<string, any>>;
-  // The inventory, through a channel's session, by its published key patterns.
-  const channelIds: string[] = [];
+  // The inventory, through a mailbox's session, by its published key patterns.
+  const mailboxIds: string[] = [];
   let seats: string[] = [];
-  for (const host of sessions.filter((s) => s.flowKind === "channel" && String(s.id).includes("."))) {
+  for (const host of sessions.filter((s) => s.flowKind === "mailbox" && String(s.id).includes("."))) {
     const manifest = await api.get(`/sessions/${encodeURIComponent(host.id)}/manifest`);
     const refOf = (pattern: string) => (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
     const seatsRef = refOf("inventory/seats/*");
-    const channelsRef = refOf("inventory/channels/*");
-    if (seatsRef === undefined || channelsRef === undefined) continue;
+    const mailboxesRef = refOf("inventory/mailboxes/*");
+    if (seatsRef === undefined || mailboxesRef === undefined) continue;
     seats = (await api.collection(host.id, seatsRef)).map((r) => String(r.id));
-    channelIds.push(...(await api.collection(host.id, channelsRef)).map((r) => String(r.id)));
+    mailboxIds.push(...(await api.collection(host.id, mailboxesRef)).map((r) => String(r.id)));
     break;
   }
-  // Every row on every board a channel's manifest lists for it.
+  // Every row on every board a mailbox's manifest lists for it.
   const rows: Array<{ key: string; id: string; status: string; assignee: string }> = [];
-  for (const channelId of channelIds) {
-    const manifest = await api.get(`/sessions/${encodeURIComponent(channelId)}/manifest`);
+  for (const mailboxId of mailboxIds) {
+    const manifest = await api.get(`/sessions/${encodeURIComponent(mailboxId)}/manifest`);
     const refs = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>)
-      .filter((r) => r.kind === "collection" && r.ref.startsWith(`${channelId}.`) && r.pattern === `${r.ref}/**`)
+      .filter((r) => r.kind === "collection" && r.ref.startsWith(`${mailboxId}.`) && r.pattern === `${r.ref}/**`)
       .map((r) => r.ref);
     for (const ref of refs) {
-      for (const row of await api.collection(channelId, ref)) {
+      for (const row of await api.collection(mailboxId, ref)) {
         rows.push({ key: `${ref}/${row.id}`, id: String(row.id), status: String(row.status), assignee: String(row.assignee ?? "") });
       }
     }
@@ -424,6 +425,6 @@ await runGoal(async () => {
   for (const [i, spread] of fixture.spreads.entries()) await checkSpread(i + 1, spread, pages, failures, evidence);
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its start script over the shift-lab under ${fixture.spreads.length} spreads; Roster, each team and the sidebar graded in Chromium against the store read through the Lab's routes. ${evidence.join(" | ")}`,
+    evidence: `Shift Manager built with Vite and served by its command over the shift-lab under ${fixture.spreads.length} spreads; Roster, each team and the sidebar graded in Chromium against the store read through the Lab's routes. ${evidence.join(" | ")}`,
   };
 });

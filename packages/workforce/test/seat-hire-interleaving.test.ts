@@ -25,7 +25,7 @@ import { createSeatHireBlocks, HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } 
 import type { SeatHireCapabilityOptions } from "../src/seat-hire-blocks";
 import { defineHiredRosterCollection } from "../src/roster/collections";
 import { defineSeatInventoryCollection } from "../src/inventory/collections";
-import { INVENTORY_REGISTER_SEATS, inventoryWriterActions } from "../src/channel/channel-flow";
+import { INVENTORY_REGISTER_SEATS, inventoryWriterActions } from "../src/mailbox/mailbox-flow";
 import { incarnationOf } from "../src/roster/incarnation";
 import { listedSeatRows } from "../src/inventory/listed-seats";
 import { toHiredSeatRow } from "../src/roster/rows";
@@ -95,7 +95,7 @@ async function world(options: { lazyInventory?: boolean } = {}) {
     },
   } as never)();
   // The inventory write `openInventory` runs at boot, with the seats the boot
-  // read, on the channel kind that carries it.
+  // read, on the mailbox kind that carries it.
   const booter = defineFlow({
     kind: "booter",
     actions: { boot: inventoryWriterActions("booter")[INVENTORY_REGISTER_SEATS] },

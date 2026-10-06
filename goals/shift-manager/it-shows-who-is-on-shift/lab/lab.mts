@@ -19,7 +19,7 @@
  * - `queued`: a row filed after the only drain, so nothing ever claims it;
  * - `ask`: a pending approval in a session of its own, on its own flow.
  *
- * Every row is filed through the channel's own `fileTask`, assigned by the
+ * Every row is filed through the mailbox's own `fileTask`, assigned by the
  * worker's name. No model: the runs are scripted.
  */
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
@@ -29,17 +29,17 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { getOrCreateTaskCollection, type TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import {
-  CHANNEL_KIND,
-  channelBoard,
-  channelBoardIds,
-  channelInstances,
-  defineChannelFlow,
+  MAILBOX_KIND,
+  mailboxBoard,
+  mailboxBoardIds,
+  mailboxInstances,
+  defineMailboxFlow,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   openInventory,
   workerConfigSchema,
   type InventoryActionRequest,
-  type OpenChannelsOptions,
+  type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { dirname, join } from "node:path";
@@ -103,13 +103,13 @@ function spreadFromEnv(): Spread {
 export async function openShiftLab(spread: Spread = spreadFromEnv()) {
   const orgId = DEFAULT_ORG_ID;
   const tree = await readTree();
-  const channel = tree.channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
-  if (channel === undefined) throw new Error("the shift-lab tree declares no channel holding a board");
-  const boardName = (channel.declared.boards as string[])[0]!;
-  const ledger = channelBoard(channel.id, boardName);
+  const mailbox = tree.mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
+  if (mailbox === undefined) throw new Error("the shift-lab tree declares no mailbox holding a board");
+  const boardName = (mailbox.declared.boards as string[])[0]!;
+  const ledger = mailboxBoard(mailbox.id, boardName);
 
   const byId = new Map(tree.workers.map((w) => [w.id, w]));
-  const members = ((channel.declared.members as string[] | undefined) ?? []).map((id) => byId.get(id)!);
+  const members = ((mailbox.declared.members as string[] | undefined) ?? []).map((id) => byId.get(id)!);
   const drainer = members.find((w) => w.declared.handoff === undefined);
   const seats = members.filter((w) => w.declared.handoff !== undefined).map((w) => ({ id: w.id, name: w.id.split(".").at(-1)! }));
   if (drainer === undefined || seats.length === 0) throw new Error("the shift-lab tree declares no drainer or no seats");
@@ -183,9 +183,9 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
 
   const hired = hireWorkforce(tree.workers, {
     kinds: { [drainer.declared.flow as string]: leadKind as never, [SEAT_KIND]: seatKind as never },
-    channelBoards: channelBoardIds(tree.channels),
+    mailboxBoards: mailboxBoardIds(tree.mailboxes),
   });
-  const instances = channelInstances(tree.channels, { kinds: { [CHANNEL_KIND]: defineChannelFlow({ inventory: true }) as never } });
+  const instances = mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: defineMailboxFlow({ inventory: true }) as never } });
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(instances.map((i) => [i.kind, i])),
     ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
@@ -210,7 +210,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
     const text = await response.text();
     return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
   };
-  const client: OpenChannelsOptions["client"] = {
+  const client: OpenMailboxesOptions["client"] = {
     createSession: async (create) => {
       const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
       if (status >= 400) throw Object.assign(new Error(`create session: ${status}`), { status });
@@ -225,7 +225,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
       await call("DELETE", ["sessions", sessionId]);
     },
   };
-  await openChannels(tree.channels, { client, userId: SHIFT_LAB_USER_ID });
+  await openMailboxes(tree.mailboxes, { client, userId: SHIFT_LAB_USER_ID });
 
   const runtime = await flowState.getRuntime();
   const act = async (flow: FlowInstance, sessionId: string, actionName: string, input: unknown, source?: string) => {
@@ -245,20 +245,20 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
   };
 
   const inventory = await openInventory(
-    { seats: [...hired, ORG_SEAT], channels: tree.channels },
+    { seats: [...hired, ORG_SEAT], mailboxes: tree.mailboxes },
     {
       run: (request: InventoryActionRequest) => act(flows[request.flowKind]!, request.sessionId, request.action, request.input, request.source),
-      seatWriter: { flowKind: CHANNEL_KIND },
+      seatWriter: { flowKind: MAILBOX_KIND },
       userId: SHIFT_LAB_USER_ID,
       orgId,
     },
   );
   if (inventory.problems.length > 0) throw new Error(inventory.problems.join("; "));
 
-  // ---- the spread: rows filed through the channel, one drain, then the rest --
-  const channelInstance = instances.find((i) => i.kind === CHANNEL_KIND)!;
+  // ---- the spread: rows filed through the mailbox, one drain, then the rest --
+  const mailboxInstance = instances.find((i) => i.kind === MAILBOX_KIND)!;
   const file = async (name: string, goal: string, script: { park?: boolean }) =>
-    act(channelInstance, channel.id, "fileTask", { board: boardName, goal, assignee: name, input: script });
+    act(mailboxInstance, mailbox.id, "fileTask", { board: boardName, goal, assignee: name, input: script });
   const states = (wanted: ShiftState) => Object.entries(spread).flatMap(([name, list]) => list.filter((s) => s === wanted).map(() => name));
 
   for (const name of states("held")) await file(name, `${name}: hold until stopped`, {});

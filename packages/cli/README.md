@@ -62,7 +62,7 @@ Every run executes as a user in an organization, the same as a request to your s
 
 - An app with no resolver runs as `cli-user` (or `--user`) in the development organization, `DEFAULT_ORG_ID`.
 - A resolver that checks a credential refuses the terminal, which carries none. The run stops before it writes anything, exits `2`, and the message names the flow and `--org`.
-- `--org <id>` skips the resolver and runs as `--user` (default `cli-user`) in that organization. It may not be blank or `DEFAULT_ORG_ID`. `fsdev serve` and `fsdev dev` have no such flag.
+- `--org <id>` skips the resolver and runs as `--user` (default `cli-user`) in that organization. It may not be blank, not well-formed Unicode (a lone UTF-16 surrogate), or `DEFAULT_ORG_ID`. `fsdev serve` and `fsdev dev` have no such flag.
 - `--user` alone keeps the organization the resolver gives and replaces only the user.
 - `--session` / `--seed-session` on a session another user or organization owns is refused before anything is written, including the seed. Sessions keep the identity they were created with. A session stored before organizations were required is refused with the migration message.
 - A seat pinned to an owner refuses any identity outside its pin, before anything is written.
@@ -148,19 +148,29 @@ fsdev dev --port 3000 --model openai/gpt-5.4-mini
 
 # Specific flow directory, no browser
 fsdev dev --flow-dir ./my-flows --no-open
+
+# Your own app's pages beside your flows
+fsdev dev --config ./fsdev.config.mts --app @acme/ops-console
+
+# Your own app's pages beside your flows, restarting on a change
+fsdev dev --app @acme/ops-console --watch
 ```
 
 Options:
 
 | Flag | Description |
 |------|-------------|
-| `-p, --port <port>` | Port to listen on (default: `4200`) |
+| `-p, --port <port>` | Port to listen on (default: `4200`). `0` picks a free port. |
+| `--app <package\|dir>` | Serve an app's pages at the root instead of the DevTool, which moves to a port of its own. Takes a directory with an `index.html`, or a package that exports `getAssetPath()` |
+| `--host <host>` | Host to bind (default `127.0.0.1`). A non-loopback host runs the same check as `fsdev serve` and refuses a config that hands its page a bearer token |
+| `--allow-unauthenticated` | Bind a non-loopback host even when a flow has no authentication configured |
+| `--watch` | Restart when a file your config loaded changes, and reload the open pages. Loopback only. With `--app`, a package that also exports `getSourceRoot()` is served from that folder through the app's own Vite |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
 | `-m, --model <model>` | Override model for generator blocks run in this process |
 | `--no-open` | Don't open the browser automatically |
 
-Requires `@flow-state-dev/devtool` to be installed (provides the pre-built UI assets). The CLI lists it as an optional peer dependency.
+Requires `@flow-state-dev/devtool` to be installed (provides the pre-built UI assets). The CLI lists it as an optional peer dependency. With `--app`, the DevTool is optional: without it, the app's pages are served and get no DevTool address.
 
 ### `fsdev serve` — Start a production server
 
@@ -261,9 +271,9 @@ Output is a JSON object with execution results, schema validation status, and ti
 
 ### `fsdev gen` — Register an app's kinds, blocks and resource modules from its files
 
-Walks `workforce/flows/workers/`, `workforce/flows/channels/` and `workforce/blocks/`, and writes
-`workforce/workforce.gen.ts` beside them. The generated module exports `kinds`, `channelKinds` and
-`blocks`: the maps `hireWorkforce`, `channelInstances` and a task board already take. Each discovered
+Walks `workforce/flows/workers/`, `workforce/flows/mailboxes/` and `workforce/blocks/`, and writes
+`workforce/workforce.gen.ts` beside them. The generated module exports `kinds`, `mailboxKinds` and
+`blocks`: the maps `hireWorkforce`, `mailboxInstances` and a task board already take. Each discovered
 file registers under its basename.
 
 It also walks every `resources/` folder the workforce convention reads — the organisation's, each

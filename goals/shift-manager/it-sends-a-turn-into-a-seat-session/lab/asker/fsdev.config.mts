@@ -1,6 +1,6 @@
 /**
- * The goal's fixture Lab, as Shift Manager's start script loads it: one seat that
- * asks and hears (`asker.mts`), in one channel, with the organization's
+ * The goal's fixture Lab, as Shift Manager's command loads it: one seat that
+ * asks and hears (`asker.mts`), in one mailbox, with the organization's
  * inventory open so the seat's row names its door. In-memory stores and no
  * credential, so every start is fresh. The check raises the ask itself,
  * through the Lab's own action route.
@@ -8,15 +8,15 @@
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
-  CHANNEL_KIND,
-  channelBoardIds,
-  channelInstances,
-  defineChannelFlow,
+  MAILBOX_KIND,
+  mailboxBoardIds,
+  mailboxInstances,
+  defineMailboxFlow,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   openInventory,
   type InventoryActionRequest,
-  type OpenChannelsOptions,
+  type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -31,11 +31,11 @@ if (tree.problems.length > 0) throw new Error(`the asker tree did not load: ${tr
 
 const seats = hireWorkforce(tree.workers, {
   kinds: { [ASKER_KIND]: defineAskerFlow() as never },
-  channelBoards: channelBoardIds(tree.channels),
+  mailboxBoards: mailboxBoardIds(tree.mailboxes),
 });
-const channelKind = defineChannelFlow({ inventory: true });
+const mailboxKind = defineMailboxFlow({ inventory: true });
 const flows: Record<string, FlowInstance> = {
-  ...Object.fromEntries(channelInstances(tree.channels, { kinds: { [CHANNEL_KIND]: channelKind as never } }).map((i) => [i.kind, i])),
+  ...Object.fromEntries(mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } }).map((i) => [i.kind, i])),
   ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
 };
 const flowState = createFlowState({
@@ -58,7 +58,7 @@ const call = async (method: "GET" | "POST" | "DELETE", path: string[], body?: un
   const text = await response.text();
   return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
 };
-const client: OpenChannelsOptions["client"] = {
+const client: OpenMailboxesOptions["client"] = {
   createSession: async (create) => {
     const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
     if (status >= 400) throw Object.assign(new Error(`create session: ${status}`), { status });
@@ -73,11 +73,11 @@ const client: OpenChannelsOptions["client"] = {
     await call("DELETE", ["sessions", sessionId]);
   },
 };
-await openChannels(tree.channels, { client, userId: USER_ID });
+await openMailboxes(tree.mailboxes, { client, userId: USER_ID });
 
 const runtime = await flowState.getRuntime();
 const opened = await openInventory(
-  { seats, channels: tree.channels },
+  { seats, mailboxes: tree.mailboxes },
   {
     run: async (request: InventoryActionRequest) => {
       const result = (await runAction({
@@ -94,7 +94,7 @@ const opened = await openInventory(
       if (result?.error !== undefined) throw new Error(String((result.error as Error).message ?? result.error));
       return result;
     },
-    seatWriter: { flowKind: CHANNEL_KIND },
+    seatWriter: { flowKind: MAILBOX_KIND },
     userId: USER_ID,
     orgId: DEFAULT_ORG_ID,
   },

@@ -1,9 +1,10 @@
 /**
- * The project writes: `createProject` and `setWorkstreams`.
+ * The project writes: `createProject`, `setWorkstreams` and `setRepository`.
  *
- * Both are blocks an app installs on the flow that creates projects — its own
+ * Each is a block an app installs on the flow that creates projects — its own
  * boot code, or the chief of staff's tool — and {@link defineProjectBlocks}
- * also hands back the two as an `actions` map to spread into a flow.
+ * also hands them back, with the project files read (`project-files.ts`), as
+ * an `actions` map to spread into a flow.
  *
  * **Who the owner is.** The creating session's owner, as the engine recorded
  * it, never a field of the input. `members` in the input is the creator's own
@@ -11,7 +12,7 @@
  * `join` never adds its caller.
  *
  * **One project per workstream.** Each workstream is claimed before the row is
- * written, by creating `workstream-claims/<channelId>` with `create`. The claim
+ * written, by creating `workstream-claims/<mailboxId>` with `create`. The claim
  * is one shared key, so of two projects claiming one workstream at once
  * exactly one lands. A refused claim fails the write, names the workstream,
  * and releases the claims this write took, so a refused write leaves the row
@@ -48,8 +49,8 @@ import { dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { ActionConfig, BlockContext, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { CHANNEL_KIND } from "../channel/channel-flow";
-import { defineChannelInventoryCollection, type ChannelInventoryRow } from "../inventory/collections";
+import { MAILBOX_KIND } from "../mailbox/mailbox-flow";
+import { defineMailboxInventoryCollection, type MailboxInventoryRow } from "../inventory/collections";
 import { retryOnConflict } from "./cas-retry";
 import {
   defineProjectsCollection,
@@ -63,28 +64,30 @@ import {
 } from "./collections";
 import { isMember } from "./membership-gate";
 import { isAlreadyExists, isConcurrentModification, isResourceDeleted } from "./store-errors";
+import { readProjectFiles } from "./project-files";
 import { ProjectRefusedError } from "./project-refusal";
+import { repositoryProblem } from "./repository-value";
 import { noteBindRefusal, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
 
 /**
- * The resource-map ref the channel inventory is read through here. Private to
+ * The resource-map ref the mailbox inventory is read through here. Private to
  * these writes, so it never meets an app's own accessor for the inventory.
  */
-const CHANNEL_INVENTORY_RESOURCE = "project-writes-channel-inventory";
+const MAILBOX_INVENTORY_RESOURCE = "project-writes-mailbox-inventory";
 
 /**
- * The channel inventory as the project writes declare it.
+ * The mailbox inventory as the project writes declare it.
  *
  * A flow declares one storage key once: two accessors may share it only as one
  * declaration. So a flow that installs the writes and also reads the inventory
  * itself (a chief of staff's discovery door, say) declares its own read with
  * this object, under any accessor, rather than with a
- * `defineChannelInventoryCollection()` of its own, which that flow refuses.
+ * `defineMailboxInventoryCollection()` of its own, which that flow refuses.
  *
  * @example
- *   resources: { channels: projectWritesChannelInventory }
+ *   resources: { mailboxes: projectWritesMailboxInventory }
  */
-export const projectWritesChannelInventory = defineChannelInventoryCollection();
+export const projectWritesMailboxInventory = defineMailboxInventoryCollection();
 
 /** What creating a project takes. Closed: nothing in it names the owner. */
 export const createProjectInputSchema = z
@@ -95,8 +98,10 @@ export const createProjectInputSchema = z
     brief: z.string().optional(),
     /** Who besides the creator may read and post the room. The creator is always a member. */
     members: z.array(z.string().min(1)).optional(),
-    /** Full ids of declared channels, from any team. */
-    workstreams: z.array(z.string().min(1)).optional()
+    /** Full ids of declared mailboxes, from any team. */
+    workstreams: z.array(z.string().min(1)).optional(),
+    /** The git remote the project's code lives in. Omitted or `null`: a project with no repository. */
+    repository: z.string().nullable().optional()
   })
   .strict();
 
@@ -124,38 +129,56 @@ export type SetWorkstreamsInput = z.infer<typeof setWorkstreamsInputSchema>;
 /** What setting a project's workstreams returns: the row as written. */
 export const setWorkstreamsOutputSchema = z.object({ project: projectRowSchema });
 
-/** The two project writes, and the same two as an `actions` map. */
+/** What setting a project's repository takes: the new remote, or `null` to clear it. */
+export const setRepositoryInputSchema = z
+  .object({ projectId: z.string().min(1), repository: z.string().nullable() })
+  .strict();
+
+/** @see setRepositoryInputSchema */
+export type SetRepositoryInput = z.infer<typeof setRepositoryInputSchema>;
+
+/** What setting a project's repository returns: the row as written. */
+export const setRepositoryOutputSchema = z.object({ project: projectRowSchema });
+
+/** The project writes and the project files read, and the same blocks as an `actions` map. */
 export type ProjectBlocks = {
   createProject: ReturnType<typeof createProjectSequence>;
   setWorkstreams: typeof setWorkstreams;
-  actions: { createProject: ActionConfig; setWorkstreams: ActionConfig };
+  setRepository: typeof setRepository;
+  readProjectFiles: typeof readProjectFiles;
+  actions: {
+    createProject: ActionConfig;
+    setWorkstreams: ActionConfig;
+    setRepository: ActionConfig;
+    readProjectFiles: ActionConfig;
+  };
 };
 
-/** One map, shared by both writes: a flow refuses two declarations under one ref. */
+/** One map, shared by every write: a flow refuses two declarations under one ref. */
 const WRITE_RESOURCES = {
   [PROJECTS_RESOURCE]: defineProjectsCollection(),
   [WORKSTREAM_CLAIMS_RESOURCE]: defineWorkstreamClaimsCollection(),
-  [CHANNEL_INVENTORY_RESOURCE]: projectWritesChannelInventory
+  [MAILBOX_INVENTORY_RESOURCE]: projectWritesMailboxInventory
 };
 
 function refsOf(ctx: BlockContext) {
   return {
     projects: ctx.resources[PROJECTS_RESOURCE] as unknown as ResourceCollectionRef<ProjectRow>,
     claims: ctx.resources[WORKSTREAM_CLAIMS_RESOURCE] as unknown as ResourceCollectionRef<WorkstreamClaim>,
-    inventory: ctx.resources[CHANNEL_INVENTORY_RESOURCE] as unknown as ResourceCollectionRef<ChannelInventoryRow>
+    inventory: ctx.resources[MAILBOX_INVENTORY_RESOURCE] as unknown as ResourceCollectionRef<MailboxInventoryRow>
   };
 }
 
 const unique = (ids: readonly string[]): string[] => [...new Set(ids)];
 
-/** Refuse any id that is not a channel this organization registered. Reads only; checked before any claim. */
-async function assertDeclaredChannels(ctx: BlockContext, ids: readonly string[]): Promise<void> {
+/** Refuse any id that is not a mailbox this organization registered. Reads only; checked before any claim. */
+async function assertDeclaredMailboxes(ctx: BlockContext, ids: readonly string[]): Promise<void> {
   const { inventory } = refsOf(ctx);
   for (const id of ids) {
     if ((await inventory.getOptional(id)) === undefined) {
       throw new ProjectRefusedError(
         "unknown-workstream",
-        `"${id}" is not a channel in this organization's inventory. A workstream is a declared channel, named by its full id.`
+        `"${id}" is not a mailbox in this organization's inventory. A workstream is a declared mailbox, named by its full id.`
       );
     }
   }
@@ -248,6 +271,13 @@ class ClaimMovedError extends Error {
   }
 }
 
+/** Refuse a repository value no row may record. `null` and omitted are a project with none. */
+function assertRepository(repository: string | null | undefined): void {
+  if (repository == null) return;
+  const problem = repositoryProblem(repository);
+  if (problem !== undefined) throw new ProjectRefusedError("invalid-repository", `${problem}.`);
+}
+
 const ownerBound = (row: ProjectRow): boolean => row.sessions.some((link) => link.userId === row.ownerUserId);
 
 const writeProject = handler({
@@ -259,6 +289,7 @@ const writeProject = handler({
     const ctx = rawCtx as unknown as BlockContext;
     const problem = projectIdProblem(input.id);
     if (problem !== undefined) throw new ProjectRefusedError("invalid-project-id", `${problem}.`);
+    assertRepository(input.repository);
     const owner = ctx.session.identity.userId;
     if (owner === undefined || owner.length === 0) {
       throw new Error("createProject needs a session with an owner: the owner is the session's user.");
@@ -277,7 +308,7 @@ const writeProject = handler({
     if (existing !== undefined) return heldBy(existing.state as ProjectRow);
 
     const workstreams = unique(input.workstreams ?? []);
-    await assertDeclaredChannels(ctx, workstreams);
+    await assertDeclaredMailboxes(ctx, workstreams);
     const { claims } = refsOf(ctx);
     const token = newToken();
     // Every claim is created here, never adopted: a claim this id already
@@ -310,6 +341,7 @@ const writeProject = handler({
       ownerUserId: owner,
       members: unique([owner, ...(input.members ?? [])]),
       workstreams,
+      repository: input.repository ?? null,
       claimTokens: Object.fromEntries(workstreams.map((id) => [id, token])),
       sessions: []
     });
@@ -328,11 +360,11 @@ const writeProject = handler({
 });
 
 function createProjectSequence() {
-  // Talk sessions run on the built-in channel kind, the one the talk
+  // Talk sessions run on the built-in mailbox kind, the one the talk
   // template's reaction mints on too (`talk-template.ts`).
   const bindOwner = dispatcher({
     name: "project-bind-owner",
-    flowKind: CHANNEL_KIND,
+    flowKind: MAILBOX_KIND,
     action: TALK_BIND_ACTION,
     inputSchema: createProjectOutputSchema,
     // Keyed on the row, from the creating session: a re-sent create from the
@@ -378,7 +410,7 @@ const setWorkstreams = handler({
     }
 
     const next = unique(input.workstreams);
-    await assertDeclaredChannels(ctx, next.filter((id) => !row.state.workstreams.includes(id)));
+    await assertDeclaredMailboxes(ctx, next.filter((id) => !row.state.workstreams.includes(id)));
     const token = newToken();
     const stamped = new Set<string>();
 
@@ -420,6 +452,37 @@ const setWorkstreams = handler({
       if (!next.includes(id)) await releaseIfStamped(ctx, input.projectId, id, replaced.claimTokens[id]);
     }
     return { project: projectRowSchema.parse(written) };
+  }
+});
+
+/**
+ * `setRepository`: set, change or clear a project's repository. Members only.
+ * The row is rewritten from the state the store hands the updater, so a
+ * concurrent `join` or `setWorkstreams` keeps what it wrote, and of two
+ * `setRepository` writes at once the later one wins whole. A lost race is
+ * retried past the engine's own budget, as the other contended row writes are.
+ */
+const setRepository = handler({
+  name: "project-set-repository",
+  inputSchema: setRepositoryInputSchema,
+  outputSchema: setRepositoryOutputSchema,
+  resources: WRITE_RESOURCES,
+  execute: async (input, rawCtx) => {
+    const ctx = rawCtx as unknown as BlockContext;
+    const { projects } = refsOf(ctx);
+    const row = await projects.getOptional(input.projectId);
+    if (row === undefined) {
+      throw new ProjectRefusedError("no-such-project", `this organization has no project "${input.projectId}".`);
+    }
+    if (!isMember(row.state, ctx.session.identity.userId)) {
+      throw new ProjectRefusedError(
+        "not-a-member",
+        `only project "${input.projectId}"'s members may change its repository.`
+      );
+    }
+    assertRepository(input.repository);
+    await retryOnConflict(() => row.updateState((state) => ({ ...state, repository: input.repository })));
+    return { project: projectRowSchema.parse(row.state) };
   }
 });
 
@@ -472,7 +535,7 @@ async function settleFailedStamps(
 }
 
 /**
- * Build the project writes.
+ * Build the project writes and the project files read.
  *
  * @example
  *   const projects = defineProjectBlocks();
@@ -483,6 +546,8 @@ export function defineProjectBlocks(): ProjectBlocks {
   return {
     createProject,
     setWorkstreams,
+    setRepository,
+    readProjectFiles,
     actions: {
       createProject: {
         block: createProject,
@@ -492,6 +557,15 @@ export function defineProjectBlocks(): ProjectBlocks {
       setWorkstreams: {
         block: setWorkstreams,
         description: "Replace a project's workstreams. Members only; a workstream belongs to at most one project."
+      },
+      setRepository: {
+        block: setRepository,
+        description:
+          "Set, change or clear (null) the git remote a project's code lives in. Members only; a bare path or a remote carrying a credential is refused."
+      },
+      readProjectFiles: {
+        block: readProjectFiles,
+        description: "Read the files a project keeps: each file's path under the project and its size in bytes. Members only."
       }
     }
   };

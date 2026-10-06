@@ -8,19 +8,23 @@ and [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n).
 
 ## The path
 
-![The path, as of 30 September 2026, drawn in phases rather than dates because Cycle PM has not scheduled the build. An input lane for the design: hand-back v1 came back during review; design pass 2 runs from the gate to the final hand-back, a vertical line that gates final visuals only. An input lane for the sibling epics, which nothing waits on. This epic spec in review, with the now line on it. FIX-1655: spec, then the token contract, neutral defaults, skin fixes and the re-sync check, then the light and dark App Lab values after the final hand-back. FIX-1662: spec, then the frame and the project and workstream levels, then its final visual pass. FIX-1664: spec beside FIX-1662's, then the task level once FIX-1662's frame lands, then its final visual pass. FIX-1663: the QA plan written beside them, and its run after all three merge. The critical path runs the gate, design pass 2, the final passes and the closure run](figures/path.svg)
+![The as-shipped path, 30 September to 4 October 2026; the detail is in the prose below](figures/path.svg)
 
-Three lanes run from the gate, and all split at the same wait: the final hand-back. Everything
-structural starts at the gate, except the task view's build, which waits for FIX-1662's frame;
-only the final look waits on design ([ER-9](BUSINESS-RULES.md#how-the-set-is-run)). So design
-pass 2, not any child, is the critical path's long pole. The dependency graph is in
-[the spec](SPEC.md#how-the-issues-flow-into-each-other); this adds time.
+Each bar runs from filed (or the gate) to merged. FIX-1655, FIX-1662 and FIX-1664, with the DevForce
+lab prerequisites FIX-1666 to 1668, specced and built on 30 September. Closure run 1's findings
+(FIX-1684, FIX-1688 to 1696) merged overnight, and FIX-1690's door into a running session on 1
+October. Design v2 landed that evening, then FIX-1725, FIX-1722 and FIX-1723. The late fixes,
+FIX-1730 to 1735, FIX-1747 and FIX-1749, landed on 2 and 3 October. The v2-look audit filed
+FIX-1736, merged on 2 October, and FIX-1737, whose four slices landed early on 4 October beside
+FIX-1650's FIX-1718 and FIX-1752. The closure ran until one run was clean, on `01444863c`, and
+[#2709](https://github.com/fixpoint-labs/flow-state-dev/pull/2709) merged that day.
 
-The figure is the 30 September path. The 2026-10-01 amendment adds three lanes after it: FIX-1722
-and FIX-1723 (spec, then build in the shipped frame) and FIX-1725 (built directly). They start
-after the final hand-back, and the closure run now waits for them too. The 2026-10-02 amendment
-adds two more: FIX-1736 (the fonts, built directly), then FIX-1737 (v2's look: spec, then four
-PRs), and the closure's leg d runs FIX-1737's check.
+The long pole was v2's look, not the shell: the structure the 30 September plan named merged on
+the first day, and the last three went to design v2, the look it set
+([ER-16](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) and the closure's findings. The
+plan's critical path ran through design pass 2 and the final passes; that held, with FIX-1736 and
+FIX-1737 as the final pass. Four children filed under the
+epic (FIX-1671, 1673, 1675, 1705) are not on the path and did not block the closure.
 
 ## The design hand-back is an input, not a child
 
@@ -54,23 +58,23 @@ v1 fixes is an amendment to this epic ([ER-10](BUSINESS-RULES.md#how-the-set-is-
 FIX-1655 carries no Kind label in Linear, so its route defaults to spec. FIX-1662 and FIX-1664
 are Features; FIX-1663 an Improvement.
 
-## Where it is
+## Where it ended
 
-[The set table](SPEC.md#the-set--as-of-2026-09-30) is the review-time snapshot; follow its
-Linear links for live state. The build is a Cycle 2 candidate: Cycle PM decides when it starts.
+[The set table](SPEC.md#the-set--as-of-2026-09-30) is the review-time snapshot. The build was
+planned as a Cycle 2 candidate; it ran from the gate on 30 September to the closure's merge on
+4 October, as [the path](#the-path) shows. Linear and the implementation PRs hold the final state.
 
-## What unblocks what, from here
+## What unblocked what, as it happened
 
-1. **This spec is approved and merged** → design pass 2 goes to Claude Design; the FIX-1655,
-   FIX-1662 and FIX-1664 specs start in parallel; FIX-1663's QA plan is written beside them.
-2. **FIX-1662 merges** → FIX-1664's build merges into its frame.
-3. **The final hand-back is linked on FIX-1649** → FIX-1655 sets the light and dark values;
-   FIX-1662 and FIX-1664 do their final visual passes. A structural change goes to an
-   amendment first.
-4. **Every other child merges** (FIX-1655, FIX-1662, FIX-1664, and since the 2026-10-01
-   amendment FIX-1722, FIX-1723 and FIX-1725, and since 2026-10-02 FIX-1736 and FIX-1737) →
-   the closure run, on one `main` commit, legs a to d. A finding is filed as a child
-   of FIX-1649 that blocks FIX-1663; the whole plan runs again after the last fix merges.
+1. **The spec merged** (30 September): the FIX-1655, FIX-1662 and FIX-1664 specs ran in parallel,
+   with FIX-1663's QA plan beside them, and design pass 2 went to Claude Design.
+2. **FIX-1662 merged**, and FIX-1664's build merged into its frame the same day.
+3. **The final hand-back, v2, landed** (1 October): FIX-1655's light and dark values came with it.
+   Its structural changes went to the 2026-10-01 amendment first (FIX-1722, FIX-1723, FIX-1725),
+   and its look to the 2026-10-02 amendment (FIX-1736, FIX-1737).
+4. **Every other child merged**, and the closure ran on one `main` commit, legs a to d. Each
+   finding was filed as a child of FIX-1649 blocking FIX-1663, and the whole plan ran again after
+   the last fix merged, until it was clean on `01444863c`.
 
 The plan is written on [D3](DECISIONS.md#d3): one app, so no child builds a chrome package.
 

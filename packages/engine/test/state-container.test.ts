@@ -144,7 +144,12 @@ describe("state container and CAS", () => {
       version: expectedVersion + 1
     }));
 
-    const ops = createScopeStateOps<DemoState>(container, { persist });
+    // The store agrees with the cache, so every CAS-path no-op below verifies.
+    const reread = vi.fn(async () => ({
+      state: container.read() as DemoState,
+      version: container.getVersion()
+    }));
+    const ops = createScopeStateOps<DemoState>(container, { persist, reread });
 
     // Equal-value patch: no-op, no persist, no version advance.
     expect(await ops.patchState({ count: 5 })).toBe(false);

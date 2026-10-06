@@ -79,7 +79,7 @@ export function askFlowState(
 export function validatePrincipalFlags(flags: PrincipalFlags): void {
   if (flags.org !== undefined) {
     if (!isValidOrgId(flags.org)) {
-      throw new CliError("--org must be a nonempty organization id.", EXIT_INVALID_ARGS);
+      throw new CliError("--org must be a nonempty, well-formed organization id.", EXIT_INVALID_ARGS);
     }
     if (flags.org === DEFAULT_ORG_ID) {
       throw new CliError(

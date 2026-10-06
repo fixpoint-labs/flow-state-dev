@@ -283,7 +283,7 @@ function Page() {
           <Part name="navigator" component="FlowNavigator">
             <FlowNavigator
               sections={[
-                { label: "Channels", kinds: ["support"] },
+                { label: "Mailboxes", kinds: ["support"] },
                 { label: "Seats", kinds: ["agent"] },
               ]}
               selectedSessionId="sess-1"

@@ -4,7 +4,7 @@
  * The rail's kind lists, the seats' descriptions and the panel's board ids are
  * literals in `lib/workforce-shell.ts`, because a browser cannot read
  * `workforce/`. That makes them a second copy, and a copy drifts: add a worker
- * kind, reword a `description:`, or add a board to a `CHANNEL.md`, and the
+ * kind, reword a `description:`, or add a board to a `MAILBOX.md`, and the
  * rail or the panel silently shows the old one. These cases fail on that drift.
  *
  * Red states produced before these were trusted:
@@ -19,26 +19,26 @@
  *   - remove `workforcePanelResources` from the chat-agent flow: the
  *     declaration case fails, which is the state in which every panel read
  *     answers "unknown resource".
- *   - drop the board from `support.help`'s `CHANNEL.md`: the board case and
- *     the channel flow's declaration case both fail.
+ *   - drop the board from `support.help`'s `MAILBOX.md`: the board case and
+ *     the mailbox flow's declaration case both fail.
  */
 import { describe, expect, it } from "vitest";
 import { z, type ZodTypeAny } from "zod";
-import { CHANNEL_KIND, channelBoard, channelBoardIds, HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce";
-import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
+import { MAILBOX_KIND, mailboxBoard, mailboxBoardIds, HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce";
+import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 
 import chatAgentFlow from "../flows/chat-agent/flow";
 import { hireKitchenSinkWorkforce, kitchenSinkKinds, workforceRoot } from "../workforce/hire";
-import { channelKinds } from "../workforce/workforce.gen";
+import { mailboxKinds } from "../workforce/workforce.gen";
 import {
-  CHANNEL_KINDS,
+  MAILBOX_KINDS,
   defaultConversation,
   ROSTER_BOOT_REPORT_REF,
   SEAT_ASKS,
   SEAT_DESCRIPTIONS,
   SEAT_KINDS,
   SHELL_BOARDS,
-  SHELL_CHANNELS,
+  SHELL_MAILBOXES,
   seatAskFor,
 } from "../lib/workforce-shell";
 
@@ -58,34 +58,34 @@ describe("the shell's names match the workforce tree", () => {
     expect(SEAT_DESCRIPTIONS).toEqual(declared);
   });
 
-  it("lists every channel kind: the framework's own, plus the tree's", () => {
-    expect([...CHANNEL_KINDS].sort()).toEqual(["channel", ...Object.keys(channelKinds)].sort());
+  it("lists every mailbox kind: the framework's own, plus the tree's", () => {
+    expect([...MAILBOX_KINDS].sort()).toEqual(["mailbox", ...Object.keys(mailboxKinds)].sort());
   });
 
-  it("draws every board the tree's channels declare, under the id the package mints", async () => {
-    const { channels, errors } = await readChannelsDirectory(workforceRoot);
+  it("draws every board the tree's mailboxes declare, under the id the package mints", async () => {
+    const { mailboxes, errors } = await readMailboxesDirectory(workforceRoot);
     expect(errors).toEqual([]);
-    const declared = channelBoardIds(channels);
+    const declared = mailboxBoardIds(mailboxes);
     // Not vacuous: the tree does declare boards.
     expect(declared.length).toBeGreaterThan(0);
     expect(SHELL_BOARDS.map((board) => board.ref).sort()).toEqual(declared);
     for (const board of SHELL_BOARDS) {
-      expect(channelBoard(board.channelId, board.board).id).toBe(board.ref);
+      expect(mailboxBoard(board.mailboxId, board.board).id).toBe(board.ref);
     }
   });
 
-  it("lists every channel the tree declares, under the kind its file selects", async () => {
-    const { channels, errors } = await readChannelsDirectory(workforceRoot);
+  it("lists every mailbox the tree declares, under the kind its file selects", async () => {
+    const { mailboxes, errors } = await readMailboxesDirectory(workforceRoot);
     expect(errors).toEqual([]);
-    // Not vacuous: the tree does declare channels.
-    expect(channels.length).toBeGreaterThan(0);
+    // Not vacuous: the tree does declare mailboxes.
+    expect(mailboxes.length).toBeGreaterThan(0);
     // A file with no `flow:` line selects the built-in kind.
-    const declared = channels.map((channel) => ({
-      id: channel.id,
-      kind: (channel.declared as { flow?: string }).flow ?? CHANNEL_KIND,
+    const declared = mailboxes.map((mailbox) => ({
+      id: mailbox.id,
+      kind: (mailbox.declared as { flow?: string }).flow ?? MAILBOX_KIND,
     }));
     const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
-    expect(SHELL_CHANNELS.map(({ id, kind }) => ({ id, kind })).sort(byId)).toEqual(declared.sort(byId));
+    expect(SHELL_MAILBOXES.map(({ id, kind }) => ({ id, kind })).sort(byId)).toEqual(declared.sort(byId));
   });
 });
 
@@ -147,20 +147,20 @@ describe("the shell's flow declares what the panel reads", () => {
     expectBrowserReadable(resources, ref, "chat-agent");
   });
 
-  // Each board is read through its channel's session, so it is the flow that
-  // session runs on, the one the channel's file selects, that must declare it.
+  // Each board is read through its mailbox's session, so it is the flow that
+  // session runs on, the one the mailbox's file selects, that must declare it.
   it.each(SHELL_BOARDS.map((board) => [board.ref, board] as const))(
-    "board %s, readable by a browser through its channel's session",
+    "board %s, readable by a browser through its mailbox's session",
     async (_ref, board) => {
-      const { channelFlows } = await hireKitchenSinkWorkforce();
-      const channel = SHELL_CHANNELS.find(({ id }) => id === board.channelId);
-      expect(channel, `SHELL_CHANNELS has no channel "${board.channelId}"`).toBeDefined();
-      const flow = channelFlows.find(({ kind }) => kind === channel!.kind);
-      expect(flow, `no channel flow of kind "${channel!.kind}"`).toBeDefined();
+      const { mailboxFlows } = await hireKitchenSinkWorkforce();
+      const mailbox = SHELL_MAILBOXES.find(({ id }) => id === board.mailboxId);
+      expect(mailbox, `SHELL_MAILBOXES has no mailbox "${board.mailboxId}"`).toBeDefined();
+      const flow = mailboxFlows.find(({ kind }) => kind === mailbox!.kind);
+      expect(flow, `no mailbox flow of kind "${mailbox!.kind}"`).toBeDefined();
       expectBrowserReadable(
         (flow!.resources ?? {}) as Record<string, unknown>,
         board.ref,
-        `the "${channel!.kind}" channel flow`,
+        `the "${mailbox!.kind}" mailbox flow`,
       );
     },
   );

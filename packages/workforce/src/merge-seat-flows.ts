@@ -10,7 +10,7 @@
 /**
  * Add `seats` to `flows` under their ids, refusing any collision.
  *
- * @param flows The app's own flows, by id (a channel kind, an app flow).
+ * @param flows The app's own flows, by id (a mailbox kind, an app flow).
  * @param seats The hired seats, from `hireWorkforce`.
  * @returns A new record holding both; `flows` is not changed.
  * @throws If a seat's id is already a key of `flows`, or two seats share an id.

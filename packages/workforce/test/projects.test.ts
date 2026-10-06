@@ -3,18 +3,21 @@
  * in one organization: `alice` and `bob` (members), and `mallory` (in the org,
  * not a member).
  *
- * Covers the row writes (`createProject`, `setWorkstreams`, workstream claims,
- * the bind repair) and the room (`join`, `post`, `read { after }`, the
+ * Covers the row writes (`createProject`, `setWorkstreams`, `setRepository`,
+ * workstream claims, the bind repair), the project files read, and the room (`join`, `post`, `read { after }`, the
  * membership gate, the counter's retry and its committed watermark). Identity
  * comes from a verified header, never the body (BP-031).
  *
- * **Controls.** Two modules are swappable on purpose, and each swap must turn
+ * **Controls.** Three modules are swappable on purpose, and each swap must turn
  * this file red:
  *
  *   FSD_CONTROL=no-gate  pnpm --filter @flow-state-dev/workforce exec vitest run test/projects.test.ts
  *     The membership gate admits everyone: the outsider tests fail.
  *   FSD_CONTROL=no-retry pnpm --filter @flow-state-dev/workforce exec vitest run test/projects.test.ts
- *     The room's own retry runs once: the post burst and the join burst lose writes.
+ *     The room's own retry runs once: the post burst, the join burst and the
+ *     repository burst lose writes.
+ *   FSD_CONTROL=any-repository pnpm --filter @flow-state-dev/workforce exec vitest run test/projects.test.ts
+ *     The repository check admits every value: the invalid-repository test fails.
  */
 import { describe, expect, it, vi } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -24,24 +27,29 @@ import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  CHANNEL_KIND,
-  channelFlow,
-  defineChannelInventoryCollection,
+  MAILBOX_KIND,
+  mailboxFlow,
+  defineMailboxInventoryCollection,
   defineProjectBlocks,
+  defineProjectFilesCollection,
   defineProjectsCollection,
-  projectWritesChannelInventory,
+  projectWritesMailboxInventory,
   defineRoomLinesCollection,
   defineRoomSeqCollection,
   defineWorkstreamClaimsCollection,
+  projectRowSchema,
   roomLineKey,
   type RoomLine,
   type RoomSeq
 } from "../src/index";
 import { advanceCommitted, allocateSeq, appendRoomLine, readRoom, writeLineAt } from "../src/projects/room-store";
-import { postedLines } from "./channel-post-lines";
+import { postedLines } from "./mailbox-post-lines";
 
 vi.mock("../src/projects/membership-gate", async (original) =>
   process.env.FSD_CONTROL === "no-gate" ? { isMember: () => true } : original()
+);
+vi.mock("../src/projects/repository-value", async (original) =>
+  process.env.FSD_CONTROL === "any-repository" ? { repositoryProblem: () => undefined } : original()
 );
 vi.mock("../src/projects/cas-retry", async (original) => {
   const real = (await original()) as Record<string, unknown>;
@@ -51,24 +59,25 @@ vi.mock("../src/projects/cas-retry", async (original) => {
 });
 
 const ORG = "lab";
-const DECLARED_CHANNELS = ["eng.feature", "eng.platform", "ops.release", "ops.oncall"];
+const DECLARED_MAILBOXES = ["eng.feature", "eng.platform", "ops.release", "ops.oncall"];
 
 // --- The app's own flow: the project writes, plus test-only seeds and reads. ---
 
-const inventory = defineChannelInventoryCollection();
+const inventory = defineMailboxInventoryCollection();
 const claims = defineWorkstreamClaimsCollection();
 const projects = defineProjectsCollection();
 const rooms = { lines: defineRoomLinesCollection(), seq: defineRoomSeqCollection() };
+const projectFiles = defineProjectFilesCollection();
 
-/** Registers the declared channels, as `openInventory` does at boot. */
-const seedChannels = handler({
-  name: "seed-channels",
+/** Registers the declared mailboxes, as `openInventory` does at boot. */
+const seedMailboxes = handler({
+  name: "seed-mailboxes",
   inputSchema: z.object({}),
   outputSchema: z.object({}),
-  resources: { "channel-inventory": inventory },
+  resources: { "mailbox-inventory": inventory },
   execute: async (_input, ctx) => {
-    const rows = ctx.resources["channel-inventory"] as unknown as ResourceCollectionRef;
-    for (const id of DECLARED_CHANNELS) await rows.upsert(id, { id, kind: CHANNEL_KIND, members: [], openedAt: null });
+    const rows = ctx.resources["mailbox-inventory"] as unknown as ResourceCollectionRef;
+    for (const id of DECLARED_MAILBOXES) await rows.upsert(id, { id, kind: MAILBOX_KIND, members: [], openedAt: null });
     return {};
   }
 });
@@ -108,11 +117,26 @@ const roomStep = (name: string, run: (input: any, ctx: unknown) => Promise<unkno
     execute: run
   });
 
+/** Writes one project file, as a run's sync back does. */
+const seedProjectFile = handler({
+  name: "seed-project-file",
+  inputSchema: z.object({ key: z.string(), content: z.string() }),
+  outputSchema: z.object({}),
+  resources: { "project-files": projectFiles },
+  execute: async (input, ctx) => {
+    const files = ctx.resources["project-files"] as unknown as ResourceCollectionRef;
+    const ref = await files.create(input.key, { path: input.key, hash: "seeded", updatedAt: "2026-10-04T00:00:00.000Z" });
+    await ref.writeContent(input.content);
+    return {};
+  }
+});
+
 const projectBlocks = defineProjectBlocks();
 const labFlow = defineFlow({
   kind: "lab",
   actions: {
     ...projectBlocks.actions,
+    seedProjectFile: { block: seedProjectFile },
     inspect: { block: inspect },
     allocate: { block: roomStep("allocate", (i, ctx) => allocateSeq(roomRefs(ctx), i.projectId)) },
     writeAt: {
@@ -156,23 +180,23 @@ const labFlow = defineFlow({
  * A flow of its own for the seed: a flow refuses a second declaration of the
  * inventory beside the one the project writes hold.
  */
-const seederFlow = defineFlow({ kind: "seeder", actions: { seedChannels: { block: seedChannels } } });
+const seederFlow = defineFlow({ kind: "seeder", actions: { seedMailboxes: { block: seedMailboxes } } });
 
 // --- Harness ---
 
 type Answer = { status: number; json: any };
 
 /**
- * Boot a host. `channel: false` leaves the talk kind unregistered, so every
+ * Boot a host. `mailbox: false` leaves the talk kind unregistered, so every
  * bind dispatch is refused; boot a second host on its `primary` to repair.
  */
-async function boot(options: { primary?: ReturnType<typeof inMemoryStores>; channel?: boolean } = {}) {
+async function boot(options: { primary?: ReturnType<typeof inMemoryStores>; mailbox?: boolean } = {}) {
   const primary = options.primary ?? inMemoryStores();
   const state = createFlowState({
     flows: {
       lab: labFlow,
       seeder: seederFlow,
-      ...(options.channel === false ? {} : { [CHANNEL_KIND]: channelFlow() })
+      ...(options.mailbox === false ? {} : { [MAILBOX_KIND]: mailboxFlow() })
     },
     stores: { default: { primary } },
     modelResolver: createMockModelResolver({}),
@@ -230,7 +254,7 @@ async function boot(options: { primary?: ReturnType<typeof inMemoryStores>; chan
     return result.output;
   };
 
-  await ok("alice", "seeder", await openSession("alice", "seeder"), "seedChannels", {});
+  await ok("alice", "seeder", await openSession("alice", "seeder"), "seedMailboxes", {});
   const lab = await openSession("alice", "lab");
   const inspectRow = (projectId: string, workstreams: string[] = []) =>
     ok("alice", "lab", lab, "inspect", { projectId, workstreams }) as Promise<{ row: any; claims: Record<string, string | null> }>;
@@ -264,21 +288,21 @@ async function apollo(h: Harness) {
     workstreams: ["eng.feature", "ops.release"]
   });
   const aliceTalk = await h.sessionFor("apollo", "alice");
-  const bobTalk = (await h.ok("bob", CHANNEL_KIND, await h.openSession("bob", CHANNEL_KIND), "join", { projectId: "apollo" }))
+  const bobTalk = (await h.ok("bob", MAILBOX_KIND, await h.openSession("bob", MAILBOX_KIND), "join", { projectId: "apollo" }))
     .sessionId as string;
   return { aliceLab, created, aliceTalk, bobTalk };
 }
 
-describe("the writes on a flow that reads the channel inventory itself", () => {
-  // A chief of staff's kind both answers "who is on which channel" and creates
+describe("the writes on a flow that reads the mailbox inventory itself", () => {
+  // A chief of staff's kind both answers "who is on which mailbox" and creates
   // projects. One flow takes one declaration per storage key, so the kind's own
   // read of the inventory has to be the writes' declaration, not a second one.
-  const readsChannels = (channels: unknown) =>
+  const readsMailboxes = (mailboxes: unknown) =>
     handler({
-      name: "list-channels",
+      name: "list-mailboxes",
       inputSchema: z.object({}),
       outputSchema: z.object({}),
-      resources: { channels: channels as typeof inventory },
+      resources: { mailboxes: mailboxes as typeof inventory },
       execute: async () => ({})
     });
 
@@ -286,8 +310,8 @@ describe("the writes on a flow that reads the channel inventory itself", () => {
     const blocks = defineProjectBlocks();
     expect(() =>
       defineFlow({
-        kind: "reads-channels",
-        actions: { ...blocks.actions, listChannels: { block: readsChannels(projectWritesChannelInventory) } }
+        kind: "reads-mailboxes",
+        actions: { ...blocks.actions, listMailboxes: { block: readsMailboxes(projectWritesMailboxInventory) } }
       })
     ).not.toThrow();
   });
@@ -296,8 +320,8 @@ describe("the writes on a flow that reads the channel inventory itself", () => {
     const blocks = defineProjectBlocks();
     expect(() =>
       defineFlow({
-        kind: "reads-channels-twice",
-        actions: { ...blocks.actions, listChannels: { block: readsChannels(defineChannelInventoryCollection()) } }
+        kind: "reads-mailboxes-twice",
+        actions: { ...blocks.actions, listMailboxes: { block: readsMailboxes(defineMailboxInventoryCollection()) } }
       })
     ).toThrow(/same effective storage key/);
   });
@@ -404,7 +428,7 @@ describe("project rows", () => {
 
   it("hands a re-sent create of a project that holds workstreams its row back, rather than refusing it on its own claims", async () => {
     const h = await boot();
-    const broken = await boot({ primary: h.primary, channel: false });
+    const broken = await boot({ primary: h.primary, mailbox: false });
     const brokenLab = await broken.openSession("alice", "lab");
     // Committed with its claims, and left unbound: its bind was refused.
     await broken.ok("alice", "lab", brokenLab, "createProject", {
@@ -433,7 +457,7 @@ describe("project rows", () => {
 
   it("re-binds a row whose mint failed after commit, by each repair path, and binds once", async () => {
     const h = await boot();
-    const broken = await boot({ primary: h.primary, channel: false });
+    const broken = await boot({ primary: h.primary, mailbox: false });
     const brokenLab = await broken.openSession("alice", "lab");
     await broken.ok("alice", "lab", brokenLab, "createProject", { id: "zeus", title: "Zeus" });
     await broken.ok("alice", "lab", brokenLab, "createProject", { id: "hera", title: "Hera" });
@@ -443,8 +467,8 @@ describe("project rows", () => {
     expect((await h.inspectRow("hera")).row.sessions).toEqual([]);
 
     // Repair 1: the owner joins.
-    const talk = await h.openSession("alice", CHANNEL_KIND);
-    expect(await h.ok("alice", CHANNEL_KIND, talk, "join", { projectId: "zeus" })).toEqual({ sessionId: talk });
+    const talk = await h.openSession("alice", MAILBOX_KIND);
+    expect(await h.ok("alice", MAILBOX_KIND, talk, "join", { projectId: "zeus" })).toEqual({ sessionId: talk });
     // Repair 2: the owner re-sends the create, through a host whose talk kind is registered.
     const lab = await h.openSession("alice", "lab");
     const resent = await h.ok("alice", "lab", lab, "createProject", { id: "hera", title: "Hera, again" });
@@ -453,10 +477,10 @@ describe("project rows", () => {
     const heraTalk = await h.sessionFor("hera", "alice");
 
     // Once: repeating either repair hands back the same session and adds no entry.
-    const elsewhere = await h.openSession("alice", CHANNEL_KIND);
-    expect(await h.ok("alice", CHANNEL_KIND, elsewhere, "join", { projectId: "zeus" })).toEqual({ sessionId: talk });
+    const elsewhere = await h.openSession("alice", MAILBOX_KIND);
+    expect(await h.ok("alice", MAILBOX_KIND, elsewhere, "join", { projectId: "zeus" })).toEqual({ sessionId: talk });
     await h.ok("alice", "lab", lab, "createProject", { id: "hera", title: "Hera" });
-    expect(await h.ok("alice", CHANNEL_KIND, elsewhere, "join", { projectId: "hera" })).toEqual({ sessionId: heraTalk });
+    expect(await h.ok("alice", MAILBOX_KIND, elsewhere, "join", { projectId: "hera" })).toEqual({ sessionId: heraTalk });
     await new Promise((r) => setTimeout(r, 50));
     expect((await h.inspectRow("zeus")).row.sessions).toEqual([{ sessionId: talk, userId: "alice" }]);
     expect((await h.inspectRow("hera")).row.sessions).toEqual([{ sessionId: heraTalk, userId: "alice" }]);
@@ -644,31 +668,269 @@ describe("project rows under racing writes", () => {
   });
 });
 
+describe("a project's repository", () => {
+  it("records the repository a project is created with, and null when none is given", async () => {
+    const h = await boot();
+    const lab = await h.openSession("alice", "lab");
+    const named = await h.ok("alice", "lab", lab, "createProject", {
+      id: "storefront",
+      title: "Storefront",
+      repository: "https://github.com/acme/storefront.git"
+    });
+    const bare = await h.ok("alice", "lab", lab, "createProject", { id: "sandbox", title: "Sandbox" });
+    expect(named.project.repository).toBe("https://github.com/acme/storefront.git");
+    expect(bare.project.repository).toBeNull();
+    expect((await h.inspectRow("storefront")).row.repository).toBe("https://github.com/acme/storefront.git");
+    expect((await h.inspectRow("sandbox")).row.repository).toBeNull();
+
+    // Anyone in the org reads it with the row, as Shift Manager's Brief does.
+    const malloryLab = await h.openSession("mallory", "lab");
+    const listed = await h.call("GET", "mallory", ["sessions", malloryLab, "resources", "projects"]);
+    const byId = Object.fromEntries(listed.json.items.map((i: any) => [i.clientData.id, i.clientData.repository]));
+    expect(byId).toEqual({ storefront: "https://github.com/acme/storefront.git", sandbox: null });
+  });
+
+  it("lets a member set, change and clear it, and moves nothing else on the row", async () => {
+    const h = await boot();
+    await apollo(h);
+    const before = (await h.inspectRow("apollo")).row;
+    const bobLab = await h.openSession("bob", "lab");
+    const without = ({ repository, ...rest }: Record<string, unknown>) => rest;
+
+    for (const repository of ["https://github.com/acme/storefront.git", "git@github.com:acme/shop.git", null]) {
+      const out = await h.ok("bob", "lab", bobLab, "setRepository", { projectId: "apollo", repository });
+      expect(out.project.repository).toBe(repository);
+      const row = (await h.inspectRow("apollo")).row;
+      expect(row.repository).toBe(repository);
+      expect(without(row)).toEqual(without(before));
+    }
+  });
+
+  // Each refused value is refused by both writes, and its refusal never repeats
+  // the value: a credential in it would otherwise reach logs and the request record.
+  const REFUSED_REPOSITORIES: Array<[string, string]> = [
+    ["an absolute path", "/srv/git/storefront"],
+    ["a relative path", "./storefront"],
+    ["a parent path", "../storefront"],
+    ["a home path", "~/code/storefront"],
+    ["a bare name", "storefront"],
+    ["a Windows path", "C:\\code\\storefront"],
+    ["a Windows path with forward slashes", "C:/code/storefront"],
+    ["an empty value", ""],
+    ["a leading dash", "--upload-pack=touch /tmp/pwned"],
+    ["a leading dash, short", "-oProxyCommand=touch"],
+    ["leading whitespace hiding a dash", " -oProxyCommand=touch"],
+    ["an ssh host that is an option", "ssh://-oProxyCommand=touch/x/y"],
+    ["a remote helper", "ext::sh -c touch% /tmp/pwned"],
+    ["a user and password on https", "https://alice:hunter2@github.com/acme/storefront.git"],
+    ["a token as the https user", "https://ghp_tokenvalue@github.com/acme/storefront.git"],
+    ["a user on http", "http://alice@git.internal/acme/storefront.git"],
+    ["a password on ssh", "ssh://git:hunter2@github.com/acme/storefront.git"],
+    ["a password in the scp form", "git:hunter2@github.com:acme/storefront.git"],
+    ["a control character", "https://github.com/acme/store\nfront.git"]
+  ];
+  const ACCEPTED_REPOSITORIES = [
+    "https://github.com/acme/storefront.git",
+    "https://github.com/acme/storefront",
+    "git@github.com:acme/storefront.git",
+    "ssh://git@github.com/acme/storefront.git",
+    "ssh://github.com:2222/acme/storefront.git",
+    "file:///srv/git/storefront.git"
+  ];
+
+  it("refuses a bare path, a leading dash and a credential as invalid-repository, without repeating the value", async () => {
+    const h = await boot();
+    await apollo(h);
+    const before = (await h.inspectRow("apollo")).row;
+    const lab = await h.openSession("alice", "lab");
+    for (const [what, repository] of REFUSED_REPOSITORIES) {
+      const set = await h.act("alice", "lab", lab, "setRepository", { projectId: "apollo", repository });
+      const create = await h.act("alice", "lab", lab, "createProject", { id: "fresh", title: "Fresh", repository });
+      for (const result of [set, create]) {
+        expect(result.settled, what).not.toBe("completed");
+        expect(refusal(result), what).toContain("invalid-repository");
+        for (const secret of ["hunter2", "ghp_tokenvalue"]) expect(refusal(result), what).not.toContain(secret);
+      }
+    }
+    expect((await h.inspectRow("apollo")).row).toEqual(before);
+    expect((await h.inspectRow("fresh")).row).toBeNull();
+  });
+
+  it("accepts both SSH spellings, https, a custom port and file://, on create and on set", async () => {
+    const h = await boot();
+    await apollo(h);
+    const lab = await h.openSession("alice", "lab");
+    for (const [i, repository] of ACCEPTED_REPOSITORIES.entries()) {
+      const set = await h.ok("alice", "lab", lab, "setRepository", { projectId: "apollo", repository });
+      expect(set.project.repository).toBe(repository);
+      const created = await h.ok("alice", "lab", lab, "createProject", { id: `p${i}`, title: "P", repository });
+      expect(created.project.repository).toBe(repository);
+    }
+  });
+
+  it("reads a row written before the field existed as a project with no repository, and sets one on it", async () => {
+    const h = await boot();
+    // Learn where a row is stored by watching one be written.
+    const states = h.stores.resourceState;
+    const set = states.set.bind(states);
+    let where: { scopeType: Parameters<typeof set>[0]; scopeId: string; key: string } | undefined;
+    states.set = async (scopeType, scopeId, key, state, expected) => {
+      if (where === undefined && /(^|\/)projects\/seed$/.test(key)) where = { scopeType, scopeId, key };
+      return set(scopeType, scopeId, key, state, expected);
+    };
+    await h.ok("alice", "lab", await h.openSession("alice", "lab"), "createProject", { id: "seed", title: "Seed" });
+    states.set = set;
+    expect(where).toBeDefined();
+
+    // The stored shape of a row from before `repository`: the key is absent.
+    const { scopeType, scopeId, key } = where!;
+    const legacy: Record<string, unknown> = { ...(await states.get(scopeType, scopeId, key))!.state, id: "old", title: "Old" };
+    delete legacy.repository;
+    const oldKey = key.replace(/seed$/, "old");
+    expect((await set(scopeType, scopeId, oldKey, legacy as never, "absent")).ok).toBe(true);
+    expect(Object.keys((await states.get(scopeType, scopeId, oldKey))!.state)).not.toContain("repository");
+
+    // Stored state is not re-parsed on read, so a reader parses the row (or
+    // guards with `== null`, as a browser reader does), and either way it is a
+    // project with no repository.
+    expect(projectRowSchema.parse((await h.inspectRow("old")).row).repository).toBeNull();
+    const malloryLab = await h.openSession("mallory", "lab");
+    const listed = await h.call("GET", "mallory", ["sessions", malloryLab, "resources", "projects"]);
+    expect(listed.json.items.find((i: any) => i.clientData.id === "old").clientData.repository ?? null).toBeNull();
+    const lab = await h.openSession("alice", "lab");
+    const resent = await h.ok("alice", "lab", lab, "createProject", { id: "old", title: "Old" });
+    expect(resent).toMatchObject({ created: false, project: { id: "old", repository: null } });
+
+    const written = await h.ok("alice", "lab", lab, "setRepository", { projectId: "old", repository: "git@github.com:acme/old.git" });
+    expect(written.project).toMatchObject({ id: "old", title: "Old", ownerUserId: "alice", repository: "git@github.com:acme/old.git" });
+  });
+
+  it("keeps one value whole, and every other write, when a burst of members set it at once", async () => {
+    const h = await boot();
+    const lab = await h.openSession("alice", "lab");
+    const people = ["alice", "bob", "carol", "dave", "erin", "frank", "grace", "heidi"];
+    await h.ok("alice", "lab", lab, "createProject", { id: "race", title: "Race", members: people.slice(1) });
+    const values = people.map((user) => `https://github.com/acme/${user}.git`);
+    const labs = await Promise.all(people.map((user) => h.openSession(user, "lab")));
+    const talks = await Promise.all(people.map((user) => h.openSession(user, MAILBOX_KIND)));
+    // Each member sets its own value twice while joining the room: the joins
+    // write `sessions` on the same row, so every write contends with the rest.
+    const outcomes = await Promise.all([
+      ...people.flatMap((user, i) => [
+        h.act(user, "lab", labs[i]!, "setRepository", { projectId: "race", repository: values[i] }),
+        h.act(user, "lab", labs[i]!, "setRepository", { projectId: "race", repository: values[i] })
+      ]),
+      ...people.map((user, i) => h.act(user, MAILBOX_KIND, talks[i]!, "join", { projectId: "race" }))
+    ]);
+    expect(outcomes.filter((o) => o.settled !== "completed").map(refusal)).toEqual([]);
+    const row = (await h.inspectRow("race")).row;
+    expect(values).toContain(row.repository);
+    expect(row.sessions.map((s: { userId: string }) => s.userId).sort()).toEqual([...people].sort());
+    expect(row.members).toEqual(people);
+  });
+
+  it("refuses a non-member and an unknown project, and writes nothing", async () => {
+    const h = await boot();
+    await apollo(h);
+    const before = (await h.inspectRow("apollo")).row;
+    const malloryLab = await h.openSession("mallory", "lab");
+    const outsider = await h.act("mallory", "lab", malloryLab, "setRepository", {
+      projectId: "apollo",
+      repository: "https://github.com/mallory/evil.git"
+    });
+    expect(outsider.settled).not.toBe("completed");
+    expect(refusal(outsider)).toContain("not-a-member");
+    const nowhere = await h.act("mallory", "lab", malloryLab, "setRepository", { projectId: "nope", repository: null });
+    expect(refusal(nowhere)).toContain("no-such-project");
+    expect((await h.inspectRow("apollo")).row).toEqual(before);
+    expect((await h.inspectRow("nope")).row).toBeNull();
+  });
+});
+
+describe("a project's files", () => {
+  it("is declared org-scoped, shared across flows, lazy, and with no browser read", () => {
+    expect(projectFiles).toMatchObject({ pattern: "project-files/**", scope: "org", flowIsolation: false, prefetchMode: "lazy" });
+    expect((projectFiles as { client?: unknown }).client).toBeUndefined();
+    expect(defineProjectFilesCollection()).toBe(projectFiles);
+  });
+
+  it("hands a member the files under the project's id, and no other project's", async () => {
+    const h = await boot();
+    await apollo(h);
+    const lab = await h.openSession("alice", "lab");
+    await h.ok("alice", "lab", lab, "createProject", { id: "apollo2", title: "Apollo 2" });
+    await h.ok("alice", "lab", lab, "seedProjectFile", { key: "apollo/notes.md", content: "# Notes" });
+    await h.ok("alice", "lab", lab, "seedProjectFile", { key: "apollo/src/index.ts", content: "export {};" });
+    // A project whose id starts with the other's: a bare prefix match would leak it.
+    await h.ok("alice", "lab", lab, "seedProjectFile", { key: "apollo2/plan.md", content: "not apollo's" });
+
+    const bobLab = await h.openSession("bob", "lab");
+    const read = await h.ok("bob", "lab", bobLab, "readProjectFiles", { projectId: "apollo" });
+    // Path and UTF-8 byte size only: the output is logged as the tool result, so a body never rides in it.
+    expect([...read.files].sort((a: { path: string }, b: { path: string }) => a.path.localeCompare(b.path))).toEqual([
+      { path: "notes.md", size: 7 },
+      { path: "src/index.ts", size: 10 }
+    ]);
+    expect(JSON.stringify(read)).not.toContain("# Notes");
+    expect((await h.ok("alice", "lab", lab, "readProjectFiles", { projectId: "apollo2" })).files).toEqual([
+      { path: "plan.md", size: 12 }
+    ]);
+  });
+
+  it("counts a file's size in UTF-8 bytes, not characters", async () => {
+    const h = await boot();
+    await apollo(h);
+    const lab = await h.openSession("alice", "lab");
+    await h.ok("alice", "lab", lab, "seedProjectFile", { key: "apollo/café.md", content: "café" });
+    expect((await h.ok("alice", "lab", lab, "readProjectFiles", { projectId: "apollo" })).files).toEqual([
+      { path: "café.md", size: 5 }
+    ]);
+  });
+
+  it("refuses a non-member, an unknown project, and a browser read of the collection", async () => {
+    const h = await boot();
+    await apollo(h);
+    const lab = await h.openSession("alice", "lab");
+    await h.ok("alice", "lab", lab, "seedProjectFile", { key: "apollo/notes.md", content: "secret plan" });
+
+    const malloryLab = await h.openSession("mallory", "lab");
+    const outsider = await h.act("mallory", "lab", malloryLab, "readProjectFiles", { projectId: "apollo" });
+    expect(outsider.settled).not.toBe("completed");
+    expect(refusal(outsider)).toContain("not-a-member");
+    expect(refusal(outsider)).not.toContain("secret plan");
+    expect(refusal(await h.act("mallory", "lab", malloryLab, "readProjectFiles", { projectId: "nope" }))).toContain(
+      "no-such-project"
+    );
+    expect((await h.call("GET", "mallory", ["sessions", malloryLab, "resources", "project-files"])).status).toBe(403);
+    expect((await h.call("GET", "alice", ["sessions", lab, "resources", "project-files"])).status).toBe(403);
+  });
+});
+
 describe("a project's room", () => {
   it("two members read each other's lines by cursor, each through their own session", async () => {
     const h = await boot();
     const { aliceTalk, bobTalk } = await apollo(h);
     expect(aliceTalk).not.toBe(bobTalk);
 
-    const posted = await h.ok("alice", CHANNEL_KIND, aliceTalk, "post", { body: "kickoff: brief by Friday" });
+    const posted = await h.ok("alice", MAILBOX_KIND, aliceTalk, "post", { body: "kickoff: brief by Friday" });
     expect(posted).toMatchObject({ projectId: "apollo", seq: 1, userId: "alice", author: null });
 
-    const bobView = await h.ok("bob", CHANNEL_KIND, bobTalk, "read", { after: 0 });
+    const bobView = await h.ok("bob", MAILBOX_KIND, bobTalk, "read", { after: 0 });
     expect(bobView.lines.map((l: RoomLine) => [l.seq, l.userId, l.body])).toEqual([[1, "alice", "kickoff: brief by Friday"]]);
 
-    await h.ok("bob", CHANNEL_KIND, bobTalk, "post", { body: "on it" });
-    const aliceView = await h.ok("alice", CHANNEL_KIND, aliceTalk, "read", { after: bobView.nextCursor });
+    await h.ok("bob", MAILBOX_KIND, bobTalk, "post", { body: "on it" });
+    const aliceView = await h.ok("alice", MAILBOX_KIND, aliceTalk, "read", { after: bobView.nextCursor });
     expect(aliceView.lines.map((l: RoomLine) => [l.seq, l.userId, l.body])).toEqual([[2, "bob", "on it"]]);
     expect(aliceView.nextCursor).toBe(2);
 
     // A line's userId is the session owner: a body field can't set it, and a
     // person's line carries no author.
-    const forgedUser = await h.act("bob", CHANNEL_KIND, bobTalk, "post", { body: "as alice", userId: "alice" });
+    const forgedUser = await h.act("bob", MAILBOX_KIND, bobTalk, "post", { body: "as alice", userId: "alice" });
     expect(forgedUser.settled).not.toBe("completed");
-    const withAuthor = await h.act("bob", CHANNEL_KIND, bobTalk, "post", { body: "as a seat", author: "pm" });
+    const withAuthor = await h.act("bob", MAILBOX_KIND, bobTalk, "post", { body: "as a seat", author: "pm" });
     expect(refusal(withAuthor)).toContain("author-on-a-person-post");
 
-    // No session holds a channel-post item for project talk. (The sessions'
+    // No session holds a mailbox-post item for project talk. (The sessions'
     // requests are there to look in: the check is not vacuous.)
     expect((await h.stores.request.list({ sessionId: aliceTalk })).length).toBeGreaterThan(0);
     expect(await postedLines(h.stores, aliceTalk)).toEqual([]);
@@ -678,16 +940,16 @@ describe("a project's room", () => {
   it("refuses a non-member's join, read and post, even from a session forged to name the project", async () => {
     const h = await boot();
     const { aliceTalk } = await apollo(h);
-    await h.ok("alice", CHANNEL_KIND, aliceTalk, "post", { body: "secret plan" });
+    await h.ok("alice", MAILBOX_KIND, aliceTalk, "post", { body: "secret plan" });
 
-    const mallorys = await h.openSession("mallory", CHANNEL_KIND);
-    const join = await h.act("mallory", CHANNEL_KIND, mallorys, "join", { projectId: "apollo" });
+    const mallorys = await h.openSession("mallory", MAILBOX_KIND);
+    const join = await h.act("mallory", MAILBOX_KIND, mallorys, "join", { projectId: "apollo" });
     expect(refusal(join)).toContain("not-a-member");
 
     // Session state is caller-written at create, so this lands — and grants nothing.
-    const forged = await h.openSession("mallory", CHANNEL_KIND, { resourceId: "apollo" });
-    const read = await h.act("mallory", CHANNEL_KIND, forged, "read", { after: 0 });
-    const post = await h.act("mallory", CHANNEL_KIND, forged, "post", { body: "hi from outside" });
+    const forged = await h.openSession("mallory", MAILBOX_KIND, { resourceId: "apollo" });
+    const read = await h.act("mallory", MAILBOX_KIND, forged, "read", { after: 0 });
+    const post = await h.act("mallory", MAILBOX_KIND, forged, "post", { body: "hi from outside" });
     expect(read.settled).not.toBe("completed");
     expect(refusal(read)).toContain("not-a-member");
     expect(post.settled).not.toBe("completed");
@@ -696,31 +958,31 @@ describe("a project's room", () => {
     // Neither room collection is readable by a browser, and alice's session is not hers.
     expect((await h.call("GET", "mallory", ["sessions", forged, "resources", "room-lines"])).status).toBe(403);
     expect((await h.call("GET", "mallory", ["sessions", forged, "resources", "room-seq"])).status).toBe(403);
-    expect((await h.act("mallory", CHANNEL_KIND, aliceTalk, "read", { after: 0 })).http).toBe(404);
+    expect((await h.act("mallory", MAILBOX_KIND, aliceTalk, "read", { after: 0 })).http).toBe(404);
 
     const row = (await h.inspectRow("apollo")).row;
     expect(row.members).toEqual(["alice", "bob"]);
     expect(row.sessions.map((s: { userId: string }) => s.userId).sort()).toEqual(["alice", "bob"]);
-    const seen = await h.ok("alice", CHANNEL_KIND, aliceTalk, "read", { after: 0 });
+    const seen = await h.ok("alice", MAILBOX_KIND, aliceTalk, "read", { after: 0 });
     expect(seen.lines.map((l: RoomLine) => l.body)).toEqual(["secret plan"]);
   });
 
-  it("refuses to join from a declared channel's session, which keeps its channel path", async () => {
+  it("refuses to join from a declared mailbox's session, which keeps its mailbox path", async () => {
     const h = await boot();
     await apollo(h);
-    const channel = await h.openSession("bob", CHANNEL_KIND, { members: ["bob", "alice"], instructions: "Feature work." });
-    const join = await h.act("bob", CHANNEL_KIND, channel, "join", { projectId: "apollo" });
+    const mailbox = await h.openSession("bob", MAILBOX_KIND, { members: ["bob", "alice"], instructions: "Feature work." });
+    const join = await h.act("bob", MAILBOX_KIND, mailbox, "join", { projectId: "apollo" });
     expect(join.settled).not.toBe("completed");
-    expect(refusal(join)).toContain("talk-on-a-channel");
+    expect(refusal(join)).toContain("talk-on-a-mailbox");
 
     // Nothing was bound: the session names no project, the row lists bob's
-    // own talk session only, and a post there stays a channel post.
-    const state = await h.call("GET", "bob", ["sessions", channel, "state"]);
+    // own talk session only, and a post there stays a mailbox post.
+    const state = await h.call("GET", "bob", ["sessions", mailbox, "state"]);
     expect(state.json?.state?.resourceId ?? null).toBeNull();
     const row = (await h.inspectRow("apollo")).row;
-    expect(row.sessions.map((s: { sessionId: string }) => s.sessionId)).not.toContain(channel);
-    await h.ok("bob", CHANNEL_KIND, channel, "post", { body: "still the channel" });
-    expect((await postedLines(h.stores, channel)).length).toBe(1);
+    expect(row.sessions.map((s: { sessionId: string }) => s.sessionId)).not.toContain(mailbox);
+    await h.ok("bob", MAILBOX_KIND, mailbox, "post", { body: "still the mailbox" });
+    expect((await postedLines(h.stores, mailbox)).length).toBe(1);
   });
 
   it("lands every post of a parallel burst from four members", async () => {
@@ -730,17 +992,17 @@ describe("a project's room", () => {
     await h.ok("alice", "lab", lab, "createProject", { id: "burst", title: "Burst", members: people.slice(1) });
     const talk: Record<string, string> = {};
     for (const user of people) {
-      talk[user] = (await h.ok(user, CHANNEL_KIND, await h.openSession(user, CHANNEL_KIND), "join", { projectId: "burst" }))
+      talk[user] = (await h.ok(user, MAILBOX_KIND, await h.openSession(user, MAILBOX_KIND), "join", { projectId: "burst" }))
         .sessionId;
     }
     const PER = 6;
     const outcomes = await Promise.all(
       people.flatMap((user) =>
-        Array.from({ length: PER }, (_, i) => h.act(user, CHANNEL_KIND, talk[user]!, "post", { body: `${user}-${i}` }))
+        Array.from({ length: PER }, (_, i) => h.act(user, MAILBOX_KIND, talk[user]!, "post", { body: `${user}-${i}` }))
       )
     );
     expect(outcomes.filter((o) => o.settled !== "completed").map(refusal)).toEqual([]);
-    const room = await h.ok("bob", CHANNEL_KIND, talk.bob!, "read", { after: 0 });
+    const room = await h.ok("bob", MAILBOX_KIND, talk.bob!, "read", { after: 0 });
     expect(room.lines).toHaveLength(people.length * PER);
     expect(room.lines.map((l: RoomLine) => l.seq)).toEqual(Array.from({ length: people.length * PER }, (_, i) => i + 1));
   });
@@ -753,9 +1015,9 @@ describe("a project's room", () => {
     // Let the create's own bind for alice land first, so the burst races joins only.
     await h.sessionFor("joins", "alice");
     const windows = await Promise.all(
-      people.flatMap((user) => [h.openSession(user, CHANNEL_KIND), h.openSession(user, CHANNEL_KIND)].map(async (s) => ({ user, session: await s })))
+      people.flatMap((user) => [h.openSession(user, MAILBOX_KIND), h.openSession(user, MAILBOX_KIND)].map(async (s) => ({ user, session: await s })))
     );
-    const joined = await Promise.all(windows.map((w) => h.act(w.user, CHANNEL_KIND, w.session, "join", { projectId: "joins" })));
+    const joined = await Promise.all(windows.map((w) => h.act(w.user, MAILBOX_KIND, w.session, "join", { projectId: "joins" })));
     expect(joined.filter((j) => j.settled !== "completed").map(refusal)).toEqual([]);
 
     const row = (await h.inspectRow("joins")).row;

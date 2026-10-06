@@ -51,6 +51,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
+import { seatAddress, splitSeatAddress } from "@flow-state-dev/workforce";
 import {
   ADMIN_TOKENS_ENV,
   adminCredentialConfigured,
@@ -422,22 +423,29 @@ describe("V11 · a duplicate hire is refused and changes nothing", () => {
     expect(await storedRow(stores, "support.ada")).toBeUndefined();
   });
 
-  it("refuses an organization that is not one legal address segment", async () => {
-    stubRegistrar();
+  it("keeps a dotted organization's seat off the address another organization's seat answers on", async () => {
+    const registrar = stubRegistrar();
     const flow = adminFlow();
     const stores = createInMemoryStores();
 
-    // `kitchen-sink.support` + `ada` would spell `kitchen-sink.support.ada` —
-    // the same address `kitchen-sink` + `support.ada` spells. Exactly one of
-    // them can be addressable.
-    const result = await callAdmin(
-      flow,
-      stores,
-      "hire",
-      { seatId: "ada", flow: "agent", settings: {} },
-      `${ORG}.support`
-    );
-    expectRefused(result, /Organization id/);
+    // Raw, `kitchen-sink.support` + `ada` would spell `kitchen-sink.support.ada`,
+    // the address `kitchen-sink` + `support.ada` answers on, and the second hire
+    // would rebind the first. The org is escaped into the address, so both land,
+    // apart, and each splits back to its own seat id.
+    const dottedOrg = `${ORG}.support`;
+    const dotted = await callAdmin(flow, stores, "hire", { seatId: "ada", flow: "agent", settings: {} }, dottedOrg);
+    const plain = await callAdmin(flow, stores, "hire", { seatId: "support.ada", flow: "agent", settings: {} });
+    expect(dotted.error).toBeUndefined();
+    expect(plain.error).toBeUndefined();
+
+    // This flow's hires are owned by the caller, `admin`.
+    const dottedAddress = seatAddress(dottedOrg, "ada", "admin");
+    const plainAddress = seatAddress(ORG, "support.ada", "admin");
+    expect(dottedAddress).not.toBe(plainAddress);
+    expect([...registrar.held.keys()].sort()).toEqual([dottedAddress, plainAddress].sort());
+    expect(splitSeatAddress(dottedOrg, dottedAddress)).toBe("ada");
+    expect(splitSeatAddress(ORG, dottedAddress)).toBeUndefined();
+    expect(await storedRow(stores, "ada", dottedOrg)).toBeDefined();
   });
 });
 

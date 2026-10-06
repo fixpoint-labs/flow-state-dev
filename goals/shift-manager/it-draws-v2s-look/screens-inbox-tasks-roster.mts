@@ -34,7 +34,7 @@ export type StoreScreens = {
   /** Pending asks, oldest first: Inbox's order. */
   asks: StoredAsk[];
   /** Every open row (not done) on every attached board. */
-  open: Array<{ id: string; channelId: string; status: string; startedAt: number | null; runSession: string | null }>;
+  open: Array<{ id: string; mailboxId: string; status: string; startedAt: number | null; runSession: string | null }>;
   /** Every seat's rows waiting on the person: Roster's task WAITING entries, by id and title. */
   parked: Array<{ id: string; title: string; seatId: string }>;
   onShift: number;
@@ -151,7 +151,7 @@ export async function readScreensStore(
 
   const open = seen.rows
     .filter((r) => !DONE.has(String(r.status)))
-    .map((r) => ({ id: String(r.id), channelId: String(r.channelId), status: String(r.status), startedAt: typeof r.startedAt === "number" ? r.startedAt : null, runSession: runSessionOf(r) }));
+    .map((r) => ({ id: String(r.id), mailboxId: String(r.mailboxId), status: String(r.status), startedAt: typeof r.startedAt === "number" ? r.startedAt : null, runSession: runSessionOf(r) }));
   // A row is a seat's when its assignee is the seat's address or its name (the trees' convention).
   const holds = (seat: { id: string; name: string }, wanted: (status: string) => boolean) =>
     seen.rows.filter((r) => wanted(String(r.status)) && (r.assignee === seat.id || r.assignee === seat.name)).length;
@@ -345,7 +345,7 @@ export function gradeContent(texts: Record<string, Read[]>, now: number, where: 
       `${store.asks.length} ${store.asks.length === 1 ? "needs" : "need"} you`,
       `${store.onShift} on shift`,
       `${store.onCall} on call`,
-      plural(new Set(flying.map((r) => r.channelId)).size, "stream", "streams"),
+      plural(new Set(flying.map((r) => r.mailboxId)).size, "stream", "streams"),
     ].join(" · ");
     if (one("tasksSummary") !== summary) fail("content", `Tasks' summary reads "${one("tasksSummary") ?? ""}", the store gives "${summary}" (v2:1384, audit K1)`);
     const queued = store.open.filter((r) => isQueued(r.status)).length;

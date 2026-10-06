@@ -1,7 +1,7 @@
 /**
  * The refusals a project write or a room entry gives, as one error type with a
  * `reason` a caller can branch on without matching message text — the same
- * shape the channel's own refusals use.
+ * shape the mailbox's own refusals use.
  */
 
 /**
@@ -12,11 +12,13 @@
  * - `no-such-project`: no row holds the id.
  * - `project-id-held`: another owner's row holds the id.
  * - `invalid-project-id`: the id is `unassigned`, empty, or not one path segment.
- * - `unknown-workstream`: a workstream id is not a channel in the inventory.
+ * - `invalid-repository`: the repository is a path, starts with `-`, or carries a
+ *   credential. The refusal never repeats the value.
+ * - `unknown-workstream`: a workstream id is not a mailbox in the inventory.
  * - `workstream-claimed`: another project holds the workstream.
  * - `talk-not-bound`: a room entry ran on a session bound to no project.
  * - `talk-bound-elsewhere`: the session is already bound to another project.
- * - `talk-on-a-channel`: the session is a declared channel's; a project is joined from a session of its own.
+ * - `talk-on-a-mailbox`: the session is a declared mailbox's; a project is joined from a session of its own.
  * - `author-on-a-person-post`: a person's line named an `author`; seats answer through `answer`.
  */
 export type ProjectRefusalReason =
@@ -24,11 +26,12 @@ export type ProjectRefusalReason =
   | "no-such-project"
   | "project-id-held"
   | "invalid-project-id"
+  | "invalid-repository"
   | "unknown-workstream"
   | "workstream-claimed"
   | "talk-not-bound"
   | "talk-bound-elsewhere"
-  | "talk-on-a-channel"
+  | "talk-on-a-mailbox"
   | "author-on-a-person-post"
   | "answer-not-delivered"
   | "answer-not-yours"

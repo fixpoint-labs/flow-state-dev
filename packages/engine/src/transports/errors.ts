@@ -39,7 +39,7 @@ export class OrgRequiredError extends Error {
   constructor(flowKind: string, seam = "this call") {
     super(
       `${seam} requires an organization for flow "${flowKind}". Trusted direct ` +
-        `execution must pass a nonempty orgId — the verified organization for an ` +
+        `execution must pass a nonempty, well-formed orgId — the verified organization for an ` +
         `authenticated caller, or DEFAULT_ORG_ID for single-organization development.`
     );
     this.name = "OrgRequiredError";

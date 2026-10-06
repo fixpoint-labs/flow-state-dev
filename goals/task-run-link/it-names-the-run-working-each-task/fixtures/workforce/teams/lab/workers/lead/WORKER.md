@@ -1,5 +1,5 @@
 ---
-description: Drains the channel's board and hands each row to the seat it names.
+description: Drains the mailbox's board and hands each row to the seat it names.
 flow: lead
 ---
 

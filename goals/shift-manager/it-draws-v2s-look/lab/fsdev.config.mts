@@ -1,7 +1,7 @@
 /**
- * The look check's desk Lab, as Shift Manager's start script loads it: one
+ * The look check's desk Lab, as Shift Manager's command loads it: one
  * team, `desk`, with a seat named `chief-of-staff` on the built-in `agent`
- * kind, in one channel with one board, and the organization's inventory open
+ * kind, in one mailbox with one board, and the organization's inventory open
  * so the seat's row names its door. In-memory stores and no credential, so
  * every start is fresh.
  *
@@ -17,15 +17,15 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
-  CHANNEL_KIND,
-  channelBoardIds,
-  channelInstances,
-  defineChannelFlow,
+  MAILBOX_KIND,
+  mailboxBoardIds,
+  mailboxInstances,
+  defineMailboxFlow,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   openInventory,
   type InventoryActionRequest,
-  type OpenChannelsOptions,
+  type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 
@@ -42,10 +42,10 @@ if (tree.problems.length > 0) throw new Error(`the desk tree did not load: ${tre
 const modelId = tree.workers.map((w) => w.declared.model).find((m): m is string => typeof m === "string");
 if (modelId === undefined) throw new Error("the desk tree's chief of staff names no model");
 
-const seats = hireWorkforce(tree.workers, { channelBoards: channelBoardIds(tree.channels) });
-const channelKind = defineChannelFlow({ inventory: true });
+const seats = hireWorkforce(tree.workers, { mailboxBoards: mailboxBoardIds(tree.mailboxes) });
+const mailboxKind = defineMailboxFlow({ inventory: true });
 const flows: Record<string, FlowInstance> = {
-  ...Object.fromEntries(channelInstances(tree.channels, { kinds: { [CHANNEL_KIND]: channelKind as never } }).map((i) => [i.kind, i])),
+  ...Object.fromEntries(mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } }).map((i) => [i.kind, i])),
   ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
 };
 const flowState = createFlowState({
@@ -71,7 +71,7 @@ const call = async (method: "GET" | "POST" | "DELETE", path: string[], body?: un
   const text = await response.text();
   return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
 };
-const client: OpenChannelsOptions["client"] = {
+const client: OpenMailboxesOptions["client"] = {
   createSession: async (create) => {
     const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
     if (status >= 400) throw Object.assign(new Error(`create session: ${status}`), { status });
@@ -86,11 +86,11 @@ const client: OpenChannelsOptions["client"] = {
     await call("DELETE", ["sessions", sessionId]);
   },
 };
-await openChannels(tree.channels, { client, userId: USER_ID });
+await openMailboxes(tree.mailboxes, { client, userId: USER_ID });
 
 const runtime = await flowState.getRuntime();
 const opened = await openInventory(
-  { seats, channels: tree.channels },
+  { seats, mailboxes: tree.mailboxes },
   {
     run: async (request: InventoryActionRequest) => {
       const result = (await runAction({
@@ -107,7 +107,7 @@ const opened = await openInventory(
       if (result?.error !== undefined) throw new Error(String((result.error as Error).message ?? result.error));
       return result;
     },
-    seatWriter: { flowKind: CHANNEL_KIND },
+    seatWriter: { flowKind: MAILBOX_KIND },
     userId: USER_ID,
     orgId: DEFAULT_ORG_ID,
   },

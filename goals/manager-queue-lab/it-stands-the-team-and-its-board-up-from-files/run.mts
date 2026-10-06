@@ -11,10 +11,10 @@
  *
  * Legs:
  *   0  the tree declares a board by NAME and the minted id appears in no file
- *   a  the tree alone produces four seats, one channel and one ledger (BR-1)
+ *   a  the tree alone produces four seats, one mailbox and one ledger (BR-1)
  *   b  a seat folder that declares the board refuses the whole roster (BR-3)
  *   c  the eight arrive by composition, and the fence never touches them (BR-2)
- *   d  the channel's author check, both arms (BR-8)
+ *   d  the mailbox's author check, both arms (BR-8)
  *   e  the queue is a read, and every row lands in exactly one column (BR-10–12)
  *   f  an unclaimed settle is allowed, and a lapsed one is not (BR-9, BR-11)
  *   g  the task status set has exactly the members it had (BR-13)
@@ -169,7 +169,7 @@ await runGoal(async () => {
   let evidence = "";
 
   try {
-    // ---- a. the tree alone produces the roster, the channel and the ledger --
+    // ---- a. the tree alone produces the roster, the mailbox and the ledger --
     const seatIds = Object.keys(lab.seats).sort();
     if (seatIds.length !== 4) {
       note(`the tree hired ${seatIds.length} seats, not 4: ${seatIds.join(", ")}`);
@@ -184,12 +184,12 @@ await runGoal(async () => {
     if (lab.builderIds.includes(lab.coordinatorId)) {
       note(`${lab.coordinatorId} was hired onto both kinds; the roster does not partition`);
     }
-    if (lab.roster.channels.length !== 1) {
-      note(`the tree declared ${lab.roster.channels.length} channels, not 1`);
+    if (lab.roster.mailboxes.length !== 1) {
+      note(`the tree declared ${lab.roster.mailboxes.length} mailboxes, not 1`);
     }
     // The ledger's identity is MINTED, and org-scoped by construction.
-    if (lab.boardId !== `${lab.channelId}.${lab.boardName}`) {
-      note(`the ledger id "${lab.boardId}" is not minted from the channel and the board's name`);
+    if (lab.boardId !== `${lab.mailboxId}.${lab.boardName}`) {
+      note(`the ledger id "${lab.boardId}" is not minted from the mailbox and the board's name`);
     }
 
     // ---- 0. the tree names a board and never an id -------------------------
@@ -287,23 +287,23 @@ await runGoal(async () => {
       }
     }
 
-    // ---- d. the channel's author check, both arms (BR-8) -------------------
+    // ---- d. the mailbox's author check, both arms (BR-8) -------------------
     // Both arms, or the rule reads as a gate the code does not have: `author`
     // is optional, caller-supplied and stored `authorVerified: false`, so a
     // filing that names NO label is not checked at all.
-    const refusedAuthor = await lab.fileThroughChannel({
+    const refusedAuthor = await lab.fileThroughMailbox({
       board: lab.boardName,
       goal: "filed by somebody the roster never heard of",
       assignee: lab.desks[0],
       author: "eng.nobody",
     });
     if (refusedAuthor.error === undefined) {
-      note(`a filing naming a non-member landed; it must be refused at the channel`);
-    } else if (!refusedAuthor.error.includes("is not a member of channel")) {
-      note(`the refusal was not the channel's own author-not-a-member wording: ${refusedAuthor.error}`);
+      note(`a filing naming a non-member landed; it must be refused at the mailbox`);
+    } else if (!refusedAuthor.error.includes("is not a member of mailbox")) {
+      note(`the refusal was not the mailbox's own author-not-a-member wording: ${refusedAuthor.error}`);
     }
 
-    const noAuthor = await lab.fileThroughChannel({
+    const noAuthor = await lab.fileThroughMailbox({
       board: lab.boardName,
       goal: "filed with no author at all",
       assignee: lab.desks[0],
@@ -338,7 +338,7 @@ await runGoal(async () => {
 
     // ---- e. the queue is a READ (BR-10, BR-11, BR-12) ----------------------
     // Stage the three states a column exists for, on the real path.
-    const blockedRow = await lab.fileThroughChannel({
+    const blockedRow = await lab.fileThroughMailbox({
       board: lab.boardName,
       goal: "needs a decision from a person",
       assignee: lab.desks[1],
@@ -346,7 +346,7 @@ await runGoal(async () => {
     const blockedId = (blockedRow.output as { taskId?: string } | undefined)?.taskId ?? "";
     // A second row for the same desk, so the unclaimed-settle leg below has a
     // live claim to settle after the one above has been blocked out of reach.
-    await lab.fileThroughChannel({
+    await lab.fileThroughMailbox({
       board: lab.boardName,
       goal: "a second piece for the same desk",
       assignee: lab.desks[1],
@@ -459,7 +459,7 @@ await runGoal(async () => {
     // A row is filed for this leg rather than reused from above: the recovery
     // drain settles everything it can reach, and a leg that quietly found
     // nothing to settle would report nothing while reading as green.
-    await lab.fileThroughChannel({
+    await lab.fileThroughMailbox({
       board: lab.boardName,
       goal: "a row for somebody else to hold",
       assignee: lab.desks[2],
@@ -527,7 +527,7 @@ await runGoal(async () => {
               note(`the lab booted at drain width ${other.drainWidth}, not ${width}`);
             }
             for (const goal of [`first piece at width ${width}`, `second piece at width ${width}`]) {
-              await other.fileThroughChannel({
+              await other.fileThroughMailbox({
                 board: other.boardName,
                 goal,
                 assignee: other.desks[0],
@@ -584,7 +584,7 @@ await runGoal(async () => {
 
     evidence =
       `one tree at ${LAB_TREE}: four seats (${seatIds.join(", ")}) on the two kinds their own ` +
-      `files name, one channel "${lab.channelId}" declaring board "${lab.boardName}", and the ` +
+      `files name, one mailbox "${lab.mailboxId}" declaring board "${lab.boardName}", and the ` +
       `framework minted "${lab.boardId}" — a string that appears in no file under the lab. The ` +
       `coordinator's file says \`tools: []\` and it holds all eight board tools anyway ` +
       `(${eight.join(", ")}); with \`tools: ["note"]\` it holds those eight plus the catalog ` +
@@ -593,7 +593,7 @@ await runGoal(async () => {
       `the seat's own declared \`tools:\`, so the composition is the shipped one and the ` +
       `resolution is not a live generation. A seat folder declaring the board ` +
       `refuses the whole roster by naming "desk-board", and the corrected tree hires. The ` +
-      `channel refused a filing naming a non-member and accepted the same call with no author. ` +
+      `mailbox refused a filing naming a non-member and accepted the same call with no author. ` +
       `Reading the queue left the ledger byte-identical; a blocked row carried its own reason ` +
       `into "waiting on you"; a real claim on the ${held.leaseMs}ms minimum lease read running ` +
       `with its seat busy, and once it lapsed read queued with its seat idle and was then taken ` +

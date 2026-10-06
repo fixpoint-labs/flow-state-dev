@@ -25,7 +25,7 @@ All of these come from `@flow-state-dev/workforce`:
 | --- | --- |
 | `defineHiredRosterCollection()` | Declares the stored roster: an organization-scoped resource collection at `workforce/roster/*`, one row per hired seat. Takes no options. |
 | `defineHiredRosterPrivateCollection()` | Declares where a [user-owned seat](#hiring-a-seat-only-one-member-can-reach)'s row is written, at `workforce/roster/~<user>/<seatId>`. Server-side only, and a block that has it in `resources` reaches only the calling user's rows. |
-| `seatAddress(orgId, seatId, ownerUserId?)` | The address a hired seat answers on. Org-visible seats are `<orgId>.<seatId>`. A user-owned seat is `<orgId>.~<user>.<seatId>`, with the user escaped, so two people can hire the same seat id. Throws when the organization id is not a single address segment, or when the seat id starts with `~`. |
+| `seatAddress(orgId, seatId, ownerUserId?)` | The address a hired seat answers on. Org-visible seats are `<orgId>.<seatId>`. A user-owned seat is `<orgId>.~<user>.<seatId>`, so two people can hire the same seat id. The organization id and the user are percent-escaped, as [The organization has to come from the credential](#the-organization-has-to-come-from-the-credential) spells out. Throws when the organization id is empty, whitespace-only, or not well-formed Unicode (a lone UTF-16 surrogate), or when the seat id is empty or starts with `~`. |
 | `hireWorkforce(records, { kinds })` | Turns records into configured flow copies, one per record. The same call the file-declared roster goes through. |
 | `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems, byOrg }`. It registers nothing. |
 | `createSeatHireBlocks(options)` | Returns `{ hire, fire, brokenSeats, rehire }`: two handlers that run the whole hire and fire sequence, and two that list and [repair a seat whose kind is gone](#repairing-a-seat-whose-kind-is-gone). Mount them as a flow's actions. See [the ready-made handlers](#the-ready-made-hire-and-fire-handlers). |
@@ -44,7 +44,7 @@ The files on this page go in your app's own source tree, under `src/flows/`, whe
 
 A hire writes durable state that belongs to an organization, so the organization has to come from something the framework can trust, not from the request body. Configure [`resolvePrincipal`](../server/authentication.md) on the flow and the action's `orgId` comes from there. An `orgId` in the body is ignored, so a caller can't hire into another organization by naming it in the input.
 
-A hired seat is pinned to that organization, and every request to it is checked against the pin. The principal for that check comes from the seat's own `authentication` when it has one, and from the host's otherwise. With neither, every caller counts as the default organization, which never matches the pin, so opening the seat answers `404 Unknown flow` even for the person who hired it. So put the resolver that verified the hire on the seat itself, where you register it, as `registerSeat` [below](#reaching-the-flowstate) does. The seat then answers only callers that resolver accepts. If members should call the seat with their own sign-in, register it with a resolver that verifies them and names the same organization. Don't install it host-wide instead: a host-level resolver applies to every flow the app serves.
+A hired seat is pinned to that organization, and every request to it is checked against the pin. The principal for that check comes from the seat's own `authentication` when it has one, and from the host's otherwise. With neither, every caller counts as the default organization. That never matches a pin to a real organization, so opening the seat answers `404 Unknown flow` even for the person who hired it. So put the resolver that verified the hire on the seat itself, where you register it, as `registerSeat` [below](#reaching-the-flowstate) does. The seat then answers only callers that resolver accepts. If members should call the seat with their own sign-in, register it with a resolver that verifies them and names the same organization. Don't install it host-wide instead: a host-level resolver applies to every flow the app serves. The exception is a seat hired under the default organization; see [the ready-made handlers](#the-ready-made-hire-and-fire-handlers).
 
 ```ts title="src/flows/workforce-admin/authentication.ts"
 import type { AuthenticationConfig } from "@flow-state-dev/core/types";
@@ -80,7 +80,7 @@ Give each organization its own token. A token written against two organizations 
 
 Register the flow only when a usable credential is configured. Then a deployment that has none has no hire route at all, and a call to `/api/flows/workforce-admin/actions/hire` comes back `404 Unknown flow "workforce-admin"` rather than reaching a check that can go wrong.
 
-The organization's id must be a single address segment: lowercase letters, digits and single hyphens, up to 64 characters, and no dots. A dot would make the address ambiguous, since it is also what joins the organization to the seat.
+`seatAddress` percent-escapes the organization id and the user in a seat's address: lowercase letters, digits and `-` stay, everything else is encoded. `acme` gives `acme.helper`, and `org_pentest_lab` becomes `org%5Fpentest%5Flab.helper`. Build and read addresses with `seatAddress` and `splitSeatAddress(orgId, address)`, which takes the seat id back out, rather than assembling `${orgId}.` prefixes by hand.
 
 ### Reaching the `FlowState`
 
@@ -117,6 +117,48 @@ export function releaseSeat(id: string): boolean {
   return app?.unregister(id) ?? false;
 }
 ```
+
+If a function builds the `FlowState` and runs more than once per process, such as an `openApp()` each test calls, keep the binding in a local `let` so each call registers into its own state. Assign it after `createFlowState`, once the registry exists. The callbacks only run when a hire or fire happens. For what `kindAt` and `instanceAt` are for, see [Adding one](./chief-of-staff.md#adding-one).
+
+```ts
+import { createFlowState, type FlowState, type FlowStateRuntime } from "@flow-state-dev/engine";
+import {
+  createSeatHireCapability,
+  defineAgentWorkerFlow,
+  hireWorkforce,
+  registerHiredSeat,
+  type HireOptions,
+} from "@flow-state-dev/workforce";
+
+export async function openApp(options: AppOptions) {
+  const kinds: NonNullable<HireOptions["kinds"]> = { coder: coderKind };
+  let live: { state: FlowState; registry: FlowStateRuntime["registry"] } | undefined;
+
+  const hire = createSeatHireCapability({
+    kinds,
+    register: (worker, pin) => {
+      if (!live) throw new Error("No FlowState to register into.");
+      const { state } = live;
+      registerHiredSeat((instance, owner) => state.register(instance, { pin: owner }), worker, pin);
+    },
+    unregister: (id) => live?.state.unregister(id) ?? false,
+    kindAt: (address) => live?.registry.get(address)?.kind,
+    instanceAt: (address) => live?.registry.get(address),
+    allowKinds: ["coder", "agent"],
+  });
+  kinds.agent = defineAgentWorkerFlow({ uses: [hire] });
+
+  const hired = hireWorkforce(options.workers, { kinds });
+  const state = createFlowState({
+    flows: { ...Object.fromEntries(hired.map((worker) => [worker.id, worker])) /* , your other flows */ },
+    stores: options.stores,
+  });
+  live = { state, registry: (await state.getRuntime()).registry };
+  return state;
+}
+```
+
+If you wrap hired workers with a resolver as `withAdminResolver` does above, apply it to `instance` inside `register`.
 
 ## The ready-made hire and fire handlers
 
@@ -180,17 +222,13 @@ export default workforceAdmin();
 | `instanceAt?(address)` | The seat serving an address right now, if any. With it, `fire` releases only the seat its roster row minted, and a hire or re-hire stopped part-way by another call releases only its own seat. Without it, `fire` goes by the kind, and a stopped call leaves its seat registered in this process until the next start. |
 | `refuseRosterAdmin?` | When `true`, `hire` and `rehire` refuse settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`. Default `false`. |
 | `allowKinds?` | The subset of `kinds` these handlers may mint. |
-| `channelBoards?` | Channel board ids. For each one the new seat doesn't declare, the hire's `warning` names it, since rows filed on that board sit pending until something works them. |
+| `mailboxBoards?` | Mailbox board ids. For each one the new seat doesn't declare, the hire's `warning` names it, since rows filed on that board sit pending until something works them. |
 
 The seats these handlers and the `seat-hire` tools hire are always org-visible: pinned to the organization and no user, so any caller the seat's resolver places in that organization can call one, and its roster row, `instructions` included, is readable by a browser in that organization. For a seat only one member can reach, write the hire yourself as in [Hiring a seat only one member can reach](#hiring-a-seat-only-one-member-can-reach).
 
-Both handlers take the organization from the principal your `resolvePrincipal` returns for the session, as [above](#the-organization-has-to-come-from-the-credential). A session whose principal names no organization, which includes every session on a flow with no `resolvePrincipal`, belongs to the framework's default organization. That id can't start a seat address, so every hire there is refused before anything is written:
+Both handlers take the organization from the principal your `resolvePrincipal` returns for the session, as [The organization has to come from the credential](#the-organization-has-to-come-from-the-credential) describes. When no `resolvePrincipal` is configured for the request, neither on the flow nor on the host, every session belongs to the framework's default organization, `__fsd_default_org__`. A hire there succeeds. Its seat answers on `%5F%5Ffsd%5Fdefault%5Forg%5F%5F.<seatId>` and is reloaded at the next start like any other, and it is pinned to the default organization.
 
-```text
-Organization id "__fsd_default_org__" must be lowercase letters, digits, and single hyphens (not at the start or end) — it becomes the leading segment of a hired seat's address, which is joined with a "."
-```
-
-Mount these handlers only on a flow whose resolver names a real organization.
+A resolver can't name `__fsd_default_org__`; a request whose resolver does is refused with `401`. A resolver that returns a real organization doesn't match the pin, so its callers get `404 Unknown flow`. A seat hired under the default organization is reachable only when no resolver applies to it, neither on the seat nor on the host. Register it without a seat-level resolver on a host with none, and every caller is treated as unauthenticated and placed in the default organization. That suits a development app with no sign-in. For a deployment that signs people in, hire under a real organization and install the resolver on the seat the way `registerSeat` does in [Reaching the `FlowState`](#reaching-the-flowstate).
 
 ### Hiring
 
@@ -216,12 +254,20 @@ It returns the seat id and the address the seat answers on:
 { "seatId": "support.ada", "address": "acme.support.ada" }
 ```
 
-`warning` is added when the new seat doesn't declare one of the `channelBoards`.
+`warning` is added when the new seat doesn't declare one of the `mailboxBoards`.
 
 A hire runs in this order:
 
 1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served, an address a seat declared in a worker file has an inventory row at, and a seat id `kindAt` reports a declared seat under: `"chief-of-staff" is the id of a seat this app declares (kind "agent"). Hire under another id.` With `refuseRosterAdmin: true`, it also refuses settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`.
-2. It mints the seat, which runs the kind's settings schema.
+2. It mints the seat, which runs the kind's settings schema. If the schema refuses the seat, nothing is written and the hire fails with a message that quotes the kind's own refusal. For a kind `coder` whose schema requires `document: z.string().min(1)`, hired as `coder-2` in organization `acme` with no settings, the message is below. The kind's own refusal is quoted after `refused it:`.
+
+   ```text
+   "acme.coder-2" was not hired, and nothing was written. Kind "coder" refused it: hireWorkforce refused 1 of 1 worker; nothing was hired:
+     - worker "acme.coder-2" — Flow "coder" instance "acme.coder-2" has an invalid config bag: "document": Required.
+   If that names a setting, call hire again with it in `settings`.
+   ```
+
+   The same call with `settings: { "document": "teams/eng/feature-brief" }` hires the seat. For the `seat-hire` tools a model calls, this message is the tool's result, so the model can correct the call and try again in the same turn.
 3. It writes the roster row with `create()`. A second hire of the same seat id fails here with `Resource instance "workforce/roster/support.ada" already exists`, including two hires arriving at once.
 4. It calls your `register`. If that throws, the row from step 3 is deleted and the error is passed on.
 5. It writes an inventory row at `inventory/seats/<address>`, replacing only a row left by an earlier hire at that address, and only while its own roster row is still there. If this write fails, the seat is hired and answering but has no inventory row. If the seat is fired or hired again while this hire is finishing, the hire stops and takes back only what is still its own.
@@ -258,6 +304,8 @@ curl -X POST localhost:3000/api/flows/acme.support.ada/actions/answer \
   -d '{"userId":"you","input":{"note":"is the printer fixed?"}}'
 ```
 
+When you build the URL by hand, pass the address through `encodeURIComponent(address)` and use the result as one path segment. The address `org%5Fpentest%5Flab.helper`, for the organization `org_pentest_lab`, goes out as `/api/flows/org%255Fpentest%255Flab.helper/actions/answer`. Sent as-is, the `%5F` is read as an underscore, which names a different seat, and the seat is not found. `acme.support.ada` has nothing to escape and works as written. `@flow-state-dev/client` and the React hooks encode the address for you.
+
 The organization is part of the address because two organizations can both want a seat called `support.ada`, and an app serves one flat set of addresses. It identifies the seat. It does not authorize anything: who may call it is decided by the principal on the request. The body does not name the organization.
 
 ## Who can reach a hired seat
@@ -277,7 +325,8 @@ A caller the seat's resolver refuses, such as a request with no credential, gets
 `reloadHiredSeats` reads each organization's stored rows and hires what they name. It registers nothing, so you loop over what comes back:
 
 ```ts
-// Wherever you build the FlowState, after createFlowState and useFlowState.
+// Wherever you build the FlowState, after createFlowState and useFlowState
+// (and useRegistry, if you pass kindAt and instanceAt).
 const runtime = await flowstate.getRuntime();
 
 // Your policy. This one reloads every organization the deployment has a record for.
@@ -364,7 +413,7 @@ Each entry has one of three reasons:
 
 **To retire a seat, fire it.** `fire` removes the roster row and the inventory row. Nothing was serving the seat, so there's no address to release and `released` is `false`. The next start names nothing for it. An `unreadable` row is deleted by its key and nothing else is touched, so that answer's `address` is `null`.
 
-**To keep the seat, re-hire it.** `rehire` takes the seat id, the kind to run it on, its settings for that kind, and optionally new instructions and the `owner` `brokenSeats` reported. Pass `owner` when the caller has a seat of their own under the same id as an organization's; without it, `rehire` refuses rather than pick one. The seat keeps its id and its address, so channels that list it and sessions it owns carry on:
+**To keep the seat, re-hire it.** `rehire` takes the seat id, the kind to run it on, its settings for that kind, and optionally new instructions and the `owner` `brokenSeats` reported. Pass `owner` when the caller has a seat of their own under the same id as an organization's; without it, `rehire` refuses rather than pick one. The seat keeps its id and its address, so mailboxes that list it and sessions it owns carry on:
 
 ```bash
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/rehire \

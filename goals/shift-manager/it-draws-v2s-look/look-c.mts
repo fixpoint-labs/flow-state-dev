@@ -17,10 +17,10 @@ const BOARDS: readonly Screen[] = ["board", "project"];
 const COLUMN_ORDER = ["QUEUED", "RUNNING", "IN REVIEW", "NEEDS YOU", "DONE"] as const;
 const COLS_LINE = { line: 1327, has: "const COLS = ['queued', 'run', 'review', 'needs', 'done']" };
 
-/** A channel's feed, from the store: its kept lines (the page shows the newest 50) and its members' pending asks. */
-const feed = (store: { channels: Record<string, { lines: number; asks: number }> }) => {
-  const channel = Object.values(store.channels)[0];
-  return { lines: Math.min(channel?.lines ?? 0, 50), asks: channel?.asks ?? 0 };
+/** A mailbox's feed, from the store: its kept lines (the page shows the newest 50) and its members' pending asks. */
+const feed = (store: { mailboxes: Record<string, { lines: number; asks: number }> }) => {
+  const mailbox = Object.values(store.mailboxes)[0];
+  return { lines: Math.min(mailbox?.lines ?? 0, 50), asks: mailbox?.asks ?? 0 };
 };
 
 export const SLICE_C_ROWS: Row[] = [

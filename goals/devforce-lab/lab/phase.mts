@@ -48,19 +48,19 @@ interface ValidatedWorkspace {
  * The task is the job, as the board handed it over (`run.task`): what a person
  * approved or posted, word for word. The seat's files are how this team works:
  * its instructions, its standing brief and its conventions. Where the two
- * disagree, the task wins, which is why it comes first. The channel's charter
- * follows when the woken seat is a declared member of the channel whose board
+ * disagree, the task wins, which is why it comes first. The mailbox's charter
+ * follows when the woken seat is a declared member of the mailbox whose board
  * holds the task, and the run's terms close it.
  *
  * Nothing else reaches the prompt: not the coordinator's session, not the
- * channel's transcript, not the environment.
+ * mailbox's transcript, not the environment.
  *
  * Exported because the honesty check grades the same prompt the gate does: one
  * builder, two harnesses, which is the only way "the prompt carried the seat's
  * own files" means the same thing in both halves.
  *
  * @param run What the manager hands a prompt builder for this attempt.
- * @param options The phase's options: the channel's charter and members, and
+ * @param options The phase's options: the mailbox's charter and members, and
  *   whether acceptance decides.
  * @returns The prompt.
  * @throws If the seat declares a document it does not hold — a seat reading
@@ -92,12 +92,12 @@ export async function buildSeatPrompt(
   const skills = config.seatSkills ?? [];
   // Membership is read off the declared tree and the woken seat's own id (the
   // hire imposes it on the seat's settings), never off the row: who may see a
-  // channel is not the filer's to say.
+  // mailbox is not the filer's to say.
   const charter =
-    options.channel !== undefined &&
+    options.mailbox !== undefined &&
     config.seatId !== undefined &&
-    options.channel.members.includes(config.seatId)
-      ? options.channel
+    options.mailbox.members.includes(config.seatId)
+      ? options.mailbox
       : undefined;
 
   return [
@@ -116,7 +116,7 @@ export async function buildSeatPrompt(
     ``,
     ...(charter === undefined
       ? []
-      : [`# The charter of ${charter.id}, the channel this task is on`, ``, charter.charter.trim(), ``]),
+      : [`# The charter of ${charter.id}, the mailbox this task is on`, ``, charter.charter.trim(), ``]),
     `# Where and how to work`,
     ``,
     `Row ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
@@ -212,11 +212,11 @@ export interface ImplementPhaseOptions {
    */
   requireAcceptance?: boolean;
   /**
-   * The channel whose board holds this phase's rows: its id, its charter, and
+   * The mailbox whose board holds this phase's rows: its id, its charter, and
    * its declared members. The charter reaches a run's prompt only when the
    * woken seat is one of the members. Absent, no prompt carries a charter.
    */
-  channel?: { id: string; charter: string; members: readonly string[] };
+  mailbox?: { id: string; charter: string; members: readonly string[] };
   /**
    * Control only: build the prompt without the task the manager handed over,
    * as the builder did before it led with it. The red state of "a run is
@@ -229,7 +229,7 @@ export interface ImplementPhaseOptions {
  * Build the implement phase.
  *
  * @param options `requireAcceptance` to add the brief's condition to the
- *   done-condition, and `channel` to hand member seats its charter. See
+ *   done-condition, and `mailbox` to hand member seats its charter. See
  *   {@link ImplementPhaseOptions}.
  * @returns The phase spec to hand the coder kind.
  */

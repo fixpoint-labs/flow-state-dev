@@ -6,7 +6,7 @@
  * Real path, no model key, out of CI. See goal.md for the contract.
  *
  * Shift Manager is built with Vite (or `GOAL_PAGES=<dir>` serves pages built
- * elsewhere) and served by its own start script over two Labs: DevTeam, with
+ * elsewhere) and served by its own command over two Labs: DevTeam, with
  * its one ask pending and a filed row running, and this check's own desk Lab
  * (`lab/`), whose chief of staff answers one line from a scripted mock model.
  * Chromium walks every screen by clicking, toggles the sidebar's shift switch
@@ -98,7 +98,7 @@ const V2 = repoPath("specs", "epics", "FIX-1649", "assets", "design", "v2", "shi
 
 const LABS = {
   devteam: {
-    config: repoPath("labs", "shift-manager", "teams", "devteam", "fsdev.config.mts"),
+    config: repoPath("packages", "shift-manager", "teams", "devteam", "fsdev.config.mts"),
     tree: repoPath("goals", "devforce-lab", "lab", "workforce"),
     // Long enough that the filed row is still running while the sweep reads it, short
     // enough to finish inside the scripted run's 60s limit.
@@ -136,11 +136,11 @@ export type Store = {
   /** The person's pending asks, across the seats' sessions. */
   asks: number;
   /**
-   * Per channel: its stored rows, the names of its members running one, how
+   * Per mailbox: its stored rows, the names of its members running one, how
    * many of its rows run, whether one of its members' asks waits on the
    * person, its kept transcript lines, and its members' pending asks.
    */
-  channels: Record<string, { rows: number; live: string[]; running: number; needs: boolean; lines: number; asks: number }>;
+  mailboxes: Record<string, { rows: number; live: string[]; running: number; needs: boolean; lines: number; asks: number }>;
   // ---- slice D ----
   /** What Inbox, Tasks and Roster draw (`screens-inbox-tasks-roster.mts`). */
   screens: inboxTasksRoster.StoreScreens;
@@ -432,7 +432,7 @@ function sweep(args: {
     sidebarAndCos: {
       inbox: ((el) => (el === null ? null : { text: el.textContent ?? "", waiting: el.getAttribute("data-waiting") }))(document.querySelector("[data-testid=nav-inbox-count]")),
       dots: Array.from(document.querySelectorAll("[data-testid^=nav-workstream-]:not([data-testid=nav-workstream-gone])")).map((el) => ({
-        channel: el.getAttribute("data-testid")!.slice("nav-workstream-".length),
+        mailbox: el.getAttribute("data-testid")!.slice("nav-workstream-".length),
         dot: el.getAttribute("data-dot"),
       })),
       sub: document.querySelector("[data-testid=cos-sub]")?.textContent ?? null,
@@ -602,8 +602,8 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
 
   // content: what the shared parts draw from the store.
   if (where.screen === "workstream" && lab === "devteam") {
-    const channel = Object.keys(where.store.channels)[0]!;
-    const want = where.store.channels[channel]!;
+    const mailbox = Object.keys(where.store.mailboxes)[0]!;
+    const want = where.store.mailboxes[mailbox]!;
     if (read.mentions === null) failures.add("content", "the workstream draws no composer", tag);
     else if (JSON.stringify(read.mentions) !== JSON.stringify(want.live)) {
       failures.add("content", `the composer offers [${read.mentions.map((m) => `@${m}`).join(", ")}], the store's running members are [${want.live.map((m) => `@${m}`).join(", ")}] (v2:308)`, tag);
@@ -622,7 +622,7 @@ const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 
 async function readStore(api: LabApi, tree: string, userId: string): Promise<Store> {
   const roster = await readDeclaredRoster(tree);
-  const host = roster.channels[0]!.id;
+  const host = roster.mailboxes[0]!.id;
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
   const seatsRef = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
     (r) => r.kind === "collection" && r.pattern === "inventory/seats/*",
@@ -636,18 +636,18 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
           return { id, kind: r.kind == null ? null : String(r.kind), name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
         });
   const asks = await pendingAsksBySeat(api, userId, seats);
-  const channels: Store["channels"] = {};
+  const mailboxes: Store["mailboxes"] = {};
   const allRows: Array<Record<string, any>> = [];
   let running = 0;
-  for (const channel of roster.channels) {
-    const members = (channel.declared.members as string[] | undefined) ?? [];
+  for (const mailbox of roster.mailboxes) {
+    const members = (mailbox.declared.members as string[] | undefined) ?? [];
     const rows: Array<Record<string, any>> = [];
-    for (const board of (channel.declared.boards as string[] | undefined) ?? []) rows.push(...(await api.collection(channel.id, `${channel.id}.${board}`)));
-    allRows.push(...rows.map((r) => ({ ...r, channelId: channel.id })));
+    for (const board of (mailbox.declared.boards as string[] | undefined) ?? []) rows.push(...(await api.collection(mailbox.id, `${mailbox.id}.${board}`)));
+    allRows.push(...rows.map((r) => ({ ...r, mailboxId: mailbox.id })));
     const live = rows.filter((r) => r.status === "in_progress");
     running += live.length;
     const holds = (seat: { id: string; name: string }) => live.some((r) => r.assignee === seat.id || r.assignee === seat.name);
-    channels[channel.id] = {
+    mailboxes[mailbox.id] = {
       rows: rows.length,
       running: live.length,
       needs: members.some((m) => (asks.get(m) ?? 0) > 0),
@@ -657,7 +657,7 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
         .slice(0, 3)
         // A name two members share reaches neither, so that member is offered by its id.
         .map((s) => (members.filter((m) => seats.find((x) => x.id === m)?.name === s.name).length > 1 ? s.id : s.name)),
-      lines: (await api.items(channel.id, ["component"])).filter((i) => i.component === "channel-post").length,
+      lines: (await api.items(mailbox.id, ["component"])).filter((i) => i.component === "mailbox-post").length,
       asks: members.reduce((n, m) => n + (asks.get(m) ?? 0), 0),
     };
   }
@@ -668,21 +668,21 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
     chiefOfStaff: seats.some((s) => s.name === "chief-of-staff"),
     replied: false,
     asks: [...asks.values()].reduce((a, b) => a + b, 0),
-    channels,
+    mailboxes,
     // ---- slice D ----
     screens: await inboxTasksRoster.readScreensStore(api, userId, { seats, rows: allRows }),
     // ---- end slice D ----
   };
 }
 
-/** The flow kind the inventory registers a channel under: the flow its `post` action is on. */
-async function channelKind(api: LabApi, channel: string): Promise<string> {
-  const manifest = await api.get(`/sessions/${encodeURIComponent(channel)}/manifest`);
+/** The flow kind the inventory registers a mailbox under: the flow its `post` action is on. */
+async function mailboxKind(api: LabApi, mailbox: string): Promise<string> {
+  const manifest = await api.get(`/sessions/${encodeURIComponent(mailbox)}/manifest`);
   const ref = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
-    (r) => r.kind === "collection" && r.pattern === "inventory/channels/*",
+    (r) => r.kind === "collection" && r.pattern === "inventory/mailboxes/*",
   )?.ref;
-  const kind = ref === undefined ? undefined : (await api.collection(channel, ref)).find((r) => r.id === channel)?.kind;
-  if (kind === undefined) throw new Error(`the inventory registers no channel ${channel}`);
+  const kind = ref === undefined ? undefined : (await api.collection(mailbox, ref)).find((r) => r.id === mailbox)?.kind;
+  if (kind === undefined) throw new Error(`the inventory registers no mailbox ${mailbox}`);
   return String(kind);
 }
 
@@ -694,10 +694,10 @@ async function pendingAsks(api: LabApi, userId: string): Promise<number> {
 /**
  * The person's pending asks, by the flow (the seat) whose session each waits in. Given the
  * inventory's seats, only their sessions count, as Shift Manager reads asks: a session owned
- * by a seat, or one with no owner on a seat's kind (`labs/shift-manager/src/lib/reads.ts`).
+ * by a seat, or one with no owner on a seat's kind (`packages/shift-manager/src/lib/reads.ts`).
  */
 async function pendingAsksBySeat(api: LabApi, userId: string, seats?: ReadonlyArray<{ id: string; kind: string | null }>): Promise<Map<string, number>> {
-  // Dispatch runs included: a seat woken by a channel post asks from one, and the app lists them.
+  // Dispatch runs included: a seat woken by a mailbox post asks from one, and the app lists them.
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
   const ids = new Set(seats?.map((s) => s.id));
   const kinds = new Set(seats?.flatMap((s) => (s.kind === null ? [] : [s.kind])));
@@ -728,17 +728,17 @@ async function settle(page: Page, shift: Shift): Promise<void> {
 }
 
 /** Open `screen` by clicking, the way a person reaches it, and wait for it to draw. */
-async function open(page: Page, screen: Screen, ids: { channel: string; taskId: string | null }): Promise<void> {
+async function open(page: Page, screen: Screen, ids: { mailbox: string; taskId: string | null }): Promise<void> {
   const ready = (testId: string) => page.getByTestId(testId).first().waitFor({ timeout: 20_000 });
   switch (screen) {
     case "workstream":
-      await page.getByTestId(`nav-workstream-${ids.channel}`).click();
+      await page.getByTestId(`nav-workstream-${ids.mailbox}`).click();
       await ready("workstream");
       await page.locator("[role=tab][data-tab=stream]").click();
       await ready("transcript-line");
       return;
     case "board":
-      await page.getByTestId(`nav-workstream-${ids.channel}`).click();
+      await page.getByTestId(`nav-workstream-${ids.mailbox}`).click();
       await ready("workstream");
       await page.locator("[role=tab][data-tab=board]").click();
       await ready("board");
@@ -780,7 +780,7 @@ async function open(page: Page, screen: Screen, ids: { channel: string; taskId: 
       return;
     case "project":
       // ---- slice C: the project holding the workstream, on its Board, under the team strip ----
-      await page.locator(`[data-testid=project-group]:has([data-testid="nav-workstream-${ids.channel}"]) [data-testid^=nav-project-]`).click();
+      await page.locator(`[data-testid=project-group]:has([data-testid="nav-workstream-${ids.mailbox}"]) [data-testid^=nav-project-]`).click();
       await ready("project");
       await page.locator("[role=tab][data-tab=board]").click();
       await ready("project-lane");
@@ -805,36 +805,36 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     if (injected?.userId === undefined) throw new Error(`${lab}: the page was handed no userId`);
     const api = labApi(served.origin, injected.bearerToken);
     const roster = await readDeclaredRoster(LABS[lab].tree);
-    const channel = roster.channels[0]!.id;
+    const mailbox = roster.mailboxes[0]!.id;
 
     let taskId: string | null = null;
     let screens: readonly Screen[];
     if (lab === "devteam") {
-      // File one row through the channel's own post, and wait for it to run.
-      const kind = await channelKind(api, channel);
-      const posted = await api.call("POST", `/${encodeURIComponent(String(kind))}/${encodeURIComponent(channel)}/actions/post`, {
+      // File one row through the mailbox's own post, and wait for it to run.
+      const kind = await mailboxKind(api, mailbox);
+      const posted = await api.call("POST", `/${encodeURIComponent(String(kind))}/${encodeURIComponent(mailbox)}/actions/post`, {
         userId: injected.userId,
         input: { body: `${fixture.devteam.issue}: ${fixture.devteam.text}` },
       });
       if (posted.status !== 202) throw new Error(`devteam: the filing post answered ${posted.status} ${JSON.stringify(posted.body)}`);
-      const board = `${channel}.${((roster.channels[0]!.declared.boards as string[]) ?? [])[0]}`;
+      const board = `${mailbox}.${((roster.mailboxes[0]!.declared.boards as string[]) ?? [])[0]}`;
       // The EM seat runs the board when asked to drain it; in a session of its own, so its
       // ask, pending in the seat's session, stays pending.
       for (let waited = 0; waited < 30_000; waited += 250) {
-        if ((await api.collection(channel, board)).length > 0) break;
+        if ((await api.collection(mailbox, board)).length > 0) break;
         await sleep(250);
       }
-      const em = roster.workers.find((w) => w.declared.flow === EM_KIND && ((roster.channels[0]!.declared.members as string[]) ?? []).includes(w.id));
-      if (em === undefined) throw new Error("devteam: the channel has no EM member to drain its board");
+      const em = roster.workers.find((w) => w.declared.flow === EM_KIND && ((roster.mailboxes[0]!.declared.members as string[]) ?? []).includes(w.id));
+      if (em === undefined) throw new Error("devteam: the mailbox has no EM member to drain its board");
       const drained = await api.call("POST", `/${encodeURIComponent(em.id)}/goal_look_drain_${RUN_STAMP}/actions/drain`, { userId: injected.userId, input: {} });
       if (drained.status !== 202) throw new Error(`devteam: the EM's drain answered ${drained.status} ${JSON.stringify(drained.body)}`);
       for (let waited = 0; waited < 30_000 && taskId === null; waited += 250) {
-        const row = (await api.collection(channel, board)).find((r) => r.status === "in_progress" && r.run != null);
+        const row = (await api.collection(mailbox, board)).find((r) => r.status === "in_progress" && r.run != null);
         if (row !== undefined) taskId = String(row.id);
         else await sleep(250);
       }
       if (taskId === null) {
-        const rows = (await api.collection(channel, board)).map((r) => `${r.id} ${r.status} run=${r.run == null ? "none" : "yes"}`);
+        const rows = (await api.collection(mailbox, board)).map((r) => `${r.id} ${r.status} run=${r.run == null ? "none" : "yes"}`);
         throw new Error(`devteam: the filed row never ran, so the sweep has no live run to read (board ${board}: ${rows.join("; ") || "no rows"})`);
       }
       if ((await pendingAsks(api, injected.userId)) === 0) throw new Error("devteam: no ask is pending, so Inbox has nothing to select");
@@ -859,7 +859,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
 
     const counts: string[] = [];
     for (const screen of screens) {
-      await open(page, screen, { channel, taskId });
+      await open(page, screen, { mailbox, taskId });
       for (const shift of SHIFTS) {
         await page.getByTestId(shift === "day" ? "shift-day" : "shift-night").click();
         for (const width of WIDTHS) {
@@ -894,7 +894,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
       });
       // ---- slice D ----
       // The desk's sweep ends on another screen; go back to Chief of Staff.
-      await open(page, "cos", { channel, taskId });
+      await open(page, "cos", { mailbox, taskId });
       // ---- end slice D ----
       await page.setViewportSize({ width: WIDTHS[0], height: 1000 });
       await page.getByTestId("cos-composer-input").fill(fixture.desk.line);

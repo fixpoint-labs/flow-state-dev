@@ -3,7 +3,7 @@
  * with this goal's recording harness in the `coder` kind's slot
  * (`recording-harness.mts`) and two rows already running on the coder seat.
  *
- * What it adds over `labs/shift-manager/teams/devteam/fsdev.config.mts`, and nothing
+ * What it adds over `packages/shift-manager/teams/devteam/fsdev.config.mts`, and nothing
  * else:
  *
  * - **The harness.** Every attempt records what it was handed to the file
@@ -47,9 +47,9 @@ const roster = await readDeclaredRoster(LAB_TREE);
 const kindOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const coderSeatId = roster.workers.find((w) => w.declared.flow === CODER_KIND && w.id.endsWith(`.${ASSIGNEE}`))?.id;
 if (coderSeatId === undefined) throw new Error("the DevTeam tree declares no coder seat the board's rows are handed to");
-const members = (roster.channels[0]?.declared.members as string[] | undefined) ?? [];
+const members = (roster.mailboxes[0]?.declared.members as string[] | undefined) ?? [];
 const emSeats = members.filter((m) => kindOf(m) === EM_KIND);
-if (emSeats.length !== 1) throw new Error(`wanted one EM seat in the channel, found ${emSeats.length}`);
+if (emSeats.length !== 1) throw new Error(`wanted one EM seat in the mailbox, found ${emSeats.length}`);
 const emSeatId = emSeats[0]!;
 
 const storeFile = process.env[STORE_ENV];
@@ -62,7 +62,7 @@ const lab = await openLab({
   runTimeoutMs: RUN_TIMEOUT_MS,
   workspace: { root: scratch.root, sourceRepo: scratch.sourceRepo, baseRef: BASE_REF },
   coderSeatId,
-  channels: { addresses: { [emSeatId]: emSeatId }, log: createNotifyLog() },
+  mailboxes: { addresses: { [emSeatId]: emSeatId }, log: createNotifyLog() },
   inventory: true,
   ask: ASK_FEATURE,
   devtool: true,

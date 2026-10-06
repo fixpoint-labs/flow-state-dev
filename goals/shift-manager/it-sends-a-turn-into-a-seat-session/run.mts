@@ -51,10 +51,11 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { channelBoard } from "@flow-state-dev/workforce";
+import { mailboxBoard } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { LAB_ORG_ID } from "../../devforce-lab/lab/host.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
+import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { heardLine } from "./lab/asker/asker.mts";
 import type { RecordedAttempt } from "./lab/recording-harness.mts";
@@ -72,7 +73,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 }
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
+const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-turn");
 const RUNS_FILE = join(SCRATCH, `runs-${Date.now()}.ndjson`);
@@ -136,7 +137,7 @@ async function startLab(name: LabName, pages: string): Promise<Running> {
   mkdirSync(join(SCRATCH, "labs"), { recursive: true });
   const workDir = mkdtempSync(join(SCRATCH, "labs", `${name}-`));
   let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", LABS[name].config, "--port", "0", "--assets", pages], {
+  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", LABS[name].config, "--port", "0", "--no-open", "--assets", pages], {
     cwd: workDir,
     env: intentFreeEnv(process.env, {
       INIT_CWD: workDir,
@@ -157,13 +158,13 @@ async function startLab(name: LabName, pages: string): Promise<Running> {
     }),
   );
   for (let waited = 0; waited < 120_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, child, exited, log: () => log };
+    const served = servedAddresses(log);
+    if (served !== undefined) return { origin: served.origin, child, exited, log: () => log };
     if (gone) break;
     await sleep(250);
   }
   child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served ${name}. Log tail:\n${log.slice(-2000)}`);
+  throw new Error(`Shift Manager's command never served ${name}. Log tail:\n${log.slice(-2000)}`);
 }
 
 // ---- the store, read by this script -----------------------------------------
@@ -192,8 +193,8 @@ function labApi(origin: string, bearer: string | undefined) {
     if (status !== 200) throw new Error(`GET ${path}: ${status} ${JSON.stringify(body)}`);
     return body;
   };
-  const rows = async (channelId: string, boardRef: string): Promise<Row[]> => {
-    const body = await get(`/sessions/${enc(channelId)}/resources/${enc(boardRef)}?limit=200`);
+  const rows = async (mailboxId: string, boardRef: string): Promise<Row[]> => {
+    const body = await get(`/sessions/${enc(mailboxId)}/resources/${enc(boardRef)}?limit=200`);
     return ((body.items ?? []) as Array<{ clientData?: Record<string, any> }>).map(({ clientData: r = {} }) => ({
       id: String(r.id),
       status: String(r.status),
@@ -286,11 +287,11 @@ async function sendAndWatch(
 // ---- one turn into a coding run ----------------------------------------------
 
 type Turn = { route: string; line: string; row: Row; counters: Counters; issue: string; owner: string; previousSession: string | null };
-type Where = { channelId: string; boardRef: string; ledgerId: string };
+type Where = { mailboxId: string; boardRef: string; ledgerId: string };
 
 /** Read a row's state, and the harness's last attempt for it, before a turn. */
 async function before(api: LabApi, where: Where, issue: string, route: string): Promise<Turn> {
-  const row = (await api.rows(where.channelId, where.boardRef)).find((r) => r.id.startsWith(`${issue.toLowerCase()}--`));
+  const row = (await api.rows(where.mailboxId, where.boardRef)).find((r) => r.id.startsWith(`${issue.toLowerCase()}--`));
   if (row === undefined || row.status !== "in_progress" || row.run === null) {
     throw new Error(`store: ${issue} is not running (${row === undefined ? "no row" : `${row.status}, ${row.run === null ? "no run" : "linked"}`})`);
   }
@@ -358,7 +359,7 @@ async function grade(
   // keeps showing it. A run that moved to a new session drops the line from it.
   let linked: Row["run"] = null;
   for (const until = Date.now() + NEXT_ATTEMPT_MS; Date.now() < until; await sleep(250)) {
-    linked = (await api.rows(where.channelId, where.boardRef)).find((r) => r.id === turn.row.id)?.run ?? null;
+    linked = (await api.rows(where.mailboxId, where.boardRef)).find((r) => r.id === turn.row.id)?.run ?? null;
     if (linked !== null && linked.requestId !== run.requestId) break;
   }
   if (linked === null || linked.requestId === run.requestId) {
@@ -377,10 +378,10 @@ async function grade(
 
 await runGoal(async () => {
   const devteam = await readDeclaredRoster(LABS.devteam.tree);
-  const channel = devteam.channels[0]!;
-  const boardName = (channel.declared.boards as string[])[0]!;
-  const where: Where = { channelId: channel.id, boardRef: `${channel.id}.${boardName}`, ledgerId: channelBoard(channel.id, boardName).id };
-  const coder = devteam.workers.find((w) => w.declared.flow === "coder" && (channel.declared.members as string[]).includes(w.id) && w.id.endsWith(".coder"))!;
+  const mailbox = devteam.mailboxes[0]!;
+  const boardName = (mailbox.declared.boards as string[])[0]!;
+  const where: Where = { mailboxId: mailbox.id, boardRef: `${mailbox.id}.${boardName}`, ledgerId: mailboxBoard(mailbox.id, boardName).id };
+  const coder = devteam.workers.find((w) => w.declared.flow === "coder" && (mailbox.declared.members as string[]).includes(w.id) && w.id.endsWith(".coder"))!;
   const em = devteam.workers.find((w) => w.declared.flow === "em")!;
   const asker = (await readDeclaredRoster(LABS.asker.tree)).workers[0]!;
 
@@ -400,7 +401,7 @@ await runGoal(async () => {
     const injected = (await page.evaluate(() => (window as any).__FSD_DEVTOOL_CONFIG__ ?? null)) as { bearerToken?: string } | null;
     const api = labApi(served.devteam.origin, injected?.bearerToken);
     for (let waited = 0; waited < 60_000; waited += 250) {
-      const running = (await api.rows(where.channelId, where.boardRef)).filter((r) => r.status === "in_progress" && r.run !== null);
+      const running = (await api.rows(where.mailboxId, where.boardRef)).filter((r) => r.status === "in_progress" && r.run !== null);
       if (running.length === ROWS.length && ROWS.every((r) => attemptsOf(r.issue).length > 0)) break;
       await sleep(250);
     }
@@ -430,8 +431,8 @@ await runGoal(async () => {
     // @coder in the workstream, on the second row, chosen from the picker.
     await leg("@coder", async (fail) => {
       const turn = await before(api, where, ROWS[1].issue, "at-coder");
-      const other = (await api.rows(where.channelId, where.boardRef)).find((r) => r.id !== turn.row.id && r.run !== null)!;
-      await page.getByTestId(`nav-workstream-${where.channelId}`).click();
+      const other = (await api.rows(where.mailboxId, where.boardRef)).find((r) => r.id !== turn.row.id && r.run !== null)!;
+      await page.getByTestId(`nav-workstream-${where.mailboxId}`).click();
       await page.locator("[role=tab][data-tab=stream]").click();
       await page.getByTestId("composer-input").fill(`@${coder.id.split(".").at(-1)} ${turn.line}`);
       const picker = page.getByTestId("composer-task-picker");
@@ -498,6 +499,6 @@ await runGoal(async () => {
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its start script over DevTeam (recording harness) and the fixture asker; each line typed in Chromium and graded against the store and the harness's own record. ${evidence.join("; ")}`,
+    evidence: `Shift Manager built with Vite and served by its command over DevTeam (recording harness) and the fixture asker; each line typed in Chromium and graded against the store and the harness's own record. ${evidence.join("; ")}`,
   };
 });

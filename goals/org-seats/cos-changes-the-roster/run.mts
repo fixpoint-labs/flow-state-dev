@@ -3,49 +3,57 @@
  * and a person changes who works there by asking it. A hire lands at once, a
  * fire lands only on Approve, and both hold across restarts. See goal.md.
  *
- * Real path, real model. The DevTeam profile (`labs/shift-manager/teams/
- * devteam`) is served by Shift Manager's own start script over a SQLite file
+ * Real path, real model. The DevTeam profile (`packages/shift-manager/teams/
+ * devteam`) is served by Shift Manager's own command over a SQLite file
  * this check owns, started three times over that one file. Every change goes
  * through the chief of staff's own turn on `openai/gpt-5.4-mini`; the approval
  * goes through the engine's resume route, as Inbox sends it. What happened is
  * read through the Lab's routes, the ones Shift Manager reads: the seat
- * inventory through the channel's session, the roster through the chief of
+ * inventory through the mailbox's session, the roster through the chief of
  * staff's, a seat's address by opening a session on it.
  *
  * Legs (each failure is tagged with its leg):
  *
  *   boot        the chief of staff is listed from the tree, on the agent kind,
  *               with a door; no other declared seat names a hire or fire tool
- *   discover    asked who is on the feature channel, it names every declared
- *               seat by its full id, with the kind its file declares
+ *   discover    asked who is on the feature mailbox, it calls discover, and what
+ *               that turn's discover calls returned lists every declared member
+ *               by its full id, each on the kind its file declares (graded on
+ *               the tool's output, never on the answer's wording)
  *   hire        asked for a seat, it hires one at once: no ask is raised, the
  *               seat is listed, its roster row is written, its address answers
- *   discover hired  in a fresh session, asked which seats were hired, it names
- *               the new seat by its full id with its kind, coder
+ *   discover hired  in a fresh session, asked which workers were hired, it
+ *               calls discover, and what it returned carries the new worker by
+ *               its full id on kind coder
  *   restart    after a restart the hired seat is still listed and answers
  *   ask         asked to fire it, it raises one human_approval naming the seat,
  *               and nothing changes yet
  *   answer      the resume route takes the answer and the turn completes
  *   seat gone   on Approve, and after a second restart, the seat is gone from
  *               the inventory and the roster, and its address no longer answers
- *   a seat asks a declared seat posts its own hire request into its channel,
- *               the channel hands it to the chief of staff from that seat, and
+ *   a seat asks a declared seat posts its own hire request into its mailbox,
+ *               the mailbox hands it to the chief of staff from that seat, and
  *               the hire lands: roster row, inventory row, and an address that
  *               answers (its own small host: seat-asks.mts)
  *
  * Controls:
  *
  *   deny-fire         Deny instead of Approve. Must fail at "seat gone" only.
- *   no-seat-delivery  The channel hands the seat's post to nobody. Must fail at
+ *   no-seat-delivery  The mailbox hands the seat's post to nobody. Must fail at
  *                     "a seat asks" only.
  *   hide-hired-from-discover  The hired seat's roster row, which discover reads
  *                     a hire from, is moved aside for the discover-hired turn
  *                     and put back after. Must fail at "discover hired" only.
+ *   drop-member-from-discover  One member is taken out of the mailbox's
+ *                     inventory row, which discover reads members from, for the
+ *                     discover turn and put back after. Must fail at "discover"
+ *                     only.
  *
  * Run:      pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
  * Control:  GOAL_CONTROL=deny-fire pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
  * Control:  GOAL_CONTROL=no-seat-delivery pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
  * Control:  GOAL_CONTROL=hide-hired-from-discover pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
+ * Control:  GOAL_CONTROL=drop-member-from-discover pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -57,19 +65,11 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { LAB_ORG_ID } from "../../devforce-lab/lab/host.mts";
 import { CODER_KIND } from "../../devforce-lab/lab/workforce/flows/workers/coder.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
+import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { ASKER, runSeatAsks } from "./seat-asks.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["deny-fire", "no-seat-delivery", "hide-hired-from-discover"] as const;
-
-/** A reply's own text as lines: `lastReply` hands back the content as one JSON string. */
-function linesOf(reply: string): string[] {
-  const parsed = JSON.parse(reply) as unknown;
-  const text = Array.isArray(parsed)
-    ? parsed.map((part) => String((part as { text?: unknown }).text ?? "")).join("\n")
-    : String(parsed);
-  return text.split("\n");
-}
+const CONTROLS = ["deny-fire", "no-seat-delivery", "hide-hired-from-discover", "drop-member-from-discover"] as const;
 
 /** Whether `text` names `id` exactly: not inside a longer id, not as a bare suffix of it. */
 function standsAlone(text: string, id: string): boolean {
@@ -84,7 +84,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
   process.exit(2);
 }
 
-const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
+const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const DEVTEAM_CONFIG = join(SHIFT_MANAGER, "teams", "devteam", "fsdev.config.mts");
 const DEVTEAM_TREE = join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
@@ -102,13 +102,13 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 type Served = { origin: string; child: ChildProcess; exited: Promise<void>; log: () => string };
 
 /**
- * Serve DevTeam over `store` through Shift Manager's start script. The pages
+ * Serve DevTeam over `store` through Shift Manager's command. The pages
  * are a stub: this check reads routes, never the screen.
  */
 async function startDevTeam(store: string, pages: string): Promise<Served> {
   const workDir = mkdtempSync(join(SCRATCH, "run-"));
   let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", DEVTEAM_CONFIG, "--port", "0", "--assets", pages], {
+  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", DEVTEAM_CONFIG, "--port", "0", "--no-open", "--assets", pages], {
     cwd: workDir,
     env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", DEVTEAM_STORE: store }),
     stdio: ["ignore", "pipe", "pipe"],
@@ -123,13 +123,13 @@ async function startDevTeam(store: string, pages: string): Promise<Served> {
     }),
   );
   for (let waited = 0; waited < 120_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, child, exited, log: () => log };
+    const served = servedAddresses(log);
+    if (served !== undefined) return { origin: served.origin, child, exited, log: () => log };
     if (gone) break;
     await sleep(250);
   }
   child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served DevTeam. Log tail:\n${log.slice(-3000)}`);
+  throw new Error(`Shift Manager's command never served DevTeam. Log tail:\n${log.slice(-3000)}`);
 }
 
 async function stop(served: Served): Promise<void> {
@@ -142,7 +142,10 @@ async function stop(served: Served): Promise<void> {
 type Item = {
   id: string;
   type: string;
+  status?: string;
   role?: string;
+  output?: unknown;
+  toolCall?: { name?: string; arguments?: string };
   requestId?: string;
   suspensionId?: string;
   reason?: string;
@@ -232,7 +235,32 @@ async function labApi(origin: string) {
     return JSON.stringify(messages.at(-1)?.content ?? "");
   };
 
-  return { userId, call, get, collection, openSession, items, settle, say, lastReply };
+  /**
+   * What the chief of staff's `discover` calls returned in one turn: how many
+   * it made, and every entry across them. This, not the answer's wording, is
+   * what a discover leg grades: who is on a mailbox is data.
+   */
+  const discovered = async (sessionId: string, requestId: string) => {
+    const calls = (await items(sessionId, "tool_output")).filter(
+      (i) => i.requestId === requestId && i.toolCall?.name === "discover" && i.status === "completed",
+    );
+    const entries = calls.flatMap((c) =>
+      (((c.output as { domains?: Array<{ entries?: DiscoverEntry[] }> } | undefined)?.domains) ?? []).flatMap((d) => d.entries ?? []),
+    );
+    // Each call's arguments as the model sent them, so a failure says what it asked for.
+    const asked = calls.map((c) => c.toolCall?.arguments ?? "").join(" ");
+    return { calls: calls.length, entries, asked };
+  };
+
+  return { userId, call, get, collection, openSession, items, settle, say, lastReply, discovered };
+}
+
+/** One entry of a `discover` result; `contract` comes back only on `detail: "full"`. */
+type DiscoverEntry = { id: string; kind: string; purpose?: string; contract?: string };
+
+/** Whether a seat entry's contract says it runs on `kind` (`Hired into the "<kind>" worker kind`). */
+function runsOn(entry: DiscoverEntry | undefined, kind: string): boolean {
+  return entry?.contract?.includes(`"${kind}" worker kind`) === true;
 }
 
 // ---- the goal ------------------------------------------------------------------
@@ -245,11 +273,11 @@ await runGoal(async () => {
     };
   }
 
-  // Read off the tree, never spelled here: the org, the channel and its members.
+  // Read off the tree, never spelled here: the org, the mailbox and its members.
   const tree = await readDeclaredRoster(DEVTEAM_TREE);
-  const channel = tree.channels[0];
-  if (channel === undefined) throw new Error("the DevTeam tree declares no channel");
-  const members = (channel.declared.members as string[] | undefined) ?? [];
+  const mailbox = tree.mailboxes[0];
+  if (mailbox === undefined) throw new Error("the DevTeam tree declares no mailbox");
+  const members = (mailbox.declared.members as string[] | undefined) ?? [];
   // The held-out seat: picked now, so no file in the repository can name it.
   const seat = `coder-${randomBytes(3).toString("hex")}`;
 
@@ -279,7 +307,7 @@ await runGoal(async () => {
     const problems: string[] = [];
     if (result.startStatus !== "completed") problems.push(`"${ASKER}" did not finish its job: ${result.startStatus}`);
     if (toCos.length !== 1 || !toCos[0]!.delivered) {
-      problems.push(`the channel handed "${ASKER}"'s post to the chief of staff ${toCos.filter((d) => d.delivered).length} time(s), not once`);
+      problems.push(`the mailbox handed "${ASKER}"'s post to the chief of staff ${toCos.filter((d) => d.delivered).length} time(s), not once`);
     } else if (toCos[0]!.author !== ASKER) {
       problems.push(`the post the chief of staff heard is from ${JSON.stringify(toCos[0]!.author)}, not "${ASKER}"`);
     }
@@ -293,7 +321,7 @@ await runGoal(async () => {
       for (const problem of problems) seatAskFailures.push(`a seat asks: ${problem}`);
     } else {
       evidence.push(
-        `a seat asks: "${ASKER}" posted its own request as itself, the channel handed it to the chief of staff from "${ASKER}", ` +
+        `a seat asks: "${ASKER}" posted its own request as itself, the mailbox handed it to the chief of staff from "${ASKER}", ` +
           `and "${asked}" has a roster row and an inventory row on kind agent, and ${String(result.address)} answers ${String(result.answers)}; ` +
           `the check sent the seat id to no one`,
       );
@@ -302,7 +330,7 @@ await runGoal(async () => {
 
   /** The hired seat's address, from the inventory row whose id ends with it. */
   const reads = async (api: Awaited<ReturnType<typeof labApi>>, cosSession: string) => {
-    const inventory = await api.collection(channel.id, "inventory/seats/*");
+    const inventory = await api.collection(mailbox.id, "inventory/seats/*");
     const roster = await api.collection(cosSession, "workforce/roster/*");
     const row = inventory.find((r) => typeof r.id === "string" && (r.id as string).endsWith(`.${seat}`));
     const rosterRow = roster.find((r) => r.seatId === seat);
@@ -329,7 +357,7 @@ await runGoal(async () => {
     }
     const cosSession = opened.body.session.id as string;
 
-    const inventory = await api.collection(channel.id, "inventory/seats/*");
+    const inventory = await api.collection(mailbox.id, "inventory/seats/*");
     const cos = inventory.find((r) => r.id === COS);
     if (cos === undefined) fail("boot", `no "${COS}" row in the seat inventory: ${JSON.stringify(inventory.map((r) => r.id))}`);
     else if (cos.kind !== "agent" || typeof cos.door !== "string") fail("boot", `"${COS}" is listed as ${JSON.stringify(cos)}`);
@@ -339,25 +367,42 @@ await runGoal(async () => {
     if (otherHirers.length > 0) fail("boot", `seats other than ${COS} name a hire tool: ${otherHirers.map((w) => w.id).join(", ")}`);
     evidence.push(`boot: "${COS}" listed on kind ${String(cos?.kind)} with door ${String(cos?.door)}, and no other declared seat names hire or fire`);
 
-    // discover
-    const asked = await api.say(cosSession, `Who is on the ${channel.id} channel? Look up the channel, then look up each of its seats, and list every seat's id with the worker kind it runs on, one seat per line.`);
-    const answer = await api.lastReply(cosSession);
-    // Each member by its full seat id, standing alone (a bare "em" could be a
-    // guess from the channel's name, and "eng.em" inside a longer id is not that
-    // seat), with the kind its file declares on the same line, also exact.
-    const kindOf = (id: string) => tree.workers.find((w) => w.id === id)?.declared.flow as string | undefined;
-    const lines = linesOf(answer);
-    const missing: string[] = [];
-    const wrongKind: string[] = [];
-    for (const member of members) {
-      const line = lines.find((l) => standsAlone(l, member));
-      if (line === undefined) missing.push(member);
-      else if (kindOf(member) === undefined || !standsAlone(line, kindOf(member)!)) wrongKind.push(`${member} (kind ${String(kindOf(member))})`);
+    // discover: graded on what the turn's `discover` calls returned, never on
+    // the answer's wording. Under the control, one member is dropped from the
+    // mailbox's inventory row (what discover reads members from) for this turn
+    // only and put back after, so every later leg is unchanged.
+    const mailboxKey = `inventory/mailboxes/${mailbox.id}`;
+    const dropped = members.includes(COS) ? COS : members[0];
+    const sideDiscover = createSQLiteStores({ filename: store });
+    const mailboxRow = CONTROL === "drop-member-from-discover" ? await sideDiscover.resourceState.get("org", LAB_ORG_ID, mailboxKey) : undefined;
+    if (mailboxRow !== undefined) {
+      const state = mailboxRow.state as { members?: string[] };
+      await sideDiscover.resourceState.set("org", LAB_ORG_ID, mailboxKey, { ...state, members: (state.members ?? []).filter((m) => m !== dropped) } as never, "any" as never);
     }
-    if (asked.status !== "completed") fail("discover", `the turn ended ${asked.status}`);
-    else if (missing.length > 0) fail("discover", `the answer does not name ${missing.join(", ")} by full seat id: ${answer.slice(0, 300)}`);
-    else if (wrongKind.length > 0) fail("discover", `the answer names ${wrongKind.join(", ")} without that kind: ${answer.slice(0, 300)}`);
-    else evidence.push(`discover: asked who is on ${channel.id}, the answer named ${members.map((m) => `${m} (${String(kindOf(m))})`).join(", ")}`);
+    try {
+      const asked = await api.say(cosSession, `Who is on the ${mailbox.id} mailbox? Look up the mailbox, then look up each of its seats, and list every seat's id with the worker kind it runs on, one seat per line.`);
+      const found = await api.discovered(cosSession, asked.requestId);
+      // Each member by its full seat id, standing alone in the mailbox's member
+      // list (a bare "em" is not "eng.em", and "eng.em" inside a longer id is
+      // not that seat), and a seat entry with that exact id on the kind its
+      // file declares. The members and the kinds may come from separate calls.
+      const kindOf = (id: string) => tree.workers.find((w) => w.id === id)?.declared.flow as string | undefined;
+      const box = found.entries.find((e) => e.kind === "mailbox" && e.id === mailbox.id);
+      const missing = members.filter((m) => !standsAlone(box?.contract ?? "", m));
+      const wrongKind = members
+        .filter((m) => kindOf(m) === undefined || !runsOn(found.entries.find((e) => e.kind === "seat" && e.id === m), kindOf(m)!))
+        .map((m) => `${m} (kind ${String(kindOf(m))})`);
+      const said = (await api.lastReply(cosSession)).slice(0, 300);
+      if (asked.status !== "completed") fail("discover", `the turn ended ${asked.status}`);
+      else if (found.calls === 0) fail("discover", `the chief of staff answered without calling discover: ${said}`);
+      else if (box?.contract === undefined) fail("discover", `no discover result in the turn lists ${mailbox.id}'s members (calls: ${found.asked}): ${said}`);
+      else if (missing.length > 0) fail("discover", `discover returned ${mailbox.id} without ${missing.join(", ")} by full seat id: ${box.contract}`);
+      else if (wrongKind.length > 0) fail("discover", `no discover result in the turn gives ${wrongKind.join(", ")} (calls: ${found.asked}): ${said}`);
+      else evidence.push(`discover: asked who is on ${mailbox.id}, its discover calls returned ${members.map((m) => `${m} (${String(kindOf(m))})`).join(", ")}`);
+    } finally {
+      if (mailboxRow !== undefined) await sideDiscover.resourceState.set("org", LAB_ORG_ID, mailboxKey, mailboxRow.state as never, "any" as never);
+      sideDiscover.close();
+    }
 
     // hire
     const hired = await api.say(cosSession, `Please hire one more coder for the team, with the seat id "${seat}".`);
@@ -391,12 +436,14 @@ await runGoal(async () => {
         // A session of its own, so the hire turn's own words can't answer it.
         const fresh = (await api.openSession(COS)).body.session.id as string;
         const turn = await api.say(fresh, "Which seats has this organization hired? Look it up and give each one's full seat id and the worker kind it was hired into.");
-        const reply = await api.lastReply(fresh);
-        const line = linesOf(reply).find((l) => standsAlone(l, seat) || standsAlone(l, address!));
+        const found = await api.discovered(fresh, turn.requestId);
+        const entry = found.entries.find((e) => e.kind === "seat" && (e.id === seat || e.id === address));
+        const said = (await api.lastReply(fresh)).slice(0, 400);
         if (turn.status !== "completed") fail("discover hired", `the turn ended ${turn.status}`);
-        else if (line === undefined) fail("discover hired", `the answer does not name "${seat}" by its full seat id: ${reply.slice(0, 400)}`);
-        else if (!standsAlone(line, CODER_KIND)) fail("discover hired", `the answer names "${seat}" without its kind "${CODER_KIND}": ${line.slice(0, 300)}`);
-        else evidence.push(`discover hired: asked which seats were hired, the answer named ${seat} with kind ${CODER_KIND}`);
+        else if (found.calls === 0) fail("discover hired", `the chief of staff answered without calling discover: ${said}`);
+        else if (entry === undefined) fail("discover hired", `no discover result in the turn carries "${seat}" by its full id (calls: ${found.asked}): ${said}`);
+        else if (!runsOn(entry, CODER_KIND)) fail("discover hired", `discover returned "${entry.id}" without its kind "${CODER_KIND}": ${String(entry.contract)}`);
+        else evidence.push(`discover hired: asked which seats were hired, its discover calls returned ${entry.id} on kind ${CODER_KIND}`);
       } finally {
         if (hidden !== undefined) await side.resourceState.set("org", LAB_ORG_ID, rosterKey, hidden.state as never, "any" as never);
         side.close();
@@ -405,9 +452,10 @@ await runGoal(async () => {
   } finally {
     await stop(served);
   }
-  // A failed discover-hired turn changed nothing (its row is back), so the
-  // legs after it still run; any earlier failure leaves nothing to carry on with.
-  const blocking = failures.filter((f) => !f.startsWith("discover hired:"));
+  // A failed discover or discover-hired turn changed nothing (any row a control
+  // moved is back), so the legs after it still run; any other failure leaves
+  // nothing to carry on with.
+  const blocking = failures.filter((f) => !f.startsWith("discover:") && !f.startsWith("discover hired:"));
   if (blocking.length > 0 || address === undefined) {
     if (blocking.length === 0) fail("hire", "no address to carry on with");
     return { failures: graded(), evidence: evidence.join("; ") };
@@ -485,6 +533,6 @@ await runGoal(async () => {
 
   return {
     failures: graded(),
-    evidence: `DevTeam served three times by Shift Manager's start script over one SQLite file, the chief of staff on a real model. ${evidence.join("; ")}`,
+    evidence: `DevTeam served three times by Shift Manager's command over one SQLite file, the chief of staff on a real model. ${evidence.join("; ")}`,
   };
 });

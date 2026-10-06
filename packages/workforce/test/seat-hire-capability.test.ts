@@ -113,7 +113,7 @@ function hireReturn(items: unknown[]): { seatId?: string; address?: string; warn
 
 async function discoverSeatIds(ctx: never, hiredRoster = HIRED_ROSTER_RESOURCE): Promise<string[]> {
   const [source] = workforceManifestSources({
-    roster: { workers: [], channels: [] },
+    roster: { workers: [], mailboxes: [] },
     inventory: { seats: SEAT_INVENTORY_RESOURCE },
     hiredRoster,
   });
@@ -329,7 +329,7 @@ describe("Discover sees a runtime hire", () => {
       kindAt: live.kindAt,
     });
     const workforce = createWorkforceCapability({
-      roster: { workers: [], channels: [] },
+      roster: { workers: [], mailboxes: [] },
       inventory: { seats: SEAT_INVENTORY_RESOURCE },
       hiredRoster: HIRED_ROSTER_RESOURCE,
     });
@@ -420,7 +420,7 @@ describe("FIX-1529 owner pin", () => {
 describe("unattended boards stay a warning", () => {
   it("hires without attaching a board and names the unattended ledger", async () => {
     const live = liveRoster();
-    const { kinds } = kindWithHire(live, { channelBoards: ["eng.standup.triage"] });
+    const { kinds } = kindWithHire(live, { mailboxBoards: ["eng.standup.triage"] });
 
     const [manager] = hireWorkforce(
       [record({ id: "eng.manager", declared: { tools: ["hire"] }, body: "Expands the roster." })],

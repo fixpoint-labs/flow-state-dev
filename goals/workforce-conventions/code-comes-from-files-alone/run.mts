@@ -64,7 +64,7 @@ import { KITCHEN_SINK, REPO_ROOT, loadFixture, runGoal } from "../../lib/index.m
 interface Fixture {
   port: number;
   app: {
-    channel: string;
+    mailbox: string;
     board: string;
     seat: string;
     block: string;
@@ -195,21 +195,21 @@ async function waitForServer(): Promise<void> {
   );
 }
 
-/** Post a person's line to the channel over the route the page's composer uses. */
-async function postToChannel(body: string): Promise<void> {
-  const res = await fetch(`${ORIGIN}/api/flows/channel/actions/post`, {
+/** Post a person's line to the mailbox over the route the page's composer uses. */
+async function postToMailbox(body: string): Promise<void> {
+  const res = await fetch(`${ORIGIN}/api/flows/mailbox/actions/post`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "text/event-stream" },
-    body: JSON.stringify({ userId: "devuser", sessionId: fixture.app.channel, input: { body } }),
+    body: JSON.stringify({ userId: "devuser", sessionId: fixture.app.mailbox, input: { body } }),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`posting to ${fixture.app.channel} returned ${res.status}: ${text.slice(0, 400)}`);
+  if (!res.ok) throw new Error(`posting to ${fixture.app.mailbox} returned ${res.status}: ${text.slice(0, 400)}`);
 }
 
 /** The board as the team panel reads it, over the public route. */
 async function boardText(): Promise<string> {
-  const ref = `${fixture.app.channel}.${fixture.app.board}`;
-  const res = await fetch(`${ORIGIN}/api/flows/sessions/${fixture.app.channel}/resources/${ref}`);
+  const ref = `${fixture.app.mailbox}.${fixture.app.board}`;
+  const res = await fetch(`${ORIGIN}/api/flows/sessions/${fixture.app.mailbox}/resources/${ref}`);
   return await res.text();
 }
 
@@ -276,7 +276,7 @@ await runGoal(async () => {
     await waitForServer();
 
     const token = `case-token-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    await postToChannel(`[route:${fixture.app.seat}] ${fixture.app.marker} ${token} the charger caught fire`);
+    await postToMailbox(`[route:${fixture.app.seat}] ${fixture.app.marker} ${token} the charger caught fire`);
     let board = "";
     for (let i = 0; i < 40 && !board.includes(token); i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -285,13 +285,13 @@ await runGoal(async () => {
     if (!board.includes(token)) {
       fail(
         "b",
-        `after 20s, ${fixture.app.channel}'s ${fixture.app.board} board holds no row carrying ${token}: the ` +
+        `after 20s, ${fixture.app.mailbox}'s ${fixture.app.board} board holds no row carrying ${token}: the ` +
           `seat's ${fixture.app.block} call filed nothing in the built app`
       );
     } else {
       evidence.push(
         `over ${ORIGIN} against the built app: a post routed to ${fixture.app.seat} left a row carrying ${token} ` +
-          `on ${fixture.app.channel}'s ${fixture.app.board} board`
+          `on ${fixture.app.mailbox}'s ${fixture.app.board} board`
       );
     }
   } finally {

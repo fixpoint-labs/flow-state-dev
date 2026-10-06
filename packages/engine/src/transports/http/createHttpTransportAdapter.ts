@@ -15,7 +15,7 @@ import type {
   TransportBindings,
   TransportRoute
 } from "../types";
-import type { ParsedFlowRoute } from "../../routes/parseFlowRoute";
+import { decodePathSegments, type ParsedFlowRoute } from "../../routes/parseFlowRoute";
 
 /** Stable provenance identifier for the built-in HTTP transport. */
 export const HTTP_TRANSPORT_SOURCE = "http";
@@ -90,10 +90,14 @@ function pathFromContextOrUrl(
     return fromParam.split("/").filter((s) => s.length > 0);
   }
 
+  // The raw URL is still encoded, while framework params arrive decoded.
+  // Decode here so both reach `parseFlowRoute` in the same shape.
+  // The prefix is compared in its encoded form, the one `url.pathname` holds.
   const url = new URL(request.url);
-  const prefix = basePath.endsWith("/") ? basePath : `${basePath}/`;
+  const encodedBase = new URL(basePath, url.origin).pathname;
+  const prefix = encodedBase.endsWith("/") ? encodedBase : `${encodedBase}/`;
   if (!url.pathname.startsWith(prefix)) return [];
-  return url.pathname.slice(prefix.length).split("/").filter((s) => s.length > 0);
+  return decodePathSegments(url.pathname.slice(prefix.length));
 }
 
 // Silence unused-symbol typecheck on optional re-import for tooling that

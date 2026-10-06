@@ -7,7 +7,7 @@
  * Real path, no model, out of CI. See goal.md for the contract.
  *
  * Shift Manager is copied to a scratch directory, patched there (never in the
- * checkout), built with Vite, and served by its own start script over the
+ * checkout), built with Vite, and served by its own command over the
  * run-lab (`goals/shift-manager/it-shows-and-stops-a-task-run/lab/`), whose runs store
  * a message, a reasoning item and a tool call through the Claude Code harness's
  * emit path. Chromium opens a task from Tasks by clicking, opens its tool card,
@@ -112,11 +112,11 @@ const startLab = (pages: string): Promise<ServedShiftManager> =>
 /** A board row with a run, read through the Lab's own route. */
 async function rowWithRun(origin: string): Promise<string> {
   const roster = await readDeclaredRoster(join(RUN_LAB, "workforce"));
-  const channel = roster.channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0)!;
-  const board = `${channel.id}.${(channel.declared.boards as string[])[0]}`;
+  const mailbox = roster.mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0)!;
+  const board = `${mailbox.id}.${(mailbox.declared.boards as string[])[0]}`;
   const enc = encodeURIComponent;
   for (let waited = 0; waited < 30_000; waited += 250) {
-    const response = await fetch(`${origin}/api/flows/sessions/${enc(channel.id)}/resources/${enc(board)}?limit=200`);
+    const response = await fetch(`${origin}/api/flows/sessions/${enc(mailbox.id)}/resources/${enc(board)}?limit=200`);
     const body = (await response.json()) as { items?: Array<{ clientData?: { id?: string; status?: string; run?: unknown } }> };
     const row = (body.items ?? []).map((i) => i.clientData ?? {}).find((r) => r.status === "in_progress" && r.run != null);
     if (row?.id !== undefined) return row.id;

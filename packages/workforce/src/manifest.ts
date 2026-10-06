@@ -6,7 +6,7 @@
  * consumers that turn a record into something runnable (which read nothing)
  * never hold two spellings of one record — and, for the same reason, so a
  * refusal reads the same whichever door a file arrives at. A worker is a
- * `WorkerManifest`; a channel is a `ChannelManifest`; a file-declared document
+ * `WorkerManifest`; a mailbox is a `MailboxManifest`; a file-declared document
  * is a `ResourceDoc`.
  */
 
@@ -91,7 +91,7 @@ export interface WorkerManifest {
    */
   ownerPin?: InstanceOwnerPin;
   /**
-   * The seat's logical id, as a channel's `members:` lists it: `"<teamId>.<name>"`
+   * The seat's logical id, as a mailbox's `members:` lists it: `"<teamId>.<name>"`
    * for a team seat, the bare `"<name>"` for an org seat.
    * Set by a hire row, never by a `WORKER.md`. Absent, the hire uses
    * {@link WorkerManifest.id}, which on a file record is that id. A hired
@@ -104,7 +104,7 @@ export interface WorkerManifest {
  * One team, as read off disk.
  *
  * The record {@link TEAM_MD} produces, and the fourth in this dialect beside
- * {@link WorkerManifest}, {@link ChannelManifest} and {@link ResourceDoc}.
+ * {@link WorkerManifest}, {@link MailboxManifest} and {@link ResourceDoc}.
  * Declared here with them for the reason they are: node-free, so the reader
  * (which reads folders) and the join (which reads nothing) never hold two
  * spellings of one record.
@@ -140,29 +140,29 @@ export interface TeamManifest {
 }
 
 /**
- * One channel, as declared on disk or hand-built.
+ * One mailbox, as declared on disk or hand-built.
  *
  * The same three-field record a worker is made of, and deliberately so: the
- * loader that reads a `CHANNEL.md` returns this type rather than declaring a
+ * loader that reads a `MAILBOX.md` returns this type rather than declaring a
  * second one. Declared here, beside {@link WorkerManifest}, for the reason that
  * one is — node-free, so the binder (which reads nothing) and the reader (which
  * reads folders) never hold two spellings of one record.
  */
-export interface ChannelManifest {
+export interface MailboxManifest {
   /**
    * Team-qualified identity, "<teamId>.<name>" — e.g. "engineering.standup".
-   * The channel's whole identity, and literally its session id. A frontmatter
+   * The mailbox's whole identity, and literally its session id. A frontmatter
    * `id:` cannot reach it: the record's shape is what carries identity.
    */
   id: string;
   /** Frontmatter exactly as written — keys as the file spelled them, values uninterpreted. */
   declared: Record<string, unknown>;
-  /** The channel's charter: Markdown body verbatim, frontmatter removed. */
+  /** The mailbox's charter: Markdown body verbatim, frontmatter removed. */
   body: string;
 }
 
 /**
- * A key a `CHANNEL.md` may not declare, refused by name wherever a record is
+ * A key a `MAILBOX.md` may not declare, refused by name wherever a record is
  * read.
  *
  * `system` is set from the declaration path, never from a file. Refused at this
@@ -176,8 +176,8 @@ export const REFUSED_SYSTEM_KEY = "system";
  * supplies what it can name.
  */
 export const REFUSED_SYSTEM_KEY_MESSAGE =
-  `declares \`${REFUSED_SYSTEM_KEY}:\`, which is not a setting a channel declares. ` +
-  `Where a channel is declared is what decides it.`;
+  `declares \`${REFUSED_SYSTEM_KEY}:\`, which is not a setting a mailbox declares. ` +
+  `Where a mailbox is declared is what decides it.`;
 
 /**
  * The single setting name the seat factory imposes: where a worker's body

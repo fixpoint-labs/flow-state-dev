@@ -6,6 +6,6 @@
   "coordinatorSeat": "eng.em",
   "assignedSeat": "eng.coder",
   "silentSeat": "eng.reviewer",
-  "channel": "eng.feature",
+  "mailbox": "eng.feature",
   "wait": { "timeoutMs": 60000, "pollMs": 100 }
 }

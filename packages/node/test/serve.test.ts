@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -12,7 +12,8 @@ import {
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { serve, type ServeHandle } from "../src/serve";
+import { serve, type ServeHandle, type ServeOptions } from "../src/serve";
+import { createPageHtmlTransform } from "../src/index";
 
 const noopFlow = defineFlow({
   kind: "noop-flow",
@@ -217,6 +218,25 @@ describe("serve — FlowState lifecycle", () => {
     await handle.close();
     expect(adapter.disposed()).toBe(1);
   });
+
+  it("leaves the FlowState to its owner when disposeOnClose is false", async () => {
+    // Two servers over one runtime: the one that closes first must not take
+    // the runtime away from the other.
+    const adapter = gatedAdapter();
+    adapter.release();
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: adapter } },
+    });
+    const handle = await serve(fs, { port: 0, disposeOnClose: false });
+    await fs.ready();
+
+    await handle.close();
+    expect(adapter.disposed()).toBe(0);
+    await fs.dispose();
+    expect(adapter.disposed()).toBe(1);
+  });
 });
 
 describe("serve — static assets", () => {
@@ -378,5 +398,292 @@ describe("serve() — devtoolConfig injection", () => {
     expect(html).not.toContain("__FSD_DEVTOOL_CONFIG__");
     expect(html).not.toContain("s3cret");
     expect(res.headers.get("cache-control")).not.toBe("no-store");
+  });
+});
+
+describe("serve() — pageMeta", () => {
+  async function staticDir(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "fsd-node-meta-"));
+    await writeFile(join(dir, "index.html"), "<!doctype html><html><head></head><body></body></html>");
+    await writeFile(join(dir, "about.html"), "<!doctype html><html><head></head><body>about</body></html>");
+    await writeFile(join(dir, "app.js"), "console.log('</head>')");
+    return dir;
+  }
+
+  it("writes the meta tags into the index, another HTML file, and the SPA fallback", async () => {
+    const dir = await staticDir();
+    const handle = await start(fakeRouter, {
+      port: 0,
+      host: "127.0.0.1",
+      staticDir: dir,
+      pageMeta: { "fsdev-devtool-url": "http://127.0.0.1:5555/" },
+    });
+    const tag = '<meta name="fsdev-devtool-url" content="http://127.0.0.1:5555/"></head>';
+    for (const path of ["/", "/about.html", "/some/client/route"]) {
+      const html = await (await fetch(`http://127.0.0.1:${handle.port}${path}`)).text();
+      expect(html, path).toContain(tag);
+    }
+    // A non-HTML asset is served as it is on disk.
+    const js = await (await fetch(`http://127.0.0.1:${handle.port}/app.js`)).text();
+    expect(js).toBe("console.log('</head>')");
+  });
+
+  it("writes the meta tags on a non-loopback host too (they are not secrets)", async () => {
+    const dir = await staticDir();
+    const handle = await start(fakeRouter, {
+      port: 0,
+      host: "0.0.0.0",
+      staticDir: dir,
+      pageMeta: { "app-scheme": "dark" },
+    });
+    const html = await (await fetch(`http://127.0.0.1:${handle.port}/`)).text();
+    expect(html).toContain('<meta name="app-scheme" content="dark">');
+  });
+
+  it("escapes a value so it cannot close the attribute or the tag", async () => {
+    const dir = await staticDir();
+    const handle = await start(fakeRouter, {
+      port: 0,
+      staticDir: dir,
+      pageMeta: { "x": `a"><script>alert(1)</script>&` },
+    });
+    const html = await (await fetch(`http://127.0.0.1:${handle.port}/`)).text();
+    expect(html).toContain('<meta name="x" content="a&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&amp;">');
+    expect(html).not.toContain("<script>alert(1)");
+  });
+
+  it("writes the meta tags beside the devtool config, in one pass", async () => {
+    const dir = await staticDir();
+    const handle = await start(fakeRouter, {
+      port: 0,
+      host: "127.0.0.1",
+      staticDir: dir,
+      devtoolConfig: { userId: "owner" },
+      pageMeta: { "app-scheme": "dark" },
+    });
+    const html = await (await fetch(`http://127.0.0.1:${handle.port}/`)).text();
+    expect(html).toContain(
+      '<meta name="app-scheme" content="dark"><script>window.__FSD_DEVTOOL_CONFIG__ = {"userId":"owner"};</script></head>',
+    );
+  });
+
+  it("leaves HTML byte-identical, with no cache-control, when neither option is set", async () => {
+    const dir = await staticDir();
+    const handle = await start(fakeRouter, { port: 0, staticDir: dir, pageMeta: {} });
+    for (const path of ["/", "/about.html", "/some/client/route"]) {
+      const res = await fetch(`http://127.0.0.1:${handle.port}${path}`);
+      const onDisk = await readFile(join(dir, path === "/about.html" ? "about.html" : "index.html"), "utf8");
+      expect(await res.text(), path).toBe(onDisk);
+      expect(res.headers.get("cache-control"), path).toBeNull();
+    }
+  });
+});
+
+describe("serve() — pageScript", () => {
+  async function staticDir(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "fsd-node-script-"));
+    await writeFile(join(dir, "index.html"), "<!doctype html><html><head></head><body></body></html>");
+    await writeFile(join(dir, "about.html"), "<!doctype html><html><head></head><body>about</body></html>");
+    return dir;
+  }
+
+  it("writes the script into the index, another HTML file, and the SPA fallback, after the meta", async () => {
+    const handle = await start(fakeRouter, {
+      port: 0,
+      host: "127.0.0.1",
+      staticDir: await staticDir(),
+      pageMeta: { "app-boot": "b1" },
+      pageScript: "window.booted = true;",
+      devtoolConfig: { userId: "owner" },
+    });
+    for (const path of ["/", "/about.html", "/some/client/route"]) {
+      const html = await (await fetch(`http://127.0.0.1:${handle.port}${path}`)).text();
+      // The meta first, so the script can read it; the config script last, as before.
+      expect(html, path).toContain(
+        '<meta name="app-boot" content="b1"><script>window.booted = true;</script>' +
+          '<script>window.__FSD_DEVTOOL_CONFIG__ = {"userId":"owner"};</script></head>',
+      );
+    }
+  });
+
+  it("writes it on a non-loopback host too", async () => {
+    const handle = await start(fakeRouter, { port: 0, host: "0.0.0.0", staticDir: await staticDir(), pageScript: "1;" });
+    expect(await (await fetch(`http://127.0.0.1:${handle.port}/`)).text()).toContain("<script>1;</script></head>");
+  });
+
+  it("escapes a closing tag inside the script so it cannot end the element early", async () => {
+    const handle = await start(fakeRouter, {
+      port: 0,
+      staticDir: await staticDir(),
+      pageScript: 'var s = "</script><b>x</b>";',
+    });
+    const html = await (await fetch(`http://127.0.0.1:${handle.port}/`)).text();
+    expect(html).toContain('<script>var s = "<\\/script><b>x<\\/b>";</script></head>');
+  });
+});
+
+describe("serve() — pageHandler", () => {
+  type Handler = NonNullable<ServeOptions["pageHandler"]>;
+
+  async function staticDir(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "fsd-node-handler-"));
+    await writeFile(join(dir, "index.html"), "<!doctype html><html><head></head><body>built</body></html>");
+    await writeFile(join(dir, "app.js"), "built-asset");
+    return dir;
+  }
+
+  /** A handler that answers `/src/*` itself, passes everything else on, and records every URL it saw. */
+  function recordingHandler(): Handler & { seen: string[] } {
+    const seen: string[] = [];
+    const handler: Handler = (req, res, next) => {
+      seen.push(`${req.method} ${req.url}`);
+      if (req.url?.startsWith("/src/")) {
+        res.writeHead(200, { "content-type": "application/javascript" });
+        res.end(`from-handler ${req.url}`);
+        return;
+      }
+      next();
+    };
+    return Object.assign(handler, { seen });
+  }
+
+  it("answers a non-file GET, and passes the rest on to the SPA fallback", async () => {
+    const handler = recordingHandler();
+    const handle = await start(fakeRouter, {
+      port: 0,
+      staticDir: await staticDir(),
+      pageHandler: handler,
+      pageMeta: { "app-scheme": "dark" },
+    });
+    const own = await fetch(`http://127.0.0.1:${handle.port}/src/main.tsx`);
+    expect(own.status).toBe(200);
+    expect(await own.text()).toBe("from-handler /src/main.tsx");
+
+    const fallback = await (await fetch(`http://127.0.0.1:${handle.port}/some/client/route?x=1`)).text();
+    expect(fallback).toContain("built");
+    expect(fallback).toContain('<meta name="app-scheme" content="dark">');
+    expect(handler.seen).toEqual(["GET /src/main.tsx", "GET /some/client/route?x=1"]);
+  });
+
+  it("never sees a real file, an API request, the health check, or a non-GET", async () => {
+    const handler = recordingHandler();
+    const handle = await start(fakeRouter, { port: 0, staticDir: await staticDir(), pageHandler: handler });
+    const base = `http://127.0.0.1:${handle.port}`;
+    expect(await (await fetch(`${base}/app.js`)).text()).toBe("built-asset");
+    expect((await fetch(`${base}/api/flows/foo`)).status).toBe(200);
+    expect((await fetch(`${base}/healthz`)).status).toBe(200);
+    await fetch(`${base}/src/x.ts`, { method: "POST" });
+    expect(handler.seen).toEqual([]);
+  });
+
+  it("serves a dedicated GET route ahead of the handler, during cold start too", async () => {
+    const handler = recordingHandler();
+    const store = gatedAdapter();
+    const adapter: InboundTransportAdapter = {
+      source: "test-oauth",
+      createBindings: () => ({
+        routes: [
+          {
+            method: "GET",
+            path: "/src/oauth/callback",
+            handler: () => Promise.resolve(new Response("dedicated", { status: 200 })),
+          },
+        ],
+      }),
+    };
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: store } },
+      adapters: [adapter],
+    });
+    const handle = await start(fs, { port: 0, staticDir: await staticDir(), pageHandler: handler });
+
+    const pending = fetch(`http://127.0.0.1:${handle.port}/src/oauth/callback`);
+    store.release();
+    const res = await pending;
+    expect(await res.text()).toBe("dedicated");
+    expect(handler.seen).toEqual([]);
+  });
+
+  it("works without a staticDir: what the handler passes on is a 404", async () => {
+    const handler = recordingHandler();
+    const handle = await start(fakeRouter, { port: 0, pageHandler: handler });
+    expect(await (await fetch(`http://127.0.0.1:${handle.port}/src/a.ts`)).text()).toBe("from-handler /src/a.ts");
+    expect((await fetch(`http://127.0.0.1:${handle.port}/elsewhere`)).status).toBe(404);
+  });
+
+  it("holds a streaming response open until the handler ends it", async () => {
+    let finish: (() => void) | undefined;
+    const handle = await start(fakeRouter, {
+      port: 0,
+      staticDir: await staticDir(),
+      pageHandler: (req, res, next) => {
+        if (req.url !== "/stream") return next();
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write("data: one\n\n");
+        finish = () => res.end("data: two\n\n");
+      },
+    });
+    const res = await fetch(`http://127.0.0.1:${handle.port}/stream`);
+    const reader = res.body!.getReader();
+    const first = new TextDecoder().decode((await reader.read()).value);
+    expect(first).toBe("data: one\n\n");
+    finish!();
+    let rest = "";
+    for (let r = await reader.read(); !r.done; r = await reader.read()) rest += new TextDecoder().decode(r.value);
+    expect(rest).toBe("data: two\n\n");
+    // The server still answers after the stream ended.
+    expect((await fetch(`http://127.0.0.1:${handle.port}/app.js`)).status).toBe(200);
+  });
+
+  it("lets a client drop a held stream without wedging the server", async () => {
+    const closed: string[] = [];
+    const handle = await start(fakeRouter, {
+      port: 0,
+      staticDir: await staticDir(),
+      pageHandler: (req, res, next) => {
+        if (req.url !== "/stream") return next();
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write("data: one\n\n");
+        res.on("close", () => closed.push("closed"));
+      },
+    });
+    const abort = new AbortController();
+    const res = await fetch(`http://127.0.0.1:${handle.port}/stream`, { signal: abort.signal });
+    await res.body!.getReader().read();
+    abort.abort();
+    await expect.poll(() => closed).toEqual(["closed"]);
+    expect((await fetch(`http://127.0.0.1:${handle.port}/app.js`)).status).toBe(200);
+  });
+
+  it("turns an error the handler passes on into a 500", async () => {
+    const handle = await start(fakeRouter, {
+      port: 0,
+      staticDir: await staticDir(),
+      pageHandler: (_req, _res, next) => next(new Error("boom")),
+    });
+    expect((await fetch(`http://127.0.0.1:${handle.port}/x`)).status).toBe(500);
+  });
+
+  it("can write its own index with the same transform serve() uses", async () => {
+    const dir = await staticDir();
+    const pageOptions = { host: "127.0.0.1", devtoolConfig: { userId: "owner" }, pageMeta: { "app-scheme": "dark" } };
+    const transform = createPageHtmlTransform(pageOptions)!;
+    const ownIndex = "<!doctype html><html><head></head><body>built</body></html>";
+    const handle = await start(fakeRouter, {
+      port: 0,
+      ...pageOptions,
+      staticDir: dir,
+      pageHandler: (req, res, next) => {
+        if (req.url !== "/own") return next();
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(transform(ownIndex));
+      },
+    });
+    const own = await (await fetch(`http://127.0.0.1:${handle.port}/own`)).text();
+    const served = await (await fetch(`http://127.0.0.1:${handle.port}/`)).text();
+    expect(own).toBe(served);
+    expect(own).toContain("__FSD_DEVTOOL_CONFIG__");
   });
 });

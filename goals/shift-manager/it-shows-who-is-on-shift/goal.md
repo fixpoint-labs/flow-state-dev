@@ -4,7 +4,7 @@
 
 **Outcome:** A person running a Lab in Shift Manager opens Roster and sees every worker the Lab has, each on shift, on call or off shift as the Lab's own records say, with the tasks it holds and what it waits on, for all teams or one. The sidebar's Roster entry, its footer and its TEAMS rows agree with the page.
 
-**Input:** the shift-lab (`lab/`), served by Shift Manager's start script: two teams (`eng`, `ops`) whose workers are all members of the one board's channel, and one org-level seat (`chief-of-staff`) with no team. At boot it builds a **spread** (`fixtures/input.json`): per worker, rows its scripted run holds until stopped, rows its run parks for a person, rows filed after the only drain so nothing claims them, and pending approvals in a session of its own. Every assignee names exactly one worker. The check runs two spreads; another spread over the same tree must pass a correct Shift Manager too. No seat, team or board name is written in the check.
+**Input:** the shift-lab (`lab/`), served by Shift Manager's command: two teams (`eng`, `ops`) whose workers are all members of the one board's mailbox, and one org-level seat (`chief-of-staff`) with no team. At boot it builds a **spread** (`fixtures/input.json`): per worker, rows its scripted run holds until stopped, rows its run parks for a person, rows filed after the only drain so nothing claims them, and pending approvals in a session of its own. Every assignee names exactly one worker. The check runs two spreads; another spread over the same tree must pass a correct Shift Manager too. No seat, team or board name is written in the check.
 
 **Signal:** per spread, each failure tagged `[spread <n>] <leg>`. Reached by clicking Roster, then each team in the picker, then each TEAMS row.
 

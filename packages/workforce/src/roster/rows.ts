@@ -11,22 +11,16 @@
  * politeness: a stored row was written by a past runtime against code that has
  * since moved, so the boot that finds it must be able to skip it and serve,
  * and a boot that rewrote data it did not understand would destroy the
- * evidence of why it did not. The one thing that DOES throw is a bad org id,
- * because that is this deploy's mistake rather than a past one — see
- * {@link seatAddress}. A reader walking stored rows calls
+ * evidence of why it did not. The one thing that DOES throw is an address that
+ * cannot be built (an empty org id, or a seat id that is empty or starts with
+ * `~`) — see {@link seatAddress}. A reader walking stored rows calls
  * {@link hiredSeatManifestFromStored}, which turns that throw into a reason
  * too.
  *
  * The address pair lives in `./address.ts` and is re-exported here, so a
- * browser can take it without this module's collections. Its import of
- * `validateSegment` reaches into `../loader/` and is safe:
- * `loader/segments.ts` imports only the pure `@flow-state-dev/core/helpers`
- * (for the shared Windows device-name list), which
- * `test/browser-subpath-safe.test.ts` enforces. The package's root/loader split
- * exists to keep `node:fs` out of anything importing `@flow-state-dev/workforce`,
- * and the naming rule is the one piece of the loader with no filesystem in it.
- * Copying the rule here instead would be the second copy of a rule whose whole
- * value is that every reader agrees on it.
+ * browser can take it without this module's collections. Its only import is
+ * `@flow-state-dev/core/types`, which `test/browser-subpath-safe.test.ts` keeps
+ * free of Node built-ins.
  */
 
 import { encodeUserSegment, ownerSegment, type InstanceOwnerPin } from "@flow-state-dev/core/types";
@@ -149,7 +143,7 @@ export function parseHiredSeatRow(value: unknown): { row: HiredSeatRow } | RowPr
  *     load-bearing.
  *   - `body` is the instructions, which the hire step turns into the
  *     `instructions` setting exactly as it does for a file's Markdown body.
- *   - `seatId` is the row's own seat id, the logical id a channel's
+ *   - `seatId` is the row's own seat id, the logical id a mailbox's
  *     `members:` lists, which the hire step stamps as the seat's `seatId`
  *     setting. The address is not it.
  *
@@ -207,9 +201,9 @@ export function hiredSeatManifest(
  * or the one reason it cannot be.
  *
  * The per-row walk every reader of stored rows needs: parse, apply the
- * owning-org fence, and build the address. The address throws when the org or
- * the seat id cannot be one (a row under `DEFAULT_ORG_ID`, a seat id starting
- * with `~`); here that throw is one row's reason, so a caller walking a roster
+ * owning-org fence, and build the address. The address throws when the seat id
+ * cannot be one (empty, or starting with `~`); here that throw is one row's
+ * reason, so a caller walking a roster
  * skips it and keeps the rest. `reloadHiredSeats` and the seats manifest
  * source both read through this, so they agree on which rows count.
  *

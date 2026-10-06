@@ -37,9 +37,9 @@ const sourceOf = (domain: BlockManifestSource["domain"]): BlockManifestSource =>
 /** The capability under test, carrying three of the four domains. */
 function capabilityWithThreeDomains() {
   return createWorkforceCapability({
-    roster: { workers: [], channels: [] },
+    roster: { workers: [], mailboxes: [] },
     inventory: {},
-    sources: [sourceOf("seats"), sourceOf("channels"), sourceOf("skills")]
+    sources: [sourceOf("seats"), sourceOf("mailboxes"), sourceOf("skills")]
   });
 }
 
@@ -100,13 +100,13 @@ async function askDoor(
 describe("a seat narrows the discovery door with its own file", () => {
   it("BR-10 · sees every domain its scope carries when its file names none", async () => {
     const answer = await askDoor(capabilityWithThreeDomains(), undefined);
-    expect(answer.domains).toEqual(["seats", "channels", "skills"]);
-    expect(answer.entries).toEqual(["seats-one", "channels-one", "skills-one"]);
+    expect(answer.domains).toEqual(["seats", "mailboxes", "skills"]);
+    expect(answer.entries).toEqual(["seats-one", "mailboxes-one", "skills-one"]);
   });
 
   it("BR-9 · sees the domains it named and no others", async () => {
-    const answer = await askDoor(capabilityWithThreeDomains(), ["seats", "channels"]);
-    expect(answer.domains).toEqual(["seats", "channels"]);
+    const answer = await askDoor(capabilityWithThreeDomains(), ["seats", "mailboxes"]);
+    expect(answer.domains).toEqual(["seats", "mailboxes"]);
     // Absent, not empty-with-a-reason: the withheld domain does not appear at
     // all, so there is nothing for the model to ask about again.
     expect(answer.domains).not.toContain("skills");
@@ -138,7 +138,7 @@ describe("a seat narrows the discovery door with its own file", () => {
   it("BR-4 · names the known domains rather than throwing on a domain that does not exist", async () => {
     const answer = await askDoor(capabilityWithThreeDomains(), undefined, { domain: "boards" });
     expect(answer.problem).toMatch(/Unknown domain "boards"/);
-    expect(answer.problem).toMatch(/seats, channels, skills, resources/);
+    expect(answer.problem).toMatch(/seats, mailboxes, skills, resources/);
   });
 });
 
@@ -156,9 +156,9 @@ describe("the `discover:` worker-file key", () => {
 
   it("carries a seat's list onto its settings", () => {
     const [seat] = hire([
-      record({ id: "engineering.lead", declared: { discover: ["seats", "channels"] } })
+      record({ id: "engineering.lead", declared: { discover: ["seats", "mailboxes"] } })
     ]);
-    expect((seat!.config as { discover?: string[] }).discover).toEqual(["seats", "channels"]);
+    expect((seat!.config as { discover?: string[] }).discover).toEqual(["seats", "mailboxes"]);
   });
 
   it("leaves the key absent when the file names none, which is today's reach", () => {
@@ -177,7 +177,7 @@ describe("the `discover:` worker-file key", () => {
     // author reading it learns only that something about their file is wrong.
     expect(message).toMatch(/discover/);
     expect(message).toMatch(/seats/);
-    expect(message).toMatch(/channels/);
+    expect(message).toMatch(/mailboxes/);
     expect(message).toMatch(/resources/);
   });
 
@@ -240,7 +240,7 @@ describe("the `discover:` worker-file key", () => {
     // beside a sibling that does not carry it.
     expect(lead!.id).toBe("engineering.lead");
     expect(await askThroughHiredSeat(lead!)).toEqual(["seats"]);
-    expect(await askThroughHiredSeat(scribe!)).toEqual(["seats", "channels", "skills"]);
+    expect(await askThroughHiredSeat(scribe!)).toEqual(["seats", "mailboxes", "skills"]);
   });
 
   it("accepts a domain the scope does not carry — narrowing is not a refusal", () => {
@@ -295,8 +295,8 @@ describe("one door per narrowing, however the seat wrote it", () => {
     // would prove nothing.
     const capability = capabilityWithThreeDomains();
 
-    const written = await resolveDoor(capability, ["seats", "channels"]);
-    const writtenOther = await resolveDoor(capability, ["channels", "seats"]);
+    const written = await resolveDoor(capability, ["seats", "mailboxes"]);
+    const writtenOther = await resolveDoor(capability, ["mailboxes", "seats"]);
 
     expect(writtenOther).toBe(written);
   });
@@ -306,11 +306,11 @@ describe("one door per narrowing, however the seat wrote it", () => {
     // that wrote its list the other way round still sees the same domains.
     const capability = capabilityWithThreeDomains();
 
-    const forward = await askDoor(capability, ["seats", "channels"]);
-    const reversed = await askDoor(capability, ["channels", "seats"]);
+    const forward = await askDoor(capability, ["seats", "mailboxes"]);
+    const reversed = await askDoor(capability, ["mailboxes", "seats"]);
 
     expect(reversed).toEqual(forward);
-    expect(forward.domains).toEqual(["seats", "channels"]);
+    expect(forward.domains).toEqual(["seats", "mailboxes"]);
   });
 
   it("still keeps a differently-narrowed seat on its own door", async () => {
@@ -318,7 +318,7 @@ describe("one door per narrowing, however the seat wrote it", () => {
     // two genuinely different sets into one shared door.
     const capability = capabilityWithThreeDomains();
 
-    const pair = await resolveDoor(capability, ["seats", "channels"]);
+    const pair = await resolveDoor(capability, ["seats", "mailboxes"]);
     const single = await resolveDoor(capability, ["seats"]);
 
     expect(single).not.toBe(pair);

@@ -17,7 +17,7 @@
  * shell carries by address (`SEAT_DESCRIPTIONS`). A seat with none draws none.
  */
 import { SeatDetail, type PanelItemSource } from "@flow-state-dev/react";
-import { HIRED_ROSTER_RESOURCE, splitSeatAddress } from "@flow-state-dev/workforce/browser";
+import { HIRED_ROSTER_RESOURCE, seatAddress, splitSeatAddress } from "@flow-state-dev/workforce/browser";
 
 import { SEAT_DESCRIPTIONS } from "@/lib/workforce-shell";
 
@@ -36,8 +36,9 @@ export interface SeatPaneProps {
 
 /** The roster topic of a seat hired into the whole organization; `undefined` for any other seat. */
 function publicRosterTopic(orgId: string, address: string): string | undefined {
-  if (address.startsWith(`${orgId}.~`)) return undefined;
-  return splitSeatAddress(orgId, address);
+  const seatId = splitSeatAddress(orgId, address);
+  // A user-owned address splits to its seat id too; only the org-visible one rebuilds to itself.
+  return seatId !== undefined && seatAddress(orgId, seatId) === address ? seatId : undefined;
 }
 
 export function SeatPane({ sessionId, orgId, kind, address, resourceClient }: SeatPaneProps) {

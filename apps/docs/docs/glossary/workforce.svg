@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 628" role="img" aria-labelledby="title desc">
+  <title id="title">Workforce: what each term is made of</title>
+  <desc id="desc">Each Workforce term beside what it is made of. A worker from WORKER.md is a flow instance. A roster row is a row of an org resource collection. A mailbox from MAILBOX.md is a session on the one mailbox flow. A mailbox board is an orchestration task collection. The inventory is three org resource collections. A project is one row of the projects collection. A room is org rows plus one session per person. A workstream is a mailbox plus its boards.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
+    </marker>
+    <style>
+      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
+              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
+              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
+              --faint:#94a3b8; --warm-fill:#fff7ed; --warm:#c2410c; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
+                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
+                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
+                --faint:#64748b; --warm-fill:#2a1608; --warm:#fb923c; } }
+      .bg { fill: var(--bg); }
+      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
+      .wall-proc { fill: var(--proc-fill); stroke: var(--proc); stroke-width: 2; }
+      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
+      .wall-warm { fill: var(--warm-fill); stroke: var(--warm); stroke-width: 2; }
+      .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 2; }
+      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.5; }
+      .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.5; }
+      .card-proc { fill: var(--card); stroke: var(--proc); stroke-width: 1.5; }
+      .card-org { fill: var(--card); stroke: var(--org); stroke-width: 1.5; }
+      .card-warm { fill: var(--card); stroke: var(--warm); stroke-width: 1.5; }
+      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
+      .dash { fill: none; stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
+      .tag-sess { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--sess); letter-spacing: .04em; }
+      .tag-proc { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--proc); letter-spacing: .04em; }
+      .tag-org { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--org); letter-spacing: .04em; }
+      .tag-warm { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--warm); letter-spacing: .04em; }
+      .tag-ink { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); letter-spacing: .04em; }
+      .edge { stroke: var(--card-line); stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="628" rx="16" class="bg"/>
+  <text x="28" y="36" class="title">Workforce: what each term is made of</text>
+  <text x="28" y="58" class="muted">Workforce adds files and rules. Everything lands in a Core or Orchestration piece on the right.</text>
+  <text x="28" y="92" class="tag-org">WORKFORCE TERM</text>
+  <text x="344" y="92" class="tag-sess">BUILT FROM</text>
+  <rect x="28" y="104" width="268" height="52" rx="10" class="card-org"/>
+  <text x="42" y="126" class="h">Worker</text>
+  <text x="42" y="144" class="code">WORKER.md</text>
+  <rect x="344" y="104" width="548" height="52" rx="10" class="card-sess"/>
+  <text x="358" y="125" class="tag-sess">FLOW INSTANCE</text>
+  <text x="508" y="125" class="p">A flow instance of a kind, the built-in agent kind</text>
+  <text x="508" y="143" class="p">unless the file names another. Its id is team.name.</text>
+  <path d="M296 130 L342 130" class="edge"/>
+  <rect x="28" y="166" width="268" height="52" rx="10" class="card-org"/>
+  <text x="42" y="188" class="h">Roster row</text>
+  <text x="42" y="206" class="code">hired while the app runs</text>
+  <rect x="344" y="166" width="548" height="52" rx="10" class="card-sess"/>
+  <text x="358" y="187" class="tag-sess">RESOURCE COLL.</text>
+  <text x="508" y="187" class="p">A row of workforce/roster/*, so the worker</text>
+  <text x="508" y="205" class="p">comes back after a restart.</text>
+  <path d="M296 192 L342 192" class="edge"/>
+  <rect x="28" y="228" width="268" height="52" rx="10" class="card-org"/>
+  <text x="42" y="250" class="h">Mailbox</text>
+  <text x="42" y="268" class="code">MAILBOX.md</text>
+  <rect x="344" y="228" width="548" height="52" rx="10" class="card-sess"/>
+  <text x="358" y="249" class="tag-sess">SESSION</text>
+  <text x="508" y="249" class="p">A named session on the one mailbox flow. Members</text>
+  <text x="508" y="267" class="p">are worker ids; the transcript is the post items.</text>
+  <path d="M296 254 L342 254" class="edge"/>
+  <rect x="28" y="290" width="268" height="52" rx="10" class="card-org"/>
+  <text x="42" y="312" class="h">Mailbox board</text>
+  <text x="42" y="330" class="code">boards: on a mailbox</text>
+  <rect x="344" y="290" width="548" height="52" rx="10" class="card-proc"/>
+  <text x="358" y="311" class="tag-proc">TASK COLLECTION</text>
+  <text x="508" y="311" class="p">A task collection the mailbox holds. A worker's</text>
+  <text x="508" y="329" class="p">kind runs the task board that drains it.</text>
+  <path d="M296 316 L342 316" class="edge"/>
+  <rect x="28" y="352" width="268" height="52" rx="10" class="card-org"/>
+  <text x="42" y="374" class="h">Inventory</text>
+  <text x="42" y="392" class="code">org-wide records</text>
+  <rect x="344" y="352" width="548" height="52" rx="10" class="card-sess"/>
+  <text x="358" y="373" class="tag-sess">RESOURCE COLL.</text>
+  <text x="508" y="373" class="p">Three org collections: every worker, every mailbox,</text>
+  <text x="508" y="391" class="p">and who is a member where.</text>
+  <path d="M296 378 L342 378" class="edge"/>
+  <rect x="28" y="414" width="268" height="52" rx="10" class="card-org"/>
+  <text x="42" y="436" class="h">Project</text>
+  <text x="42" y="454" class="code">a piece of work</text>
+  <rect x="344" y="414" width="548" height="52" rx="10" class="card-sess"/>
+  <text x="358" y="435" class="tag-sess">RESOURCE COLL.</text>
+  <text x="508" y="435" class="p">One row of projects/*: title, brief, owner, member</text>
+  <text x="508" y="453" class="p">people, and the workstreams it groups.</text>
+  <path d="M296 440 L342 440" class="edge"/>
+  <rect x="28" y="476" width="268" height="52" rx="10" class="card-org"/>
+  <text x="42" y="498" class="h">Room</text>
+  <text x="42" y="516" class="code">one per project</text>
+  <rect x="344" y="476" width="548" height="52" rx="10" class="card-sess"/>
+  <text x="358" y="497" class="tag-sess">ROWS + SESSIONS</text>
+  <text x="508" y="497" class="p">Lines kept as org rows. Each member person reads and</text>
+  <text x="508" y="515" class="p">posts through their own session on the mailbox flow.</text>
+  <path d="M296 502 L342 502" class="edge"/>
+  <rect x="28" y="538" width="268" height="52" rx="10" class="card-org"/>
+  <text x="42" y="560" class="h">Workstream</text>
+  <text x="42" y="578" class="code">grouped by a project</text>
+  <rect x="344" y="538" width="548" height="52" rx="10" class="card-org"/>
+  <text x="358" y="559" class="tag-org">MAILBOX + BOARDS</text>
+  <text x="508" y="559" class="p">A declared mailbox, by its full id, plus the boards</text>
+  <text x="508" y="577" class="p">it holds. In at most one project.</text>
+  <path d="M296 564 L342 564" class="edge"/>
+  <text x="28" y="612" class="muted">Blue: Core. Purple: Orchestration. Green: made of the Workforce terms above it.</text>
+</svg>

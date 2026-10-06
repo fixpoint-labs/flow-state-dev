@@ -2,14 +2,14 @@
  * The `planner` kind — one file under `workforce/flows/workers/`, basename =
  * the kind id the planner's `WORKER.md` names in its `flow:` line.
  *
- * One action, a dispatch into the channel's own `fileTask` door, taken from
- * `goals/channel-boards/it-runs-a-row-a-file-declared-board-holds`' `em` kind.
+ * One action, a dispatch into the mailbox's own `fileTask` door, taken from
+ * `goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds`' `em` kind.
  * No board, no collection, no drain.
  */
 
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { CHANNEL_KIND, workerConfigSchema } from "@flow-state-dev/workforce";
+import { MAILBOX_KIND, workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import type { PieceInput } from "../piece.mts";
 
@@ -20,9 +20,9 @@ export const PLANNER_KIND = "planner";
 export const FILE_ENTRY = "file";
 
 export interface PlannerFlowOptions {
-  /** The channel's id — the session its `fileTask` door runs in. */
-  channelId: string;
-  /** The board's LOCAL name, as `CHANNEL.md` wrote it. */
+  /** The mailbox's id — the session its `fileTask` door runs in. */
+  mailboxId: string;
+  /** The board's LOCAL name, as `MAILBOX.md` wrote it. */
   boardName: string;
 }
 
@@ -39,7 +39,7 @@ export const fileInputSchema = z.object({
 export type FileInput = z.infer<typeof fileInputSchema>;
 
 /**
- * Build the `planner` kind: one dispatch into the channel's own `fileTask`.
+ * Build the `planner` kind: one dispatch into the mailbox's own `fileTask`.
  * No board, no collection, no drain.
  */
 export function definePlannerFlow(options: PlannerFlowOptions) {
@@ -51,10 +51,10 @@ export function definePlannerFlow(options: PlannerFlowOptions) {
       [FILE_ENTRY]: {
         block: dispatcher({
           name: "planner-file-row",
-          flowKind: CHANNEL_KIND,
+          flowKind: MAILBOX_KIND,
           action: "fileTask",
           inputSchema: fileInputSchema,
-          session: { id: () => options.channelId },
+          session: { id: () => options.mailboxId },
           payload: (input: FileInput, ctx: BlockContext) => {
             const piece: PieceInput = {
               ...(input.asks === undefined ? {} : { asks: input.asks }),
@@ -70,7 +70,7 @@ export function definePlannerFlow(options: PlannerFlowOptions) {
             };
           },
         }),
-        description: "File one row onto the channel's board, naming the desk it is for.",
+        description: "File one row onto the mailbox's board, naming the desk it is for.",
       },
     },
   } as never);

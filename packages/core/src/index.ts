@@ -161,6 +161,7 @@ export {
   taskBindingOf,
   framed,
   readFramed,
+  resolveTaskFlowKind,
   taskDispatchInputSchema,
   taskSessionKeyFor
 } from "./types/dispatch";
@@ -177,7 +178,9 @@ export type {
   TaskBinding,
   TaskDispatchInput,
   TaskEntry,
-  TaskSessionPolicy
+  TaskFlowTarget,
+  TaskSessionPolicy,
+  TaskTargetQuery
 } from "./types/dispatch";
 export type {
   CapabilityPresetCtx,
@@ -202,6 +205,7 @@ export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
 export { resolveTracingLevel } from "./helpers/tracing-level";
 export type { TracingLevel } from "./helpers/tracing-level";
 export { transientSlot } from "./helpers/transient-slot";
+export { firstInProcess } from "./helpers/once-per-process";
 export {
   warnOnceDev,
   __resetDeprecationWarningsForTests,

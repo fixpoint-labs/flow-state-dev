@@ -10,28 +10,28 @@
  * the only hits are in this paragraph.
  *
  * What it does have is the feature board — its declaration of the ledger the
- * feature channel holds — and the board's `coder` worker is a
+ * feature mailbox holds — and the board's `coder` worker is a
  * dispatcher naming another flow instance. That one line is D1: the row is
  * handed across flows to the seat a Markdown file declared, rather than to a
  * task entry co-located on this flow.
  *
  * Nothing under `flows/` is read as a convention file — the loader walks
- * `workers/`, `skills/`, `resources/` and `channels/` and ignores the rest
+ * `workers/`, `skills/`, `resources/` and `mailboxes/` and ignores the rest
  * (BR-16), which is why the code side of the fence can sit inside the tree.
  */
 
 import { defineFlow, dispatcher, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, TaskFlowTarget } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
-import { CHANNEL_KIND } from "@flow-state-dev/workforce";
+import { MAILBOX_KIND } from "@flow-state-dev/workforce";
 
 /**
- * The channel kind's internal entry a seat's reply to a routed post goes
+ * The mailbox kind's internal entry a seat's reply to a routed post goes
  * through; on a talk session it writes the line into the project's room. The
  * package keeps the constant internal, so the lab spells it.
  */
-const CHANNEL_ANSWER_ACTION = "answer";
+const MAILBOX_ANSWER_ACTION = "answer";
 import { PHASE } from "../../../phase.mts";
 import {
   ASSIGNEE,
@@ -55,14 +55,14 @@ export const EM_KIND = "em";
 export const FILE_ENTRY = "file";
 
 /**
- * The action a **channel post** reaches — the front door of the third check.
+ * The action a **mailbox post** reaches — the front door of the third check.
  *
  * Separate from {@link FILE_ENTRY} rather than a widened input on it, because
  * the two have genuinely different inputs: `file` is handed a row, and this is
  * handed a line somebody wrote. Collapsing them would mean either a schema that
  * accepts both shapes and validates neither, or a direct action call wearing a
  * post's clothes — and "the row is filed in answer to a post, not by calling
- * the EM's action directly" is precisely what the channel leg is a proof of.
+ * the EM's action directly" is precisely what the mailbox leg is a proof of.
  */
 export const POST_ENTRY = "onPost";
 
@@ -111,13 +111,13 @@ export const askInputSchema = z.object({
 });
 
 /**
- * What one channel delivery carries — exactly the fields the notify block's
+ * What one mailbox delivery carries — exactly the fields the notify block's
  * dispatcher builds, and nothing a poster could widen.
  */
 export const postInputSchema = z
   .object({
-    /** The channel the line was posted on. */
-    channelId: z.string().min(1),
+    /** The mailbox the line was posted on. */
+    mailboxId: z.string().min(1),
     /** The declared member this delivery was addressed to. */
     member: z.string().min(1),
     /** The line somebody wrote. */
@@ -127,13 +127,13 @@ export const postInputSchema = z
 
 /**
  * What one room delivery carries: the poster's talk session, the line it
- * answers, and the words. Built by the lab's notify block from the channel
+ * answers, and the words. Built by the lab's notify block from the mailbox
  * kind's routed delivery, never by a caller.
  */
 export const roomPostInputSchema = z
   .object({
     /** The poster's talk session: where the answer goes. */
-    channelId: z.string().min(1),
+    mailboxId: z.string().min(1),
     /** The room line being answered. */
     postId: z.string().min(1),
     /** The seat id this delivery woke. Posted as the answer's author. */
@@ -154,11 +154,11 @@ type RoomPost = z.infer<typeof roomPostInputSchema>;
  */
 const answerRoomPost = dispatcher({
   name: "devforce-em-answer-room",
-  flowKind: CHANNEL_KIND,
-  action: CHANNEL_ANSWER_ACTION,
+  flowKind: MAILBOX_KIND,
+  action: MAILBOX_ANSWER_ACTION,
   inputSchema: roomPostInputSchema,
   // `{ id }`: the poster's talk session exists; it is the one that woke us.
-  session: { id: (input: RoomPost) => input.channelId },
+  session: { id: (input: RoomPost) => input.mailboxId },
   payload: (input: RoomPost) => ({
     postId: input.postId,
     author: input.member,
@@ -190,11 +190,17 @@ export interface EmWorkerFlowOptions {
   /** The file-declared documents, as `resourcesFromDocs` built them. */
   resources: Record<string, unknown>;
   /**
-   * The ledger the board files onto — the feature channel's, which the host
-   * resolves off the tree. Passed in rather than built here, so the channel,
+   * The ledger the board files onto — the feature mailbox's, which the host
+   * resolves off the tree. Passed in rather than built here, so the mailbox,
    * this board and the coder's manager hold one declaration.
    */
   ledger: FeatureLedger;
+  /**
+   * Which worker a row's assignee names, for every name the board does not
+   * route itself: the Workforce lookup's `flowKind`, which the host builds
+   * over its live registry.
+   */
+  findWorker?: TaskFlowTarget;
   /**
    * **Control only.** The asking door files its row *before* it suspends, so
    * a row exists while the ask is still pending. The red state of "nothing is
@@ -211,8 +217,9 @@ export interface EmWorkerFlowOptions {
  */
 export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   const board = coordinatorBoard({
-    collection: options.ledger.collection,
+    ledger: options.ledger,
     coderSeatId: options.coderSeatId,
+    ...(options.findWorker === undefined ? {} : { findWorker: options.findWorker }),
   });
 
   /**
@@ -259,7 +266,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   });
 
   /**
-   * File in answer to a line somebody posted on the feature channel.
+   * File in answer to a line somebody posted on the feature mailbox.
    *
    * The `member` the delivery names is **not** read as an authority to file:
    * this action is only reachable by a dispatch the notify block addressed to
@@ -283,7 +290,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
           filed: false,
           taskId: null,
           reason:
-            `the line does not name a feature; this channel files from ` +
+            `the line does not name a feature; this mailbox files from ` +
             `"<issue-slug>: <what the feature is>"`,
         };
       }
@@ -420,7 +427,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     internal: {
       actions: {
         // **`internal`, not `actions`, and this is the framework's rule rather
-        // than a preference.** A channel's fan-out reaches a seat through an
+        // than a preference.** A mailbox's fan-out reaches a seat through an
         // `internal` dispatch, which resolves `flow.internal.actions[action]`
         // and never falls through to the public map — so a public declaration
         // here is refused `no-entry` by name and the post files nothing.
@@ -428,7 +435,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
         // It is also where this belongs. The authority to turn a line into a
         // row is the notify block's address map, which is the app's; a caller
         // that could reach this action directly would be filing rows without
-        // ever posting, which is the thing the channel leg exists to prove is
+        // ever posting, which is the thing the mailbox leg exists to prove is
         // not how work starts.
         [POST_ENTRY]: { block: fileFromPost, inputSchema: postInputSchema },
         // A project room's post, delivered because the room's template names

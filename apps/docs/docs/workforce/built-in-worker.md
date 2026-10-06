@@ -85,6 +85,7 @@ const seats = hireWorkforce(workers, {
 | `model` | The model a worker uses when its own file names none. |
 | `classifierModel` | The model behind `skills.enableLlmClassifier`, an optional per-turn check that decides whether a skill applies. [Using them](#using-them) covers what it costs. |
 | `confidenceThreshold` | How sure that check must be before it counts a skill as matching. Defaults to `0.65`. |
+| `taskLists` | The mailbox boards this kind's workers take tasks from, by id (`mailboxBoardIds(mailboxes)`). Left out, the kind takes no tasks. See [Taking a task](#taking-a-task). |
 | `uses` | Capabilities every worker of this kind carries, attached to the generator that answers. |
 | `afterAnswer` | A block that runs after the worker answers, without changing the reply. |
 | `isolateUserState` | Give each worker its own user-scoped storage instead of one shared cell. |
@@ -92,6 +93,24 @@ const seats = hireWorkforce(workers, {
 `classifierModel` and `confidenceThreshold` belong to the kind: nothing reads either until a worker turns `skills.enableLlmClassifier` on, and a `WORKER.md` that names one is refused at the hire, by name, along with any other setting the kind does not declare. The last three are what [Giving workers memory](#giving-workers-memory) uses.
 
 A replacement declares `kind: "agent"`, like any other kind passed under its own name. It also declares `cardinality: "collection"`, which is what lets one definition have many copies. Leave that out and each seat mints, then is refused when you register it.
+
+## Taking a task
+
+A worker on this kind can be handed a task from a mailbox's board, by name, when you build the kind with `taskLists`:
+
+```ts
+import { defineAgentWorkerFlow, hireWorkforce, mailboxBoardIds } from "@flow-state-dev/workforce";
+
+const boardIds = mailboxBoardIds(mailboxes);
+
+const hired = hireWorkforce(workers, {
+  kinds: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) },
+});
+```
+
+Each task runs as one turn, in a session of its own when the board hands tasks over `per-task`. The worker answers with its own instructions, tools and model. The message is the task's title, goal and context. The answer is stored as the task's result, and the task completes. If the turn fails, the attempt fails, and the task's `maxAttempts` decides whether it runs again. Nothing is posted to a mailbox unless the worker's own tools post it.
+
+Without `taskLists` the kind takes no tasks, and that includes the built-in you get when you pass no `kinds`. A task given to one of its workers is refused, saying the worker takes no tasks. The board side, and who a task's name can reach, is in [Handing a row to the worker it names](./mailboxes.md#handing-a-row-to-the-worker-it-names).
 
 ## What a worker keeps
 
