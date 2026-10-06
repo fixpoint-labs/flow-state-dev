@@ -9,8 +9,8 @@ session on Alice's coordinator. The *proved by* column is the check the plan run
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | A linked conversation's delegates are read or changed for the first time, by a post or an action | They become a copy of the coordinator's defaults, in server-owned state. The configuration is not written | CI |
-| BR-1a | A delegate action names a conversation not yet linked to a coordinator worker | Refused, naming why. Nothing written | CI |
+| BR-1 | A conversation's delegates are read or changed for the first time, by a post or an action | They become a copy of the coordinator's defaults, in server-written session state (FIX-1788 BR-18a). The configuration is not written | CI |
+| BR-1a | A delegate action names a session that isn't linked to a coordinator worker | Refused, naming why. Nothing written. A guard: every session on a worker flow is linked at create (FIX-1788 BR-10, BR-14), so any coordinator conversation takes the actions | CI |
 | BR-2 | Alice adds a worker on her roster, her own or a standard one, with `addDelegate` in the app or through the coordinator's tool | It joins this conversation's delegates, with an optional note on what it's good at. Her other conversations don't change | CI · VG leg d |
 | BR-3 | Alice adds Bob's worker, or a name nobody holds | Refused with one answer for both, naming the id. Nothing written | CI · VG leg f |
 | BR-4 | Alice adds a worker whose flow can't take a delegated post | Refused, naming the flow. Nothing written | CI |
@@ -18,21 +18,21 @@ session on Alice's coordinator. The *proved by* column is the check the plan run
 | BR-6 | Alice removes a delegate, including one fired since it was added | It leaves this conversation's list; removal checks the list, not the roster. Posts already delivered to it still take their answer. If it was the fallback, the conversation has none | CI · VG leg d |
 | BR-6a | Alice sets the fallback to a delegate on this conversation's list, or clears it, in the app or through the tool | It changes for this conversation only. A worker not on the list is refused, naming it | CI · VG leg e |
 | BR-7 | Two changes to one conversation's delegates arrive together | Both land, or one is refused as stale. Neither is lost | CI |
-| BR-8 | A conversation is created with delegates in the caller's state | Refused with 400, naming the field ([ER-4](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), FIX-1788 BR-15) | CI · VG leg f |
+| BR-8 | A conversation is created with delegates in the caller's state | Refused with 400, naming the field. The public create can't seed delegates; only the four actions and the coordinator's tool write them ([ER-4](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), FIX-1788 BR-15 and BR-18a) | CI · VG leg f |
 | BR-9 | A delegate is fired while still on a list | The next post skips it and records why. Its entry stays until removed | CI |
 | BR-10 | Anyone asks who a coordinator's delegates are | The coordinator answers from its delegate read, which returns the whole list and each note. Never from `discover` or its prompt | CI · VG leg d |
 | BR-11 | A standard coordinator's defaults name a worker that isn't standard | Refused at load, naming it ([ER-6](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) | CI |
 
-## Routing a person's post
+## Routing a user's post
 
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-12 | The policy is **judgment** | The coordinator's own turn reads the post and hands it to delegates with its tool, or answers itself. Each hand-off is one delivery | CI · VG legs a to c |
 | BR-13 | The policy is **best fit** | One evaluator call picks one delegate, from each one's note or else its description. A delegate with neither isn't a choice | CI · VG leg e |
-| BR-14 | Best fit, and the person's last post went to a delegate that hasn't answered since | The post goes there too, with no model call. A removed or unreachable holder holds nothing | CI · VG leg e |
+| BR-14 | Best fit, and the user's last post went to a delegate that hasn't answered since | The post goes there too, with no model call. A removed or unreachable holder holds nothing | CI · VG leg e |
 | BR-15 | Best fit, and the call fails or picks no delegate | The fallback delegate takes it ([D2](DECISIONS.md#d2)) | CI · VG leg e |
 | BR-16 | As BR-15, and the conversation has no fallback, or it can't be reached | Nobody takes it. Recorded `unplaced`, and the conversation says so | CI · VG leg e |
-| BR-17 | The policy is **round robin** | The next delegate in list order takes it; the turn moves one step per person's post, skipping one that can't be reached | CI · VG leg e |
+| BR-17 | The policy is **round robin** | The next delegate in list order takes it; the turn moves one step per user's post, skipping one that can't be reached | CI · VG leg e |
 | BR-18 | The policy is **everyone** | Each delegate that can be reached gets it once | CI · VG leg e |
 | BR-19 | A conversation has no delegate that can be reached | Nobody runs. Recorded `unplaced`, and said in the conversation | CI |
 
@@ -41,6 +41,7 @@ session on Alice's coordinator. The *proved by* column is the check the plan run
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-20 | A delegate answers a delivery | The answer lands in the conversation, under the delegate's name, once. It must carry its delivery's token | CI · VG leg e |
+| BR-20a | A delivery reaches a delegate that has no session for this conversation yet | It opens one through FIX-1788's `ensureWorkerSession({ worker, coordinatorSessionId })`, on Alice's behalf, with the delegate named, so the server links it at create. A later delivery from this conversation reuses it; one from another conversation opens another. Nothing posts to a session id no create linked (FIX-1788 BR-14, BR-18a) | CI |
 | BR-21 | One delivery reaches a delegate twice, or its answer is sent twice | One answer lands. The second writes nothing | CI · VG leg e |
 | BR-22 | An answer names a post or token it wasn't delivered | Refused. Nothing lands | CI |
 | BR-23 | `rounds:` is zero, or unset | An answer routes nowhere. Under judgment it doesn't wake the coordinator's turn | CI · VG leg e |

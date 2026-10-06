@@ -4,7 +4,7 @@
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
 (BR-n) and [DECISIONS.md](DECISIONS.md). `tdd`. Three PRs, a GitHub stack (epic ER-26). Builds
-start only after FIX-1788 merges (server-owned session state, the worker collection, the link;
+start only after FIX-1788 merges (server-written session state, the worker collection, the link at create, `ensureWorkerSession`;
 epic D4, ER-23). A failure in FIX-1797's early leg-c run on that commit blocks these PRs from
 merging (ER-30).
 
@@ -13,11 +13,11 @@ merging (ER-30).
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
 | S1 | `workforce` · the coordinator flow | One singleton worker flow, id `coordinator`, on the installation's list of worker flows like `agent` ([epic Q1](../../epics/FIX-1786/DECISIONS.md#q1)), with no declaration shape or wrapper of its own. Its configuration composes `workerConfigSchema()` with `delegates`, `routing`, `fallback`, `rounds`; checked when saved and at load | BR-11 BR-26 |
-| S2 | `workforce` · delegates and the check | The server-owned fields (FIX-1788 S1): the list with notes, the fallback, the round-robin cursor, the best-fit hold. Defaults copied the first time a linked conversation's delegates are read or changed. Changes as one versioned write that recomputes on retry. The one check, for adds and deliveries: on the session user's roster (FIX-1788's worker collection or the standard projection, read by id, not listed), its flow can take a delegated post, under the cap. Remove and set-fallback check membership in the list only | BR-1–BR-9 BR-1a BR-6a BR-31 |
-| S3 | `workforce` · the two paths and the read | Four public actions, `addDelegate`, `removeDelegate`, `setFallback`, `listDelegates`, on a linked conversation, and a capability giving the coordinator's turn the same four as tools. Both call S2; neither touches state itself | BR-1a BR-2 BR-3 BR-5 BR-6 BR-6a BR-10 BR-32 |
+| S2 | `workforce` · delegates and the check | The server-written session state (FIX-1788 S1, BR-18a): the list with notes, the fallback, the round-robin cursor, the best-fit hold. The create refuses it from a caller (FIX-1788 BR-15). Defaults copied the first time a conversation's delegates are read or changed. Changes as one versioned write that recomputes on retry. The one check, for adds and deliveries: on the session user's roster (FIX-1788's worker collection or the standard projection, read by id, not listed), its flow can take a delegated post, under the cap. Remove and set-fallback check membership in the list only | BR-1–BR-9 BR-1a BR-6a BR-31 |
+| S3 | `workforce` · the two paths and the read | Four public actions, `addDelegate`, `removeDelegate`, `setFallback`, `listDelegates`, on any coordinator conversation (each is linked to its worker at create, FIX-1788 S1; BR-1a guards the rest), and a capability giving the coordinator's turn the same four as tools. Both call S2; neither touches state itself | BR-1a BR-2 BR-3 BR-5 BR-6 BR-6a BR-10 BR-32 |
 | S4 | `workforce` · best fit | The ladder (hold, one call, fallback, with `unplaced` added) extracted from `routeByPurpose` into one shared helper outside the mailbox folder; the mailbox's route and this policy both call it. One roster read per post, kept per request | BR-13–BR-16 BR-19 |
 | S4b | `workforce` · round robin and everyone | The other two fixed policies, behind the same pick step as best fit | BR-17 BR-18 |
-| S5 | `workforce` · delivery and answers | Dispatch each pick to the delegate's flow, in its conversation for this coordinator conversation, linked through FIX-1788's link check with the worker from this code. One delivery ledger, defined once in Workforce for FIX-1793 to reuse: a record per (post, round, delegate), `pending` then `delivered` or `failed`, with a token, and an answer claimed once. The coordinator keeps its records in server-owned session state. An internal answer action that claims once per delivery | BR-20–BR-22 BR-27 |
+| S5 | `workforce` · delivery and answers | Open each pick's conversation through FIX-1788's `ensureWorkerSession({ worker: <delegate>, coordinatorSessionId: <this conversation's id> })` on the session's user, the worker from this code, so the server checks and links it at create and each coordinator conversation gets one session per delegate. Never post to a fresh id (FIX-1788 BR-14, BR-18a). Dispatch to the returned session's `flowKind`. One delivery ledger, defined once in Workforce for FIX-1793 to reuse: a record per (post, round, delegate), `pending` then `delivered` or `failed`, with a token, and an answer claimed once. The coordinator keeps its records in server-owned session state. An internal answer action that claims once per delivery | BR-20–BR-22 BR-20a BR-27 |
 | S6 | `workforce` · rounds | A round closes when its deliveries are answered or failed, or at its deadline. Below the limit, best fit and round robin route each answer again, never to its author; everyone sends each delegate the others' answers at close, in one delivery; judgment wakes the coordinator once per closed round, its hand-offs taking the next round | BR-23–BR-25 BR-24a BR-24b |
 | S7 | `workforce` · the record | One `coordinator-route` item per decision, the evaluator named the same | BR-28 BR-29 |
 | S8 | `workforce` · judgment | The pick step runs the built-in agent's worker turn, shared rather than copied, with S3's tools and a hand-off tool. At `rounds: 0`, an answer wakes nothing | BR-12 BR-23 |
@@ -61,7 +61,7 @@ flowchart TD
 | V1 | S1 | BR-11, BR-26; a configuration with no `routing` means judgment, with no `rounds` means zero |
 | V2 | S2 S3 | BR-1–BR-10, BR-1a, BR-6a through the actions and the tools alike; BR-6 on a delegate fired after it was added; BR-7 with two changes in flight; BR-8 on the real create route; BR-3 with two users, one answer for Bob's worker and a missing one |
 | V3 | S4 S4b | BR-13–BR-16 and BR-19 on a scripted evaluator, BR-14 after the holder is removed (P1); BR-17, BR-18 (P2) |
-| V4 | S5 | BR-20–BR-22; BR-21 by replaying a fan-out and resending an answer; BR-31 by firing a delegate between pick and delivery |
+| V4 | S5 | BR-20–BR-22; BR-20a with two conversations delivering to one delegate (two sessions, each linked at create) and a second delivery in one (the same session); BR-21 by replaying a fan-out and resending an answer; BR-31 by firing a delegate between pick and delivery |
 | V5 | S6 | BR-23–BR-25 under all three fixed policies and judgment; BR-24a with a scripted model handing off twice to one delegate in one wake, and none at round *n*; BR-24b with one of two delegates failing its turn: the round closes at its deadline and the other's answer goes on; BR-27 with a forged round on a post, an answer and a hand-off |
 | V6 | S7 | BR-28 for every `by`; BR-29 in Shift Manager's renderer |
 | V7 | S8 | BR-12 on a scripted model: a hand-off, an answer of its own, no wake at zero |
@@ -80,7 +80,8 @@ rounds (V5).
 | The flow | `coordinator` | Public; `flow:` names it |
 | Configuration keys | `delegates`, `routing` (`judgment`, `best-fit`, `round-robin`, `everyone`), `fallback`, `rounds` | Public; FIX-1792 converts files to them |
 | The record and its evaluator | `coordinator-route` | A client tells a record from a line by it; a scripted model resolves the evaluator by it |
-| The actions | `addDelegate`, `removeDelegate`, `setFallback`, `listDelegates` | Public; an app calls them on the typed client. Signatures are yours |
+| The actions | `addDelegate`, `removeDelegate`, `setFallback`, `listDelegates` | Public; an app sends them with `createClient({ flowKind: session.flowKind, userId }).sendAction(...)`. Signatures are yours |
+| The criteria key | `coordinatorSessionId`, on FIX-1788's `ensureWorkerSession` and `findWorkerSession` criteria | FIX-1788 S5a reserved it for this spec to name. It enters the derived id and the lookup, so each coordinator conversation gets one session per delegate |
 | The delivery ledger | `delivery-ledger`, a Workforce module | FIX-1793 reuses it by name; not a public export |
 
 Everything else is yours to name, in the new terms (delegate, roster, flow; not member, seat or mailbox).
@@ -95,7 +96,7 @@ Everything else is yours to name, in the new terms (delegate, roster, flow; not 
 | Best fit's ladder and the delivery ledger are shared modules, not copies | A fix in one copy misses the other |
 | No task filing or follow-through in this issue until [Q1](DECISIONS.md#q1) is answered | The plan assumes FIX-1794 takes them |
 | The delegate list grants nothing; delivery re-reads the roster and FIX-1788 links | Access is the user's resource, never session state |
-| No Layer 1 change; server-owned state is FIX-1788's (ER-22) | If S2 or S5 needs one, stop and take it to the epic |
+| No Layer 1 change; server-written state is FIX-1788's (ER-22) | If S2 or S5 needs one, stop and take it to the epic |
 | Nothing new builds on the mailbox flow | FIX-1792's conversion must not grow |
 
 ## Docs
@@ -109,7 +110,9 @@ wording and the tool names.
 on a post at the coordinator's door:
     picks ← the session's policy over its delegates, each checked live   ← one roster read
     record the decision
-    for each pick: deliver (post, round 0) to the delegate's conversation with a token
+    for each pick:
+        s ← ensureWorkerSession({ worker: pick, coordinatorSessionId })     ← linked at create, one per conversation
+        deliver (post, round 0) to s with a token
 on an answer with a token:
     claim the delivery once, or drop it
     land it as the delegate's line
@@ -119,15 +122,12 @@ when a round closes (each delivery answered or failed, or its deadline):
     judgment: if round < rounds, wake the coordinator once; its hand-offs are round + 1
 ```
 
-**POC:** none. The link and server-owned state are FIX-1788's, proved by the epic's
+**POC:** none. The link and server-written state are FIX-1788's, proved by the epic's
 [POC](../../epics/FIX-1786/poc/singleton-worker-link/README.md); the policies port code on `main`.
 No counted fact carries the design, so no checker.
 
 ## At implement time
 
-- **Take FIX-1788's link as shipped.** On `main`, the epic's D3 sets the link at create and
-  FIX-1788's DECISIONS set it on the first turn. The four actions need a linked conversation
-  either way, and BR-1 copies the defaults on the first read or change for that reason.
 - The round deadline's value is yours; DOCS states it.
 - **Read this spec's Q1 answer.** If tasks stay here, add them on the coordinator's own flow only,
   and leave the cross-flow board to FIX-1794.
@@ -172,6 +172,3 @@ Recorded verbatim for the implementer to weigh against real code; not folded int
 - If Q1 holds: FIX-1794 takes FIX-1774's leg e and FIX-1780's notices and reassign; FIX-1793
   takes FIX-1774's leg d.
 - FIX-1793 reuses the delivery ledger for project coordinators, and removes `room-deliveries`.
-- Not this spec's: FIX-1788's SPEC example still uses Shift Manager's private lab wrapper, and
-  its DECISIONS (link on the first turn) disagree with the epic's D3 (link at create). Both are
-  for a FIX-1788 or epic amendment.

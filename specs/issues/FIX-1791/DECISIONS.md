@@ -49,7 +49,7 @@ delegates, stay here.
 coding tasks before FIX-1794 can land. Then this issue builds tasks for delegates on the
 coordinator's own flow only, and leaves the cross-flow board to FIX-1794.
 
-**If wrong.** Between this merging and FIX-1794 merging, a person can't ask the chief of staff to
+**If wrong.** Between this merging and FIX-1794 merging, a user can't ask the chief of staff to
 file coding work and be told how it went. Reversible by a follow-up that moves the legs back.
 
 ![Q1, open: where filing tasks for delegates and following them through is built. Moving them to FIX-1794, recommended, beside building them here. Decides it: who answers how a board whose rows cross a flow stays its own; FIX-1794 owns that question. The price of moving: a coordinator can't file or follow a task until FIX-1794 lands, though the chief of staff files none today. Flips if the DevTeam dogfood needs task filing before FIX-1794](figures/open-follow-through.svg)
@@ -78,15 +78,15 @@ It comes down to who turns a group chat on: a constant turns it on for every coo
 | | |
 |---|---|
 | **Instead of** | (a) Refusing to remove the fallback delegate until another is set · (b) falling back to the coordinator's own judgment turn |
-| **Because** | A person removing a delegate shouldn't be refused over a setting they may not know about. (b) puts a model turn with tools behind every best-fit coordinator, including one whose file says nothing about judging, and fails the same way when the model is down. Recording the post `unplaced` and telling the poster keeps the miss visible |
+| **Because** | A user removing a delegate shouldn't be refused over a setting they may not know about. (b) puts a model turn with tools behind every best-fit coordinator, including one whose file says nothing about judging, and fails the same way when the model is down. Recording the post `unplaced` and telling the poster keeps the miss visible |
 | **Locks in** | A best-fit conversation can have no fallback. Then a failed or unusable evaluator call leaves the post unanswered, recorded, and said in the conversation. The fallback starts from the configuration's and is set or cleared per conversation with `setFallback`, in the app or through the tool |
 
 **What would change my mind:** posts going unplaced often in practice. Then a removal that clears
-the fallback asks the person to pick a new one in the app, and the tool does the same.
+the fallback asks the user to pick a new one in the app, and the tool does the same.
 
-![D2: what happens to best fit's fallback when delegates change. The fallback is a delegate, and removing it leaves unplaceable posts recorded and told, chosen, beside refusing the removal. Decides it: a person removing a delegate is never refused over a setting they may not know. The price: a post can go unanswered, visibly. Falling back to a judgment turn was dropped for cost. Locks in a conversation that can have no fallback; flips if posts go unplaced often](figures/d2-fallback.svg)
+![D2: what happens to best fit's fallback when delegates change. The fallback is a delegate, and removing it leaves unplaceable posts recorded and told, chosen, beside refusing the removal. Decides it: a user removing a delegate is never refused over a setting they may not know. The price: a post can go unanswered, visibly. Falling back to a judgment turn was dropped for cost. Locks in a conversation that can have no fallback; flips if posts go unplaced often](figures/d2-fallback.svg)
 
-It comes down to the removal: refusing it surprises a person over a setting they never chose.
+It comes down to the removal: refusing it surprises a user over a setting they never chose.
 
 ## Decided, not asked
 
@@ -97,18 +97,21 @@ It comes down to the removal: refusing it surprises a person over a setting they
   policy has no turn of its own. That is well under half the flow, so one flow holds.
 - **Best fit keeps holding a follow-up** ([FIX-1610 D1](../FIX-1610/DECISIONS.md#d1)), with no
   model call. A holder that was removed or is off the roster holds nothing. The hold is about a
-  person's posts: an answer routed again between rounds makes its one evaluator call.
+  user's posts: an answer routed again between rounds makes its one evaluator call.
 - **Best fit's ladder is extracted, not copied.** Hold, one call, fallback, and now `unplaced`
   become one shared helper that the mailbox's route and this policy both call, so a fix reaches
   both. FIX-1796's sweep removes the mailbox caller.
-- **Delegates live in server-owned session state** (FIX-1788 S1), copied from the
-  configuration's defaults the first time a linked conversation's delegates are read or changed,
-  and never written back. The public create can't seed them
-  ([ER-4](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
-- **Four named actions, on a linked conversation.** `addDelegate`, `removeDelegate`,
-  `setFallback` and `listDelegates`, called on the public typed client, and the same four as the
-  coordinator's tools. They need a conversation already linked to a coordinator worker and refuse
-  one that isn't; they never name or set its worker, however FIX-1788 ships the link.
+- **Delegates live in server-written session state** (FIX-1788 S1 and BR-18a; epic
+  [D3](../../epics/FIX-1786/DECISIONS.md#d3) *Locks in* (3)), copied from the configuration's
+  defaults the first time a conversation's delegates are read or changed, and never written back.
+  The public create can't seed them
+  ([ER-4](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), FIX-1788
+  BR-15).
+- **Four named actions, on any coordinator conversation.** `addDelegate`, `removeDelegate`,
+  `setFallback` and `listDelegates`, sent with the public client on the session
+  `ensureWorkerSession` returns, and the same four as the coordinator's tools. Every session on a
+  worker flow is linked to its worker at create, server-only (epic D3; FIX-1788 BR-10), so they
+  work on any coordinator conversation. No action names or sets a worker. BR-1a stays as a guard.
 - **One check, two questions kept apart.** Every add and every delivery, from the app or the
   tool, passes one check: the worker is on this user's roster, its own or a standard one, and its
   flow can take a delegated post. Removing a delegate or naming the fallback checks only that
@@ -121,11 +124,15 @@ It comes down to the removal: refusing it surprises a person over a setting they
 - **A list holds at most 25 delegates**, and the delegate read returns the whole list. One place
   answers who is on a coordinator: that read, not `discover` (carried from FIX-1785).
 - **Delivery** goes to the delegate's own conversation, one per coordinator conversation per
-  delegate, linked by FIX-1788's check. It carries a token the answer hands back, and the round
+  delegate. The first delivery opens it through FIX-1788's
+  `ensureWorkerSession({ worker, coordinatorSessionId })`, with the delegate named, so the server
+  checks and links it at create; it never posts to a fresh id. `coordinatorSessionId` is the
+  criteria key FIX-1788 reserved for this spec to name: it enters the derived id and the lookup,
+  so two conversations never share a delegate's session. It carries a token the answer hands back, and the round
   comes from the delivery record: the trust rule `seatAuthored` follows today.
 - **One delivery ledger, defined once in Workforce.** A record per post, round and delegate,
   `pending` then `delivered` or `failed`, with a token and an answer claimed once. The
-  coordinator keeps its records in server-owned session state; FIX-1793's project coordinators
+  coordinator keeps its records in server-written session state; FIX-1793's project coordinators
   reuse the same module. The `room-deliveries` and mailbox ledgers aren't ported: they go with
   their owners, FIX-1793 and FIX-1792.
 - **A round closes** when each of its deliveries is answered or failed, or when its deadline
@@ -162,7 +169,7 @@ It comes down to the removal: refusing it surprises a person over a setting they
 
 ## How it got here
 
-- **Draft** — framed as the epic's coordinator: one flow, delegates in server-owned session
+- **Draft** — framed as the epic's coordinator: one flow, delegates in server-written session
   state, four policies, a round limit, one answer per delegate per round, a record per decision.
   Asks whether FIX-1774's task legs and FIX-1780's follow-through move to FIX-1794.
 - **Review round 1** — rounds made bounded under every policy: judgment wakes once per round
@@ -171,5 +178,12 @@ It comes down to the removal: refusing it surprises a person over a setting they
   everyone round open. The delivery ledger and best fit's ladder became shared rather than
   copied, the one `delegates` action became four with `setFallback`, removal stopped requiring
   the roster, and judgment moved into the first PR ahead of round robin, everyone and rounds.
+- **Merged** in #2815 at its round-1 head; this amendment carries round two.
+- **Review round 2, amendment 1** — aligned to FIX-1788's amendment (#2818): the worker link is
+  set at create, so the four actions work on any coordinator conversation, and the example opens
+  the conversation with `ensureWorkerSession` and sends on `session.flowKind`. A delegate's
+  session opens through `ensureWorkerSession` with the delegate named and the pinned
+  `coordinatorSessionId` key (BR-20a). Shift Manager's private lab wrapper is gone from every
+  example.
 
 **Open: Q1.** No claim is settled or in flight.
