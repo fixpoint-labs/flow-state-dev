@@ -1,0 +1,119 @@
+<svg viewBox="0 0 940 484" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path as of 6 October 2026, in phases rather than dates. Now: this spec is in review and the FIX-1787 inventory is posted, with its merge-first rows landing. After the gate every child&#x27;s spec can be written at once, and the closure&#x27;s QA plan beside them. Builds run in waves: the worker contract and per-org user data together; then workers as resources; then the coordinator beside the library; then projects and the assignment chain beside the library; then the WORKER.md conversion; then the terms sweep; then the closure run. The critical path, dashed red, runs the inventory, the contract, workers, the coordinator, projects, the conversion, the terms and the closure run.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .flight { fill:var(--accent); stroke:none; }
+    .todo   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .axis   { stroke:var(--rule); stroke-width:1; }
+    .now    { stroke:var(--gone); stroke-width:1.4; }
+    .crit   { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-ln   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-w    { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="484"/>
+  <g id="axis">
+    <text class="t-lbl" x="16" y="18">THE PATH — PHASES, NOT DATES · AS OF 2026-10-06</text>
+    <path class="axis" d="M200 44 L924 44"/>
+    <text class="t-now" x="206" y="36">now</text>
+    <text class="t-s" x="286" y="36">gate</text>
+    <text class="t-s" x="300" y="36"></text>
+    <text class="t-s" x="330" y="36">specs</text>
+    <text class="t-s" x="520" y="36">builds, in waves</text>
+    <text class="t-s" x="868" y="36">closure</text>
+    <path class="now" d="M278 44 L278 440"/>
+  </g>
+  <g id="fix-1786">
+    <text class="t-ln" x="16" y="72">FIX-1786 · this spec</text>
+    <rect class="flight" x="206" y="59" width="66" height="20" rx="3"/>
+    <text class="t-w" x="212" y="73">in review</text>
+  </g>
+  <g id="fix-1787">
+    <text class="t-ln" x="16" y="104">FIX-1787 · inventory</text>
+    <rect class="flight" x="206" y="91" width="66" height="20" rx="3"/>
+    <text class="t-w" x="212" y="105">merges</text>
+  </g>
+  <g id="fix-1789">
+    <text class="t-ln" x="16" y="136">FIX-1789 · contract</text>
+    <rect class="todo" x="292" y="123" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="137">spec</text>
+    <rect class="todo" x="412" y="123" width="74" height="20" rx="3"/>
+    <text class="t-s" x="418" y="137">build</text>
+  </g>
+  <g id="fix-1790">
+    <text class="t-ln" x="16" y="168">FIX-1790 · org keys</text>
+    <rect class="todo" x="292" y="155" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="169">spec</text>
+    <rect class="todo" x="412" y="155" width="74" height="20" rx="3"/>
+    <text class="t-s" x="418" y="169">build</text>
+  </g>
+  <g id="fix-1788">
+    <text class="t-ln" x="16" y="200">FIX-1788 · workers</text>
+    <rect class="todo" x="292" y="187" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="201">spec</text>
+    <rect class="todo" x="492" y="187" width="92" height="20" rx="3"/>
+    <text class="t-s" x="498" y="201">build</text>
+  </g>
+  <g id="fix-1791">
+    <text class="t-ln" x="16" y="232">FIX-1791 · coordinator</text>
+    <rect class="todo" x="292" y="219" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="233">spec</text>
+    <rect class="todo" x="590" y="219" width="80" height="20" rx="3"/>
+    <text class="t-s" x="596" y="233">build</text>
+  </g>
+  <g id="fix-1795">
+    <text class="t-ln" x="16" y="264">FIX-1795 · library</text>
+    <rect class="todo" x="292" y="251" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="265">spec</text>
+    <rect class="todo" x="590" y="251" width="132" height="20" rx="3"/>
+    <text class="t-s" x="596" y="265">build</text>
+  </g>
+  <g id="fix-1793">
+    <text class="t-ln" x="16" y="296">FIX-1793 · projects</text>
+    <rect class="todo" x="292" y="283" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="297">spec</text>
+    <rect class="todo" x="676" y="283" width="84" height="20" rx="3"/>
+    <text class="t-s" x="682" y="297">build</text>
+  </g>
+  <g id="fix-1794">
+    <text class="t-ln" x="16" y="328">FIX-1794 · chain</text>
+    <rect class="todo" x="292" y="315" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="329">spec</text>
+    <rect class="todo" x="676" y="315" width="70" height="20" rx="3"/>
+    <text class="t-s" x="682" y="329">build</text>
+  </g>
+  <g id="fix-1792">
+    <text class="t-ln" x="16" y="360">FIX-1792 · WORKER.md</text>
+    <rect class="todo" x="292" y="347" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="361">spec</text>
+    <rect class="todo" x="766" y="347" width="50" height="20" rx="3"/>
+    <text class="t-s" x="772" y="361">build</text>
+  </g>
+  <g id="fix-1796">
+    <text class="t-ln" x="16" y="392">FIX-1796 · terms</text>
+    <rect class="todo" x="292" y="379" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="393">spec</text>
+    <rect class="todo" x="822" y="379" width="40" height="20" rx="3"/>
+    <text class="t-s" x="828" y="393">build</text>
+  </g>
+  <g id="fix-1797">
+    <text class="t-ln" x="16" y="424">FIX-1797 · closure</text>
+    <rect class="todo" x="292" y="411" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="425">QA plan</text>
+    <rect class="todo" x="868" y="411" width="48" height="20" rx="3"/>
+    <text class="t-s" x="874" y="425">run</text>
+  </g>
+  <g id="critical-path">
+    <path class="crit" d="M272 116 L412 116 L412 148 L488 148 L488 212 L586 212 L586 244 L672 244 L672 308 L762 308 L762 372 L818 372 L818 404 L864 404 L864 436 L916 436"/>
+    <text class="t-s" x="16" y="466">dashed red: the critical path · inventory → contract → workers → coordinator → projects → WORKER.md → terms → the closure run</text>
+  </g>
+</svg>
