@@ -56,7 +56,7 @@ engine shows up here as a red test.
 | R1 | `record`: delete the session and recreate its id | The new session inherits the old link: `open` to `w2` is refused with `bound to "w1"`. Flow code sees `id`, `userId` and `orgId` on the session, not its lineage or creation time, so it can't tell the two apart |
 | B1 | Bob in alice's session; the task entry over HTTP | `Session s_a belongs to another user`. The `work` entry isn't a public action (`does not define action "work"`, a 500 today rather than a 404) |
 | I1 | Two of alice's workers write `flowIsolation: true` memory | **One cell.** It is keyed `(alice, agent-poc)` because a singleton's instance id is its kind; `w2` reads `w1`'s notes |
-| I2 | A per-seat cell from today's hire, `(alice, w1)` | Not what the singleton reads. Moving to the singleton strands it |
+| I2 | A per-worker cell from today's hire, `(alice, w1)` | Not what the singleton reads. Moving to the singleton strands it |
 | C1 | A coordinator flow's lineage board hands a row to the agent flow | The child roots its **own** lineage (cross-flow), resolves an empty ledger, runs nothing, and completes. The parent's row stays `in_progress`. A user-scoped ledger crosses flows today (`hand-off-cross-flow.test.ts`) |
 
 ## What it means
@@ -65,7 +65,7 @@ engine shows up here as a red test.
   users (X1) but accepts a caller-seeded link to the caller's own other worker (O1). A row only
   flow code writes refuses that (O2) but outlives the session (R1). Neither holds ER-1.
 - **A worker's private state needs its own key.** On a singleton, flow isolation separates flows,
-  not workers (I1), and today's per-seat cells need a move (I2).
+  not workers (I1), and today's per-worker cells need a move (I2).
 - **A lineage board stops at a flow boundary** (C1). A coordinator handing a row to an agent-flow
   worker crosses one every time, so that board can't use its lineage. The owner's user scope,
   suggested here, was struck in review: that ledger spans every session its owner has. ER-9 keeps
