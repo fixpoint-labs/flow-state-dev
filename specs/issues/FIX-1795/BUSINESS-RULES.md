@@ -3,8 +3,8 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md)
 
 The cases, written as rules. Alice and Bob are users of org acme; Carol is in org globex. The
-*proved by* column is the check the plan runs. Rules marked Q1 or Q2 are written for the
-recommended answer and move with it.
+*proved by* column is the check the plan runs. Rules marked Q1 or Q2 follow the answer Jake gave on
+2026-10-06, which took each recommendation.
 
 ## Publishing
 

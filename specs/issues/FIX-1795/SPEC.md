@@ -117,18 +117,20 @@ and says so first (BR-22). A take applies only the version and copy the user was
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** share as a template, add as
 your own, unchanged until you take an update, nothing private crossing. If wrong: a library that
 leaks, or one nobody can keep current. It also rests on the epic's
-[Q2](../../epics/FIX-1786/DECISIONS.md#q2): if FIX-1793's gate drops the shared half, this
-issue goes with it.
+[Q2](../../epics/FIX-1786/DECISIONS.md#q2): FIX-1793's gate kept the shared half
+([FIX-1793 Q1](../FIX-1793/DECISIONS.md#q1), Jake, 2026-10-06).
+
+**Decided** (Jake, 2026-10-06; full reasoning in [DECISIONS.md](DECISIONS.md)):
 
 1. **[D1](DECISIONS.md#d1) · Taking an update replaces your copy's configuration and keeps its
-   memory and sessions.** If wrong: edits a user made to their copy are lost when they take one.
+   memory and sessions,** unless the user moved the copy to another flow. If wrong: edits a user
+   made to their copy are lost when they take one.
+2. **[Q1](DECISIONS.md#q1) · Only the user who published a template changes or removes it.** If
+   wrong: templates nobody can tidy once their publisher leaves.
+3. **[Q2](DECISIONS.md#q2) · A mark on the copy in the user's roster tells them an update
+   exists,** no new channel, and the take warns only if it would overwrite their own edits. If
+   wrong: updates go unnoticed.
 
-**Open, hardest first** (full asks in [DECISIONS.md](DECISIONS.md#q1)):
-
-- **[Q1](DECISIONS.md#q1) · Who can change or remove a template?** I recommend: only the user
-  who published it. If wrong: templates nobody can tidy once their publisher leaves.
-- **[Q2](DECISIONS.md#q2) · How does a user learn an update exists?** I recommend: a mark on the
-  copy in their roster, no new channel, and a warning when they take it only if it would
-  overwrite their own edits. If wrong: updates go unnoticed.
+**Open:** none.
 
 Feature · `workforce`, `shift-manager` · medium · 2 PRs, after FIX-1788 and FIX-1793's owner rule · built after the MVP · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)

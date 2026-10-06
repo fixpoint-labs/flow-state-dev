@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Q1, a live fork: does the shared half stay in the MVP? Recommended: keep shared projects. The other option: ship private projects only, and make sharing a fast follow. It comes down to the first row: today's projects are already shared org rows, so keeping sharing removes nothing, while private-only takes sharing away from the people on them and needs an operator step that gives each project to one user. The price of keeping is the second row: one engine rule, the first of four PRs, where private-only needs no engine change. The third row is a tie: either way the library's cost is priced at its own gate. Locks in: a project view and a coordinator that read other owners' entries. Flips if no installation shares a project and the MVP is single-user."
+<svg viewBox="0 0 940 420" role="img" aria-label="Q1, decided by Jake on 2026-10-06: does the shared half stay in the MVP? Chosen: keep shared projects. Instead of: ship private projects only, and make sharing a fast follow. It comes down to the first row: today's projects are already shared org rows, so keeping sharing removes nothing, while private-only takes sharing away from the users on them and needs an operator step that gives each project to one user. The price of keeping is the second row: one engine rule, the first of four PRs, where private-only needs no engine change. The third row is a tie: either way the library's cost is priced at its own gate. Locks in: a project view and a coordinator that read other owners' entries. Flips if no installation shares a project and the MVP is single-user."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -10,7 +10,7 @@
               --gone:#DE8A84; } }
     .bg     { fill:var(--surface); }
     .ask    { fill:var(--surface-2); }
-    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
     .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
     .decide { fill:var(--accent-soft); }
     .bar    { fill:var(--accent); }
@@ -35,16 +35,16 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q1 · THE CALL · OPEN</text>
+    <text class="t-lbl" x="32" y="32">Q1 · DECIDED · JAKE, 2026-10-06 · THE CALL</text>
     <text class="t-q" x="32" y="52">Do shared projects, with an owner per workstream, stay in the MVP?</text>
   </g>
 
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
     <text class="t-h c-code" x="228" y="112">Keep shared projects</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="592" y="93">THE OTHER OPTION</text>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Private only; sharing as a fast follow</text>
   </g>
 

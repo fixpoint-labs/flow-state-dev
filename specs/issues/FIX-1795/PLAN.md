@@ -129,8 +129,8 @@ role, Q1).
 - Read FIX-1788's merged write path, its roster listing and its copy of the save check; S3 and S5
   call them, they don't wrap them. The goal check reaches each copy through its
   `ensureWorkerSession`.
-- Read Q1 and Q2's answers on `main`. A different Q1 answer changes BR-26–29 and V6 only.
-- If FIX-1793's gate drops the shared half (epic Q2), this issue closes; nothing here is built.
+- Q1 and Q2 are answered as recommended (Jake, 2026-10-06), and FIX-1793's gate kept the shared
+  half this issue rests on.
 - Old-term exports: this issue adds none. It extends FIX-1788's hire-block factory under the
   name FIX-1788 ships (today's `createSeatHireBlocks`, renamed there).
 

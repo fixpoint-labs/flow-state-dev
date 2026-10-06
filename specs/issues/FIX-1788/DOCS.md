@@ -154,7 +154,7 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > ```ts
 > import { createClient } from "@flow-state-dev/client"
 >
-> const agent = createClient({ flowKind: session.flowKind, userId })
+> const agent = createClient({ flowKind: session.flowKind, userId, baseUrl })
 > await agent.sendAction("run", { message }, { sessionId: session.id })
 > ```
 >
