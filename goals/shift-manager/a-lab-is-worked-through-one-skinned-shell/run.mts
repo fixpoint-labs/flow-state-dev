@@ -315,7 +315,7 @@ const CONTROL_NAMES = ["todays-main", ...CONTROLS.map((c) => c.name)];
 async function controls(only: string[] | null): Promise<void> {
   // Today's main: Shift Manager is absent, so legs a and b can't start; c's static half stays green.
   if (only === null || only.includes("todays-main")) {
-    const absent = ["labs/shift-manager/package.json", "labs/app-lab/package.json"].every((p) => {
+    const absent = ["packages/shift-manager/package.json", "labs/app-lab/package.json"].every((p) => {
       try {
         git("cat-file", "-e", `${TODAYS_MAIN}:${p}`);
         return false;

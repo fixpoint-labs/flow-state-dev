@@ -28,6 +28,7 @@
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
+    "@flow-state-dev/workspace": "workspace:*",
     "@openai/codex-sdk": "0.152.1",
     "bullmq": "^5.0.0",
     "zod": "^3.25.76"

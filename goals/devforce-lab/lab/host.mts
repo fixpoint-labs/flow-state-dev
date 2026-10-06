@@ -21,14 +21,13 @@
  * Five pieces here are the lab's rather than the framework's, each because the
  * framework has no opinion at that spot:
  *
- * 1. **The board's two declarations** (`board.mts`): the EM's, which hands a
- *    row across flows, and the coder's, which the cross-flow claim gate
- *    requires. The ledger under both is the mailbox's.
- * 2. **The assignee → seat address.** A board's `workers` keys are assignees,
- *    not Workforce seats; which seat an assignee reaches is a dispatcher's
- *    `flowKind`, and it is a static instance id rather than a lookup. The
- *    caller supplies it, which is also what lets a control point it at the
- *    wrong seat and watch the negative claim go red.
+ * 1. **The board and the coder's door** (`board.mts`): the EM's board hands a
+ *    row across flows, and the coder takes it through a door on the same
+ *    ledger, with no board of its own. The ledger is the mailbox's.
+ * 2. **The assignee → worker address.** The board routes its own `coder`
+ *    assignee to the instance id the caller supplies, which is what lets a
+ *    control point it at the wrong worker and watch the negative claim go
+ *    red. Any other assignee goes to the Workforce worker lookup.
  * 3. **The harness slot**, handed to the `coder` kind. The one expression that
  *    differs between this lab's two checks.
  * 4. **The mailbox's address map** (`notify.mts`), and whether a mailbox is
@@ -55,8 +54,11 @@ import {
   type FlowState,
   type PrincipalResolver,
 } from "@flow-state-dev/engine";
-import { defineCapability, sequencer } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
+import type { BlockContext, FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
+import type { WorkspaceConfig } from "@flow-state-dev/harness-manager";
+import { localWorkspaceHost, redactRemote, type WorkspaceHost } from "@flow-state-dev/workspace";
+import { z } from "zod";
 import {
   AGENT_KIND,
   MAILBOX_KIND,
@@ -66,6 +68,7 @@ import {
   mailboxPostCapability,
   createSeatHireCapability,
   createWorkforceCapability,
+  createWorkerLookup,
   defineAgentWorkerFlow,
   defineMailboxFlow,
   HIRED_ROSTER_RESOURCE,
@@ -73,6 +76,7 @@ import {
   createProjectInputSchema,
   createProjectOutputSchema,
   defineProjectBlocks,
+  projectWorkspace,
   projectWritesMailboxInventory,
   mergeSeatFlows,
   openMailboxes,
@@ -85,6 +89,8 @@ import {
   type CreateProjectInput,
   type CreateProjectOutput,
   type HireOptions,
+  setRepositoryInputSchema,
+  setRepositoryOutputSchema,
   setWorkstreamsInputSchema,
   setWorkstreamsOutputSchema,
   type InventoryActionRequest,
@@ -99,9 +105,9 @@ import { defineFlow } from "@flow-state-dev/core";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { FeatureLedger } from "./board.mts";
+import { ASSIGNEE, type FeatureLedger } from "./board.mts";
 import { INSPECT_ENTRY, SEAT_FACTS_COMPONENT } from "./seat-config.mts";
-import { defineImplementPhase } from "./phase.mts";
+import { defineImplementPhase, noteStartingFiles } from "./phase.mts";
 import { CODER_KIND, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
 import {
   DRAIN_ENTRY,
@@ -257,27 +263,37 @@ export function boardMailboxOf(roster: Pick<DeclaredRoster, "mailboxes">): Decla
 }
 
 /**
- * The project writes as the chief of staff's tools, `createProject` and
- * `setWorkstreams`: the same blocks the Lab's own open creates projects
- * through, under the names its `tools:` line spells. A catalog key must be the
- * tool's own name, so each is a one-step sequencer carrying the name and what
- * the model reads about it.
+ * The project writes as the chief of staff's tools, `createProject`,
+ * `setWorkstreams` and `setRepository`: the same blocks the Lab's own open
+ * creates projects through, under the names its `tools:` line spells. A
+ * catalog key must be the tool's own name, so each is a sequencer carrying the
+ * name and what the model reads about it.
  *
  * The owner is the session's user, so a project the chief of staff creates
  * belongs to the person talking to it, who is always a member; `members` adds
  * whoever they name.
+ *
+ * **A repository waits for the person.** Which remote a project's code is
+ * cloned from is the person's to say, so `setRepository`, and `createProject`
+ * with a `repository`, pause on a stock `human_approval` before the write.
+ * Approve writes it; Deny throws out of the tool before the write runs, and
+ * nothing changes. Without durable execution the tool refuses rather than
+ * writing unasked.
  */
-function chiefOfStaffProjectTools(blocks: ProjectBlocks) {
+export function chiefOfStaffProjectTools(blocks: ProjectBlocks) {
   return {
     createProject: sequencer({
       name: "createProject",
       description:
         "Create a project for the person you are talking to. They own it and are always a member. " +
         "`id` is a short lowercase slug; `members` adds the user ids they name; `workstreams` takes " +
-        "full mailbox ids (`team.mailbox`), each in at most one project.",
+        "full mailbox ids (`team.mailbox`), each in at most one project; `repository` is the git " +
+        "remote its code lives in, if they named one. With a repository, the person approves it first.",
       inputSchema: createProjectInputSchema,
       outputSchema: createProjectOutputSchema,
-    }).step(blocks.createProject),
+    })
+      .tapIf((input) => input.repository != null, askRepository((input) => input.id))
+      .step(blocks.createProject),
     setWorkstreams: sequencer({
       name: "setWorkstreams",
       description:
@@ -286,7 +302,54 @@ function chiefOfStaffProjectTools(blocks: ProjectBlocks) {
       inputSchema: setWorkstreamsInputSchema,
       outputSchema: setWorkstreamsOutputSchema,
     }).step(blocks.setWorkstreams),
+    setRepository: sequencer({
+      name: "setRepository",
+      description:
+        "Set, change or clear (null) the git remote a project's code lives in. Only the project's " +
+        "members may, and the person approves it first.",
+      inputSchema: setRepositoryInputSchema,
+      outputSchema: setRepositoryOutputSchema,
+    })
+      .tap(askRepository((input) => input.projectId))
+      .step(blocks.setRepository),
   };
+}
+
+/** What a repository ask reads off a write's input. */
+const repositoryAskInputSchema = z
+  .object({ id: z.string().optional(), projectId: z.string().optional(), repository: z.string().nullable().optional() })
+  .passthrough();
+
+/**
+ * The approval a repository write waits on: a stock `human_approval` naming
+ * the project and the remote, with any user or password left out of what
+ * Inbox shows. Returns on Approve; on Deny the runtime throws out of it.
+ */
+function askRepository(projectOf: (input: z.infer<typeof repositoryAskInputSchema>) => string | undefined) {
+  return handler({
+    name: "devforce-cos-ask-repository",
+    inputSchema: repositoryAskInputSchema,
+    outputSchema: z.void(),
+    execute: async (input: z.infer<typeof repositoryAskInputSchema>, ctx: BlockContext) => {
+      const project = projectOf(input) ?? "";
+      if (ctx.suspend === undefined) {
+        throw new Error(
+          `the repository of project "${project}" waits for a person's approval here, and this app ` +
+            `can't ask for one: it runs without durable execution. Nothing was changed.`,
+        );
+      }
+      const repository = input.repository == null ? null : redactRemote(input.repository);
+      await ctx.suspend({
+        reason: "human_approval",
+        message:
+          repository === null
+            ? `Clear the repository of project "${project}"? Its coding work will run on its files.`
+            : `Set the repository of project "${project}" to ${repository}?`,
+        data: { project, repository },
+        allow: ["approve", "reject"],
+      });
+    },
+  });
 }
 
 /**
@@ -312,8 +375,17 @@ export interface OpenLabOptions {
   stores: unknown;
   /** The harness the `coder` kind runs. The one thing the two checks differ by. */
   harness: HarnessStub["slot"];
-  /** Where checkouts are cut, from what repository, off which ref. */
-  workspace: { root: string; sourceRepo: string; baseRef: string };
+  /**
+   * Where each coding run works.
+   *
+   * `{ root, sourceRepo, baseRef }`: every run is a new branch of one fixed
+   * repository, as the older checks run. `{ root, remotes }`: a workspace host
+   * whose source is `projectWorkspace` on the board the coder kind drains, so
+   * a run works in a branch of its project's repository (reached only if
+   * `remotes.allow` lists it), or on its project's files when the project has
+   * none.
+   */
+  workspace: WorkspaceConfig | LabWorkspaceHost;
   /**
    * The seat instance id the board's `coder` assignee is addressed to.
    *
@@ -325,6 +397,12 @@ export interface OpenLabOptions {
   coderSeatId: string;
   /** Wall-clock budget for one harness run. Default 60s. */
   runTimeoutMs?: number;
+  /**
+   * The models the lab's flows resolve. For a check that scripts the model: it
+   * reaches every path a request takes, the HTTP door's resume included.
+   * Absent, the environment's.
+   */
+  modelResolver?: ModelResolver;
   /** The tree to read. Defaults to the lab's own. */
   root?: string;
   /** Silence the engine's own logging. */
@@ -402,6 +480,13 @@ export interface OpenLabOptions {
   fileBeforeAsking?: boolean;
 
   /**
+   * The workspace host saves nothing back: a run's project files are laid
+   * down before it and dropped after. Only with a `{ root, remotes }`
+   * workspace. The red state of "a run's files are kept by the project".
+   */
+  saveNothing?: boolean;
+
+  /**
    * Repoint a seat at a different file-declared document, by seat id.
    *
    * Applied to the RECORD before the mint, so the seat genuinely runs on the
@@ -439,6 +524,14 @@ export interface OpenLabOptions {
    * project. The red state of "the chief of staff creates projects".
    */
   withoutProjectTools?: boolean;
+}
+
+/** A workspace host for the lab to build: where its places live, and which remotes it may reach. */
+export interface LabWorkspaceHost {
+  /** The host directory every clone and place lives under. */
+  root: string;
+  /** The remotes the host may reach; list `"file"` to allow `file://` remotes. */
+  remotes: { allow: readonly string[] };
 }
 
 /** One skill on a worker record, as the loader shapes it. */
@@ -549,6 +642,17 @@ export interface Lab {
    */
   projects?: CreateProjectOutput[];
   /**
+   * Run one of the project writes (`createProject`, `setWorkstreams`,
+   * `setRepository`) as the lab's owner, in the session the open created
+   * projects in. Absent when `projects` was not asked for.
+   */
+  projectAct?(actionName: string, input: unknown): Promise<{ output?: unknown; error?: string }>;
+  /**
+   * The workspace host the coder kind runs on, when the lab built one
+   * (`workspace: { root, remotes }`).
+   */
+  workspaceHost?: WorkspaceHost;
+  /**
    * The flow state the seats are registered in: what a host hands `raiseAsk`
    * when it calls the step itself.
    */
@@ -599,6 +703,15 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const board = mailboxBoard(mailbox.id, boardName);
   const ledger: FeatureLedger = options.ledger ?? { id: board.id, collection: board };
 
+  // A host's source is the project that holds the board the coder kind drains.
+  const workspaceHost: WorkspaceHost | undefined =
+    "sourceRepo" in options.workspace
+      ? undefined
+      : labWorkspaceHost(options.workspace, ledger.id, options.saveNothing === true);
+  if (options.saveNothing === true && workspaceHost === undefined) {
+    throw new Error("openLab: `saveNothing` needs a `{ root, remotes }` workspace; a fixed repository keeps no files");
+  }
+
   // The documents, as the L1 resource map a flow installs. Org-scoped, which is
   // what makes the seats' document reads — and BR-17 — matter.
   const resources = resourcesFromDocs(roster.documents);
@@ -627,8 +740,17 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         };
   });
 
+  // Any assignee but the board's own `coder` is looked up per row, in the live
+  // registry, so a worker hired a moment ago is found and a fired one is not.
+  // The mailbox's `fileTask` asks the same lookup before it files. `registrar`
+  // is bound further down, before anything files or drains.
+  const workerLookup = createWorkerLookup({
+    instanceAt: (id) => registrar?.registry.get(id),
+    declared: roster.workers.map((worker) => worker.id),
+  });
   const emKind = defineEmWorkerFlow({
     coderSeatId: options.coderSeatId,
+    findWorker: workerLookup.flowKind,
     resources,
     ledger,
     ...(options.fileBeforeAsking === true ? { fileBeforeAsking: true } : {}),
@@ -643,8 +765,17 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const coderKind = defineCoderWorkerFlow({
     ledger,
     ...(emRecords[0] === undefined ? {} : { coordinatorSeatId: emRecords[0].id }),
-    harness: options.harness,
-    workspace: options.workspace,
+    // What a files run starts on, kept so its done-condition asks for a change.
+    harness: (feeds) =>
+      options.harness({
+        ...feeds,
+        cwd: async (ctx) => {
+          const cwd = await feeds.cwd(ctx);
+          noteStartingFiles(cwd);
+          return cwd;
+        },
+      }),
+    workspace: workspaceHost ?? (options.workspace as WorkspaceConfig),
     // The mailbox's charter and members, resolved once here so the prompt
     // builder stays a function of the run and these options. Not the whole
     // manifest: the charter is the only mailbox content a run is handed.
@@ -743,6 +874,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ? undefined
       : defineMailboxFlow({
           notify: labNotify(options.mailboxes) as never,
+          checkAssignee: workerLookup.filingCheck({ [ledger.id]: [ASSIGNEE] }),
           ...(options.inventory === true ? { inventory: true } : {}),
         });
   // The org's resource modules: where the projects collection and its talk
@@ -793,6 +925,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // A configured resolver, so the development-organization fallback does
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
     resolvePrincipal: resolveLabPrincipal,
+    ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
     // When something can wait for a person: the EM's ask, or a seat holding a
     // roster tool that asks first (`fire`, `rehire`). Trees with neither run
@@ -1247,13 +1380,32 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     },
 
     ...(ask === undefined ? {} : { ask }),
-    ...(projects === undefined ? {} : { projects }),
+    ...(projects === undefined
+      ? {}
+      : { projects, projectAct: (actionName: string, input: unknown) => actOn(projectsFlow, PROJECTS_SESSION, actionName, input) }),
+    ...(workspaceHost === undefined ? {} : { workspaceHost }),
     state,
     ledger,
     door,
 
     dispose: () => state.dispose(),
   };
+}
+
+/**
+ * The lab's workspace host: `localWorkspaceHost` over `root`, reaching only
+ * the remotes listed, with `projectWorkspace` on the drained board as its
+ * source. `saveNothing` is the `no-sync-back` control's seam: the host is the
+ * same, and its `save` reports nothing saved.
+ */
+function labWorkspaceHost(options: LabWorkspaceHost, boardId: string, saveNothing: boolean): WorkspaceHost {
+  const host = localWorkspaceHost({
+    root: options.root,
+    remotes: { allow: [...options.remotes.allow] },
+    source: projectWorkspace({ board: { id: boardId } }),
+  });
+  if (!saveNothing) return host;
+  return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
 }
 
 /** One wording for whatever a refusal turns out to be. */

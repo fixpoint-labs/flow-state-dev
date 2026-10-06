@@ -1,9 +1,10 @@
 /**
- * The project writes: `createProject` and `setWorkstreams`.
+ * The project writes: `createProject`, `setWorkstreams` and `setRepository`.
  *
- * Both are blocks an app installs on the flow that creates projects — its own
+ * Each is a block an app installs on the flow that creates projects — its own
  * boot code, or the chief of staff's tool — and {@link defineProjectBlocks}
- * also hands back the two as an `actions` map to spread into a flow.
+ * also hands them back, with the project files read (`project-files.ts`), as
+ * an `actions` map to spread into a flow.
  *
  * **Who the owner is.** The creating session's owner, as the engine recorded
  * it, never a field of the input. `members` in the input is the creator's own
@@ -63,7 +64,9 @@ import {
 } from "./collections";
 import { isMember } from "./membership-gate";
 import { isAlreadyExists, isConcurrentModification, isResourceDeleted } from "./store-errors";
+import { readProjectFiles } from "./project-files";
 import { ProjectRefusedError } from "./project-refusal";
+import { repositoryProblem } from "./repository-value";
 import { noteBindRefusal, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
 
 /**
@@ -96,7 +99,9 @@ export const createProjectInputSchema = z
     /** Who besides the creator may read and post the room. The creator is always a member. */
     members: z.array(z.string().min(1)).optional(),
     /** Full ids of declared mailboxes, from any team. */
-    workstreams: z.array(z.string().min(1)).optional()
+    workstreams: z.array(z.string().min(1)).optional(),
+    /** The git remote the project's code lives in. Omitted or `null`: a project with no repository. */
+    repository: z.string().nullable().optional()
   })
   .strict();
 
@@ -124,14 +129,32 @@ export type SetWorkstreamsInput = z.infer<typeof setWorkstreamsInputSchema>;
 /** What setting a project's workstreams returns: the row as written. */
 export const setWorkstreamsOutputSchema = z.object({ project: projectRowSchema });
 
-/** The two project writes, and the same two as an `actions` map. */
+/** What setting a project's repository takes: the new remote, or `null` to clear it. */
+export const setRepositoryInputSchema = z
+  .object({ projectId: z.string().min(1), repository: z.string().nullable() })
+  .strict();
+
+/** @see setRepositoryInputSchema */
+export type SetRepositoryInput = z.infer<typeof setRepositoryInputSchema>;
+
+/** What setting a project's repository returns: the row as written. */
+export const setRepositoryOutputSchema = z.object({ project: projectRowSchema });
+
+/** The project writes and the project files read, and the same blocks as an `actions` map. */
 export type ProjectBlocks = {
   createProject: ReturnType<typeof createProjectSequence>;
   setWorkstreams: typeof setWorkstreams;
-  actions: { createProject: ActionConfig; setWorkstreams: ActionConfig };
+  setRepository: typeof setRepository;
+  readProjectFiles: typeof readProjectFiles;
+  actions: {
+    createProject: ActionConfig;
+    setWorkstreams: ActionConfig;
+    setRepository: ActionConfig;
+    readProjectFiles: ActionConfig;
+  };
 };
 
-/** One map, shared by both writes: a flow refuses two declarations under one ref. */
+/** One map, shared by every write: a flow refuses two declarations under one ref. */
 const WRITE_RESOURCES = {
   [PROJECTS_RESOURCE]: defineProjectsCollection(),
   [WORKSTREAM_CLAIMS_RESOURCE]: defineWorkstreamClaimsCollection(),
@@ -248,6 +271,13 @@ class ClaimMovedError extends Error {
   }
 }
 
+/** Refuse a repository value no row may record. `null` and omitted are a project with none. */
+function assertRepository(repository: string | null | undefined): void {
+  if (repository == null) return;
+  const problem = repositoryProblem(repository);
+  if (problem !== undefined) throw new ProjectRefusedError("invalid-repository", `${problem}.`);
+}
+
 const ownerBound = (row: ProjectRow): boolean => row.sessions.some((link) => link.userId === row.ownerUserId);
 
 const writeProject = handler({
@@ -259,6 +289,7 @@ const writeProject = handler({
     const ctx = rawCtx as unknown as BlockContext;
     const problem = projectIdProblem(input.id);
     if (problem !== undefined) throw new ProjectRefusedError("invalid-project-id", `${problem}.`);
+    assertRepository(input.repository);
     const owner = ctx.session.identity.userId;
     if (owner === undefined || owner.length === 0) {
       throw new Error("createProject needs a session with an owner: the owner is the session's user.");
@@ -310,6 +341,7 @@ const writeProject = handler({
       ownerUserId: owner,
       members: unique([owner, ...(input.members ?? [])]),
       workstreams,
+      repository: input.repository ?? null,
       claimTokens: Object.fromEntries(workstreams.map((id) => [id, token])),
       sessions: []
     });
@@ -424,6 +456,37 @@ const setWorkstreams = handler({
 });
 
 /**
+ * `setRepository`: set, change or clear a project's repository. Members only.
+ * The row is rewritten from the state the store hands the updater, so a
+ * concurrent `join` or `setWorkstreams` keeps what it wrote, and of two
+ * `setRepository` writes at once the later one wins whole. A lost race is
+ * retried past the engine's own budget, as the other contended row writes are.
+ */
+const setRepository = handler({
+  name: "project-set-repository",
+  inputSchema: setRepositoryInputSchema,
+  outputSchema: setRepositoryOutputSchema,
+  resources: WRITE_RESOURCES,
+  execute: async (input, rawCtx) => {
+    const ctx = rawCtx as unknown as BlockContext;
+    const { projects } = refsOf(ctx);
+    const row = await projects.getOptional(input.projectId);
+    if (row === undefined) {
+      throw new ProjectRefusedError("no-such-project", `this organization has no project "${input.projectId}".`);
+    }
+    if (!isMember(row.state, ctx.session.identity.userId)) {
+      throw new ProjectRefusedError(
+        "not-a-member",
+        `only project "${input.projectId}"'s members may change its repository.`
+      );
+    }
+    assertRepository(input.repository);
+    await retryOnConflict(() => row.updateState((state) => ({ ...state, repository: input.repository })));
+    return { project: projectRowSchema.parse(row.state) };
+  }
+});
+
+/**
  * After a `setWorkstreams` that did not commit: hand each claim it stamped back
  * to the row. Decided against the row as it stands at that moment, then
  * checked again after: a write that committed in between and dropped the
@@ -472,7 +535,7 @@ async function settleFailedStamps(
 }
 
 /**
- * Build the project writes.
+ * Build the project writes and the project files read.
  *
  * @example
  *   const projects = defineProjectBlocks();
@@ -483,6 +546,8 @@ export function defineProjectBlocks(): ProjectBlocks {
   return {
     createProject,
     setWorkstreams,
+    setRepository,
+    readProjectFiles,
     actions: {
       createProject: {
         block: createProject,
@@ -492,6 +557,15 @@ export function defineProjectBlocks(): ProjectBlocks {
       setWorkstreams: {
         block: setWorkstreams,
         description: "Replace a project's workstreams. Members only; a workstream belongs to at most one project."
+      },
+      setRepository: {
+        block: setRepository,
+        description:
+          "Set, change or clear (null) the git remote a project's code lives in. Members only; a bare path or a remote carrying a credential is refused."
+      },
+      readProjectFiles: {
+        block: readProjectFiles,
+        description: "Read the files a project keeps: each file's path under the project and its size in bytes. Members only."
       }
     }
   };

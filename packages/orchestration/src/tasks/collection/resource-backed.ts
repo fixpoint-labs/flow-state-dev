@@ -192,6 +192,12 @@ export interface ResourceBackedOptions {
    */
   claimIdentity?: TaskClaimIdentity;
   /**
+   * The user stamped onto every task this collection adds (`task.createdBy`).
+   * The factory reads it off the running session; omit it and tasks record
+   * no filer.
+   */
+  createdBy?: string;
+  /**
    * Refuse `setAssignee` on a task an attempt holds (FIX-982, narrowed by
    * FIX-1780 to `in_progress` and `parked`).
    *
@@ -569,7 +575,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     maxTotalRetries: null,
 
     async addTask(init) {
-      const task = buildInitialTask<TInput, TOutput>(init, now());
+      const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy);
       const created = await options.collection.create(
         task.id,
         task as unknown as JsonObject
@@ -582,7 +588,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     async addTasks(inits) {
       const created: Task<TInput, TOutput>[] = [];
       for (const init of inits) {
-        const task = buildInitialTask<TInput, TOutput>(init, now());
+        const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy);
         const createdRef = await options.collection.create(
           task.id,
           task as unknown as JsonObject

@@ -38,7 +38,7 @@ Status gets its own tokens:
 | `attention` | a person must act: a tool call waiting for approval, a task parked for review |
 | `destructive` | failed, rejected, an error |
 
-Each has a `-foreground` partner for text on a filled background. `warning` and `attention` are separate on purpose, so an app can make "waiting on you" stand out without every warning looking like a request.
+Each has a `-foreground` partner for text on a filled background. `warning` and `attention` are separate tokens, so an app can make "waiting on you" stand out without every warning looking like a request.
 
 Defaults come with the components. The first `fsdev ui add` of a component that uses a status token also adds the `tokens` item, which writes every token, light and dark, into your stylesheet. The defaults are plain: green, amber, blue, yellow and red.
 

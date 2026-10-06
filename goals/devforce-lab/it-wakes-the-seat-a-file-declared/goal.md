@@ -83,9 +83,7 @@ Needs `git` and a writable temp directory. No network, no model credential, no `
 It establishes that a board row can cross flows to a seat a Markdown file declared, that the seat's
 own documents and skills reach the prompt of the supervised run, and that the run works in a
 checkout derived from the row. It does **not** establish anything about a real coding agent — that
-is the sibling goal — and it does not establish that the extra board declaration the `coder` kind
-carries is the right shape. That declaration is an interim L1 tax (D1, soft→FIX-1408), labelled as
-one in the code that pays it.
+is the sibling goal.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

@@ -10,7 +10,7 @@
  */
 declare const __BOARD_FLOW__: string;
 
-export * from "../../../../labs/shift-manager/src/lib/run.ts";
+export * from "../../../../packages/shift-manager/src/lib/run.ts";
 
 export async function resolveRunFlow(): Promise<string> {
   return __BOARD_FLOW__;

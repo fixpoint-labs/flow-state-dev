@@ -46,9 +46,9 @@ export interface ResolveRuntimeParams {
    * seam a command uses to set pre-config env defaults (e.g. `dev`'s
    * `FSDEV_DEBUG_ENDPOINTS` / `FSDEV_TRACING_LEVEL`). Kept as a callback rather
    * than absorbed so a `.env` override still wins (load-env is first-set-wins),
-   * exactly as before this prelude was extracted.
+   * exactly as before this prelude was extracted. Gets the env files loaded.
    */
-  beforeConfigLoad?: () => void;
+  beforeConfigLoad?: (envFiles: readonly string[]) => void;
   /**
    * Require a committed `fsdev.config.*` — never fall back to directory
    * discovery. When set and no config is located, throws
@@ -105,12 +105,14 @@ export async function resolveRuntimeSource(
   // and let a repo-root invocation reach an app's .env.local), then the cwd
   // .env.local walk-up. Must run before importing an fsdev.config.* so the
   // config's providers see the app's env (gateway keys).
-  if (params.dotenv !== undefined) loadExplicitEnvFiles(cwd, params.dotenv);
-  loadEnvFiles(cwd);
+  const envFiles = [
+    ...(params.dotenv === undefined ? [] : loadExplicitEnvFiles(cwd, params.dotenv)),
+    ...loadEnvFiles(cwd),
+  ];
 
   // Command-specific pre-config env defaults (e.g. dev's debug/tracing flags),
   // applied after env files load and before the config imports.
-  params.beforeConfigLoad?.();
+  params.beforeConfigLoad?.(envFiles);
 
   const useConfig = params.config !== false;
   const configPath = typeof params.config === "string" ? params.config : undefined;

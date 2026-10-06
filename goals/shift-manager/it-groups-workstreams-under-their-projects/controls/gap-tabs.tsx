@@ -5,10 +5,10 @@
  * tab is a named empty state saying what arrives with FIX-1650, whatever the
  * Lab holds. The goal must fail at "a project's four tabs".
  */
-import { EmptyState, Tabs } from "../../../../labs/shift-manager/src/components/ui";
-import type { LoadedSnapshot } from "../../../../labs/shift-manager/src/lib/derive";
-import { navigate, PROJECT_TABS, type ProjectTab } from "../../../../labs/shift-manager/src/lib/routes";
-import type { Gaps } from "../../../../labs/shift-manager/src/gaps";
+import { EmptyState, Tabs } from "../../../../packages/shift-manager/src/components/ui";
+import type { LoadedSnapshot } from "../../../../packages/shift-manager/src/lib/derive";
+import { navigate, PROJECT_TABS, type ProjectTab } from "../../../../packages/shift-manager/src/lib/routes";
+import type { Gaps } from "../../../../packages/shift-manager/src/gaps";
 
 /** The copy each tab drew before projects shipped. */
 const GAP_COPY: Record<ProjectTab, { title: string; body: string }> = {

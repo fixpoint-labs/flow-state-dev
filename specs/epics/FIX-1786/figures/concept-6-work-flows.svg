@@ -1,0 +1,76 @@
+<svg viewBox="0 0 940 620" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Work moves down through boards; status comes back up. The shared project launch, which the org sees, holds the docs workstream owned by Alice. Below, in Alice&#x27;s private area where everything runs as her, the planner worker&#x27;s workstream session leads it and keeps the entry current; its board holds write the guide and check the API. It assigns tasks to the writer, in a task session with its own board of outline, draft and edit, and to the researcher, in a task session that checks the API through a harness. The writer assigns a piece to another researcher task session; the researcher runs a harness, a coding agent with its own task list.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg      { fill:var(--surface); }
+    .wall-sh { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .wall-pr { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.4; }
+    .wall-dz { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 4; }
+    .card    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .hot     { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .ln      { stroke:var(--ink-3); stroke-width:1.4; }
+    .ln-d    { stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:5 4; }
+    .rule    { stroke:var(--rule); stroke-width:1; }
+    .ah      { fill:var(--ink-3); }
+    .title   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:18px; }
+    .wl      { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .h       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .p       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:14px; }
+    .s       { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .lbl     { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .faint   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="620"/>
+  <text class="title" x="28" y="34">Work moves down through boards; status comes back up</text>
+  <g id="shared">
+    <rect class="wall-sh" x="20" y="52" width="900" height="92" rx="10"/>
+    <text class="wl" x="36" y="80">launch (shared project)</text>
+    <text class="s" x="36" y="100">the org sees this</text>
+    <rect class="card" x="450" y="68" width="300" height="56" rx="6"/>
+    <text class="p" x="600.0" y="101.0" text-anchor="middle">docs (workstream) · owner Alice</text>
+  </g>
+  <g id="alice">
+    <rect class="wall-pr" x="20" y="162" width="900" height="440" rx="10"/>
+    <text class="wl" x="36" y="588">Alice: private, everything runs as her</text>
+    <rect class="card" x="250" y="196" width="440" height="70" rx="6"/>
+    <text class="h" x="264" y="222">planner (worker) · workstream session</text>
+    <text class="s" x="264" y="242">its board: write the guide, check the API</text>
+    <line class="ln" x1="600" y1="126" x2="600" y2="194"/>
+    <polygon class="ah" points="600,194 604.4,186.0 595.6,186.0"/>
+    <polygon class="ah" points="600,126 595.6,134.0 604.4,134.0"/>
+    <text class="lbl" x="612" y="168">leads it, keeps the entry current</text>
+  </g>
+  <g id="tasks">
+    <rect class="card" x="40" y="330" width="400" height="70" rx="6"/>
+    <text class="h" x="54" y="356">writer (worker) · task session</text>
+    <text class="s" x="54" y="376">own board: outline, draft, edit</text>
+    <rect class="card" x="500" y="330" width="400" height="70" rx="6"/>
+    <text class="h" x="514" y="356">researcher (worker) · task session</text>
+    <text class="s" x="514" y="376">checks the API through a harness</text>
+    <line class="ln" x1="380" y1="266" x2="242" y2="328"/>
+    <polygon class="ah" points="242,328 251.1,328.7 247.5,320.7"/>
+    <line class="ln" x1="560" y1="266" x2="698" y2="328"/>
+    <polygon class="ah" points="698,328 692.5,320.7 688.9,328.7"/>
+    <text class="lbl" x="470" y="306" text-anchor="middle">assigns tasks</text>
+  </g>
+  <g id="pieces">
+    <rect class="card" x="40" y="470" width="400" height="70" rx="6"/>
+    <text class="h" x="54" y="496">researcher (worker) · task session</text>
+    <text class="s" x="54" y="516">a piece the writer assigned</text>
+    <rect class="card" x="500" y="470" width="400" height="70" rx="6"/>
+    <text class="h" x="514" y="496">harness</text>
+    <text class="s" x="514" y="516">a coding agent with its own task list</text>
+    <line class="ln" x1="240" y1="400" x2="240" y2="468"/>
+    <polygon class="ah" points="240,468 244.4,460.0 235.6,460.0"/>
+    <text class="lbl" x="250" y="440">assigns a piece</text>
+    <line class="ln" x1="700" y1="400" x2="700" y2="468"/>
+    <polygon class="ah" points="700,468 704.4,460.0 695.6,460.0"/>
+    <text class="lbl" x="710" y="440">runs</text>
+  </g>
+</svg>

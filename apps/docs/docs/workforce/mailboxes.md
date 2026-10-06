@@ -330,16 +330,16 @@ For each post, it decides per member whether that member runs:
   built-in `agent` kind can hear a post. It runs its ordinary answer, with the post as its turn,
   `<writer> in <mailbox>: <body>`. The writer is the post's `author`, or its `principal` when there
   is no `author`: `support.lead in support.desk: can someone look at the refund queue?`.
-- **Nobody runs** when the line is a seat's (`seatAuthored: true`). A seat's `post-to-mailbox`
+- **No worker runs** when the line is a worker's (`seatAuthored: true`). A seat's `post-to-mailbox`
   call and a routed answer are that line. A post another flow dispatches with action `post` is not.
-  A member that would have run
-  gets nothing at all. Members whose seat can't hear a post get `fallback`, or nothing if you
-  passed none. The fallback is not sent to a member who would have been woken. To have
+  A member whose worker can hear posts
+  gets nothing at all, and `fallback` is not sent to them. To have
   agents hear a seat's post, write your own notify block and run it when `seatAuthored`
   is `true`.
-- **Nobody runs** for a member whose kind can't hear a post, or who has no seat in the list you
-  passed. A seat hired while the app is running isn't in that list until the app restarts and
-  passes it in.
+- **The `fallback` block runs**, or nothing if you passed none, for every other member: one whose
+  kind can't hear a post, one with no worker in the list you passed, or one the mailbox's caller
+  can't reach. A worker hired while the app is running isn't in that list until the app restarts
+  and passes it in. For these members the fallback runs on every post, including a worker's.
 
 If the same seat id appears more than once (in several organizations, or owned by several users),
 the one the mailbox's caller can reach runs, in this order: their own, the organization's, a shared
@@ -354,17 +354,23 @@ listing does not show it. List with dispatch runs included (`include: "dispatch-
 A busy mailbox keeps growing each seat's conversation, and a seat remembers only as far back as
 its history window reaches. Nothing summarizes older posts for it.
 
-Members whose seat can't hear a post get nothing, the same as a mailbox with no notify slot. To
-send them something else, pass a `fallback` block. It runs for those members on every post, and
-never for a member the wake would have run. It receives the same input a notify block does:
+Pass your own notify block as `fallback` to handle every member the wake doesn't run. It
+receives the same input a notify block does:
 
 ```ts
-defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: tellByEmail }) });
+defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) });
 ```
 
-On a seat's line, members whose seat can't hear a post get the fallback. To skip a seat's line in a block of your own, read
-`input.seatAuthored === true`, as the handler earlier on this page does. `author` is an unverified
-claim, so comparing it to `member` only skips a delivery when the caller claimed that name.
+| Member | Post from a client | Post from a worker (`seatAuthored: true`) |
+| --- | --- | --- |
+| Its worker can hear posts, and the mailbox's caller can reach it | The worker runs | Nothing |
+| Any other member | `fallback` | `fallback` |
+
+Your block runs only for members the wake skips. It never sees a member whose worker can hear
+posts and is reachable, so logging, email or dispatch for those members has to happen somewhere else. To skip a
+worker's line in your block, read `input.seatAuthored === true`, as the handler earlier on this
+page does. `author` is an unverified claim, so comparing it to `member` only skips
+a delivery when the caller claimed that name.
 
 #### Making a kind of your own hear posts
 
@@ -666,7 +672,7 @@ Both actions take the board's **local** name. Filing says where the row landed:
   status: "pending" }
 ```
 
-`assignee` is the key of the worker that should run the row, as named in the board's own `workers` map. It is not a mailbox member, and the two are separate namespaces even when they read alike.
+`assignee` names the worker that should run the row. A board draining this ledger routes by it: a name in the board's own `workers` map runs there, and a board set up to [hand a row to the worker it names](#handing-a-row-to-the-worker-it-names) sends any other name to the worker `discover` lists under it. It is not a mailbox member, and the two are separate namespaces even when they read alike.
 
 `fileTask` also takes `title`, `context`, `priority`, `maxAttempts`, `labels` and `input`. The row's id is minted, not chosen. Its `author` is the same unverified claim a post's is: checked against the declared members, stored beside `authorVerified: false`, and optional. A row filed without one is accepted.
 
@@ -783,13 +789,121 @@ The part after the tool name is the mailbox's id and the board's name, joined, w
 
 It is off by default, and that's deliberate. Anyone who can reach the mailbox can then settle or reassign its rows, including one a seat is working on, and the roster check `fileTask` makes on `author` doesn't apply to these. Each action works only in its own mailbox's session, so one mailbox can't reach another's board through them. Turn it on for boards people are meant to work from outside a run, and for development.
 
-A board that no hired worker declares warns at hire, naming the mailbox and the board. Nothing is refused: a mailbox may keep a board that only people read.
+A board that no hired worker declares warns at hire, naming the mailbox and the board. Nothing is refused: a mailbox may keep a board that only people read. The warning prints once per server process, so a hot reload under `next dev` doesn't repeat it.
 
 A board's rows are stored at organization scope, so they sit in [the organization the mailbox runs in](#which-organization-a-mailbox-runs-in).
 
 Rename or move a mailbox's folder and its boards move with it, since a board's id comes from where the mailbox sits. Rows filed under the old id stay there and nothing migrates them. The unattended-board warning is what makes that visible.
 
 The rows themselves are [task substrate](../orchestration/task-substrate.md) rows, with the same fields, statuses and transitions any other board's carry.
+
+### Handing a row to the worker it names
+
+A board's `workers` map fixes its names when you write it. To let a row name any of your workers instead, including one hired a minute ago, the worker has to be able to take a task, and the board has to ask who a name means when it hands the row over.
+
+The built-in `agent` kind takes tasks from the boards you pass it as `taskLists`, and from none without them, which includes the copy you get when you pass no `kinds`. Build it with every board your mailboxes hold, hire, and build the **worker lookup** over the live registry:
+
+```ts
+import {
+  createWorkerLookup,
+  defineAgentWorkerFlow,
+  defineMailboxFlow,
+  hireWorkforce,
+  mailboxBoardIds,
+  mailboxInstances,
+} from "@flow-state-dev/workforce";
+import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
+import { instanceAt } from "./registry-access";
+
+// Check `errors` on both reads, as in "Treat a non-empty errors as fatal".
+const { workers } = await readWorkforce("./workforce");
+const { mailboxes } = await readMailboxesDirectory("./workforce");
+const boardIds = mailboxBoardIds(mailboxes);
+
+const hired = hireWorkforce(workers, {
+  kinds: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) },
+  mailboxBoards: boardIds,
+});
+
+const lookup = createWorkerLookup({ instanceAt, declared: hired.map((worker) => worker.id) });
+
+const mailboxKinds = mailboxInstances(mailboxes, {
+  kinds: { mailbox: defineMailboxFlow({ checkAssignee: lookup.filingCheck() }) },
+});
+```
+
+`instanceAt(address)` returns the flow registered at an address right now: `registry.get(address)` on the runtime, the same getter the hire tools take. [Adding a chief of staff](./chief-of-staff.md#adding-one) shows it added to the `registry-access.ts` from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate). The lookup reads it on every call, so a worker hired while the app runs is found the moment it is registered, and a fired one stops being found.
+
+Then give the board that drains the ledger a `defaultWorker` that hands each row to whatever its name means:
+
+```ts
+import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { WORKER_TASK_ENTRY, mailboxBoard } from "@flow-state-dev/workforce";
+
+const followups = mailboxBoard("engineering.incidents", "followups");
+
+const board = taskBoard({
+  name: "followups-desk",
+  boardId: followups.id,          // the ledger's own id: the worker looks the ledger up by it
+  collection: followups,
+  workers: {},
+  defaultWorker: dispatcher({
+    name: "hand-to-named-worker",
+    action: WORKER_TASK_ENTRY,    // "work"
+    session: "per-task",
+    flowKind: lookup.flowKind,
+  }),
+});
+
+export const followupsDesk = defineFlow({
+  kind: "followups-desk",
+  actions: { drain: { block: board.drain } },
+})();
+```
+
+Register `followupsDesk` alongside the hired workers and mailbox kinds, and run its `drain` the way you would any board's. Each row filed with `fileTask` and an `assignee` then runs on that worker, one run per row. A worker of the built-in kind answers it as one turn, and the answer becomes the row's result. See [Taking a task](./built-in-worker.md#taking-a-task).
+
+`boardId` has to be the ledger's id, `followups.id`. A worker takes a row only from a board whose id is one of its `taskLists`, and refuses any other with `UnknownTaskLedgerError` before reading a row.
+
+#### Who a name reaches
+
+The lookup finds a worker your files declare, a worker hired for the organization, or a worker the member hired for themselves. "The member" is always the person who filed the row. The list records who filed it, so when a teammate's drain hands the row over, it still reaches the filer's own worker and never the teammate's. It never finds another organization's workers, or another member's own.
+
+| The name | At `fileTask` | At hand-over |
+| --- | --- | --- |
+| Nobody holds it | Refused, nothing written. `MailboxPostRefusedError`, `reason: "unknown-assignee"`, message `unknown-assignee: No worker is named "frontend".` | Refused `flow-not-found`, naming the assignee. The attempt fails. |
+| Held by two workers, such as one hired for the organization and one of the member's own | Refused `unknown-assignee`, naming both: `"frontend" names 2 workers: one hired for the organization and one your own. Fire or rename one of them so the name means one worker.` | The attempt fails with an error carrying the same sentence. |
+| Held by a worker whose kind takes no tasks | Refused `unknown-assignee`, with a message naming the worker and its kind, which declares no `work` task entry. | The attempt fails with an error carrying the same sentence. |
+
+A worker fired after its row was filed fails at hand-over, naming it. No other worker runs that row. A row filed with no assignee is refused at hand-over too, since the fallback hands a row over by the name on it. Every failed attempt goes through the board's ordinary error path, so `maxAttempts` and `onError` apply.
+
+If a board over a ledger keeps names of its own in `workers`, tell the filing check, or it refuses them as unknown:
+
+```ts
+defineMailboxFlow({
+  checkAssignee: lookup.filingCheck({ [followups.id]: ["analyst"] }),
+});
+```
+
+Without `checkAssignee`, `fileTask` files any assignee as written, and a bad name is only caught at hand-over.
+
+#### A kind of your own
+
+A kind you write takes tasks when it declares a `work` task entry whose tasks come from your mailboxes' boards:
+
+```ts
+import { mailboxTaskLists } from "@flow-state-dev/workforce";
+
+// in the kind's defineFlow({ ... })
+task: {
+  actions: {
+    work: { block: reviewTask, from: mailboxTaskLists(boardIds) },
+  },
+},
+```
+
+`reviewTask` receives a `TaskWorkerInput` (`taskId`, `goal`, `title`, `context`, `input`, and the rest), and what it returns is the row's result. A task from a board outside `boardIds` is refused. An entry whose blocks keep session state is refused unless you pass `mailboxTaskLists(boardIds, { allowSessionState: true })`; do that only when tasks are handed over `per-task`, or the state has the same shape for every task. [A task entry served by many boards](../orchestration/task-board.md#a-task-entry-served-by-many-boards) covers the checks every arriving task gets.
 
 ## A room per project
 
@@ -836,6 +950,8 @@ The other arguments are as in the snippet above. If you declare the template in 
 Rooms run on the built-in mailbox kind, and that kind has to be able to wake seats, so build it with a notify block, as in `kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) }`. Left as the plain built-in, a template that names seats is refused, because no post would wake them.
 
 `wakeMemberSeats(seats)` wakes a member whose seat is in the `seats` list and whose kind hears mailbox posts, as the built-in `agent` kind does. A notify block you write yourself wakes only the members its own code wakes; `mailboxInstances` doesn't check that it reaches the template's seats. A seat hired after you built `wakeMemberSeats(seats)` isn't in its list and isn't woken.
+
+If your app already has a notify block, keep it by passing it as the fallback: `defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) })`. A chief of staff (the `agent` kind) in the template is then woken by a person's post in the room (a post from another worker wakes no worker), and your block handles every member whose worker can't hear posts. The table under [waking agent workers](#waking-agent-seats) shows which members the fallback gets.
 
 If your app calls `mailboxInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its mailbox kind with the same seats and charter. A call that finds a different template is refused.
 

@@ -10,9 +10,9 @@ import {
   createLabReader as readerAsWritten,
   DISPATCHED_RUN_UNANSWERABLE,
   type LabReader,
-} from "../../../../labs/shift-manager/src/lib/reads.ts";
+} from "../../../../packages/shift-manager/src/lib/reads.ts";
 
-export * from "../../../../labs/shift-manager/src/lib/reads.ts";
+export * from "../../../../packages/shift-manager/src/lib/reads.ts";
 
 /** The real reader, with every ask marked unanswerable. */
 export function createLabReader(clients: Parameters<typeof readerAsWritten>[0]): LabReader {

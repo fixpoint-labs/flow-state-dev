@@ -178,6 +178,24 @@ sender session on some other flow is `session-not-addressable`.
 A `task` dispatcher may take `flowKind` the same way: `defineFlow` skips the
 other-flow address and the seam resolves it, with the same named miss.
 
+**A `task` dispatcher's `flowKind` may also be looked up per task**: a function
+`(task, ctx) => flowId | undefined` (`TaskFlowTarget`), handed the row's
+assignee, id and packed input. It is resolved once per hand-over, before
+anything is dispatched (`resolveTaskFlowKind`), and an empty answer is refused
+`flow-not-found` naming the assignee. Such an address is always cross-flow, so
+the reachability walk skips it like any other and the graph can only show it
+as looked up per task; the entry it names is still declared. A function target requires `session: "per-task"`: the entry it reaches may
+keep session state, so two tasks never share its child session. Only `task`
+dispatchers take a function — an `internal` address stays a string, refused at
+construction otherwise. The board's fallback (`defaultWorker`) may hold such a
+dispatcher: it hands every row its named seats do not route over under the
+assignee on the claim ticket, so the receiving gate's assignee arm holds, and
+refuses a row with no assignee before releasing the claim. A uniform `workers`
+dispatcher is still refused: it has no assignee to address the hand-over by.
+Workforce's worker lookup is the one function shipped for this
+(`createWorkerLookup(...).flowKind`); Core and the board see a task, a name and
+a flow id, and nothing about workers.
+
 ## The claim gate and the fence ticket
 
 A task hand-off leaves the row `in_progress` in the parent's ledger, owned by
@@ -196,6 +214,26 @@ dispatch addressed to a board since removed or renamed is refused before a row
 is read. It also refuses an entry block that declares `sessionStateSchema`, at
 its root or in a composed child (`assertHandOffBlockSupported`): a worker's
 state belongs on the task, not on a session that may run many of them.
+
+**An entry may name where its tasks come from instead of being reached by one
+board.** `task: { actions: { work: { block, from } } }`, where `from` is a
+binding `taskLedgers({ name, resolve })` builds: `resolve(ledgerId, ctx)` maps
+the id a dispatch carries (the sending board's `boardId`) to that ledger, or
+to nothing. It is the same gate with a second ledger source: the board-bound
+gate reads its one ledger, this one reads the ledger the dispatch names. An id
+`resolve` does not answer for is refused (`UnknownTaskLedgerError`) before any
+row is read, which keeps what the board-scoped input schema protects; then the
+arms below run on that ledger in the same order. The id travels on the
+envelope, so `resolve` must answer only for ledgers the running context may
+read — Workforce's mailbox-list source resolves only declared, org-scoped
+lists in the run's organization — and the row re-read there authorizes the
+run. The gate records the ledger id beside the claim (`currentLedger` on the
+worker-body state) so its recorders settle on the ledger they read from.
+`defineFlow` gates such an entry with no board in the flow; one a same-flow
+board also hands off to is refused, since one entry runs behind one gate.
+Because the sender picks the session policy, such an entry may opt out of the
+`sessionStateSchema` refusal (`allowSessionState`) when its session state is
+its own and the same shape for every task.
 
 **The gate re-reads the row and runs the worker only if the claim is still
 current** — the row exists, `attempts` matches, `createdAt` and

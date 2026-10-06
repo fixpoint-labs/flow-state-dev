@@ -55,6 +55,7 @@ import { mailboxBoard } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { LAB_ORG_ID } from "../../devforce-lab/lab/host.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
+import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { heardLine } from "./lab/asker/asker.mts";
 import type { RecordedAttempt } from "./lab/recording-harness.mts";
@@ -72,7 +73,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 }
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
+const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-turn");
 const RUNS_FILE = join(SCRATCH, `runs-${Date.now()}.ndjson`);
@@ -136,7 +137,7 @@ async function startLab(name: LabName, pages: string): Promise<Running> {
   mkdirSync(join(SCRATCH, "labs"), { recursive: true });
   const workDir = mkdtempSync(join(SCRATCH, "labs", `${name}-`));
   let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", LABS[name].config, "--port", "0", "--assets", pages], {
+  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", LABS[name].config, "--port", "0", "--no-open", "--assets", pages], {
     cwd: workDir,
     env: intentFreeEnv(process.env, {
       INIT_CWD: workDir,
@@ -157,13 +158,13 @@ async function startLab(name: LabName, pages: string): Promise<Running> {
     }),
   );
   for (let waited = 0; waited < 120_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, child, exited, log: () => log };
+    const served = servedAddresses(log);
+    if (served !== undefined) return { origin: served.origin, child, exited, log: () => log };
     if (gone) break;
     await sleep(250);
   }
   child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served ${name}. Log tail:\n${log.slice(-2000)}`);
+  throw new Error(`Shift Manager's command never served ${name}. Log tail:\n${log.slice(-2000)}`);
 }
 
 // ---- the store, read by this script -----------------------------------------
@@ -498,6 +499,6 @@ await runGoal(async () => {
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its start script over DevTeam (recording harness) and the fixture asker; each line typed in Chromium and graded against the store and the harness's own record. ${evidence.join("; ")}`,
+    evidence: `Shift Manager built with Vite and served by its command over DevTeam (recording harness) and the fixture asker; each line typed in Chromium and graded against the store and the harness's own record. ${evidence.join("; ")}`,
   };
 });

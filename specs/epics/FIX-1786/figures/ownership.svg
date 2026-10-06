@@ -1,0 +1,147 @@
+<svg viewBox="0 0 940 528" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: twelve cross-cutting rules by the nine refactor children and the closure, each rule with exactly one decides or builds cell. ER-1, a worker is a user-scoped resource: FIX-1788 decides; FIX-1791 consumes; FIX-1795 consumes; FIX-1792 consumes; FIX-1797 checks. ER-2, only registered worker flows run workers: FIX-1789 decides; FIX-1788 consumes; FIX-1791 consumes; FIX-1797 checks. ER-3, user data kept per (user, org): FIX-1790 builds; FIX-1788 consumes; FIX-1793 consumes; FIX-1797 checks. ER-4, delegates: session state, same roster: FIX-1791 decides; FIX-1793 consumes; FIX-1794 consumes; FIX-1792 consumes; FIX-1797 checks. ER-5, no re-route loops · one answer · a record: FIX-1791 builds; FIX-1797 checks. ER-6, WORKER.md only; MAILBOX.md refused: FIX-1792 decides; FIX-1796 consumes. ER-7, projects private or shared; owner writes: FIX-1793 decides; FIX-1794 consumes; FIX-1797 checks. ER-8, a project coordinator per user; no rooms: FIX-1793 builds; FIX-1797 checks. ER-9, a chain runs as the owner of the work: FIX-1794 decides; FIX-1793 consumes; FIX-1797 checks. ER-10, a library copy never changes under you: FIX-1795 decides. ER-11, shared writes name user and worker: FIX-1789 decides; FIX-1793 consumes; FIX-1795 consumes. ER-12, no retired term left: FIX-1796 builds; FIX-1797 checks. ER-13 onward are fences and process that bind every child alike, outside the matrix.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg   { fill:var(--surface); }
+    .own  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .use  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .chk  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; stroke-dasharray:4 3; }
+    .row  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.04em; }
+    .t-id { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-r  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; font-weight:600; }
+    .t-use { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+    .t-chk { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="528"/>
+  <g id="header">
+    <text class="t-lbl" x="16" y="24">WHO OWNS WHAT — ONE DECIDES OR BUILDS CELL PER RULE</text>
+    <text class="t-lbl" x="380.5" y="52" text-anchor="middle">FIX-1789</text>
+    <text class="t-lbl" x="380.5" y="64" text-anchor="middle">contract</text>
+    <text class="t-lbl" x="437.5" y="52" text-anchor="middle">FIX-1790</text>
+    <text class="t-lbl" x="437.5" y="64" text-anchor="middle">org keys</text>
+    <text class="t-lbl" x="494.5" y="52" text-anchor="middle">FIX-1788</text>
+    <text class="t-lbl" x="494.5" y="64" text-anchor="middle">workers</text>
+    <text class="t-lbl" x="551.5" y="52" text-anchor="middle">FIX-1791</text>
+    <text class="t-lbl" x="551.5" y="64" text-anchor="middle">coord.</text>
+    <text class="t-lbl" x="608.5" y="52" text-anchor="middle">FIX-1795</text>
+    <text class="t-lbl" x="608.5" y="64" text-anchor="middle">library</text>
+    <text class="t-lbl" x="665.5" y="52" text-anchor="middle">FIX-1793</text>
+    <text class="t-lbl" x="665.5" y="64" text-anchor="middle">projects</text>
+    <text class="t-lbl" x="722.5" y="52" text-anchor="middle">FIX-1794</text>
+    <text class="t-lbl" x="722.5" y="64" text-anchor="middle">chain</text>
+    <text class="t-lbl" x="779.5" y="52" text-anchor="middle">FIX-1792</text>
+    <text class="t-lbl" x="779.5" y="64" text-anchor="middle">WORKER.md</text>
+    <text class="t-lbl" x="836.5" y="52" text-anchor="middle">FIX-1796</text>
+    <text class="t-lbl" x="836.5" y="64" text-anchor="middle">terms</text>
+    <text class="t-lbl" x="893.5" y="52" text-anchor="middle">FIX-1797</text>
+    <text class="t-lbl" x="893.5" y="64" text-anchor="middle">closure</text>
+  </g>
+  <g id="er-1">
+    <line class="row" x1="16" y1="74" x2="924" y2="74"/>
+    <text class="t-id" x="16" y="95">ER-1</text>
+    <text class="t-r" x="60" y="95">a worker is a user-scoped resource</text>
+    <rect class="own" x="468" y="81" width="53" height="20" rx="3"/><text class="t-own" x="494.5" y="95" text-anchor="middle">decides</text>
+    <rect class="use" x="525" y="81" width="53" height="20" rx="3"/><text class="t-use" x="551.5" y="95" text-anchor="middle">consumes</text>
+    <rect class="use" x="582" y="81" width="53" height="20" rx="3"/><text class="t-use" x="608.5" y="95" text-anchor="middle">consumes</text>
+    <rect class="use" x="753" y="81" width="53" height="20" rx="3"/><text class="t-use" x="779.5" y="95" text-anchor="middle">consumes</text>
+    <rect class="chk" x="867" y="81" width="53" height="20" rx="3"/><text class="t-chk" x="893.5" y="95" text-anchor="middle">checks</text>
+  </g>
+  <g id="er-2">
+    <line class="row" x1="16" y1="108" x2="924" y2="108"/>
+    <text class="t-id" x="16" y="129">ER-2</text>
+    <text class="t-r" x="60" y="129">only registered worker flows run workers</text>
+    <rect class="own" x="354" y="115" width="53" height="20" rx="3"/><text class="t-own" x="380.5" y="129" text-anchor="middle">decides</text>
+    <rect class="use" x="468" y="115" width="53" height="20" rx="3"/><text class="t-use" x="494.5" y="129" text-anchor="middle">consumes</text>
+    <rect class="use" x="525" y="115" width="53" height="20" rx="3"/><text class="t-use" x="551.5" y="129" text-anchor="middle">consumes</text>
+    <rect class="chk" x="867" y="115" width="53" height="20" rx="3"/><text class="t-chk" x="893.5" y="129" text-anchor="middle">checks</text>
+  </g>
+  <g id="er-3">
+    <line class="row" x1="16" y1="142" x2="924" y2="142"/>
+    <text class="t-id" x="16" y="163">ER-3</text>
+    <text class="t-r" x="60" y="163">user data kept per (user, org)</text>
+    <rect class="own" x="411" y="149" width="53" height="20" rx="3"/><text class="t-own" x="437.5" y="163" text-anchor="middle">builds</text>
+    <rect class="use" x="468" y="149" width="53" height="20" rx="3"/><text class="t-use" x="494.5" y="163" text-anchor="middle">consumes</text>
+    <rect class="use" x="639" y="149" width="53" height="20" rx="3"/><text class="t-use" x="665.5" y="163" text-anchor="middle">consumes</text>
+    <rect class="chk" x="867" y="149" width="53" height="20" rx="3"/><text class="t-chk" x="893.5" y="163" text-anchor="middle">checks</text>
+  </g>
+  <g id="er-4">
+    <line class="row" x1="16" y1="176" x2="924" y2="176"/>
+    <text class="t-id" x="16" y="197">ER-4</text>
+    <text class="t-r" x="60" y="197">delegates: session state, same roster</text>
+    <rect class="own" x="525" y="183" width="53" height="20" rx="3"/><text class="t-own" x="551.5" y="197" text-anchor="middle">decides</text>
+    <rect class="use" x="639" y="183" width="53" height="20" rx="3"/><text class="t-use" x="665.5" y="197" text-anchor="middle">consumes</text>
+    <rect class="use" x="696" y="183" width="53" height="20" rx="3"/><text class="t-use" x="722.5" y="197" text-anchor="middle">consumes</text>
+    <rect class="use" x="753" y="183" width="53" height="20" rx="3"/><text class="t-use" x="779.5" y="197" text-anchor="middle">consumes</text>
+    <rect class="chk" x="867" y="183" width="53" height="20" rx="3"/><text class="t-chk" x="893.5" y="197" text-anchor="middle">checks</text>
+  </g>
+  <g id="er-5">
+    <line class="row" x1="16" y1="210" x2="924" y2="210"/>
+    <text class="t-id" x="16" y="231">ER-5</text>
+    <text class="t-r" x="60" y="231">no re-route loops · one answer · a record</text>
+    <rect class="own" x="525" y="217" width="53" height="20" rx="3"/><text class="t-own" x="551.5" y="231" text-anchor="middle">builds</text>
+    <rect class="chk" x="867" y="217" width="53" height="20" rx="3"/><text class="t-chk" x="893.5" y="231" text-anchor="middle">checks</text>
+  </g>
+  <g id="er-6">
+    <line class="row" x1="16" y1="244" x2="924" y2="244"/>
+    <text class="t-id" x="16" y="265">ER-6</text>
+    <text class="t-r" x="60" y="265">WORKER.md only; MAILBOX.md refused</text>
+    <rect class="own" x="753" y="251" width="53" height="20" rx="3"/><text class="t-own" x="779.5" y="265" text-anchor="middle">decides</text>
+    <rect class="use" x="810" y="251" width="53" height="20" rx="3"/><text class="t-use" x="836.5" y="265" text-anchor="middle">consumes</text>
+  </g>
+  <g id="er-7">
+    <line class="row" x1="16" y1="278" x2="924" y2="278"/>
+    <text class="t-id" x="16" y="299">ER-7</text>
+    <text class="t-r" x="60" y="299">projects private or shared; owner writes</text>
+    <rect class="own" x="639" y="285" width="53" height="20" rx="3"/><text class="t-own" x="665.5" y="299" text-anchor="middle">decides</text>
+    <rect class="use" x="696" y="285" width="53" height="20" rx="3"/><text class="t-use" x="722.5" y="299" text-anchor="middle">consumes</text>
+    <rect class="chk" x="867" y="285" width="53" height="20" rx="3"/><text class="t-chk" x="893.5" y="299" text-anchor="middle">checks</text>
+  </g>
+  <g id="er-8">
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+    <text class="t-id" x="16" y="333">ER-8</text>
+    <text class="t-r" x="60" y="333">a project coordinator per user; no rooms</text>
+    <rect class="own" x="639" y="319" width="53" height="20" rx="3"/><text class="t-own" x="665.5" y="333" text-anchor="middle">builds</text>
+    <rect class="chk" x="867" y="319" width="53" height="20" rx="3"/><text class="t-chk" x="893.5" y="333" text-anchor="middle">checks</text>
+  </g>
+  <g id="er-9">
+    <line class="row" x1="16" y1="346" x2="924" y2="346"/>
+    <text class="t-id" x="16" y="367">ER-9</text>
+    <text class="t-r" x="60" y="367">a chain runs as the owner of the work</text>
+    <rect class="use" x="639" y="353" width="53" height="20" rx="3"/><text class="t-use" x="665.5" y="367" text-anchor="middle">consumes</text>
+    <rect class="own" x="696" y="353" width="53" height="20" rx="3"/><text class="t-own" x="722.5" y="367" text-anchor="middle">decides</text>
+    <rect class="chk" x="867" y="353" width="53" height="20" rx="3"/><text class="t-chk" x="893.5" y="367" text-anchor="middle">checks</text>
+  </g>
+  <g id="er-10">
+    <line class="row" x1="16" y1="380" x2="924" y2="380"/>
+    <text class="t-id" x="16" y="401">ER-10</text>
+    <text class="t-r" x="60" y="401">a library copy never changes under you</text>
+    <rect class="own" x="582" y="387" width="53" height="20" rx="3"/><text class="t-own" x="608.5" y="401" text-anchor="middle">decides</text>
+  </g>
+  <g id="er-11">
+    <line class="row" x1="16" y1="414" x2="924" y2="414"/>
+    <text class="t-id" x="16" y="435">ER-11</text>
+    <text class="t-r" x="60" y="435">shared writes name user and worker</text>
+    <rect class="own" x="354" y="421" width="53" height="20" rx="3"/><text class="t-own" x="380.5" y="435" text-anchor="middle">decides</text>
+    <rect class="use" x="582" y="421" width="53" height="20" rx="3"/><text class="t-use" x="608.5" y="435" text-anchor="middle">consumes</text>
+    <rect class="use" x="639" y="421" width="53" height="20" rx="3"/><text class="t-use" x="665.5" y="435" text-anchor="middle">consumes</text>
+  </g>
+  <g id="er-12">
+    <line class="row" x1="16" y1="448" x2="924" y2="448"/>
+    <text class="t-id" x="16" y="469">ER-12</text>
+    <text class="t-r" x="60" y="469">no retired term left</text>
+    <rect class="own" x="810" y="455" width="53" height="20" rx="3"/><text class="t-own" x="836.5" y="469" text-anchor="middle">builds</text>
+    <rect class="chk" x="867" y="455" width="53" height="20" rx="3"/><text class="t-chk" x="893.5" y="469" text-anchor="middle">checks</text>
+  </g>
+  <g id="footer">
+    <line class="row" x1="16" y1="482" x2="924" y2="482"/>
+    <text class="t-lbl" x="16" y="506">solid green: decides or builds · blue: consumes, never re-decides · dashed: checks · ER-13 to ER-29 bind every child, outside the matrix</text>
+  </g>
+</svg>

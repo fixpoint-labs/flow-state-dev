@@ -154,8 +154,10 @@ export interface GoalSeekLoopConfig {
 
 /** Component type of the loop's terminal observability signal (reason + drain
  *  count). Distinct from `task-board-meta` so it never clobbers the completed
- *  board snapshot `<TaskPlan/>` scans, and emitted client/history-invisible
- *  (no renderer consumes it) so it never surfaces as raw JSON in the stream. */
+ *  board snapshot `<TaskPlan/>` scans. No renderer consumes it: the shipped
+ *  chat registry names it with `false` so it never surfaces as raw JSON. Its
+ *  `itemVisibility` stamp cannot do that job — a `component` item is
+ *  structural, and structural items ignore `itemVisibility`. */
 export const GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE = "goal-seek-loop-termination";
 
 // ---------------------------------------------------------------------------
@@ -444,10 +446,11 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
       };
       const iterations = state.goalSeekLoopDrains ?? 0;
       const reason = state.goalSeekLoopVerdict?.reason ?? "converged";
-      // A typed observability signal, NOT a rendered UI element: no renderer
-      // consumes this component, so it's emitted client- and history-invisible
-      // to avoid surfacing as raw JSON in the client stream. It stays on the
-      // live stream for tooling and is what the goalSeekLoop tests assert on.
+      // A typed observability signal, NOT a rendered UI element. It stays on
+      // the live stream for tooling and is what the goalSeekLoop tests assert
+      // on. The `itemVisibility` stamp records that intent but does not
+      // enforce it (structural items ignore it); the renderer registry's
+      // `false` entry for this type is what keeps it out of the thread.
       ctx.emit.component(
         GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
         { collectionId: board.collectionId, reason, iterations },

@@ -17,6 +17,9 @@ const packages = resolve(import.meta.dirname, "..", "..");
 const HOOK_MODULES = [
   "cli/src/commands/dev.ts",
   "cli/src/dev-app.ts",
+  "cli/src/dev-vite.ts",
+  "cli/src/dev-watch.ts",
+  "cli/src/dev-watch-preload.ts",
   "node/src/serve.ts",
   "node/src/page-html.ts",
   "node/src/devtool-config-injection.ts",

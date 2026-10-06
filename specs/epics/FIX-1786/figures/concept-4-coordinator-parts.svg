@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 480" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="A coordinator hands posts to its delegates; delegates change two ways. Alice, a user, and the writer, a worker, post to the launch coordinator: its door takes posts, its delegates are researcher and analyst, it routes by best fit, keeps an optional transcript and records every routing decision. It delivers to the researcher, which works it in its session and answers; the analyst is not picked this time. Delegates change directly, by you or app code, or by the coordinator with its own tool. Both pass one check: a delegate must be on Alice&#x27;s roster.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg      { fill:var(--surface); }
+    .wall-sh { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .wall-pr { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.4; }
+    .wall-dz { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 4; }
+    .card    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .hot     { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .ln      { stroke:var(--ink-3); stroke-width:1.4; }
+    .ln-d    { stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:5 4; }
+    .rule    { stroke:var(--rule); stroke-width:1; }
+    .ah      { fill:var(--ink-3); }
+    .title   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:18px; }
+    .wl      { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .h       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .p       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:14px; }
+    .s       { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .lbl     { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .faint   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="480"/>
+  <text class="title" x="28" y="34">A coordinator hands posts to its delegates; delegates change two ways</text>
+  <g id="posters">
+    <rect class="card" x="24" y="88" width="200" height="56" rx="6"/>
+    <text class="p" x="124.0" y="121.0" text-anchor="middle">Alice (user)</text>
+    <rect class="card" x="24" y="176" width="200" height="56" rx="6"/>
+    <text class="p" x="124.0" y="209.0" text-anchor="middle">writer (worker)</text>
+    <line class="ln" x1="224" y1="116" x2="298" y2="140"/>
+    <polygon class="ah" points="298,140 291.7,133.3 289.0,141.7"/>
+    <line class="ln" x1="224" y1="204" x2="298" y2="182"/>
+    <polygon class="ah" points="298,182 289.1,180.1 291.6,188.5"/>
+    <text class="lbl" x="236" y="106">posts</text>
+  </g>
+  <g id="coordinator">
+    <rect class="hot" x="300" y="70" width="340" height="200" rx="6"/>
+    <text class="h" x="316" y="98">launch (coordinator)</text>
+    <text class="s" x="316" y="124">door: takes posts</text>
+    <text class="s" x="316" y="148">delegates: researcher, analyst</text>
+    <text class="s" x="316" y="172">routing: best fit</text>
+    <text class="s" x="316" y="196">transcript: optional</text>
+    <text class="s" x="316" y="220">records every routing decision</text>
+  </g>
+  <g id="delegates">
+    <rect class="card" x="710" y="76" width="206" height="62" rx="6"/>
+    <text class="h" x="724" y="102">researcher (worker)</text>
+    <text class="s" x="724" y="122">works it in its session</text>
+    <rect class="card" x="710" y="180" width="206" height="62" rx="6"/>
+    <text class="h" x="724" y="206">analyst (worker)</text>
+    <text class="s" x="724" y="226">not picked this time</text>
+    <line class="ln" x1="640" y1="96" x2="708" y2="96"/>
+    <polygon class="ah" points="708,96 700.0,91.6 700.0,100.4"/>
+    <text class="lbl" x="646" y="88">delivers</text>
+    <line class="ln" x1="710" y1="122" x2="642" y2="122"/>
+    <polygon class="ah" points="642,122 650.0,126.4 650.0,117.6"/>
+    <text class="lbl" x="646" y="140">answers</text>
+    <line class="ln-d" x1="640" y1="211" x2="708" y2="211"/>
+    <polygon class="ah" points="708,211 700.0,206.6 700.0,215.4"/>
+  </g>
+  <g id="changes">
+    <rect class="card" x="150" y="350" width="280" height="64" rx="6"/>
+    <text class="h" x="164" y="376">directly</text>
+    <text class="s" x="164" y="396">you or app code</text>
+    <rect class="card" x="470" y="350" width="280" height="64" rx="6"/>
+    <text class="h" x="484" y="376">by the coordinator</text>
+    <text class="s" x="484" y="396">with its own tool</text>
+    <line class="ln" x1="380" y1="350" x2="380" y2="272"/>
+    <polygon class="ah" points="380,272 375.6,280.0 384.4,280.0"/>
+    <line class="ln" x1="560" y1="350" x2="560" y2="272"/>
+    <polygon class="ah" points="560,272 555.6,280.0 564.4,280.0"/>
+    <text class="lbl" x="470" y="316" text-anchor="middle">change delegates</text>
+    <text class="h" x="470" y="452" text-anchor="middle">Both pass one check: a delegate must be on Alice&#x27;s roster</text>
+  </g>
+</svg>

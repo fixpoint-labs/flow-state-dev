@@ -119,6 +119,33 @@ describe("FIX-688: lazy collection accessor", () => {
     expect(get.mock.calls.filter((c) => c[2] === "lz/a").length).toBe(0); // served from warmed cache
   });
 
+  it("list(prefix) reads only that sub-prefix from the store", async () => {
+    const { stores, getByPrefix } = spyStores();
+    await stores.resourceState.set("session", "s1", "lz/p1/a", { n: 1 }, "any");
+    await stores.resourceState.set("session", "s1", "lz/p2/b", { n: 2 }, "any");
+    const ctx = await ctxFor(stores);
+    getByPrefix.mockClear();
+
+    const p1 = await coll(ctx).list("p1/");
+    expect(p1.map((r) => r.state.n)).toEqual([1]);
+    const prefixes = getByPrefix.mock.calls.map((c) => c[2]);
+    // A list scoped to one sub-tree must not pull its siblings into memory.
+    expect(prefixes).toEqual(["lz/p1/"]);
+  });
+
+  it("list(prefix) after a whole-collection list costs no further store read", async () => {
+    const { stores, getByPrefix } = spyStores();
+    await stores.resourceState.set("session", "s1", "lz/p1/a", { n: 1 }, "any");
+    await stores.resourceState.set("session", "s1", "lz/p2/b", { n: 2 }, "any");
+    const ctx = await ctxFor(stores);
+    getByPrefix.mockClear();
+
+    await coll(ctx).list();
+    const p2 = await coll(ctx).list("p2/");
+    expect(p2.map((r) => r.state.n)).toEqual([2]);
+    expect(getByPrefix.mock.calls.map((c) => c[2])).toEqual(["lz/"]);
+  });
+
   it("does not resurrect a key deleted while the prefix read was in flight", async () => {
     const { stores } = spyStores();
     await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");
