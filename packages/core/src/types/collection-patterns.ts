@@ -176,8 +176,9 @@ export function encodeUserSegment(userId: string): string {
  * The key segment that marks a row as `userId`'s: `~` plus
  * {@link encodeUserSegment}.
  *
- * An owner-private collection (`ownerPrivate: { param }`) keys each row with
- * this at its owner parameter, and serves the row only to that user. A key's
+ * An owner-keyed collection (`ownerPrivate: { param }` or `ownerWrites: { param }`)
+ * keys each row with this at its owner parameter: an owner-private one serves
+ * the row only to that user, an owner-writes one lets only that user write it. A key's
  * first segment beginning `~` is its owner in every app, so no other
  * collection reads or writes a key carrying one. The escaped id holds no `~`
  * and no `/`, so the segment is one segment with one marker.

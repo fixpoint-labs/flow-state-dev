@@ -5,11 +5,13 @@
  * the `client` config declared on resource definitions. Only resources with
  * an explicit `client` configuration are accessible.
  *
- * Every handler that lists, reads, writes or deletes a collection key asks
- * {@link ownerKeyAdmits} for the session's user, the fence the resource
- * handle applies to a run: a row keyed to an owner is absent from a read and
+ * Every handler that lists or reads a collection key asks
+ * {@link ownerKeyAdmits} for the session's user, and every handler that
+ * writes or deletes one asks {@link ownerWriteRefusal}: the fence the resource
+ * handle applies to a run. A row keyed to an owner is absent from a read and
  * refused on a write, except through its owner-private collection, to its
- * owner.
+ * owner, or through its owner-writes collection, read by anyone and written
+ * by its owner.
  */
 import type {
   CollectionClientConfig,
@@ -36,7 +38,7 @@ import {
 } from "../resources/normalize-resource-state";
 import { normalizeScopeResourceContent } from "../context/resource-registry";
 import { ValidationError } from "../errors/flow-error";
-import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
+import { OWNER_ROW_REFUSAL, ownerKeyAdmits, ownerWriteRefusal } from "../resources/owner-private";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {
@@ -262,8 +264,9 @@ export async function handleCreateCollectionItem(
   }
 
   const storageKey = resolveCollectionKey(config.pattern, topic.trim());
-  if (!ownerKeyAdmits(config, storageKey, session.userId)) {
-    return jsonResponse(403, { error: OWNER_ROW_REFUSAL });
+  const createRefusal = ownerWriteRefusal(config, storageKey, session.userId);
+  if (createRefusal !== undefined) {
+    return jsonResponse(403, { error: createRefusal });
   }
 
   // Only session-scoped for now (Phase 1 simplification)
@@ -388,8 +391,9 @@ export async function handleUpdateResourceContent(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
-  if (!ownerKeyAdmits(config, storageKey, session.userId)) {
-    return jsonResponse(403, { error: OWNER_ROW_REFUSAL });
+  const updateRefusal = ownerWriteRefusal(config, storageKey, session.userId);
+  if (updateRefusal !== undefined) {
+    return jsonResponse(403, { error: updateRefusal });
   }
   // FIX-1068: addressed by the key's owner, so read and write land where a
   // block would rather than where the named route would.
@@ -791,8 +795,9 @@ export async function handleDeleteCollectionItem(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
-  if (!ownerKeyAdmits(config, storageKey, session.userId)) {
-    return jsonResponse(403, { error: OWNER_ROW_REFUSAL });
+  const deleteRefusal = ownerWriteRefusal(config, storageKey, session.userId);
+  if (deleteRefusal !== undefined) {
+    return jsonResponse(403, { error: deleteRefusal });
   }
   // Conflict before anything is deleted — the create route's rule, mirrored.
   // `undefined` means no live row, i.e. `expectedVersion: 0`, so an absent key
