@@ -66,9 +66,7 @@ answer record in one shared module.
 | **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change whose old records move to one org by an operator step, never read in two ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session data only the server writes. The worker link takes the form this card's *what would change my mind* anticipated: a server-only field on the session record, set and checked when the session is created, never on a turn; a session's worker can't change, and no action names a worker (Jake, 2026-10-06, on FIX-1788's spec). A coordinator's delegates are held where only the server writes too, and the public create can't seed them. FIX-1788 picks the mechanism and builds it, FIX-1791 consumes it. Flow instances and owner pins get deprecation markers, nothing more. A worker's own key for its private state is Layer 2, FIX-1788's, and so is reading a worker's configuration per run: a generator already resolves its tools per call ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). Any other Layer 1 change comes back to this epic |
 
 **What would change my mind:** a second consumer of a worker outside Workforce. Then a worker
-noun in core earns its place. For (3), FIX-1788's spec needing the link before any flow code
-runs, at admission: then a server-only field on the session record instead. That is the form
-the link now takes, set at create; it is still the third change, not a fourth.
+noun in core earns its place.
 
 <a name="d4"></a>
 ## D4 · engineering · The contract and per-org keys first; the terms last, with docs moving with code
@@ -263,9 +261,9 @@ engine rule. The closure only checks.
 - **FIX-1789's gate (Oct 6)**, in a third follow-up PR: Q1 is the list, on FIX-1789's POC (#2811),
   and ER-24 is met for it. FIX-1789's open call on an engine rule for org-scope writes is no: D3
   stays three, and ER-2 and ER-11 say the privacy promise covers a worker's own state and
-  user-scoped data, not org scope. From FIX-1788's spec (#2812): D3's third change holds the worker
-link in a server-only field set at create, so no action names a worker. "Seat" left the prose
-here, one name for one thing (Jake, #2810).
+  user-scoped data, not org scope. From FIX-1788's spec (#2812): D3's third change holds the
+  worker link in a server-only field set at create, so no action names a worker. "Seat" left the
+  prose here, one name for one thing (Jake, #2810).
 
 **Open: none needing an answer now.** Whether the shared half stays in the MVP is asked at
 FIX-1793's spec gate ([Q2](#q2)).

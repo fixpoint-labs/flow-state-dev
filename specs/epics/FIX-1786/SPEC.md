@@ -24,11 +24,12 @@ the refactor starts from a known base.
 **Two users in one org each run a private roster (a standard worker, a fork, a library copy and
 a coordinator) on shared singleton flows, and work one shared project through workstreams they
 each own, with every task running as its owner and nothing of one user's reachable by the other
-except what was written to a shared resource.**
+except what was written to a shared resource or to org scope.**
 
-Org scope counts as shared. A worker flow may write there if that is how it is built to work,
-and the framework doesn't refuse it; the built-in worker flows keep a worker's own state out of
-it ([D3](DECISIONS.md#d3), [ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+A worker's own state and user-scoped data never cross users. Org scope is shared with the org by
+design: a worker flow may write there if that is how its author built it, the framework doesn't
+refuse it, and other members' runs read it. The built-in worker flows keep a worker's own state
+out of it ([D3](DECISIONS.md#d3), [ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
 
 | Is it the right goal? | |
 |---|---|
@@ -56,10 +57,10 @@ makes leg c's PASS mean something.
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's goal check ([FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797)), in Shift Manager over HTTP and a browser, on one `main` commit after every other child merges ([ER-28](BUSINESS-RULES.md#the-closure)) |
-| **Signal** | Leg a: Alice forks a standard worker, copies a template, and posts to a best-fit coordinator whose delegates she adds; her delegate answers, the routing is recorded, every session is hers. Leg b: Alice and Bob each own a workstream in one shared project; every session in each chain belongs to its owner, two of Alice's boards that hand rows to another flow each drain only their own, and the project view computes both. Leg c: Bob opens Alice's session, names her worker as a delegate, writes her entry, links a session to her worker: each refused. Alice in a second org sees none of her first org's workers, nor anything stored before FIX-1790. In leg b, Alice also makes a private project, and Bob can't list, open or read it ([Q2](DECISIONS.md#q2)) |
+| **Signal** | Leg a: Alice forks a standard worker, copies a template, and posts to a best-fit coordinator whose delegates she adds; her delegate answers, the routing is recorded, every session is hers. Leg b: Alice and Bob each own a workstream in one shared project; every session in each chain belongs to its owner, two of Alice's boards that hand rows to another flow each drain only their own, and the project view computes both. Leg c: Bob opens Alice's session, names her worker as a delegate, writes her entry, links a session to her worker: each refused. Leg c reaches only for a worker's own state and user-scoped data; a member reading what a worker flow wrote to org scope is not a failure. Alice in a second org sees none of her first org's workers, nor anything stored before FIX-1790. In leg b, Alice also makes a private project, and Bob can't list, open or read it ([Q2](DECISIONS.md#q2)) |
 | **Input** | Shift Manager (`packages/shift-manager`) on its standard install, converted to `WORKER.md`; two users of one org through the app's sign-in; a real model; a held-out post for the coordinator |
 | **Anti-game** | No asserting on a child's own tests. No worker, project or delegate seeded by a fixture: the users make each one through the app. No run with one user, and no request of Bob's sent under Alice's identity |
-| **Control that must fail** | The worker collection at org scope: leg c must FAIL. Today's `main`: all three legs FAIL |
+| **Control that must fail** | The worker collection at org scope, which puts a worker itself where every member reads it: leg c must FAIL. Today's `main`: all three legs FAIL |
 | **Milestone** | Leg c's worker steps and the control run early, on the commit FIX-1788 merges on, so the privacy fix is proved before the coordinator builds on it rather than last ([ER-30](BUSINESS-RULES.md#the-closure)) |
 
 ## What's in the box
@@ -135,7 +136,7 @@ widest window is three at once: projects, the chain and the library.
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** two users, a private roster
 each, one shared project with an owner per workstream, and nothing crossing except shared
-resources. If wrong: we rename the parts while a hire still reaches every member.
+resources and org scope. If wrong: we rename the parts while a hire still reaches every member.
 
 1. **[D1](DECISIONS.md#d1) · Nine refactor children after the inventory, and a closure, now.**
    If wrong: a refactor that rebuilds under in-flight work, or one nobody needed this year.

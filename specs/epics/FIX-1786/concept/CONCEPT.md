@@ -438,7 +438,7 @@ These terms are in today's code and docs, and go away in the refactor. Counts ar
 - [ ] **One coordinator** flow or two? Open. One flow if the styles share most of the flow, two if they diverge.
 - [X] **Where do a coordinator's delegates live?** Decided: in session state. Each session starts from the defaults in the coordinator's configuration and manages them from there, so the lock on standard workers never gets in the way.
 - [X] **Can the coordinator change its own delegates?** Decided: yes, in its session's state.
-- [ ] **The worker contract.** Recommend building on today's admission contract and door, and adding the private-state rule and a standard-only flag per flow.
+- [X] **The worker contract.** Decided ([Q1](../DECISIONS.md#q1)): today's admission contract and door, plus the private-state rule, on a list of worker flows the installation keeps, with standard-only set per entry on that list.
 - [ ] **Is a workstream a project entry plus its lead's workstream session?** Recommend yes. It needs no new flow, and its board is an ordinary session board. Store each workstream as its own resource under its project, and compute project progress from them.
 - [X] **How do long-lived sessions manage memory?** Moved to the memory epic, [FIX-1775](https://linear.app/fixpoint-labs/issue/FIX-1775/epic-memory-and-session-context-management), updated with what this doc found: what's kept word for word, when it summarizes, and what moves to the memory layers, configurable per flow and per worker.
 - [ ] **User-to-user communication.** Punted until we know we want it, and whether it belongs to the framework or the app.

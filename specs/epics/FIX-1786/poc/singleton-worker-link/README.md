@@ -61,6 +61,8 @@ engine shows up here as a red test.
 
 ## What it means
 
+Superseded by [D3](../../DECISIONS.md#d3) and FIX-1788: the link is a server-only session field set at create.
+
 - **The third Layer 1 change is needed.** Session state plus a user-scoped read stops other
   users (X1) but accepts a caller-seeded link to the caller's own other worker (O1). A row only
   flow code writes refuses that (O2) but outlives the session (R1). Neither holds ER-1.
