@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 What was considered, what was chosen, why, and what each choice locks in. Two decisions and one
-open question ([Q](#q), the split's scope) are the sign-off surface. The chain itself (tasks from delegates, a new task session per task, every
+answered question ([Q](#q), the split's scope) are the sign-off surface. The chain itself (tasks from delegates, a new task session per task, every
 session the owner's) is the PRD's and the epic's, and is not reopened here.
 
 ## The tree
@@ -120,7 +120,9 @@ the docs state the cost per level.
 ## Open
 
 <a name="q"></a>
-### Q · open · Does the split ship in this issue, or in a follow-up issue?
+### Q · answered · Does the split ship in this issue, or in a follow-up issue?
+
+**Answered (product owner, 2026-10-06): a follow-up issue, [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802).** This issue ships one level, and a task session's filing is refused. Wherever this spec reads "if Q moves the split", that branch holds. D2's limit, the breadth cap, goal leg b, BR-7, BR-30 to BR-32, S8, S10 and V6 are carried to FIX-1802 as written.
 
 **The fork.** A worker given a big task can split it: hand the pieces to its own delegates,
 wait for them, and finish from what they return. Build that here, or in a follow-up issue built
@@ -193,4 +195,4 @@ left.
   row like a notice, so a failed turn can't strand it; the wake marker written with the add; a
   breadth cap named beside D2.
 
-**Open: [Q](#q)**, the split's scope.
+**Open: none.** [Q](#q) is answered: the split moves to FIX-1802.

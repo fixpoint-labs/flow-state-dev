@@ -9,7 +9,7 @@
 | **asks their coordinator for work that has to be done, not just answered** | A coordinator can hand a post to a delegate, and files nothing ([FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791) left tasks here) | It files a task for one of its delegates. The task starts at once, in a new session of that delegate's, and nobody runs a list by hand |
 | **works in an org with other users** | A board is an org row. Whoever's request runs it claims its tasks, and the work runs as them | A board belongs to one conversation. Only its owner's requests run it, and every task under it runs as that owner |
 | **talks to one coordinator in two conversations** | n/a | Each conversation's board is its own. Running one never takes, shows or waits on the other's tasks |
-| **hands a big task to a worker that splits it** | The pieces go on a board any member can run | The worker files the pieces on its own task session's board, for its own delegates, up to five boards deep. Results come back up board by board. Here, or in a follow-up issue ([Q](DECISIONS.md#q)) |
+| **hands a big task to a worker that splits it** | The pieces go on a board any member can run | The worker files the pieces on its own task session's board, for its own delegates, up to five boards deep. Results come back up board by board. In the follow-up issue FIX-1802 ([Q](DECISIONS.md#q), answered) |
 | **has a task fail for good, or stop on a question** | Nobody hears unless they open the list | The conversation that filed it is told once, and the coordinator reassigns it, cancels it, or tells the person |
 | **builds an app on Workforce** | Finds a task's run through the board's run link only | Also finds it with `findWorkerSession({ worker, taskId, coordinatorSessionId })`, within the conversation that filed it |
 
@@ -53,7 +53,7 @@ the ledger isn't kept per conversation, and leg c must fail.
 | **Anti-game** | No drain from the check; no row, notice or session written by a fixture. Counts read again after 5 s. Leg c reads each conversation's own read, not the store |
 | **Control that must fail** | `GOAL_CONTROL=unpartitioned`: leg c FAILS on *each runs only its own*. `GOAL_CONTROL=no-follow-up`: legs a and e FAIL on *one notice*. Today's `main`: every leg FAILS |
 
-Leg b is the split. If [Q](DECISIONS.md#q) moves the split to a follow-up issue, leg b and the
+Leg b is the split. [Q](DECISIONS.md#q) moved the split to FIX-1802, so leg b and the
 two *not done if* entries about splits and depth move with it, and leg a adds one step: a
 delegate's task session that tries to file a piece is refused.
 
@@ -113,10 +113,10 @@ ending heard. If wrong: work runs as the right user while one conversation still
    board, so it binds once the epic records it, as its
    [D6](../../epics/FIX-1786/DECISIONS.md#d6) ([#2831](https://github.com/fixpoint-labs/flow-state-dev/pull/2831); ER-9, ER-22).
 2. **[D2](DECISIONS.md#d2) · A chain stops at five boards deep.** If wrong: a real chain refused,
-   or a limit that came too late to save the spend. Moves with the split if Q moves it.
+   or a limit that came too late to save the spend. Carried to FIX-1802 with the split (Q).
 
-**Open: [Q](DECISIONS.md#q) · does the split ship here, or in a follow-up issue?** Recommended:
-a follow-up. The epic's MVP check is met at one level, and the split is where review's hardest
+**Answered: [Q](DECISIONS.md#q) · the split ships in a follow-up issue, [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802)** (product owner,
+2026-10-06), as recommended. The epic's MVP check is met at one level, and the split is where review's hardest
 finding landed. If wrong: low and reversible either way. Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
