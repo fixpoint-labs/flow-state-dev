@@ -128,8 +128,8 @@ It comes down to the schema refusing an unsigned write: a convention can't, and 
   supplies, with non-empty lists; any refusal naming a contract key is a problem, so `seatId` as a
   number is refused at boot ([K1](poc/two-shapes/README.md#after-the-gate-2026-10-06)).
 - **Attribution is checked by behaviour.** A declared `writtenBy` must take a user, with or without
-  a worker, and refuse an entry with no user, on any resource that declares it
-  ([K2](poc/two-shapes/README.md#after-the-gate-2026-10-06)).
+  a worker, and refuse an entry with no user, a numeric user, or a worker that isn't a non-empty
+  string, on any resource that declares it ([K2, K6](poc/two-shapes/README.md#after-the-gate-2026-10-06)).
 - **The default comes first, then the flag.** A worker naming no flow is an `agent` worker; if
   `agent` is standard-only, a user's own worker is refused, naming `agent`.
 - **Replacing `agent` keeps the installation's flag**: under the list it is the entry's.
@@ -173,6 +173,8 @@ Settled by [the POC](poc/two-shapes/README.md); resolved, don't reopen:
 - **A shared resource's schema can enforce attribution** — **CONFIRMED**, R1–R2.
 - **Checks reading names hold the configuration and attribution requirements** — **REFUTED**, K1–K2
   on `f71b9b55b`: a wrong-typed `seatId` and four loose `writtenBy` fields passed. Fixed in the POC.
+  K6: a probe that only tested missing values also passed a numeric `userId` and an any-typed
+  `workerId`; the probe now tests malformed present values too.
 - **The helper's stamp can't be forged by flow code** — **REFUTED**, K3: a block writing directly
   stored another user's name. The promise is narrowed (D1).
 

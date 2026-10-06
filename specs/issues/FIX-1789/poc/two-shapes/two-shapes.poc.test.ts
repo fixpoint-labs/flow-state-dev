@@ -451,6 +451,24 @@ describe("K · the review findings on the merged checks, and the contract as dec
   });
 });
 
+  it("K6 a present but malformed writer is refused too: a numeric userId, or a workerId of any value", () => {
+    const loose = z.object({ userId: z.union([z.string().min(1), z.number()]), workerId: z.any().optional() });
+    const flow = defineFlow({
+      kind: "loose",
+      cardinality: "collection",
+      configSchema: workerConfigSchema(),
+      resources: { notes: looselySigned(loose) },
+      actions: door(echo)
+    });
+    // The loose field takes the two well-formed shapes and refuses a missing user, so only malformed values tell.
+    expect(loose.safeParse({ userId: "alice", workerId: "researcher" }).success).toBe(true);
+    expect(loose.safeParse({ workerId: "researcher" }).success).toBe(false);
+    expect(workerFlowProblems("loose", flow)).toEqual([
+      `flow "loose" declares \`writtenBy\` on "notes" (loose-notes/*), but not as the contract's field: it must require \`{ userId, workerId? }\` on every entry. Use sharedResource()`
+    ]);
+    expect(workerFlowProblems("scribe", asA.scribe)).toEqual([]);
+  });
+
   it("K5 shape A registers as decided: org-scoped state and today's agent register; configuration, door and attribution refuse at boot, naming each", () => {
     const withTasks = defineAgentWorkerFlow({ taskLists: ["support-help-board"] }) as unknown as AnyFlow;
     const list = A.registerWorkerFlows({ leaky: asA.leaky, scribe: asA.scribe }, withTasks);

@@ -153,13 +153,25 @@ function declaredAttribution(resource: any): z.ZodTypeAny | undefined {
 
 /** What the contract's field must accept, and what it must refuse. */
 const ATTRIBUTION_ACCEPTS = [{ userId: "alice" }, { userId: "alice", workerId: "researcher" }];
-const ATTRIBUTION_REFUSES = [undefined, null, {}, { workerId: "researcher" }, { userId: "" }, "alice"];
+const ATTRIBUTION_REFUSES = [
+  undefined,
+  null,
+  {},
+  "alice",
+  { workerId: "researcher" },
+  { userId: "" },
+  // Present but malformed (leg K6): a writer of the wrong type, or a worker that isn't a non-empty string.
+  { userId: 7 },
+  { userId: "alice", workerId: 7 },
+  { userId: "alice", workerId: "" }
+];
 
 /**
  * 3a · Is every declared `writtenBy` the contract's complete field?
  *
- * Read off the field's behaviour, not its name (leg K2): it must take a
- * user, with or without a worker, and refuse an entry with no user. Applies to
+ * Read off the field's behaviour, not its name (legs K2, K6): it must take a
+ * user, with or without a worker, and refuse an entry with no user, a user
+ * that isn't a non-empty string, or a worker that isn't one. Applies to
  * any resource that declares the field, whatever its scope.
  */
 export function attributionProblems(kind: string, flow: AnyFlow): string[] {

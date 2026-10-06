@@ -93,7 +93,7 @@ If a flow, B's placement is right and its costs are the price.
 
 The spec merged before its first review round was folded. Codex found three gaps in the shared
 checks on [#2811](https://github.com/fixpoint-labs/flow-state-dev/pull/2811); Jake decided Q2 the
-other way from the recommendation. Six legs were added, on `f71b9b55b`. **25 passed** after the
+other way from the recommendation. Seven legs were added, on `f71b9b55b`. **26 passed** after the
 fixes. Before them, K1 and K2 failed: the merged checks returned no problem for any of their flows.
 
 | Leg | Question | Observed |
@@ -104,12 +104,13 @@ fixes. Before them, K1 and K2 failed: the merged checks returned no problem for 
 | K3 | Flow code writing a shared entry directly with `writtenBy: { userId: "bob" }` while alice runs | **Stored, naming bob.** The stamp is the helper's, not the store's. Attribution is as trustworthy as the registered flow's code |
 | K4 | The contract as decided (Q2): configuration, one door, complete attribution where declared | Today's `agent`, with and without a mailbox board, and the `leaky` flow all pass: org scope is not refused. Configuration and door verdicts are the same as before |
 | K5 | Shape A registering as decided, through `list.ts` | `leaky` and today's `agent` with a mailbox board register. A doorless flow, a flow missing the configuration and a loose `writtenBy` are refused in one boot error |
+| K6 | `writtenBy` as `{ userId: string or number, workerId: any }` | **Admitted by the K2 probe**, which tested only missing values (Codex on #2814). Now refused: the probe also tries a numeric `userId`, a numeric `workerId` and an empty `workerId` |
 
 **Two groups, one story.** `list.ts` now registers with `workerFlowProblems`, the decided contract.
 The S, T, H, G, F and R legs sit in an "as gated" group that passes the superseded
 `preQ2ContractProblems` explicitly, so they still read as they were run at the gate. Their
-org-scope refusals (S2, G1, G4) are evidence of that check, not of the decided contract; K4 and K5
-are the decided behaviour.
+org-scope refusals (S2, G1, G4) are evidence of that check, not of the decided contract; K4, K5
+and K6 are the decided behaviour.
 
 **`configProblem` is evidence only.** It reads the refusal by parsing thrown message strings. Don't
 lift it: S1 shares `admissionHint`'s reading and parses the schema's result directly.

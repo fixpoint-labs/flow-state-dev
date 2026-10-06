@@ -133,8 +133,8 @@ fail every hire, or call attribution unforgeable when flow code can write its ow
    migration.
 
 Q2 narrows the epic's [ER-2 and ER-11](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt):
-privacy covers a worker's own state and user-scoped data, not org scope, and attribution is as
-trustworthy as the registered flow's code. The epic amendment
+privacy is not a registration check, a custom worker flow's privacy is its author's, and
+attribution is only as trustworthy as the registered flow's code. The epic amendment
 [#2813](https://github.com/fixpoint-labs/flow-state-dev/pull/2813) records Q1 and Q2 together
 ([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)); D3 stays at three Layer 1
 changes. Implementation waits for #2813 and this amendment to merge.

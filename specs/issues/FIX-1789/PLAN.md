@@ -41,7 +41,7 @@ either way. Land it before VG, which reads the drawer's cells.
 | ID | Runs after | Passes when |
 |---|---|---|
 | V0 | — | Before S2: run S1 over every worker-flow map in the repo (find them by `hireWorkforce(`, `createSeatHireCapability(`, `workerFlows:` and `kinds:`, skipping the mailbox `kinds` in `mailbox/` and `mailboxInstances`; kitchen-sink, Shift Manager's DevForce lab and the `goals/workforce-*` hosts at least). Record each failing flow in the PR; each is fixed here or named in a follow-up |
-| V1 | S1 | BR-2 to BR-5, each with the flow named. A flow hand-declaring the six keys passes, as today; one naming them with a type no hire supplies is refused (K1); each loose `writtenBy` of K2 is refused |
+| V1 | S1 | BR-2 to BR-5, each with the flow named. A flow hand-declaring the six keys passes, as today; one naming them with a type no hire supplies is refused (K1); each loose `writtenBy` of K2 and K6 is refused |
 | V2 | S2 | BR-7: two bad flows give one error naming both, and nothing is minted. BR-6: a flow keeping org data of its own registers. BR-10 |
 | V3 | S3 | BR-13 and BR-14, through the default and directly; BR-16, flag kept across a replacement |
 | V4 | S4 | BR-15: the row is reported `refused` and the stored value is byte-identical after boot |
@@ -98,7 +98,7 @@ any other org write:                 allowed (Q2)
 ```
 
 **POC:** [`poc/two-shapes/`](poc/two-shapes/README.md), `bash specs/issues/FIX-1789/poc/two-shapes/run.sh`,
-19 legs on `fbecfe6f2` and 6 more after the gate on `f71b9b55b`, 25 passing. It built both shapes on
+19 legs on `fbecfe6f2` and 7 more after the gate on `f71b9b55b`, 26 passing. It built both shapes on
 one set of checks. It showed they refuse the same flows; the wrapper refuses a hand-built flow and
 can't hold an installation's standard-only policy; today's `agent` fails as gated; and the org
 record leaks with nothing declared, which raised Q2. After the gate, the K legs showed checks reading
@@ -137,7 +137,7 @@ and fold it back, per the challenger discipline in `issue-implement`.
 
 ## Follow-ups
 
-- The POC's legs map onto V1 (its S legs, K1 and K2), V2 (K5), V6 (G), V3 (F), and V5 (R1, R2, K3). Rewrite
+- The POC's legs map onto V1 (its S legs, K1, K2 and K6), V2 (K5), V6 (G), V3 (F), and V5 (R1, R2, K3). Rewrite
   them under `tdd`; don't copy the experiment.
 - A `defineWorkerFlow()` authoring helper over the list, with no mark, stays available as a later
   additive change.
