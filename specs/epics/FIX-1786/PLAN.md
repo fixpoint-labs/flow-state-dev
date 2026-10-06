@@ -20,12 +20,12 @@ privacy fix is checked when workers merges, not only at the end (ER-30). The gra
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
 | **FIX-1787** inventory | inventory, no spec | Every open PR and active issue in the areas | 38 calls: 13 merge first, 13 close, 12 untouched | Every refactor child | Done as a table; its merges are the work |
-| **FIX-1789** contract | spec → impl PR | `workerConfigSchema()`, the door · Q1 | Registered worker flows, the private-state rule, standard-only, attribution; a worker's configuration as stored data read per run (ER-2, ER-11) | FIX-1788 | Small |
+| **FIX-1789** contract | spec → impl PR | `workerConfigSchema()`, the door · Q1, settled in its spec on a POC of both shapes | Registered worker flows, the private-state rule, standard-only, attribution; a worker's configuration as stored data read per run (ER-2, ER-11) | FIX-1788 | Small, plus the two-shape POC |
 | **FIX-1790** per-org data | spec → impl PR | The engine's user key | User data per (user, org); old records moved to the one org they belong to by an operator step, or refused, never read in two (ER-3) | FIX-1788 | Medium: a persisted key every flow uses, and its migration |
 | **FIX-1788** workers | spec → impl PRs | ER-2 · ER-3 · projected collections | Worker resources on singleton flows, standard projection, fork, deprecations; the session link in server-owned session state (D3's third change); a worker's own key for its private state, with today's per-seat cells moved (ER-1) | FIX-1791 · FIX-1795 | Large |
 | **FIX-1791** coordinator | spec → impl PRs | ER-1 · FIX-1779's join and leave · FIX-1774's legs | The coordinator flow, delegates, four policies, the records (ER-4, ER-5); the chief of staff as a standard coordinator | FIX-1793 · FIX-1794 · FIX-1792 | Medium to large |
 | **FIX-1795** library | spec → impl PR | ER-1's write path | Templates and copies, model variants (ER-10) | FIX-1796 | Medium |
-| **FIX-1793** projects | spec → impl PRs | ER-4 · ER-3 · FIX-1762's locks · Q2 | Shared projects, and private ones if Q2 holds; workstream resources, the row rule, the project coordinator; rooms and Shift Manager's Stream tab removed (ER-7, ER-8) | FIX-1792 | Large: about 2,200 lines out, one engine rule in |
+| **FIX-1793** projects | spec → impl PRs | ER-4 · ER-3 · FIX-1762's locks · Q2 | Private and shared projects (Q2); workstream resources, the row rule, the project coordinator; rooms and Shift Manager's Stream tab removed (ER-7, ER-8) | FIX-1792 | Large: about 2,200 lines out, one engine rule in |
 | **FIX-1794** chain | spec → impl PR | ER-4's delegates · FIX-1778 · FIX-1780's hand-off rule · FIX-1777's rule | Tasks down the owner's boards, drained as the owner; a board whose rows cross a flow stays its own board, never one ledger for the owner's sessions (ER-9) | FIX-1796 | Medium; larger if that needs a task-board change |
 | **FIX-1792** `WORKER.md` | spec → impl PR | ER-4 · ER-7 · D5 | 33 files converted, 15 boards resolved, old files refused (ER-6) | FIX-1796 | Medium |
 | **FIX-1796** terms | spec → impl PRs | Every child merged | The sweep and the glossary (ER-12) | The closure run | Medium, wide and mechanical |
@@ -49,8 +49,9 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
 5. **FIX-1792, FIX-1794 and FIX-1795 merge** → FIX-1796. It merges → the closure's first run.
 6. **A run finds bugs** → each is a child that blocks FIX-1797, and the whole plan reruns on a
    fresh `main` commit once they merge (ER-27).
-7. **If Jake answers Q2 "no"** → FIX-1793 drops private projects and leg b drops its
-   private-project step; nothing re-sequences.
+7. **If FIX-1793's spec finds private projects cost the MVP much more than a scope
+   configuration**, it raises that at its gate; dropping them is an amendment here that takes
+   out leg b's private-project step with them (Q2). Nothing re-sequences.
 
 ## Coordination seams to watch
 
@@ -67,9 +68,9 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
 
 ## Not children, deliberately
 
-FIX-1763 and its children, whose fences Q2 settles · FIX-1650 and its children, which land
+FIX-1763 and its children, whose org-level project fence Q2 lifted · FIX-1650 and its children, which land
 first and get an evolution note · FIX-1775, long-lived memory · FIX-1778, consumed · FIX-1762's
-stack, consumed · FIX-1765 and FIX-1764, specced after FIX-1791 · FIX-1745, obsolete when rooms
+stack, merged and consumed · FIX-1765 and FIX-1764, specced after FIX-1791 · FIX-1745, obsolete when rooms
 go · FIX-1766, FIX-1767 and FIX-1768, carried into FIX-1793's spec · FIX-1798, which removes flow
 instances and owner pins from the engine; FIX-1788 blocks it, and each deprecation marker names it.
 

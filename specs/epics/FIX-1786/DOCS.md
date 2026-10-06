@@ -8,18 +8,13 @@ what Workforce does, never what it used to do. Each child's own `DOCS.md` carrie
 
 ## UPDATE · `apps/docs/docs/workforce/overview.md` · opening and "What a Workforce app looks like"
 
-Private projects publish only if [Q2](DECISIONS.md#q2) holds, as in
-[ER-7](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt). The `{if Q2: …}` phrase below,
-and the figure's private projects, are that half. If Q2 is answered no, the publisher drops
-both and the paragraph reads without them.
-
 > # Workforce
 >
 > `@flow-state-dev/workforce` gives each user a roster of workers: agents, or deterministic
 > workflows, that work for that user and act as them.
 >
 > One rule covers who sees what. Everything is private to one user, and the only shared
-> things are shared resources. Your workers{if Q2: , your private projects} and every session
+> things are shared resources. Your workers, your private projects and every session
 > are yours alone. A shared project, its workstream entries and the org's worker library are
 > shared, and each line written there names the user and the worker that wrote it.
 >
