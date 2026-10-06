@@ -12,7 +12,7 @@ step or report line that shows the rule held.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | QR-1 | Any child of FIX-1786 other than FIX-1795 is not merged (every PR of a multi-PR child), or CI is red on `main` | No final run. Each blocks this issue in Linear | Linear · the report lists each merge commit |
-| QR-2 | FIX-1788's last PR merges | The coordinator dispatches the milestone run on that merge commit ([D1](DECISIONS.md#d1)). It is the only run before QR-1 holds | The milestone report names the commit |
+| QR-2 | FIX-1788's last PR merges | The coordinator dispatches the milestone run on that merge commit ([D1](DECISIONS.md#d1)), with the milestone's own steps, which use only what that commit has. It and its reruns (QR-15) are the only runs before QR-1 holds | The milestone report names the commit |
 | QR-3 | A child joins FIX-1786 mid-run, a finding included | It blocks this issue ([ER-27](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)); the run in flight opens no closure PR | The epic wake |
 | QR-4 | QR-1 holds | One `main` commit is picked, and every check in parts 1 to 4 runs against it | Every verdict row carries that SHA |
 | QR-5 | Someone wants the check outside a closure | It runs on demand only: at this closure, and at the closure of each later epic that touches workers, coordinators or projects. Not a CI gate, no schedule: it rests on a real model with no retry | `goal.md` |
@@ -26,8 +26,8 @@ step or report line that shows the rule held.
 | QR-8 | A run starts | It owns its store files, each created fresh: one for legs a and b across their restarts, one for leg c, one per control, one for c7's old store, one for J1. No step reads another's file. All are deleted when the run ends | The report names each file and its steps |
 | QR-9 | A step makes a change | Through the app ([D2](DECISIONS.md#d2)): the screen, else a coordinator turn, else the app's own action as that user. Never a store write, a fixture or a block the check calls | The report tags each step's surface |
 | QR-10 | A model turn is graded | Once. A miss is a finding, quoting the turn's tool calls and results by item id. A provider error re-runs that one turn and is reported | Report |
-| QR-11 | A control runs | On its own scratch patch over a copy of the commit, over a fresh store; today's `main` is `cad4e2780`, its own checkout and build | Each patch in full, each SHA |
-| QR-12 | c7 runs | On a store `cad4e2780` wrote with Alice's records in it, upgraded only by the steps the published docs give | The steps, quoted from the page |
+| QR-11 | A control runs | On its own scratch patch over a copy of the commit, over a fresh store. The pre-epic baseline control is its own checkout and build of the commit before the first child's implementation merged, which the run resolves and records; it has its own expectation ([PLAN → Controls](PLAN.md#controls)) | Each patch in full, each SHA, the baseline's resolved SHA |
+| QR-12 | c7 runs | On a store the pre-epic baseline wrote with Alice's records in it, upgraded only by the steps the published docs give | The steps, quoted from the page |
 
 ## What happens to a finding
 
@@ -35,7 +35,7 @@ step or report line that shows the rule held.
 |---|---|---|---|
 | QR-13 | A step, a control, a part-3 check or a *required* part-4 row fails | Filed through `issue-manager` as a Bug (a Feature for a missing capability), under FIX-1786, blocking this issue | Linear |
 | QR-14 | A finding matches an open issue | The closure worker wires it: under FIX-1786 (or `relates-to` if it has another parent), blocking this issue | Linear |
-| QR-15 | The milestone run files a finding | It also blocks FIX-1791 and FIX-1795, and the coordinator offers neither as ready to merge while it is open | Linear · the epic wake |
+| QR-15 | The milestone run files a finding | It also blocks FIX-1791 and FIX-1795. When its fix merges, the coordinator dispatches the milestone again on that merge commit. FIX-1791 and FIX-1795 stay blocked, and the coordinator offers neither as ready to merge, until a rerun files nothing; closing the bug alone releases neither | Linear · the rerun's report names the fix commit |
 | QR-16 | An older check is red, or deleted with no line naming what replaced it ([D3](DECISIONS.md#d3)) | A finding against the child whose PR touched what the check asserts | P3.9 |
 | QR-17 | A promised screen is missing or broken | A finding against the child that promised it; an unpromised one is an observation ([D2](DECISIONS.md#d2)) | Report |
 | QR-18 | J1 hits a step the docs don't cover | A failed step, reason *doc silent*: QR-13 | J1 |
@@ -51,7 +51,8 @@ control that fails at setup, or reddens a step it doesn't name, is a finding aga
 
 ## Acceptance criteria this issue owns
 
-The milestone run on FIX-1788's merge commit files nothing, or its findings are fixed. Then one
+The milestone run on FIX-1788's merge commit files nothing, or reruns on each fix's merge commit
+until it does. Then one
 final run on one `main` commit files nothing: legs a to c pass and each control fails its step,
 J1 passes, part 3 passes with every older check green or retired with its line, and every
 required part-4 row holds (QR-21).

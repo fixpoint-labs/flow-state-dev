@@ -9,7 +9,7 @@
 | **decides whether the epic is done** | Eight children, each green on its own commit and its own fixture | One report on one `main` commit: legs a to c in Shift Manager with two users, each control's FAIL, the app-builder journey, every child's check, every older check the epic touched, the seam sweep, each finding and its retest |
 | **runs an org with a second user** | Each child proves its own refusals; nothing proves them together, or before others build on the worker fix | Proven: Bob opening, reading, linking, delegating to or writing anything of Alice's is refused, and Alice in a second org sees none of it, first when FIX-1788 merges and again at the end |
 | **wants a worker of their own, handing work between workers** | Nothing proves a fork and a coordinator act as their owner end to end | Proven with a real model: Alice forks a standard worker, puts it under her best-fit coordinator, and the answer, the routing record and every session are hers |
-| **runs a project with others** | Nothing proves two owners in one project stay apart | Proven: Alice and Bob each own a workstream; every task session in each chain is its owner's; Bob can't reach Alice's private project |
+| **runs a project with others** | Nothing proves two owners in one project stay apart | Proven: Alice and Bob each own a workstream; every session in each owner's hand-off, and every task session, is its owner's; Bob can't reach Alice's private project |
 | **builds an app on Workforce** | Nothing tells them whether the docs are enough | Proven: a writer who read only the published pages registers a worker flow and a coordinator, and the two-user checks hold on it |
 
 ## The goal, and how we'll know it's met
@@ -38,7 +38,7 @@ flowchart LR
   A -->|"answer, record, every session hers"| P["PASS · the epic's goal is met"]
   B -->|"each chain runs as its owner"| P
   C -->|"refused every time"| P
-  X["controls · org-scoped-workers · unpartitioned · no-roster-check · today's main"] -.-> A
+  X["controls · org-scoped-workers · unpartitioned · no-roster-check · pre-epic baseline"] -.-> A
   X -.-> B
   X -.-> C
   P -.->|"under each control, its own step"| F["must FAIL · names the step"]
@@ -49,12 +49,12 @@ breaks one leg at its own step.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/workforce-privacy/two-users-share-a-project-and-nothing-else/`, on a production build of the one commit: legs a to c, then the controls. The milestone runs leg c's worker steps on FIX-1788's merge commit ([D1](DECISIONS.md#d1)). Committed by the closure PR. On demand, not a CI gate ([QR-5](BUSINESS-RULES.md#when-a-run-may-start)) |
-| **Signal** | Per step in [PLAN.md → Checks](PLAN.md#checks). a: a fork on Alice's roster only; one delivery to it, a `best-fit` record, its answer on screen, every new session Alice's. b: two workstreams, one per owner, every task session in each chain its owner's, two boards each draining only its own; Bob can't list her private project. c: each of Bob's reaches refused; Alice in a second org sees nothing of the first, nor a record stored before FIX-1790 |
+| **Goal check** | `goals/workforce-privacy/two-users-share-a-project-and-nothing-else/`, on a production build of the one commit: legs a to c, then the controls. The milestone runs its own form of leg c's worker steps, limited to what FIX-1788's merge commit has, and reruns on each fix's commit ([D1](DECISIONS.md#d1)). Committed by the closure PR. On demand, not a CI gate ([QR-5](BUSINESS-RULES.md#when-a-run-may-start)) |
+| **Signal** | Per step in [PLAN.md → Checks](PLAN.md#checks). a: a fork on Alice's roster only; one delivery to it, a `best-fit` record, its answer on screen, every new session Alice's. b: two workstreams, one per owner, every session of each owner's hand-off its owner's, two boards each draining only its own, one level of hand-off (no delegate splits); Bob can't list her private project. c: each of Bob's reaches refused; Alice in a second org sees nothing of the first, nor a record stored before FIX-1790 |
 | **Model** | Real (`openai/gpt-5.4-mini`): every coordinator turn and every answer. Graded once, never retried |
-| **Input** | Shift Manager's DevTeam install as the children leave it; Alice and Bob through their own verified bearers; a fresh store per leg group and per control; for c7, a store `cad4e2780` wrote. Every name and ask picked at run time |
+| **Input** | Shift Manager's DevTeam install as the children leave it; Alice and Bob through their own verified bearers; a fresh store per leg group and per control; for c7, a store the pre-epic baseline wrote (the commit before the first child's implementation merged, resolved by the run). Every name and ask picked at run time |
 | **Anti-game** | No assertion on a child's output or on Shift Manager's state. Nothing seeded: every change goes through the app ([D2](DECISIONS.md#d2)). Bob's requests carry Bob's bearer only |
-| **Control that must fail** | `org-scoped-workers` (the worker collection at org scope): c2 FAILS, *Bob reads Alice's worker*. `unpartitioned`: b4 FAILS. `no-roster-check`: c4 FAILS. Today's `main` (`cad4e2780`): a2, b2 and c2 FAIL |
+| **Control that must fail** | `org-scoped-workers` (the worker collection at org scope): c2 FAILS, *Bob reads Alice's worker*. `unpartitioned`: b4 FAILS. `no-roster-check`: c4 FAILS. The pre-epic baseline: each leg FAILS where it lacks the epic's work, c2 on its merits ([PLAN → Controls](PLAN.md#controls)) |
 
 Part 2 walks the one team the legs don't: someone building an app on Workforce. Part 3 re-runs
 every child's check and every older check the epic touched ([D3](DECISIONS.md#d3)). Part 4
@@ -83,7 +83,7 @@ real model, three legs, a milestone at FIX-1788, every check the epic touched, o
 wrong: the epic wraps on checks that never met each other, or waits on a bar nobody asked for.
 
 1. **[D1](DECISIONS.md#d1) · The milestone run is its own dispatch on FIX-1788's merge commit,
-   made by the epic coordinator; its findings hold FIX-1791 and FIX-1795.** If wrong: the
+   made by the epic coordinator; its findings hold FIX-1791 and FIX-1795 until it reruns green.** If wrong: the
    coordinator and projects build on a privacy fix nobody checked in the app.
 2. **[D2](DECISIONS.md#d2) · "Through the app" means the screen where Shift Manager draws one,
    else a coordinator turn, else the app's own action as that user; a missing screen is a

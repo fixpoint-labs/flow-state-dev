@@ -26,13 +26,13 @@ flowchart TD
 Solid edges are what was chosen. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · The milestone run is its own dispatch on FIX-1788's merge commit, made by the epic coordinator; its findings hold FIX-1791 and FIX-1795
+## D1 · The milestone run is its own dispatch on FIX-1788's merge commit, made by the epic coordinator; its findings hold FIX-1791 and FIX-1795 until it reruns green
 
 | | |
 |---|---|
 | **Instead of** | (a) Counting FIX-1788's own goal check as the milestone. (b) Running leg c only in the final run |
 | **Because** | ER-30 asks for leg c's worker steps *in Shift Manager with two users*, on the commit FIX-1788 merges on. FIX-1788's check runs a goal-local tree over HTTP with two hosts: it proves the store refuses, not that the app a person signs into does. (b) is what ER-30 was written to stop: the coordinator, the chain and projects build on the privacy fix, so a hole found at the end is found under three children. Nothing in the epic wake fires on another child's merge, and this issue is blocked by every child, so the run happens only if the coordinator dispatches it |
-| **Locks in** | One coordinator action no workflow automates: on the wake that sees FIX-1788's last PR merge, dispatch this issue's worker with a bounded *milestone* assignment naming that merge commit. It opens no PR, so the blocked-by relations don't hold it. It runs [the milestone steps](PLAN.md#the-milestone) and the `org-scoped-workers` control, posts its report on FIX-1797 and on FIX-1788's last PR, and pushes its code to `fix/FIX-1797` for the final run to extend. A failure is a Bug child of FIX-1786 that blocks FIX-1791, FIX-1795 and this issue, and the coordinator offers neither as ready to merge while it is open |
+| **Locks in** | A coordinator action no workflow automates: on the wake that sees FIX-1788's last PR merge, dispatch this issue's worker with a bounded *milestone* assignment naming that merge commit. It opens no PR, so the blocked-by relations don't hold it. It runs [the milestone's own steps](PLAN.md#the-milestone), written for what that commit has (worker sessions and the app's own actions; no coordinator, no fork screen), and the `org-scoped-workers` control, posts its report on FIX-1797 and on FIX-1788's last PR, and pushes its code to `fix/FIX-1797` for the final run to extend. A failure is a Bug child of FIX-1786 that blocks FIX-1791, FIX-1795 and this issue. When its fix merges, the coordinator dispatches the milestone again on that commit, and releases FIX-1791 and FIX-1795 only on a rerun that files nothing ([QR-15](BUSINESS-RULES.md#what-happens-to-a-finding)) |
 
 **What would change my mind:** the epic wake gaining a milestone hook, or FIX-1791 merging before
 FIX-1788. Then the hook fires it, or the milestone folds into the final run with a line in the
@@ -70,8 +70,8 @@ It comes down to the promise: browser-only grades screens nobody promised.
 | | |
 |---|---|
 | **Instead of** | (a) Re-running only the children's own checks, as the closure rule's item 3 asks. (b) The closure rewriting the broken ones |
-| **Because** | Mailboxes, rooms and hires go away. A keyword grep on today's `main` finds about two dozen goal directories that touch them, FIX-1650's closure check among them (it asserts a room). [FIX-1788 S15](../FIX-1788/PLAN.md#surfaces) owns this for its own part; nothing owns it for the set. (a) leaves checks on `main` that prove earlier epics and can't pass, or were deleted with no record. (b) is product work in the closure, which the closure rule forbids |
-| **Locks in** | Part 3 also runs [P3.9](PLAN.md#part-3--every-childs-check-and-every-older-check-the-epic-touched): every goal directory, computed on the commit, whose code reaches Workforce, the task board or Shift Manager. Each passes, or was retired by a child: deleted, or its `goal.md` marked retired, in a PR whose body names the rule that replaces it. A check left red, or gone with no line, is a finding against the child whose PR touched what it asserts. The epic's children learn this at their own PRs, not here: the coordinator passes it on |
+| **Because** | Mailboxes, rooms and hires go away. A keyword grep on `main` as this was written finds about two dozen goal directories that touch them, FIX-1650's closure check among them (it asserts a room). [FIX-1788 S15](../FIX-1788/PLAN.md#surfaces) owns this for its own part; nothing owns it for the set. (a) leaves checks on `main` that prove earlier epics and can't pass, or were deleted with no record. (b) is product work in the closure, which the closure rule forbids |
+| **Locks in** | Part 3 also runs [P3.9](PLAN.md#part-3--every-childs-check-and-every-older-check-the-epic-touched): every goal directory, computed on the pre-epic baseline and the commit together so a deleted one stays in scope, whose code reaches Workforce, the task board or Shift Manager. Each passes, or was retired by a child: deleted, or its `goal.md` marked retired, in a PR whose body names the rule that replaces it. A check left red, or gone with no line, is a finding against the child whose PR touched what it asserts. The epic's children learn this at their own PRs, not here: the coordinator passes it on |
 
 **What would change my mind:** the owner saying an earlier epic's checks may lapse, with one line
 in the wrap. Then P3.9 only lists them.
@@ -91,9 +91,15 @@ It comes down to who repairs it: nobody under children-only, and the closure may
 - **Alice is the DevTeam owner and Bob its second member.** Alice's second org uses the install's
   own second-org principal if the commit has one (FIX-1793's check needs one); otherwise a scratch
   patch adds one bearer for her, printed.
-- **Today's `main` is `cad4e2780`**, the commit before the first refactor child's implementation
-  merged (#2827, FIX-1793's P1). It is the FIX-1796 census's own "before" commit too.
-- **c7 runs on a store `cad4e2780` wrote**, upgraded by the published operator steps (FIX-1790,
+- **The pre-epic baseline is a role, not a pinned SHA:** the commit before the first child's
+  implementation merged. The run resolves it (the first parent of the earliest merge on `main`
+  of a FIX-1786 child's implementation PR) and records the resolved SHA in the report. It is the
+  "before" for c7's old store, the baseline control, P3.9's union and part 4's diff, and the
+  FIX-1796 census's own "before" too.
+- **The baseline control keeps its own expectation**, not the scratch-patch rule: each leg must
+  fail where the baseline lacks the epic's work, c2 on its merits ([PLAN → Controls](PLAN.md#controls)).
+  Kept rather than dropped, because the epic's goal names it and no named control touches leg a.
+- **c7 runs on a store the pre-epic baseline wrote**, upgraded by the published operator steps (FIX-1790,
   FIX-1788's upgrade). It is also the only place an operator's upgrade is walked end to end.
 - **The app-builder journey is a docs-only writer**, as [FIX-1720's D3](../FIX-1720/DECISIONS.md#d3)
   set: a step no page covers is a failed step, reason *doc silent*.
@@ -123,3 +129,8 @@ anything rests on.
   made through the app; a milestone run of leg c dispatched on FIX-1788's merge; the older checks
   the epic breaks held to rewrite-or-retire by the child that broke them; the app-builder journey
   from the docs alone.
+- **Review round 1** — the milestone got its own steps, limited to what FIX-1788's merge has, and
+  a rerun on each fix's commit before FIX-1791 and FIX-1795 are released (D1). The pre-epic
+  baseline became a role the run resolves, with its own control expectation. P3.9's list became
+  the union of the baseline and the final tree (D3). Leg b asks no delegate to split a task,
+  since FIX-1794 ships one level of hand-off.
