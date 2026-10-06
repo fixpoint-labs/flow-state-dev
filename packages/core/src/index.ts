@@ -548,3 +548,7 @@ export {
   harnessRunHandleSchema,
   harnessRunInputSchema,
 } from "./types/harness";
+
+/** The allowlisted environment for a harness's child process. */
+export { harnessEnv } from "./helpers/harness-env";
+export type { HarnessEnvOptions } from "./helpers/harness-env";
