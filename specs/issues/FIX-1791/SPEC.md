@@ -47,7 +47,7 @@ never the reply's prose. Under the dashed control, Bob's worker must land on Ali
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/coordinators/hands-each-post-to-its-delegates/` · `openai/gpt-5.4-mini` for legs a to d, scripted delegates and evaluator for leg e · Shift Manager over HTTP with two users · run by the implementer at completion · verdict in the last implementation PR |
-| **Signal** | **a**: Alice asks the chief of staff for work her `eng.em` delegate does, with a held-out word: zero hires, one delivery to `eng.em` carrying the word, one `by: judgment` record, its session opens within 120 s. **b**: the same ask again: still zero hires, and a second delivery, to `eng.em` again. **c** ("audit our dependencies' licenses"): one hire on Alice's roster, added to this conversation's delegates, one delivery to it; asked again, no second hire and a delivery to the same worker. **d**: Alice adds one delegate and removes one in the app; asked who its delegates are, the coordinator calls its delegate read, the output equals the session's list, and the reply names exactly those. **e**: best fit holds a follow-up and falls back on a failed call; after its fallback is removed, a failed call is recorded `unplaced`; round robin alternates over three posts; everyone with a limit of one gives four answers, then none; a redelivered post adds none. **f**: Bob's worker, named in the app and through the tool, is refused like a missing worker; a session create carrying delegates is refused |
+| **Signal** | **a**: Alice asks the chief of staff for work her `eng.em` delegate does, with a held-out word: zero hires, one delivery to `eng.em` carrying the word, one `by: judgment` record, its session opens within 120 s. **b**: the same ask again: still zero hires, and a second delivery, to `eng.em` again. **c** ("audit our dependencies' licenses"): one hire on Alice's roster, added to this conversation's delegates, one delivery to it; asked again, no second hire and a delivery to the same worker. **d**: Alice adds one delegate and removes one in the app; asked who its delegates are, the coordinator calls its delegate read, the output equals the session's list, and the reply names exactly those. **e**: best fit holds a follow-up and falls back on a failed call; after its fallback is removed, a failed call goes to the coordinator's judgment turn, recorded `by: judgment`, and is recorded `unplaced` only when that turn fails too; round robin alternates over three posts; everyone with a limit of one gives four answers, then none; a redelivered post adds none. **f**: Bob's worker, named in the app and through the tool, is refused like a missing worker; a session create carrying delegates is refused |
 | **Input** | The DevTeam standard install, its chief of staff converted; two users through sign-in; a goal-local coordinator with two scripted workers for leg e. Asks and words held out at run time |
 | **Anti-game** | No delegate seeded by a fixture; every change goes through the app or the tool. Leg d grades tool output against state, not prose. Answer counts are read again after a grace period |
 | **Control that must fail** | `GOAL_CONTROL=no-roster-check`: leg f FAILS on *Bob's worker is a delegate*. `GOAL_CONTROL=no-round-limit`: leg e FAILS on *four answers, then none*. `GOAL_CONTROL=no-delegate-read`: leg d FAILS on *the reply equals the list*. Today's `main`: every leg FAILS |
@@ -143,9 +143,10 @@ answers.
    coordinator's configuration sets it, at most three.** A post then costs at most
    delegates × (rounds + 1) delegate turns, 100 at the caps. If wrong: group chats nobody can
    turn on per coordinator, or a cost per post nobody bounded.
-3. **[D2](DECISIONS.md#d2) · Best fit's fallback is one of the conversation's delegates;
-   removing it leaves posts it can't place recorded and told, never refused.** If wrong: a
-   user's post sits unanswered after a removal they thought was harmless.
+3. **[D2](DECISIONS.md#d2) · A post best fit can't place goes to the fallback delegate if one
+   is set, otherwise to the coordinator's own judgment turn; removing the fallback is never
+   refused.** Amended after merge (epic D8). If wrong: a model turn per miss nobody priced, or a
+   post that sits unanswered.
 
 **Open:** none. Q1 moves scope between two of the epic's children, so its answer binds the set
 once a follow-up epic PR records it ([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)).

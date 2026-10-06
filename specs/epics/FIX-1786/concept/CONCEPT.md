@@ -15,7 +15,7 @@
 > `transcript:` key below isn't either ([decided in review](../DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)).
 > The boards are per [D5](../DECISIONS.md#d5) and [ER-9](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt). A worker's
 > configuration is stored data a flow reads per run ([ER-2](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
-> The counts are 33 files and 15 boards today.
+> The counts are 33 files and 16 boards, in 15 of them, today.
 
 *Jake Hoffner · Oct 5, 2026. Diagrams are snapshots; the original, with live diagrams: [https://claude.ai/code/artifact/07d17e2a-089f-478d-8553-e6dcd8c5cc94](<https://claude.ai/code/artifact/07d17e2a-089f-478d-8553-e6dcd8c5cc94>)*
 
@@ -315,7 +315,7 @@ A task session settles its row on the board that assigned it. Within one flow, t
 
 Everything in Alice's chain is hers. Bob's workers never appear in it: Bob's part of the project is his own workstream.
 
-The lead is a coordinator, and so is any worker that splits its task and hands pieces on. There's nothing separate for routing work: it's always a worker.
+The lead is any worker given the filing tool, often a coordinator, the flow built for routing; any worker with the tool can split its task and hand pieces on ([D8](../DECISIONS.md#d8)). There's nothing separate for routing work: it's always a worker.
 
 ## Naming
 
@@ -398,7 +398,7 @@ One term, one thing. Retired: person (say user), seat (as a worker; a task board
 | Channel | A shared conversation with an access list | Shared |
 | Project | A body of work, private or shared | Either |
 | Workstream | One area of a project with one owner: a project entry plus its lead's workstream session | Entry follows its project; session is private |
-| Workstream session | The lead coordinator's lasting session for a workstream, holding its board | Private |
+| Workstream session | The lead's lasting session for a workstream, holding its board | Private |
 | Task | A unit of work assigned to a worker, worked in its own task session | Private |
 | Board | A list of tasks, belonging to a session | Private |
 | Standard install | What every user starts with, defined by files | Installation-level |

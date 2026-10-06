@@ -8,11 +8,11 @@ hands the next. How to build any piece is that issue's own plan. IDs cross-refer
 
 ## The path
 
-![The path as of 6 October 2026, in phases rather than dates. Now: this spec in review and the FIX-1787 inventory posted, its merge-first rows landing. After the gate every child's spec can be written. Builds run in waves: the worker contract and per-org user data together; then workers as resources; then the coordinator flow; then projects and workstreams beside the assignment chain; then the MAILBOX.md conversion; then the terminology sweep; then the closure run. The worker library's spec is written with the others, and its build follows the MVP, after the closure run. The closure's QA plan is written beside the specs, and it runs leg c early when workers as resources merges. The critical path runs the inventory, the contract, workers, the coordinator, projects, the conversion, the terms and the closure run](figures/path.svg)
+![The path as of 6 October 2026, in phases rather than dates. Now: this spec in review and the FIX-1787 inventory posted, its merge-first rows landing. After the gate every child's spec can be written. Builds run in waves: the worker contract and per-org user data together; then workers as resources; then the coordinator flow; then projects and workstreams beside the assignment chain, and after the chain, filing and the split (FIX-1802), done by the time projects is; then the MAILBOX.md conversion; then the terminology sweep; then the closure run. The worker library's spec is written with the others, and its build follows the MVP, after the closure run. The closure's QA plan is written beside the specs, and it runs leg c early when workers as resources merges. The critical path runs the inventory, the contract, workers, the coordinator, projects, the conversion, the terms and the closure run](figures/path.svg)
 
 A long chain with two narrow windows. Nothing builds until the inventory's merge-first rows
 land; the contract and per-org keys then run together, and workers as resources is the one
-step everything else waits on. Projects beside the chain is the other window; the library
+step everything else waits on. Projects beside the chain, then the split, is the other window; the library
 builds after the MVP (Q2). The privacy fix is checked when workers merges, not only at the end (ER-30). The graph itself is in [the spec](SPEC.md#how-the-issues-flow-into-each-other); this adds time.
 
 ## What each issue entails
@@ -26,8 +26,9 @@ builds after the MVP (Q2). The privacy fix is checked when workers merges, not o
 | **FIX-1791** coordinator | spec → impl PRs | ER-1 · FIX-1779's join and leave · FIX-1774's legs a to c · Q1's list | The coordinator flow, delegates, four policies, the records (ER-4, ER-5); the chief of staff as a standard coordinator | FIX-1793 · FIX-1794 · FIX-1792 | Medium to large |
 | **FIX-1795** library | spec now → impl PR after the MVP | ER-1's write path | Templates and copies, model variants (ER-10) | Nothing in the MVP; it builds once the closure run passes | Medium |
 | **FIX-1793** projects | spec → impl PRs | ER-4 · ER-3 · FIX-1762's locks · Q2 · FIX-1774's leg d | Private and shared projects (Q2); workstream resources, the row rule, the project coordinator; rooms and Shift Manager's Stream tab removed (ER-7, ER-8) | FIX-1792 | Large: about 2,200 lines out, one engine rule in |
-| **FIX-1794** chain | spec → impl PR | ER-4's delegates · FIX-1778 · FIX-1780's hand-off rule and follow-through · FIX-1777's rule · FIX-1774's leg e | Tasks filed for delegates down the owner's boards, drained as the owner and followed through, so a coordinator files tasks only from here; every board in the chain keeps its rows at the owner's user scope, one partition per conversation (ER-9, D6) | FIX-1792 · FIX-1796 | Medium, with one task-board change (D6) |
-| **FIX-1792** `WORKER.md` | spec → impl PRs | ER-4 · D5 · FIX-1794's conversation board (D6) · FIX-1791's P2 (`everyone`, `rounds`) · FIX-1793's project code, for removing claims | 33 files converted, all 15 boards on conversation boards, old files refused (ER-6); project claims and a project row's mailbox list removed, which FIX-1793 leaves deprecated; discovery's `mailboxes` domain removed | FIX-1796 | Large: five PRs as a stack. P1 after FIX-1791 through its P2 (`everyone`); P2 after FIX-1791's P2 (`rounds`) and FIX-1794; P3 after FIX-1791's P2, FIX-1794 and FIX-1793 (for S10); P4a after P1–P3; P4b after P4a |
+| **FIX-1794** chain | spec → impl PR | ER-4's delegates · FIX-1778 · FIX-1780's hand-off rule and follow-through · FIX-1777's rule · FIX-1774's leg e | Tasks filed for delegates down the owner's boards, drained as the owner and followed through, one level here, and FIX-1802 adds filing by any worker given the tool and the split (D8); every board in the chain keeps its rows at the owner's user scope, one partition per conversation (ER-9, D6) | FIX-1802 · FIX-1792 · FIX-1796 | Medium, with one task-board change (D6) |
+| **FIX-1802** filing and the split | spec → impl PRs | FIX-1794's conversation board and depth limit (D6) · D8 | Filing as an opt-in tool any worker can be granted; a filed task's worker files pieces in turn (D8) | FIX-1792's P3 · the closure | Unsized until its spec; spec being written |
+| **FIX-1792** `WORKER.md` | spec → impl PRs | ER-4 · D5 · FIX-1794's conversation board (D6) · FIX-1791's P2 (`everyone`, `rounds`) · FIX-1793's project code, for removing claims | 33 files converted, all 16 boards in 15 files on conversation boards, old files refused (ER-6); project claims and a project row's mailbox list removed, which FIX-1793 leaves deprecated; discovery's `mailboxes` domain removed | FIX-1796 | Large: five PRs as a stack. P1 after FIX-1791 through its P2 (`everyone`); P2 after FIX-1791's P2 (`rounds`) and FIX-1794; P3 after FIX-1791's P2, FIX-1794 and FIX-1793 (for S10); P4a after P1–P3; P4b after P4a |
 | **FIX-1796** terms | spec → impl PRs | Every child merged except FIX-1795, which is new code in the new terms (ER-25) | The sweep and the glossary (ER-12); discovery's `seats` domain renamed `workers` (D7) | The closure run | Medium, wide and mechanical |
 | **FIX-1797** closure · required | spec (the QA plan) → runs until clean → PR | Every other child except FIX-1795, on one `main` commit (ER-27) | The committed checks, an early leg-c run when FIX-1788 merges (ER-30), a QA report, a bug child per failure | The wrap | Medium, repeats per retest |
 
@@ -61,6 +62,8 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
    first PR (the partitioned board, D6) touches only orchestration on its own fixtures, so it may
    start now that D6 is recorded, without waiting for FIX-1791. FIX-1793's workstream boards
    live on that partition, so its board-consuming slice merges only after FIX-1794's first PR.
+   FIX-1794 merges → FIX-1802 builds, and FIX-1792's P3 and the closure wait on it (D8). FIX-1792's
+   per-PR dependencies above are #2833's before D8; its spec is being folded again.
 5. **FIX-1792 merges** → FIX-1796. It merges → the closure's first run. The terms
    sweep doesn't wait on the library: the library is new code, written in the new terms (ER-25),
    so the sweep has nothing of it to remove.
@@ -80,7 +83,7 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
 | The hire and roster write path | FIX-1788, FIX-1795 | FIX-1788 owns the write; the library calls it |
 | The worker-flow declaration | FIX-1789, FIX-1788, FIX-1791 | The installation's list (Q1, decided). FIX-1789 builds it and its checks; the other two register on it |
 | The user scope key | FIX-1790, FIX-1788, FIX-1793 | FIX-1790 merges first; nothing user-scoped ships before it |
-| A board whose rows cross a flow | FIX-1794, FIX-1791, FIX-1792, FIX-1793 | FIX-1794 builds the partition per conversation in the task board (D6, ER-9); the others build their boards on it |
+| A board whose rows cross a flow | FIX-1794, FIX-1791, FIX-1792, FIX-1793, FIX-1802 | FIX-1794 builds the partition per conversation in the task board (D6, ER-9); the others build their boards on it |
 | Session data only the server writes | FIX-1788, FIX-1791 | FIX-1788 lands it with the link, set at create; the coordinator keeps its delegates where only the server writes |
 | The mailbox flow, its files and project claims | FIX-1791, FIX-1793, FIX-1792 | FIX-1791 ships the coordinator beside the mailbox flow, and FIX-1793 leaves project claims and a project row's mailbox list deprecated; FIX-1792 converts every file and removes the mailbox flow, the claims and the list |
 | `packages/shift-manager` | FIX-1788, FIX-1793, FIX-1796 | The second lander adapts; the TEAMS view reads worker resources, the Project view the coordinator session |
@@ -92,11 +95,7 @@ FIX-1763 and its children, whose org-level project fence Q2 lifted · FIX-1650 a
 first and get an evolution note · FIX-1775, long-lived memory · FIX-1778, consumed · FIX-1762's
 stack, merged and consumed · FIX-1765 and FIX-1764, specced after FIX-1791 · FIX-1745, obsolete when rooms
 go · FIX-1766, FIX-1767 and FIX-1768, carried into FIX-1793's spec · FIX-1798, which removes flow
-instances and owner pins from the engine; FIX-1788 blocks it, and each deprecation marker names it ·
-[FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802), a worker splitting its task across
-its own delegates, which also gives a coordinator a way to take a delegated post. It carries the
-DevTeam's feature and release workstreams on storefront and its coding runs' placement in the
-project, which FIX-1792 leaves on conversation boards.
+instances and owner pins from the engine; FIX-1788 blocks it, and each deprecation marker names it.
 
 ## Wrap
 

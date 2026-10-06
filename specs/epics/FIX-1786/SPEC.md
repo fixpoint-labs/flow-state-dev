@@ -92,11 +92,13 @@ blocked by FIX-1787 ([ER-23](BUSINESS-RULES.md#how-the-set-is-run)).
 | [FIX-1795](https://linear.app/fixpoint-labs/issue/FIX-1795) · worker library | Templates in the org, copied into a user's scope | With hires private, the only way a team shares a worker | In Spec Review ([#2819](https://github.com/fixpoint-labs/flow-state-dev/pull/2819)) · build after the MVP (Jake, 2026-10-06; [Q2](DECISIONS.md#q2)) |
 | [FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793) · projects and workstreams | Private or shared projects; workstream resources an owner writes and the org reads; a project coordinator; rooms removed | Leg b, and the one new engine rule | Spec merged ([#2823](https://github.com/fixpoint-labs/flow-state-dev/pull/2823)) · private and shared projects in, and a shared project's members open its workstreams ([Q2](DECISIONS.md#q2)) |
 | [FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794) · assignment chain | Tasks assigned from delegates, down the owner's boards, run as the owner, and followed through | Today a drain runs as whoever triggers it | Backlog · spec route · carries FIX-1777's "runs as the filer" rule, FIX-1774's leg e and FIX-1780's follow-through |
-| [FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792) · `MAILBOX.md` to `WORKER.md` | 33 charters converted, 15 boards resolved, old files refused by name; project claims and a project row's mailbox list removed | One way to declare a worker | Backlog · spec route |
+| [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802) · filing and the split | Filing as a tool any worker can be granted, opt-in in its `WORKER.md`; a filed task's worker files pieces in turn, under FIX-1794's depth limit | The split is in the MVP, and the DevTeam's workstream is led by an ordinary worker that files ([D8](DECISIONS.md#d8)) | Backlog · joined 2026-10-06 · spec being written, no PR yet |
+| [FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792) · `MAILBOX.md` to `WORKER.md` | 33 charters converted, all 16 boards in 15 files resolved, old files refused by name; project claims and a project row's mailbox list removed | One way to declare a worker | Backlog · spec route |
 | [FIX-1796](https://linear.app/fixpoint-labs/issue/FIX-1796) · terminology | The retired terms gone from code, docs and the glossary | One term, one thing | Backlog · spec route |
 | [FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797) · closure · **required** | The QA plan, an early leg-c run when FIX-1788 merges, and the runs on one `main` commit | Proves the whole | Backlog · blocked by every other child except FIX-1795, which builds after the MVP ([ER-27](BUSINESS-RULES.md#how-the-set-is-run)) |
 
-The inventory, nine refactor children and a closure; none of the nine started, and none of the
+The inventory, ten refactor children and a closure (FIX-1802 joined with [D8](DECISIONS.md#d8));
+none of the ten started, and none of the
 inventory's merge-first PRs has landed. Whether nine is really eight: FIX-1790 could ride in
 FIX-1788, but it changes a persisted key every flow uses and moves what was stored before by an
 operator step, so it keeps its own review. The collapse trigger, FIX-1789's contract needing only
@@ -114,8 +116,10 @@ flowchart LR
   K -->|"the project coordinator"| P["FIX-1793 · projects and workstreams"]
   K -->|"delegates as assignees"| H["FIX-1794 · assignment chain"]
   K -->|"the coordinator flow"| M["FIX-1792 · MAILBOX.md to WORKER.md"]
-  P -->|"the claims to remove"| M
+  P -->|"workstreams, and the claims to remove"| M
   H -->|"the conversation board"| M
+  H -->|"the board and its depth limit"| S["FIX-1802 · filing and the split"]
+  S -->|"filing for any worker"| M
   M --> T["FIX-1796 · terminology"]
   H --> T
   T --> Z["FIX-1797 · closure · required"]
@@ -127,7 +131,7 @@ graph. The closure waits on all of them except the library, which builds after t
 hands the terms sweep nothing: it is new code, written in the new terms
 ([ER-25](BUSINESS-RULES.md#how-the-set-is-run)). The dashed edge is an input from FIX-1763's set.
 The widest windows are two at once: the contract beside per-org keys, and projects beside the
-chain.
+chain and then the split.
 
 ## What stays as it is
 
@@ -163,11 +167,13 @@ the shared half stays in the MVP.
 gate, no engine rule on org-scope writes. At FIX-1794's, [D6](DECISIONS.md#d6) · a board keeps its
 tasks per conversation, a Layer 1 change in [D3](DECISIONS.md#d3). At FIX-1796's,
 [D7](DECISIONS.md#d7) · discovery's `seats` domain becomes `workers` with no alias, the fifth
-Layer 1 change, and a task board keeps "seat". Engineering calls I
+Layer 1 change, and a task board keeps "seat". The product owner, [D8](DECISIONS.md#d8) · filing
+work is a tool any worker can be granted, and the split is in the MVP: FIX-1802 joins the set.
+Engineering calls I
 made as EM, for the record: [D2](DECISIONS.md#d2) to [D5](DECISIONS.md#d5). Rules:
 [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).
 
-Epic · the inventory, nine children and a closure · Workforce: Shift Manager ·
+Epic · the inventory, ten children and a closure · Workforce: Shift Manager ·
 [FIX-1786](https://linear.app/fixpoint-labs/issue/FIX-1786) · Goals 2 and 4
 ([`docs/objectives.md`](../../../docs/objectives.md)): it moves Workforce wholly onto the session,
 user and org scopes and adds the one rule they lack (owner writes, org reads), the Workforce half
