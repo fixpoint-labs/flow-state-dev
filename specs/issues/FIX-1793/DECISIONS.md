@@ -2,7 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Two open questions and one decision are the sign-off surface. Q1 is the epic's own ask
+Two questions and one decision are the sign-off surface, all decided: Jake answered Q1 and Q2 on
+2026-10-06 ("yes to all recommendations"). Q1 is the epic's own ask
 ([epic Q2](../../epics/FIX-1786/DECISIONS.md#q2)), put here as it said. Q2 is the Architect's.
 D1 answers the epic's cost check. The model itself (a workstream is an entry plus its lead's
 session, rooms removed, progress computed) is the epic's, and is not reopened.
@@ -11,10 +12,10 @@ session, rooms removed, progress computed) is the epic's, and is not reopened.
 
 ```mermaid
 flowchart TD
-  I["FIX-1793"] --> Q1["Q1 · open · the shared half stays in the MVP"]
-  Q1 -.->|"recommended against"| XQ1["private only · shared as a fast follow"]
-  I --> Q2["Q2 · open · a shared project's members open workstreams"]
-  Q2 -.->|"recommended against"| XQ2["anyone in the org"]
+  I["FIX-1793"] --> Q1["Q1 · decided · the shared half stays in the MVP"]
+  Q1 -.->|"rejected"| XQ1["private only · shared as a fast follow"]
+  I --> Q2["Q2 · decided · a shared project's members open workstreams"]
+  Q2 -.->|"rejected"| XQ2["anyone in the org"]
   I --> D1["D1 · a private project is the same row in user scope"]
   D1 -.->|"rejected"| X1["an org row under the owner-private fence · no browser read"]
   I --> E1["engineering · the owner rule is a mode of the owner-key fence"]
@@ -24,7 +25,9 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="q1"></a>
-## Q1 · open · Does the shared half stay in the MVP?
+## Q1 · decided · The shared half stays in the MVP
+
+**Jake, 2026-10-06:** "yes to all recommendations": shared projects stay in the MVP.
 
 Not [epic Q2](../../epics/FIX-1786/DECISIONS.md#q2), which is decided: private projects are in.
 This asks whether shared projects stay in beside them.
@@ -43,7 +46,7 @@ coordinator. Cutting it saves that, but today's projects are all shared org rows
 MVP needs an operator step that gives each one to a single user, and takes sharing away from
 the people on it.
 
-**My recommendation: keep shared projects.** Sharing is what projects do today, so cutting it
+**My recommendation, taken: keep shared projects.** Sharing is what projects do today, so cutting it
 removes a feature rather than deferring a new one, and the rule it needs is the epic's one
 planned Layer 1 change here. The library (FIX-1795) is the other part of the epic's "shared
 half"; its cost is FIX-1795's to price at its own gate, and nothing here depends on it.
@@ -56,12 +59,15 @@ their creators, and the epic drops leg b's two-owner half.
 them. Cut, wrongly: a team's shared projects become one person's until the follow. Either is
 an epic amendment ([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)).
 
-![Q1, a live fork: keep shared projects in the MVP, recommended, beside private only with sharing as a fast follow. Decides it: today's projects are already shared, so cutting removes a feature. The price of keeping: one engine rule. Flips if no installation shares a project and the MVP is single-user](figures/open-shared-half.svg)
+![Q1, decided: keep shared projects in the MVP, chosen, beside private only with sharing as a fast follow. Decides it: today's projects are already shared, so cutting removes a feature. The price of keeping: one engine rule. Flips if no installation shares a project and the MVP is single-user](figures/open-shared-half.svg)
 
 It comes down to today's projects: they are shared already, so private-only takes sharing away.
 
 <a name="q2"></a>
-## Q2 · open · Who may open a workstream on a shared project?
+## Q2 · decided · Only a shared project's members open workstreams
+
+**Jake, 2026-10-06:** "yes to all recommendations": only its members open workstreams. Editing
+members after create is a follow-up ([PLAN](PLAN.md#follow-ups)).
 
 **The fork.** Only the project's members, or anyone in the org?
 
@@ -73,7 +79,7 @@ projects already keep. But nothing changes members after create today, so a team
 later can't take a workstream until that write exists. Anyone needs no list, but the project's
 creator can't remove a workstream someone else attached: the owner rule protects it.
 
-**My recommendation: members.** It reuses what a project already has, it is one check, and it
+**My recommendation, taken: members.** It reuses what a project already has, it is one check, and it
 keeps a stray workstream off a project nobody can then tidy. Changing members after create is a
 small follow-up ([PLAN](PLAN.md#follow-ups)).
 
@@ -83,7 +89,7 @@ should be able to join without asking, such as a standing "engineering" project.
 **If wrong.** Members, wrongly: a late teammate waits for the member write. Anyone, wrongly:
 projects collect workstreams their creators can't remove. Either flips by changing one check.
 
-![Q2, a live fork: a shared project's members open workstreams, recommended, beside anyone in the org. Decides it: who can tidy a project afterwards. Price: members are fixed at create until a follow-up. Flips if shared projects are open to the whole org](figures/open-who-opens.svg)
+![Q2, decided: a shared project's members open workstreams, chosen, beside anyone in the org. Decides it: who can tidy a project afterwards. Price: members are fixed at create until a follow-up. Flips if shared projects are open to the whole org](figures/open-who-opens.svg)
 
 It comes down to tidying: with anyone, a creator can't remove a workstream they don't own.
 
@@ -186,5 +192,9 @@ their READMEs.
   have one server-written source (epic ER-1, D3); delivery and the record's identity cite
   FIX-1791's amendment (#2821). Entries gained `writtenBy`, removed room calls keep refusing
   entries, and the removal inventory matches prose, which found DevTeam room code it had missed.
+- **Amendment 1, the gate's answers** — Jake took both recommendations on 2026-10-06: shared
+  projects stay in the MVP, and only a shared project's members open workstreams. Opening a
+  workstream from the coordinator follows FIX-1791's Q1, and S3 and S5 cite FIX-1791's internal
+  delegate mutation for records that carry a target.
 
-**Open: Q1 and Q2.**
+**Open: none.**

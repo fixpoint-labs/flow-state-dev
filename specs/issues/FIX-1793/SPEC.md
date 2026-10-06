@@ -113,21 +113,21 @@ the one place every write meets the store, so it holds whichever flow writes the
 one owner per workstream enforced at the store, a coordinator per user, rooms gone with nothing
 deleted. If wrong: we rename the room and still let any member change anyone's work.
 
-**Open, the hardest first** (full asks in [DECISIONS.md](DECISIONS.md)):
-
-- **[Q1](DECISIONS.md#q1) · Does the shared half stay in the MVP?** I recommend yes for shared
-  projects; the library is priced at FIX-1795's gate. If wrong: we build the owner rule a
-  release before anyone shares a project.
-- **[Q2](DECISIONS.md#q2) · Who may open a workstream on a shared project?** I recommend its
-  members. If wrong: a teammate added late can't take a workstream until members can change.
-
 **Decided:**
 
-1. **[D1](DECISIONS.md#d1) · A private project is today's project kept in its owner's user
+1. **[Q1](DECISIONS.md#q1) · Shared projects stay in the MVP** (Jake, 2026-10-06); the library
+   is priced at FIX-1795's gate. If wrong: we build the owner rule a release before anyone
+   shares a project.
+2. **[Q2](DECISIONS.md#q2) · Only a shared project's members open workstreams** (Jake,
+   2026-10-06); editing members after create is a follow-up. If wrong: a teammate added late
+   can't take a workstream until members can change.
+3. **[D1](DECISIONS.md#d1) · A private project is today's project kept in its owner's user
    scope.** The epic's cost check: it adds three declarations, one create option and a second
    list. If wrong: a private project waits on FIX-1790, and can't later become shared.
-2. **[Shared means the whole org reads it](DECISIONS.md#decided-not-asked)**, the project and
+4. **[Shared means the whole org reads it](DECISIONS.md#decided-not-asked)**, the project and
    every workstream, as epic ER-7 has it; members decide who opens workstreams. If wrong: keeping
    reads to members is a reader rule on a row, an epic amendment.
+
+**Open:** none.
 
 Feature · `core`, `engine`, `workforce`, `shift-manager` · large · 4 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)

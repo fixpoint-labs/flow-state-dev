@@ -70,7 +70,7 @@ On the left, a worker is a registered copy. On the right, it is data, and the co
 - await researcher.sendAction("run", { message }, { sessionId })
 + const workforce = createWorkforceClient({ userId, baseUrl })                  // same options as createSessionClient
 + const session = await workforce.ensureWorkerSession({ worker: "researcher" })  // finds hers, or creates one linked to it
-+ const agent = createClient({ flowKind: session.flowKind, userId })            // the flow the worker names
++ const agent = createClient({ flowKind: session.flowKind, userId, baseUrl })   // the flow the worker names
 + await agent.sendAction("run", { message }, { sessionId: session.id })         // no worker in the message
 ```
 

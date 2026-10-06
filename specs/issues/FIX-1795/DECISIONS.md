@@ -6,7 +6,8 @@ What the model already decided is the epic's and the concept's, and is not reope
 template is a non-standard worker's configuration, the library is a shared resource, a copy is a
 snapshot ([ER-10](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)),
 standard workers stay out. These are the calls about what a user sees when a template moves on,
-and two the Architect asked to be raised rather than picked.
+and two the Architect asked to be raised rather than picked. All three are decided: Jake signed D1
+and answered Q1 and Q2 on 2026-10-06 ("yes to all recommendations").
 
 ## The tree
 
@@ -15,14 +16,14 @@ flowchart TD
   I["FIX-1795"] --> D1["D1 · an update replaces the copy's configuration, keeps memory"]
   D1 -.->|"rejected · memory starts over"| X1["add it again as a new worker"]
   D1 -.->|"rejected · a merge nobody can predict"| X1b["merge the user's edits"]
-  I --> Q1["Q1 · open · only the publisher changes or removes"]
-  Q1 -.->|"not recommended · anyone rewrites what others add"| X2["any member"]
-  Q1 -.->|"not recommended · a new role, new engine work"| X2b["an org admin role"]
-  I --> Q2["Q2 · open · a mark on the copy, a warning only when edits would be lost"]
-  Q2 -.->|"not recommended · a channel built for one message"| X3["a notification channel"]
+  I --> Q1["Q1 · decided · only the publisher changes or removes"]
+  Q1 -.->|"rejected · anyone rewrites what others add"| X2["any member"]
+  Q1 -.->|"rejected · a new role, new engine work"| X2b["an org admin role"]
+  I --> Q2["Q2 · decided · a mark on the copy, a warning only when edits would be lost"]
+  Q2 -.->|"rejected · a channel built for one message"| X3["a notification channel"]
 ```
 
-Solid edges are what you're signing or asked. Q1 and Q2 are the two open asks.
+Solid edges are what was signed. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
 ## D1 · Taking an update replaces the copy's configuration, and the worker keeps its id, sessions and memory
@@ -40,8 +41,13 @@ It comes down to memory: a second worker starts with none of what the copy learn
 **What would change my mind:** users who mostly edit their copies after adding them. Then a
 take that replaces edits is the wrong default, and taking an update should add a second worker.
 
+**Signed** by Jake, 2026-10-06: an update replaces the configuration and keeps memory and
+conversations, with the existing exception for a copy the user moved to another flow (BR-22).
+
 <a name="q1"></a>
-## Q1 · open · Who can change or remove a published template?
+## Q1 · decided · Only the publisher changes or removes a published template
+
+**Jake, 2026-10-06:** "yes to all recommendations": only the user who published it.
 
 **The fork.** Only the user who published it · any member of the org · or an org admin role.
 
@@ -58,7 +64,7 @@ anyone rewrites what the users who added it trusted. An update is never applied 
 nobody's running worker changes either way. *An org admin* needs a role the framework doesn't
 have: every user is equal inside an org today.
 
-**My recommendation: only the publisher.** It needs no new rule, it matches who a template
+**My recommendation, taken: only the publisher.** It needs no new rule, it matches who a template
 names, and a teammate with a fix can publish their own. An admin override can come later on
 whatever role the framework adds.
 
@@ -68,12 +74,15 @@ way a wiki is. Then *any member*, with every change named.
 **If wrong:** the library fills with templates whose publishers have left. Cheap to reverse:
 widening who may write later changes no stored template.
 
-![Q1: who can change or remove a published template? Only its publisher, recommended, beside any member. Decides it: whose words a copy is told changed. Price: templates nobody can tidy after their publisher leaves. Locks in the owner rule FIX-1793 builds, nothing of the library's own. Flips if orgs curate the library like a wiki](figures/open-who-changes.svg)
+![Q1, decided: who can change or remove a published template? Only its publisher, chosen, beside any member. Decides it: whose words a copy is told changed. Price: templates nobody can tidy after their publisher leaves. Locks in the owner rule FIX-1793 builds, nothing of the library's own. Flips if orgs curate the library like a wiki](figures/open-who-changes.svg)
 
 It comes down to whose words a copy trusts: under *any member*, anyone rewrites them.
 
 <a name="q2"></a>
-## Q2 · open · How does a user learn that an update exists?
+## Q2 · decided · A mark on the copy tells a user an update exists, with a warning only when their own edits would be lost
+
+**Jake, 2026-10-06:** "yes to all recommendations": a mark on the roster, and a warning at the
+take only when the user's own edits would be lost.
 
 **The fork.** A mark on the copy in their own roster · a message from their chief of staff · a
 notification channel built for it.
@@ -91,7 +100,7 @@ who looks. The edit-aware warning costs one stored fingerprint per copy of what 
 coordinator FIX-1791 is building now, and works only for users who have one. A channel is new
 infrastructure for one message.
 
-**My recommendation: a mark on the copy, with a warning at the take that appears only when
+**My recommendation, taken: a mark on the copy, with a warning at the take that appears only when
 the user's own edits would be lost.** It is the smallest thing that keeps the promise, "you can
 be told an update exists", and it invents no channel. The warning is edit-aware so it means
 something when it shows: one shown on every update trains users to click past it. The chief of
@@ -103,7 +112,7 @@ doesn't open their roster keeps running the old one. Then the chief of staff sho
 **If wrong:** users keep stale copies longer. Cheap to reverse: anything that tells a user later
 reads the same mark.
 
-![Q2: how does a user learn an update exists? A mark on the copy in their roster, recommended, beside a message from their chief of staff. Decides it: what new machinery it needs. Price: reaches only a user who opens their roster. Locks in one field every view reads. Flips if templates change for security reasons](figures/open-update-notice.svg)
+![Q2, decided: how does a user learn an update exists? A mark on the copy in their roster, chosen, beside a message from their chief of staff. Decides it: what new machinery it needs. Price: reaches only a user who opens their roster. Locks in one field every view reads. Flips if templates change for security reasons](figures/open-update-notice.svg)
 
 It comes down to new machinery: a mark is one field, a message is a coordinator change.
 
@@ -149,5 +158,7 @@ It comes down to new machinery: a mark is one field, a message is a coordinator 
 - **Review round 2** — a take is bound to the version and copy its offer showed; the cross-flow
   exception to session continuity is stated and warned; the read of older template shapes
   dropped, since the library is new.
+- **Amendment 1, the gate's answers** — Jake took every recommendation on 2026-10-06: D1 signed,
+  Q1 decided as only the publisher, Q2 as a mark on the roster with an edit-aware warning.
 
-**Open:** Q1, Q2.
+**Open:** none.

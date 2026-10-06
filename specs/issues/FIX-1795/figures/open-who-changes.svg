@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Q1, open: who can change or remove a published template? Recommended: only its publisher. Instead of: any member of the org. The row that decides it, whose words a copy is told changed: only the publisher&#x27;s, against anyone&#x27;s. Second row, after the publisher leaves: nobody can tidy it, against anyone can. Third row, what it needs: the owner rule FIX-1793 builds, against that rule widened. Locks in no access check of the library&#x27;s own. Flips if orgs curate the library like a wiki.">
+     aria-label="Q1, decided by Jake on 2026-10-06: who can change or remove a published template? Chosen: only its publisher. Instead of: any member of the org. The row that decides it, whose words a copy is told changed: only the publisher&#x27;s, against anyone&#x27;s. Second row, after the publisher leaves: nobody can tidy it, against anyone can. Third row, what it needs: the owner rule FIX-1793 builds, against that rule widened. Locks in no access check of the library&#x27;s own. Flips if orgs curate the library like a wiki.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -35,12 +35,12 @@
   <rect class="bg" x="0" y="0" width="940" height="418"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q1 · OPEN</text>
+    <text class="t-lbl" x="32" y="32">Q1 · DECIDED · JAKE, 2026-10-06</text>
     <text class="t-q" x="32" y="52">Who can change or remove a template once it is published?</text>
   </g>
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
     <text class="t-h c-code" x="228" y="112">Only its publisher</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>

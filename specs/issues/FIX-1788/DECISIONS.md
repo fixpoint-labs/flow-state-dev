@@ -161,5 +161,7 @@ What PLAN doesn't hold:
 - **Review of #2818** — S1 became one session-birth function every path reaches, `fsdev run`
   included (second look). FIX-1791's coordinator-conversation key was reserved in the criteria
   object (architect). "Decided, not asked" was cut to what PLAN doesn't hold.
+- **Amendment 2, with the epic's gate answers** — the app example passes the same `baseUrl` to
+  `createClient` as to `createWorkforceClient`, as FIX-1791's example does; nothing else moved.
 
 **Open:** none.

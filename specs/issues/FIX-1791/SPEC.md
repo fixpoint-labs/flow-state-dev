@@ -27,7 +27,7 @@ worker is ever a delegate.**
 |---|---|
 | **The real need** | The [PRD](https://linear.app/fixpoint-labs/issue/FIX-1791): delegates in session state, changed by the app or the coordinator's tool, both passing one roster check; four policies; the three mailbox guarantees kept; the chief of staff a standard coordinator. FIX-1774's job, carried here: route to the worker that fits, hire when none does, never hire a twin. FIX-1785's rule, carried here: delegates are read as data, never guessed |
 | **Smaller, and rejected** | "The mailbox flow gains round robin and join and leave." It keeps a mailbox as a session no worker owns, matched by org names, and puts the roster check on a part the epic removes |
-| **Bigger, and not this issue's** | Tasks assigned from delegates, and hearing how they ended ([FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794), if [Q1](DECISIONS.md#q1) holds) · project coordinators ([FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793)) · converting `MAILBOX.md` ([FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792)) · transcript resources and channels (the epic's fence) |
+| **Bigger, and not this issue's** | Tasks assigned from delegates, and hearing how they ended ([FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794), per [Q1](DECISIONS.md#q1)) · project coordinators ([FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793)) · converting `MAILBOX.md` ([FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792)) · transcript resources and channels (the epic's fence) |
 | **Not done if** | The check ran with one user · a caller can set an answer's round · a post delivered twice gets two answers from one delegate · a delegate is resolved from a list built at start · a change in one conversation shows in another · two conversations share one delegate session · a session create seeds delegates · the coordinator names its delegates from a listing or its prompt · another user's worker becomes a delegate by any path · the chief of staff still runs as an `agent` worker |
 
 ```mermaid
@@ -134,23 +134,20 @@ delegates each conversation manages, the three mailbox guarantees kept, and no o
 ever a delegate. If wrong: we rebuild the mailbox under a new name and still can't change who
 answers.
 
-**Open, the one to weigh** (full ask in [DECISIONS.md](DECISIONS.md#q1)):
-
-- **[Q1](DECISIONS.md#q1) · Do filing tasks for delegates and following them through move to
-  FIX-1794?** I recommend yes. If wrong: the coordinator ships unable to file or follow a task
-  until FIX-1794 lands.
-
 **Decided:**
 
-1. **[D1](DECISIONS.md#d1) · Answers go back out only within a round limit: zero unless a
+1. **[Q1](DECISIONS.md#q1) · Filing tasks for delegates and following them through move to
+   FIX-1794** (Jake, 2026-10-06). If wrong: the coordinator ships unable to file or follow a task
+   until FIX-1794 lands.
+2. **[D1](DECISIONS.md#d1) · Answers go back out only within a round limit: zero unless a
    coordinator's configuration sets it, at most three.** A post then costs at most
    delegates × (rounds + 1) delegate turns, 100 at the caps. If wrong: group chats nobody can
    turn on per coordinator, or a cost per post nobody bounded.
-2. **[D2](DECISIONS.md#d2) · Best fit's fallback is one of the conversation's delegates;
+3. **[D2](DECISIONS.md#d2) · Best fit's fallback is one of the conversation's delegates;
    removing it leaves posts it can't place recorded and told, never refused.** If wrong: a
    user's post sits unanswered after a removal they thought was harmless.
 
-Q1 moves scope between two of the epic's children, so its answer binds once a follow-up epic PR
-records it ([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)).
+**Open:** none. Q1 moves scope between two of the epic's children, so its answer binds the set
+once a follow-up epic PR records it ([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)).
 
 Feature · `workforce`, `shift-manager` · large · 3 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)

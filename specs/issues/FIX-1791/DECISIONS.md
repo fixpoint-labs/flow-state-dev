@@ -2,8 +2,9 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-What was considered, what was chosen, why, and what each choice locks in. One open question and
-two decisions are the sign-off surface. The model itself (delegates in session state, one roster
+What was considered, what was chosen, why, and what each choice locks in. Three calls are the
+sign-off surface, all decided: Jake answered Q1 on 2026-10-06. The model itself (delegates in
+session state, one roster
 check for both paths, four policies, the chief of staff as a standard coordinator) is the PRD's
 and the epic's, and is not reopened here.
 
@@ -11,8 +12,8 @@ and the epic's, and is not reopened here.
 
 ```mermaid
 flowchart TD
-  I["FIX-1791"] --> Q1["Q1 · open · tasks and follow-through move to FIX-1794"]
-  Q1 -.->|"the alternative"| X0["build them here · answers ER-9 before its owner"]
+  I["FIX-1791"] --> Q1["Q1 · decided · tasks and follow-through move to FIX-1794"]
+  Q1 -.->|"rejected"| X0["build them here · answers ER-9 before its owner"]
   I --> D1["D1 · a round limit · zero by default · at most three"]
   D1 -.->|"rejected"| X1["one constant in the flow · no group chat per coordinator"]
   I --> D2["D2 · the fallback is a delegate · removing it records posts as unplaced"]
@@ -22,15 +23,18 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="q1"></a>
-## Q1 · open · Do filing tasks for delegates, and hearing how they ended, move to FIX-1794?
+## Q1 · decided · Filing tasks for delegates, and hearing how they ended, move to FIX-1794
+
+**Jake, 2026-10-06:** "yes to all recommendations": they move to FIX-1794. This issue builds
+posts, delegates and hiring only.
 
 **The fork.** Jake closed FIX-1774 into this issue and carried FIX-1780's follow-through here.
 Should this issue build the task half too, or hand it to FIX-1794?
 
 **In plain terms.** Two kinds of hand-off exist. A *post* goes to a delegate, who answers it in
 its own conversation; that is this issue. A *task* goes on a board for a delegate to work, and the
-coordinator is told when it finishes, fails or stops on a question; that is FIX-1774's legs d and
-e and FIX-1780's notices and reassign. A task needs a board, and FIX-1794 decides how a board
+coordinator is told when it finishes, fails or stops on a question; that is FIX-1774's leg e and
+FIX-1780's notices and reassign. A task needs a board, and FIX-1794 decides how a board
 whose rows go to a worker on another flow stays its own
 ([ER-9](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). Building
 tasks here means answering that first, or building on the mailbox boards the epic removes.
@@ -39,7 +43,7 @@ tasks here means answering that first, or building on the mailbox boards the epi
 can't file or follow a task until FIX-1794 lands. Keeping them: this issue grows by a board
 design that is FIX-1794's to make, and FIX-1794 starts from a decision made without it.
 
-**My recommendation: move them.** FIX-1794's PRD already reads "a task is assigned to a worker
+**My recommendation, taken: move them.** FIX-1794's PRD already reads "a task is assigned to a worker
 picked from the coordinator's delegates", and follow-through rides the same board writes. Nothing
 the chief of staff does today is lost: it files no tasks now. FIX-1774's leg d, starting a project
 with its workstreams, goes to FIX-1793 for the same reason. Legs a to c, restated on posts and
@@ -52,7 +56,7 @@ coordinator's own flow only, and leaves the cross-flow board to FIX-1794.
 **If wrong.** Between this merging and FIX-1794 merging, a user can't ask the chief of staff to
 file coding work and be told how it went. Reversible by a follow-up that moves the legs back.
 
-![Q1, open: where filing tasks for delegates and following them through is built. Moving them to FIX-1794, recommended, beside building them here. Decides it: who answers how a board whose rows cross a flow stays its own; FIX-1794 owns that question. The price of moving: a coordinator can't file or follow a task until FIX-1794 lands, though the chief of staff files none today. Flips if the DevTeam dogfood needs task filing before FIX-1794](figures/open-follow-through.svg)
+![Q1, decided: where filing tasks for delegates and following them through is built. Moving them to FIX-1794, chosen, beside building them here. Decides it: who answers how a board whose rows cross a flow stays its own; FIX-1794 owns that question. The price of moving: a coordinator can't file or follow a task until FIX-1794 lands, though the chief of staff files none today. Flips if the DevTeam dogfood needs task filing before FIX-1794](figures/open-follow-through.svg)
 
 It comes down to who owns the board question: building here decides ER-9 before its owner does.
 
@@ -185,5 +189,8 @@ It comes down to the removal: refusing it surprises a user over a setting they n
   session opens through `ensureWorkerSession` with the delegate named and the pinned
   `coordinatorSessionId` key (BR-20a). Shift Manager's private lab wrapper is gone from every
   example.
+- **Amendment 2, the gate's answers** — Jake took Q1's recommendation on 2026-10-06: filing tasks
+  for delegates and following them through move to FIX-1794. SPEC, PLAN and EVOLUTION state it as
+  decided.
 
-**Open: Q1.** No claim is settled or in flight.
+**Open: none.** No claim is settled or in flight.
