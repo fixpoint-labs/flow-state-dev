@@ -165,13 +165,14 @@ git checkout -B <branch> origin/main        # e.g. spec/<ISSUE-ID> or fix/<ISSUE
 - **Exception — a dependent sub-PR** bases on its dependency's branch, not `main`, so review
   can start before the dep merges: `git fetch origin <dep branch> && git checkout -B <sub-PR
   branch> origin/<dep branch>`. See `issue-lifecycle` → Multi-PR issues.
-- **GitHub marking for that stack.** The git base is the dependency; the GitHub PR must say
-  so before it is opened. Title starts with
-  `DO NOT MERGE until #<dependency PR> is on main — stacked on <branch>`. Body names that PR
-  and that the GitHub base is not main. Create with `--base <dep branch>`. After the
-  dependency merges, done is GitHub `baseRefName` `main` (`gh pr edit --base main`), the
-  diff only this slice, and the prefix gone. `issue-multi-pr` does not clear `stackedOn`
-  until the worker reports `baseRefName: main`. Do not surface ready to merge while the
+- **A GitHub stack for that PR.** The git base is the dependency, and so is the GitHub base:
+  create with `--base <dep branch>`, then `gh stack link <dep PR> <this PR>` (the
+  `github/gh-stack` extension) so GitHub links the two as a stack. No `DO NOT MERGE` title;
+  the stack shows the merge order. Body names the dependency PR. When the dependency merges,
+  GitHub retargets this PR to `main` and rebases it. Done is GitHub `baseRefName` `main` and
+  the diff only this slice; a PR that still names the old base was never linked, and the
+  worker retargets it and says so. `issue-multi-pr` does not clear `stackedOn` until the
+  worker reports `baseRefName: main`. Do not surface ready to merge while the
   GitHub base is not main. The worker procedure is `issue-implement` Step 9 and the
   `issue-multi-pr` build/rebase prompts; the coordinator's only new action is the
   PR_FEEDBACK refusal.

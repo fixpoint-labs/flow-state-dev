@@ -101,9 +101,8 @@ If all clear, move to Step 3.
      deliverables** (not the whole issue), and base it on the dependency's branch if it has one
      (`git fetch origin {dep branch} && git checkout -B fix/{ISSUE-ID}-{sub-PR id} origin/{dep branch}`)
      — else on `origin/main` as above. The branch must include the merged spec; do not repeat its merge per sub-PR.
-     When the git base is a dependency branch, the GitHub PR you open in Step 9 is stacked:
-     mark it there (`DO NOT MERGE` title, body names the dependency, `--base` is that branch,
-     not main).
+     When the git base is a dependency branch, the GitHub PR you open in Step 9 goes in a
+     GitHub stack on the dependency's PR (`--base` is that branch, not main).
 2. **Confirm the implementation base contains the retained spec and approved amendments.** If merge is still pending, return the exact gate blocker rather than starting code. A disclosed in-flight POC does not waive spec merge; later evidence is folded through a new amendment PR.
 3. Update the Linear issue state to "In Development" using `save_issue`
 
@@ -393,14 +392,13 @@ Once approved:
 1. Ensure all changes are committed with conventional commit messages referencing the issue ID
 2. Push: `git push -u origin fix/{ISSUE-ID}`
 3. Open PR with `gh pr create`:
-   - Title: concise description (under 70 characters). The stacked `DO NOT MERGE until
-     #<dependency PR> is on main — stacked on <branch>` prefix is **outside** that budget.
-     **Stacked (GitHub base is another feature branch, not main):** title **starts with**
-     that prefix. Open with `--base <dependency-branch>` — never `--base main` while
-     stacked. Body states that dependency PR and that the GitHub base is not main. After
-     the dependency merges, `gh pr edit --base main` and remove the `DO NOT MERGE` prefix;
-     the diff is only this slice. Do not report the PR as ready to merge while its GitHub
-     base is not main. Canonical:
+   - Title: concise description (under 70 characters).
+     **Stacked (GitHub base is another feature branch, not main):** open with
+     `--base <dependency-branch>` — never `--base main` while stacked — then
+     `gh stack link <dependency PR> <this PR>` so GitHub links them as a stack. No
+     `DO NOT MERGE` title. Body names the dependency PR below it. When the dependency
+     merges, GitHub retargets this PR to main and rebases it; the diff is only this slice.
+     Do not report the PR as ready to merge while its GitHub base is not main. Canonical:
      [`orchestration.md`](../../../docs/contributing/orchestration.md) → Worktree branching.
    - **Body: follow [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout"** — canonical for the block order, what collapses, when a diagram earns its place, and what never collapses. Don't restate it here. What's specific to an **implementation** PR is the mapping:
 
@@ -495,7 +493,7 @@ When in doubt between "non-actionable code feedback" and "non-code conversation"
 
 **A second "why is it shaped like this" on one surface is a model question, not a wording one.** Before classifying it, re-read the section of the unit of intent that decided that shape (the spec or design doc, or the issue itself for a bug). If the code deviates from it, reply per [BP-002](../../../docs/contributing/best-practices/process.md#bp-002-spec-driven-execution): the conflict from the source, the fix toward it — not a defence of the cut you have.
 
-**A second race on the same structure is a missing primitive, not another window.** When a finding is an interleaving — a read and a later act on state another run, process or reused id can change in between — and the fix you can make narrows the gap rather than closing it (a re-read, a tag, an extra check), the next round will find the next gap. On the second such finding against the same structure, name the atomic operation the closing fix needs (a conditional write, a per-attempt id, a namespace), file it or point to the issue that already holds the class, and answer this thread and every later one on that structure there. In this PR, fix only the gaps the existing primitives can close.
+**A second race on the same structure is a missing primitive, not another window.** When a finding is an interleaving — a read and a later act on state another run, process or reused id can change in between — a fix that only narrows the gap (a re-read, a tag, an extra check) leaves the next gap for the next round. Whether your last fix closed the class is the next review's call, not yours: a second finding that reopens the same race (the same invariant an earlier round already fixed) is the trigger, even when that fix was a restructure you said closed the class. A separate race on the same structure, such as a delete race after a create race was closed, is not; fix it here. Then name the atomic operation the closing fix needs (a conditional write, a per-attempt id, a namespace), file it or point to the issue that already holds the class, and answer this thread and every later one on that race there. In this PR, fix only the gaps the existing primitives can close.
 
 #### 10.4: Take action and reply
 

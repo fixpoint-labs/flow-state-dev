@@ -225,12 +225,15 @@ export interface ClaudeCodeAgentOptions {
    */
   settingSources?: ClaudeAgentSettingSource[];
   /**
-   * Environment variables for the run's own process. Default: unset, which is
-   * the server process's own environment — what every existing caller has.
+   * Environment variables for the run's own process. Default: unset, which
+   * hands the run the server's **entire** `process.env` — every key, token and
+   * connection string the server holds, readable by any shell command the
+   * model runs.
    *
    * Setting it REPLACES the environment rather than adding to it, which is the
-   * SDK's own behaviour and the reason to spread `process.env` yourself when
-   * you mean to add.
+   * SDK's own behaviour. To pass only named variables, use `harnessEnv` from
+   * `@flow-state-dev/core`: `env: harnessEnv({ pass: ["PATH", "HOME", ...] })`.
+   * Name `PATH` in it: the run's shell commands and git are found through it.
    */
   env?: Record<string, string | undefined>;
   /**

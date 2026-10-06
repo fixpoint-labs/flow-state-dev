@@ -13,10 +13,10 @@
  * person holds on any flow. The read never falls back to the run session
  * itself, which would leave the Session right and the control toothless.
  */
-import type { LabClients } from "../../../../labs/shift-manager/src/lib/connection.ts";
-import { readSessionItems as readAsWritten, type RequestFollower, type SessionItems } from "../../../../labs/shift-manager/src/lib/run.ts";
+import type { LabClients } from "../../../../packages/shift-manager/src/lib/connection.ts";
+import { readSessionItems as readAsWritten, type RequestFollower, type SessionItems } from "../../../../packages/shift-manager/src/lib/run.ts";
 
-export * from "../../../../labs/shift-manager/src/lib/run.ts";
+export * from "../../../../packages/shift-manager/src/lib/run.ts";
 
 /** The newest other listed session on the same flow as `sessionId`, else on any flow. Never `sessionId`. */
 async function workerSession(clients: LabClients, sessionId: string): Promise<string> {

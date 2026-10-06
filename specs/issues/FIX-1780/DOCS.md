@@ -67,8 +67,8 @@ In *What the board requires*, replace the sentence that begins "A board with any
 off fixes each task's assignee at admission" with:
 
 > A board that hands tasks off fixes a task's assignee while an attempt holds it: `setAssignee`
-> on an *in progress* task declines with reason `immutable-assignee`. A pending, parked or
-> blocked task can change hands. The rule belongs to the collection, so a second board over the
+> on an *in progress* or *parked* task declines with reason `immutable-assignee`. A pending or
+> blocked task can change hands. To move a parked task, `unpark` it first. The rule belongs to the collection, so a second board over the
 > same `defineTaskCollection` value follows it too.
 
 Then, in *Concurrency and error handling*, a new short subsection:

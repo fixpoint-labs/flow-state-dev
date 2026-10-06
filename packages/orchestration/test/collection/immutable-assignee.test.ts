@@ -1,11 +1,18 @@
 /**
- * Assignee immutability on a board that hands off (FIX-982 P2).
+ * Assignee immutability on a board that hands off (FIX-982 P2), narrowed to
+ * the task an attempt holds (FIX-1780 BR-16b).
  *
  * The assignee is what a handed-off task's routing key derives from, and the
  * key is what addresses the child session the work runs in. Once that session
  * is keyed, reassigning the task redirects nothing: the work already dispatched
  * keeps running under the old key, and the new one addresses a session nothing
  * will ever wake.
+ *
+ * Only a task an attempt holds is frozen: *in progress*, and *parked*, whose
+ * attempt can still settle it. A pending or blocked task is claimed afresh
+ * before it runs again, and that claim reads whatever assignee the row then
+ * holds, so moving it strands nothing. A parked task is moved once `unpark`
+ * has ended its attempt.
  *
  * **The failure it prevents is a successful write.** `setAssignee` returns, the
  * task row shows the new assignee, and the task simply never runs — no throw, no
@@ -24,11 +31,14 @@ import { z } from "zod";
 import {
   createResourceBackedTaskCollection,
   defineTaskCollection,
+  ticketForClaim,
   type TaskCollectionRef,
   type TaskWorker,
   type TaskWriteOutcome,
 } from "../../src/tasks";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
+import type { JsonObject } from "@flow-state-dev/core";
+import type { ResourceRef } from "@flow-state-dev/core/types";
 import { createFakeResourceCollection } from "../helpers";
 
 async function board(options: { immutableAssignee?: boolean } = {}): Promise<TaskCollectionRef> {
@@ -49,63 +59,142 @@ function seat(name: string): TaskWorker {
   }) as unknown as TaskWorker;
 }
 
+/** Add one task and claim it, so an attempt holds it (`in_progress`). */
+async function running(tasks: TaskCollectionRef) {
+  const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+  await tasks.claim("w1");
+  expect(tasks.get(task.id)?.status).toBe("in_progress");
+  return task;
+}
+
 describe("setAssignee on a board that hands off", () => {
-  it("declines the reassignment and names immutable-assignee", async () => {
+  it("declines the reassignment of a running task and names immutable-assignee", async () => {
     const tasks = await board({ immutableAssignee: true });
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const task = await running(tasks);
 
     const outcome = await tasks.setAssignee(task.id, "review");
 
-    expect(outcome).toMatchObject({ outcome: "declined", reason: "immutable-assignee" });
+    expect(outcome).toEqual({
+      outcome: "declined",
+      reason: "immutable-assignee",
+      status: "in_progress",
+    });
   });
 
-  it("leaves the assignee actually unchanged — a decline is not a soft write", async () => {
-    // The whole point is that the routing key cannot move. A decline
-    // that still wrote would report honestly and strand the task anyway.
+  it("leaves a running task's assignee actually unchanged — a decline is not a soft write", async () => {
+    // The whole point is that the routing key cannot move under a dispatch in
+    // flight. A decline that still wrote would report honestly and strand it.
     const tasks = await board({ immutableAssignee: true });
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const task = await running(tasks);
 
     await tasks.setAssignee(task.id, "review");
 
     expect(tasks.get(task.id)?.assignee).toBe("implement");
   });
 
-  it("declines on a pending task, not only a terminal one", async () => {
-    // `terminal` already refused finished tasks before this rule existed. The
-    // new exposure is the LIVE task — the one whose child session is keyed and
-    // running — so a test that only covered terminal tasks would pass against
-    // an implementation that does nothing.
+  it("declines on a running task even when the assignee would not change", async () => {
+    // An idempotent call answers `unchanged` on an ordinary board. Here the
+    // honest answer is still the refusal: the operation is not available while
+    // the attempt runs, and `unchanged` would imply another value would be taken.
     const tasks = await board({ immutableAssignee: true });
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const task = await running(tasks);
 
-    const outcome = await tasks.setAssignee(task.id, "review");
-
-    expect(outcome).toMatchObject({ outcome: "declined", status: "pending" });
+    expect(await tasks.setAssignee(task.id, "implement")).toMatchObject({
+      outcome: "declined",
+      reason: "immutable-assignee",
+    });
   });
 
-  it("reports immutable-assignee rather than terminal on a finished task", async () => {
-    // Precedence. Reporting `terminal` here would tell a caller that a
-    // non-terminal task could be reassigned, which on this board is false.
+  it("moves a pending task: nothing has been dispatched for it yet", async () => {
+    // BR-16b. A coordinator moving a waiting task to another worker is the case
+    // the freeze used to refuse. The next claim reads the new assignee, so the
+    // hand-off goes to the new worker rather than stranding anything.
     const tasks = await board({ immutableAssignee: true });
     const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
-    await tasks.claim("w1");
+
+    expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
+    expect(tasks.get(task.id)?.assignee).toBe("review");
+  });
+
+  it("names a worker for a pending task that had none", async () => {
+    // FIX-1777's "the task waits; assign it" depends on exactly this write.
+    const tasks = await board({ immutableAssignee: true });
+    const task = await tasks.addTask({ goal: "implement" });
+
+    expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
+    expect(tasks.get(task.id)?.assignee).toBe("review");
+  });
+
+  it("declines a parked task: its attempt can still settle it", async () => {
+    // `parked → completed` is legal for the attempt that parked, so moving the
+    // row would let the old worker settle work now addressed to a new one.
+    const tasks = await board({ immutableAssignee: true });
+    const task = await running(tasks);
+    await tasks.awaitReview(task.id, "which colour?");
+    expect(tasks.get(task.id)?.status).toBe("parked");
+
+    expect(await tasks.setAssignee(task.id, "review")).toEqual({
+      outcome: "declined",
+      reason: "immutable-assignee",
+      status: "parked",
+    });
+    expect(tasks.get(task.id)?.assignee).toBe("implement");
+  });
+
+  it("moves a parked task once unpark ends its attempt, and the old claim can no longer settle it", async () => {
+    const tasks = await board({ immutableAssignee: true });
+    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const claimed = await tasks.claim("w1");
+    const oldClaim = ticketForClaim(tasks.collectionId, claimed!);
+    await tasks.awaitReview(task.id, "which colour?");
+
+    await tasks.unpark(task.id);
+    expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
+
+    const late = await tasks.complete(task.id, "done", { claim: oldClaim });
+    expect(late).toMatchObject({ outcome: "declined", reason: "lost-claim" });
+    expect(tasks.get(task.id)).toMatchObject({ status: "pending", assignee: "review" });
+  });
+
+  it("moves a blocked task", async () => {
+    const tasks = await board({ immutableAssignee: true });
+    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    await tasks.block(task.id, "waiting on a key");
+    expect(tasks.get(task.id)?.status).toBe("blocked");
+
+    expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
+  });
+
+  it("declines a claim's task once the claim lands, so a move cannot race a dispatch", async () => {
+    // The status is read inside the same atomic write as the assignee. A move
+    // that lost the race to a claim is refused, never written under the claim.
+    const tasks = await board({ immutableAssignee: true });
+    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+
+    const [claimed, outcome] = await Promise.all([
+      tasks.claim("w1"),
+      tasks.setAssignee(task.id, "review"),
+    ]);
+
+    const row = tasks.get(task.id);
+    if (outcome.outcome === "recorded") {
+      // The move landed first: the claim must have read the new assignee.
+      expect(claimed?.assignee).toBe("review");
+    } else {
+      expect(outcome).toMatchObject({ reason: "immutable-assignee", status: "in_progress" });
+      expect(row?.assignee).toBe("implement");
+    }
+  });
+
+  it("reports terminal on a finished task — the assignee rule is about a running one", async () => {
+    const tasks = await board({ immutableAssignee: true });
+    const task = await running(tasks);
     await tasks.complete(task.id, null);
 
-    const outcome = await tasks.setAssignee(task.id, "review");
-
-    expect(outcome).toMatchObject({ outcome: "declined", reason: "immutable-assignee" });
-  });
-
-  it("declines even when the assignee would not change", async () => {
-    // An idempotent call answers `unchanged` on an ordinary board. Here the
-    // honest answer is still the refusal: the operation is not available, and
-    // reporting `unchanged` would imply a different value would have been taken.
-    const tasks = await board({ immutableAssignee: true });
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
-
-    const outcome = await tasks.setAssignee(task.id, "implement");
-
-    expect(outcome).toMatchObject({ outcome: "declined", reason: "immutable-assignee" });
+    expect(await tasks.setAssignee(task.id, "review")).toMatchObject({
+      outcome: "declined",
+      reason: "terminal",
+    });
   });
 
   it("still throws for a task that does not exist", async () => {
@@ -117,14 +206,53 @@ describe("setAssignee on a board that hands off", () => {
     await expect(tasks.setAssignee("no-such-task", "review")).rejects.toThrow(/not found/);
   });
 
-  it("does not restrict the other patch methods", async () => {
+  it("does not restrict the other patch methods on a running task", async () => {
     // Only the routing key is frozen. Labelling and re-prioritizing a
     // handed-off task are ordinary operations and must keep working.
     const tasks = await board({ immutableAssignee: true });
-    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const task = await running(tasks);
 
     expect(await tasks.setPriority(task.id, 5)).toEqual({ outcome: "recorded" });
     expect(await tasks.addLabel(task.id, "urgent")).toEqual({ outcome: "recorded" });
+  });
+});
+
+describe("setAssignee judges the freeze against the committed row", () => {
+  // A request reads a resource as the snapshot it first took. A decline thrown
+  // from the updater skips the store's check of that snapshot, so without a
+  // re-read a task another request has since moved off `in_progress` would
+  // keep being refused. The fake below hands the updater one stale copy and
+  // propagates its throw, as the engine's CAS driver does.
+  it("moves a task whose cached copy is running but whose committed row is pending", async () => {
+    const backing = createFakeResourceCollection<JsonObject>();
+    const refs = new Map<string, ResourceRef<JsonObject>>();
+    const create = backing.create.bind(backing);
+    backing.create = async (key, initial) => {
+      const ref = await create(key, initial);
+      refs.set(ref.path, ref);
+      return ref;
+    };
+    const tasks = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: backing,
+      immutableAssignee: true,
+    });
+    const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
+    const ref = [...refs.values()][0]!;
+
+    const committed = ref.updateState.bind(ref);
+    let stale: JsonObject | undefined = { ...ref.state, status: "in_progress" };
+    ref.updateState = async (updater) => {
+      if (stale !== undefined) {
+        const snapshot = stale;
+        stale = undefined;
+        await updater(snapshot as never);
+      }
+      return committed(updater);
+    };
+
+    expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
+    expect(tasks.get(task.id)?.assignee).toBe("review");
   });
 });
 
@@ -193,6 +321,8 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
           ctx.cap as Record<string, { tasks: () => Promise<TaskCollectionRef> }>
         )[boardName].tasks();
         const task = await tasks.addTask({ goal: "work", assignee: "implement" });
+        // Claimed, so an attempt holds it: the one status the freeze refuses.
+        await tasks.claim("w1");
         const outcome: TaskWriteOutcome = await tasks.setAssignee(task.id, "review");
         return { outcome, assignee: tasks.get(task.id)?.assignee ?? null };
       },
@@ -284,6 +414,8 @@ describe("assignee immutability is a property of the shared ledger", () => {
           ctx.cap as Record<string, { tasks: () => Promise<TaskCollectionRef> }>
         )[boardName].tasks();
         const task = await tasks.addTask({ goal: "work", assignee: "implement" });
+        // Claimed, so an attempt holds it: the one status the freeze refuses.
+        await tasks.claim("w1");
         const outcome: TaskWriteOutcome = await tasks.setAssignee(task.id, "review");
         return { outcome, assignee: tasks.get(task.id)?.assignee ?? null };
       },

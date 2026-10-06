@@ -143,7 +143,7 @@ The loop emits one `goal-seek-loop-termination` component when it exits:
 { collectionId: string; reason: string; iterations: number }
 ```
 
-`iterations` is the number of drains that ran. `reason` is the terminating verdict's reason: your judge's own string when it returned `done`, `max-iterations` when the budget ran out, or `judge-error` when the judge failed under the default `onError: "skip"`. The item is emitted client- and history-invisible, so it never renders and never enters model history. It's there for tooling reading the live stream.
+`iterations` is the number of drains that ran. `reason` is the terminating verdict's reason: your judge's own string when it returned `done`, `max-iterations` when the budget ran out, or `judge-error` when the judge failed under the default `onError: "skip"`. It's there for tooling reading the live stream, and it never enters model history. The shipped chat renderers skip it. If your app supplies its own renderer registry, add `"goal-seek-loop-termination": false` to its `component` map, or the item falls back to a raw JSON block when the loop ends.
 
 ## Limits
 

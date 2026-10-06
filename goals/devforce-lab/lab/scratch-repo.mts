@@ -42,10 +42,10 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { ASK_MARKER_IGNORE_RULE } from "@flow-state-dev/harness-manager";
 import { GIT_TIMEOUT_MS } from "@flow-state-dev/harness-manager/checkout";
 
@@ -161,6 +161,51 @@ export function createScratchRepo(label: string, options: ScratchRepoOptions = {
   });
   git(sourceRepo, "remote", "add", ARTIFACT_REMOTE, options.artifactRepo);
   return { sourceRepo, root };
+}
+
+/** A bare repository a workspace host can clone, and the `file://` remote that names it. */
+export interface BareRemote {
+  /** Where the bare repository is. */
+  path: string;
+  /** Its remote, as a project's `repository` names it and a host clones it. */
+  url: string;
+}
+
+/**
+ * A bare repository holding one scratch repository's base commit, for a
+ * project to name as its `repository` and a workspace host to clone over
+ * `file://`.
+ *
+ * Bare, because that is what a remote is: nobody works in it, and a host only
+ * fetches from it. Its `main` carries what {@link createScratchRepo} commits —
+ * the tracked files and the ask-marker ignore rule a host checks for — plus
+ * `seed`, which is where a check puts a marker it later looks for on the
+ * run's branch.
+ *
+ * @param label A short name, so a leftover directory says which check made it.
+ * @param options `seed`: extra files in the base commit. `at`: where to make
+ *   it, instead of a fresh temp directory. A repository already at `at` is
+ *   handed back as it is, so a server that restarts keeps naming the same one.
+ * @returns The bare repository's path and its `file://` remote.
+ */
+export function createBareRemote(
+  label: string,
+  options: { seed?: Record<string, string>; at?: string } = {},
+): BareRemote {
+  const path = options.at ?? join(mkdtempSync(join(tmpdir(), `devforce-lab-${label}-remote-`)), `${label}.git`);
+  const url = pathToFileURL(path).href;
+  if (existsSync(path)) return { path, url };
+
+  const scratch = createScratchRepo(label, { ...(options.seed === undefined ? {} : { seed: options.seed }) });
+  mkdirSync(dirname(path), { recursive: true });
+  execFileSync("git", ["init", "--bare", "--quiet", `--initial-branch=${BASE_REF}`, path], {
+    stdio: "pipe",
+    timeout: GIT_TIMEOUT_MS,
+  });
+  git(scratch.sourceRepo, "push", "--quiet", path, BASE_REF);
+  rmSync(scratch.sourceRepo, { recursive: true, force: true });
+  rmSync(scratch.root, { recursive: true, force: true });
+  return { path, url };
 }
 
 /**

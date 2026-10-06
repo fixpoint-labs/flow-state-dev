@@ -1,5 +1,5 @@
 /**
- * The goal's fixture Lab, as Shift Manager's start script loads it: one seat that
+ * The goal's fixture Lab, as Shift Manager's command loads it: one seat that
  * asks and hears (`asker.mts`), in one mailbox, with the organization's
  * inventory open so the seat's row names its door. In-memory stores and no
  * credential, so every start is fresh. The check raises the ask itself,

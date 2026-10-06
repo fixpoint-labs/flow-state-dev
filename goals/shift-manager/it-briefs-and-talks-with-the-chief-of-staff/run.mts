@@ -6,7 +6,7 @@
  * for the contract.
  *
  * Real path, real model. Shift Manager is built with Vite and served by its
- * own start script over two Labs: this goal's desk (`lab/fsdev.config.mts`),
+ * own command over two Labs: this goal's desk (`lab/fsdev.config.mts`),
  * whose `desk.chief-of-staff` seat runs the built-in `agent` kind on
  * `openai/gpt-5.4-mini`, and the same desk with no chief of staff
  * (`lab-no-cos/`).
@@ -52,6 +52,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
+import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -70,7 +71,7 @@ if (CONTROL !== "" && !Object.hasOwn(SWAPS, CONTROL)) {
 }
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
+const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-cos");
 const LABS = {
@@ -131,7 +132,7 @@ async function startLab(name: LabName, pages: string): Promise<Running> {
   mkdirSync(join(SCRATCH, "labs"), { recursive: true });
   const workDir = mkdtempSync(join(SCRATCH, "labs", `${name}-`));
   let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", LABS[name].config, "--port", "0", "--assets", pages], {
+  const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", LABS[name].config, "--port", "0", "--no-open", "--assets", pages], {
     cwd: workDir,
     env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "" }),
     stdio: ["ignore", "pipe", "pipe"],
@@ -146,13 +147,13 @@ async function startLab(name: LabName, pages: string): Promise<Running> {
     }),
   );
   for (let waited = 0; waited < 120_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, child, exited };
+    const served = servedAddresses(log);
+    if (served !== undefined) return { origin: served.origin, child, exited };
     if (gone) break;
     await sleep(250);
   }
   child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served ${name}. Log tail:\n${log.slice(-2000)}`);
+  throw new Error(`Shift Manager's command never served ${name}. Log tail:\n${log.slice(-2000)}`);
 }
 
 // ---- the store, read by this script -----------------------------------------
@@ -411,6 +412,6 @@ await runGoal(async () => {
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its start script over the desk (${cosSeat.id} on the agent kind, a real model) and the desk with no chief of staff; driven in Chromium and graded against the store through each Lab's routes. ${evidence.join("; ")}`,
+    evidence: `Shift Manager built with Vite and served by its command over the desk (${cosSeat.id} on the agent kind, a real model) and the desk with no chief of staff; driven in Chromium and graded against the store through each Lab's routes. ${evidence.join("; ")}`,
   };
 });

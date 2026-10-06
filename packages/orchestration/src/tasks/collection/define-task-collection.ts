@@ -123,7 +123,8 @@ export function defineTaskCollection<
 }
 
 /**
- * Ledgers whose assignee is frozen, keyed by the declaration itself (FIX-982).
+ * Ledgers whose assignee is frozen while an attempt holds a task, keyed by the
+ * declaration itself (FIX-982; narrowed to `in_progress` and `parked` by FIX-1780).
  *
  * The policy belongs to the **ledger**, not to a ref. `getOrCreateTaskCollection`
  * builds a fresh wrapper per resolution, so an `immutableAssignee` passed as one
@@ -175,8 +176,8 @@ export function defineTaskCollection<
 const immutableAssigneeLedgers = new WeakSet<DefinedTaskCollection>();
 
 /**
- * Freeze the assignee on every task in this ledger, for every ref that resolves
- * it. Called by `taskBoard` when a board binding this collection declares
+ * Freeze the assignee on every task an attempt holds (`in_progress` or
+ * `parked`) in this ledger, for every ref that resolves it. Called by `taskBoard` when a board binding this collection declares
  * dispatcher seats, whose child's routing key is derived from the assignee.
  *
  * Idempotent, and deliberately one-way: two boards on one ledger, one handing

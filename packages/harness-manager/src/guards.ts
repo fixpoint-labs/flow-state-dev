@@ -15,71 +15,16 @@
  * reported rather than at every door onto it.
  */
 import path from "node:path";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
-
-/**
- * How long a startup git query may take.
- *
- * Short on purpose, and deliberately not `GIT_TIMEOUT_MS`. These are metadata
- * reads against a local repository — `rev-parse` answers in milliseconds — and
- * they run before anything is claimed, so a generous bound buys nothing and a
- * tight one turns a wedged filesystem into a clear startup failure instead of a
- * dispatcher that never finishes booting.
- */
-const STARTUP_GIT_TIMEOUT_MS = 30_000;
-
-/**
- * Turn a `--git-common-dir` answer into the identity two callers compare.
- *
- * Exported because the provisioning path needs the SAME notion of identity while
- * obtaining the raw answer differently — it runs git through the async, budgeted
- * helper rather than a synchronous startup call. Two copies of this rule would
- * be two definitions of "the same repository", and the guards that depend on it
- * would silently stop agreeing.
- *
- * `realpathSync`, not `path.resolve`. Resolving lexically canonicalises the
- * SPELLING and not the location: `git rev-parse --git-common-dir` answers `.git`
- * for both a repository and a symlink to it, and a lexical resolve then produces
- * two different strings for one directory — so a symlinked `CONDUCTOR_REPO`
- * walked straight past the guard and the agent could edit the dispatcher after
- * all. Comparing identity means comparing the physical path.
- */
-export function identityFromCommonDir(dir: string, commonDir: string): string | undefined {
-  try {
-    return realpathSync(path.resolve(dir, commonDir.trim()));
-  } catch {
-    return undefined;
-  }
-}
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { repositoryIdentity, resolvesToCommit } from "@flow-state-dev/workspace";
 
 /**
  * The repository a directory belongs to, or `undefined` when it is not in one.
- *
- * `--git-common-dir` and not `--show-toplevel`: the common dir is the ONE
- * directory every worktree of a repository shares, so it identifies the
- * *repository* rather than the checkout. Comparing toplevels would call a
- * sibling worktree a different repo, which is exactly the case the guard exists
- * to catch.
+ * Re-exported from `@flow-state-dev/workspace`, which holds the one
+ * definition of "the same repository" and asks git for it — this package
+ * starts no git process of its own.
  */
-export function repositoryIdentity(dir: string): string | undefined {
-  try {
-    const out = execFileSync("git", ["rev-parse", "--git-common-dir"], {
-      cwd: dir,
-      stdio: ["ignore", "pipe", "ignore"],
-      encoding: "utf8",
-      // Bounded like every other child process this lab spawns. The blast
-      // radius here is smaller than the run-time probes — a hang at startup
-      // charges no attempt, because nothing has been claimed yet — but the rule
-      // is "every child process bounds itself", and a dispatcher wedged before
-      // it can serve anything is still a dispatcher nobody can diagnose.
-      timeout: STARTUP_GIT_TIMEOUT_MS,
-    }).trim();
-    return identityFromCommonDir(dir, out);
-  } catch {
-    return undefined;
-  }
-}
+export { repositoryIdentity };
 
 /**
  * Where the HOST's own code lives, as repository identities.
@@ -249,8 +194,9 @@ export function assertCheckoutRootUsable(root: string, variable = "workspace.roo
  * per retry, until the budget is gone. It is a startup fact, not a run-time
  * one, so it is checked where the operator can still see it.
  *
- * Verified with `rev-parse --verify`, the same call `branchExists` uses, so the
- * check and the thing it predicts cannot disagree.
+ * Asked through `@flow-state-dev/workspace` (`resolvesToCommit`, a
+ * `rev-parse --verify` of `<ref>^{commit}`), the package that later cuts the
+ * worktree from the same ref.
  *
  * `variable` names the setting in the message, so the whole rule travels to a
  * second door rather than two thirds of it. Reached programmatically the
@@ -262,13 +208,7 @@ export function assertBaseRefExists(
   baseRef: string,
   variable = "CONDUCTOR_BASE_REF",
 ): void {
-  try {
-    execFileSync("git", ["rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`], {
-      cwd: repo,
-      stdio: ["ignore", "ignore", "ignore"],
-      timeout: STARTUP_GIT_TIMEOUT_MS,
-    });
-  } catch {
+  if (!resolvesToCommit(repo, baseRef)) {
     throw new Error(
       `[harness-manager] ${variable} "${baseRef}" does not resolve to a commit in ${repo}. ` +
         "A fresh checkout is cut from it with `git worktree add`, so every attempt would " +

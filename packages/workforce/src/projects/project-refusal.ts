@@ -12,6 +12,8 @@
  * - `no-such-project`: no row holds the id.
  * - `project-id-held`: another owner's row holds the id.
  * - `invalid-project-id`: the id is `unassigned`, empty, or not one path segment.
+ * - `invalid-repository`: the repository is a path, starts with `-`, or carries a
+ *   credential. The refusal never repeats the value.
  * - `unknown-workstream`: a workstream id is not a mailbox in the inventory.
  * - `workstream-claimed`: another project holds the workstream.
  * - `talk-not-bound`: a room entry ran on a session bound to no project.
@@ -24,6 +26,7 @@ export type ProjectRefusalReason =
   | "no-such-project"
   | "project-id-held"
   | "invalid-project-id"
+  | "invalid-repository"
   | "unknown-workstream"
   | "workstream-claimed"
   | "talk-not-bound"

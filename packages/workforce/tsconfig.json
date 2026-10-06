@@ -6,5 +6,5 @@
     "outDir": "dist"
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../core" }, { "path": "../orchestration" }]
+  "references": [{ "path": "../core" }, { "path": "../orchestration" }, { "path": "../workspace" }]
 }

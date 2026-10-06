@@ -1,5 +1,5 @@
 /**
- * The look check's desk Lab, as Shift Manager's start script loads it: one
+ * The look check's desk Lab, as Shift Manager's command loads it: one
  * team, `desk`, with a seat named `chief-of-staff` on the built-in `agent`
  * kind, in one mailbox with one board, and the organization's inventory open
  * so the seat's row names its door. In-memory stores and no credential, so

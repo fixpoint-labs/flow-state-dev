@@ -19,7 +19,7 @@ const WITH_CURRENT: readonly Screen[] = ["workstream", "board", "task", "tasks",
 
 /**
  * Per workstream, the dot v2 gives it (v2:1183-1184): needs-you first, then running, else none.
- * Must match Shift Manager's `streamMark` (`labs/shift-manager/src/lib/shell.ts`); kept as this
+ * Must match Shift Manager's `streamMark` (`packages/shift-manager/src/lib/shell.ts`); kept as this
  * check's own copy, since an oracle that imported the app's rule would grade the app against itself.
  */
 export function dotOf(mailbox: Store["mailboxes"][string]): "needs" | "run" | "none" {

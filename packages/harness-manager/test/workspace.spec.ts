@@ -403,6 +403,32 @@ describe("a relative workspace root still lands in one place", () => {
   });
 });
 
+describe("a relative source repository is still the repository on this machine", () => {
+  it("provisions from it rather than refusing it as a remote", async () => {
+    // A fixed config spelled `{ sourceRepo: "./repo" }` worked before runs went
+    // through the workspace host, which takes only an absolute path as a
+    // repository on this machine and judges anything else a remote.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-relrepo-"));
+    dirs.push(dir);
+    execFileSync("mkdir", ["-p", join(dir, "repo")]);
+    seedRepo(join(dir, "repo"));
+
+    const previous = process.cwd();
+    process.chdir(dir);
+    try {
+      const config = { root: join(dir, "checkouts"), sourceRepo: "./repo", baseRef: "main" };
+      const location = at("FIX-1219", "implement");
+
+      const checkout = await provisionCheckout(config, location);
+
+      expect(checkout.path).toBe(checkoutPathFor(config, location));
+      expect(existsSync(join(checkout.path, ".git"))).toBe(true);
+    } finally {
+      process.chdir(previous);
+    }
+  });
+});
+
 describe("a half-created checkout does not brick every retry", () => {
   // Measured with a real `SIGTERM` to `git worktree add`, which is exactly how
   // the provisioning budget ends it: the target is left present, partly

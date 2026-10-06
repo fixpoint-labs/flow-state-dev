@@ -10,8 +10,11 @@
  *   there (never in the checkout) and built with Vite. Tailwind reads class
  *   names off the files on disk, so a patch has to land in a copy rather than
  *   in the bundler.
- * - {@link startShiftManager}: Shift Manager's own start script over a Lab's
+ * - {@link startShiftManager}: Shift Manager's own command over a Lab's
  *   `fsdev` config, from a scratch working directory.
+ * - {@link SHIFT_MANAGER_COMMAND} and {@link servedAddresses}: the command's
+ *   entry, and the addresses its banner prints, for a goal that starts it
+ *   itself.
  * - {@link labApi}: the Lab's HTTP routes, read with the goal's own requests,
  *   so a goal's oracle is the store and never Shift Manager's state.
  *
@@ -19,17 +22,44 @@
  * and never restores it. A Lab started after a build would inherit it, which
  * turns trace items off and stubs `node:` built-ins. The value this module saw
  * when it loaded is what every Lab it starts gets.
+ *
+ * A goal that drives Shift Manager the way a person does also has
+ * {@link buildShiftManagerPages} (the checkout as it stands), {@link labRoutes}
+ * ({@link labApi} read as one verified user) and {@link personPage}.
+ * {@link startShiftManager} serves another checkout when given `root`, `tsx`
+ * and `timeoutMs`. `personPage` types against Playwright; only those goals
+ * open a browser.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { Browser, BrowserContext, Page } from "playwright";
 import { intentFreeEnv } from "./env.mts";
 import { REPO_ROOT, repoPath } from "./paths.mts";
 
-/** `labs/shift-manager`. */
-export const SHIFT_MANAGER: string = repoPath("labs", "shift-manager");
+/** `packages/shift-manager`. */
+export const SHIFT_MANAGER: string = repoPath("packages", "shift-manager");
+
+/** The `shift-manager` command's entry in the checkout, run with tsx. */
+export const SHIFT_MANAGER_COMMAND: string = join(SHIFT_MANAGER, "cli", "bin.ts");
+
+/**
+ * The addresses a running `shift-manager` (`fsdev dev --app`) printed, once
+ * its banner is complete: the pages' origin, with no trailing slash, and the
+ * DevTool's, with one, or `null` when it serves none. Both on `127.0.0.1`,
+ * where the default bind listens and the page's `fsdev-devtool-url` points;
+ * the banner shows that host as `localhost`. `undefined` until the banner's
+ * last line prints.
+ */
+export function servedAddresses(log: string): { origin: string; devtool: string | null } | undefined {
+  const app = /App:\s+(http:\/\/\S+)/.exec(log);
+  if (app === null || !/Data:/.test(log.slice(app.index))) return undefined;
+  const on127 = (url: string) => new URL(url.replace("//localhost:", "//127.0.0.1:"));
+  const devtool = /DevTool:\s+(http:\/\/\S+)/.exec(log);
+  return { origin: on127(app[1]!).origin, devtool: devtool === null ? null : on127(devtool[1]!).href };
+}
 
 /** `NODE_ENV` as it was before any in-process build changed it. */
 const NODE_ENV_AT_LOAD = process.env.NODE_ENV;
@@ -55,6 +85,9 @@ export async function buildShiftManagerCopy(scratch: string, name: string, patch
   // The copy sits outside the workspace; its tsconfig still extends the workspace's.
   const tsconfig = join(root, "tsconfig.json");
   writeFileSync(tsconfig, readFileSync(tsconfig, "utf8").replace('"../../tsconfig.base.json"', JSON.stringify(join(REPO_ROOT, "tsconfig.base.json"))));
+  // Its Vite config imports the workspace's build-inputs script the same way.
+  const viteConfig = join(root, "vite.config.ts");
+  writeFileSync(viteConfig, readFileSync(viteConfig, "utf8").replace('"../../scripts/build-inputs.mjs"', JSON.stringify(join(REPO_ROOT, "scripts", "build-inputs.mjs"))));
   const diff: string[] = [];
   for (const patch of patches) {
     const path = join(root, patch.file);
@@ -72,14 +105,30 @@ export async function buildShiftManagerCopy(scratch: string, name: string, patch
   return { pages, diff };
 }
 
-/** A Shift Manager start script serving a Lab. */
+/**
+ * How the Shift Manager checkout at `root` is started, and how its banner
+ * names the pages' origin. A checkout with `cli/bin.ts` runs the
+ * `shift-manager` command with `--no-open` and prints {@link servedAddresses}'
+ * banner. An older one (`labs/shift-manager`) has only `bin/start.mts`, which
+ * takes no `--no-open` and prints `Shift Manager: http://…`.
+ */
+function startCommand(root: string): { entry: string; flags: string[]; origin: (log: string) => string | undefined } {
+  const command = join(root, "cli", "bin.ts");
+  if (existsSync(command)) return { entry: command, flags: ["--no-open"], origin: (log) => servedAddresses(log)?.origin };
+  const legacy = join(root, "bin", "start.mts");
+  if (!existsSync(legacy)) throw new Error(`no Shift Manager start command under ${root}: neither cli/bin.ts nor bin/start.mts`);
+  return { entry: legacy, flags: [], origin: (log) => /Shift Manager: (http:\/\/\S+)/.exec(log)?.[1] };
+}
+
+/** A Shift Manager command serving a Lab. */
 export type ServedShiftManager = { origin: string; workDir: string; child: ChildProcess; log: () => string; exited: Promise<void>; stop: () => Promise<void> };
 
 /**
- * Shift Manager's start script over the Lab at `config`, serving `pages`, from
+ * Shift Manager's command over the Lab at `config`, serving `pages`, from
  * a fresh working directory under `<scratch>/labs`. `env` is added to the
  * child's environment; `GOAL_CONTROL` is always cleared, since a Lab's config
- * may read it too, and the intent ladder is stripped.
+ * may read it too, and the intent ladder is stripped. `root` and `tsx` serve
+ * another checkout (default: this one); `timeoutMs` defaults to 90s.
  */
 export async function startShiftManager(options: {
   scratch: string;
@@ -87,14 +136,23 @@ export async function startShiftManager(options: {
   config: string;
   pages: string;
   env?: Record<string, string>;
+  /** Shift Manager checkout to start: its `cli/bin.ts`, or an older checkout's `bin/start.mts`. Default: this one. */
+  root?: string;
+  /** `tsx` that runs the start command. Default: this workspace's. */
+  tsx?: string;
+  /** How long the start may take before it is refused. Default: 90s. */
+  timeoutMs?: number;
 }): Promise<ServedShiftManager> {
+  const root = options.root ?? SHIFT_MANAGER;
+  const tsx = options.tsx ?? TSX;
   mkdirSync(join(options.scratch, "labs"), { recursive: true });
   const workDir = mkdtempSync(join(options.scratch, "labs", `${options.label}-`));
   const env = intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", ...options.env });
   if (NODE_ENV_AT_LOAD === undefined) delete env.NODE_ENV;
   else env.NODE_ENV = NODE_ENV_AT_LOAD;
   let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", options.config, "--port", "0", "--assets", options.pages], {
+  const start = startCommand(root);
+  const child = spawn(tsx, [start.entry, "--config", options.config, "--port", "0", ...start.flags, "--assets", options.pages], {
     cwd: workDir,
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -112,14 +170,14 @@ export async function startShiftManager(options: {
     child.kill("SIGTERM");
     await exited;
   };
-  for (let waited = 0; waited < 90_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, workDir, child, log: () => log, exited, stop };
+  for (let waited = 0; waited < (options.timeoutMs ?? 90_000); waited += 250) {
+    const origin = start.origin(log);
+    if (origin !== undefined) return { origin, workDir, child, log: () => log, exited, stop };
     if (gone) break;
     await sleep(250);
   }
   child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served ${options.label}. Log tail:\n${log.slice(-2000)}`);
+  throw new Error(`Shift Manager's command never served ${options.label}. Log tail:\n${log.slice(-2000)}`);
 }
 
 /** GET/POST against a Lab's routes, with the page's bearer when the Lab has one. */
@@ -179,3 +237,151 @@ export function labApi(origin: string, bearer: string | undefined) {
 
 /** A Lab's routes, as {@link labApi} reads them. */
 export type LabApi = ReturnType<typeof labApi>;
+
+/**
+ * Build Shift Manager's pages into `outDir` with the Vite the checkout at
+ * `root` carries.
+ *
+ * @returns `outDir`, for `--assets`.
+ */
+export async function buildShiftManagerPages(outDir: string, root: string = SHIFT_MANAGER): Promise<string> {
+  const viteEntry = createRequire(join(root, "package.json")).resolve("vite");
+  const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
+  const nodeEnv = process.env.NODE_ENV;
+  try {
+    await vite.build({ root, configFile: join(root, "vite.config.ts"), logLevel: "error", build: { outDir, emptyOutDir: true } });
+  } finally {
+    // Vite leaves `production` behind, which every child this process spawns would inherit.
+    if (nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = nodeEnv;
+  }
+  return outDir;
+}
+
+/** One verified person, as the Lab's door knows them. */
+export interface LabUser {
+  userId: string;
+  bearer: string;
+}
+
+/** A stored item, as the session state route hands it back. */
+export type StoredItem = {
+  id: string;
+  type: string;
+  role?: string;
+  requestId?: string;
+  suspensionId?: string;
+  reason?: string;
+  message?: string;
+  status?: string;
+  data?: unknown;
+  content?: unknown;
+  output?: unknown;
+  error?: { message?: string };
+  toolCall?: { callId?: string; name?: string; arguments?: string };
+  createdAt?: number;
+};
+
+/** The request states a turn is still running in. */
+const RUNNING = ["pending", "queued", "in_progress", "running"];
+
+/**
+ * {@link labApi} read as `user`. Collections are addressed by the key pattern
+ * the session's manifest publishes. The fetch and the row paging are `labApi`'s.
+ */
+export function labRoutes(origin: string, user: LabUser) {
+  const api = labApi(origin, user.bearer === "" ? undefined : user.bearer);
+  const enc = encodeURIComponent;
+  /** The collection ref a session's manifest publishes for a key pattern, or `undefined`. */
+  const refOf = async (sessionId: string, pattern: string): Promise<string | undefined> => {
+    const manifest = await api.get(`/sessions/${enc(sessionId)}/manifest`);
+    return (manifest.resources as Array<{ kind: string; pattern?: string; ref: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
+  };
+  /** Every row of the collection at `pattern`, read through `sessionId`. Throws when the session declares none. */
+  const collection = async (sessionId: string, pattern: string): Promise<Array<Record<string, any>>> => {
+    const ref = await refOf(sessionId, pattern);
+    if (ref === undefined) throw new Error(`session ${sessionId} declares no collection ${pattern}`);
+    return api.collection(sessionId, ref);
+  };
+  /** Every item of `types` (comma-separated) in one session, in stored order. */
+  const items = (sessionId: string, types: string): Promise<StoredItem[]> =>
+    api.items(sessionId, types === "" ? [] : types.split(",")) as Promise<StoredItem[]>;
+  /** The user's sessions, dispatch runs included. */
+  const sessions = async (): Promise<Array<{ id: string; flowId?: string; flowKind?: string; parentSessionId?: string | null; createdAt: number }>> =>
+    (await api.get(`/sessions?userId=${enc(user.userId)}&include=dispatch-runs`)).sessions ?? [];
+  /** The requests one session holds, newest last as the route lists them. */
+  const requests = async (sessionId: string): Promise<Array<Record<string, any>>> => {
+    const out: Array<Record<string, any>> = [];
+    for (let offset = 0; offset < 5000; offset += 200) {
+      const listed = await api.get(`/sessions/${enc(sessionId)}/requests?include_result_output=true&limit=200&offset=${offset}`);
+      const page = (listed.requests ?? []) as Array<Record<string, any>>;
+      out.push(...page);
+      if (page.length < 200) break;
+    }
+    return out;
+  };
+  /** A request's status. */
+  const status = async (flowId: string, requestId: string): Promise<string | undefined> =>
+    (await api.call("GET", `/${enc(flowId)}/requests/${enc(requestId)}/status`)).body?.status as string | undefined;
+  /** Wait for a request to leave the running states (and `suspended`, when `pastSuspended`). */
+  const settle = async (flowId: string, requestId: string, timeoutMs: number, pastSuspended = false): Promise<string> => {
+    const running = [...RUNNING, ...(pastSuspended ? ["suspended"] : [])];
+    for (const until = Date.now() + timeoutMs; Date.now() < until; await sleep(500)) {
+      const now = await status(flowId, requestId);
+      if (now !== undefined && !running.includes(now)) return now;
+    }
+    return "timed-out";
+  };
+  /** Run one action and wait for it to end: its status, and its output or error. */
+  const act = async (kind: string, sessionId: string, action: string, input: unknown): Promise<{ status: string; output: any; error: string | undefined }> => {
+    const posted = await api.call("POST", `/${enc(kind)}/${enc(sessionId)}/actions/${enc(action)}`, { userId: user.userId, input });
+    if (posted.status !== 202) return { status: `http ${posted.status}`, output: undefined, error: JSON.stringify(posted.body) };
+    const requestId = String(posted.body?.request?.id);
+    const settled = await settle(kind, requestId, 60_000);
+    const found = (await requests(sessionId)).find((r) => r.id === requestId);
+    return { status: settled, output: found?.result?.output, error: found?.result?.error?.message };
+  };
+  return { user, call: api.call, get: api.get, refOf, collection, items, sessions, requests, status, settle, act };
+}
+
+/** What {@link labRoutes} returns. */
+export type LabRoutes = ReturnType<typeof labRoutes>;
+
+/**
+ * A browser context in which Shift Manager runs as `user`.
+ *
+ * Shift Manager reads who it runs as from the connection config its start
+ * script writes into the page (`window.__FSD_DEVTOOL_CONFIG__`), which names
+ * the Lab's owner. A Lab has no sign-in, so a second person's browser is the
+ * same page handed that person's own user id and verified bearer: the
+ * context rewrites the config in each page document it loads, and nothing
+ * else. For the Lab's owner the page is left as served.
+ */
+export async function personPage(browser: Browser, origin: string, user: LabUser, owner: boolean): Promise<{ context: BrowserContext; page: Page; errors: string[] }> {
+  const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  if (!owner) {
+    await context.route(`${origin}/**`, async (route) => {
+      if (route.request().resourceType() !== "document") return route.continue();
+      const response = await route.fetch();
+      const html = await response.text();
+      const rewritten = html.replace(/(window\.__FSD_DEVTOOL_CONFIG__ = )(\{.*?\})(;<\/script>)/, (_m, head: string, json: string, tail: string) => {
+        const config = JSON.parse(json) as Record<string, unknown>;
+        return `${head}${JSON.stringify({ ...config, userId: user.userId, ...(user.bearer === "" ? {} : { bearerToken: user.bearer }) })}${tail}`;
+      });
+      if (rewritten === html) throw new Error("the served page carries no connection config to hand another person");
+      await route.fulfill({ response, body: rewritten });
+    });
+  }
+  const page = await context.newPage();
+  page.setDefaultTimeout(15_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  return { context, page, errors };
+}
+
+/** Open a Shift Manager path and wait for its shell to settle. */
+export async function openShiftManager(page: Page, origin: string, path: string): Promise<void> {
+  await page.goto(`${origin}${path}`);
+  await page.getByTestId("shell").waitFor({ timeout: 30_000 });
+  await page.waitForFunction(() => !document.querySelector("[data-testid=nav-tasks-count]")?.textContent?.includes("…"), undefined, { timeout: 30_000 });
+}

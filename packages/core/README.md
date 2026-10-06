@@ -213,6 +213,7 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
   - **Throws when defined, naming the problem, when given:** a key pattern with parameters, such as `[topic]/observations` (use a wildcard pattern like `tickets/*`); `writable: false`; `client.content.create` or `client.content.update`; your own `reactTo.contentUpdated` (`created`, `stateUpdated` and `deleted` are yours); a `stateSchema` that isn't a `z.object()`, or that already has `facets` or `indexedAs`; a question with the id `minConfidence`; a value that isn't an evaluator block, or an evaluator whose questions are a function; an evaluator whose input schema rejects a string (adapt the body with `connectInput`); an evaluator that declares `flowConfigSchema`, a resource under `name`, or a single resource (not a collection) with `prefetchMode: "lazy"`.
   - **Client access:** reads and deletes only. Write bodies through a flow action.
 - `isDefinedResourceCollection(value)` — Type guard for collection definitions
+- `isCollectionConfig(value)` / `resourceStorageKeys(configs)` (`@flow-state-dev/core/types`) — The storage-identity rule the engine persists by and `defineFlow`'s collision check applies. `isCollectionConfig` is structural: anything with a string `pattern` is stored as a collection, keyed on that pattern. `resourceStorageKeys` maps each accessor to the slot it persists to: a single resource's `ref`, else the first accessor its definition appears under.
 
 **Capabilities:**
 - `defineCapability(config)` — Bundle resources, state schemas, targets, and helper functions under a single name. Blocks declare capabilities via `uses: [cap]` and the framework merges everything transitively.
@@ -266,6 +267,9 @@ Forwarding is direct-only: inner capabilities used by `myCap` do not propagate t
 - `mapLimit(values, maxConcurrency, mapper)` — bounded-concurrency async fan-out preserving input order. Use it for async work **inside a handler** (`.parallel` fans out blocks, not in-handler async).
 - `xmlTag(name, content)`, `renderTaggedContext(tagged, order)` — XML tag rendering used by object-form generator context
 - `validateTagName(name)`, `RESERVED_TAG_NAMES` — Reserved-tag list and validator for object-form context keys
+
+**Once per process** (`@flow-state-dev/core`):
+- `firstInProcess(key)` — returns `true` the first time `key` is claimed in the process and `false` on every later call. Use it to print a boot diagnostic once per server start. The record is process-global and lasts for the life of the process: it lives on `globalThis`, so it survives a dev server re-evaluating modules on each edit, and it is never cleared. Every caller shares one set, so namespace keys by package (`"my-pkg/unattended-board"`). It only answers "first time?". It is not dev-only and ignores `FSD_QUIET_WARNINGS`; the caller decides what to print.
 
 **Object-form generator context:**
 
@@ -434,6 +438,7 @@ Set `client: { live: true }` to stream each mutation's projected `clientData` as
 
 - Runtime schemas, from the package root: `harnessRunInputSchema`, `harnessRunHandleSchema`, `harnessRunEnvelopeSchema`
 - Types, from `@flow-state-dev/core/types`: `HarnessBlock`, `HarnessRunInput`, `HarnessRunHandle`, `HarnessRunEnvelope`, `HarnessSource`, `HarnessRunStatus`, `HarnessRunOutcome`, `HarnessRunUsage`, `HarnessRunCost`, `HarnessCostBasis`, `HarnessResolver`, `HarnessSessionHook`, `HarnessCallbackContext`
+- `harnessEnv({ pass })`, from the package root (options type `HarnessEnvOptions`): builds a harness's `env` from an allowlist of variable names. A harness's agent runs as a child process, and with no `env` it inherits the server's entire `process.env`. The result holds exactly the named variables that are set, read when `harnessEnv` is called. Nothing else is passed, `PATH` and `HOME` included. Values come from `process.env` by default; pass `env` to read from another source. Where there is no `process` (a browser or edge runtime) and no `env` is given, the result is empty rather than an error.
 
 Two packages implement it: [`@flow-state-dev/claude-code`](../claude-code) (`claude-code/sdk`) and [`@flow-state-dev/codex`](../codex) (`codex/sdk`). [`@flow-state-dev/harness-manager`](../harness-manager) drives either. Full guide: [Coding agents](https://flow-state.dev/docs/tools/coding-agents).
 
@@ -566,9 +571,11 @@ Every arrival at a flow is a **dispatch** of one **type**, delivered to one **en
 
 `internal` and `task` are definition-only, like the transport maps: passing either to the instance call (`defineFlow({ ... })({ internal })`) throws. Each nests its entries under `actions`: `internal: { actions: { wake: { block } } }`. The flat `internal: { wake }` spelling is refused by name. Every entry of every type has the same core shape as an action, `{ block, inputSchema?, concurrency?, durable?, tokenBudget?, onCompleted?, onErrored?, userMessage? }`. Only `actions` adds the caller-facing `description` and `mcp` fields.
 
-A `task` entry is declared as a plain block, but a `task` dispatch does not run the entry's block as-is. Before the block runs, the row is re-read and the claim verified; a claim that is no longer current throws `StaleTaskClaimError`. The block then receives the worker input the row was claimed with. `defineFlow` throws, naming the block and the entry, for a task entry no reachable board hands off to, a task dispatcher no board holds, and two boards handing off to one entry.
+A `task` entry is declared as a plain block, but a `task` dispatch does not run the entry's block as-is. Before the block runs, the row is re-read and the claim verified; a claim that is no longer current throws `StaleTaskClaimError`. The block then receives the worker input the row was claimed with. `defineFlow` throws, naming the block and the entry, for a task entry no reachable board hands off to and no `from` serves, a task dispatcher no board holds, two boards handing off to one entry, and an entry with `from` that a board in the same flow also hands off to.
 
-`resolveEntry(flow, type, name, coordinate?)` is the lookup itself, exported for hosts and adapters, alongside `DispatchType`, `DISPATCH_TYPES`, `BlockDispatchType`, `EntryMaps`, `EntryCoordinate`, `InternalEntry`, and `TaskEntry`.
+A task entry may declare `from`, a `TaskBinding` that says where its tasks come from: `task: { actions: { work: { block, from } } }`. Its flow then needs no board, and each arriving task is checked against the ledger the dispatch names. `@flow-state-dev/orchestration`'s `taskLedgers({ name, resolve })` builds one.
+
+`resolveEntry(flow, type, name, coordinate?)` is the lookup itself, exported for hosts and adapters, alongside `DispatchType`, `DISPATCH_TYPES`, `BlockDispatchType`, `EntryMaps`, `EntryCoordinate`, `InternalEntry`, and `TaskEntry`. `resolveTaskFlowKind(blockName, address, task, ctx)` resolves the flow a `task` address sends one task to, the way a hand-over does: the declared string, or the `TaskFlowTarget`'s answer, throwing `DispatchRefusedError` (`flow-not-found`, naming the assignee) when it answers nothing.
 
 ### `dispatcher(config)`
 
@@ -631,7 +638,7 @@ export default defineFlow({
 |---|---|
 | `type` | Omit it. Ordinary dispatchers send `internal`. A board's dispatcher stamps `type: "task"` from its session policy. An explicit `"task"` is still accepted. |
 | `action` | The entry name, resolved as `flow.internal.actions[action]` or `flow.task.actions[action]`. Checked when the flow is defined, unless `flowKind` names another flow. |
-| `flowKind` | The **other flow** the entry lives on, on an `internal` or `task` dispatcher. Omit to address this flow's own entry. Checked at run time, not when the flow is defined — see [Dispatching to another flow](#dispatching-to-another-flow). |
+| `flowKind` | The **other flow** the entry lives on, on an `internal` or `task` dispatcher. Omit to address this flow's own entry. Checked at run time, not when the flow is defined — see [Dispatching to another flow](#dispatching-to-another-flow). On a `task` dispatcher it may be a `TaskFlowTarget`, `(task, ctx) => string \| undefined` (or a promise of one), where `task` is a `TaskTargetQuery`, `{ assignee, taskId, input }`. It is called once per task at hand-over, and requires `session: "per-task"` (any other policy throws when built); `undefined` or `""` refuses `flow-not-found`, naming the assignee. An `internal` dispatcher given a function throws when built. |
 | `inputSchema` | `internal` only. What the block accepts. Defaults to `z.unknown()`. |
 | `session` | `internal`: `{ key: (input, ctx) => string }` derives a child of the running session; `{ id: (input, ctx) => string }` names an existing one; `{ from: true }` delivers into the seam-stamped sender (refuses `no-sender` when this request was not dispatched). `task`: a `TaskSessionPolicy`, one of `"per-task"` (one child per row), `"per-worker"` (one child per assignee, shared by every row routed to it), or `{ key: (task, ctx) => string }`, `task` being the claim envelope's `payload` field (the row's packed input). |
 | `payload` | `internal` only. `(input, ctx) => unknown`, the entry's input. Defaults to the input itself. Validated by the entry's own schema on arrival. |
@@ -668,7 +675,7 @@ The block returns a `DispatchHandle` (`dispatchHandleSchema`): `{ sessionId, req
 
 The same key from a different parent session, user, or tenant is a different child. A caller cannot address another user's child by key. The child's session record carries `parentSessionId`, `topic` (the key), and `coordinate` (`"internal:summarize"`). An `id` target must exist, belong to this flow kind, this principal, and this tenant, and not be bound to a different org.
 
-`defineFlow` checks every block it can reach (sequencer steps, rescue handlers, a generator's `tools`, the `blocks` a `forEach` / `forEachSideChain` factory declares, and the blocks behind `internal` and `task` entries) and throws when a dispatcher names an entry the flow does not declare, naming the block and the address. A target chosen from data is a `router` over declared dispatchers, not a dynamic string. The one address it cannot check is a cross-flow one, which names an entry on a flow it does not hold.
+`defineFlow` checks every block it can reach (sequencer steps, rescue handlers, a generator's `tools`, the `blocks` a `forEach` / `forEachSideChain` factory declares, and the blocks behind `internal` and `task` entries) and throws when a dispatcher names an entry the flow does not declare, naming the block and the address. A target chosen from data is a `router` over declared dispatchers, not a dynamic string. The exception is a `task` dispatcher's `flowKind`, which may be a function of the task, checked when the task is handed over like any cross-flow address. The one address it cannot check is a cross-flow one, which names an entry on a flow it does not hold.
 
 ### Dispatching to another flow
 

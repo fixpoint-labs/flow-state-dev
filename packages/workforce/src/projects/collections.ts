@@ -1,11 +1,12 @@
 /**
- * Projects — the organization's `projects` rows, and the three collections a
- * project's room and its workstream claims live in.
+ * Projects — the organization's `projects` rows, and the collections a
+ * project's room, its workstream claims and its files live in.
  *
- *   projects/<id>                       one row per project: title, brief, owner, members, workstreams, talk sessions
+ *   projects/<id>                       one row per project: title, brief, owner, members, workstreams, repository, talk sessions
  *   room-lines/<projectId>/<seq>        one row per line of the project's room, created and never edited
  *   room-seq/<projectId>                the room's sequence counter and its committed watermark, alone
  *   workstream-claims/<mailboxId>       which project holds a workstream; one shared key, written with `create`
+ *   project-files/<projectId>/<path>    one row per file the project keeps: notes, memory, a no-repository project's code
  *
  * A project is runtime data. It is created after the tree was read, so no
  * `MAILBOX.md` and no inventory row can name it; the row is the project's one
@@ -21,6 +22,8 @@
  * member's talk session (`talk.ts`), which checks the row's `members` first;
  * a browser read of `room-lines` would skip that check, so neither it nor the
  * counter declares one, and the collection route refuses both with a 403.
+ * Project files are the same: `readProjectFiles` checks `members` first, and
+ * the collection has no browser read.
  *
  * These keys are a public surface: Shift Manager and the chief of staff read
  * them, and moving a prefix breaks every store that already holds a project.
@@ -38,6 +41,8 @@ export const ROOM_LINES_RESOURCE = "room-lines";
 export const ROOM_SEQ_RESOURCE = "room-seq";
 /** The resource-map ref of the workstream claims. */
 export const WORKSTREAM_CLAIMS_RESOURCE = "workstream-claims";
+/** The resource-map ref of the project files. */
+export const PROJECT_FILES_RESOURCE = "project-files";
 /** The resource-map ref of the seat answers a room holds. Not re-exported from the package root. */
 export const ROOM_ANSWERS_RESOURCE = "room-answers";
 /** The resource-map ref of the deliveries a room's fan-out made. Not re-exported from the package root. */
@@ -89,6 +94,17 @@ export const projectRowSchema = z.object({
   /** Full mailbox ids of the declared mailboxes this project holds, from any team. */
   workstreams: z.array(z.string()).default([]),
   /**
+   * The git remote the project's code lives in, as a member wrote it (for
+   * example `https://github.com/acme/storefront.git` or
+   * `git@github.com:acme/storefront.git`), or `null` for a project with no
+   * repository. A remote, never a folder on some machine: the writes refuse a
+   * bare path and a value carrying a credential (`repository-value.ts`).
+   * A row written before the field existed has no key in storage, and stored
+   * state is not re-parsed on read: read rows through this schema, or guard
+   * with `== null` (BP-030).
+   */
+  repository: z.string().nullable().default(null),
+  /**
    * The token each listed workstream's claim carried when this row was written.
    * A write that drops a workstream deletes its claim only while the claim
    * still carries this token, so a claim a later write has re-stamped survives.
@@ -116,6 +132,7 @@ const PROJECT_CLIENT_FIELDS = [
   "ownerUserId",
   "members",
   "workstreams",
+  "repository",
   "sessions"
 ] as const;
 
@@ -359,6 +376,51 @@ const ROOM_DELIVERIES_COLLECTION = defineResourceCollection({
   stateSchema: roomDeliverySchema
 });
 
+/**
+ * One file a project keeps, as a workspace projection commits it: its path
+ * under the project, its content hash, and when it was last synced. The file's
+ * body is the row's content, not its state. Nullable with a `null` default
+ * (BP-023), so a row written with less still reads.
+ */
+export const projectFileSchema = z.object({
+  path: z.string().nullable().default(null),
+  hash: z.string().nullable().default(null),
+  updatedAt: z.string().nullable().default(null)
+});
+
+/** @see projectFileSchema */
+export type ProjectFile = z.infer<typeof projectFileSchema>;
+
+/**
+ * The files each project keeps, at `project-files/<projectId>/<path>`: an
+ * agent's notes and memory, and the whole of a no-repository project's code.
+ * One collection for the organization, keyed by project, so a reader or a
+ * workspace mount scoped to `<projectId>/` sees that project's files and no
+ * other's. Lazy, because a project's files grow without bound; no browser
+ * read, because only the project's members may read them, through
+ * `readProjectFiles` (`project-files.ts`).
+ */
+export function defineProjectFilesCollection() {
+  return PROJECT_FILES_COLLECTION;
+}
+
+const PROJECT_FILES_COLLECTION = defineResourceCollection({
+  pattern: "project-files/**",
+  scope: "org",
+  flowIsolation: SHARED_ACROSS_FLOWS,
+  prefetchMode: "lazy",
+  stateSchema: projectFileSchema
+});
+
+/**
+ * The key prefix of one project's files, relative to the collection:
+ * `<projectId>/`. The trailing slash is what keeps `apollo` from reading
+ * `apollo2`'s files.
+ */
+export function projectFilesPrefix(projectId: string): string {
+  return `${projectId}/`;
+}
+
 /** Digits a sequence number is padded to, so keys sort by `seq`. */
 const SEQ_DIGITS = 12;
 
@@ -377,6 +439,10 @@ export function roomLineKey(projectId: string, seq: number): string {
 export function projectIdProblem(id: string): string | undefined {
   if (id.length === 0) return "a project id can't be empty";
   if (id === NO_PROJECT_ID) return `"${NO_PROJECT_ID}" is where workstreams no project lists are shown, so no project can take it`;
-  if (id.includes("/") || id === "." || id === "..") return `project id "${id}" must be one path segment`;
+  // A backslash too: the id is the key prefix a run's files are mounted at,
+  // and a mount scope refuses one, so the project could never be worked on.
+  if (id.includes("/") || id.includes("\\") || id === "." || id === "..") {
+    return `project id "${id}" must be one path segment`;
+  }
   return undefined;
 }

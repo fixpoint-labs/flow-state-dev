@@ -5,7 +5,7 @@
  * Real path, no model, out of CI. See goal.md for the contract.
  *
  * Shift Manager is built with Vite into a scratch directory, then served by its own
- * start script over each goal Lab's unedited `fsdev.config.mts`: DevTeam
+ * command over each goal Lab's unedited `fsdev.config.mts`: DevTeam
  * (bearer-authenticated, in-memory) and multi-seat-collab (SQLite, no auth).
  * The driver puts one row on each Lab's board through the Lab's own action
  * routes, then Chromium walks every level. What the page draws is graded
@@ -75,12 +75,12 @@ const fixture = loadFixture<{
 }>(import.meta.url);
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
+const SHIFT_MANAGER = join(REPO_ROOT, "packages", "shift-manager");
 const SCRATCH = goalTmpDir("shift-manager");
 
 const LABS = {
   devteam: {
-    config: join(REPO_ROOT, "labs", "shift-manager", "teams", "devteam", "fsdev.config.mts"),
+    config: join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "fsdev.config.mts"),
     tree: join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce"),
   },
   "multi-seat-collab": {
@@ -189,7 +189,7 @@ async function buildShiftManager(control: string): Promise<string> {
 
 // ---- serving a Lab -----------------------------------------------------------
 
-/** Shift Manager's start script over a Lab's config, from a scratch working directory. */
+/** Shift Manager's command over a Lab's config, from a scratch working directory. */
 const startLab = (name: LabName, pages: string, env: Record<string, string>): Promise<ServedShiftManager> =>
   startShiftManager({ scratch: SCRATCH, label: name, config: LABS[name].config, pages, env });
 
@@ -639,6 +639,6 @@ await runGoal(async () => {
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its start script over both goal Labs; every level walked in Chromium and graded against each tree on disk and each store read through the Lab's routes. ${evidence.join("; ")}`,
+    evidence: `Shift Manager built with Vite and served by its command over both goal Labs; every level walked in Chromium and graded against each tree on disk and each store read through the Lab's routes. ${evidence.join("; ")}`,
   };
 });

@@ -2,7 +2,7 @@
 
 A task-board worker that turns a row into a **supervised coding run**: its own checkout, a verdict read before the row settles, a question it can ask a person, and the coding agent itself as a slot you fill.
 
-A *harness* is a coding agent driven as a block — you hand it a prompt, it works in its own agentic loop, and it hands back a handle describing the run. This package imports none of them.
+A *harness* is a coding agent driven as a block: you hand it a prompt, it works in its own agentic loop, and it hands back a handle describing the run. This package imports none of them.
 
 ## Installation
 
@@ -10,7 +10,7 @@ A *harness* is a coding agent driven as a block — you hand it a prompt, it wor
 pnpm add @flow-state-dev/harness-manager
 ```
 
-Peer of `@flow-state-dev/core` and `@flow-state-dev/orchestration`. You install a harness separately — `@flow-state-dev/claude-code`, `@flow-state-dev/codex`, `@flow-state-dev/cursor`, or your own.
+Peer of `@flow-state-dev/core` and `@flow-state-dev/orchestration`. You install a harness separately: `@flow-state-dev/claude-code`, `@flow-state-dev/codex`, `@flow-state-dev/cursor`, or your own.
 
 ## Quick start
 
@@ -32,7 +32,46 @@ const manager = harnessManager({
 });
 ```
 
-Mount it as the block behind a board seat that hands off, and rows filed on that board become supervised runs.
+Mount it as the block behind a board worker that hands off, and rows filed on that board become supervised runs.
+
+With `workspace: { root, sourceRepo, baseRef }`, every run gets a new branch of `sourceRepo`, cut from `baseRef`. The branch lives in `sourceRepo` itself and the run's checkout sits under `root`.
+
+## Running a project's work
+
+Hand the manager a workspace host instead of a fixed repository, and each run gets its files from whatever the host's source says. A *workspace host* turns a run's source into a directory the agent works in, and saves the files kept with it; a *run source* says where those files come from. Both come from `@flow-state-dev/workspace`:
+
+```ts
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+
+harnessManager({
+  boardCollectionId: work.id,
+  boardCollection: work,
+  workspace: localWorkspaceHost({
+    root: "/var/fsd/runs",
+    remotes: { allow: ["github.com"] },
+    source: (ctx) => ({ kind: "repo", repo: "https://github.com/acme/storefront.git" }),
+  }),
+  // ...
+});
+```
+
+For a mailbox board a project holds, `@flow-state-dev/workforce` provides the source: `projectWorkspace({ board: work })` answers with the repository of the project that holds the board's workstream, with the project's files beside the checkout, or the project's files alone when it has none. It reads its collections through `projectWorkspaceCapability`, which goes on the manager's `uses`:
+
+```ts
+import { projectWorkspace, projectWorkspaceCapability } from "@flow-state-dev/workforce";
+
+harnessManager({
+  // ...
+  workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace({ board: work }) }),
+  uses: [projectWorkspaceCapability],
+});
+```
+
+The source answers per run, from the block context, and it is asked when a run is first set up. The repository and base branch it named are recorded on the run record (`remote`, `baseRef`). A retry uses the recorded ones, so changing where a source points applies to new rows and never moves a run already under way. A run that started with no repository is recorded as one (`filesOnly`), so it stays on its kept files even if its project gains a repository later.
+
+When the run has files kept beside its checkout, the manager saves them at the end of each turn, when the run asks a question, and when the harness fails. The run record's `lastSave` shows the result: the time, any files left alone because someone else changed them too, and an error if the save failed. A failed save does not fail the run, and the next save tries again. The exception is a run that would complete: completing is its last save, so a run whose phase is done but whose files could not be saved fails that attempt instead, and the retry saves them.
+
+A run its workspace refuses is not retried. That covers a source answering `refused` and a host that won't provision what the source named, such as a remote it doesn't allow. The row is cancelled on its first attempt, before the harness starts, with the refusal as its reason. The same answer would come back on every retry, so retrying would only spend the attempts. In a run with no repository, the manager's question file stays out of the saved files.
 
 ## Running a mailbox's board
 
@@ -59,8 +98,7 @@ taskBoard({ collection: work, dispatcher: runOwnerDispatcher(), /* ... */ });
 The manager builds each run's checkout folder and git branch from the board's id, used as is. A
 mailbox's board id contains dots, which the manager accepts. It refuses, when you build it, an id
 git can't use as a branch name, such as one ending in `.lock`; a mailbox can't name a board
-`lock`. Two boards whose ids differ other than in letter case never share a checkout. Board ids
-that worked before keep the same folders and branches, so an upgrade moves nobody's work.
+`lock`. Two boards whose ids differ other than in letter case never share a checkout.
 
 The board is kept per organization, so everyone in the organization sees its rows. A row's
 coding run belongs to the person who started it: a drain by anyone else in the organization is
@@ -80,13 +118,13 @@ The manager calls your factory once, with three feeds:
 
 | Feed | What it does |
 |---|---|
-| `cwd` | Where this run works — the checkout the manager derived and provisioned. |
+| `cwd` | Where this run works: the checkout the manager derived and provisioned. |
 | `resume` | Which session this attempt continues, or `null` for a fresh one. |
 | `onSession` | Called by the harness when it names its session, so the manager records it. |
 
-They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context and nothing else — never the run's prompt, because the prompt is something a caller (or a model calling the harness as a tool) sets, and these three decide where a run writes and what it continues.
+They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context, not the run's prompt.
 
-Everything else about the agent — model, tools, permissions, sandbox — you write inside the factory. Pointing the same manager at another harness is one line, and the manager is unchanged:
+Everything else about the agent (model, tools, permissions, sandbox) you write inside the factory. Pointing the same manager at another harness is one line, and the manager is unchanged:
 
 ```ts
 import { codexAgent } from "@flow-state-dev/codex";
@@ -104,7 +142,7 @@ harness: ({ cwd, resume, onSession }) =>
 
 Any block that takes the three feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
 
-The vendor options differ because they are the factory's business, not the manager's. `detached: true` is not decoration in the Claude Code example: the harness becomes a child block of a gated task entry, and the claim gate refuses an entry that keeps session state anywhere beneath it. Get it wrong and your flow fails to build, naming the entry. Codex and Cursor keep no session state, so neither needs an equivalent.
+Claude Code needs `detached: true`. Leave it out and your flow fails to build, naming the entry. Codex and Cursor need no equivalent.
 
 ## What a phase supplies
 
@@ -133,13 +171,13 @@ Collections a phase reads ride the standard `uses` option:
 harnessManager({ …, uses: [myPhaseCapability] });
 ```
 
-A capability claiming one of the manager's own accessors (`runs`, `inbox`, `turns`, the board's ledger) is refused when you build the manager, naming the key — silently overriding one of them would send the manager's bookkeeping somewhere nothing reads.
+A capability claiming one of the manager's own accessors (`runs`, `inbox`, `turns`, the board's ledger) is refused when you build the manager, naming the key.
 
 ## Continuing a run
 
 A run that needs a decision writes a question and parks. Answer it, and the next attempt **continues the same coding session** rather than starting over told what was answered.
 
-The rule that makes it safe to leave running: the recorded session is the one the harness *confirmed* it was in. `onSession` is its only writer, every attempt clears it first, and the manager never writes back an id it merely sent. So a session the agent has lost is asked for once, and the attempt after that starts fresh.
+The recorded session is the one the harness *confirmed* it was in. If the agent has lost that session, the attempt that asked for it ends without one and the next attempt starts fresh.
 
 ## Talking to a run
 
@@ -177,40 +215,38 @@ Neither bounds what the run *spawned*. A command the agent's process started can
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** — the supported host API, and what this package versions: `harnessManager` and its options, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
 
-**`@flow-state-dev/harness-manager/checkout`** — how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. A separate entry point rather than a note on the main barrel, because semver binds what the barrel exports whatever a header says about it. This repository's own consumer and its goal checks import from here; a host should not. They are git-worktree-specific, and a second checkout strategy would put them behind a seam. Adopt `harnessManager({ harness })` and let it own the checkout.
+**`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 
-The run record's writes (`openRunRow`, `writeRunRow`) and the inbox's `withdrawEarlierQuestions` are on neither: they write through the attempt fence, and calling one from outside a claimed attempt either gets refused or corrupts a ledger the board is the authority on. Read with `readRunRow` and the collections.
+The run record's writes (`openRunRow`, `writeRunRow`) and the inbox's `withdrawEarlierQuestions` aren't exported. Read with `readRunRow` and the collections.
 
 ## Telling the guard where you live
 
 `assertDistinctRepository` stops a run being pointed at the repository your own
-application lives in — a coding agent editing the thing that dispatched it. It
-needs to know where that is, and it will not guess:
+application lives in, so a coding agent never edits the thing that dispatched
+it. It needs to know where that is, and it will not guess:
 
 ```ts
 assertDistinctRepository("workspace.sourceRepo", sourceRepo, process.cwd());
 ```
 
 Pass the directory your code lives in. Pass a list if it spans more than one
-place. **Pass `[]` if this host genuinely has no repository of its own** — a
-built artifact, compiled output in an image with no `.git` anywhere. That case
-is real and supported; it just has to be said.
+place. **Pass `[]` if this host has no repository of its own**, such as a built
+artifact or compiled output in an image with no `.git` anywhere. That case is
+supported; it just has to be said.
 
-There is no default. A default is a guess, and the wrong guess is silent: this
-guard refuses only on a *match*, so a host it cannot identify would match
-nothing and pass, leaving the fence off in exactly the deployment shapes
-where nobody would notice — a container whose `WORKDIR` sits outside the source
-tree, a service unit, a process launched from `/`. Given a location it cannot
-resolve, it refuses and names the option.
+There is no default. The guard refuses only on a *match*, so a host it can't
+identify would pass unchecked. That is easy to hit with a container whose
+`WORKDIR` sits outside the source tree, a service unit, or a process launched
+from `/`. Given a location it cannot resolve, it refuses and names the option.
 
 ## Limits
 
 - **One host's storage.** Checkouts and leases live on a local filesystem, so a retry inherits the last attempt's work because that work is on disk. On a multi-host deployment the recorded checkout names nothing on the machine that picks the retry up.
-- **The lease is not a mutex.** Checking the lock and removing it are two steps. A dead holder's lock is reclaimed after a stale window rather than instantly, and the manager refuses a configuration that shortens that window below the longest a live attempt could legitimately hold it. The per-acquisition token replaces an inode check so the lease can be written down — it does not buy stronger cross-process exclusion.
+- **The lease is not a mutex.** Checking the lock and removing it are two steps. A dead holder's lock is reclaimed after a stale window rather than instantly, and the manager refuses a configuration that shortens that window below the longest a live attempt could legitimately hold it. Each acquisition carries its own token, so a displaced process never removes its replacement's lock. The token gives no stronger cross-process exclusion than that.
 - **No retention policy.** Run records and question rows grow without bound.
-- **A harness that can't resume can't take a message.** The door refuses a run whose harness never confirmed a coding session, such as `claude-code/cli-remote`.
+- **A harness that can't resume can't take a message.** The door refuses a run whose harness never confirmed a coding session, with *this run's harness can't continue with a message*.
 - **Git worktrees specifically**, as above.
 
 ## Running tests
@@ -219,7 +255,7 @@ resolve, it refuses and names the option.
 pnpm --filter @flow-state-dev/harness-manager test
 ```
 
-The suite drives the manager with a fake harness the tests own — no coding agent, no network. A source check asserts that nothing in `src/` imports one, which is the property the slot exists for.
+The suite drives the manager with a fake harness the tests own, with no coding agent and no network. A source check asserts that nothing in `src/` imports one, which is the property the slot exists for.
 
 ## Documentation
 

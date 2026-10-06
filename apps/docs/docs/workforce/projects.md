@@ -1,6 +1,6 @@
 ---
 title: Projects
-sidebar_position: 6
+sidebar_position: 9
 sidebar_label: Projects
 description: "A project is a row your organization keeps: a title, a brief, an owner, its members, and the workstreams it groups. Each project has one room its members share, and only its members can read it."
 ---
@@ -11,7 +11,7 @@ A workstream is a mailbox you declare in a `MAILBOX.md`, with the boards it hold
 
 A project is data, not a file. You don't write a folder or a `MAILBOX.md` for one. It's a row in the organization's `projects` collection, created while the app runs, by your own code or by a seat acting for a person. It belongs to the organization rather than to a team, so one project usually gathers workstreams from several teams.
 
-Each project also has a **room**: one conversation its members share. [The room and talk sessions](#the-room-and-talk-sessions) covers it, and [A room or a mailbox](#a-room-or-a-mailbox) compares it with a mailbox.
+Each project also has a **room**: one conversation its members share. [The room and talk sessions](#the-room-and-talk-sessions) covers using it, [Setting up the room](#setting-up-the-room) covers which workers answer in it, and [A room or a mailbox](#a-room-or-a-mailbox) compares it with a mailbox.
 
 ## How it fits together
 
@@ -30,6 +30,7 @@ The organization owns the projects. A project groups the workstreams that belong
 | `ownerUserId` | The person who created it |
 | `members` | Who can read and post in the room. Always includes the owner |
 | `workstreams` | Full mailbox ids of the declared mailboxes it groups, such as `eng.feature` and `ops.release` |
+| `repository` | The git remote the project's code lives in, such as `https://github.com/acme/storefront.git`, or `null` |
 | `sessions` | Each member's own talk session on the room, at most one per person |
 
 Everyone in the organization can list the rows. That a project exists isn't a secret. Its room is.
@@ -46,11 +47,11 @@ export default defineProjectsCollection();
 
 You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. The collection is org-scoped, shared across flows, and readable from the browser, which is how a UI lists an organization's projects.
 
-Its one option, `talk`, is the template every project's room is built from: the seats a post wakes and the charter they work under. Declare it once, usually in `org/resources/projects.ts`. Passing the same template again changes nothing, and passing a different one throws. [A room per project](./mailboxes.md#a-room-per-project) covers it.
+Its one option, `talk`, is the template every project's room is built from: the seats a post wakes and the charter they work under. Declare it once, usually in `org/resources/projects.ts`. Passing the same template again changes nothing, and passing a different one throws. [Setting up the room](#setting-up-the-room) covers it.
 
 ## Creating a project
 
-`defineProjectBlocks()` gives you two blocks, `createProject` and `setWorkstreams`, and the same two as an `actions` map to spread into a flow:
+`defineProjectBlocks()` gives you the project blocks, `createProject`, `setWorkstreams`, `setRepository` and `readProjectFiles`, and the same blocks as an `actions` map to spread into a flow:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -64,7 +65,7 @@ export const lab = defineFlow({
 });
 ```
 
-Call `createProject` with an id, a title, and optionally a brief, the other members, and the workstreams:
+Call `createProject` with an id, a title, and optionally a brief, the other members, the workstreams, and the [repository](#a-projects-code-and-files):
 
 ```ts
 {
@@ -73,6 +74,7 @@ Call `createProject` with an id, a title, and optionally a brief, the other memb
   brief: "Ship the new checkout.",
   members: ["bob"],
   workstreams: ["eng.feature", "ops.release"],
+  repository: "https://github.com/acme/storefront.git",
 }
 ```
 
@@ -141,7 +143,7 @@ A second declaration of the inventory beside the writes fails when the flow is b
 Resource collision in flow "agent": accessor keys "mailboxInventory" and "project-writes-mailbox-inventory" resolve to the same effective storage key (scope=org, ref=inventory/mailboxes/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
 ```
 
-[The chief of staff](./chief-of-staff.md#starting-projects) is a seat set up this way.
+[The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way: its `mailbox-inventory` capability in [Adding one](./chief-of-staff.md#adding-one) is this same declaration, so the setup works with or without the project tools.
 
 ## One project per workstream
 
@@ -151,6 +153,166 @@ A refused write leaves nothing behind. If one workstream is already claimed, the
 
 A workstream no project lists isn't lost. A UI shows it under **No project**.
 
+## A project's code and files
+
+A project can name the repository its code lives in. It's a remote, the address you'd pass to `git clone`, not a folder on some machine. Set it when you create the project, or later with `setRepository`. Send `null` to clear it:
+
+```ts
+// at create
+{ id: "storefront", title: "Storefront", repository: "https://github.com/acme/storefront.git" }
+
+// later, from a member's session
+{ projectId: "storefront", repository: "git@github.com:acme/storefront.git" }
+{ projectId: "storefront", repository: null }
+```
+
+`setRepository` returns `{ project }`, the row as written. It changes `repository` and nothing else on the row. Only members can call it; anyone else is refused with `not-a-member`, and an id no project holds with `no-such-project`. When two members set it at the same moment, one of the two values is kept whole.
+
+A value has to be a remote. Both writes refuse these with `invalid-repository`, and the refusal never repeats the value:
+
+| Refused | Example |
+|---------|---------|
+| A path | `/srv/git/storefront`, `./storefront`, `~/code/storefront`, `C:\code\storefront` |
+| A value starting with `-` | `--upload-pack=…` |
+| A control character | A newline or tab anywhere in the address |
+| A remote-helper address | `ext::…` |
+| A user or password on `http` or `https` | `https://alice:token@github.com/acme/storefront.git`, `https://token@github.com/…` |
+| A password on any other scheme | `ssh://git:secret@github.com/acme/storefront.git` |
+
+An SSH login name isn't a credential, so `git@github.com:acme/storefront.git` and `ssh://git@github.com/acme/storefront.git` are both accepted. So is `file:///srv/git/storefront.git`. Give the machine that clones the repository its credentials, rather than putting them in the address.
+
+Stored rows aren't re-parsed when they're read, so a row saved without a `repository` key reads without one. Treat a missing value as `null`, or read rows through `projectRowSchema.parse(row)`, which fills it in.
+
+### Coding work in a project
+
+When a coding worker picks up work from one of the project's workstreams, it works in a fresh branch of the project's repository, as long as the host running the worker allows that remote. Nobody names a folder. Changing the repository applies to new work. Work already started stays where it began: on the repository it began with, or, if the project had none then, on the project's files.
+
+A project with no repository still runs coding work. The first run starts from an empty set of files, and everything it writes is saved to the [project's files](#the-projects-own-files). The next run starts from what the last one left. If two runs change the same file, the changes are merged; a real conflict is reported on the run instead of overwriting anyone's work. A run isn't marked done until what it wrote is saved: if the last save fails, the attempt fails and the retry saves it.
+
+To get this, build the coding worker's [harness manager](../orchestration/harness-manager.md) on a workspace host (from `@flow-state-dev/workspace`) whose source is `projectWorkspace`, given the same mailbox board the manager works:
+
+```ts
+import { harnessManager } from "@flow-state-dev/harness-manager";
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { mailboxBoard, projectWorkspace, projectWorkspaceCapability } from "@flow-state-dev/workforce";
+
+const work = mailboxBoard("eng.feature", "work");
+
+harnessManager({
+  boardCollectionId: work.id,
+  boardCollection: work,
+  workspace: localWorkspaceHost({
+    root: "/var/fsd/runs",
+    remotes: { allow: ["github.com"] },
+    source: projectWorkspace({ board: work }),
+  }),
+  uses: [projectWorkspaceCapability],
+  // ...
+});
+```
+
+`projectWorkspace` finds the project that holds the board's workstream and reads its row, nothing else. It refuses a run before any file is read when the person the run belongs to isn't one of the project's members (`not-a-member`), or when no project holds the workstream (`no-project`). The host refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried.
+
+### The project's own files
+
+Notes, memory and anything else kept for a project live in the organization's `project-files` collection, under the project's id: `project-files/<projectId>/<path>`. Declare it with `defineProjectFilesCollection()`. Like `defineProjectsCollection()`, every call returns the same declaration. It's org-scoped, shared across flows, and loaded only when read.
+
+Only the project's members can list the files, with `readProjectFiles`:
+
+```ts
+// input
+{ projectId: "storefront" }
+
+// output: each file's path under the project, and its size in bytes
+{
+  files: [
+    { path: "notes.md", size: 7 },
+    { path: "src/index.ts", size: 10 },
+  ],
+}
+```
+
+It lists paths and sizes, not file contents. A block's output is recorded in the session log and can reach a model's context, so a listing stays small however large the files are.
+
+It returns that project's files, never another project's. A non-member is refused with `not-a-member`, and an unknown id with `no-such-project`. The collection has no browser read: a request for it through the collection route gets a 403.
+
+In a project with a repository, a coding run finds the project's files in `project/`, next to its checkout and never inside it, so they don't show up in `git status`. Whatever the run leaves there is saved back to the project.
+
+## Setting up the room
+
+A room isn't a mailbox you declare. Every project's room is built from one **template**: the workers a post wakes and the charter they work under.
+
+The default template is declared once for the organization, beside the projects collection in `workforce/org/resources/projects.ts`:
+
+```ts
+import { defineProjectsCollection } from "@flow-state-dev/workforce";
+
+export default defineProjectsCollection({
+  talk: {
+    seats: ["engineering.lead", "chief-of-staff"],
+    charter: "Plan the work, and say what is blocked.",
+  },
+});
+```
+
+A seat is named by its full id from any team, like `engineering.lead`, or by an organization-level seat's own name, like `chief-of-staff`. These seats are not the project's members. Members are the people who can read and post; seats are who a post wakes.
+
+Pass the organization's resource map to `mailboxInstances`, so `mailboxInstances` can find the template. `mailboxes` is your mailbox roster ([Opening it](./mailboxes.md#opening-it-and-why-an-unopened-id-is-not-a-mailbox)), and `kinds` carries the mailbox kind built with a notify block, described just below:
+
+```ts
+import { mailboxInstances, splitResourceModules } from "@flow-state-dev/workforce";
+
+const { resources } = splitResourceModules(resourceModules);
+const instances = mailboxInstances(mailboxes, { kinds, resources });
+```
+
+An app that doesn't run `fsdev gen` imports the file's default export and passes it in `resources` under a key of its choosing. `fsdev gen` uses `projects`, the basename of `projects.ts`, and so does this example:
+
+```ts
+import projectsCollection from "./workforce/org/resources/projects";
+
+// mailboxes and kinds as in the snippet above
+const instances = mailboxInstances(mailboxes, {
+  kinds,
+  resources: { projects: projectsCollection },
+});
+```
+
+The other arguments are as in the snippet above. If you declare the template in a `MAILBOX.md` instead ([below](#a-template-in-a-mailboxmd)), its `mintFor:` must name the key you passed the collection under (`projects` here).
+
+Rooms run on the built-in mailbox kind, and that kind has to be able to wake seats, so build it with a notify block, as in `kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) }`. Left as the plain built-in, a template that names seats is refused, because no post would wake them.
+
+`wakeMemberSeats(seats)` wakes a member whose seat is in the `seats` list and whose kind hears mailbox posts, as the built-in `agent` kind does. A notify block you write yourself wakes only the members its own code wakes; `mailboxInstances` doesn't check that it reaches the template's seats. A seat hired after you built `wakeMemberSeats(seats)` isn't in its list and isn't woken.
+
+If your app already has a notify block, keep it by passing it as the fallback: `defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) })`. A chief of staff (the `agent` kind) in the template is then woken by a person's post in the room (a post from another worker wakes no worker), and your block handles every member whose worker can't hear posts. The table under [waking agent workers](./mailboxes.md#waking-agent-seats) shows which members the fallback gets.
+
+If your app calls `mailboxInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its mailbox kind with the same seats and charter. A call that finds a different template is refused.
+
+### A template in a `MAILBOX.md`
+
+A team can declare the template in a `MAILBOX.md` instead, by marking it `mintFor: projects`. Its `members:` are the seats and its body is the charter:
+
+```md
+---
+description: The room every project gets.
+mintFor: projects
+members: [engineering.lead, operations.lead]
+---
+
+Plan the work, and say what is blocked.
+```
+
+That file is a template, not a mailbox. It's never opened, and it never shows up in the [inventory](./inventory.md). If the file used to be a mailbox, its old session is kept in the store, but every mailbox action on it, including inventory registration, is refused with `mailbox-is-a-template`.
+
+### What a template does
+
+- **It applies to every project's room, and edits land at the next restart.** The seats and charter are built onto the mailbox kind each time the app boots and are never copied into a session. An edit reaches every room, including ones that already exist.
+- **A post wakes each seat once, as the person who posted.** Each seat keeps one conversation per person per room, and gets the room's last 20 lines along with the post. Its reply goes into the room, where every member reads it. A seat answers a post once, even when the post reaches it twice, and only for itself: each delivery carries an `answerToken` for that seat, which the answer hands back as `token`. The built-in agent kind does this for you, and a kind of your own passes it through. The answer must come back through the poster's session. A member posts and reads through the one talk session the project lists for them, the one `join` returns; any other session is refused with `talk-session-not-listed`. A seat's reply wakes nobody.
+- **It holds no board, routes no post, and picks no kind.** A template that declares `flow:`, `boards:`, `routing:` or `boardActions:` is refused.
+- **Rooms aren't in the inventory.** The inventory lists the mailboxes you declared, and no talk session is ever one of its rows.
+
+`mailboxInstances` checks templates along with your mailboxes and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or names something other than the projects collection, a seat that isn't a seat id or is listed twice, seats on a kind that can't wake them, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `MAILBOX.md`.
+
 ## The room and talk sessions
 
 A project's room is stored on the organization's side, one row per line. Nobody reaches it directly. Each member gets their own **talk session**: a session on the mailbox kind that knows which project it's about. Every room call goes through one.
@@ -159,7 +321,7 @@ A session, the room and a line are three separate things. The session is one per
 
 ![A talk session holds only which project it is about and belongs to one person. The project row, the room counter and the room lines are organization data. A line stores its number, poster, optional seat author and body.](./project-room-parts.svg)
 
-The room is one shared org resource. Each member talks through their own live session. Posts from any of those sessions land in the same ordered room. A session reads to catch up — lines are not pushed live — and a second window for the same person reuses their talk session.
+Posts from every member's session land in the same ordered room.
 
 ![Multiple talk sessions, one shared room](./project-room-sessions.svg)
 
@@ -173,7 +335,7 @@ Each member has exactly one talk session on the project, however many windows th
 | `post { body }` | Adds a line to the room, as you |
 | `read { after }` | Returns the lines after a cursor, up to 200 at a time, and the cursor for the next read, with the room's charter and seats |
 
-`createProject` gets the creator's talk session ready for them. With a [talk template](./mailboxes.md#a-room-per-project) in place, so does any other code that creates a project inside a flow turn. Every other member joins.
+`createProject` gets the creator's talk session ready for them. With a [talk template](#setting-up-the-room) in place, so does any other code that creates a project inside a flow turn, in the same turn. A row your code writes outside a turn gets none. Every other member joins.
 
 Other members' lines aren't pushed to you. They show up the next time your view reads the room, so read on open, on focus, and after you post.
 

@@ -124,12 +124,12 @@ These sit beside Orchestration on Core and don't use a task board.
 
 ![Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator is a person's session with the Lab's chief of staff worker. Inbox lists asks, which are suspended runs in workers' sessions waiting on a person. Tasks lists tasks on every mailbox board. Roster lists the workers in the inventory, with on shift, on call and off shift worked out from their tasks and asks. A workstream view shows a mailbox and its boards. A project view shows a project row and its room.](./glossary/shift-manager.svg)
 
-[Shift Manager](./shift-manager/overview.md) is a browser app in this repository, not a published package. It stores nothing of its own: every screen is a read of the Lab it serves.
+[Shift Manager](./shift-manager/overview.md) is a browser app, published as `@flow-state-dev/shift-manager`. It stores nothing of its own: every screen is a read of the Lab it serves.
 
 | Term | Where | What it is | Built from |
 |---|---|---|---|
 | **Lab** | Shift Manager | The server one `fsdev.config.mts` default-exports, which Shift Manager serves and reads. | FlowState |
-| **Team profile** | Shift Manager | A Lab config that ships with Shift Manager, opened with `--team`. `devteam` is the one that ships. | Lab |
+| **Team profile** | Shift Manager | A Lab config kept beside Shift Manager in this repository, which its `start` and `dev` scripts open. `devteam` is the one there. It isn't in the published package. | Lab |
 | **Shift Coordinator** | Shift Manager | The home screen: a summary of what is waiting and running, then your conversation with the Lab's chief of staff. | Chief of staff, session |
 | **Ask** | Shift Manager | An approval or a question a worker's run is suspended on, waiting for a person. | Suspension |
 | **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. Asks in another member's sessions aren't listed. Inbox is not a mailbox. | Asks |
@@ -141,7 +141,7 @@ These sit beside Orchestration on Core and don't use a task board.
 
 A few words are used in two places. The package tells you which one you're reading.
 
-- **Worker.** In Workforce, a hired `WORKER.md`. On a task board, the block that runs a task. A task's assignee names a board worker, never a Workforce worker.
+- **Worker.** In Workforce, a hired `WORKER.md`. On a task board, the block that runs a task. A task's assignee names a board worker, or, on a board that asks Workforce's worker lookup, any Workforce worker. See [Giving a task to a worker](./workforce/overview.md#giving-a-task-to-a-worker).
 - **Member.** On a mailbox, a worker id. On a project, a person.
 - **Dispatcher.** Core's `dispatcher()` is a block that sends to another flow. A task board's dispatcher is the rule that picks the next task.
 - **Roster.** The Workforce roster is who is hired. Shift Manager's Roster is a screen over the inventory.

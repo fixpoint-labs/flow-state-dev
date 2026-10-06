@@ -1,6 +1,6 @@
 ---
 title: Hiring while the app runs
-sidebar_position: 8
+sidebar_position: 11
 sidebar_label: Hiring at runtime
 description: "Store a seat hired at runtime, address it per organization, and read the roster back when the app next starts. What the framework gives you, and the admin action you build on top of it."
 ---
@@ -116,7 +116,67 @@ function withAdminResolver(seat: FlowInstance): FlowInstance {
 export function releaseSeat(id: string): boolean {
   return app?.unregister(id) ?? false;
 }
+
+let registry: Awaited<ReturnType<FlowState["getRuntime"]>>["registry"] | undefined;
+
+/** Call once, right after `createFlowState`, alongside `useFlowState`. */
+export async function useRegistry(next: FlowState): Promise<void> {
+  registry = (await next.getRuntime()).registry;
+}
+
+export const kindAt = (address: string): string | undefined => registry?.get(address)?.kind;
+export const instanceAt = (address: string): FlowInstance | undefined => registry?.get(address);
 ```
+
+`kindAt(address)` returns the kind of the flow registered at an address, or `undefined`. `instanceAt(address)` returns the flow instance registered there, or `undefined`. The hire handlers and tools take both as options; [the options table](#the-ready-made-hire-and-fire-handlers) says what each one changes. Both read nothing until `useRegistry` has run, so call it where you call `useFlowState`:
+
+```ts
+const app = createFlowState(/* ... */);
+useFlowState(app);
+await useRegistry(app);
+```
+
+If a function builds the `FlowState` and runs more than once per process, such as an `openApp()` each test calls, keep the binding in a local `let` so each call registers into its own state. Assign it after `createFlowState`, once the registry exists. The callbacks only run when a hire or fire happens.
+
+```ts
+import { createFlowState, type FlowState, type FlowStateRuntime } from "@flow-state-dev/engine";
+import {
+  createSeatHireCapability,
+  defineAgentWorkerFlow,
+  hireWorkforce,
+  registerHiredSeat,
+  type HireOptions,
+} from "@flow-state-dev/workforce";
+
+export async function openApp(options: AppOptions) {
+  const kinds: NonNullable<HireOptions["kinds"]> = { coder: coderKind };
+  let live: { state: FlowState; registry: FlowStateRuntime["registry"] } | undefined;
+
+  const hire = createSeatHireCapability({
+    kinds,
+    register: (worker, pin) => {
+      if (!live) throw new Error("No FlowState to register into.");
+      const { state } = live;
+      registerHiredSeat((instance, owner) => state.register(instance, { pin: owner }), worker, pin);
+    },
+    unregister: (id) => live?.state.unregister(id) ?? false,
+    kindAt: (address) => live?.registry.get(address)?.kind,
+    instanceAt: (address) => live?.registry.get(address),
+    allowKinds: ["coder", "agent"],
+  });
+  kinds.agent = defineAgentWorkerFlow({ uses: [hire] });
+
+  const hired = hireWorkforce(options.workers, { kinds });
+  const state = createFlowState({
+    flows: { ...Object.fromEntries(hired.map((worker) => [worker.id, worker])) /* , your other flows */ },
+    stores: options.stores,
+  });
+  live = { state, registry: (await state.getRuntime()).registry };
+  return state;
+}
+```
+
+If you wrap hired workers with a resolver as `withAdminResolver` does above, apply it to `instance` inside `register`.
 
 ## The ready-made hire and fire handlers
 

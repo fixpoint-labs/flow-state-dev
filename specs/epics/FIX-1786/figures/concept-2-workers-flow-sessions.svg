@@ -1,0 +1,91 @@
+<svg viewBox="0 0 940 500" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Each worker names its flow; each flow is one copy its workers share; each piece of work gets its own session. Alice&#x27;s private area holds three workers, each a resource of configuration plus owner that names a flow: a launch coordinator naming the coordinator flow, a researcher and a writer naming the agent flow. Each flow is one registered copy, shared by every worker that names it, and an app can register flows of its own. Bob&#x27;s researcher, a different worker, names the same agent flow. The coordinator flow&#x27;s work lands in a workstream session; the agent flow&#x27;s in a chat with Alice and one task, and each session loads its worker&#x27;s configuration. Alice&#x27;s writer was copied once from a template in the org&#x27;s library.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg      { fill:var(--surface); }
+    .wall-sh { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .wall-pr { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.4; }
+    .wall-dz { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 4; }
+    .card    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .hot     { fill:var(--accent-soft); stroke:var(--accent); stroke-width:2; }
+    .ln      { stroke:var(--ink-3); stroke-width:1.4; }
+    .ln-d    { stroke:var(--ink-3); stroke-width:1.4; stroke-dasharray:5 4; }
+    .rule    { stroke:var(--rule); stroke-width:1; }
+    .ah      { fill:var(--ink-3); }
+    .title   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:18px; }
+    .wl      { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13.5px; }
+    .h       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .p       { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:14px; }
+    .s       { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .lbl     { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .faint   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="500"/>
+  <text class="title" x="28" y="34">Each worker names its flow; each flow is one copy its workers share</text>
+  <g id="alice">
+    <rect class="wall-pr" x="24" y="56" width="300" height="272" rx="8"/>
+    <text class="wl" x="40" y="80">Alice: private</text>
+    <rect class="card" x="40" y="94" width="268" height="64" rx="6"/>
+    <text class="h" x="54" y="120">launch coordinator (worker)</text>
+    <text class="s" x="54" y="140">config + owner · flow: coordinator</text>
+    <rect class="card" x="40" y="172" width="268" height="64" rx="6"/>
+    <text class="h" x="54" y="198">researcher (worker)</text>
+    <text class="s" x="54" y="218">config + owner · flow: agent</text>
+    <rect class="card" x="40" y="250" width="268" height="64" rx="6"/>
+    <text class="h" x="54" y="276">writer (worker)</text>
+    <text class="s" x="54" y="296">config + owner · flow: agent</text>
+  </g>
+  <g id="flows">
+    <rect class="hot" x="390" y="94" width="240" height="72" rx="6"/>
+    <text class="h" x="404" y="122">coordinator (flow)</text>
+    <text class="s" x="404" y="144">one copy, shared by its workers</text>
+    <rect class="hot" x="390" y="232" width="240" height="72" rx="6"/>
+    <text class="h" x="404" y="260">agent (flow)</text>
+    <text class="s" x="404" y="282">one copy, shared by its workers</text>
+    <text class="faint" x="404" y="203">…or a flow the app registers</text>
+    <line class="ln" x1="308" y1="126" x2="388" y2="130"/>
+    <polygon class="ah" points="388,130 378.8,133.9 379.2,125.2"/>
+    <line class="ln" x1="308" y1="204" x2="388" y2="256"/>
+    <polygon class="ah" points="388,256 378.1,254.8 382.9,247.4"/>
+    <line class="ln" x1="308" y1="282" x2="388" y2="280"/>
+    <polygon class="ah" points="388,280 379.1,284.6 378.9,275.8"/>
+    <text class="lbl" x="322" y="118">names</text>
+  </g>
+  <g id="sessions">
+    <rect class="card" x="690" y="105" width="226" height="50" rx="6"/>
+    <text class="p" x="803.0" y="135.0" text-anchor="middle">workstream session</text>
+    <rect class="card" x="690" y="214" width="226" height="50" rx="6"/>
+    <text class="p" x="803.0" y="244.0" text-anchor="middle">chat with Alice (session)</text>
+    <rect class="card" x="690" y="284" width="226" height="50" rx="6"/>
+    <text class="p" x="803.0" y="314.0" text-anchor="middle">one task (session)</text>
+    <line class="ln" x1="630" y1="130" x2="688" y2="130"/>
+    <polygon class="ah" points="688,130 679.0,134.4 679.0,125.6"/>
+    <line class="ln" x1="630" y1="258" x2="688" y2="240"/>
+    <polygon class="ah" points="688,240 680.7,246.9 678.1,238.5"/>
+    <line class="ln" x1="630" y1="278" x2="688" y2="306"/>
+    <polygon class="ah" points="688,306 678.0,306.0 681.8,298.1"/>
+    <text class="faint" x="690" y="358">each loads its worker&#x27;s config</text>
+  </g>
+  <g id="template">
+    <rect class="card" x="24" y="408" width="300" height="64" rx="6"/>
+    <text class="h" x="38" y="434">writer (template)</text>
+    <text class="s" x="38" y="454">in the org&#x27;s library, shared</text>
+    <line class="ln-d" x1="174" y1="408" x2="174" y2="318"/>
+    <polygon class="ah" points="174,318 178.4,327.0 169.6,327.0"/>
+    <text class="lbl" x="184" y="370">copied once</text>
+  </g>
+  <g id="bob">
+    <rect class="card" x="390" y="408" width="262" height="64" rx="6"/>
+    <text class="h" x="404" y="434">researcher (worker)</text>
+    <text class="s" x="404" y="454">Bob&#x27;s · flow: agent, a different worker</text>
+    <line class="ln" x1="510" y1="408" x2="510" y2="306"/>
+    <polygon class="ah" points="510,306 514.4,315.0 505.6,315.0"/>
+    <text class="lbl" x="520" y="370">names the same flow</text>
+  </g>
+</svg>
