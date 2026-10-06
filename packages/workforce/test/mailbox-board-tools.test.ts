@@ -382,13 +382,15 @@ describe("a handed-off board's assignee freeze", () => {
       execute: async (_input, ctx) => {
         const ledger = await resolveMailboxBoard(ctx, board.id);
         const task = await ledger!.addTask({ id: "row", goal: "a row", assignee: "coder" });
+        // Claimed: the freeze holds only while an attempt holds the row.
+        await ledger!.claim("seed");
         return { taskId: task.id };
       }
     });
 
     // Declaring dispatcher seats is what freezes the ledger: the child
     // session a handed-off row runs in is keyed off the assignee, so changing
-    // it afterwards redirects nothing.
+    // it while the attempt runs redirects nothing.
     const drain = withHandOff
       ? taskBoard({
           name: `${boardName}-board`,

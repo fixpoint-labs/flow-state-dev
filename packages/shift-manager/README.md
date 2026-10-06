@@ -270,7 +270,7 @@ Other Labs build their own prompts from the same task fields. See [`run.task`](.
 | A harness that records no plan | A line saying so | Attention and inspect |
 | A task's context and input, on Brief | A line saying so | Not planned yet. The board doesn't publish them to a browser |
 
-A board that hands work off keeps each task on the worker it was given to, which is why reassigning is off rather than refused.
+A board that hands work off keeps a running task on the worker it was given to, and moving a waiting one isn't wired into the view yet, which is why reassigning is off rather than refused.
 
 ## Roster
 
