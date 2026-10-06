@@ -4,7 +4,8 @@
 
 The calls above any single issue. D1 is the sign-off surface. This epic runs under `epic-em`:
 D2 to D5 are engineering calls I made and record here, with what would reverse each. Jake
-answered Q1 to Q3 on 2026-10-06; they are recorded as decided, and no child reopens them. The
+answered Q1 to Q3 on 2026-10-06, and no child reopens them. Q2 and Q3 are decided. Q1's answer
+decides who chooses its shape and on what evidence; the shape itself is recorded here once chosen. The
 model itself (workers as resources, delegates in session state, rooms removed, the vocabulary)
 is decided in the PRD and the [concept](concept/CONCEPT.md), and is not reopened here.
 
@@ -19,7 +20,7 @@ flowchart TD
   E --> D3["D3 · three Layer 1 changes, the rest Layer 2"]
   E --> D4["D4 · contract and org keys first, terms last"]
   E --> D5["D5 · a board is a session board unless people track it"]
-  E --> Q1["Q1 · decided · FIX-1789's spec settles it on a POC of both"]
+  E --> Q1["Q1 · answered · chosen at FIX-1789's gate, recorded here"]
   E --> Q2["Q2 · decided · private projects are in"]
   E --> Q3["Q3 · decided · FIX-1774 and FIX-1777 closed into children"]
 ```
@@ -85,7 +86,9 @@ runs, at admission: then a server-only field on the session record instead.
 | **Locks in** | FIX-1792 waits on FIX-1793 for the workstream option. The per-board table is FIX-1792's spec. A session board that hands rows to a delegate on another flow can't be shared down the lineage, which stops at a flow, and still stays its own board: never one ledger for all its owner's sessions. FIX-1794 decides how ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 <a name="q1"></a>
-## Q1 · decided · Where an author says "this flow runs workers" is settled in FIX-1789's spec, on a POC of both
+## Q1 · answered, shape open · Where an author says "this flow runs workers" is chosen at FIX-1789's spec gate, on a POC of both, and recorded here
+
+**Decided:** who chooses and on what evidence. **Not yet decided:** list or wrapper.
 
 **Jake, 2026-10-06:** not decided at epic level. FIX-1789's spec builds both shapes side by side
 in a spec-poc, a list the installation keeps and a `defineWorkerFlow()` wrapper, and the call is
@@ -104,11 +107,17 @@ longer recommends either.
   schema's rule. Existing flows: the built-in `agent` flow is unchanged under the list and migrates
   under the wrapper. Under both: can the private-state rule be checked from what a flow declares,
   or does it need a gate around resource writes at run time?
+- **How the choice binds the set.** The shape is cross-cutting: FIX-1788's `agent` flow and
+  FIX-1791's coordinator flow both declare themselves with it. So the winner at FIX-1789's gate
+  comes back here as a follow-up epic PR that records it in this card
+  ([ER-24](BUSINESS-RULES.md#how-the-set-is-run)), and it binds once that PR merges. Until then,
+  FIX-1788's and FIX-1791's specs build to ER-2's contract and name neither shape. Their builds
+  already wait on FIX-1789 ([D4](#d4)), so nothing re-sequences.
 - **What it moves.** If the list wins and is small, FIX-1789 may fold into FIX-1788
   ([D1](#d1)'s collapse trigger). If the wrapper wins, it is a new public export, and FIX-1788
-  moves the `agent` flow onto it. Neither re-sequences the set.
+  moves the `agent` flow onto it.
 
-![Q1, settled in FIX-1789's spec on a POC of both: a defineWorkerFlow wrapper, which Jake leans to, beside a list the installation keeps. His reason: contract integrity, every requirement checked where the flow is written. The wrapper's price: a second authority over the schema's rule, and existing flows migrate. The lean flips if the list catches every requirement as surely](figures/open-worker-contract.svg)
+![Q1, chosen at FIX-1789's spec gate on a POC of both and recorded here: a defineWorkerFlow wrapper, which Jake leans to, beside a list the installation keeps. His reason: contract integrity, every requirement checked where the flow is written. The wrapper's price: a second authority over the schema's rule, and existing flows migrate. The lean flips if the list catches every requirement as surely](figures/open-worker-contract.svg)
 
 It comes down to contract integrity, Jake's reason for the wrapper, weighed against the second authority it adds.
 
@@ -133,8 +142,10 @@ FIX-1762's stack merged first (#2738 and #2748, 2026-10-06).
 - **Where it points.** Jake expects org-level (shared) concepts may be a fast follow after the
   MVP, as a key unique feature of the platform, which is why private projects should be cheap to
   build now. That moves nothing in this epic: the shared project, its workstreams and the
-  library stay in the goal as approved. Moving them past the MVP would change the goal, and
-  comes back here as its own ask.
+  library stay in the goal as approved. FIX-1793's spec gate is where it is asked outright,
+  beside the cost check above: does the shared half (the shared project and its two owners, "owner
+  writes, org reads", and FIX-1795's library) stay in the MVP? Yes keeps the goal. No is an
+  amendment here that changes the goal, and takes leg b's two-owner half and FIX-1795 with it.
 
 <a name="q3"></a>
 ## Q3 · decided · FIX-1774 and FIX-1777 are closed into FIX-1791 and FIX-1794
@@ -241,5 +252,11 @@ engine rule. The closure only checks.
 - **Jake's answers (Oct 6)**, after merge, in a follow-up PR: Q1 goes to FIX-1789's spec, which
   builds both shapes in a POC, and the epic stops recommending the list; Q2 is yes, so private
   projects are in and ER-7, leg b and the docs lose their condition; Q3 is yes.
+- **Review of the answers (Oct 6)**, in a second follow-up PR: Q1's winner comes back here before
+  FIX-1788 or FIX-1791 names a shape, because both declare their flows with it (Codex); the "fast
+  follow" Jake expects for the shared half is asked at FIX-1793's spec gate, so it has an owner
+  (the second look); ER-26 points at the orchestration contract's GitHub stacks.
 
-**Open: none at epic level.** Q1's shape is FIX-1789's to settle at its spec gate.
+**Open: none needing an answer now.** Two asks have a set place. Q1's shape is chosen at
+FIX-1789's spec gate and recorded here before FIX-1788 or FIX-1791 names one. Whether the shared
+half stays in the MVP is asked at FIX-1793's spec gate ([Q2](#q2)).
