@@ -448,7 +448,7 @@ write, then those files are user input, and the run reading configuration from
 them means your users configure your agent. Pass `[]` to load none, or list only
 the sources you control.
 
-**`env`** decides what the run can read. Leave it unset and the run's process
+**`env`** sets the environment variables the run's process sees. Leave it unset and the run's process
 starts with your server's entire `process.env`: every API key, token and
 connection string in it, readable by any shell command the model runs. Setting
 `env` replaces that environment. It does not add to it.
@@ -460,9 +460,9 @@ isn't set on the server is left out, and one set to an empty string is kept.
 Values are read once, when `harnessEnv` is called. Called inline as above, that
 is when the block is built, so a variable set after that never reaches the run.
 
-To add a fixed value, spread the allowlist and set the value beside it, as the
-example does with `CI`. Spreading `process.env` there instead also works, and
-hands the run every secret the server holds.
+To add a fixed value, spread the allowlist and set it beside it, as the example
+does with `CI`. Spreading `process.env` there hands the run every secret the
+server holds.
 
 **`sandbox`** is the Agent SDK's sandbox settings, forwarded as given. Take a
 value or write a resolver. The resolver form is the one that matters: the

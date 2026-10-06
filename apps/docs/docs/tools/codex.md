@@ -128,7 +128,7 @@ It applies here unchanged. If your work arrives as rows on a task board, the
 [harness manager](/docs/orchestration/harness-manager) derives and provisions the
 checkout for you.
 
-## What the run can read
+## Environment variables
 
 Leave `client.env` unset and the Codex CLI process starts with your server's
 entire `process.env`: every API key, token and connection string in it, readable
@@ -155,9 +155,9 @@ string is kept. Values are read once, when `harnessEnv` is called. Called inline
 as above, that is when the block is built, so a variable set after that never
 reaches the run.
 
-Spreading `process.env` into `client.env` to add a variable also works, and hands
-the run every secret the server holds. Spread the allowlist instead:
-`{ ...harnessEnv({ pass: [...] }), CI: "1" }`.
+To add a fixed value, spread the allowlist and set it beside it:
+`{ ...harnessEnv({ pass: [...] }), CI: "1" }`. Spreading `process.env` there
+hands the run every secret the server holds.
 
 ## Continuing a thread
 
@@ -233,7 +233,7 @@ A turn the model itself fails is not in that list. It comes back as a handle wit
 - No approval prompts. A headless run is configured not to ask, so the sandbox
   and approval policy you set are the whole of the permission story.
 - With `client.env` unset, the run can read every variable in your server's
-  environment. See [What the run can read](#what-the-run-can-read).
+  environment. See [Environment variables](#environment-variables).
 
 ## Related
 

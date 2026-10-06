@@ -107,12 +107,13 @@ fence.
 The same goes for deadlines. Cancelling a run bounds the agent, not what the agent
 spawned: a command its process started can outlive the kill.
 
-The environment is open by default too. A Claude Code or Codex coding worker
-started without an `env` inherits the server's whole `process.env`, secrets
-included. `harnessEnv({ pass })` from `@flow-state-dev/core` passes only the
-variables you name; the
+The environment is open by default too. A Claude Code or Codex run started
+without an `env` (`client.env` for Codex) inherits the server's whole
+`process.env`, secrets included. `harnessEnv({ pass })` from
+`@flow-state-dev/core` passes only the variables you name; the
 [Claude Code](./claude-code-sdk.md#configuring-the-run) and
-[Codex](./codex.md#what-the-run-can-read) pages show where it goes.
+[Codex](./codex.md#environment-variables) pages show where it goes. The Cursor
+adapter has no `env` option, so `harnessEnv` doesn't apply to it.
 
 ## Running one under supervision
 
