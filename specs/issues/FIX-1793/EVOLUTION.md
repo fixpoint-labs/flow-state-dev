@@ -1,0 +1,20 @@
+# FIX-1793 · Evolution
+
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · **Evolution**
+
+What this issue retains, amends and supersedes in earlier designs. Lineage that spans the whole
+epic is the [epic's](../../epics/FIX-1786/EVOLUTION.md); this is the issue-level part.
+
+| Prior intent and precise source | Treatment | Why / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| A project's row lists its workstreams, and a workstream belongs to at most one project, by a claim; [`../FIX-1718/DECISIONS.md#d1`](../FIX-1718/DECISIONS.md#d1) | **Superseded** for new work; **retained, deprecated** for mailboxes | One owner per workstream, each its own entry ([epic ER-7](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). Claims still place mailbox boards' coding runs | S3 entries; FIX-1792 removes claims as it converts boards ([decided, not asked](DECISIONS.md#decided-not-asked)) | Rows and claims read and work as today; nothing new writes them |
+| One room per project, shared by its members through their own talk sessions; [`../FIX-1718/DECISIONS.md#q1`](../FIX-1718/DECISIONS.md#q1), [D2](../FIX-1718/DECISIONS.md#d2) and its "The template and the talk session" rules | **Superseded** | Rooms are removed (the PRD; [epic EVOLUTION](../../epics/FIX-1786/EVOLUTION.md#predecessor-designs)) | The project coordinator, one per user per project ([epic ER-8](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)), S5 | Room rows stay stored and unread (BR-30); `mintFor` and `talk` refused by name (BR-31) |
+| Anyone in the org sees a project exists, only members read its conversation; [`../FIX-1718/DECISIONS.md#q3`](../FIX-1718/DECISIONS.md#q3) | **Retained** for shared projects; **amended** for private ones | A private project is its owner's alone ([D1](DECISIONS.md#d1)) | BR-1, BR-6 | Every existing row is shared (BR-5) |
+| The project's Stream tab is its room; FIX-1718's "What Shift Manager shows" rules, in [`../FIX-1718/BUSINESS-RULES.md`](../FIX-1718/BUSINESS-RULES.md) | **Superseded** | The Stream tab becomes the viewer's project coordinator session (the PRD) | S8 | None: the tab keeps its place and name |
+| A workstream's Stream is its mailbox's transcript, with its member workers' pending asks beside it; [`../FIX-1662/BUSINESS-RULES.md`](../FIX-1662/BUSINESS-RULES.md) BR-18 to BR-21, and the member-asks amendment in [#2439](https://github.com/fixpoint-labs/flow-state-dev/pull/2439), bounded by BR-24 | **Amended** for workstream entries; **retained** for mailboxes | An entry's workstream is the owner's lead session, which only the owner opens | S8: the owner sees the lead's session; others the entry | Mailbox Streams unchanged until FIX-1792 |
+| A project's repository and files, readable by members, and the locks carried from Jake on 2026-10-04; [`../FIX-1762/DECISIONS.md#d1`](../FIX-1762/DECISIONS.md#d1) to [D3](../FIX-1762/DECISIONS.md#d3), [Decided by Jake](../FIX-1762/DECISIONS.md#decided-by-jake-2026-10-04) | **Retained**, extended to private projects | Q2's carried locks ([epic Q2](../../epics/FIX-1786/DECISIONS.md#q2)) | S2 user-scope files, S6 | The org-readable repository claim holds for shared projects only (BR-6) |
+| A workstream is stored at `workstreams/<project>/<workstream>`; [epic, decided in review](../../epics/FIX-1786/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them) | **Amended**: an owner segment between the two | The owner rule reads the owner off the key, as `ownerPrivate` does, so no stored field decides who writes | `workstreams/[project]/[owner]/[workstream]` (PLAN pins) | No rows exist yet |
+| Every view reloads after each chief of staff turn; [#2720](https://github.com/fixpoint-labs/flow-state-dev/pull/2720) for FIX-1761 | **Retained** as the floor | A request's record of the collections it wrote would be a fourth Layer 1 change (epic ER-22) | BR-28 | None |
+
+None is wholly superseded except the room. Before building, re-check each intent against
+current code and the other children's shipped answers ([PLAN](PLAN.md#at-implement-time)).
