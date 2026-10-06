@@ -1,6 +1,6 @@
 ---
 title: Inventory
-sidebar_position: 5
+sidebar_position: 10
 sidebar_label: Inventory
 description: "A record of every seat and mailbox registered in an organization: one row per seat, one per mailbox, and one per seat-in-mailbox. A row says the thing was registered, not that it is open or working now."
 ---

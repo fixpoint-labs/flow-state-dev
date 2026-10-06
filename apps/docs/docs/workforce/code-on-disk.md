@@ -1,6 +1,6 @@
 ---
 title: Code on disk
-sidebar_position: 6
+sidebar_position: 5
 sidebar_label: Code on disk
 description: "Put your flow kinds, blocks and capabilities in the workforce tree, run one command, and let a generated file of static imports register them."
 ---

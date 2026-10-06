@@ -26,8 +26,6 @@ Workforce reads your files and hires them. Each `WORKER.md` becomes a flow copy 
 - **The roster outlives the process.** A team you hire while the app is running is still there after a restart or a redeploy, because the hire is written to the store your app uses. See [Hiring while the app runs](./durable-hire).
 - **A mailbox is what a reader opens.** A mailbox is a named session on a kind the framework ships, and its transcript is the part of that conversation a person or another agent should read. A routed mailbox sends each post to the one member whose job fits it. See [Mailboxes](./mailboxes).
 - **The screens are importable.** One navigator browses the whole workforce, and the roster and a board, as columns or as a live list, ship beside it as components from `@flow-state-dev/react`. See [Workforce components](./ui).
-- **It does not run your task boards.** A board drains its rows. Workforce tells the board which worker a task's `assignee` means, and gives workers a way to take a task.
-- **It adds to flows, sessions and resources, and replaces none of them.** Hiring at runtime adds to the roster in your files, and doesn't replace the tree.
 
 For a working example, the [kitchen-sink reference app](https://github.com/fixpoint-labs/flow-state-dev/tree/main/apps/kitchen-sink) is a support desk built this way: four specialists and one routed mailbox, declared under its `workforce/` folder, with a board for cases that need a person.
 
@@ -97,15 +95,13 @@ Pass a flow under a key that is not its own `kind` and the hire is refused. [Wor
 
 `readWorkforce` is Node-only (`@flow-state-dev/workforce/loader`). Import `hireWorkforce` from `@flow-state-dev/workforce`.
 
-## Projects, workstreams, and the seats that run them
+## Projects and the chief of staff
 
-A workstream is a mailbox with the boards it holds: one place for the conversation about a piece of work, and the rows people claim to do it. You declare it the way you declare any mailbox, in a `MAILBOX.md`.
+A **workstream** is a mailbox and the boards it holds: one place for the conversation about a piece of work, and the tasks people take to do it. You declare it in a `MAILBOX.md`, like any mailbox.
 
-A project groups workstreams. It is a record your organization keeps: a title, a status, an owner, its members, and links, stored once and visible to everyone in the organization. You don't write a file for each project. Each project has a room, one conversation its members share with the project's seats. You reach it through your own talk session, which your Lab shapes once for every project, in an org-level default template declared beside the collection in `org/resources/projects.ts`. A team that wants its own can still declare one in a `MAILBOX.md` with `mintFor: projects`. Only members read or post in a project's room. Other members' lines show up when your view next reads the room, not the instant they're posted. [Projects](./projects) covers the record and how to create one.
+A **project** groups workstreams. It is a row your organization keeps, not a file: a title, an owner, its members, and the workstreams it groups. Everyone in the organization can see that a project exists. Only its members can read or post in its room, the one conversation they share with the workers your app puts there. See [Projects](./projects).
 
-One seat helps a person run an organization. The chief of staff is who you ask who works here and who is in a mailbox. It also changes who works there: ask it for another seat and it hires one; ask it for one fewer and it puts the request in front of you to approve, and nothing is removed until you do. Given the project tools, it also starts projects for the person who asks, owned by them. The seats it hires belong to the organization, and other seats ask it rather than hiring for themselves. It is a seat on the built-in `agent` kind, declared under `org/workers/`, and a Lab that doesn't add it doesn't have one. See [The chief of staff](./chief-of-staff).
-
-The chief of staff reads workstream mailboxes; it never opens, closes, or renames one.
+The **chief of staff** is an org-level worker a person asks about the organization: who works here, who is in a mailbox. Ask it for another worker and it hires one. Ask it for one fewer and it puts the fire in front of you, and nothing is removed until you approve. Given the project tools, it also starts projects for the person who asks. A Lab that doesn't declare one doesn't have one. See [The chief of staff](./chief-of-staff).
 
 ## Giving a task to a worker
 
@@ -127,11 +123,13 @@ The name reaches your organization's workers, the ones your files declare, and t
 
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, and `hireWorkforce`.
 - [The built-in worker](./built-in-worker) — the `agent` kind a record with no `flow:` runs on: its settings, tools, skills, and memory.
-- [Mailboxes](./mailboxes) — several agents on one topic, with one durable transcript and nobody owning a row, optionally routing each post to one member.
-- [Inventory](./inventory) — a record of every seat and mailbox registered in an organization, readable by a block.
 - [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
 - [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
+- [Packages on disk](./packages-on-disk) — a folder of instructions and the blocks a worker needs to follow them.
+- [Mailboxes](./mailboxes) — several agents on one topic, with one durable transcript and nobody owning a row, optionally routing each post to one member.
+- [Projects](./projects) — a row that groups workstreams, with one room its members share.
+- [Inventory](./inventory) — a record of every seat and mailbox registered in an organization, readable by a block.
 - [Hiring while the app runs](./durable-hire) — a roster hired at runtime, written to your store, reloaded on the next boot.
 - [The chief of staff](./chief-of-staff) — the one seat a person asks to hire or fire, with a fire waiting for their approval.
 - [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.
