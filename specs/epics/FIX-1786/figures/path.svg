@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 484" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 6 October 2026, in phases rather than dates. Now: this spec is in review and the FIX-1787 inventory is posted, with its merge-first rows landing. After the gate every child&#x27;s spec can be written at once, and the closure&#x27;s QA plan beside them. Builds run in waves: the worker contract and per-org user data together; then workers as resources; then the coordinator beside the library; then projects and the assignment chain beside the library; then the WORKER.md conversion; then the terms sweep; then the closure run. The critical path, dashed red, runs the inventory, the contract, workers, the coordinator, projects, the conversion, the terms and the closure run.">
+<svg viewBox="0 0 940 500" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path as of 6 October 2026, in phases rather than dates. Now: this spec is in review and the FIX-1787 inventory is posted, with its merge-first rows landing. After the gate every child&#x27;s spec can be written at once, and the closure&#x27;s QA plan beside them. Builds run in waves: the worker contract and per-org user data together; then workers as resources; then the coordinator beside the library; then projects and the assignment chain beside the library; then the WORKER.md conversion; then the terms sweep; then the closure run. When workers as resources merges, the closure runs leg c early, beside the coordinator and library builds. The critical path, dashed red, runs the inventory, the contract, workers, the coordinator, projects, the conversion, the terms and the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -20,7 +20,7 @@
     .t-w    { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
     .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="484"/>
+  <rect class="bg" x="0" y="0" width="940" height="500"/>
   <g id="axis">
     <text class="t-lbl" x="16" y="18">THE PATH — PHASES, NOT DATES · AS OF 2026-10-06</text>
     <path class="axis" d="M200 44 L924 44"/>
@@ -109,11 +109,14 @@
     <text class="t-ln" x="16" y="424">FIX-1797 · closure</text>
     <rect class="todo" x="292" y="411" width="110" height="20" rx="3"/>
     <text class="t-s" x="298" y="425">QA plan</text>
+    <rect class="todo" x="590" y="411" width="80" height="20" rx="3"/>
+    <text class="t-s" x="596" y="425">leg c early</text>
     <rect class="todo" x="868" y="411" width="48" height="20" rx="3"/>
     <text class="t-s" x="874" y="425">run</text>
   </g>
   <g id="critical-path">
     <path class="crit" d="M272 116 L412 116 L412 148 L488 148 L488 212 L586 212 L586 244 L672 244 L672 308 L762 308 L762 372 L818 372 L818 404 L864 404 L864 436 L916 436"/>
     <text class="t-s" x="16" y="466">dashed red: the critical path · inventory → contract → workers → coordinator → projects → WORKER.md → terms → the closure run</text>
+    <text class="t-s" x="16" y="484">leg c early: the privacy check on the commit FIX-1788 merges on (ER-30); a failure holds the coordinator and library</text>
   </g>
 </svg>

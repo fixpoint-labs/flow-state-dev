@@ -31,7 +31,7 @@ except what was written to a shared resource.**
 | **The real need** | Jake's PRD: one rule set, where everything is private to one user and the only shared things are shared resources. The model is the problem, not its docs. Under it sits a hole: an org-locked hire reaches every member |
 | **Smaller, and rejected** | "The terms are renamed." FIX-1796 alone meets it, and the org-locked hire still reaches everyone. Or "workers are private": FIX-1788 alone, while boards and projects stay org rows any member's session drains |
 | **Bigger, and not this epic's** | Channels · user-to-user communication · transcript resources · files as migrations · long-lived session memory (FIX-1775) · removing flow instances and owner pins from the engine |
-| **Not done if** | Every child is Done and the closure check hasn't run · it ran with one user · Bob opens, names or writes any of Alice's workers, sessions, boards or workstream sessions · a task in Alice's chain runs as anyone else · a user changes a standard worker · a `MAILBOX.md` loads · Workforce still registers a flow instance or sets an owner pin · a retired term is left in an export or a published page ([ER-12](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) · a bug the closure run found is open |
+| **Not done if** | Every child is Done and the closure check hasn't run · it ran with one user · Bob opens, names or writes any of Alice's workers, sessions, boards or workstream sessions · a task in Alice's chain runs as anyone else · a user changes a standard worker · Q2 held and leg b never made a private project · a record stored before FIX-1790 reads in two orgs · a `MAILBOX.md` loads · Workforce still registers a flow instance or sets an owner pin · a retired term is left in an export or a published page ([ER-12](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) · a bug the closure run found is open |
 
 ```mermaid
 flowchart LR
@@ -52,10 +52,11 @@ makes leg c's PASS mean something.
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's goal check ([FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797)), in Shift Manager over HTTP and a browser, on one `main` commit after every other child merges ([ER-28](BUSINESS-RULES.md#the-closure)) |
-| **Signal** | Leg a: Alice forks a standard worker, copies a template, and posts to a best-fit coordinator whose delegates she adds; her delegate answers, the routing is recorded, every session is hers. Leg b: Alice and Bob each own a workstream in one shared project; every session in each chain belongs to its owner, and the project view computes both. Leg c: Bob opens Alice's session, names her worker as a delegate, writes her entry, links a session to her worker: each refused. Alice in a second org sees none of her first org's workers |
+| **Signal** | Leg a: Alice forks a standard worker, copies a template, and posts to a best-fit coordinator whose delegates she adds; her delegate answers, the routing is recorded, every session is hers. Leg b: Alice and Bob each own a workstream in one shared project; every session in each chain belongs to its owner, and the project view computes both. Leg c: Bob opens Alice's session, names her worker as a delegate, writes her entry, links a session to her worker: each refused. Alice in a second org sees none of her first org's workers, nor anything stored before FIX-1790. If [Q2](DECISIONS.md#q2) holds, leg b adds a step: Alice makes a private project, and Bob can't list, open or read it |
 | **Input** | Shift Manager (`packages/shift-manager`) on its standard install, converted to `WORKER.md`; two users of one org through the app's sign-in; a real model; a held-out post for the coordinator |
 | **Anti-game** | No asserting on a child's own tests. No worker, project or delegate seeded by a fixture: the users make each one through the app. No run with one user, and no request of Bob's sent under Alice's identity |
 | **Control that must fail** | The worker collection at org scope: leg c must FAIL. Today's `main`: all three legs FAIL |
+| **Milestone** | Leg c's worker steps and the control run early, on the commit FIX-1788 merges on, so the privacy fix is proved before the coordinator builds on it rather than last ([ER-30](BUSINESS-RULES.md#the-closure)) |
 
 ## What's in the box
 
@@ -72,9 +73,9 @@ blocked by FIX-1787 ([ER-23](BUSINESS-RULES.md#how-the-set-is-run)).
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1787](https://linear.app/fixpoint-labs/issue/FIX-1787) · inventory | A merge, close or untouched call for every open PR and active issue in the areas the refactor changes | The refactor starts from its result. Route: inventory, no spec, user-approved outside this gate | Posted 2026-10-06 [on FIX-1786](https://linear.app/fixpoint-labs/issue/FIX-1786#comment-9e837aa5): 38 items, 13 merge first, 13 close, 12 untouched; two owner calls asked there |
+| [FIX-1787](https://linear.app/fixpoint-labs/issue/FIX-1787) · inventory | A merge, close or untouched call for every open PR and active issue in the areas the refactor changes | The refactor starts from its result. Route: inventory, no spec, user-approved outside this gate | In Review · posted 2026-10-06 [on FIX-1786](https://linear.app/fixpoint-labs/issue/FIX-1786#comment-9e837aa5): 38 items, 13 merge first, 13 close, 12 untouched; two owner calls asked there |
 | [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789) · worker contract | Registered worker flows, the private-state rule, a standard-only flag | A worker's configuration must name a flow that keeps its state private | Backlog · spec route · shape is [Q1](DECISIONS.md#q1) |
-| [FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790) · user data per org | User-scoped data kept per (user, org), for every flow | Without it a user's private workers show in every org they belong to | Backlog · spec route |
+| [FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790) · user data per org | User-scoped data kept per (user, org), for every flow; records stored before moved to one org or refused | Without it a user's private workers show in every org they belong to | Backlog · spec route |
 | [FIX-1788](https://linear.app/fixpoint-labs/issue/FIX-1788) · workers as resources | A worker as a user-scoped resource on a singleton flow; standard workers projected from files; fork; a session link callers can't seed; instances and pins deprecated | The spine: privacy by construction | Backlog · spec route |
 | [FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791) · coordinator flow | Delegates in session state, four routing policies, one answer per delegate, a routing record | Replaces the mailbox with a worker, and fixes its fixed membership | Backlog · spec route · carries FIX-1774's dogfood legs and *not done if* list |
 | [FIX-1795](https://linear.app/fixpoint-labs/issue/FIX-1795) · worker library | Templates in the org, copied into a user's scope | With hires private, the only way a team shares a worker | Backlog · spec route |
@@ -82,11 +83,12 @@ blocked by FIX-1787 ([ER-23](BUSINESS-RULES.md#how-the-set-is-run)).
 | [FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794) · assignment chain | Tasks assigned from delegates, down the owner's boards, run as the owner | Today a drain runs as whoever triggers it | Backlog · spec route · carries FIX-1777's "runs as the filer" rule |
 | [FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792) · `MAILBOX.md` to `WORKER.md` | 33 charters converted, 15 boards resolved, old files refused by name | One way to declare a worker | Backlog · spec route |
 | [FIX-1796](https://linear.app/fixpoint-labs/issue/FIX-1796) · terminology | The retired terms gone from code, docs and the glossary | One term, one thing | Backlog · spec route |
-| [FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797) · closure · **required** | The QA plan and its runs on one `main` commit | Proves the whole | Backlog · blocked by every other child |
+| [FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797) · closure · **required** | The QA plan, an early leg-c run when FIX-1788 merges, and the runs on one `main` commit | Proves the whole | Backlog · blocked by every other child |
 
-The inventory, nine refactor children and a closure; none of the nine started. Whether nine is
-really eight: FIX-1790 is small and could ride in FIX-1788, but it changes a persisted key every
-flow uses, so it keeps its own review. Collapse trigger: if FIX-1789's spec finds the contract
+The inventory, nine refactor children and a closure; none of the nine started, and none of the
+inventory's merge-first PRs has landed. Whether nine is really eight: FIX-1790 could ride in
+FIX-1788, but it changes a persisted key every flow uses and moves what was stored before by an
+operator step, so it keeps its own review. Collapse trigger: if FIX-1789's spec finds the contract
 needs only a registration list, it folds into FIX-1788 ([D1](DECISIONS.md#d1)).
 
 ## How the issues flow into each other

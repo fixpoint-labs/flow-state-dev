@@ -59,7 +59,7 @@ answer record in one shared module.
 |---|---|
 | **Instead of** | A Layer 1 worker noun with its own store · or per-org user keys faked inside Workforce |
 | **Because** | Workers, coordinators and workstreams compose what ships: resources, scopes, sessions, projected collections, boards. Three things Workforce cannot fake: a scope key, a row rule, session state a caller can't write. [The end-state POC](#what-the-end-state-poc-showed) settled the third: the public create persists a caller's session state, so a link held there accepts the caller's own other worker, and a row only flow code writes outlives a deleted session id |
-| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change under BP-030; (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session state a flow declares server-owned: the public create refuses caller state for it, and only flow code writes it. The worker link lives there, and so do a coordinator's delegates. FIX-1788 builds it, FIX-1791 consumes it. Flow instances and owner pins get deprecation markers, nothing more. A worker's own key for its private state is Layer 2, FIX-1788's. Any other Layer 1 change comes back to this epic |
+| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change whose old records move to one org by an operator step, never read in two ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session state a flow declares server-owned: the public create refuses caller state for it, and only flow code writes it. The worker link lives there, and so do a coordinator's delegates. FIX-1788 builds it, FIX-1791 consumes it. Flow instances and owner pins get deprecation markers, nothing more. A worker's own key for its private state is Layer 2, FIX-1788's. Any other Layer 1 change comes back to this epic |
 
 **What would change my mind:** a second consumer of a worker outside Workforce. Then a worker
 noun in core earns its place. For (3), FIX-1788's spec needing the link before any flow code
@@ -115,13 +115,14 @@ It comes down to authorities: the wrapper makes a second one over the schema's r
 ## Q2 · asked on the inventory · Private projects lift FIX-1763's fence; FIX-1762's stack merges first
 
 Asked of Jake on [the inventory](https://linear.app/fixpoint-labs/issue/FIX-1786#comment-9e837aa5),
-call 1; not asked again here. **My recommendation:** yes to both. FIX-1763's own fence left
+call 1; not asked again here. The goal doesn't need private projects; the PRD does. A yes adds a
+leg-b step that makes one, so the closure proves it. **My recommendation:** yes to both. FIX-1763's own fence left
 "dual org/user later via a create-time flag, same membership model, no second project type",
 and private or shared at create is that flag. FIX-1762's locks (one optional remote per
 project, a worktree mapped from it, side files outside the checkout, no whole-repo copy or
 auto-commit as the user, the FIX-1766 host-loss overlay) don't depend on scope, and FIX-1793
-carries them either way. **If he says no:** private projects leave FIX-1793 and leg b runs on an
-org project only, so a single user's own work is visible to the org.
+carries them either way. **If he says no:** private projects leave FIX-1793, leg b keeps its shared
+project only, and a single user's own work is visible to the org.
 
 <a name="q3"></a>
 ## Q3 · asked on the inventory · Close FIX-1774 and FIX-1777 into FIX-1791 and FIX-1794
@@ -155,7 +156,17 @@ engine rule. The closure only checks.
 - **Model variants carry into forks and the library.** Codex, Claude and Cursor variants are
   separate workers sharing core instructions (the 2026-10-04 lock). That lock's ownership half
   is superseded: workers are private, and standard workers are read-only projections.
-- **Per-org user data dual-reads** what was stored before, and nothing is deleted (BP-030).
+- **Per-org user data does not dual-read.** A record stored before under the cross-org key would
+  read in every org its user belongs to, the leak FIX-1790 exists to close, and the owner-pinned
+  cell already refuses that fallback. It moves to the one org it can be attributed to by an
+  operator step, or stops with `migration-required`; nothing is deleted ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+  Reversed in review (Jake, Codex) from a dual-read.
+- **The privacy spine is proved when it merges**, not only at the end: leg c's worker steps and
+  the control run on FIX-1788's merge commit, and a failure holds the coordinator and the
+  library from merging ([ER-30](BUSINESS-RULES.md#the-closure)). From review (Jake).
+- **Private projects are proved if they are built.** If Q2 holds, leg b makes one and Bob can't
+  reach it; otherwise ER-7's private half would ship unchecked. From review (Jake, Cursor).
+- **ER-14 forbids a second registry of workers**, not Q1's list of worker flows. From review.
 - **Shift Manager lives at `packages/shift-manager`.** #2759 (FIX-1770) moves it there and lands
   first among the merge-first rows; PRs that edit the lab rebase after it.
 - **Checked against `main` at `74f9a4f68`:** a project room and the mailbox boards are as
@@ -190,5 +201,8 @@ engine rule. The closure only checks.
   FIX-1788 gained the worker key, because the run showed a caller-seeded link to the caller's own
   other worker is honoured and a singleton's isolated cells are shared by every worker. ER-9
   gained the flow-boundary rule, because a cross-flow child roots its own lineage.
+- **Review round 1 (Oct 6)**: per-org user data stopped dual-reading old records (ER-3); the
+  closure gained an early leg-c run at FIX-1788's merge (ER-30) and a private-project step if Q2
+  holds; ER-14 names what it forbids. Issue-level notes went to the children.
 
 **Open: Q1.**

@@ -5,6 +5,14 @@
 
 # Workforce: How It Should Work
 
+> **Where this differs from the epic, the epic binds.** This is the PRD as Jake wrote it; the
+> epic's [decisions](../DECISIONS.md) and [rules](../BUSINESS-RULES.md) settle what it leaves
+> open. One coordinator flow with a routing setting ([D2](../DECISIONS.md#d2)). The worker
+> contract is [Q1](../DECISIONS.md#q1), still open. A workstream is a project entry plus its
+> lead's session; `MAILBOX.md` becomes `WORKER.md`; no transcript resource is built, so the
+> `transcript:` key below isn't either ([decided in review](../DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)).
+> The boards are per [D5](../DECISIONS.md#d5). The counts are 33 files and 15 boards today.
+
 *Jake Hoffner · Oct 5, 2026. Diagrams are snapshots; the original, with live diagrams: [https://claude.ai/code/artifact/07d17e2a-089f-478d-8553-e6dcd8c5cc94](<https://claude.ai/code/artifact/07d17e2a-089f-478d-8553-e6dcd8c5cc94>)*
 
 ## Why this doc
