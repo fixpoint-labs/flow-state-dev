@@ -46,8 +46,8 @@ either dashed control it must fail.
 | **Goal check** | The census ([POC](poc/term-census/README.md)), which the last PR moves to `scripts/check-retired-terms.mjs` and runs in CI · no model · run by the implementer on the last PR's head, rebased on `main` · verdict in that PR, and the closure ([FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797)) runs it again |
 | **Signal** | Zero unswept matches; zero files without an area; no exception that strips nothing (the guard fails on one); no board file on Workforce's ground; each shipped vocabulary term has exactly one glossary row; `pnpm typecheck`, `pnpm test` and the docs build green, with no broken-anchor warning on a renamed heading |
 | **Input** | Every tracked file on that commit. A new file in any in-scope folder that uses a retired word must fail it |
-| **Anti-game** | No exception passes a whole line or file, except a refusal module listed by path (ER-6). A stored key strips alone, never the rest of its quoted literal. Ground is a surface: a file that imports Workforce is on it wherever it sits, and the board's bare "seat" strips only in the board's own files. No near-spelling, and no swap to another retired word (mailbox to member). The exception list is in the PR diff |
-| **Control that must fail** | `main` before the sweep: FAIL on *zero unswept* (on `cad4e2780`, 22,247 lines in 556 files). `--control`: twelve planted lines, among them two terms in one quote, a lower-camel `room…` name, a Workforce seat beside a board's and a signed-in person beside a pinned one, plus an unscoped folder, each refused |
+| **Anti-game** | No exception passes a whole line or file, except a refusal module listed by path (ER-6). A stored key strips alone, never the rest of its quoted literal. Ground is a surface: a file that imports Workforce is on it wherever it sits, and the board's bare "seat" strips only on the board's surface: its modules and the code off Workforce's ground that uses them. No near-spelling, and no swap to another retired word (mailbox to member). The exception list is in the PR diff |
+| **Control that must fail** | `main` before the sweep: FAIL on *zero unswept* (on `cad4e2780`, 22,058 lines in 527 files). `--control`: thirteen planted lines that must count (among them two terms in one quote, a lower-camel `room…` name, a Workforce seat beside a board's, a hired seat in a board consumer, a signed-in person beside a pinned one), two board lines that must strip, a board module on Workforce's ground, a stale exception and an unscoped folder, each refused |
 
 ## What changes
 
@@ -114,4 +114,4 @@ guard that keeps it so. If wrong: we rename Workforce and leave a reader meeting
 
 **Open: none.**
 
-Improvement · `workforce`, `shift-manager`, `react`, `devtool`, discovery in `contracts` and `core`, docs, and prose across the rest · large, mechanical (556 files on `cad4e2780`, fewer once the other children merge) · 2 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)
+Improvement · `workforce`, `shift-manager`, `react`, `devtool`, discovery in `contracts` and `core`, docs, and prose across the rest · large, mechanical (527 files on `cad4e2780`, fewer once the other children merge) · 2 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)

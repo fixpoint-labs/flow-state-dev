@@ -23,7 +23,7 @@ from the last PR on.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-8 | A file is history: a retained spec, a changelog, a changeset, `docs/internal/`, the dated atlas, a blog post | Unchanged | The guard's areas |
-| BR-9 | A file is in `goals/` | Its identifiers follow renamed exports; its words stay | Typecheck |
+| BR-9 | A file is in `goals/` | Its identifiers follow renamed exports, and so does a value an export reads: the discovery domain `seats` becomes `workers` there too ([D4](DECISIONS.md#d4)). Its words otherwise stay | Typecheck · V6's goal run |
 | BR-10 | The engine's flow `kind`, `flowKind`, a type's `kind` field, block and item kinds, flow instances and owner pins, the dispatch target | Unchanged ([ER-20](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do), [ER-22](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)) | The guard's exceptions |
 | BR-11 | A stored key, collection pattern, id, resource name, or a field name inside a saved record, uses a retired word | Its string is unchanged; the constant or type that holds it is renamed, `LEGACY_` when only an upgrade reads it, and a renamed type reads the stored field through one mapper ([D2](DECISIONS.md#d2)) | A store written before the sweep reads the same records after it |
 | BR-12 | A refusal must name an old file or input: `MAILBOX.md`, a removed room action | It keeps naming it, with the conversion. Its module and test are listed by path | The guard's exceptions |

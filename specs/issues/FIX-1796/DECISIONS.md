@@ -29,7 +29,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Renaming the task board's seat to assignee too: its `TaskSeat…` and `HandOffSeat` types and the hand-off record's `seat` field |
 | **Because** | The product owner's answer (2026-10-06): "seat" is a fair word for a place on a board. An assignee is a seat on one specific task, so it names something else. Once the Workforce sweep lands, "seat" has one meaning in the codebase, the board's, and the glossary defines it there and nowhere else. Nothing in the epic's Layer 1 changes (ER-22), so the epic's "Task boards … consumed as they ship" holds, no epic decision is needed, and FIX-1794's new board text stands as written |
-| **Locks in** | The board's types and the hand-off record's `seat` field keep their names; no board app changes. The discovery tool's `seats` domain is Workforce's seat, not the board's, and is [D4](#d4)'s. The guard needs a board-seat exception scoped to the board's surface: its named types anywhere, its bare word only in its own files, and a Workforce "seat" counts even on the same line |
+| **Locks in** | The board's types and the hand-off record's `seat` field keep their names; no board app changes. The discovery tool's `seats` domain is Workforce's seat, not the board's, and is [D4](#d4)'s. The guard needs a board-seat exception scoped to the board's surface: its named types and the hand-off field read off its envelope anywhere, its bare word on its modules and the code off Workforce's ground that uses them, and a Workforce "seat" counts even on the same line |
 
 ![D1: only Workforce's seat goes, chosen, beside a board's seat becomes its assignee. Decides it: what a seat is on a board. Price: the guard needs a board-seat exception. Flips if readers still take a board's seat for a worker after the sweep](figures/d1-board-keeps-seat.svg)
 
@@ -133,8 +133,8 @@ The `mailboxes` domain is not decided here: FIX-1792 removes it ([its PLAN S9](h
 ## Settled
 
 - **The counts this spec rests on** are re-derived by the census, not counted by hand: on
-  `cad4e2780`, 22,247 unswept lines in 556 files; every one of 5,802 tracked files has an area;
-  `--control` refuses all thirteen plants ([README](poc/term-census/README.md#what-was-observed)).
+  `cad4e2780`, 22,058 unswept lines in 527 files; every one of 5,802 tracked files has an area;
+  `--control` refuses all eighteen plants ([README](poc/term-census/README.md#what-was-observed)).
 - **The channel-kind paths the issue fences don't exist on `main`**: CONFIRMED, no
   `flows/channels/` path is tracked at all, and `CHANNEL.md` appears only in one goal fixture and
   two retained specs. So the guard carries no exception for them: one that strips nothing fails it. Channels were renamed to mailboxes before this epic; today
@@ -151,5 +151,8 @@ The `mailboxes` domain is not decided here: FIX-1792 removes it ([its PLAN S9](h
   exception, so the unused channel-path exception went. Then the architect and the epic's
   coordinator split the discovery domain from the board: `seats` lists workers, so it becomes
   `workers` (D4), and "person" keeps its permanent guard, on Workforce's ground.
+- **Review round 2** — the board's surface is defined by module, like Workforce's ground, not by
+  a closed file list that left about 125 of the board's own lines to rename against D1; the
+  hand-off field strips like `TaskSeat`. D4's `seats` value reaches `goals/` too.
 
 **Open: none.**

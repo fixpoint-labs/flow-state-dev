@@ -24,9 +24,10 @@
  *
  * Ground is decided by SURFACE, not by folder. Workforce's ground is its own
  * packages and pages, plus any file that imports Workforce or Shift Manager.
- * The task board keeps "seat" (D1): its named types strip anywhere, and its
- * bare word strips only in the board's own files, a closed list that may
- * never touch Workforce's ground. "Hired seat" counts everywhere. The
+ * The task board keeps "seat" (D1): its named types and its envelope's field
+ * strip anywhere, and its bare word strips on the board's surface: its
+ * modules, plus code off Workforce's ground that uses them. A board module
+ * may never sit on Workforce's ground. "Hired seat" counts everywhere. The
  * discovery domain `seats` is Workforce's seat, not the board's (D4), so it
  * counts like any other. "Person" is scanned on Workforce's ground, where a
  * person who isn't the signed-in user is pinned by file and phrase.
@@ -65,10 +66,35 @@ const WORKFORCE_IMPORT = /["']@flow-state-dev\/(?:workforce|shift-manager)(?:\/[
 const onWorkforceGround = (path, text) => WORKFORCE_PATHS.test(path) || WORKFORCE_IMPORT.test(text);
 
 /**
- * The task board's own files (D1: the board keeps "seat"). A closed list, by module, never by a
- * folder a Workforce consumer could fall into; a listed file on Workforce's ground fails the run.
+ * The task board's surface (D1: the board keeps "seat"), defined the way Workforce's ground is: by
+ * module, plus any file off Workforce's ground that uses the board. The modules are the task
+ * board, the task substrate, the skills delegation surface, core's dispatcher and dispatch types,
+ * devtool's dispatch-run views, and the board's tests, integration scenarios and pages. Completing
+ * this list module by module at build time is defining the surface, not widening an exception.
+ * A board module on Workforce's ground fails the run; a file that only USES the board and sits on
+ * Workforce's ground is Workforce's, so its bare "seat" counts.
  */
-const BOARD_FILES = /^packages\/orchestration\/(?:src|test)\/task-board\/|^packages\/core\/src\/types\/dispatch\.ts$|^apps\/docs\/docs\/orchestration\/(?:task-board\.md|task-board-parts\.svg|configuration\.md)$/;
+const BOARD_MODULES = new RegExp(
+  [
+    /^packages\/orchestration\/(?:src|test)\/(?:task-board|tasks)\//,
+    /^packages\/orchestration\/(?:src|test)\/skills\/(?:delegation-[\w-]+|library|worker-materializer|task-tools-capability)(?:\.test)?\.ts$/,
+    /^packages\/core\/src\/blocks\/dispatcher\.ts$|^packages\/core\/src\/types\/dispatch\.ts$|^packages\/core\/test\/dispatcher[\w.-]*\.test\.ts$/,
+    /^packages\/devtool\/(?:src\/react\/(?:lib|components)\/(?:[\w-]+\/)*|test\/)dispatch-run[\w.-]*$/,
+    /^packages\/integration-tests\/src\/scenarios\/task-board[\w.-]*$/,
+    /^apps\/docs\/docs\/orchestration\/(?:task-board\.md|task-board-parts\.svg|configuration\.md)$|^apps\/docs\/docs\/skills\/delegation\.md$/,
+    /^apps\/docs\/guides\/(?:agents-command-the-board|building-a-research-team)\.md$|^docs\/architecture\/dispatched-work\.md$|^packages\/orchestration\/README\.md$/,
+  ].map((r) => r.source).join("|")
+);
+/**
+ * A file uses the board when it imports the board's package, builds a board, names the board's
+ * types, or links the board's hand-off section. Calling core's `dispatcher()` alone is not use:
+ * a Workforce seat is dispatched to as well. Only code uses the board this way; a page or a
+ * README joins the surface by module, because a general page (core's README) mixes both seats.
+ */
+const BOARD_USE = /["']@flow-state-dev\/orchestration(?:\/[^"']*)?["']|\btaskBoard\s*\(|\b(?:TaskSeat|HandOffSeat)\w*|#seats-that-hand-off/;
+const CODE = /\.(?:c|m)?[jt]sx?$/;
+const onBoardSurface = (path, text) =>
+  !onWorkforceGround(path, text) && (BOARD_MODULES.test(path) || (CODE.test(path) && BOARD_USE.test(text)));
 
 /** The retired terms (the epic concept's table). `ground: "workforce"` scans only WORKFORCE_GROUND. */
 const TERMS = [
@@ -98,10 +124,10 @@ const EXCEPTIONS = [
   { id: "mailbox-md-refusal", terms: ["mailbox"], strip: /MAILBOX\.md(?=.*WORKER\.md)|(?<=WORKER\.md.*)MAILBOX\.md/g, why: "ER-6: the refusal and the conversion name the old file" },
   { id: "english-room", terms: ["room"], strip: /\b(?:make|makes|making|made|leave|leaves|leaving|left|have|has|had|ran out of|run out of|out of|given|give|gives|enough|reserve|reserves|reserved|no|more|less|little|plenty of)\s+room\b|\broom\s+(?:for|to)\b|room-temperature/gi, why: "the English 'room for'" },
   { id: "stored-key-names", terms: ["seat", "mailbox", "room", "hired-roster", "member"], strip: /(?<=["'`])(?:inventory\/(?:seats|mailboxes|members)|workforce\/roster|room-(?:lines|seq|answers|deliveries)|hiredRoster(?:Private)?)[\w\/*.:${}-]*/g, why: "D2: a name only storage sees keeps its string; the key strips, never the rest of its literal" },
-  { id: "board-seat-names", terms: ["seat"], strip: /\b(?:TaskSeat|HandOffSeat)\w*|\b\w*ToolSeats?\w*|\btoolSeat\w*|\btool[ -]seats?\b|\bhandOffBySeat\b|\binlineSeats\b/g, why: "D1: the task board's named types keep seat, wherever they are used" },
-  { id: "board-seat-words", terms: ["seat"], files: BOARD_FILES, strip: /(?<!hired[ _-]?|[Ww]orkforce[ _-]?)\b[Ss]eats?\b/g, why: "D1: the board's own word, in the board's own files; a hired seat still counts" },
+  { id: "board-seat-names", terms: ["seat"], strip: /\b(?:TaskSeat|HandOffSeat)\w*|\b\w*ToolSeats?\w*|\b\w*TOOL_SEATS?\w*|\btoolSeat\w*|\btool[ -]seats?\b|\bhandOffBySeat\b|\binlineSeats\b|\b(?:envelope|dispatch)\.seat\b/g, why: "D1: the task board's named types and the hand-off record's field, read off its envelope, keep seat wherever they are used" },
+  { id: "board-seat-words", terms: ["seat"], where: onBoardSurface, strip: /(?<!hired[ _-]?|[Ww]orkforce[ _-]?)\b[Ss]eat(?:s|ed|ing)?\b/g, why: "D1: the board's own word (a bare seat, seated, `.seat`, `seat:`) on the board's surface; a hired seat still counts" },
   { id: "project-member", terms: ["member"], strip: /\b(?:project|org|organization|team)(?:'s)?\s+members?\b|\b(?:project|org)Members?\b/gi, why: "a project's or an org's member is a user, not a mailbox's" },
-  { id: "person-any-human", terms: ["person"], files: /^apps\/kitchen-sink\/workforce\/teams\/support\/workers\/[^/]+\/WORKER\.md$/, strip: /\bneeds a person\b/g, why: "a person who isn't the signed-in user stays, pinned by file and phrase (BR-5)" },
+  { id: "person-any-human", terms: ["person"], where: (path) => /^apps\/kitchen-sink\/workforce\/teams\/support\/workers\/[^/]+\/WORKER\.md$/.test(path), strip: /\bneeds a person\b/g, why: "a person who isn't the signed-in user stays, pinned by file and phrase (BR-5)" },
   { id: "chat-thread", terms: ["thread"], strip: /\bchat[ -]threads?\b/gi, why: "a chat thread in the UI, not a mailbox's" },
 ];
 
@@ -121,7 +147,7 @@ function areaOf(path) {
 }
 
 /** Scan one in-scope file. Returns [{ term, line, text }] unswept, and counts exemptions. */
-function scanFile(path, text, exemptCounts, totals) {
+function scanFile(path, text, exemptCounts, totals, exceptions) {
   const unswept = [];
   const workforce = onWorkforceGround(path, text);
   const lines = text.split("\n");
@@ -133,9 +159,9 @@ function scanFile(path, text, exemptCounts, totals) {
       const before = (raw.match(term.re) ?? []).length;
       if (before === 0) continue;
       let line = raw;
-      for (const e of EXCEPTIONS) {
+      for (const e of exceptions) {
         if (!e.terms.includes(term.id)) continue;
-        if (e.files && !e.files.test(path)) continue;
+        if (e.where && !e.where(path, text)) continue;
         e.strip.lastIndex = 0;
         const stripped = line.replace(e.strip, " ");
         if (stripped !== line) {
@@ -162,7 +188,8 @@ function scanFile(path, text, exemptCounts, totals) {
   return unswept;
 }
 
-function census(extra = {}) {
+function census(extra = {}, extraExceptions = []) {
+  const exceptions = [...EXCEPTIONS, ...extraExceptions];
   const files = [...trackedFiles(), ...Object.keys(extra)];
   const unscoped = [];
   const areaCounts = {};
@@ -184,15 +211,15 @@ function census(extra = {}) {
     } catch {
       continue; // a tracked file deleted in the working tree
     }
-    if (BOARD_FILES.test(path) && onWorkforceGround(path, text)) boardOnWorkforce.push(path);
-    const hits = scanFile(path, text, exemptCounts, totals);
+    if (BOARD_MODULES.test(path) && onWorkforceGround(path, text)) boardOnWorkforce.push(path);
+    const hits = scanFile(path, text, exemptCounts, totals, exceptions);
     if (hits.length > 0) unsweptByFile.set(path, hits);
     for (const h of hits) {
       const byArea = totals[h.term].byArea;
       byArea[area.id] = (byArea[area.id] ?? 0) + 1;
     }
   }
-  const stale = EXCEPTIONS.filter((e) => !exemptCounts[e.id]).map((e) => e.id);
+  const stale = exceptions.filter((e) => !exemptCounts[e.id]).map((e) => e.id);
   return { files: files.length, unscoped, areaCounts, exemptCounts, totals, unsweptByFile, boardOnWorkforce, stale };
 }
 
@@ -258,8 +285,16 @@ const PLANTS = {
     "const slot: TaskSeat = pick(row); // the seat this pane opens", // seat: TaskSeat strips, 'the seat' must count
     "// the pane shows the worker's kind", // kind: on Workforce's ground by its import
   ].join("\n"),
-  // Inside the board's own files, its bare word strips; a hired seat still counts.
+  // Inside a board module, its bare word strips; a hired seat still counts.
   "packages/orchestration/src/task-board/zz-planted.ts": "// a dispatcher seat hands this row to a hired seat\n",
+  // A board consumer outside task-board/: its bare seat and its envelope field strip; a hired seat counts.
+  "apps/kitchen-sink/flows/zz-board/flow.ts": [
+    'const board = taskBoard({ name: "triage", workers }); // each seat runs inline',
+    "if (envelope.seat === name) return; // same seat",
+    "// a hired seat answers elsewhere",
+  ].join("\n"),
+  // A board module that imports Workforce: the run must name it.
+  "packages/orchestration/src/tasks/zz-planted-mixed.ts": 'import { roster } from "@flow-state-dev/workforce";\n',
   // A pinned "any human" phrase strips; the signed-in person beside it still counts.
   "apps/kitchen-sink/workforce/teams/support/workers/zz/WORKER.md": "When a case needs a person, tell the person who signed in.\n",
   // The discovery domain is Workforce's seat (D4): a domain value still counts.
@@ -268,7 +303,8 @@ const PLANTS = {
 };
 
 if (process.argv.includes("--control")) {
-  const r = census(PLANTS);
+  // A planted exception that matches nothing must be reported stale.
+  const r = census(PLANTS, [{ id: "zz-planted-stale", terms: ["seat"], strip: /zz-never-matches/g }]);
   const want = [
     { file: "packages/workforce/src/zz-planted.ts", line: 1, term: "kind" },
     { file: "packages/workforce/src/zz-planted.ts", line: 2, term: "mailbox" },
@@ -282,12 +318,24 @@ if (process.argv.includes("--control")) {
     { file: "packages/orchestration/src/task-board/zz-planted.ts", line: 1, term: "seat" },
     { file: "apps/kitchen-sink/workforce/teams/support/workers/zz/WORKER.md", line: 1, term: "person" },
     { file: "packages/workforce/src/zz-planted-domain.ts", line: 1, term: "seat" },
+    { file: "apps/kitchen-sink/flows/zz-board/flow.ts", line: 3, term: "seat" },
+  ];
+  // Lines that must STRIP: the board's own word off task-board/, and its envelope field.
+  const stripped = [
+    { file: "apps/kitchen-sink/flows/zz-board/flow.ts", line: 1, term: "seat" },
+    { file: "apps/kitchen-sink/flows/zz-board/flow.ts", line: 2, term: "seat" },
   ];
   const caught = want.map((w) => (r.unsweptByFile.get(w.file) ?? []).some((h) => h.line === w.line && h.term === w.term));
   const folder = r.unscoped.includes("zz-planted-folder/notes.md");
   for (const [i, w] of want.entries()) console.log(`plant ${w.file}:${w.line} (${w.term}): ${caught[i] ? "refused" : "SLIPPED THROUGH"}`);
+  const kept = stripped.map((w) => !(r.unsweptByFile.get(w.file) ?? []).some((h) => h.line === w.line && h.term === w.term));
+  for (const [i, w] of stripped.entries()) console.log(`plant ${w.file}:${w.line} (${w.term}, the board's): ${kept[i] ? "stripped" : "WRONGLY COUNTED"}`);
+  const mixed = r.boardOnWorkforce.includes("packages/orchestration/src/tasks/zz-planted-mixed.ts");
+  console.log(`plant board module on Workforce's ground: ${mixed ? "refused" : "SLIPPED THROUGH"}`);
+  const stale = r.stale.includes("zz-planted-stale");
+  console.log(`plant stale exception: ${stale ? "refused" : "SLIPPED THROUGH"}`);
   console.log(`plant folder (totality): ${folder ? "refused" : "SLIPPED THROUGH"}`);
-  const ok = caught.every(Boolean) && folder;
+  const ok = caught.every(Boolean) && kept.every(Boolean) && mixed && stale && folder;
   console.log(ok ? "CONTROL PASS · every plant was refused" : "CONTROL FAIL");
   process.exitCode = ok ? 0 : 1;
 } else if (process.argv.includes("--list")) {

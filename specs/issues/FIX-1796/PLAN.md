@@ -20,7 +20,7 @@ epic's [order](../../epics/FIX-1786/PLAN.md#what-unblocks-what-from-here)).
 | S7 | Docs for S4–S6 | Package READMEs and the Workforce and Shift Manager pages naming what S4–S6 rename; `minor` changesets per published package; the upgrading page's rename table ([DOCS.md](DOCS.md)) | BR-7 BR-14 |
 | S8 | Prose | "Person" for the user on Workforce's ground (BR-4, BR-5), and every remaining retired word in the docs site, `docs/architecture/`, the root README and figures' text | BR-1 BR-4 BR-5 |
 | S9 | The glossary and the overview | [DOCS.md](DOCS.md): the glossary's opening, seat and assignee in its task-board section, its Workforce and Shift Manager sections, words that mean two things, three figures redrawn; the epic's overview opening, each sentence checked on `main` | BR-17–20 |
-| S10 | The guard | The census becomes `scripts/check-retired-terms.mjs` with a vitest test of its controls, run in CI beside the other repository guards. Ground and the board's seat are scoped by surface (the POC's `onWorkforceGround`, `BOARD_FILES`). It also asserts each shipped vocabulary term has exactly one row in the glossary | BR-2 BR-3 BR-5 BR-8 BR-12 BR-17 |
+| S10 | The guard | The census becomes `scripts/check-retired-terms.mjs` with a vitest test of its controls, run in CI beside the other repository guards. Ground and the board's seat are scoped by surface (the POC's `onWorkforceGround`, `BOARD_MODULES`, `onBoardSurface`). It also asserts each shipped vocabulary term has exactly one row in the glossary | BR-2 BR-3 BR-5 BR-8 BR-12 BR-17 |
 | S11 | **Removals** | `scripts/check-mailbox-rename.mjs`, its test, its CI step (S10 replaces it) | — |
 
 ## Sequence
@@ -61,7 +61,7 @@ its own; its few Workforce-meaning lines ride with P1.
 | V3 | S4 | BR-15: a worker flow whose hand-written schema keeps `seatTools` is refused at boot, naming `workerTools`. BR-11: a store written by `main` before the sweep lists and reads the same records after it |
 | V4 | S5 S6 | `shift-manager`, `kitchen-sink` and `devtool` suites green; `fsdev run` on a kitchen-sink Workforce flow |
 | V5 | S7 | Every name removed from a published package's index between the PR's base and head appears in that package's changeset table (BR-14) |
-| V6 | S2 S4 | BR-16: `discover({ domain: "workers" })` answers what `seats` did on `main`; `seats` gets the "unknown domain" listing; a worker file with `discover: [seats]` is refused at its mint, naming `workers` |
+| V6 | S2 S4 | BR-16: `discover({ domain: "workers" })` answers what `seats` did on `main`; `seats` gets the "unknown domain" listing; a worker file with `discover: [seats]` is refused at its mint, naming `workers`. BR-9: `goals/hire-plane/discover-survives-an-unaddressable-row/` passes after its `seats` values become `workers` |
 | VG | S10 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): the guard PASSES on P2's head, rebased on `main`, after it FAILED on `main` before P1 (record both counts), and `--control` refuses every plant. Typecheck, tests and V2 green |
 
 ## Pinned names
@@ -82,7 +82,8 @@ mailbox leftovers to coordinator, a storage-only constant to `LEGACY_…`.
 |---|---|
 | Rename by meaning, never by string | "Seat" is a worker in Workforce and a place on a board; "person" is sometimes any human |
 | Never widen an exception to go green; rename the line | An exception that absorbs a live use is how a guard lies. The census's control plants exactly that |
-| Scope by surface, never by folder | A Workforce consumer sits in many folders (kitchen-sink's seat pane, the React panels); the board's bare "seat" strips only in its own files |
+| Scope by surface, never by folder | A Workforce consumer sits in many folders (kitchen-sink's seat pane, the React panels). The board's bare "seat" strips on the board's surface: its modules (the task board, the task substrate, the skills delegation surface, core's dispatcher and dispatch types, devtool's dispatch-run views, and their tests, integration scenarios and pages), and any code off Workforce's ground that uses them |
+| Completing the board's module list is not widening an exception | The POC lists the board's modules as it found them. Adding a board module it missed, by module, at build time, is defining the surface D1 keeps. Adding a file to hide a Workforce seat is widening, and a board module on Workforce's ground fails the run |
 | An exception strips a token, never a line; only a refusal module (ER-6) is listed whole, by path | A second retired word on an excepted line must still count |
 | Each PR's pages move with its code | ER-25 |
 | Don't rename what a sibling is about to delete | The epic's sequencing; start from `main` after FIX-1792 and FIX-1794 |
@@ -97,8 +98,8 @@ glossary and the epic's overview opening last, after S8.
 ## POC
 
 **`poc/term-census/`**: the census and its controls ([README](poc/term-census/README.md)). On
-`cad4e2780` it read 5,802 tracked files: 22,247 unswept lines in 556 files, every file with an
-area, all thirteen plants refused. Most of it is Workforce, Shift Manager and their consumers; the
+`cad4e2780` it read 5,802 tracked files: 22,058 unswept lines in 527 files, every file with an
+area, all eighteen plants refused. Most of it is Workforce, Shift Manager and their consumers; the
 rest is the panels and prose. It starts with twelve token exceptions, each stripping something;
 it names one board file on Workforce's ground (the task-board page's mailbox section). The
 "person" keeps and the project-member keeps are the implementer's.
@@ -143,6 +144,11 @@ it names one board file on Workforce's ground (the task-board page's mailbox sec
 - "Whether future **channels** need a new guard when reintroduced — out of FIX-1796 scope; just don’t assume S11’s removal covers non-mailbox “channel” product language forever." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2832#pullrequestreview-5435221824))
 - "P2 bundles S4–S7 (workforce exports, panels, apps/labs, docs: ~290+ files). Splitting the library rename from the consumers lets the typecheck fail narrowly. Optional." — architecture review ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/2832#issuecomment-6026555582))
 - "The census counts a lot of code that FIX-1788/1791/1792/1793 rewrite. The plan already says re-run on `main`, so just don't size P2 off 21,436." — architecture review ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/2832#issuecomment-6026555582))
+
+- "`--control` never exercises the stale-exception or board-on-Workforce-ground failures; it passes with a stale exception present. S10's vitest should plant both." — spec review round 2 ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2832#pullrequestreview-5435456262)). The POC now plants both; S10 keeps them.
+- "In devtool, `INVENTORY_COLLECTIONS = ["seats", …]` (`devtool/src/react/lib/inventory.ts:37`) and the inventory section's `name="seats"` are D2 stored collection names, not D4's domain. Reword the "Registered seats" label (BR-6) and keep the string." — spec review round 2 ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2832#pullrequestreview-5435456262))
+- "`SEAT_DISCOVER_KEY` is an export whose value `"discover"` doesn't change. Rename the constant with a changeset row; V5 catches it, though the upgrading page's two pinned rows don't name it." — spec review round 2 ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2832#pullrequestreview-5435456262))
+- "P1 bundles S2 (gated on amend-5) with S4–S7. If amend-5 is late, S2 and S4's `discover:` values can split off so the rest of P1 isn't held." — spec review round 2 ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2832#pullrequestreview-5435456262))
 
 These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
 discarding one. A note that turns out to reveal a design problem is a spec blind spot: surface
