@@ -19,7 +19,8 @@ Replace everything from the H1 to "Declaring the collection" with the epic's ope
 > ### Private and shared
 >
 > You choose when you create a project. A **shared** project lives in the organization: everyone
-> in the org can list it and read its row, its repository included. A **private** project lives
+> in the org can list it and read its row, its repository included, and every workstream's entry.
+> Its members are the people who may open workstreams in it. A **private** project lives
 > with you: nobody else can list, open or read it, its files included, and it shows only in the
 > org you made it in. Either way it is the same kind of project, with the same fields. A
 > private project can't become shared later, or the other way round.
@@ -93,7 +94,7 @@ example with:
 > unique within a project for each owner, and can't hold `/`.
 >
 > **Who sees what.** Everyone who can read the project reads every entry: its title, owner,
-> lead, status, due date, objectives and latest report. Only the owner can change an entry, and
+> lead, status, due date, objectives, latest report, and who last wrote it. Only the owner can change an entry, and
 > only the owner can open the workstream session, its board and its tasks. The lead keeps the
 > entry current with `updateWorkstream`, which runs as the owner because the session is theirs:
 >
@@ -124,14 +125,16 @@ example with:
 > you open it. Find or start yours with `ensureWorkerSession`:
 >
 > ```ts
-> import { ensureWorkerSession } from "@flow-state-dev/workforce";
+> import { createWorkforceClient } from "@flow-state-dev/workforce";
 >
-> const session = await ensureWorkerSession({ worker: "project-coordinator", project: apollo });
+> const workforce = createWorkforceClient({ userId });
+> const session = await workforce.ensureWorkerSession({ worker: "project-coordinator", projectId: apollo });
 > ```
 >
-> It reads every workstream's entry, so it can answer how the project is going. When you ask it
-> for work, it hands the request to the lead of one of **your** workstreams in the project, inside
-> that workstream session. It never hands work to another member's workstream. To get something
+> It reads every workstream's entry, so it can answer how the project is going. Each workstream
+> you have open in the project is one of its delegates, added when you open it and dropped when
+> you mark it done. When you ask it for work, it hands the request to the lead of one of **your**
+> workstreams, inside that workstream session. It never hands work to another member's workstream. To get something
 > from theirs, read their entry or ask them. If you own no workstream in the project, it says so
 > and opens nothing for you.
 
@@ -159,7 +162,8 @@ Replace the section with:
 
 Remove the four sections, the `talk` option paragraph under "Declaring the collection", and
 these figures: `project-room-handles.svg`, `project-room-membership.svg`,
-`project-room-parts.svg`, `mailbox-or-room.svg`, `mailbox-room-flow.svg`. `project-overview.svg`
+`project-room-parts.svg`, `project-room-sessions.svg`, `mailbox-or-room.svg`,
+`mailbox-room-flow.svg`. `project-overview.svg`
 is redrawn as the epic's private-and-shared figure, in the boundary style of the other figures
 on this page.
 
@@ -206,10 +210,48 @@ replace the first two paragraphs and the tools table rows with:
 > | `createProject` | Creates a project owned by the user asking, private or shared, with the members they name | Never |
 > | `openWorkstream` | Opens a workstream the user asking owns, with a lead from their roster | Never |
 
+## UPDATE · `apps/docs/docs/workforce/overview.md` · "Projects and the chief of staff" and the page list
+
+Replace the workstream and project paragraphs with:
+
+> A **workstream** is one area of a project with one owner: an entry on the project that everyone
+> who reads the project can see, and a lasting session of one of the owner's workers that does
+> the work. A mailbox and its boards still work as before.
+>
+> A **project** is a body of work, private to you or shared with your organization. Each user
+> talks to it through their own project coordinator. See [Projects](./projects).
+
+and the list line with:
+
+> - [Projects](./projects) — private or shared, with workstreams that each have one owner.
+
+## UPDATE · `apps/docs/docs/glossary.md` and its figures
+
+Remove the **Room** row. In the Workforce figure (`glossary/workforce.svg`) and its description,
+remove the Room term; in the layers figure, "projects and rooms" becomes "projects and
+workstreams"; in the Shift Manager figure, PROJECT + ROOM becomes PROJECT, read through your own
+project coordinator. Add a **Project coordinator** row: "A user's own session for talking to one
+project. It reads every workstream and hands work only to the user's own."
+
+## UPDATE · `packages/shift-manager/README.md` · "A project"
+
+Replace the room lines with the project view in the screens table above: Stream is your own
+project coordinator, Board your own workstreams' boards, Workstreams every entry with its
+progress. Remove "The room reads only at set times" and the room's sentence in the DevTeam
+paragraph.
+
 ## UPDATE · `apps/docs/docs/workforce/inventory.md`
 
 Remove the `mintFor: projects` removal sentence and "A project's talk session is never a mailbox
 row."
+
+## UPDATE · the owner-key contracts · `docs/architecture/resources-and-client-data.md`, `docs/contributing/architecture-reference.md`
+
+Not published, but locked: both say a `~`-owned row is served only through an owner-private
+collection and only to its owner. Restate the key fence for two modes: an owner-private
+collection serves the row to its owner only; an owner-writes collection serves it to everyone
+the scope serves, browser included, and refuses a create, update or delete by anyone but the
+owner. The startup fence and the single-resource refusal cover both.
 
 ## UPDATE · `packages/core/README.md`, `packages/workforce/README.md`
 

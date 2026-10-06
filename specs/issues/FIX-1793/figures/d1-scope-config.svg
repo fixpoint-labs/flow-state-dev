@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, how a project becomes private. Chosen: the same project row, declared in its owner's user scope. Instead of: a flag on the org row, hidden by the owner-private fence. It comes down to the first row: the browser reads a user-scope collection, so Shift Manager lists a user's private projects, while the owner-private fence has no browser read, so the app could not list them. The price is the second row: a project's address names its visibility and its id, where the flag keeps one id space. The third row: the chosen option waits on FIX-1790, because today's user scope crosses orgs; the flag lives in the org and doesn't. Locks in: no write turns a private project into a shared one. Flips if user scope can't be kept per org in time."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, how a project becomes private. Chosen: the same project row, declared in its owner's user scope. Instead of: org rows under the owner-private fence. It comes down to the first row: the browser reads a user-scope collection, so Shift Manager lists a user's private projects, while the owner-private fence refuses a browser read, and lifting that is a Layer 1 change the epic hasn't budgeted. The second row: the chosen option's address names its visibility and its id; the alternative needs a second pattern with an owner segment, and project files can't use ** under the fence. The third row: the chosen option waits on FIX-1790, because today's user scope crosses orgs; the flag lives in the org and doesn't. Locks in: no write turns a private project into a shared one. Flips if user scope can't be kept per org in time."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -58,8 +58,8 @@
     <text class="t-b" x="248" y="161">Yes: a browser read per scope</text>
     <text class="t-s" x="248" y="179">the POC's S4, on the real route</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">No: the fence has no browser read</text>
-    <text class="t-s" x="612" y="179">the POC's G3; Shift Manager can't list them</text>
+    <text class="t-b" x="612" y="161">No: the fence refuses a browser read</text>
+    <text class="t-s" x="612" y="179">the POC's G3; lifting it is a Layer 1 change (ER-22)</text>
   </g>
 
   <g id="row-price">
@@ -67,9 +67,9 @@
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">Visibility plus id</text>
     <text class="t-s" x="248" y="241">two projects may share an id</text>
-    <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">One id space</text>
-    <text class="t-s" x="612" y="241">every project in one collection</text>
+    <text class="mark minus" x="592" y="224">−</text>
+    <text class="t-b" x="612" y="223">Owner segment plus id</text>
+    <text class="t-s" x="612" y="241">a second pattern; files can't use ** under it</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
 

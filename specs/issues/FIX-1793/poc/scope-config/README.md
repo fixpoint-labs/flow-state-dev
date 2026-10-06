@@ -28,7 +28,7 @@ is stubbed.
 
 ## What was observed
 
-On `39d7abe13`: **8 passed**. Each assertion pins what is true today, so an engine change shows
+On `39d7abe13`: **8 passed**, and again on `dc463ef26` in spec review round 1. Each assertion pins what is true today, so an engine change shows
 up here as a red test.
 
 | Leg | Question | Observed |

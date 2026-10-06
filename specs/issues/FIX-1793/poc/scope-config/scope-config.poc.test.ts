@@ -161,11 +161,6 @@ async function boot() {
   return { http, session, act, browse };
 }
 
-const keysOf = (body: any): string[] => {
-  const items = (body?.items ?? body?.instances ?? body?.data ?? []) as any[];
-  return items.map((i) => String(i.key ?? i.path ?? i.id)).sort();
-};
-
 // ─── S · private and shared, one row, two scopes ──────────────────────────
 
 describe("S · a project row declared at org scope and at user scope in one flow", () => {

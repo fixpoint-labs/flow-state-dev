@@ -7,7 +7,7 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **wants a project only they can see** | Can't. Every project is an org row that every member lists | Makes it private. Nobody else in the org can list, open or read it, and it doesn't show in their other orgs |
-| **shares a project with a teammate** | Both are members of one row. A workstream is a mailbox listed on the row, and anyone who can edit the row can move it | Each owns the workstreams they open. Both see every workstream's status and objectives; only the owner can change theirs, and only the owner sees its tasks |
+| **shares a project with a teammate** | Both are members of one row. A workstream is a mailbox listed on the row, and anyone who can edit the row can move it | Each owns the workstreams they open. Everyone in the org reads the project and every workstream's status and objectives; members are who may open workstreams. Only the owner can change theirs, and only the owner sees its tasks |
 | **talks to a project** | Posts in the project's room, which every member shares, through a talk session of their own | Talks to their own project coordinator. It reads every workstream's status and hands work only to the user's own workstreams |
 | **asks how a project is going** | Reads the room, or opens each mailbox | Sees it computed from the workstreams: how many are on track, objectives met, the next due date, and which entries have gone quiet |
 | **had a conversation in a project's room** | Reads it in the project's Stream tab | The lines stay in the store, untouched. The app no longer shows them ([decided, not asked](DECISIONS.md#decided-not-asked)) |
@@ -59,7 +59,7 @@ never a key string. Under the dashed control, Bob's write to Alice's entry must 
 On the left, the room and the row are shared and anyone on the row moves its workstreams. On
 the right, sharing is reading: each entry has one writer, and work stays in its owner's sessions.
 
-**What an app writes**, on the public client (`createClient`, FIX-1788's `ensureWorkerSession`):
+**What an app writes**, on the public client (`createClient`, FIX-1788's `createWorkforceClient`):
 
 ```diff
   const projects = createClient({ flowKind: "projects", userId })
@@ -69,7 +69,8 @@ the right, sharing is reading: each entry has one writer, and work stays in its 
 + const apollo = { visibility: "shared", id: "apollo" }   // a project's address: its visibility and its id
 + await projects.sendAction("openWorkstream", { project: apollo, id: "checkout", title: "Checkout", lead: "eng-lead" }, { sessionId })
 + // the entry is the caller's; its lead's workstream session is linked when the session is created
-+ const coordinator = await ensureWorkerSession({ worker: "project-coordinator", project: apollo })
++ const workforce = createWorkforceClient({ userId })
++ const coordinator = await workforce.ensureWorkerSession({ worker: "project-coordinator", projectId: apollo })
 ```
 
 **What a framework user writes** to get a row one user writes and the org reads:
@@ -87,15 +88,17 @@ the right, sharing is reading: each entry has one writer, and work stays in its 
 
 ```mermaid
 flowchart LR
+  O["Alice opens a workstream"] -->|"one delegate record · lead + entry"| R["her coordinator's delegates · server-written"]
   U["Alice · a post"] --> K["her project coordinator · linked to the project at create"]
-  E["every workstream entry · org reads"] -->|"read per post"| K
-  K -->|"only entries keyed to Alice"| D["delivery · FIX-1791's ledger"]
+  R --> K
+  E["every workstream entry · org reads"] -->|"for answers"| K
+  K -->|"a delegate record"| D["delivery · FIX-1791's ledger"]
   D --> W["her lead's workstream session · hers"]
   W -->|"writes as Alice"| X["her entry · the owner rule"]
 ```
 
-The owner rule sits at the one place every write meets the store, so it holds whichever flow
-writes the entry.
+Work goes only to delegates, and only Alice's own workstreams become hers. The owner rule sits at
+the one place every write meets the store, so it holds whichever flow writes the entry.
 
 ## What stays as it is
 
@@ -123,5 +126,8 @@ deleted. If wrong: we rename the room and still let any member change anyone's w
 1. **[D1](DECISIONS.md#d1) · A private project is today's project kept in its owner's user
    scope.** The epic's cost check: it adds three declarations, one create option and a second
    list. If wrong: a private project waits on FIX-1790, and can't later become shared.
+2. **[Shared means the whole org reads it](DECISIONS.md#decided-not-asked)**, the project and
+   every workstream, as epic ER-7 has it; members decide who opens workstreams. If wrong: keeping
+   reads to members is a reader rule on a row, an epic amendment.
 
 Feature · `core`, `engine`, `workforce`, `shift-manager` · large · 4 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)

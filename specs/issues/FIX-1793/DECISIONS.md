@@ -26,6 +26,9 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 <a name="q1"></a>
 ## Q1 · open · Does the shared half stay in the MVP?
 
+Not [epic Q2](../../epics/FIX-1786/DECISIONS.md#q2), which is decided: private projects are in.
+This asks whether shared projects stay in beside them.
+
 **The fork.** Keep shared projects, with workstreams owned by different users and the new
 engine rule behind them, in the MVP; or ship private projects only and make sharing a fast
 follow?
@@ -89,16 +92,18 @@ It comes down to tidying: with anyone, a creator can't remove a workstream they 
 
 | | |
 |---|---|
-| **Instead of** | Private only by a flag on the org row, hidden by the owner-private fence · or no private projects (the epic's cost condition) |
-| **Because** | The [POC](poc/scope-config/README.md) shows one row schema declared at org scope and at user scope in one flow: both land, Bob lists none of Alice's private ones, and the browser reads each (S1 to S4). The owner-private fence has no browser read, so Shift Manager couldn't list such rows (G3). User scope is where the epic keeps a user's private things: their workers are there. The cost, against the epic's "mostly a scope configuration": three declarations at user scope, one `visibility` option on create, a second list read, and an address that names the visibility |
+| **Instead of** | Private projects as org rows under the owner-private fence · or no private projects (the epic's cost condition) |
+| **Because** | The [POC](poc/scope-config/README.md) shows one row schema declared at org scope and at user scope in one flow: both land, Bob lists none of Alice's private ones, and the browser reads each (S1 to S4). User scope is where the epic keeps a user's private things: their workers are there. The cost, against the epic's "mostly a scope configuration": three declarations at user scope, one `visibility` option on create, a second list read, and an address that names the visibility. The owner-private route is not engine-impossible; it is two Layer 1 changes the epic hasn't budgeted. The fence refuses a browser read when a collection is defined (G3), and lifting that for the owner alone is a change to it outside the epic's three ([D3](../../epics/FIX-1786/DECISIONS.md#d3), ER-22). Project files are `project-files/**`, and the fence refuses `**`, so private files need a second. It would still take a second pattern with an owner segment, a second list, and an address that tells the two apart. What it saves is the wait on FIX-1790, which the epic's order runs first anyway |
 | **Locks in** | A private project needs FIX-1790 merged first: today user scope crosses orgs and Alice's private project reads in her second org (POC O1). A project's address is its visibility and its id, so a private and a shared project can share an id. No write turns a private project into a shared one: it would move rows between scopes, and nothing asks for it |
 
-![D1: a private project as the same row in user scope, chosen, beside private only by a flag under the owner-private fence. Decides it: whether the browser can list the rows. Price: an address that names the visibility, and a wait on FIX-1790. Flips if user scope can't be kept per org](figures/d1-scope-config.svg)
+![D1: a private project as the same row in user scope, chosen, beside org rows under the owner-private fence. Decides it: whether the browser can list the rows without a Layer 1 change. Price: an address that names the visibility, and a wait on FIX-1790; the alternative needs a second pattern too, and files can't use ** under the fence. Flips if user scope can't be kept per org](figures/d1-scope-config.svg)
 
-It comes down to the browser: the owner-private fence hides the rows from the app's own list.
+It comes down to the browser: the owner-private fence refuses the app's own list, and lifting that is an engine change the epic hasn't budgeted.
 
 **What would change my mind:** FIX-1790 slipping past this issue's build. Then private projects
-wait, and this issue ships shared ones first rather than hold.
+wait, and this issue ships shared ones first rather than hold. Or the epic choosing to spend
+Layer 1 changes on an owner-only browser read and `**` under the fence; then private projects
+don't wait on FIX-1790.
 
 <a name="decided-not-asked"></a>
 ## Decided, not asked
@@ -121,12 +126,30 @@ Engineering calls, recorded so nobody re-derives them.
   records it ([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)).
 - **No engine record of the collections a turn wrote.** It would be a fourth Layer 1 change
   ([ER-22](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)); it is raised to the
-  epic. Shift Manager reads the Lab again after each project coordinator turn (#2720's floor)
-  and when a project view opens, and special-cases no tool name.
+  epic. Shift Manager reads the Lab again after each project coordinator turn (#2720's floor),
+  and special-cases no tool name. A project view opens on its row and one entry prefix, not a Lab
+  read, and its Board reads only the viewer's own workstream sessions. If the reload cost bites,
+  the smaller move is to narrow what the reload reads, not to reopen ER-22.
 - **The project coordinator is a session of a standard coordinator worker the installation
   names**, linked to one project when it is created, through FIX-1788's helpers with a
-  `project` criterion. Its delegates are the user's own workstreams in that project, read on each
-  post. Delivery goes into the lead's workstream session through FIX-1791's ledger.
+  `projectId` criterion. Its delegates have one source, FIX-1791's server-written session state,
+  so epic ER-1 and D3 hold as written. Each open workstream the user owns there is one delegate
+  record, the lead plus the entry's address, written by the entry's open and done paths through
+  FIX-1791's delegate path; the coordinator starts with no defaults. Delivery goes through
+  FIX-1791's ledger into the session the record's target resolves, the workstream session. Both
+  rules are FIX-1791's ([#2821](https://github.com/fixpoint-labs/flow-state-dev/pull/2821) BR-1,
+  BR-2, BR-5, BR-20a); this issue is their second caller. A done workstream is not a delegate:
+  nothing hands work to finished work.
+- **Shared means the whole org reads it.** A shared project's row and every workstream entry are
+  read by everyone in the org, as epic ER-7 and today's org rows have it; members decide who opens
+  workstreams (Q2), not who reads. Reads limited to members would be a reader rule on a row, a
+  Layer 1 change outside the epic's three (ER-22): an epic amendment, not this issue's call. The
+  docs say it plainly.
+- **Each entry carries FIX-1789's `writtenBy`**, stamped through its helper on every write
+  ([FIX-1789 D1](../FIX-1789/DECISIONS.md#d1), epic ER-11). Who may write stays the owner rule.
+- **Removed room calls are refused by name.** `join`, and `post`, `read` and `answer` on a stored
+  talk session, keep entries that refuse with the removed-room reason (BR-29), so an old caller
+  gets that reason and not a generic failure.
 - **A workstream's lead is chosen when it opens and doesn't change**, because a session's
   worker never does (FIX-1788). A workstream id is unique per project and owner.
 - **Out of scope:** changing members after create, private to shared, and waking a lead on a
@@ -144,18 +167,24 @@ Engineering calls, recorded so nobody re-derives them.
 | A room kept read-only for its history | A second reader for a removed feature |
 | The project coordinator as its own flow | The epic's D2: one coordinator flow |
 | A delivery ledger for project coordinators | FIX-1791's ledger, reused (the EM's note) |
+| Delegates read from the entries on each post | A second delegate source outside FIX-1791's mutation path and roster check (epic ER-1, D3) |
+| One workstream per lead, per owner and project | A product limit adopted only to avoid a data-model fix; a delegate record carries its target instead |
 
 ## What the POC showed
 
-`bash specs/issues/FIX-1793/poc/scope-config/run.sh`, 8 legs, all as pinned
-([README](poc/scope-config/README.md)). The premise of D1 held: one row at two scopes, apart,
-with a browser read each. Today's user scope crosses orgs, so D1 waits on FIX-1790. Neither
-existing shape is the owner rule. Nothing moved the design.
+[`poc/scope-config/`](poc/scope-config/README.md) held D1's premise and moved nothing.
+[`poc/removal-inventory/`](poc/removal-inventory/README.md) sizes the removal. Results are in
+their READMEs.
 
 ## How it got here
 
 - **Draft** — framed as the epic's leg b; private projects as a scope configuration, workstream
   entries under a new owner-writes mode of the owner-key fence, a project coordinator on
   FIX-1791's flow and ledger, rooms removed with their rows kept; four PRs.
+- **Review round 1** — the project coordinator's delegates moved from entries read per post to
+  FIX-1791's delegate records, written by the entries' open and done paths, because delegates
+  have one server-written source (epic ER-1, D3); delivery and the record's identity cite
+  FIX-1791's amendment (#2821). Entries gained `writtenBy`, removed room calls keep refusing
+  entries, and the removal inventory matches prose, which found DevTeam room code it had missed.
 
 **Open: Q1 and Q2.**
