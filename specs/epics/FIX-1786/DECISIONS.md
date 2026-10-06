@@ -203,6 +203,7 @@ engine rule. The closure only checks.
   gained the flow-boundary rule, because a cross-flow child roots its own lineage.
 - **Review round 1 (Oct 6)**: per-org user data stopped dual-reading old records (ER-3); the
   closure gained an early leg-c run at FIX-1788's merge (ER-30) and a private-project step if Q2
-  holds; ER-14 names what it forbids. Issue-level notes went to the children.
+  holds; ER-14 names what it forbids. Issue-level notes went to the children, and FIX-1798 was
+  filed outside the epic to remove flow instances and owner pins after FIX-1788 (ER-20).
 
 **Open: Q1.**

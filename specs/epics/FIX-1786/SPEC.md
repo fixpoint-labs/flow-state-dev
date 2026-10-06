@@ -30,7 +30,7 @@ except what was written to a shared resource.**
 |---|---|
 | **The real need** | Jake's PRD: one rule set, where everything is private to one user and the only shared things are shared resources. The model is the problem, not its docs. Under it sits a hole: an org-locked hire reaches every member |
 | **Smaller, and rejected** | "The terms are renamed." FIX-1796 alone meets it, and the org-locked hire still reaches everyone. Or "workers are private": FIX-1788 alone, while boards and projects stay org rows any member's session drains |
-| **Bigger, and not this epic's** | Channels · user-to-user communication · transcript resources · files as migrations · long-lived session memory (FIX-1775) · removing flow instances and owner pins from the engine |
+| **Bigger, and not this epic's** | Channels · user-to-user communication · transcript resources · files as migrations · long-lived session memory (FIX-1775) · removing flow instances and owner pins from the engine ([FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798), after FIX-1788) |
 | **Not done if** | Every child is Done and the closure check hasn't run · it ran with one user · Bob opens, names or writes any of Alice's workers, sessions, boards or workstream sessions · a task in Alice's chain runs as anyone else · a user changes a standard worker · Q2 held and leg b never made a private project · a record stored before FIX-1790 reads in two orgs · a `MAILBOX.md` loads · Workforce still registers a flow instance or sets an owner pin · a retired term is left in an export or a published page ([ER-12](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) · a bug the closure run found is open |
 
 ```mermaid
@@ -121,9 +121,10 @@ widest window is three at once: projects, the chain and the library.
   untouched; channels are a later feature ([ER-20](BUSINESS-RULES.md#what-no-child-may-do)).
 - **Task boards** and `sharedToLineage`, consumed as they ship.
 - **Flow instances and owner pins** stay in the engine, deprecated; Workforce stops using them.
+  Their removal is [FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798), outside this epic.
 - **Memory**: the memory package's tiers, and long-lived session memory, which is FIX-1775's.
 - **Related, deliberately not children:** FIX-1763 and its children · FIX-1650 and its
-  children · FIX-1775 · FIX-1778, consumed ([PLAN.md](PLAN.md#not-children-deliberately)).
+  children · FIX-1775 · FIX-1778, consumed · FIX-1798, the engine removal ([PLAN.md](PLAN.md#not-children-deliberately)).
 
 ## Sign off
 

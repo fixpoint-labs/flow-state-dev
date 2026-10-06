@@ -35,7 +35,7 @@ seven rules explains is a bug in the model.
 | ER-17 | Grant access from session state or any field a caller supplies: a worker link, a project, a delegate | Retains FIX-1650's ER-23. Access is the engine-recorded owner checked against the resource |
 | ER-18 | Share a session between users, or let any coordinator hand work to another user's worker | Security rules 2, 3 and 6 |
 | ER-19 | Special-case a tool name to refresh a view | FIX-1761: a finished turn names the collections it wrote, and the view reloads them |
-| ER-20 | Remove flow instances or owner pins from the engine, or rename channel-kind paths | Deprecated now, removed later. Channels are out of scope |
+| ER-20 | Remove flow instances or owner pins from the engine, or rename channel-kind paths | Deprecated now; [FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798), outside this epic, removes them once FIX-1788 lands. Channels are out of scope |
 | ER-21 | Build channels, user-to-user communication, transcript resources, or files as migrations | The PRD's out-of-scope list |
 | ER-22 | Add a Layer 1 noun, or a Layer 1 change outside [D3](DECISIONS.md#d3)'s three | An escalation to this epic, not a child's call |
 

@@ -69,7 +69,8 @@ moves to `packages/shift-manager` with #2759, and every reference here means tha
 FIX-1763 and its children, whose fences Q2 settles · FIX-1650 and its children, which land
 first and get an evolution note · FIX-1775, long-lived memory · FIX-1778, consumed · FIX-1762's
 stack, consumed · FIX-1765 and FIX-1764, specced after FIX-1791 · FIX-1745, obsolete when rooms
-go · FIX-1766, FIX-1767 and FIX-1768, carried into FIX-1793's spec.
+go · FIX-1766, FIX-1767 and FIX-1768, carried into FIX-1793's spec · FIX-1798, which removes flow
+instances and owner pins from the engine; FIX-1788 blocks it, and each deprecation marker names it.
 
 ## Wrap
 
