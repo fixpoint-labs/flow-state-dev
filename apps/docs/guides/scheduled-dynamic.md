@@ -35,10 +35,11 @@ The dispatch URL carries the id:
 POST /api/flows/:flowKind/schedules/:scheduleId/dispatch
 ```
 
-The id format is up to you, within URL-safe characters and a 128-char
-limit. The reference helper uses `<userId>/<key>` because that maps
-cleanly to a user-scoped resource lookup; custom resolvers pick
-whatever scheme fits the underlying store.
+The id format is up to you, within URL-safe characters and a
+1024-character limit. The reference helper uses `<orgId>/<userId>/<key>`,
+each part URL-encoded, because that maps cleanly to a lookup in one
+user's data in one organization; custom resolvers pick whatever scheme
+fits the underlying store.
 
 Whatever the resolver returns is validated at dispatch time —
 malformed cron, unknown action, or invalid principal returns 400
@@ -50,8 +51,8 @@ the host should do next.
 
 For schedules stored in a flow-state resource collection, the package
 ships `createResourceCollectionScheduleResolver`. It parses the URL
-id, reads the resource, synthesizes a `principal: { userId }` from
-the resource's owning scope, and rejects URL-driven impersonation
+id, reads the resource, synthesizes a `principal: { userId, orgId }`
+from the resource's owning scope, and rejects URL-driven impersonation
 (see [URL-driven impersonation guard](#url-driven-impersonation-guard)
 below).
 
@@ -60,13 +61,13 @@ When it fits:
 - Schedule definitions live alongside other user-scoped state.
 - Users (or agents on behalf of users) create them via the standard
   resource API.
-- The id format `<userId>/<key>` is acceptable in URLs.
+- The id format `<orgId>/<userId>/<key>` is acceptable in URLs.
 
 When to write your own:
 
 - Definitions live in a SQL table, an external service, or a
   cross-tenant store.
-- The id format encodes more than `(userId, key)`.
+- The id format encodes more than `(orgId, userId, key)`.
 - Lookup needs joins or auth checks beyond what the helper does.
 
 The helper is a starting point. The shape of the resolver hook is
@@ -130,11 +131,12 @@ user-scope `schedules/weekly-digest` resource. The host scheduler
 (see below) discovers it on its next pass and POSTs to:
 
 ```
-/api/flows/reminders/schedules/<userId>/weekly-digest/dispatch
+/api/flows/reminders/schedules/<orgId>/<userId>/weekly-digest/dispatch
 ```
 
 The resolver parses the id, reads the resource, and returns the
-config with `principal: { userId }`. The action runs as the user.
+config with `principal: { userId, orgId }`. The action runs as the
+user, in the organization the schedule was saved in.
 
 ## Wiring agent-created schedules
 
@@ -235,8 +237,10 @@ need at-least-once semantics with a custom acknowledgement step:
 
 ```ts
 import { CronExpressionParser } from "cron-parser";
+import { formatScheduleId } from "@flow-state-dev/scheduled";
 
 type ScheduleIndexRow = {
+  orgId: string;
   userId: string;
   key: string;
   cron: string;
@@ -249,7 +253,7 @@ async function advanceIndex(row: ScheduleIndexRow, now: number) {
   const next = CronExpressionParser.parse(row.cron, { currentDate: new Date(now) })
     .next()
     .getTime();
-  await /* UPDATE ... SET nextFireAt = $1 WHERE userId = $2 AND key = $3 */ next;
+  await /* UPDATE ... SET nextFireAt = $1 WHERE orgId = $2 AND userId = $3 AND key = $4 */ next;
 }
 
 const TICK_INTERVAL_MS = 30_000;
@@ -261,7 +265,8 @@ setInterval(async () => {
   await Promise.allSettled(
     due.map(async (row) => {
       const res = await fetch(
-        `${BASE_URL}/api/flows/reminders/schedules/${row.userId}/${row.key}/dispatch`,
+        // `<orgId>/<userId>/<key>`, each part encoded, sent as one encoded path segment.
+        `${BASE_URL}/api/flows/reminders/schedules/${encodeURIComponent(formatScheduleId(row.orgId, row.userId, row.key))}/dispatch`,
         {
           method: "POST",
           headers: {
@@ -298,7 +303,7 @@ provider.
 ```ts
 import { CloudSchedulerClient } from "@google-cloud/scheduler";
 
-async function registerCloudJob(userId, key, cron, baseUrl) {
+async function registerCloudJob(orgId, userId, key, cron, baseUrl) {
   const client = new CloudSchedulerClient();
   await client.createJob({
     parent: `projects/${PROJECT}/locations/${REGION}`,
@@ -307,7 +312,7 @@ async function registerCloudJob(userId, key, cron, baseUrl) {
       schedule: cron,
       timeZone: "UTC",
       httpTarget: {
-        uri: `${baseUrl}/api/flows/reminders/schedules/${userId}/${key}/dispatch`,
+        uri: `${baseUrl}/api/flows/reminders/schedules/${encodeURIComponent(formatScheduleId(orgId, userId, key))}/dispatch`,
         httpMethod: "POST",
         headers: { Authorization: `Bearer ${process.env.FSDEV_SCHEDULER_SECRET}` },
         body: Buffer.from(JSON.stringify({})).toString("base64")
@@ -324,12 +329,13 @@ job too, or it keeps firing past the user's intent.
 
 ## URL-driven impersonation guard
 
-The default helper parses `<userId>/<key>` from the URL and reads the
-resource at user scope `parsed.userId`. The user-scoped storage key is
-the guard: a request like `/schedules/u_evil/k/dispatch` reads
-`("user", "u_evil", "schedules/k")` — there's no resource at that key
-unless `u_evil` owns one. A URL aimed at another user's data simply
-doesn't find anything and the helper returns `null` (404).
+The default helper parses `<orgId>/<userId>/<key>` from the URL and reads
+the resource from that user's data in that organization. The storage key
+is the guard: a request like `/schedules/acme/u_evil/k/dispatch` reads
+u_evil's data in acme, and finds nothing unless u_evil saved a schedule
+there. A row found under one organization that names another is refused
+too, so an id cannot fire a schedule into an organization its creator
+didn't choose. Either way the helper returns `null` (404).
 
 This matters because the URL is attacker-controllable from anyone
 holding the bearer secret. The shared secret proves the caller is the
@@ -342,8 +348,8 @@ because it doesn't know how the id maps to ownership.
 ## Dispatch principal
 
 The action runs as `schedule.principal`. The reference helper
-synthesizes `{ userId }` from the resource's owning scope, so a
-schedule created under user `u_abc` runs as `u_abc`. The
+synthesizes `{ userId, orgId }` from the resource's owning scope, so a
+schedule created by user `u_abc` in `acme` runs as `u_abc` in `acme`. The
 `RequestRecord.userId` reflects this, and any user-scope state the
 action reads or writes resolves correctly.
 
@@ -359,7 +365,7 @@ resolver when:
 
 - Schedules live in a SQL table, not a resource collection. Read the
   row, build the `ScheduleConfig`, return it.
-- The id encodes more than `(userId, key)`. Tenant id, project id,
+- The id encodes more than `(orgId, userId, key)`. Tenant id, project id,
   schedule version — your parser, your decision.
 - Lookup involves an external service (a billing system that owns
   the schedule definitions, an auth service that owns the principal).

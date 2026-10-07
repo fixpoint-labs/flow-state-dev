@@ -253,7 +253,7 @@ function lab(options: {
   /** The run record, as stored now. */
   const record = async (): Promise<Record<string, any>> => {
     const rt = await runtime();
-    const rows = await rt.stores.resourceState.getByPrefix("user", ALICE, "runs/");
+    const rows = await rt.stores.resourceState.getByPrefix("user", `${ALICE}:~org:${ORG_ID}`, "runs/");
     return (Object.values(rows)[0] as { state: Record<string, any> }).state;
   };
 

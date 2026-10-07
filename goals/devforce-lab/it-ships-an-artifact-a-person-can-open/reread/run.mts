@@ -24,6 +24,7 @@
  * a second opinion about what BR-11 means.
  */
 
+import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { MAILBOX_POST_COMPONENT } from "@flow-state-dev/workforce";
 
@@ -53,7 +54,9 @@ if (
 const stores = createSQLiteStores({ filename: dbFile });
 try {
   const row = await stores.resourceState.get("org", orgId, ledgerKey);
-  const runs = await stores.resourceState.getByPrefix("user", userId, "runs/");
+  // The run records live in the user's cell in the org, like all user data.
+  const userCell = resolveUserStorageKey(userId, orgId, { id: "", isolateUserState: false });
+  const runs = await stores.resourceState.getByPrefix("user", userCell, "runs/");
   const session = (await stores.session.get(mailboxSessionId)) as
     | { state?: { transcript?: unknown[] } }
     | undefined;

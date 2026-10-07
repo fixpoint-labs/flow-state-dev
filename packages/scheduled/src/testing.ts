@@ -94,8 +94,8 @@ export function createScheduleIndexConformanceTests(
 
     /**
      * A row is identified by `(cell, key)`, not by the person. One person can
-     * hold a schedule with one key in several storage cells (a hired seat per
-     * organization, plus their own app-wide cell); each is its own schedule.
+     * hold a schedule with one key in several storage cells (one per
+     * organization, plus a flow-isolated cell); each is its own schedule.
      * An adapter keyed on `(userId, key)` collapses them onto one row whose
      * organization is whichever wrote last, and a remove in one cell stops the
      * other from firing.

@@ -25,12 +25,13 @@ const positions = defineProjectedResourceCollection({
   stateSchema: z.object({ ticker: z.string(), shares: z.number() }),
 
   async read({ key, ctx }) {
-    return db.positions.findOne({ userId: ctx.userId, ticker: key });
+    return db.positions.findOne({ userId: ctx.userId, orgId: ctx.orgId, ticker: key });
   },
 
   async search({ query, ctx }) {
     const rows = await db.positions.find({
       userId: ctx.userId,
+      orgId: ctx.orgId,
       q: query.search,
       after: query.cursor,
       limit: query.limit ?? 20,
@@ -47,6 +48,8 @@ const positions = defineProjectedResourceCollection({
   client: { state: { read: true }, content: { read: true } },
 });
 ```
+
+A user-scoped collection belongs to a user inside one organization, the same as the user data the framework stores. Your hooks receive both `ctx.userId` and `ctx.orgId`. Use both in every query, or a user sees in one organization what they saved in another.
 
 `contentTemplate` renders each record into Markdown against `state`. A `client` config projects `clientData` the same way a `defineResourceCollection` collection does.
 

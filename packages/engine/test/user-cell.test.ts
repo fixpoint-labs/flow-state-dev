@@ -1,19 +1,22 @@
 /**
- * A hired seat's shared user data, through real runs on the HTTP router.
+ * A user's data in one org, through real runs on the HTTP router.
  *
- * A seat is an instance registered with a pin from its hire row. What it
- * saves for a person lands in the (org, person) cell: Alice's Acme seat and
- * her Globex seat never read each other, Bob's seat never reads Alice's, and
- * the app's own flows keep the person's cross-org cell, which no seat reads.
- * Every view of a seat session resolves the cell the run wrote, and a refused
- * caller writes nothing into any cell.
+ * Every flow keeps what it saves for a user in that user's cell in the org
+ * the run was admitted under: Alice in Acme and Alice in Globex never read
+ * each other, Bob never reads Alice's, and inside one org the app's flows and
+ * a hired worker (an instance registered with a pin) share her one cell, as
+ * any two flows do. A child session on another flow keeps the user and org.
+ * Every view of a session resolves the cell the run wrote, never a value
+ * planted in another org's cell or in the cross-org cell older releases
+ * wrote, and a refused caller writes nothing into any cell.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, dispatcher, handler } from "@flow-state-dev/core";
 import type { FlowInstance, InstanceOwnerPin, ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction } from "../src";
+import { createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
 import { InstancePinMismatchError } from "../src/context/instance-pin";
+import { getPersistedData } from "../src/resources/internal";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const verified = {
@@ -35,7 +38,7 @@ const resources = {
     stateSchema: z.object({ marker: z.string() }),
     client: { state: { read: true } },
   }),
-  /** Isolated to the flow: keyed by the seat's address, which does not move. */
+  /** Isolated to the flow: the user's cell in the org, plus the instance. */
   scratch: defineResourceCollection({
     pattern: "scratch/*",
     scope: "user",
@@ -87,7 +90,7 @@ const read = handler({
   },
 });
 
-/** A seat hands a save to the app flow, which has no pin. */
+/** A seat hands a save to the app flow, which has no pin, as a child session. */
 const delegate = dispatcher({
   name: "delegate-to-app",
   type: "internal",
@@ -213,8 +216,32 @@ async function boot(options: { debug?: boolean } = {}) {
   return { state, runtime, call, hire, open, act, readAs, cell };
 }
 
-describe("a hired seat's (org, person) cell", () => {
-  it("keeps what Alice's Acme seat saves in (acme, alice), out of Globex and away from Bob", async () => {
+describe("a user's cell in one org, for every flow", () => {
+  it("keeps what Alice saves on the app flow in Acme, out of Globex and away from Bob (BR-1-BR-3)", async () => {
+    const h = await boot();
+
+    const session = await h.open(ALICE_ACME, "app");
+    await h.act(ALICE_ACME, "app", session, "save", { tag: "a", marker: "ACME-M" });
+
+    // BR-1: stored in her cell in Acme, state and both kinds of resource; the
+    // cross-org cell older releases used is untouched.
+    expect(await h.cell("alice:~org:acme")).toEqual(["ACME-M"]);
+    expect(await h.cell("alice")).toEqual([]);
+    expect((await h.runtime.stores.user.get("alice:~org:acme"))?.state).toEqual({ marker: "ACME-M" });
+    expect(await h.runtime.stores.user.get("alice")).toBeUndefined();
+    expect(
+      Object.keys(await h.runtime.stores.resourceState.getByPrefix("user", "alice:~org:acme:app", "scratch/"))
+    ).toEqual(["scratch/a"]);
+
+    // BR-1: her next Acme run reads it back.
+    expect(await h.readAs(ALICE_ACME, "app", "again")).toEqual({ notes: ["ACME-M"], state: "ACME-M" });
+    // BR-2: the same flow in Globex starts empty.
+    expect(await h.readAs(ALICE_GLOBEX, "app", "globex")).toEqual({ notes: [], state: null });
+    // BR-3: Bob in Acme starts empty.
+    expect(await h.readAs(BOB_ACME, "app", "bob")).toEqual({ notes: [], state: null });
+  });
+
+  it("keeps what Alice's Acme seat saves in her Acme cell, out of Globex and away from Bob", async () => {
     const h = await boot();
     h.hire(seatKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
     h.hire(seatKind, "globex.~alice.research", { orgId: "globex", userId: "alice" });
@@ -223,34 +250,33 @@ describe("a hired seat's (org, person) cell", () => {
     const session = await h.open(ALICE_ACME, "acme.~alice.research");
     await h.act(ALICE_ACME, "acme.~alice.research", session, "save", { tag: "a", marker: "ACME-M" });
 
-    // BR-1: stored in the cell, state and resource alike; the person's
-    // cross-org cell is untouched.
+    // BR-5: the cell a hired worker already used, byte for byte; its
+    // flow-isolated data keys by her, Acme and the worker.
     expect(await h.cell("alice:~org:acme")).toEqual(["ACME-M"]);
     expect(await h.cell("alice")).toEqual([]);
     expect((await h.runtime.stores.user.get("alice:~org:acme"))?.state).toEqual({ marker: "ACME-M" });
-    expect(await h.runtime.stores.user.get("alice")).toBeUndefined();
-    // BR-6: the flow-isolated resource keeps the seat-address key.
     expect(
       Object.keys(
-        await h.runtime.stores.resourceState.getByPrefix("user", "alice:acme.~alice.research", "scratch/")
+        await h.runtime.stores.resourceState.getByPrefix(
+          "user",
+          "alice:~org:acme:acme.~alice.research",
+          "scratch/"
+        )
       )
     ).toEqual(["scratch/a"]);
 
-    // BR-1: her next Acme run reads it back.
     expect(await h.readAs(ALICE_ACME, "acme.~alice.research", "again")).toEqual({
       notes: ["ACME-M"],
       state: "ACME-M",
     });
-    // BR-2: her Globex seat of the same kind starts empty.
     expect(await h.readAs(ALICE_GLOBEX, "globex.~alice.research", "globex")).toEqual({
       notes: [],
       state: null,
     });
-    // BR-3: Bob's own Acme seat of the same kind starts empty.
     expect(await h.readAs(BOB_ACME, "acme.~bob.research", "bob")).toEqual({ notes: [], state: null });
   });
 
-  it("shares between Alice's two seats in one org (BR-4)", async () => {
+  it("shares one cell between two flows in one org (BR-4)", async () => {
     const h = await boot();
     h.hire(seatKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
     h.hire(writerKind, "acme.~alice.writer", { orgId: "acme", userId: "alice" });
@@ -262,7 +288,7 @@ describe("a hired seat's (org, person) cell", () => {
     });
   });
 
-  it("stores Bob's use of an org-visible seat in (acme, bob) (BR-5)", async () => {
+  it("stores Bob's use of an org-visible seat in his Acme cell", async () => {
     const h = await boot();
     h.hire(seatKind, "acme.eng.lead", { orgId: "acme" });
     const session = await h.open(BOB_ACME, "acme.eng.lead");
@@ -273,33 +299,33 @@ describe("a hired seat's (org, person) cell", () => {
     expect(await h.readAs(ALICE_ACME, "acme.eng.lead", "alice")).toEqual({ notes: [], state: null });
   });
 
-  it("keeps the app's flows and the seats on opposite sides of the fence (BR-8, BR-13)", async () => {
+  it("shares a user's cell between a hired worker and the app's flows in one org (BR-5)", async () => {
     const h = await boot();
     h.hire(seatKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
-    // A value the person's app flows kept, or a seat saved before the upgrade.
+    h.hire(seatKind, "globex.~alice.research", { orgId: "globex", userId: "alice" });
     const app = await h.open(ALICE_ACME, "app");
-    await h.act(ALICE_ACME, "app", app, "save", { tag: "legacy", marker: "APP-WIDE-M" });
-    expect(await h.cell("alice")).toEqual(["APP-WIDE-M"]);
-    const before = await h.runtime.stores.resourceState.get("user", "alice", "notes/legacy");
+    await h.act(ALICE_ACME, "app", app, "save", { tag: "app", marker: "APP-M" });
 
-    // The seat does not read it, and running the seat leaves it as it was.
+    // The worker reads what the app saved for her in Acme...
+    expect(await h.readAs(ALICE_ACME, "acme.~alice.research", "seat")).toEqual({
+      notes: ["APP-M"],
+      state: "APP-M",
+    });
     const seat = await h.open(ALICE_ACME, "acme.~alice.research");
     await h.act(ALICE_ACME, "acme.~alice.research", seat, "save", { tag: "s", marker: "SEAT-M" });
-    expect(await h.readAs(ALICE_ACME, "acme.~alice.research", "seat")).toEqual({
-      notes: ["SEAT-M"],
+    // ...the app reads what the worker saved...
+    expect(await h.readAs(ALICE_ACME, "app", "app-read")).toEqual({
+      notes: ["APP-M", "SEAT-M"],
       state: "SEAT-M",
     });
-    expect(await h.runtime.stores.resourceState.get("user", "alice", "notes/legacy")).toEqual(before);
-    expect((await h.runtime.stores.user.get("alice"))?.state).toEqual({ marker: "APP-WIDE-M" });
-
-    // The app flow does not read the seat's cell either.
-    expect(await h.readAs(ALICE_ACME, "app", "app")).toEqual({
-      notes: ["APP-WIDE-M"],
-      state: "APP-WIDE-M",
+    // ...and her Globex worker reads neither.
+    expect(await h.readAs(ALICE_GLOBEX, "globex.~alice.research", "globex")).toEqual({
+      notes: [],
+      state: null,
     });
   });
 
-  it("does not lend its org to a flow it calls that has no pin (BR-12)", async () => {
+  it("keeps the user and the org for a child session on another flow (BR-11)", async () => {
     const h = await boot();
     h.hire(seatKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
     const seat = await h.open(ALICE_ACME, "acme.~alice.research");
@@ -307,16 +333,20 @@ describe("a hired seat's (org, person) cell", () => {
       tag: "via-seat",
       marker: "DELEGATED-M",
     });
-    for (let i = 0; i < 100 && (await h.cell("alice")).length === 0; i++) {
+    for (let i = 0; i < 100 && (await h.cell("alice:~org:acme")).length === 0; i++) {
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
-    expect(await h.cell("alice")).toEqual(["DELEGATED-M"]);
-    expect(await h.cell("alice:~org:acme")).toEqual([]);
+    expect(await h.cell("alice:~org:acme")).toEqual(["DELEGATED-M"]);
+    expect(await h.cell("alice")).toEqual([]);
+    // The child read the app flow's isolated bucket in the same cell.
+    expect(
+      Object.keys(await h.runtime.stores.resourceState.getByPrefix("user", "alice:~org:acme:app", "scratch/"))
+    ).toEqual(["scratch/via-seat"]);
   });
 });
 
 describe("the fence around the cell", () => {
-  it("writes nothing into any cell for a caller outside the pin (BR-9)", async () => {
+  it("writes nothing into any cell for a caller outside the pin", async () => {
     const h = await boot();
     const seat = seatKind({ id: "acme.~alice.research" }) as unknown as FlowInstance;
     h.state.register(seat, { pin: { orgId: "acme", userId: "alice" } });
@@ -342,38 +372,76 @@ describe("the fence around the cell", () => {
     }
   });
 
-  it("resolves every read-side view of a seat session to the cell the run wrote (BR-10)", async () => {
-    const h = await boot({ debug: true });
-    h.hire(seatKind, "acme.~alice.research", { orgId: "acme", userId: "alice" });
-    // Planted in the person's cross-org cell: no view of a seat may return it.
-    await h.runtime.stores.resourceState.set(
-      "user",
-      "alice",
-      "notes/planted",
-      { marker: "PLANTED-M" },
+  it.each([
+    ["the app flow", "app", undefined],
+    ["a hired worker", "acme.~alice.research", { orgId: "acme", userId: "alice" }],
+  ] as const)(
+    "resolves every read-side view of %s's session to the cell the run wrote (BR-10)",
+    async (_label, flowId, pin) => {
+      const h = await boot({ debug: true });
+      if (pin !== undefined) h.hire(seatKind, flowId, pin);
+      // Planted in the cross-org cell older releases wrote and in her Globex
+      // cell: no view of an Acme session may return either.
+      for (const scopeId of ["alice", "alice:~org:globex"]) {
+        await h.runtime.stores.resourceState.set(
+          "user",
+          scopeId,
+          "notes/planted",
+          { marker: "PLANTED-M" },
+          "any"
+        );
+        await h.runtime.stores.user.set(
+          scopeId,
+          { id: scopeId, userId: "alice", state: { marker: "PLANTED-M" }, resources: {}, version: 0, createdAt: 0, updatedAt: 0 },
+          "any"
+        );
+      }
+
+      const session = await h.open(ALICE_ACME, flowId);
+      await h.act(ALICE_ACME, flowId, session, "save", { tag: "a", marker: "RUN-M" });
+
+      const stateView = await h.call("GET", ["sessions", session, "state"], ALICE_ACME);
+      expect(stateView.status).toBe(200);
+      expect(stateView.json.clientData.user.mine).toEqual({ marker: "RUN-M" });
+
+      const resourceView = await h.call("GET", ["sessions", session, "resources", "notes"], ALICE_ACME);
+      expect(resourceView.status).toBe(200);
+      const listed = JSON.stringify(resourceView.json);
+      expect(listed).toContain("RUN-M");
+      expect(listed).not.toContain("PLANTED-M");
+
+      const debugView = await h.call(
+        "GET",
+        ["sessions", session, "debug", "resources", "notes", "items"],
+        ALICE_ACME
+      );
+      expect(debugView.status).toBe(200);
+      expect((debugView.json.items as { topic: string }[]).map((item) => item.topic)).toEqual(["a"]);
+    }
+  );
+
+  it("reads no user data for a stored session with no org (BR-9)", async () => {
+    const stores = createInMemoryStores();
+    const flow = appFlow() as unknown as FlowInstance;
+    for (const scopeId of ["alice", "alice:~org:acme"]) {
+      await stores.resourceState.set("user", scopeId, "notes/planted", { marker: "PLANTED-M" }, "any");
+    }
+    await stores.session.set(
+      "no-org",
+      {
+        id: "no-org",
+        flowKind: "app",
+        flowId: "app",
+        userId: "alice",
+        state: {},
+        version: 0,
+        createdAt: 0,
+        updatedAt: 0,
+        journal: [],
+      },
       "any"
     );
-    await h.runtime.stores.user.set(
-      "alice",
-      { id: "alice", userId: "alice", state: { marker: "PLANTED-M" }, resources: {}, version: 0, createdAt: 0, updatedAt: 0 },
-      "any"
-    );
-
-    const session = await h.open(ALICE_ACME, "acme.~alice.research");
-    await h.act(ALICE_ACME, "acme.~alice.research", session, "save", { tag: "a", marker: "SEAT-M" });
-
-    const stateView = await h.call("GET", ["sessions", session, "state"], ALICE_ACME);
-    expect(stateView.status).toBe(200);
-    expect(stateView.json.clientData.user.mine).toEqual({ marker: "SEAT-M" });
-
-    const resourceView = await h.call("GET", ["sessions", session, "resources", "notes"], ALICE_ACME);
-    expect(resourceView.status).toBe(200);
-    const listed = JSON.stringify(resourceView.json);
-    expect(listed).toContain("SEAT-M");
-    expect(listed).not.toContain("PLANTED-M");
-
-    const debugView = await h.call("GET", ["sessions", session, "debug", "resources", "notes", "items"], ALICE_ACME);
-    expect(debugView.status).toBe(200);
-    expect((debugView.json.items as { topic: string }[]).map((item) => item.topic)).toEqual(["a"]);
+    const registry = { get: () => flow } as unknown as Parameters<typeof getPersistedData>[0]["registry"];
+    expect(await getPersistedData({ registry, stores }, flow, "no-org", "user")).toBeUndefined();
   });
 });

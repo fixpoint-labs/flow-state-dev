@@ -99,7 +99,7 @@ describe("createExecutionContext binding immutability", () => {
         userId: "alice",
         stores
       });
-      expect(ctx.user.identity.id).toBe("alice");
+      expect(ctx.user.identity.userId).toBe("alice");
     });
   });
 

@@ -25,7 +25,7 @@ describe("content load scoped to declared resources (Slice B)", () => {
     const stores = createInMemoryStores();
     await stores.content.set("session", "sess_b", "notes", "NOTES BODY");
     await stores.content.set("session", "sess_b", "secret", "SECRET BODY"); // undeclared
-    await stores.content.set("user", "user_b", "profile", "PROFILE BODY");
+    await stores.content.set("user", `user_b:~org:${DEFAULT_ORG_ID}`, "profile", "PROFILE BODY");
 
     const flow = defineFlow({
       kind: "scoping-flow",
@@ -59,7 +59,7 @@ describe("content load scoped to declared resources (Slice B)", () => {
     // Declared fixed resources fetched by exact key; the undeclared key is
     // never read.
     expect(getSpy).toHaveBeenCalledWith("session", "sess_b", "notes");
-    expect(getSpy).toHaveBeenCalledWith("user", "user_b", "profile");
+    expect(getSpy).toHaveBeenCalledWith("user", `user_b:~org:${DEFAULT_ORG_ID}`, "profile");
     expect(getSpy).not.toHaveBeenCalledWith("session", "sess_b", "secret");
   });
 

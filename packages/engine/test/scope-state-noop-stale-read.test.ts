@@ -85,7 +85,7 @@ async function stored(
     scope === "session"
       ? await stores.session.get("sess_noop")
       : scope === "user"
-        ? await stores.user.get("user_noop")
+        ? await stores.user.get(`user_noop:~org:${DEFAULT_ORG_ID}`)
         : await stores.org.get(DEFAULT_ORG_ID);
   if (record === undefined) throw new Error(`no ${scope} record`);
   return { state: record.state as Mode, version: record.version };

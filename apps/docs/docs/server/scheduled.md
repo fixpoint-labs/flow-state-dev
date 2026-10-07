@@ -148,26 +148,32 @@ held in a flow-state resource collection, the
 reference helper and end-to-end wiring. For SQL or external services,
 write the resolver directly.
 
-### Schedules on a hired seat
+### Schedules in a user's data
 
-A [seat hired at runtime](/docs/workforce/durable-hire) keeps a person's data
-per organization, in [its own storage cell](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person).
-Use `createResourceCollectionScheduleResolver` there. It reads the schedule row
-from the seat's storage for that organization and person. It returns `null` for
-a row naming a different organization from the one that hired the seat. On a
-user-owned seat, it also returns `null` for a schedule id naming another user.
+A schedule saved in a user-scoped collection belongs to a user inside one
+organization. Use `createResourceCollectionScheduleResolver` there. Its schedule
+id names the organization, the user and the key, `<orgId>/<userId>/<key>`, each
+part URL-encoded; `formatScheduleId(orgId, userId, key)` builds one. It reads the
+row from that user's data in that organization, and returns `null` when the id
+names no organization or the row names a different one. On a hired worker only
+one member can reach, it also returns `null` for an id naming another user.
 
-If you must write the resolver by hand, it gets the seat's pin, the organization
-(and user, if any) the seat is registered to, as `ctx.ownerPin` (`{ orgId,
-userId? }`, absent for any other flow). Pass it to `resolveUserStorageKey` from
-`@flow-state-dev/engine` to read the same storage as the helper:
+If you write the resolver by hand, pass the organization to
+`resolveUserStorageKey` from `@flow-state-dev/engine`. It throws when the
+organization is missing or blank. `defaultParseScheduleId` splits the id the
+same way the helper does, and keeps a key that contains `/` whole:
 
 ```ts
+import { resolveUserStorageKey } from "@flow-state-dev/engine";
+import { defaultParseScheduleId } from "@flow-state-dev/scheduled";
+
 resolve: async (scheduleId, ctx) => {
-  const [userId, key] = scheduleId.split("/");
-  const scopeId = resolveUserStorageKey(userId, { id: ctx.flowKind, isolateUserState: false, ownerPin: ctx.ownerPin });
-  const row = await ctx.stores.resourceState.get("user", scopeId, `schedules/${key}`);
-  // read `row?.state`, map its `kind` to a block, return the config as above
+  const parsed = defaultParseScheduleId(scheduleId); // { orgId, userId, collectionKey }, or null
+  if (parsed === null) return null;
+  const scopeId = resolveUserStorageKey(parsed.userId, parsed.orgId, { id: ctx.flowKind, isolateUserState: false });
+  const row = await ctx.stores.resourceState.get("user", scopeId, `schedules/${parsed.collectionKey}`);
+  if (row?.state.orgId !== parsed.orgId) return null;
+  // map its `kind` to a block, return the config as above
 }
 ```
 
@@ -282,10 +288,13 @@ curl -X POST https://app.example.com/api/flows/billing/schedules/monthly-invoice
 ```
 
 For a dynamic schedule the URL carries the resolver-defined id. The
-default resource-collection helper uses `<userId>/<key>`:
+default resource-collection helper uses `<orgId>/<userId>/<key>`, each part
+URL-encoded. The router decodes each path segment once, so put the id on the
+URL as one more encoded segment, `encodeURIComponent(formatScheduleId(...))`,
+whenever a part can contain `/`:
 
 ```bash
-curl -X POST https://app.example.com/api/flows/reminders/schedules/u_abc/weekly-digest/dispatch \
+curl -X POST https://app.example.com/api/flows/reminders/schedules/acme/u_abc/weekly-digest/dispatch \
   -H "Authorization: Bearer ${FSDEV_SCHEDULER_SECRET}" \
   -H "Content-Type: application/json" \
   -d '{"nominalFireTime":"2026-06-01T09:00:00Z"}'

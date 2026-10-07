@@ -2,10 +2,10 @@
  * FIX-735: per-resource `flowIsolation` must control the storage key at the
  * resource granularity the API advertises — not collapse to a flow-wide OR.
  *
- * A resource declared `flowIsolation: false` keys at the bare `{userId}`
+ * A resource declared `flowIsolation: false` keys at the user's cell in the org
  * (shared across flows) even when a sibling user-scoped resource on the same
  * flow declares `flowIsolation: true`. The isolated sibling keys at
- * `{userId}:{flow.id}`; the shared resource is not dragged into isolation.
+ * the cell plus `{flow.id}`; the shared resource is not dragged into isolation.
  */
 import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -19,6 +19,9 @@ import {
 } from "../src";
 import type { SessionRecord } from "../src/stores/types";
 import { getPersistedData } from "../src/resources/internal";
+
+/** The user's cell in the default org, where every flow keeps their user data. */
+const CELL = `user_1:~org:${DEFAULT_ORG_ID}`;
 
 /**
  * Two user-scoped single resources on one flow: `accounts` is shared
@@ -50,7 +53,7 @@ function makeMixedFlow(kind: string) {
 }
 
 describe("FIX-735: per-resource flowIsolation", () => {
-  it("keys a flowIsolation:false resource at the bare userId when a sibling is isolated", async () => {
+  it("keys a flowIsolation:false resource at the shared cell when a sibling is isolated", async () => {
     const flow = makeMixedFlow("flow-a");
     const stores = createInMemoryStores();
 
@@ -67,14 +70,14 @@ describe("FIX-735: per-resource flowIsolation", () => {
     await ctx.resources.accounts.patchState({ balance: 100 });
     await ctx.resources.notes.patchState({ text: "private" });
 
-    // Shared resource lives at the bare identity key; isolated one does not.
-    const bare = toBareStates(await stores.resourceState.getAll("user", "user_1"));
+    // Shared resource lives in the user's cell; isolated one does not.
+    const bare = toBareStates(await stores.resourceState.getAll("user", CELL));
     expect(bare).toHaveProperty("accounts");
     expect(bare).not.toHaveProperty("notes");
     expect((bare.accounts as { balance: number }).balance).toBe(100);
 
     // Isolated resource lives at the flow-namespaced key; shared one does not.
-    const isolated = toBareStates(await stores.resourceState.getAll("user", "user_1:flow-a"));
+    const isolated = toBareStates(await stores.resourceState.getAll("user", `${CELL}:flow-a`));
     expect(isolated).toHaveProperty("notes");
     expect(isolated).not.toHaveProperty("accounts");
     expect((isolated.notes as { text: string }).text).toBe("private");
@@ -143,11 +146,11 @@ describe("FIX-735: per-resource flowIsolation", () => {
     await ctx.resources.readme.writeContent("shared body");
     await ctx.resources.secret.writeContent("private body");
 
-    const bare = await stores.content.getAll("user", "user_1");
+    const bare = await stores.content.getAll("user", CELL);
     expect(bare.readme).toBe("shared body");
     expect(bare).not.toHaveProperty("secret");
 
-    const isolated = await stores.content.getAll("user", "user_1:flow-content");
+    const isolated = await stores.content.getAll("user", `${CELL}:flow-content`);
     expect(isolated.secret).toBe("private body");
     expect(isolated).not.toHaveProperty("readme");
   });
@@ -190,38 +193,39 @@ describe("FIX-735: per-resource flowIsolation", () => {
     await sharedColl.create("a", { n: 1 });
     await isoColl.create("b", { n: 2 });
 
-    const bare = toBareStates(await stores.resourceState.getByPrefix("user", "user_1", "shared/"));
+    const bare = toBareStates(await stores.resourceState.getByPrefix("user", CELL, "shared/"));
     expect(Object.keys(bare)).toContain("shared/a");
-    const bareIso = toBareStates(await stores.resourceState.getByPrefix("user", "user_1", "iso/"));
+    const bareIso = toBareStates(await stores.resourceState.getByPrefix("user", CELL, "iso/"));
     expect(Object.keys(bareIso)).toHaveLength(0);
 
     const isolated = toBareStates(
-      await stores.resourceState.getByPrefix("user", "user_1:flow-coll", "iso/")
+      await stores.resourceState.getByPrefix("user", `${CELL}:flow-coll`, "iso/")
     );
     expect(Object.keys(isolated)).toContain("iso/b");
   });
 
   it("reads shared user resources without requiring a scope record", async () => {
     // FIX-735 review: the HTTP read path must not gate resource reads on the
-    // scope record. A shared resource lives at the bare `{userId}`, which can
+    // scope record. A shared resource lives in the user's shared cell, which can
     // differ from the (flow-flag) scope-record key — gating would hide it.
     const flow = makeMixedFlow("flow-a");
     const stores = createInMemoryStores();
     const registry = createFlowRegistry();
     registry.register(flow);
 
-    // Shared resource present at the bare userId, but NO user scope record.
-    await stores.resourceState.set("user", "user_1", "accounts", { balance: 42 }, "any");
+    // Shared resource present in the user's cell, but NO user scope record.
+    await stores.resourceState.set("user", CELL, "accounts", { balance: 42 }, "any");
     const session: SessionRecord = {
       id: "sess_a",
       flowKind: "flow-a",
       userId: "user_1",
+      orgId: DEFAULT_ORG_ID,
       state: {},
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
     await stores.session.set("sess_a", session, "any");
-    expect(await stores.user.get("user_1")).toBeUndefined();
+    expect(await stores.user.get(CELL)).toBeUndefined();
 
     const data = await getPersistedData({ registry, stores }, flow, "sess_a", "user");
     expect(data?.resources.accounts).toEqual({ balance: 42 });
@@ -269,11 +273,11 @@ describe("FIX-735: per-resource flowIsolation", () => {
 
     // The deep instance lands in the isolated bucket, not the shallow shared one.
     const isolated = toBareStates(
-      await stores.resourceState.getByPrefix("user", "user_1:flow-nested", "a/b/")
+      await stores.resourceState.getByPrefix("user", `${CELL}:flow-nested`, "a/b/")
     );
     expect(Object.keys(isolated)).toContain("a/b/1");
     // The shallow shared instance stays at the bare id, and the deep one is not there.
-    const bare = toBareStates(await stores.resourceState.getByPrefix("user", "user_1", "a/"));
+    const bare = toBareStates(await stores.resourceState.getByPrefix("user", CELL, "a/"));
     expect(Object.keys(bare)).toContain("a/2");
     expect(Object.keys(bare)).not.toContain("a/b/1");
   });
@@ -370,13 +374,13 @@ describe("instance-isolated resources", () => {
     await ctxB.resources.notes.patchState({ text: "b-private" });
 
     // One private bucket per copy, and A's value survived B writing its own.
-    const bucketA = toBareStates(await stores.resourceState.getAll("user", "user_1:reviewer-a"));
-    const bucketB = toBareStates(await stores.resourceState.getAll("user", "user_1:reviewer-b"));
+    const bucketA = toBareStates(await stores.resourceState.getAll("user", `${CELL}:reviewer-a`));
+    const bucketB = toBareStates(await stores.resourceState.getAll("user", `${CELL}:reviewer-b`));
     expect(bucketA).toEqual({ notes: { text: "a-private" } });
     expect(bucketB).toEqual({ notes: { text: "b-private" } });
 
     // The shared one is at the bare identity id, written once, seen by both.
-    const shared = toBareStates(await stores.resourceState.getAll("user", "user_1"));
+    const shared = toBareStates(await stores.resourceState.getAll("user", CELL));
     expect(shared).toEqual({ accounts: { balance: 100 } });
   });
 
@@ -401,7 +405,7 @@ describe("instance-isolated resources", () => {
       });
       await ctx.resources.notes.patchState({ text });
     }
-    await stores.resourceState.set("user", "user_1", "accounts", { balance: 7 }, "any");
+    await stores.resourceState.set("user", CELL, "accounts", { balance: 7 }, "any");
 
     for (const [flow, sessionId, text] of [
       [a, "sess_a", "a-private"],
@@ -412,6 +416,7 @@ describe("instance-isolated resources", () => {
         flowKind: "reviewer",
         flowId: flow.id,
         userId: "user_1",
+        orgId: DEFAULT_ORG_ID,
         state: {},
         createdAt: Date.now(),
         updatedAt: Date.now(),

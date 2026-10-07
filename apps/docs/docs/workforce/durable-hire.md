@@ -648,13 +648,11 @@ The roster is not the [inventory](./inventory.md). An inventory row means *was r
 
 ### What a seat saves for a person
 
-![Where a hired seat keeps what it learns about alice. Inside the acme organization: one shared cell for alice in acme, holding her user record, which every hired seat in acme shares unless it is flow-isolated, and her user-scoped resources, shared by the seats that declare them; and one cell per seat address for flow-isolated data, such as alice at acme.support.ada. In globex, alice has a separate cell of her own, which acme's seats cannot read. Outside hired seats, alice's own data, keyed by her id alone and kept by your app's other flows, is a third place that no hired seat reads or writes. Nothing moves between organizations. A projected resource is stored by your own hooks, so key its rows by the organization too.](./seat-person-data.svg)
+![Where a hired worker keeps what it learns about alice. Inside the acme organization: one cell for alice in acme, holding her user record and her shared user-scoped resources, which every flow in acme uses, hired workers included; and one cell per hired worker for flow-isolated data, such as alice in acme for acme.support.ada. In globex, alice has a separate cell of her own, which nothing in acme reads. A projected resource is stored by your own hooks, so key its rows by the organization too.](./seat-person-data.svg)
 
-A seat keeps what it learns about a person in one of three places, shown above. By default, one cell per person per organization, which every seat in that organization shares for the resources it declares. With flow isolation, one cell per person per seat. The person's own data outside hired seats is a third cell, which no hired seat reads or writes. A resource's own `flowIsolation` decides which applies; a resource that doesn't set it follows the kind's `isolateUserState`.
+A hired worker keeps what it learns about a user in the same place every flow in the organization does: one cell for that user in that organization. With flow isolation, it keeps one cell per user per hired worker, still inside the organization. A resource's own `flowIsolation` decides which applies; a resource that doesn't set it follows the flow's `isolateUserState`.
 
-A user resource backed by your own hooks (a projected resource) is stored by your app, not the framework. Its hooks receive the person's id and the organization, so key its rows by `orgId` as well, or a seat in one organization reads what was saved in another.
-
-If you are upgrading an app whose seats already saved data, see [Upgrading: moving hired seats' stored data](../persistence/overview.md#upgrading-moving-hired-seats-stored-data).
+A user resource backed by your own hooks (a projected resource) is stored by your app, not the framework. Its hooks receive the user's id and the organization, so key its rows by `orgId` as well, or a user sees in one organization what they saved in another.
 
 ## Limits
 

@@ -34,11 +34,9 @@ read. Each create/update/delete on the schedule collection mirrors a row
 into a flat `(cell, key, user_id, org_id, cron, timezone, next_fire_at)`
 table. A row is identified by `cell` and `key`: the cell is where the
 schedule itself is stored, so one schedule always maps to exactly one
-row. For an ordinary flow the cell is the person's own storage; a
-[hired seat](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person)
-stores per organization and person, so Alice's seats in two
-organizations can each have a schedule named `weekly` without touching
-each other's row. Each cron tick claims rows where
+row. The cell is the user's data in the organization the schedule was
+saved in, so Alice can have a schedule named `weekly` in two
+organizations without touching each other's row. Each cron tick claims rows where
 `next_fire_at <= now`, advances them in place using `cron-parser`, and
 returns them. The contract is at-most-once: a row that has been advanced
 and then fails to dispatch is dropped, not retried.
@@ -154,8 +152,9 @@ CREATE INDEX IF NOT EXISTS idx_schedule_index_next_fire_at
 ### Upgrading an existing table
 
 Schema init converts a `schedule_index` keyed by `(user_id, key)` on its
-own: every existing row is assigned the person's own cell and keeps
-firing. If you run with `skipSchemaInit: true`, apply the same change out
+own: every existing row is assigned the person's own cell, so the
+table loads. Those rows point at storage no flow reads any more, so
+their dispatches find no schedule and return 404. If you run with `skipSchemaInit: true`, apply the same change out
 of band.
 
 Postgres:

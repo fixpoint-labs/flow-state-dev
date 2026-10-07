@@ -108,10 +108,12 @@ export interface RequestIdentityContext {
  * collision the principal is here to prevent.
  */
 export function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
+  // `userId`, the bare user, not `id`: `id` is the user record's storage key,
+  // which carries the org, and the flow when user state is isolated.
   const identity = ctx.user?.identity as
-    | { id?: unknown; tenantId?: unknown }
+    | { userId?: unknown; tenantId?: unknown }
     | undefined;
-  const userId = identity?.id;
+  const userId = identity?.userId;
   if (typeof userId !== "string" || userId === "") {
     throw new Error(
       "[harness-manager] this request has no resolved user identity, so a run cannot be " +

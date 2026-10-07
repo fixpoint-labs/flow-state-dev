@@ -123,8 +123,8 @@ describe("upgrading a schedule index written before rows carried a cell (postgre
     await initializeSchema(executor);
     expect(await snapshot()).toEqual(before);
 
-    // The engine keys `a:b`'s own cell as `a\:b`; its next write lands on the
-    // adopted row rather than beside it.
+    // An upsert addressed to an adopted row's cell (`a:b` escaped as `a\:b`)
+    // lands on that row rather than beside it.
     await createPostgresScheduleIndex(executor).upsert({
       cell: "a\\:b",
       userId: "a:b",

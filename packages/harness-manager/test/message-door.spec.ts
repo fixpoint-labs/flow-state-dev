@@ -412,7 +412,7 @@ function host(options: {
   /** The kept turns, as stored now: the person's words and the attempt that took each. */
   const turns = async (): Promise<Array<{ message: string; deliveredTo: number | null }>> => {
     const rt = await runtime();
-    const rows = await rt.stores.resourceState.getByPrefix("user", ALICE, "turns/");
+    const rows = await rt.stores.resourceState.getByPrefix("user", `${ALICE}:~org:${ORG_ID}`, "turns/");
     return Object.values(rows).map((row: any) => ({ message: row.state.message, deliveredTo: row.state.deliveredTo }));
   };
 
@@ -446,7 +446,7 @@ function host(options: {
   /** The session the run record holds, as stored now. */
   const recordedSession = async (): Promise<string | null> => {
     const rt = await runtime();
-    const rows = await rt.stores.resourceState.getByPrefix("user", ALICE, "runs/");
+    const rows = await rt.stores.resourceState.getByPrefix("user", `${ALICE}:~org:${ORG_ID}`, "runs/");
     const named = Object.values(rows).map((row: any) => row.state?.sessionId).find((id) => typeof id === "string");
     return named ?? null;
   };

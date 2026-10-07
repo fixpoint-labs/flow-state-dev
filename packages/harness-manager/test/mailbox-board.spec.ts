@@ -81,7 +81,7 @@ function scriptedHarness(script: Array<"finished" | "failed">, seen: SeenRun[]) 
         seen.push({
           cwd,
           resume,
-          user: String((ctx as { user?: { identity?: { id?: unknown } } }).user?.identity?.id),
+          user: String((ctx as { user?: { identity?: { userId?: unknown } } }).user?.identity?.userId),
         });
         const outcome = script[calls++] ?? "finished";
         const sessionId = resume ?? `sess_${seen.length}`;
@@ -228,7 +228,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     }).getRuntime();
     const record = await runtime.stores.resourceState.get(
       "user",
-      userId,
+      `${userId}:~org:${ORG_ID}`,
       `runs/${runTopic(MAILBOX_BOARD_ID, ISSUE, PHASE)}`,
     );
     return record?.state as { attempt?: number; outcome?: string; sessionId?: string | null } | undefined;

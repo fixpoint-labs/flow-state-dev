@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 546" role="img" aria-labelledby="title desc">
   <title id="title">The four state scopes: separate records, each with its own key</title>
-  <desc id="desc">Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation: its state, items, metadata and journal, and the resources an action declares, keyed by the session id and by the tenant when one is sent. User state follows one person across conversations and flows, keyed by the user id; with isolateUserState it is one record per flow copy instead, and an instance with an owner pin keeps one record per person in the pinned organization instead. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session is bound to one organization when it is created; it names its user and org but holds neither one's state. A tenant id splits sessions only. Blocks read and write all four; the browser sees only the fields a scope's client config exposes.</desc>
+  <desc id="desc">Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation: its state, items, metadata and journal, and the resources an action declares, keyed by the session id and by the tenant when one is sent. User state follows one user across conversations and flows inside one organization, keyed by the user and the organization; with isolateUserState it is one record per flow copy instead. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session is bound to one organization when it is created; it names its user and org but holds neither one's state. A tenant id splits sessions only. Blocks read and write all four; the browser sees only the fields a scope's client config exposes.</desc>
   <defs>
     <style>
       :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
@@ -67,13 +67,11 @@
   <text x="476" y="158" class="code">ctx.user</text>
   <text x="476" y="190" class="p">Follows the person across</text>
   <text x="476" y="208" class="p">conversations and flows</text>
-  <text x="476" y="246" class="muted">Key: the userId</text>
+  <text x="476" y="226" class="p">in one organization</text>
+  <text x="476" y="246" class="muted">Key: the userId and orgId</text>
   <text x="476" y="284" class="code">isolateUserState</text>
   <text x="476" y="300" class="muted">One record per flow</text>
   <text x="476" y="316" class="muted">copy instead</text>
-  <text x="476" y="346" class="code">owner pin</text>
-  <text x="476" y="362" class="muted">One record per person in</text>
-  <text x="476" y="378" class="muted">the pinned org instead</text>
 
   <!-- Org -->
   <rect x="676" y="84" width="216" height="316" rx="14" class="wall-org"/>

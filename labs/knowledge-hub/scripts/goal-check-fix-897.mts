@@ -61,7 +61,7 @@ try {
 
   // (c) both inbox rows carry the conversationId.
   const inbox = toBareStates<{ conversationId?: string }>(
-    await runtime.stores.resourceState.getAll("user", "owner")
+    await runtime.stores.resourceState.getAll("user", "owner:~org:org_test")
   );
   const rows = Object.entries(inbox).filter(([k]) => k.startsWith("inbox/"));
   check("(c) two inbox rows exist and both carry the conversationId", rows.length === 2 && rows.every(([, v]) => v.conversationId === conversationId));

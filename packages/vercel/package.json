@@ -104,7 +104,9 @@
     }
   },
   "devDependencies": {
+    "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/scheduled": "workspace:*",
+    "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0"
   },

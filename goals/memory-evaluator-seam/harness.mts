@@ -100,7 +100,7 @@ export async function conversation(options: ConversationOptions) {
 
   async function snapshot() {
     const working = await read("session", sessionId, "workingMemory");
-    const episodic = await read("user", USER, "episodicMemory");
+    const episodic = await read("user", `${USER}:~org:${DEFAULT_ORG_ID}`, "episodicMemory");
     return {
       entryIds: new Set<string>((working?.entries ?? []).map((e: { id: string }) => e.id)),
       entries: (working?.entries ?? []) as Array<{ id: string; content: string }>,

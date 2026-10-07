@@ -16,10 +16,10 @@ State is organized into four scopes, each its own record with its own key:
 |-------|---------------------|----------|
 | **Request** | What does this single action execution need right now? | One action execution |
 | **Session** | What does this conversation need to remember? | Across requests in a conversation |
-| **User** | What does this person need across all their conversations? | Across sessions for a user |
+| **User** | What does this user need across their conversations in one organization? | Across sessions for a user, per organization |
 | **Org** | What does the team need to share? | Across sessions in an org |
 
-![Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation: its state, items, metadata and journal, and the resources an action declares, keyed by the session id and by the tenant when one is sent. User state follows one person across conversations and flows, keyed by the user id; with isolateUserState it is one record per flow copy instead, and an instance with an owner pin keeps one record per person in the pinned organization instead. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session is bound to one organization when it is created; it names its user and org but holds neither one's state. A tenant id splits sessions only. Blocks read and write all four; the browser sees only the fields a scope's client config exposes](./state-scopes.svg)
+![Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation: its state, items, metadata and journal, and the resources an action declares, keyed by the session id and by the tenant when one is sent. User state follows one user across conversations and flows inside one organization, keyed by the user and the organization; with isolateUserState it is one record per flow copy instead. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session is bound to one organization when it is created; it names its user and org but holds neither one's state. A tenant id splits sessions only. Blocks read and write all four; the browser sees only the fields a scope's client config exposes](./state-scopes.svg)
 
 A session names the user and organization it belongs to. It doesn't contain their state: each scope is read and written on its own record.
 
@@ -252,7 +252,7 @@ userStateSchema: z.object({
 })
 ```
 
-By default every flow on the server shares one user record per person, so each flow's user state schema is compared at startup. Incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. [Flow Isolation](/docs/advanced/flow-isolation) gives each flow copy its own record instead, and an instance registered with an owner pin, such as a [hired seat](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person), keeps one record per person in its pinned organization.
+User data belongs to a user inside one organization. Alice in Acme and Alice in Globex have two user records, and two copies of every user-scoped resource, so nothing she saves while working for one organization shows up in the other. Inside one organization, every flow on the server shares her one record, so each flow's user state schema is compared at startup. Incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. [Flow Isolation](/docs/advanced/flow-isolation) gives each flow copy its own record instead, still inside the organization.
 
 **Org** is shared by the whole team: configuration, knowledge bases, settings an admin controls for everyone.
 
@@ -280,7 +280,7 @@ curl -H "x-tenant-id: acme"   ... -d '{"sessionId":"chat-1", ...}'
 curl -H "x-tenant-id: globex" ... -d '{"sessionId":"chat-1", ...}'
 ```
 
-What stays shared, on purpose: **user** and **org** scopes. Org-level policy and quotas, and a user's preferences, are usually meant to apply across tenants, so they key on `userId` / `orgId` alone. If you need those isolated per tenant, encode the tenant into the id you pass.
+What stays shared, on purpose: **user** and **org** scopes. Org-level policy and quotas, and a user's preferences, are usually meant to apply across tenants, so they key on the user and organization, or the organization alone, and not on the tenant. If you need those isolated per tenant, encode the tenant into the id you pass.
 
 You read the tenant in a block the same way as any identity field: `ctx.session.identity.tenantId`. The session id you get back (`ctx.session.identity.id`, API responses) is always the bare id you sent — the tenant prefix is an internal storage detail.
 

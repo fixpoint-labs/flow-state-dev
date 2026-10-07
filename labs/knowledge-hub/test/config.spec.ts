@@ -127,7 +127,7 @@ async function readSource(
 ): Promise<string | null> {
   const runtime = await flowState.getRuntime();
   const all = toBareStates<{ source: string | null }>(
-    await runtime.stores.resourceState.getAll("user", "owner")
+    await runtime.stores.resourceState.getAll("user", "owner:~org:org_test") /* the owner's cell in the org the flow's resolver names */
   );
   return all[`inbox/${id}`]?.source ?? null;
 }
@@ -218,7 +218,7 @@ describe("mcp.session groups captures under a conversation (FIX-897)", () => {
 
     // Both inbox rows carry the conversationId (the grouping key the sweeper reads).
     const inbox = toBareStates<{ conversationId?: string }>(
-      await runtime.stores.resourceState.getAll("user", "owner")
+      await runtime.stores.resourceState.getAll("user", "owner:~org:org_test") /* the owner's cell in the org the flow's resolver names */
     );
     const rows = Object.entries(inbox).filter(([key]) => key.startsWith("inbox/"));
     expect(rows).toHaveLength(2);

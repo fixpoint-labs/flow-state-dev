@@ -376,8 +376,7 @@ results to the caller. Reached without one, they return rows from flows with no
 resolver of their own to any caller. Either way, a row owned by a flow instance
 with its own resolver is listed only when that resolver identifies the caller
 as the row's owner (and, for an instance registered with an owner `pin`, the
-pin admits them; see **Owner-pinned instances** under
-[Public API](#public-api)). A caller a configured host-level fallback rejects
+pin admits them). A caller a configured host-level fallback rejects
 gets `401` from both.
 
 When no resolver is configured, a flow runs on the framework default that
@@ -715,18 +714,17 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 
 `FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `org.stateSchema`, and user/org resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateOrgState: true` on `defineFlow`) are namespaced by the **flow instance id** in storage and skip the registry check. A singleton's instance id is its kind, so its keys are unchanged; two registered copies of a `collection` definition each get their own cell. The same coordinate keys a resource declaring `flowIsolation: true`, for both its state and its content.
 
-The exported scope-key helpers therefore take an instance-bearing shape:
+The exported scope-key helpers take an instance-bearing shape, and the user key takes the organization:
 
 ```ts
-// before
-resolveUserStorageKey(userId, { kind: flow.kind, isolateUserState: true });
-// now
-resolveUserStorageKey(userId, { id: flow.id, isolateUserState: true });
+resolveUserStorageKey(userId, orgId, { id: flow.id, isolateUserState: false }); // "<userId>:~org:<orgId>"
+resolveUserStorageKey(userId, orgId, { id: flow.id, isolateUserState: true });  // "<userId>:~org:<orgId>:<flow id>"
+resolveOrgStorageKey(orgId, { id: flow.id, isolateOrgState: true });            // "<orgId>:<flow id>"
 ```
 
-`resolveOrgStorageKey` changes the same way; its return type is unchanged. A `FlowInstance` satisfies the input as-is. Attributing an existing collection deployment's stored cells to the copy that owns them is one offline procedure — see [Persistence](https://flow-state.dev/docs/persistence/overview#who-owns-a-record); there is no runtime fallback to the old kind-keyed cell.
+A `FlowInstance` satisfies the flow argument as-is. Each part is escaped, so ids containing `:` or `\` never share a key. Attributing an existing collection deployment's stored cells to the copy that owns them is one offline procedure — see [Persistence](https://flow-state.dev/docs/persistence/overview#who-owns-a-record); there is no runtime fallback to the old kind-keyed cell.
 
-**Owner-pinned instances.** A flow registered with an owner `pin` (`register(flow, { pin: { orgId, userId? } })`) keeps its shared user data — the user record and every user-scoped resource that is not flow-isolated — per organization and person, at `<userId>:~org:<orgId>`, with the organization taken from the pin. `resolveUserStorageKey(userId, { id, isolateUserState, ownerPin })` returns that key when `ownerPin` is present, and the key it always returned when it is absent. Flow-isolated keys and org keys are the same for a pinned flow as for any other. Data a pinned instance saved before this keying is not read for it; [Persistence](https://flow-state.dev/docs/persistence/overview#upgrading-moving-hired-seats-stored-data) has the optional offline copy step. Workforce pins each hired seat this way.
+**User data is kept per organization.** Every flow keeps a user's data, the user record and every user-scoped resource, in that user's cell in the organization the run was admitted under, hired workers included. Inside one organization the flows share that cell; Alice in another organization has a cell of her own. `resolveUserStorageKey` throws `OrgRequiredError` when `orgId` is missing, blank or not well-formed, so no call builds a key every organization would read.
 
 See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and the [state and scopes reference](https://flow-state.dev/docs/fundamentals/state-and-scopes) for the full model.
 

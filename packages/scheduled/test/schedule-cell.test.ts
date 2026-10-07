@@ -1,21 +1,19 @@
 /**
- * A schedule a run creates through the documented collection API fires.
+ * A schedule a run creates through the documented collection API fires into
+ * the org the run was in.
  *
  * `schedules.create(key, { cron, kind, enabled })` names no organization, and
- * the row lands in resource state. The resolver reads the row where the
- * collection wrote it and finds on it the organization the creating run was
- * admitted under, so the dispatch fires into that organization — not into the
- * scheduler gateway's.
- *
- * A hired seat keeps its shared user data — its schedule collection included —
- * in the (org, person) cell. The dispatch route hands the resolver the pin of
- * the instance it addresses, so a schedule the seat wrote resolves, and a row
- * found only in the person's cross-org cell does not. An app flow with no pin
- * resolves from the person's cell.
+ * the row lands in the user's cell in the run's org. The dispatch id names
+ * that org, `<orgId>/<userId>/<key>`, each part URL-encoded: the resolver
+ * reads that org's cell and dispatches only a row naming the same org, into
+ * that org — not into the scheduler gateway's. A dispatch naming no org, or
+ * another org, resolves as missing, as does a row in the cross-org cell older
+ * releases wrote. On a hired worker the id must also name the pin's org, and
+ * on a private one its user.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, InstanceOwnerPin, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
   createBearerSecretPrincipalResolver,
@@ -28,7 +26,9 @@ import {
 import {
   createResourceCollectionScheduleResolver,
   createScheduledTransportAdapter,
+  defaultParseScheduleId,
   defineScheduleCollection,
+  formatScheduleId,
 } from "../src";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
@@ -135,6 +135,10 @@ const kind = (name: string, cardinality: "collection" | "singleton") =>
 const seatKind = kind("research", "collection");
 const appKind = kind("reminders", "singleton");
 
+/** The user's cell in one org, where every flow keeps their schedule rows. */
+const cellOf = (userId: string, orgId: string) =>
+  `${userId.replace(/[\\:]/g, "\\$&")}:~org:${orgId.replace(/[\\:]/g, "\\$&")}`;
+
 function boot() {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
@@ -147,13 +151,17 @@ function boot() {
     registry.register(flow as FlowInstance, pin === undefined ? undefined : { pin });
     return flow as FlowInstance;
   };
+  /** POST the dispatch for an id, encoded onto the URL as one path segment. */
   const dispatch = (flowId: string, scheduleId: string) =>
     router.POST(
-      new Request(`http://localhost/api/flows/${flowId}/schedules/${scheduleId}/dispatch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SECRET}` },
-        body: JSON.stringify({ idempotencyKey: `${flowId}:${scheduleId}` }),
-      }),
+      new Request(
+        `http://localhost/api/flows/${flowId}/schedules/${encodeURIComponent(scheduleId)}/dispatch`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SECRET}` },
+          body: JSON.stringify({ idempotencyKey: `${flowId}:${scheduleId}` }),
+        }
+      ),
       { params: { path: [flowId, "schedules", scheduleId, "dispatch"] } }
     );
   /** Alice runs `actionName` on `flow` while admitted under `orgId`. */
@@ -187,20 +195,84 @@ function boot() {
   return { router, stores, register, dispatch, runPlan, runReschedule, plant, fired };
 }
 
-describe("a schedule created through the collection fires", () => {
-  it("fires an unpinned flow's schedule into the organization its run was in", async () => {
+describe("a schedule created through the collection fires into the org that saved it", () => {
+  it.each(["globex", DEFAULT_ORG_ID, "Acme.Corp/EU", "a:b\\c"])(
+    "fires an unpinned flow's schedule saved in %j, named by its org",
+    async (orgId) => {
+      const h = boot();
+      const app = h.register(appKind());
+      try {
+        // The gateway that fires the beat is acme; the run was in `orgId`.
+        await h.runPlan(app, "digest", orgId);
+        expect(await h.stores.resourceState.get("user", cellOf("alice", orgId), "schedules/digest")).toBeDefined();
+        expect(await h.stores.resourceState.get("user", "alice", "schedules/digest")).toBeUndefined();
+
+        const response = await h.dispatch("reminders", formatScheduleId(orgId, "alice", "digest"));
+        expect(response.status).toBe(202);
+        const fired = await h.fired();
+        expect(fired?.userId).toBe("alice");
+        expect(fired?.orgId).toBe(orgId);
+      } finally {
+        await disposeFlowApiRouter(h.router);
+      }
+    }
+  );
+
+  it("does not fire a row saved in one org under another org's dispatch", async () => {
     const h = boot();
     const app = h.register(appKind());
     try {
-      // The run is in globex; the gateway that fires the beat is acme.
       await h.runPlan(app, "digest", "globex");
-      expect(await h.stores.resourceState.get("user", "alice", "schedules/digest")).toBeDefined();
+      const response = await h.dispatch("reminders", formatScheduleId("acme", "alice", "digest"));
+      expect(response.status).toBe(404);
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
 
+  it("does not fire a dispatch that names no org", async () => {
+    const h = boot();
+    const app = h.register(appKind());
+    try {
+      await h.runPlan(app, "digest", "globex");
       const response = await h.dispatch("reminders", "alice/digest");
-      expect(response.status).toBe(202);
-      const fired = await h.fired();
-      expect(fired?.userId).toBe("alice");
-      expect(fired?.orgId).toBe("globex");
+      expect(response.status).toBe(404);
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
+
+  it("does not fire a row in the cross-org cell older releases wrote", async () => {
+    const h = boot();
+    h.register(appKind());
+    try {
+      await h.plant("alice", "legacy", { orgId: "globex" });
+      expect((await h.dispatch("reminders", formatScheduleId("globex", "alice", "legacy"))).status).toBe(404);
+      expect((await h.dispatch("reminders", "alice/legacy")).status).toBe(404);
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
+
+  it("does not fire a row in the named org's cell that names another org", async () => {
+    const h = boot();
+    h.register(appKind());
+    try {
+      await h.plant(cellOf("alice", "acme"), "moved", { orgId: "globex" });
+      expect((await h.dispatch("reminders", formatScheduleId("acme", "alice", "moved"))).status).toBe(404);
+      expect((await h.dispatch("reminders", formatScheduleId("globex", "alice", "moved"))).status).toBe(404);
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
+
+  it("does not fire a row that stores no organization", async () => {
+    const h = boot();
+    h.register(appKind());
+    try {
+      await h.plant(cellOf("alice", "globex"), "legacy", {});
+      const response = await h.dispatch("reminders", formatScheduleId("globex", "alice", "legacy"));
+      expect(response.status).toBe(404);
     } finally {
       await disposeFlowApiRouter(h.router);
     }
@@ -212,9 +284,9 @@ describe("a schedule created through the collection fires", () => {
     try {
       await h.runPlan(app, "digest", "globex");
       await h.runReschedule(app, "digest", "globex");
-      expect((await h.stores.resourceState.get("user", "alice", "schedules/digest"))?.state.cron).toBe("30 17 * * FRI");
+      expect((await h.stores.resourceState.get("user", cellOf("alice", "globex"), "schedules/digest"))?.state.cron).toBe("30 17 * * FRI");
 
-      const response = await h.dispatch("reminders", "alice/digest");
+      const response = await h.dispatch("reminders", formatScheduleId("globex", "alice", "digest"));
       expect(response.status).toBe(202);
       expect((await h.fired())?.orgId).toBe("globex");
     } finally {
@@ -222,16 +294,18 @@ describe("a schedule created through the collection fires", () => {
     }
   });
 
-  it("keeps the creating organization when a run in another organization reschedules it", async () => {
+  it("cannot be reached by a run of the same person in another organization", async () => {
     const h = boot();
     const app = h.register(appKind());
     try {
-      // The same person, acting under initech, rewrites the row. The schedule
-      // stays bound to globex, which created it; an update never re-points it.
+      // Alice, acting under initech, finds no row: globex's schedule is in her
+      // globex cell, and her initech cell is empty.
       await h.runPlan(app, "digest", "globex");
-      await h.runReschedule(app, "digest", "initech");
+      const elsewhere = await h.runReschedule(app, "digest", "initech");
+      expect(String(elsewhere.error)).toContain("not found");
+      expect((await h.stores.resourceState.get("user", cellOf("alice", "globex"), "schedules/digest"))?.state.cron).toBe("0 9 * * MON");
 
-      const response = await h.dispatch("reminders", "alice/digest");
+      const response = await h.dispatch("reminders", formatScheduleId("globex", "alice", "digest"));
       expect(response.status).toBe(202);
       expect((await h.fired())?.orgId).toBe("globex");
     } finally {
@@ -254,10 +328,10 @@ describe("a schedule created through the collection fires", () => {
         stores: h.stores,
         runtimeConfig: { modelResolver: createMockModelResolver({}) },
       }).catch(() => undefined);
-      expect(await h.stores.resourceState.get("user", "alice", "schedules/elsewhere")).toBeUndefined();
+      expect(await h.stores.resourceState.get("user", cellOf("alice", "globex"), "schedules/elsewhere")).toBeUndefined();
 
-      const response = await h.dispatch("reminders", "alice/elsewhere");
-      expect(response.status).toBe(404);
+      expect((await h.dispatch("reminders", formatScheduleId("globex", "alice", "elsewhere"))).status).toBe(404);
+      expect((await h.dispatch("reminders", formatScheduleId("initech", "alice", "elsewhere"))).status).toBe(404);
     } finally {
       await disposeFlowApiRouter(h.router);
     }
@@ -279,42 +353,28 @@ describe("a schedule created through the collection fires", () => {
         stores: h.stores,
         runtimeConfig: { modelResolver: createMockModelResolver({}) },
       }).catch(() => undefined);
-      const stored = (await h.stores.resourceState.get("user", "alice", "schedules/digest"))?.state;
+      const stored = (await h.stores.resourceState.get("user", cellOf("alice", "globex"), "schedules/digest"))?.state;
       expect(stored?.orgId).toBe("globex");
       expect(stored?.cron).toBe("0 9 * * MON");
 
-      const response = await h.dispatch("reminders", "alice/digest");
+      const response = await h.dispatch("reminders", formatScheduleId("globex", "alice", "digest"));
       expect(response.status).toBe(202);
       expect((await h.fired())?.orgId).toBe("globex");
     } finally {
       await disposeFlowApiRouter(h.router);
     }
   });
-
-  it("does not fire a row that stores no organization", async () => {
-    const h = boot();
-    h.register(appKind());
-    try {
-      await h.plant("alice", "legacy", {});
-      const response = await h.dispatch("reminders", "alice/legacy");
-      expect(response.status).toBe(404);
-    } finally {
-      await disposeFlowApiRouter(h.router);
-    }
-  });
 });
 
-describe("a hired seat's dynamic schedules (BR-17)", () => {
-  it("fires a schedule the seat's own run created, from the seat's cell", async () => {
+describe("a hired worker's dynamic schedules", () => {
+  it("fires a schedule the worker's own run created, from her cell in its org", async () => {
     const h = boot();
     const seat = h.register(seatKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
     try {
       await h.runPlan(seat, "weekly", "acme");
-      // A seat run's schedule collection lives in the seat's cell.
-      expect(await h.stores.resourceState.get("user", "alice:~org:acme", "schedules/weekly")).toBeDefined();
-      expect(await h.stores.resourceState.get("user", "alice", "schedules/weekly")).toBeUndefined();
+      expect(await h.stores.resourceState.get("user", cellOf("alice", "acme"), "schedules/weekly")).toBeDefined();
 
-      const response = await h.dispatch("acme.~alice.research", "alice/weekly");
+      const response = await h.dispatch("acme.~alice.research", formatScheduleId("acme", "alice", "weekly"));
       expect(response.status).toBe(202);
       const fired = await h.fired();
       expect(fired?.userId).toBe("alice");
@@ -324,41 +384,60 @@ describe("a hired seat's dynamic schedules (BR-17)", () => {
     }
   });
 
-  it("does not resolve a row found only in the person's cross-org cell", async () => {
+  it("does not resolve a dispatch naming another org than the worker's pin", async () => {
     const h = boot();
     h.register(seatKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
     try {
-      await h.plant("alice", "legacy", { orgId: "acme" });
-      const response = await h.dispatch("acme.~alice.research", "alice/legacy");
+      // A real row in her globex cell, naming globex: not this worker's.
+      await h.plant(cellOf("alice", "globex"), "weekly", { orgId: "globex" });
+      const response = await h.dispatch("acme.~alice.research", formatScheduleId("globex", "alice", "weekly"));
       expect(response.status).toBe(404);
     } finally {
       await disposeFlowApiRouter(h.router);
     }
   });
 
-  it("does not resolve a row in the seat's cell that names another org", async () => {
+  it("does not tell another person's schedule apart from a missing one on a private worker", async () => {
     const h = boot();
     h.register(seatKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
     try {
-      await h.plant("alice:~org:acme", "moved", { orgId: "globex" });
-      const response = await h.dispatch("acme.~alice.research", "alice/moved");
+      // Bob's row really exists in his own Acme cell. Addressed through
+      // Alice's private worker it must answer exactly like a missing row.
+      await h.plant(cellOf("bob", "acme"), "weekly", { orgId: "acme" });
+      const response = await h.dispatch("acme.~alice.research", formatScheduleId("acme", "bob", "weekly"));
       expect(response.status).toBe(404);
     } finally {
       await disposeFlowApiRouter(h.router);
     }
+  });
+});
+
+describe("the dispatch id", () => {
+  it.each([
+    ["acme", "alice", "daily"],
+    [DEFAULT_ORG_ID, "auth0|abc", "daily/report"],
+    ["Acme/EU", "u/1", "k%"],
+    ["a b", "é", "x:y"],
+  ])("round-trips (%j, %j, %j) through the default parser", (orgId, userId, key) => {
+    expect(defaultParseScheduleId(formatScheduleId(orgId, userId, key))).toEqual({
+      orgId,
+      userId,
+      collectionKey: key,
+    });
   });
 
-  it("does not tell another person's schedule apart from a missing one on a private seat", async () => {
-    const h = boot();
-    h.register(seatKind({ id: "acme.~alice.research" }), { orgId: "acme", userId: "alice" });
-    try {
-      // Bob's row really exists in his own (acme, bob) cell. Addressed through
-      // Alice's private seat it must answer exactly like a missing row.
-      await h.plant("bob:~org:acme", "weekly", { orgId: "acme" });
-      const response = await h.dispatch("acme.~alice.research", "bob/weekly");
-      expect(response.status).toBe(404);
-    } finally {
-      await disposeFlowApiRouter(h.router);
-    }
+  it("keeps a hand-built nested key whole", () => {
+    expect(defaultParseScheduleId("acme/alice/daily/report")).toEqual({
+      orgId: "acme",
+      userId: "alice",
+      collectionKey: "daily/report",
+    });
   });
+
+  it.each(["alice/digest", "acme//digest", "/alice/digest", "acme/alice/", "acme/%E0/x"])(
+    "parses %j as no schedule",
+    (id) => {
+      expect(defaultParseScheduleId(id)).toBeNull();
+    }
+  );
 });

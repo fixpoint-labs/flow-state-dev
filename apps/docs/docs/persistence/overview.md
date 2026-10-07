@@ -235,73 +235,11 @@ A non-zero count on an installation that has ever authenticated its callers is a
 
    The `schedule_index` table carries an `org_id` column, added for you on the next schema init. There is no DDL of your own to write here.
 
-   User-scope storage does not move. A user id is keyed globally, across all organizations, except the data a [hired seat](#upgrading-moving-hired-seats-stored-data) keeps per organization and person.
 4. **Read back.** Re-run the inventory and check the blob agrees with the column, as above with `$.orgId` / `data->>'orgId'`. Every count should be zero, or be a row you deliberately left quarantined. Confirm the reserved-id check is still clean. Then restart the schedulers, bring the writers back, and read a session and an org-scoped resource through each organization before you admit traffic.
 
 Rollback is the backup, and only before the converted store has taken new writes.
 
 **When to stop.** The list under [When to stop](#when-to-stop) applies here unchanged, plus: a record whose organization you cannot defend from your own records stays quarantined. A partially applied mapping is worse than none: it puts one organization's history where another organization can read it.
-
-## Upgrading: moving hired seats' stored data
-
-This section is for apps that ran [hired seats](/docs/workforce/durable-hire) on an earlier release, where a seat stored what it saved for a person under the person's own id. A new install can skip it.
-
-A seat keeps what it saves for a person under a user-scope key for its organization and that person, `<person>:~org:<organization>`. [What a seat saves for a person](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person) describes what a seat keeps there. Data a seat saved before your upgrade is under the person's own id, where your other flows keep theirs. The server does not read it for the seat and does not move it, because only your records say which organization it came from. Until you copy it, each seat starts empty for each person.
-
-Copying is optional and offline, with writers quiesced and a backup taken, as in the [owner attribution procedure](#who-owns-a-record) above. It copies only data you can show a seat wrote.
-
-1. **List the keys.** For each seat kind, the user-scoped resources and collections it declares without `flowIsolation: true`. Strike the keys a flow that is not a hired seat also declares, and the person's `users` row. Those stay where they are, so the seat starts without them. Copy a struck key only if your own records show a seat wrote it.
-2. **List the people and their organizations.** A hired seat's address is `<escaped org>.<seat id>`, or `<escaped org>.~<escaped user>.<seat id>` for a [seat only one member can reach](/docs/workforce/durable-hire#hiring-a-seat-only-one-member-can-reach). Include seats you have since fired. Their addresses remain in `sessions.flow_id`, so a prefix match lists every address used in an organization. Keep the ones that were hired seats.
-
-   1. Build the escaped organization prefix. Lowercase letters, digits and `-` stay as they are. Every other character becomes `%XX`, the uppercase hex of its UTF-8 bytes, so `acme` stays `acme`, `org_pentest_lab` becomes `org%5Fpentest%5Flab` and `Acme.EU` becomes `%41cme%2E%45%55`. Or let `seatAddress` from `@flow-state-dev/workforce` do it: `seatAddress(orgId, "x")` without the trailing `x` is the prefix, ending in `.`.
-   2. In that prefix, escape the characters `LIKE` treats specially: `\` becomes `\\`, `%` becomes `\%` and `_` becomes `\_`.
-   3. Match with `ESCAPE '\'`, which SQLite and Postgres both accept. For `org_pentest_lab`:
-
-      ```sql
-      SELECT DISTINCT flow_id FROM sessions
-      WHERE flow_id LIKE 'org\%5Fpentest\%5Flab.%' ESCAPE '\';
-      ```
-
-      For `acme` nothing needs escaping: `LIKE 'acme.%' ESCAPE '\'`.
-
-   Then count the organizations each person appears in:
-
-   ```sql
-   SELECT user_id, COUNT(DISTINCT org_id) AS orgs, GROUP_CONCAT(DISTINCT org_id) AS which
-   FROM sessions WHERE flow_id IN (/* your hired seat addresses */)
-   GROUP BY user_id;
-   ```
-
-   On Postgres, use `string_agg(DISTINCT org_id, ',')` in place of `GROUP_CONCAT`.
-
-3. **List the rows.** A collection is declared as a pattern such as `notes/*`, but its rows are stored under concrete keys such as `notes/a`. Read the raw rows, not the server's reads, so deletion markers and content-only rows show up. SQLite, for Alice:
-
-   ```sql
-   SELECT resource_key FROM resource_state
-   WHERE scope_type = 'user' AND scope_id = 'alice'
-     AND (resource_key IN (/* single keys */) OR resource_key LIKE 'notes/%')
-   UNION
-   SELECT resource_key FROM resource_content
-   WHERE scope_type = 'user' AND scope_id = 'alice'
-     AND (resource_key IN (/* single keys */) OR resource_key LIKE 'notes/%');
-   ```
-
-4. **Check the destination.** Run the same query with `scope_id = 'alice:~org:acme'`. A seat that ran after the upgrade may already have written there. If any key from step 3 is there, stop for that person, write the keys down, and resolve them by hand. Do not overwrite, and do not merge.
-5. **Copy, for people with one organization and an empty destination.** In one transaction:
-
-   ```sql
-   INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
-   SELECT scope_type, 'alice:~org:acme', resource_key, state, version, lifecycle
-   FROM resource_state
-   WHERE scope_type = 'user' AND scope_id = 'alice' AND resource_key IN (/* step 3 */);
-   ```
-
-   Do the same for `resource_content`, keeping the content as it is. State and content for one key move together, deletion markers included.
-
-   A copied schedule is not in the schedule index yet. Write it once from the seat, for example by re-saving it, so its index row is created under the seat's cell. The original schedule and its index row stay where they were, like every other original.
-6. **Leave everything else.** A person with seats in two or more organizations has one mixed copy of their seats' data. Copying it into either organization would hand that organization what the other one's seats saved, so it stays where it is, and those seats start empty. Note each such person, and each key you struck in step 1, in your record of the upgrade.
-
-Ids containing `:` or `\` are escaped in the new key the same way as in the other keys on this page. The original rows stay. Remove them only for keys no other flow declares, and only after you have read the copies back through a seat.
 
 ## Tenant isolation
 

@@ -43,6 +43,8 @@ import { z } from "zod";
 
 const TASK_SOURCE = "task";
 const USER_ID = "u_run_link";
+/** The user's cell in the default org, where every flow keeps their user data. */
+const USER_ID_CELL = `${USER_ID}:~org:${DEFAULT_ORG_ID}`;
 const PARENT = "s_parent";
 
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
@@ -103,16 +105,16 @@ function buildFlow(options: {
 }
 
 async function durableRow(stores: StoreRegistry, kind: string, taskId: string) {
-  const row = await stores.resourceState.get("user", USER_ID, `${kind}-ledger/${taskId}`);
+  const row = await stores.resourceState.get("user", USER_ID_CELL, `${kind}-ledger/${taskId}`);
   return row?.state as Task | undefined;
 }
 
 async function rewriteRow(stores: StoreRegistry, kind: string, taskId: string, patch: Partial<Task>) {
   const key = `${kind}-ledger/${taskId}`;
-  const current = await stores.resourceState.get("user", USER_ID, key);
+  const current = await stores.resourceState.get("user", USER_ID_CELL, key);
   await stores.resourceState.set(
     "user",
-    USER_ID,
+    USER_ID_CELL,
     key,
     { ...(current!.state as object), ...patch } as never,
     "any"
@@ -330,7 +332,7 @@ describe("a gate that refuses the dispatch writes no link", () => {
     const { flow, ran } = buildFlow({ kind, mode: "hand-off" });
 
     const { dispatched } = await drain(stores, flow);
-    await stores.resourceState.delete("user", USER_ID, `${kind}-ledger/t1`, "any");
+    await stores.resourceState.delete("user", USER_ID_CELL, `${kind}-ledger/t1`, "any");
 
     const child = await replay(stores, flow, dispatched[0]!);
 

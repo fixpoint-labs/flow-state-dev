@@ -101,7 +101,7 @@ function senderFlow(options: {
 }
 
 async function row(stores: StoreRegistry, taskId: string): Promise<Task | undefined> {
-  return (await stores.resourceState.get("user", USER_ID, `${LEDGER_ID}/${taskId}`))?.state as Task | undefined;
+  return (await stores.resourceState.get("user", `${USER_ID}:~org:${DEFAULT_ORG_ID}`, `${LEDGER_ID}/${taskId}`))?.state as Task | undefined;
 }
 
 async function until(predicate: () => Promise<boolean>, label: string): Promise<void> {

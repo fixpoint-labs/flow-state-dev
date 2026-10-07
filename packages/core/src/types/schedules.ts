@@ -80,12 +80,11 @@ export type ScheduleResolutionContext = {
   /**
    * The owner pin of the registered instance this dispatch addresses, when
    * that instance is pinned to an owner; absent for every other flow. Taken
-   * from the registry, never from the request. A pinned instance keeps its
-   * shared user data — a resource-backed schedule collection included — in
-   * the per-(org, user) cell for the pin's organization and the user, so a
-   * resolver that reads user-scoped storage derives its key from this (see
-   * `resolveUserStorageKey` in `@flow-state-dev/engine`) rather than from the
-   * user's id alone.
+   * from the registry, never from the request. It chooses no storage key:
+   * user-scoped storage is keyed by the organization the schedule id names
+   * (see `resolveUserStorageKey` in `@flow-state-dev/engine`). A resolver uses
+   * it only to refuse an id naming another organization than the pin's, or
+   * another user than a user-owned pin's. Removed with owner pins (FIX-1798).
    */
   ownerPin?: InstanceOwnerPin;
 };

@@ -23,6 +23,7 @@ import {
   toJsonObjectRecord
 } from "../internal/json-helpers";
 import { createMockModelResolver } from "../mocks/mockGenerator";
+import { userSeedCell } from "../internal/user-cell";
 
 const STATE_OPERATIONS = [
   "patchState",
@@ -162,7 +163,8 @@ async function seedStores(options: {
   requestId: string;
   sessionId?: string;
   userId: string;
-  orgId?: string;
+  /** The org the run uses: the caller's, or `DEFAULT_ORG_ID`. */
+  orgId: string;
   seed: {
     request?: { state?: Record<string, unknown> };
     session?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
@@ -191,15 +193,21 @@ async function seedStores(options: {
   };
 
   if (options.seed.user !== undefined) {
-    await options.stores.user.set(options.userId, {
-      id: options.userId,
+    // The user's cell in the run's org, where the run reads it.
+    const cell = userSeedCell(options.flow, options.userId, options.orgId);
+    await options.stores.user.set(cell, {
+      id: cell,
       userId: options.userId,
       state: toJsonObject(cloneValue(options.seed.user.state ?? {})),
       version: 0,
       createdAt: now,
       updatedAt: now
     }, "any");
-    await seedResourceState("user", options.userId, options.seed.user.resources);
+    for (const [key, value] of Object.entries(options.seed.user.resources ?? {})) {
+      await seedResourceState("user", userSeedCell(options.flow, options.userId, options.orgId, key), {
+        [key]: value
+      });
+    }
   }
 
   if (options.orgId !== undefined) {

@@ -134,7 +134,7 @@ export async function checkFoundWithoutAModelCall(
   // Every written ticket must carry stored facets, not only the one searched for.
   const storedFacets = new Map<string, TicketState["facets"] | undefined>();
   for (const t of fx.tickets) {
-    const state = (await stores.resourceState.get("user", USER, `tickets/${t.key}`))?.state as TicketState | undefined;
+    const state = (await stores.resourceState.get("user", `${USER}:~org:${DEFAULT_ORG_ID}`, `tickets/${t.key}`))?.state as TicketState | undefined;
     storedFacets.set(t.key, state?.facets);
     if (state?.facets == null) {
       const error = classifyErrors.get(t.key);

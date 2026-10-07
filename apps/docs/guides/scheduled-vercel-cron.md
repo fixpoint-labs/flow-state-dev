@@ -186,6 +186,8 @@ storage shape, custom retry logic, observability hooks beyond
 `onDispatch`):
 
 ```ts title="app/api/cron/schedule-tick/route.ts"
+import { formatScheduleId } from "@flow-state-dev/scheduled";
+
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
@@ -197,7 +199,7 @@ export async function GET(req: Request) {
   await Promise.allSettled(
     due.map(async (row) => {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/flows/reminders/schedules/${row.userId}/${row.key}/dispatch`,
+        `${process.env.NEXT_PUBLIC_BASE_URL}/api/flows/reminders/schedules/${encodeURIComponent(formatScheduleId(row.orgId, row.userId, row.key))}/dispatch`,
         {
           method: "POST",
           headers: {

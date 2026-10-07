@@ -144,18 +144,18 @@ function captureConflict(fn: () => void): CrossFlowSchemaConflictError {
 }
 
 describe("resolveUserStorageKey / resolveOrgStorageKey", () => {
-  it("returns the bare id when isolation is off", () => {
+  it("returns the shared cell when isolation is off", () => {
     const flow = makeFlow({ kind: "flow-a" });
-    expect(resolveUserStorageKey("user_1", flow)).toBe("user_1");
+    expect(resolveUserStorageKey("user_1", "proj_1", flow)).toBe("user_1:~org:proj_1");
     expect(resolveOrgStorageKey("proj_1", flow)).toBe("proj_1");
   });
 
   it("namespaces the key by the instance id when isolation is on", () => {
     const flow = makeFlow({ kind: "flow-a", isolateUserState: true, isolateOrgState: true });
-    // A singleton's id IS its kind, so its keys are the same strings this flow
-    // has always written — nothing to migrate for the ordinary case.
+    // A singleton's id IS its kind, so its org key is the same string this
+    // flow has always written.
     expect(flow.id).toBe(flow.kind);
-    expect(resolveUserStorageKey("user_1", flow)).toBe("user_1:flow-a");
+    expect(resolveUserStorageKey("user_1", "proj_1", flow)).toBe("user_1:~org:proj_1:flow-a");
     expect(resolveOrgStorageKey("proj_1", flow)).toBe("proj_1:flow-a");
   });
 
@@ -172,15 +172,15 @@ describe("resolveUserStorageKey / resolveOrgStorageKey", () => {
     const a = reviewer({ id: "reviewer-a" });
     const b = reviewer({ id: "reviewer-b" });
 
-    expect(resolveUserStorageKey("user_1", a)).toBe("user_1:reviewer-a");
-    expect(resolveUserStorageKey("user_1", b)).toBe("user_1:reviewer-b");
+    expect(resolveUserStorageKey("user_1", "proj_1", a)).toBe("user_1:~org:proj_1:reviewer-a");
+    expect(resolveUserStorageKey("user_1", "proj_1", b)).toBe("user_1:~org:proj_1:reviewer-b");
     expect(resolveOrgStorageKey("proj_1", a)).toBe("proj_1:reviewer-a");
     expect(resolveOrgStorageKey("proj_1", b)).toBe("proj_1:reviewer-b");
   });
 
   it("isolates user and org independently", () => {
     const flow = makeFlow({ kind: "flow-a", isolateUserState: true });
-    expect(resolveUserStorageKey("user_1", flow)).toBe("user_1:flow-a");
+    expect(resolveUserStorageKey("user_1", "proj_1", flow)).toBe("user_1:~org:proj_1:flow-a");
     expect(resolveOrgStorageKey("proj_1", flow)).toBe("proj_1");
   });
 });
@@ -189,13 +189,16 @@ describe("resolveUserStorageKey / resolveOrgStorageKey", () => {
  * FIX-1323 made the second key component an arbitrary caller-supplied instance
  * id (it was a flow kind, which is why this was largely unreachable before), so
  * the key has to be an encoding of the pair rather than the two strings run
- * together. These tests hold both halves of that: the ambiguity is gone, AND
- * the keys every existing deployment already wrote did not move.
+ * together. These tests hold both halves of that for org keys: the ambiguity
+ * is gone, AND the keys every existing deployment already wrote did not move.
+ * User keys carry the org since FIX-1790; `user-cell-keys.test.ts` holds their
+ * shapes and their distinctness.
  */
 describe("isolation-key encoding", () => {
   /** The pre-FIX-1323 derivation, spelled out so a drift is a failing test. */
   const legacyKey = (identityId: string, flowId: string, isolated: boolean) =>
     isolated ? `${identityId}:${flowId}` : identityId;
+  const org = (orgId: string) => ({ userId: "user_1", orgId });
 
   // Guarded rather than asserted: an id added here that DOES carry the
   // delimiter has no byte-identity claim to make, and would quietly pass.
@@ -203,23 +206,16 @@ describe("isolation-key encoding", () => {
     (v) => !v.includes(":") && !v.includes("\\")
   );
 
-  it("leaves every ordinary id byte-identical to the key it already wrote", () => {
-    // The load-bearing compatibility claim of this PR: no singleton and no
-    // ordinary id changes cell, so there is nothing to migrate. Proved against
-    // a literal copy of the old derivation, not against the new one.
+  it("leaves every ordinary org id byte-identical to the key it already wrote", () => {
+    // Proved against a literal copy of the old derivation, not against the new
+    // one.
     const flowIds = ["flow-a", "reviewer-a", "reviewer", "some_instance"];
     for (const identityId of ordinary) {
       for (const flowId of flowIds) {
-        expect(resolveResourceScopeId(identityId, { id: flowId }, "user", true)).toBe(
+        expect(resolveResourceScopeId(org(identityId), { id: flowId }, "org", true)).toBe(
           legacyKey(identityId, flowId, true)
         );
-        expect(resolveResourceScopeId(identityId, { id: flowId }, "user", false)).toBe(
-          legacyKey(identityId, flowId, false)
-        );
-        expect(resolveUserStorageKey(identityId, { id: flowId, isolateUserState: true })).toBe(
-          legacyKey(identityId, flowId, true)
-        );
-        expect(resolveUserStorageKey(identityId, { id: flowId, isolateUserState: false })).toBe(
+        expect(resolveResourceScopeId(org(identityId), { id: flowId }, "org", false)).toBe(
           legacyKey(identityId, flowId, false)
         );
         expect(resolveOrgStorageKey(identityId, { id: flowId, isolateOrgState: true })).toBe(
@@ -235,13 +231,13 @@ describe("isolation-key encoding", () => {
   it("does not let two different (identity, instance) pairs name one cell", () => {
     // Codex's case on #1646: raw concatenation gave both of these `u:a:b`, so
     // user `u` on instance `a:b` read and overwrote user `u:a`'s isolated data.
-    expect(resolveResourceScopeId("u", { id: "a:b" }, "user", true)).not.toBe(
-      resolveResourceScopeId("u:a", { id: "b" }, "user", true)
-    );
+    expect(
+      resolveResourceScopeId({ userId: "u", orgId: "o" }, { id: "a:b" }, "user", true)
+    ).not.toBe(resolveResourceScopeId({ userId: "u:a", orgId: "o" }, { id: "b" }, "user", true));
     expect(legacyKey("u", "a:b", true)).toBe(legacyKey("u:a", "b", true));
 
-    expect(resolveUserStorageKey("u", { id: "a:b", isolateUserState: true })).not.toBe(
-      resolveUserStorageKey("u:a", { id: "b", isolateUserState: true })
+    expect(resolveUserStorageKey("u", "o", { id: "a:b", isolateUserState: true })).not.toBe(
+      resolveUserStorageKey("u:a", "o", { id: "b", isolateUserState: true })
     );
     expect(resolveOrgStorageKey("o", { id: "a:b", isolateOrgState: true })).not.toBe(
       resolveOrgStorageKey("o:a", { id: "b", isolateOrgState: true })
@@ -249,21 +245,21 @@ describe("isolation-key encoding", () => {
   });
 
   it("does not let a shared identity collide with someone else's isolated cell", () => {
-    // The same bug one component down: user `u:a`'s SHARED bucket was the exact
-    // key user `u` isolated to instance `a` wrote. The bare form is encoded too.
-    expect(resolveResourceScopeId("u:a", { id: "anything" }, "user", false)).not.toBe(
-      resolveResourceScopeId("u", { id: "a" }, "user", true)
+    // The same bug one component down: org `o:a`'s SHARED bucket was the exact
+    // key org `o` isolated to instance `a` wrote. The bare form is encoded too.
+    expect(resolveResourceScopeId(org("o:a"), { id: "anything" }, "org", false)).not.toBe(
+      resolveResourceScopeId(org("o"), { id: "a" }, "org", true)
     );
-    expect(legacyKey("u:a", "anything", false)).toBe(legacyKey("u", "a", true));
+    expect(legacyKey("o:a", "anything", false)).toBe(legacyKey("o", "a", true));
   });
 
-  it("keeps every pair distinct across ids carrying the delimiter and the escape", () => {
+  it("keeps every org pair distinct across ids carrying the delimiter and the escape", () => {
     const hostile = ["u", "u:a", "a", "b", "a:b", "u\\", "u\\:a", ":", "\\:"];
     const seen = new Map<string, string>();
     for (const identityId of hostile) {
       for (const flowId of hostile) {
         for (const isolated of [true, false]) {
-          const key = `${resolveResourceScopeId(identityId, { id: flowId }, "user", isolated)}`;
+          const key = `${resolveResourceScopeId(org(identityId), { id: flowId }, "org", isolated)}`;
           // A shared bucket ignores the instance, so it is one cell per identity.
           const pair = isolated ? `iso(${identityId},${flowId})` : `shared(${identityId})`;
           const prior = seen.get(key);
@@ -1293,8 +1289,9 @@ describe("end-to-end: shared vs isolated state", () => {
     });
     expect(ctxB.user.state).toMatchObject({ displayName: "Alice" });
 
-    // Storage uses the bare userId when neither flow isolates.
-    expect((await stores.user.get("user_1"))?.id).toBe("user_1");
+    // Storage uses the user's cell in the org when neither flow isolates.
+    const cell = `user_1:~org:${DEFAULT_ORG_ID}`;
+    expect((await stores.user.get(cell))?.id).toBe(cell);
   });
 
   it("isolated flow does not see shared-flow state and vice versa", async () => {
@@ -1318,12 +1315,12 @@ describe("end-to-end: shared vs isolated state", () => {
     expect(ctxIsolated.user.state).not.toHaveProperty("displayName");
 
     // Shared record must survive — no silent destruction.
-    const shared = await stores.user.get("user_1");
+    const shared = await stores.user.get(`user_1:~org:${DEFAULT_ORG_ID}`);
     expect(shared?.state).toEqual({ displayName: "Alice" });
 
-    const isolated = await stores.user.get("user_1:isolated-flow");
+    const isolated = await stores.user.get(`user_1:~org:${DEFAULT_ORG_ID}:isolated-flow`);
     expect(isolated?.state).toEqual({ locale: "en" });
-    expect(isolated?.id).toBe("user_1:isolated-flow");
+    expect(isolated?.id).toBe(`user_1:~org:${DEFAULT_ORG_ID}:isolated-flow`);
     expect(isolated?.userId).toBe("user_1");
   });
 
@@ -1370,8 +1367,8 @@ describe("end-to-end: shared vs isolated state", () => {
     expect(ctxAgain.user.state).toMatchObject({ note: "a-private" });
     expect(ctxAgain.org?.state).toMatchObject({ note: "a-org" });
 
-    expect((await stores.user.get("user_1:reviewer-a"))?.state).toEqual({ note: "a-private" });
-    expect((await stores.user.get("user_1:reviewer-b"))?.state).toEqual({ note: "b-private" });
+    expect((await stores.user.get("user_1:~org:proj_1:reviewer-a"))?.state).toEqual({ note: "a-private" });
+    expect((await stores.user.get("user_1:~org:proj_1:reviewer-b"))?.state).toEqual({ note: "b-private" });
     expect((await stores.org.get("proj_1:reviewer-a"))?.state).toEqual({ note: "a-org" });
     expect((await stores.org.get("proj_1:reviewer-b"))?.state).toEqual({ note: "b-org" });
   });

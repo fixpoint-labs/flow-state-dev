@@ -129,10 +129,30 @@ export function createScheduleTickHandler(
 
     const baseUrl = trimTrailingSlash(base);
     const flowKind = encodeURIComponent(opts.flowKind);
+    // Never let an observer throw kill the worker — Promise.allSettled
+    // on the worker pool would swallow the rejection and every later
+    // item assigned to this slot would be silently skipped.
+    const notify = (row: ScheduleIndexRow, status: number): void => {
+      try {
+        opts.onDispatch?.(row, status);
+      } catch {
+        /* swallow observer errors */
+      }
+    };
 
     await runWithConcurrency(due, concurrency, async (row) => {
-      const url = `${baseUrl}/api/flows/${flowKind}/schedules/${encodeURIComponent(row.userId)}/${encodeURIComponent(row.key)}/dispatch`;
       let status = 0;
+      // A row with no org names no cell to fire from; the framework would
+      // refuse its dispatch, so it is not sent.
+      if (row.orgId === undefined) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[flow-state/vercel/schedules] not dispatched: ${row.userId}/${row.key} has no organization`
+        );
+        notify(row, status);
+        return;
+      }
+      const url = `${baseUrl}/api/flows/${flowKind}/schedules/${encodeURIComponent(dynamicScheduleId(row.orgId, row.userId, row.key))}/dispatch`;
       try {
         const res = await fetch(url, {
           method: "POST",
@@ -157,14 +177,7 @@ export function createScheduleTickHandler(
           err
         );
       }
-      // Never let an observer throw kill the worker — Promise.allSettled
-      // on the worker pool would swallow the rejection and every later
-      // item assigned to this slot would be silently skipped.
-      try {
-        opts.onDispatch?.(row, status);
-      } catch {
-        /* swallow observer errors */
-      }
+      notify(row, status);
     });
 
     return new Response(null, { status: 200 });
@@ -185,6 +198,16 @@ function resolveBaseUrl(baseUrl: string | undefined): string | null {
   const v = baseUrl ?? process.env.NEXT_PUBLIC_BASE_URL;
   if (v === undefined || v.length === 0) return null;
   return v;
+}
+
+/**
+ * A dynamic schedule's dispatch id, `<orgId>/<userId>/<key>` with each part
+ * URL-encoded: `formatScheduleId` from `@flow-state-dev/scheduled`, kept
+ * here so this module stays free of runtime imports. The scheduled package's
+ * default parser is its inverse; the tests hold the two together.
+ */
+function dynamicScheduleId(orgId: string, userId: string, key: string): string {
+  return [orgId, userId, key].map(encodeURIComponent).join("/");
 }
 
 function trimTrailingSlash(url: string): string {

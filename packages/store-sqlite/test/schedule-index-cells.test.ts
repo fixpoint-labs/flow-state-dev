@@ -2,7 +2,7 @@
  * One schedule, one index row — through the real collection into a real
  * SQLite schedule index.
  *
- * A hired seat stores a person's data in one cell per (org, person), so the
+ * Every flow stores a person's data in one cell per (org, person), so the
  * same person can hold a schedule named `weekly` in several cells at once.
  * The index mirrors each schedule under the cell it is stored in, so turning
  * one of them off leaves the others due, each carrying its own organization.
@@ -146,25 +146,15 @@ describe("schedule index rows are one per storage cell", () => {
     expect(rows.map((r) => [r.cell, r.orgId])).toEqual([["alice:~org:acme", "acme"]]);
   });
 
-  it("keeps an app-wide schedule and a seat schedule in one org apart", async () => {
+  it("files an app flow's and a seat's schedule in one org under one cell", async () => {
     const h = boot();
-    const app = h.app();
-    const acme = h.seat("acme");
+    await h.run(h.app(), "create", "acme");
+    expect((await h.due()).map((r) => [r.cell, r.orgId])).toEqual([["alice:~org:acme", "acme"]]);
 
-    await h.run(app, "create", "acme");
-    await h.run(acme, "create", "acme");
-
-    const both = await h.due();
-    expect(both.map((r) => r.cell).sort()).toEqual(["alice", "alice:~org:acme"]);
-
-    // Turning the seat's copy off leaves the app-wide one due.
-    const h2 = boot();
-    await h2.run(h2.app(), "create", "acme");
-    const seat2 = h2.seat("acme");
-    await h2.run(seat2, "create", "acme");
-    await h2.run(seat2, "disable", "acme");
-    const left = await h2.due();
-    expect(left.map((r) => [r.cell, r.orgId])).toEqual([["alice", "acme"]]);
+    // The seat in that org reads the same schedule: turning it off there
+    // takes the one row out of the index.
+    await h.run(h.seat("acme"), "disable", "acme");
+    expect(await h.due()).toEqual([]);
   });
 
   it("files a row under the cell its schedule is stored in", async () => {
@@ -240,21 +230,27 @@ describe("upgrading a schedule index written before rows carried a cell", () => 
     expect(h.db.prepare("SELECT * FROM schedule_index ORDER BY cell").all()).toEqual(before);
   });
 
-  it("updates an adopted row in place when its app-wide flow next writes it (BR-14)", async () => {
+  it("files an app flow's next write under the user's cell in its org, and leaves an adopted row as it was", async () => {
     const h = boot((db) => seedLegacy(db));
     const app = h.app();
-    // Each person's app-wide flow rewrites `weekly` — for `a:b` that only
-    // lands on the adopted row if the migration escaped the id exactly as the
-    // engine does.
     for (const userId of ["alice", "a:b", "c\\d"]) {
       await h.run(app, "create", "acme", "weekly", userId);
     }
     const rows = h.db
       .prepare("SELECT cell, user_id, next_fire_at FROM schedule_index ORDER BY cell")
       .all() as Array<{ cell: string; user_id: string; next_fire_at: number }>;
-    expect(rows.map((r) => r.cell)).toEqual(["a\\:b", "alice", "c\\\\d"]);
-    // Rewritten, not duplicated: every row now carries a fresh fire time.
-    expect(rows.every((r) => r.next_fire_at > 1000)).toBe(true);
+    // A user's data is kept per org, and nothing moves a row an older
+    // release wrote: each write is a new row in the per-org cell.
+    expect(rows.map((r) => r.cell)).toEqual([
+      "a\\:b",
+      "a\\:b:~org:acme",
+      "alice",
+      "alice:~org:acme",
+      "c\\\\d",
+      "c\\\\d:~org:acme",
+    ]);
+    expect(rows.filter((r) => !r.cell.includes("~org")).every((r) => r.next_fire_at === 1000)).toBe(true);
+    expect(rows.filter((r) => r.cell.includes("~org")).every((r) => r.next_fire_at > 1000)).toBe(true);
   });
 });
 

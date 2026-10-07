@@ -148,7 +148,9 @@ export function projectWorkspace(options: ProjectWorkspaceOptions): RunSource {
     }
     // Through the schema, so a row written before `repository` existed reads as none (BP-030).
     const project = projectRowSchema.parse(stored.state);
-    const owner = ctx.user?.identity?.id;
+    // The bare user, not `identity.id`: that is the user record's storage key,
+    // which carries the org.
+    const owner = ctx.user?.identity?.userId;
     if (!isMember(project, owner)) {
       return refused(
         "not-a-member",

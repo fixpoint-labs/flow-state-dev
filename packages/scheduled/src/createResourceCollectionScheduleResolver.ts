@@ -1,19 +1,18 @@
 /**
  * Reference resolver for resource-collection-backed dynamic schedules.
  *
- * Parses the dispatch URL id into `(userId, collectionKey)`, reads the
+ * Parses the dispatch id into `(orgId, userId, collectionKey)`, reads the
  * row's state via `stores.resourceState.get("user", <user key>, ...)`, and
- * synthesizes `principal: { userId }` so the action runs as the
- * schedule's owner. The user-scoped storage key acts as the
- * impersonation guard: a URL like `evil/key` looks up the cell of user
- * `evil`, which won't find a resource owned by another user.
+ * synthesizes `principal: { userId, orgId }` so the action runs as the
+ * schedule's owner in the org that saved it. The user key is the guard: a
+ * URL like `acme/evil/key` reads the cell of user `evil` in `acme`, which
+ * won't hold a row another user saved.
  *
  * The user key comes from the engine's own derivation, so it is the cell
- * the flow's runs wrote: the person's cross-org cell for an ordinary flow,
- * and the (org, person) cell for a hired seat, whose pin the dispatch route
- * passes in (FIX-1538). A seat's schedule therefore never resolves from the
- * person's cross-org cell, and a row in its cell that names another
- * organization than the pin resolves as missing.
+ * the flow's runs wrote: the user's cell in the org the id names. The id
+ * selects a cell and grants nothing: a row there that names another org
+ * resolves as missing, as does an id naming no org. On a hired worker the
+ * id must also name the pin's org, and on a private one the pin's user.
  */
 import { isValidOrgId } from "@flow-state-dev/core";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
@@ -32,8 +31,13 @@ import type { ScheduleCollectionState } from "./defineScheduleCollection";
  */
 export type ScheduleResourceState = ScheduleCollectionState;
 
+/** The parts a dynamic schedule's dispatch id names. */
 export interface ParsedScheduleId {
+  /** The org the schedule was saved in, and fires into. */
+  orgId: string;
+  /** Who the schedule runs as. */
   userId: string;
+  /** The row's key inside the schedule collection. */
   collectionKey: string;
 }
 
@@ -55,22 +59,51 @@ export interface CreateResourceCollectionScheduleResolverOptions {
    */
   blocks: Record<string, BlockDefinition>;
   /**
-   * Map a dispatch URL id back to `(userId, collectionKey)`. Default:
-   * split on the first `/`. Return `null` to 404 the dispatch.
+   * Map a dispatch id back to `(orgId, userId, collectionKey)`. Default:
+   * {@link defaultParseScheduleId}. Return `null` to 404 the dispatch.
    */
   parseId?: (scheduleId: string) => ParsedScheduleId | null;
 }
 
-/** Default `parseId`. Splits on the first `/`; both halves must be non-empty. */
+/**
+ * The dispatch id of a dynamic schedule: `<orgId>/<userId>/<key>`, each part
+ * URL-encoded so an org or user id containing `/` round-trips. The inverse of
+ * {@link defaultParseScheduleId}.
+ *
+ * Put it on a dispatch URL as one more encoded path segment, since the router
+ * decodes each segment once:
+ * `/api/flows/<kind>/schedules/${encodeURIComponent(formatScheduleId(...))}/dispatch`.
+ */
+export function formatScheduleId(orgId: string, userId: string, key: string): string {
+  return [orgId, userId, key].map(encodeURIComponent).join("/");
+}
+
+/**
+ * Default `parseId`: `<orgId>/<userId>/<key>`. Splits on the first two `/`
+ * and URL-decodes each part; the key keeps any further `/`, so a hand-built
+ * nested key stays whole. All three parts must be non-empty, and an id with
+ * fewer parts names no org and parses as `null`.
+ */
 export function defaultParseScheduleId(
   scheduleId: string
 ): ParsedScheduleId | null {
-  const slash = scheduleId.indexOf("/");
-  if (slash <= 0) return null;
-  const userId = scheduleId.slice(0, slash);
-  const collectionKey = scheduleId.slice(slash + 1);
-  if (userId.length === 0 || collectionKey.length === 0) return null;
-  return { userId, collectionKey };
+  const first = scheduleId.indexOf("/");
+  const second = first < 0 ? -1 : scheduleId.indexOf("/", first + 1);
+  if (second < 0) return null;
+  const parts = [
+    scheduleId.slice(0, first),
+    scheduleId.slice(first + 1, second),
+    scheduleId.slice(second + 1)
+  ];
+  if (parts.some((part) => part.length === 0)) return null;
+  let decoded: string[];
+  try {
+    decoded = parts.map(decodeURIComponent);
+  } catch {
+    return null;
+  }
+  const [orgId, userId, collectionKey] = decoded as [string, string, string];
+  return { orgId, userId, collectionKey };
 }
 
 export function createResourceCollectionScheduleResolver(
@@ -86,25 +119,28 @@ export function createResourceCollectionScheduleResolver(
   return async (scheduleId, ctx) => {
     const parsed = parseId(scheduleId);
     if (parsed === null) return null;
+    // An id that names no usable org selects no cell, and the cross-org cell
+    // is never the answer.
+    if (!isValidOrgId(parsed.orgId)) return null;
 
-    // The parsed userId is both the action's principal AND the storage
-    // scope, so a URL aimed at another user's data reads from a scope
-    // that doesn't contain it. No separate ownership check is needed.
-    // Derived the way every other user-scoped read derives it, so a hired
-    // seat reads its (org, person) cell and never the person's cross-org
-    // one. The schedule collection is shared (it declares no
-    // `flowIsolation`), which is the non-isolated key.
-    // A user-owned seat serves one person. A schedule id naming anyone else
-    // answers exactly like a missing row, before any store is read, so the
-    // route cannot be used to learn whether another person's row exists.
+    // A hired worker serves one org, and a user-owned one serves one person.
+    // An id naming anything else answers exactly like a missing row, before
+    // any store is read, so the route cannot be used to learn whether another
+    // org's or person's row exists.
+    if (ctx.ownerPin !== undefined && parsed.orgId !== ctx.ownerPin.orgId) return null;
     if (ctx.ownerPin?.userId !== undefined && parsed.userId !== ctx.ownerPin.userId) {
       return null;
     }
+
+    // The parsed user and org are both the action's principal AND the
+    // storage cell, so a URL aimed at another user's data reads a cell that
+    // doesn't contain it. Derived the way every other user-scoped read
+    // derives it. The schedule collection is shared (it declares no
+    // `flowIsolation`), which is the non-isolated key.
     const resourceKey = `${prefix}${parsed.collectionKey}`;
-    const scopeId = resolveUserStorageKey(parsed.userId, {
+    const scopeId = resolveUserStorageKey(parsed.userId, parsed.orgId, {
       id: ctx.flowKind,
-      isolateUserState: false,
-      ownerPin: ctx.ownerPin
+      isolateUserState: false
     });
     // Resource state, where the collection's `create` wrote the row — not the
     // content store, which holds an instance's content body and never a
@@ -123,25 +159,20 @@ export function createResourceCollectionScheduleResolver(
     const block = blocks[state.kind];
     if (block === undefined) return null;
 
-    // The stored TARGET organization, and nothing else (BR-19, FIX-1442).
+    // The stored TARGET organization, which must be the one the id names
+    // (BR-19, FIX-1442, FIX-1790).
     //
     // Not the organization of the gateway that fired this beat, and not
     // whichever organization the target user is currently acting as: a
     // schedule is a standing instruction from the organization that created
-    // it, and both of those alternatives would let a fire land somewhere the
-    // creator never chose. A row written before schedules carried one has no
-    // target to validate, so it does not dispatch at all — it is quarantined
-    // until an operator attributes it, exactly like any other legacy record.
-    if (!isValidOrgId(state.orgId)) return null;
-    // A seat's schedule fires only into the seat's own organization. The cell
-    // is already the pin's, so a row naming another one was not written by
-    // this seat's runs, and does not dispatch (FIX-1538).
-    if (ctx.ownerPin !== undefined && state.orgId !== ctx.ownerPin.orgId) return null;
+    // it. The id only selected the cell; a row there naming another org, or
+    // none, was not written by a run in this org, and does not dispatch.
+    if (state.orgId !== parsed.orgId) return null;
 
     const config: ScheduleConfig = {
       cron: state.cron,
       block,
-      principal: { userId: parsed.userId, orgId: state.orgId }
+      principal: { userId: parsed.userId, orgId: parsed.orgId }
     };
     if (state.input !== undefined) config.input = state.input;
     if (typeof state.timezone === "string") config.timezone = state.timezone;

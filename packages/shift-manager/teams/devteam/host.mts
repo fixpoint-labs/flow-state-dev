@@ -50,6 +50,7 @@ import {
   createBearerSecretPrincipalResolver,
   createFlowState,
   PrincipalResolutionError,
+  resolveUserStorageKey,
   runAction,
   type FlowState,
   type PrincipalResolver,
@@ -142,6 +143,9 @@ export const PROJECTS_SESSION = "devforce-projects";
  */
 export const LAB_USER_ID = "u_devforce_lab";
 export const LAB_ORG_ID = "devforce-lab";
+
+/** The Lab user's cell in the Lab org, where every flow keeps that user's data. */
+const LAB_USER_CELL = resolveUserStorageKey(LAB_USER_ID, LAB_ORG_ID, { id: "", isolateUserState: false });
 
 /** The roster tools this Lab has wait for a person before they change anything. */
 const ASKS_BEFORE = ["fire"] as const;
@@ -1108,7 +1112,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
    * mailbox's board, the user for a ledger a control built of its own.
    */
   const ledgerScope = ledger.collection.scope === "org" ? "org" : "user";
-  const ledgerScopeId = ledgerScope === "org" ? LAB_ORG_ID : LAB_USER_ID;
+  const ledgerScopeId = ledgerScope === "org" ? LAB_ORG_ID : LAB_USER_CELL;
 
   /**
    * Run one action and hand back what it returned.
@@ -1269,7 +1273,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     stored: async (scope: "org" | "user", prefix = "") => {
       const found = await runtime.stores.resourceState.getByPrefix(
         scope,
-        scope === "org" ? LAB_ORG_ID : LAB_USER_ID,
+        scope === "org" ? LAB_ORG_ID : LAB_USER_CELL,
         prefix,
       );
       return Object.fromEntries(

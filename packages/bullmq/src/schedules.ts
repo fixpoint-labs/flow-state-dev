@@ -96,6 +96,8 @@ export interface CreateScheduleDispatchWorkerOptions
 
 interface ScheduleJobData {
   flowKind?: string;
+  /** The org a user-scoped schedule was saved in, and fires into. */
+  orgId?: string;
   userId?: string;
   key?: string;
   scheduleName?: string;
@@ -125,15 +127,23 @@ export function createScheduleDispatchWorker(
       );
     }
 
-    // Static schedules (from registerStaticSchedules) have no userId;
-    // user-scoped schedules (from the schedule index) carry userId.
-    // The dispatch endpoint looks up static keys as bare names, so only
-    // include the userId segment for user-scoped jobs.
+    // Static schedules (from registerStaticSchedules) have no userId and are
+    // dispatched by their bare name. User-scoped schedules (from the schedule
+    // index) carry the org and user, and dispatch by the dynamic id
+    // `<orgId>/<userId>/<key>`, each part URL-encoded: `formatScheduleId`
+    // from `@flow-state-dev/scheduled`, kept here because that package is an
+    // optional peer. The id travels as one more encoded path segment, since
+    // the router decodes each segment once.
     const userId = data.userId;
-    const pathSegment = userId !== undefined
-      ? `${encodeURIComponent(userId)}/${encodeURIComponent(scheduleId)}`
-      : encodeURIComponent(scheduleId);
-    const url = `${baseUrl}/api/flows/${encodeURIComponent(flowKind)}/schedules/${pathSegment}/dispatch`;
+    if (userId !== undefined && data.orgId === undefined) {
+      throw new UnrecoverableError(
+        `Schedule job names a user but no organization: ${JSON.stringify(data)}`
+      );
+    }
+    const dispatchId = userId !== undefined
+      ? [data.orgId as string, userId, scheduleId].map(encodeURIComponent).join("/")
+      : scheduleId;
+    const url = `${baseUrl}/api/flows/${encodeURIComponent(flowKind)}/schedules/${encodeURIComponent(dispatchId)}/dispatch`;
 
     const nominalFireTime = new Date(job.timestamp ?? Date.now()).toISOString();
     const response = await fetch(url, {
@@ -146,10 +156,7 @@ export function createScheduleDispatchWorker(
       signal: AbortSignal.timeout(25_000),
     });
 
-    onDispatch?.(
-      { scheduleId: userId !== undefined ? `${userId}/${scheduleId}` : scheduleId, flowKind },
-      response.status
-    );
+    onDispatch?.({ scheduleId: dispatchId, flowKind }, response.status);
 
     if (!response.ok) {
       const msg = `Schedule dispatch failed: ${response.status} ${response.statusText}`;

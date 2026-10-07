@@ -18,6 +18,7 @@ import {
   boolean,
   defineCapability,
   choice,
+  DEFAULT_ORG_ID,
   defineFacetedCollection,
   defineFlow,
   defineResourceCollection,
@@ -60,6 +61,8 @@ const questions = {
 const A = "I was charged twice for March.";
 const B = "The dashboard has been down since 9am.";
 const USER = "u";
+/** The user's cell in the org `testFlow` runs under, where every flow keeps their data. */
+const CELL = `${USER}:~org:${DEFAULT_ORG_ID}`;
 
 const BILLING_OPEN: Record<string, MockEvaluationAnswer> = {
   topic: { type: "choice", choice: "billing", confidence: 0.9 },
@@ -118,7 +121,7 @@ type StoredTicket = {
 };
 
 async function storedTicket(stores: StoreRegistry, key: string): Promise<StoredTicket | undefined> {
-  const row = await stores.resourceState.get("user", USER, `tickets/${key}`);
+  const row = await stores.resourceState.get("user", CELL, `tickets/${key}`);
   return row?.state as StoredTicket | undefined;
 }
 
@@ -417,7 +420,7 @@ describe("searching stored facets makes no model call", () => {
     // The recipe's exact stored shape: title, facets as the evaluator returned them, a token.
     await stores.resourceState.set(
       "user",
-      USER,
+      CELL,
       "tickets/legacy-billing",
       {
         title: "Charged twice",
@@ -432,7 +435,7 @@ describe("searching stored facets makes no model call", () => {
     );
     await stores.resourceState.set(
       "user",
-      USER,
+      CELL,
       "tickets/legacy-outage",
       {
         title: "Down",
@@ -589,8 +592,8 @@ describe("reindex", () => {
     await turn(flow, stores, "write", { key: "t3", title: "no body" });
     await turn(flow, stores, "write", { key: "legacy", body: A });
     // Rewrite one row in the pre-facets shape: body kept, no facets or indexedAs keys.
-    await stores.resourceState.set("user", USER, "tickets/legacy", { title: "legacy" }, "any");
-    expect((await stores.resourceState.get("user", USER, "tickets/legacy"))?.state).toEqual({ title: "legacy" });
+    await stores.resourceState.set("user", CELL, "tickets/legacy", { title: "legacy" }, "any");
+    expect((await stores.resourceState.get("user", CELL, "tickets/legacy"))?.state).toEqual({ title: "legacy" });
     down = false;
     model.calls.length = 0;
 
@@ -743,7 +746,7 @@ describe("wiring", () => {
     expect(r.error?.message).toMatch(/"tickets"/);
     expect(r.error?.message).toMatch(/resources/);
     expect(model.calls).toHaveLength(0);
-    const foreignRow = (await stores.resourceState.get("user", USER, "docs/t1"))?.state as Record<string, unknown>;
+    const foreignRow = (await stores.resourceState.get("user", CELL, "docs/t1"))?.state as Record<string, unknown>;
     expect(foreignRow.facets).toBeUndefined();
     expect(foreignRow.indexedAs).toBeUndefined();
   });

@@ -38,6 +38,8 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 
 const USER_ID = "u_sharedkey";
+/** The user's cell in the default org, where every flow keeps their user data. */
+const USER_ID_CELL = `${USER_ID}:~org:${DEFAULT_ORG_ID}`;
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
 
 function buildFlow(kind: string, concurrency: "allow" | "queue" | "reject") {
@@ -79,7 +81,7 @@ async function durableRow(
   kind: string,
   taskId: string
 ): Promise<Task | undefined> {
-  const row = await stores.resourceState.get("user", USER_ID, `${kind}-ledger/${taskId}`);
+  const row = await stores.resourceState.get("user", USER_ID_CELL, `${kind}-ledger/${taskId}`);
   return row?.state as Task | undefined;
 }
 
