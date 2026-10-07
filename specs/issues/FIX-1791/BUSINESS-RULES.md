@@ -31,7 +31,8 @@ session on Alice's coordinator. The *proved by* column is the check the plan run
 | BR-13 | The policy is **best fit** | One evaluator call picks one delegate, from each one's note or else its description. A delegate with neither isn't a choice | CI · VG leg e |
 | BR-14 | Best fit, and the user's last post went to a delegate that hasn't answered since | The post goes there too, with no model call. A removed or unreachable holder holds nothing | CI · VG leg e |
 | BR-15 | Best fit, and the call fails or picks no delegate | The fallback delegate takes it ([D2](DECISIONS.md#d2)) | CI · VG leg e |
-| BR-16 | As BR-15, and the conversation has no fallback, or it can't be reached | Nobody takes it. Recorded `unplaced`, and the conversation says so | CI · VG leg e |
+| BR-16 | As BR-15, and the conversation has no fallback, or it can't be reached | The coordinator's own judgment turn takes it, as under BR-12: it hands the post on with its tool or answers itself. Recorded `by: judgment` ([D2](DECISIONS.md#d2)) | CI · VG leg e |
+| BR-16a | As BR-16, and the judgment turn fails | Nobody takes it. Recorded `unplaced`, and the conversation says so | CI · VG leg e |
 | BR-17 | The policy is **round robin** | The next delegate in list order takes it; the turn moves one step per user's post, skipping one that can't be reached | CI · VG leg e |
 | BR-18 | The policy is **everyone** | Each delegate that can be reached gets it once | CI · VG leg e |
 | BR-19 | A conversation has no delegate that can be reached | Nobody runs. Recorded `unplaced`, and said in the conversation | CI |

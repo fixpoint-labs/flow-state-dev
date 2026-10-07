@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 500" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 6 October 2026, in phases rather than dates. Now: this spec is in review and the FIX-1787 inventory is posted, with its merge-first rows landing. After the gate every child&#x27;s spec can be written at once, and the closure&#x27;s QA plan beside them. Builds run in waves: the worker contract and per-org user data together; then workers as resources; then the coordinator; then projects beside the assignment chain; then the WORKER.md conversion; then the terms sweep; then the closure run. The library&#x27;s spec is written with the others, and its build follows the MVP, after the closure run. When workers as resources merges, the closure runs leg c early, beside the coordinator build. The critical path, dashed red, runs the inventory, the contract, workers, the coordinator, projects, the conversion, the terms and the closure run.">
+<svg viewBox="0 0 940 532" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path as of 6 October 2026, in phases rather than dates. Now: this spec is in review and the FIX-1787 inventory is posted, with its merge-first rows landing. After the gate every child&#x27;s spec can be written at once, and the closure&#x27;s QA plan beside them. Builds run in waves: the worker contract and per-org user data together; then workers as resources; then the coordinator; then projects beside the assignment chain, and after the chain, filing and the split (FIX-1802), which ends with projects; then the WORKER.md conversion; then the terms sweep; then the closure run. The library&#x27;s spec is written with the others, and its build follows the MVP, after the closure run. When workers as resources merges, the closure runs leg c early, beside the coordinator build. The critical path, dashed red, runs the inventory, the contract, workers, the coordinator, projects, the conversion, the terms and the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -20,7 +20,7 @@
     .t-w    { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
     .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="500"/>
+  <rect class="bg" x="0" y="0" width="940" height="532"/>
   <g id="axis">
     <text class="t-lbl" x="16" y="18">THE PATH — PHASES, NOT DATES · AS OF 2026-10-06</text>
     <path class="axis" d="M200 44 L924 44"/>
@@ -30,7 +30,7 @@
     <text class="t-s" x="330" y="36">specs</text>
     <text class="t-s" x="520" y="36">builds, in waves</text>
     <text class="t-s" x="868" y="36">closure</text>
-    <path class="now" d="M278 44 L278 440"/>
+    <path class="now" d="M278 44 L278 472"/>
   </g>
   <g id="fix-1786">
     <text class="t-ln" x="16" y="72">FIX-1786 · this spec</text>
@@ -80,42 +80,49 @@
     <text class="t-ln" x="16" y="296">FIX-1793 · projects</text>
     <rect class="todo" x="292" y="283" width="110" height="20" rx="3"/>
     <text class="t-s" x="298" y="297">spec</text>
-    <rect class="todo" x="676" y="283" width="84" height="20" rx="3"/>
+    <rect class="todo" x="676" y="283" width="96" height="20" rx="3"/>
     <text class="t-s" x="682" y="297">build</text>
   </g>
   <g id="fix-1794">
     <text class="t-ln" x="16" y="328">FIX-1794 · chain</text>
     <rect class="todo" x="292" y="315" width="110" height="20" rx="3"/>
     <text class="t-s" x="298" y="329">spec</text>
-    <rect class="todo" x="676" y="315" width="70" height="20" rx="3"/>
+    <rect class="todo" x="676" y="315" width="52" height="20" rx="3"/>
     <text class="t-s" x="682" y="329">build</text>
   </g>
-  <g id="fix-1792">
-    <text class="t-ln" x="16" y="360">FIX-1792 · WORKER.md</text>
+  <g id="fix-1802">
+    <text class="t-ln" x="16" y="360">FIX-1802 · filing, split</text>
     <rect class="todo" x="292" y="347" width="110" height="20" rx="3"/>
     <text class="t-s" x="298" y="361">spec</text>
-    <rect class="todo" x="766" y="347" width="50" height="20" rx="3"/>
-    <text class="t-s" x="772" y="361">build</text>
+    <rect class="todo" x="734" y="347" width="38" height="20" rx="3"/>
+    <text class="t-s" x="738" y="361">build</text>
   </g>
-  <g id="fix-1796">
-    <text class="t-ln" x="16" y="392">FIX-1796 · terms</text>
+  <g id="fix-1792">
+    <text class="t-ln" x="16" y="392">FIX-1792 · WORKER.md</text>
     <rect class="todo" x="292" y="379" width="110" height="20" rx="3"/>
     <text class="t-s" x="298" y="393">spec</text>
-    <rect class="todo" x="822" y="379" width="40" height="20" rx="3"/>
-    <text class="t-s" x="828" y="393">build</text>
+    <rect class="todo" x="778" y="379" width="56" height="20" rx="3"/>
+    <text class="t-s" x="784" y="393">build</text>
+  </g>
+  <g id="fix-1796">
+    <text class="t-ln" x="16" y="424">FIX-1796 · terms</text>
+    <rect class="todo" x="292" y="411" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="425">spec</text>
+    <rect class="todo" x="840" y="411" width="40" height="20" rx="3"/>
+    <text class="t-s" x="846" y="425">build</text>
   </g>
   <g id="fix-1797">
-    <text class="t-ln" x="16" y="424">FIX-1797 · closure</text>
-    <rect class="todo" x="292" y="411" width="110" height="20" rx="3"/>
-    <text class="t-s" x="298" y="425">QA plan</text>
-    <rect class="todo" x="590" y="411" width="80" height="20" rx="3"/>
-    <text class="t-s" x="596" y="425">leg c early</text>
-    <rect class="todo" x="868" y="411" width="48" height="20" rx="3"/>
-    <text class="t-s" x="874" y="425">run</text>
+    <text class="t-ln" x="16" y="456">FIX-1797 · closure</text>
+    <rect class="todo" x="292" y="443" width="110" height="20" rx="3"/>
+    <text class="t-s" x="298" y="457">QA plan</text>
+    <rect class="todo" x="590" y="443" width="80" height="20" rx="3"/>
+    <text class="t-s" x="596" y="457">leg c early</text>
+    <rect class="todo" x="886" y="443" width="36" height="20" rx="3"/>
+    <text class="t-s" x="892" y="457">run</text>
   </g>
   <g id="critical-path">
-    <path class="crit" d="M272 116 L412 116 L412 148 L488 148 L488 212 L586 212 L586 244 L672 244 L672 308 L762 308 L762 372 L818 372 L818 404 L864 404 L864 436 L916 436"/>
-    <text class="t-s" x="16" y="466">dashed red: the critical path · inventory → contract → workers → coordinator → projects → WORKER.md → terms → the closure run</text>
-    <text class="t-s" x="16" y="484">leg c early: the privacy check on the commit FIX-1788 merges on (ER-30); a failure holds the coordinator and library</text>
+    <path class="crit" d="M272 116 L412 116 L412 148 L488 148 L488 212 L586 212 L586 244 L672 244 L672 308 L774 308 L774 404 L836 404 L836 436 L882 436 L882 468 L922 468"/>
+    <text class="t-s" x="16" y="498">dashed red: the critical path · inventory → contract → workers → coordinator → projects → WORKER.md → terms → closure run</text>
+    <text class="t-s" x="16" y="516">leg c early: the privacy check on the commit FIX-1788 merges on (ER-30); a failure holds the coordinator and library</text>
   </g>
 </svg>

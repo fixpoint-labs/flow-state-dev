@@ -19,6 +19,12 @@ covers the old worker naming rule and the mailbox boards at set level; this is t
 | A coordinator's members are read as data, never guessed, and any listing of them is capped; spec PR [#2777](https://github.com/fixpoint-labs/flow-state-dev/pull/2777) (FIX-1785, closed) | **Retained** | #2768's run log showed a model inventing members from a short listing | BR-10, the cap of 25, VG leg d | None |
 | The chief of staff is one `agent` worker with hire and project tools; `packages/shift-manager/teams/devteam/workforce/org/workers/chief-of-staff/WORKER.md` | **Superseded** | The PRD: a standard coordinator at the top of the roster | S10: `flow: coordinator`, `routing: judgment`, its tools kept | The wire id `chief-of-staff` and its display name stay |
 
+Amended after merge (epic amendment #2837): a best-fit post the evaluator can't place goes to
+the fallback delegate if one is set, otherwise to the coordinator's own judgment turn, and is
+`unplaced` only when that turn fails (D2, BR-16, BR-16a). As merged in #2815, a miss with no
+fallback delegate went `unplaced` and the judgment turn was rejected for cost. The product owner
+reversed that on 2026-10-06 (epic D8): a coordinator is evaluator first, agent as the fallback.
+
 None of these is wholly superseded until FIX-1792 removes the mailbox flow. Re-check each
 cited intent against `main` before building: FIX-1788 changes how a worker is reached.
 

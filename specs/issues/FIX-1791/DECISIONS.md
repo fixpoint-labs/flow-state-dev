@@ -16,8 +16,8 @@ flowchart TD
   Q1 -.->|"rejected"| X0["build them here · answers ER-9 before its owner"]
   I --> D1["D1 · a round limit · zero by default · at most three"]
   D1 -.->|"rejected"| X1["one constant in the flow · no group chat per coordinator"]
-  I --> D2["D2 · the fallback is a delegate · removing it records posts as unplaced"]
-  D2 -.->|"rejected"| X2["refuse the removal · or fall back to a judgment turn"]
+  I --> D2["D2 · a post best fit can't place goes to the fallback delegate, else the coordinator's judgment"]
+  D2 -.->|"rejected"| X2["refuse the removal · or leave the post unplaced"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -77,20 +77,20 @@ that has to converge. Then the ceiling rises, and cost per post is stated in the
 It comes down to who turns a group chat on: a constant turns it on for every coordinator or none.
 
 <a name="d2"></a>
-## D2 · Best fit's fallback is one of the conversation's delegates; removing it leaves the posts it can't place recorded and told, never refused
+## D2 · A post best fit can't place goes to the fallback delegate if one is set, otherwise to the coordinator's own judgment turn; removing the fallback is never refused
 
 | | |
 |---|---|
-| **Instead of** | (a) Refusing to remove the fallback delegate until another is set · (b) falling back to the coordinator's own judgment turn |
-| **Because** | A user removing a delegate shouldn't be refused over a setting they may not know about. (b) puts a model turn with tools behind every best-fit coordinator, including one whose file says nothing about judging, and fails the same way when the model is down. Recording the post `unplaced` and telling the poster keeps the miss visible |
-| **Locks in** | A best-fit conversation can have no fallback. Then a failed or unusable evaluator call leaves the post unanswered, recorded, and said in the conversation. The fallback starts from the configuration's and is set or cleared per conversation with `setFallback`, in the app or through the tool |
+| **Instead of** | (a) Refusing to remove the fallback delegate until another is set · (b) with no fallback delegate, leaving the post unanswered, recorded `unplaced` and told (this card's answer as merged) |
+| **Because** | A user removing a delegate shouldn't be refused over a setting they may not know about. A coordinator is the flow built for routing: an evaluator classifies first, and the flow acts as an agent only when no obvious path exists (the product owner, 2026-10-06, epic [D8](../../epics/FIX-1786/DECISIONS.md#d8)). So best fit's miss goes to the same judgment turn the `judgment` policy runs (BR-12), not to nobody. A configured fallback delegate still wins, so a file that names one routes as before |
+| **Locks in** | A best-fit conversation can have no fallback delegate. Then a failed or unusable evaluator call wakes the coordinator's own turn, recorded `by: judgment`; only when that turn fails too is the post `unplaced`, recorded and said in the conversation. The price is a model turn with tools behind each such miss. The fallback starts from the configuration's and is set or cleared per conversation with `setFallback`, in the app or through the tool |
 
-**What would change my mind:** posts going unplaced often in practice. Then a removal that clears
-the fallback asks the user to pick a new one in the app, and the tool does the same.
+**What would change my mind:** judgment turns on misses costing more than the answers they give.
+Then a miss with no fallback delegate goes `unplaced` again, as merged.
 
-![D2: what happens to best fit's fallback when delegates change. The fallback is a delegate, and removing it leaves unplaceable posts recorded and told, chosen, beside refusing the removal. Decides it: a user removing a delegate is never refused over a setting they may not know. The price: a post can go unanswered, visibly. Falling back to a judgment turn was dropped for cost. Locks in a conversation that can have no fallback; flips if posts go unplaced often](figures/d2-fallback.svg)
+![D2: what takes a post best fit can't place. Chosen: the fallback delegate if one is set, otherwise the coordinator's own judgment turn. Instead of: leaving it unplaced. Decides it: someone answers the post. The price: one judgment turn per miss with no fallback delegate. Removing the fallback works either way. Locks in evaluator first, judgment as the fallback; flips if those turns cost more than they answer](figures/d2-fallback.svg)
 
-It comes down to the removal: refusing it surprises a user over a setting they never chose.
+It comes down to the post: with judgment behind the evaluator, a miss still gets an answer.
 
 ## Decided, not asked
 
@@ -104,7 +104,8 @@ It comes down to the removal: refusing it surprises a user over a setting they n
   user's posts: an answer routed again between rounds makes its one evaluator call.
 - **Best fit's ladder is extracted, not copied.** Hold, one call, fallback, and now `unplaced`
   become one shared helper that the mailbox's route and this policy both call, so a fix reaches
-  both. FIX-1796's sweep removes the mailbox caller.
+  both. FIX-1796's sweep removes the mailbox caller. Where the helper finds no taker, the
+  coordinator runs its judgment turn before `unplaced` ([D2](#d2)); the mailbox's route keeps its end.
 - **Delegates live in server-written session state** (FIX-1788 S1 and BR-18a; epic
   [D3](../../epics/FIX-1786/DECISIONS.md#d3) *Locks in* (3)), copied from the configuration's
   defaults the first time a conversation's delegates are read or changed, and never written back.
@@ -192,5 +193,9 @@ It comes down to the removal: refusing it surprises a user over a setting they n
 - **Amendment 2, the gate's answers** — Jake took Q1's recommendation on 2026-10-06: filing tasks
   for delegates and following them through move to FIX-1794. SPEC, PLAN and EVOLUTION state it as
   decided.
+- **Amendment 3, carried on the epic's #2837** — the product owner's direction (2026-10-06, epic
+  [D8](../../epics/FIX-1786/DECISIONS.md#d8)): a coordinator is evaluator first, its own judgment
+  as the fallback. D2 now sends a best-fit miss with no fallback delegate to the judgment turn
+  (BR-16, BR-16a); a configured fallback delegate still wins.
 
 **Open: none.** No claim is settled or in flight.

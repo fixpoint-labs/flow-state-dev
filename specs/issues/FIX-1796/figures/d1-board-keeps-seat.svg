@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D2, what takes a post best fit can&#x27;t place. Chosen: the fallback delegate if one is set, otherwise the coordinator&#x27;s own judgment turn, and the post is unplaced only if that turn fails. Instead of: leaving the post unplaced when no fallback delegate is set, the answer as first merged. It comes down to the first row: someone answers the post, where the other way leaves it unanswered until someone sets a fallback. The price is the second row: one judgment turn per miss with no fallback delegate, where the other way costs none. The third row is a tie: removing the fallback delegate works either way. Locks in: evaluator first, the coordinator&#x27;s judgment as the fallback, a configured fallback delegate still winning. Flips if: those judgment turns cost more than they answer."
+<svg viewBox="0 0 940 418" role="img" aria-label="D1. Does the word seat leave the task board too, or only Workforce? Chosen: only Workforce's seat goes. Instead of: a board's seat becomes its assignee. It comes down to the first row, what a seat is on a board: chosen, it is a place on the board, and an assignee is that seat on one task; instead, assignee names two things, the place and the seat on one task. Second row, the epic's Layer 1: chosen changes nothing in it, so the epic records no decision and FIX-1794 stands as written; instead renames board exports, which needs an epic decision and rewrites FIX-1794's new board text. Third row, the guard: chosen needs a board-seat exception scoped to the board's own surface; instead needs none, because seat is retired everywhere. Locks in: the board's types and its hand-off's seat field keep their names, and a Workforce seat counts even on a line with a board's. Flips if: readers still take a board's seat for a worker after the sweep; then the board's word becomes assignee at 1.0."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -11,7 +11,6 @@
     .bg     { fill:var(--surface); }
     .ask    { fill:var(--surface-2); }
     .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
-    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
     .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
     .decide { fill:var(--accent-soft); }
     .bar    { fill:var(--accent); }
@@ -36,68 +35,66 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D2 · THE CALL · AMENDED AFTER MERGE</text>
-    <text class="t-q" x="32" y="52">What takes a post best fit can&#x27;t place?</text>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Does “seat” leave the task board too, or only Workforce?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Fallback delegate, else judgment</text>
+    <text class="t-h c-code" x="228" y="112">Only Workforce's seat goes</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF · AS FIRST MERGED</text>
-    <text class="t-h c-lost" x="592" y="112">Leave it unplaced, and say so</text>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">A board's seat becomes its assignee</text>
   </g>
 
-  <g id="row-1">
+  <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">A POST WITH NO</text>
-    <text class="t-lbl" x="32" y="169">FALLBACK DELEGATE</text>
+    <text class="t-lbl" x="32" y="156">WHAT A SEAT IS</text>
+    <text class="t-lbl" x="32" y="169">ON A BOARD</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Someone answers it</text>
-    <text class="t-s" x="248" y="179">the coordinator&#x27;s own turn; unplaced only if it fails</text>
+    <text class="t-b" x="248" y="161">A place on the board</text>
+    <text class="t-s" x="248" y="179">an assignee is that seat on one task</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Unanswered, recorded, told</text>
-    <text class="t-s" x="612" y="179">until someone sets a new fallback</text>
+    <text class="t-b" x="612" y="161">Assignee names two things</text>
+    <text class="t-s" x="612" y="179">the place, and the seat on one task</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="222">A MODEL TURN</text>
-    <text class="t-lbl" x="32" y="235">PER MISS</text>
-    <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">One judgment turn</text>
-    <text class="t-s" x="248" y="241">only when no fallback delegate is set</text>
-    <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">None</text>
-    <text class="t-s" x="612" y="241">the miss costs nothing, and gets nothing</text>
+    <text class="t-lbl" x="32" y="222">THE EPIC'S LAYER 1</text>
+    <text class="mark plus" x="228" y="224">+</text>
+    <text class="t-b" x="248" y="223">Unchanged</text>
+    <text class="t-s" x="248" y="241">no epic decision · FIX-1794 stands</text>
+    <text class="mark minus" x="592" y="224">−</text>
+    <text class="t-b" x="612" y="223">Board exports renamed</text>
+    <text class="t-s" x="612" y="241">an epic decision · FIX-1794 rewritten</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">A USER REMOVES</text>
-    <text class="t-lbl" x="32" y="293">THE FALLBACK</text>
-    <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">It goes, every time</text>
-    <text class="t-s" x="248" y="299">never refused over a setting</text>
-    <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">It goes, every time</text>
-    <text class="t-s" x="612" y="299">the same</text>
+    <text class="t-lbl" x="32" y="280">THE GUARD</text>
+    <text class="mark minus" x="228" y="282">−</text>
+    <text class="t-b" x="248" y="281">Needs a board-seat exception</text>
+    <text class="t-s" x="248" y="299">scoped to the board's own surface</text>
+    <text class="mark plus" x="592" y="282">+</text>
+    <text class="t-b" x="612" y="281">Needs none</text>
+    <text class="t-s" x="612" y="299">seat is retired everywhere</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">Evaluator first, judgment as the fallback</text>
-    <text class="t-s" x="32" y="387">a configured fallback delegate still wins</text>
+    <text class="t-b" x="32" y="369">Board types and the hand-off seat field stay</text>
+    <text class="t-s" x="32" y="387">a Workforce “seat” counts even beside a board's</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">Judgment turns on misses cost more than they answer</text>
-    <text class="t-s" x="494" y="387">then a miss goes unplaced again, as first merged</text>
+    <text class="t-b" x="494" y="369">Readers still take a board's seat for a worker</text>
+    <text class="t-s" x="494" y="387">after the sweep; then the board says assignee at 1.0</text>
   </g>
 </svg>
