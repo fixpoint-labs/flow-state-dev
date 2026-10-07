@@ -48,16 +48,16 @@ the ledger isn't kept per conversation, and leg c must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/coordinators/files-tasks-down-the-owners-chain/` · scripted workers for legs a to d, `openai/gpt-5.4-mini` for leg e · Shift Manager over HTTP, two users · run by the implementer at completion · verdict in the last implementation PR |
-| **Signal** | **a**: Alice's coordinator files a task for her `agent` delegate; within 60 s it is `completed` in a new session that is hers, a child of the conversation, linked to the delegate and found by `findWorkerSession`; one `completed` notice; the filing returned first. **b**: a coordinator delegate splits its task into two pieces for two `agent` delegates; four sessions, all hers; each row on its own board; the top task completes after both pieces. **c**: two conversations each file one task for one delegate; each runs only its own, lists only its own, and its drain returns without waiting on the other's. **d**: Bob opening, posting to or filing on Alice's conversation, and naming her worker on his own, are each refused; none of his runs touch her rows. **e**: a task that fails both attempts gives one `errored` notice; the coordinator reassigns or cancels it, and its reply names the task and the error |
+| **Signal** | **a**: Alice's coordinator files a task for her `agent` delegate; within 60 s it is `completed` in a new session that is hers, a child of the conversation, linked to the delegate and found by `findWorkerSession`; one `completed` notice; the filing returned first. **b**: owned by [FIX-1802](../FIX-1802/SPEC.md); not exercised in this goal. **c**: two conversations each file one task for one delegate; each runs only its own, lists only its own, and its drain returns without waiting on the other's. **d**: Bob opening, posting to or filing on Alice's conversation, and naming her worker on his own, are each refused; none of his runs touch her rows. **e**: a task that fails both attempts gives one `errored` notice; the coordinator reassigns or cancels it, and its reply names the task and the error |
 | **Input** | The DevTeam standard install; two users through sign-in; a goal-local tree with a scripted coordinator delegate and two scripted `agent` workers. Asks held out at run time |
 | **Anti-game** | No drain from the check; no row, notice or session written by a fixture. Counts read again after 5 s. Leg c reads each conversation's own read, not the store |
 | **Control that must fail** | `GOAL_CONTROL=unpartitioned`: leg c FAILS on *each runs only its own*. `GOAL_CONTROL=no-follow-up`: legs a and e FAIL on *one notice*. Today's `main`: every leg FAILS |
 
-Leg b is the split. [Q](DECISIONS.md#q) moved the split to FIX-1802, so leg b and the
-two *not done if* entries about splits and depth move with it, and leg a adds one step: a
-delegate's task session that tries to file a piece is refused. *Amended after merge:* epic
-[D8](../../epics/FIX-1786/DECISIONS.md#d8) puts FIX-1802 in the MVP, built right after this issue, and its grant replaces that refusal
-([FIX-1802](../FIX-1802/SPEC.md)).
+Leg b is the split. [Q](DECISIONS.md#q) moved it to FIX-1802, so leg b and the two *not done
+if* entries about splits and depth are FIX-1802's, not exercised here. One interim rule stays: leg
+a adds a step where a delegate's task session that tries to file is refused, until FIX-1802 lands.
+*Amended after merge* (epic [D8](../../epics/FIX-1786/DECISIONS.md#d8)): FIX-1802 is in the MVP,
+built right after this issue.
 
 ## What changes
 

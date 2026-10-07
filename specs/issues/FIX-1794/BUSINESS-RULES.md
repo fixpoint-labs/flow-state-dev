@@ -16,7 +16,7 @@ is the session a task runs in. The *proved by* column is the check the plan runs
 | BR-4 | The delegate record carries a target (a FIX-1793 workstream) | Refused, saying a workstream takes posts, not tasks | CI |
 | BR-5 | The task names no assignee, and the conversation has exactly one delegate | It goes to that delegate | CI |
 | BR-6 | The task names no assignee, and the conversation has none or several | Stored, pending, and the filing's answer says to assign it. No order picks one | CI |
-| BR-7 | A filing would put a task more than five boards below the top of its chain ([D2](DECISIONS.md#d2)). Moves with the split if [Q](DECISIONS.md#q) moves it; this issue then refuses any filing from a task session, saying it can't split yet, until [FIX-1802](../FIX-1802/BUSINESS-RULES.md)'s grant replaces the refusal (epic D8, amended after merge) | Refused, naming the limit. Nothing stored | CI |
+| BR-7 | A task session files, by app or tool. *Amended after merge:* [Q](DECISIONS.md#q) moved the depth limit ([D2](DECISIONS.md#d2)) to [FIX-1802](../FIX-1802/BUSINESS-RULES.md), and this is the interim rule until it lands | Refused, saying it can't split yet. Nothing stored | CI |
 | BR-8 | A filing carries a board, a ledger, an owner, a depth or a partition | Ignored, or refused where the schema names it. Each comes from the conversation's server-written data | CI |
 | BR-9 | The same task is filed twice, by id | The second adds nothing. If the row is still pending, it triggers the board's run again, which is idempotent; otherwise it starts nothing | CI |
 
@@ -65,16 +65,14 @@ check. A reassigned task runs at once.
 
 ## The chain
 
-BR-30 to BR-32 are the split, and ship here only if [Q](DECISIONS.md#q) keeps it; otherwise
-they move to its follow-up with goal leg b, and BR-33 holds at one level. *Amended after merge:*
-Q moved them, and that follow-up, [FIX-1802](../FIX-1802/BUSINESS-RULES.md), is in the MVP (epic D8).
+BR-30 to BR-32 are the split. *Amended after merge:* owned by
+[FIX-1802](../FIX-1802/BUSINESS-RULES.md) (its BR-14 to BR-19), in the MVP (epic D8), and not
+exercised in this issue's goal. BR-33 holds at one level.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-30 | A coordinator delegate's task session splits its task | It files the pieces on its own board, for its own delegates, under BR-1 to BR-9. The pieces are Alice's | CI · VG leg b |
-| BR-31 | It has filed its pieces and its turn ends | Its own task waits on the board above: parked, marked as waiting on its pieces, with no notice for that park. Nothing lapses while it waits | CI · VG leg b |
-| BR-32 | The last open piece ends, after any turn its notice woke | Its task settles on the board above: `completed` with the pieces' outputs when none failed for good, `errored` naming the ones that did. It settles through the binding written when it parked (that row's partition and claim ticket), never a coordinate from input or a payload, and still does after a restart. The last piece's ending writes the settle as owed; only the settle clears it, so if the turn its notice woke fails, the next touch of the board settles it, once. That board's conversation hears it | CI · VG leg b |
-| BR-33 | Any session in a chain is listed | Every one is Alice's. Bob's workers never appear, because every assignee passed BR-2 | VG legs b and d |
+| BR-30 to BR-32 | A task session splits its task, waits parked, and settles from its pieces | Owned by FIX-1802 (its BR-14 to BR-19); not exercised in this issue's goal | FIX-1802 |
+| BR-33 | Any session in a chain is listed | Every one is Alice's. Bob's workers never appear, because every assignee passed BR-2 | VG leg d |
 
 ## Failure taxonomy
 

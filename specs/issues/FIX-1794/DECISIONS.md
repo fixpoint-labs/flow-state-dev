@@ -91,20 +91,19 @@ the docs state the cost per level.
   the same write, and only the board's run clears it. A wake refused or lost to a crash leaves
   it for the next filing or action on the board to retry; with no sweeper, it waits for that
   touch. Filing a still-pending task's id again re-triggers the wake, idempotently.
-- **If the split stays here ([Q](#q)), a waiting task settles through its own board.** Parking
-  it writes a parent binding, server-side and recoverable: the row's partition and its claim
-  ticket. After the `onTaskSettled` turn the last piece's notice woke, that row settles through the
-  board that owns it, with that binding, never with a coordinate a caller or a payload supplies.
-  The last piece's ending writes the settle as owed, and only the settle clears it, so a failed
-  turn leaves it for the next touch of the board, as an owed notice is.
+- **A split task settles through its own board: FIX-1802's** ([Q](#q); *amended after merge*).
+  Its parent binding (the row's partition and claim ticket) and settle-owed marker are carried
+  there as written in S8.
 - **The partition is the conversation's incarnation**: its id plus a value minted at its birth
   that only the server writes, the same incarnation FIX-1791 keys delegate sessions by. A
   conversation deleted and created again starts with an empty board; the old rows stay in the
   store, unread (BP-030).
 - **Who may file is FIX-1802's** (*amended after merge*, epic [D8](../../epics/FIX-1786/DECISIONS.md#d8); this line read "a worker that
-  splits its task is a coordinator"). This issue files from coordinator conversations, through one
-  module that asks "may this session file"; [FIX-1802](../FIX-1802/DECISIONS.md#d1) replaces the
-  answer with a grant in the worker's file, on any worker flow. Any worker flow takes tasks.
+  splits its task is a coordinator"). This issue ships the final shape: a board per session and
+  filing as `createTaskFilingCapability()` (S3, S4). Only its answer to "may this session file" is
+  interim, "a coordinator conversation, not a task session";
+  [FIX-1802](../FIX-1802/DECISIONS.md#d1) swaps in a grant in the worker's file. Any worker flow
+  takes tasks.
 - **Mailbox boards stay until FIX-1792**, which moves each onto this shape or a workstream (epic
   [D5](../../epics/FIX-1786/DECISIONS.md#d5)) and deletes `mailboxTaskLists` with them.
 
@@ -197,8 +196,9 @@ left.
   row like a notice, so a failed turn can't strand it; the wake marker written with the add; a
   breadth cap named beside D2.
 
-- **Amended after merge (FIX-1802's spec PR)** — epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) brought FIX-1802 into the MVP and made
-  filing a tool any worker can be granted. Q's card, *decided, not asked*, S4, BR-7, the chain's
-  rules and the docs draft now point there; nothing this issue builds changes.
+- **Amended after merge (FIX-1802's spec PR #2839)** — epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) brought FIX-1802 into the MVP and made
+  filing a tool any worker can be granted. This issue now ships the board per session and the
+  filing capability, so FIX-1802 only swaps the answer to "may this session file". The split's
+  acceptance (leg b, BR-30 to BR-32, S8, S10, V6) points there; BR-7 is the interim refusal.
 
 **Open: none.** [Q](#q) is answered: the split moves to FIX-1802, which is in the MVP (epic D8).

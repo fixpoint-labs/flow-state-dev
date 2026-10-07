@@ -39,28 +39,32 @@ Sidebar: `workforce/filing-work`, right after `workforce/coordinators` in `apps/
 > worker without the line has none of them, and the app's `fileTask` on its session is refused.
 > Coordinators are no exception: a coordinator files only if its file says so.
 >
-> `delegates:` is who it may file for, the same list a [coordinator](./coordinators.md) hands posts
-> to. Each session starts from it, and you change one session's list with `addDelegate` and
-> `removeDelegate`. A delegate has to be on the same user's roster. Naming `delegates:` without
-> `filing: true` on a worker that isn't a coordinator is refused when the app loads.
+> `delegates:` is who works for this worker: the list a [coordinator](./coordinators.md) hands
+> posts to, and the list a worker with `filing: true` files for. Each session starts from it, and
+> you change one session's list with `addDelegate` and `removeDelegate`. A delegate has to be on
+> the same user's roster. A file whose `delegates:` nothing uses is refused when the app loads.
 >
-> The built-in worker and the coordinator flow carry the tools. A worker on your own flow needs
-> the flow to carry them too:
+> The built-in worker and the coordinator flow carry the tools. On your own flow, give the tools
+> to the block that runs the model, and add the filing entries to the flow:
 >
 > ```ts
 > import { createTaskFilingCapability, workerConfigSchema } from "@flow-state-dev/workforce"
 >
 > const filing = createTaskFilingCapability()
 >
+> // the block that runs the model: uses: [filing.capability]
 > export const em = defineFlow({
 >   kind: "em",
->   uses: [filing],
 >   configSchema: workerConfigSchema().extend({ document: z.string() }),
+>   actions: { ...filing.actions /* , your own */ },
+>   internal: { actions: { ...filing.internal } },
+>   task: { actions: { ...filing.task } },
 >   // …
 > })
 > ```
 >
-> A file that grants filing to a worker whose flow doesn't carry it is refused when the app loads.
+> If a file grants filing and its flow is missing either half, the app refuses to load and says
+> which.
 >
 > ## Where the tasks go
 >
@@ -90,7 +94,7 @@ Sidebar: `workforce/filing-work`, right after `workforce/coordinators` in `apps/
 > ## How far it goes
 >
 > A chain stops at **five boards deep**, counting your conversation's as the first, and at
-> **50 tasks under one top task**, at every depth together. A filing past either is refused,
+> **50 tasks under one top task**, at every depth together, finished ones included. A filing past either is refused,
 > naming the limit, and the worker does the piece itself or tells you. Each task is a session
 > and at least one model turn, so a worker that splits at every level gets expensive fast; the
 > limits are where it stops.
@@ -116,9 +120,11 @@ FIX-1794's "Splitting work" subsection is not published there; it is the section
 ## UPDATE · `packages/workforce/README.md` · after FIX-1794's paragraph on tasks
 
 > Any worker can file tasks: `filing: true` and `delegates:` in its `WORKER.md`, and
-> `createTaskFilingCapability()` in its flow's `uses` (the built-in `agent` and `coordinator`
-> flows carry it). A task's worker can split it the same way, up to five boards deep and 50
+> `createTaskFilingCapability()` on its flow, the capability on the model's block and the entries
+> in the flow's maps (the built-in `agent` and `coordinator` flows carry it). A task's worker can split it the same way, up to five boards deep and 50
 > tasks under one top task. See [Filing work](../../apps/docs/docs/workforce/filing-work.md).
+
+Wherever FIX-1791's and FIX-1794's drafts show `coordinatorSessionId`, publish the name P1 gives it.
 
 ## Not changed
 

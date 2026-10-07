@@ -13,11 +13,12 @@
 Amended after merge (FIX-1802's spec PR): epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) (the product owner, 2026-10-06) reversed
 [Q](DECISIONS.md#q)'s answer. The split ships in the MVP as [FIX-1802](../FIX-1802/SPEC.md), which
 builds right after this issue, and filing is a tool any worker can be granted, not what makes a
-coordinator. The places that said only a coordinator files, that a task session refuses to file, or
-that the split waits for a later issue now point there: SPEC (the people table, leg b's note, the
-sign-off), DECISIONS (Q, *decided, not asked*), BR-7 and the chain's rules, S4, the follow-ups and
-the docs draft. What this issue builds is unchanged: until FIX-1802 lands, coordinator
-conversations file and a task session's filing is refused.
+coordinator. Since no implementation had started, this issue ships the final shape: a board per
+session (S3) and filing packaged as `createTaskFilingCapability()` (S4). Its one interim part is
+the answer to "may this session file": a coordinator conversation, and never a task session
+(BR-7), until FIX-1802's grant replaces it. The split's acceptance (leg b, BR-30 to BR-32, S8, S10,
+V6) is pointer-only, owned by FIX-1802. Also updated: the people table, the sign-off, Q, *decided,
+not asked*, the follow-ups and the docs draft.
 
 `sharedToLineage` itself (FIX-1068, and [FIX-1084](../FIX-1084/SPEC.md)'s routing rule) is a
 neighbour, not a predecessor: it keeps working as shipped. The epic's [D5](../../epics/FIX-1786/DECISIONS.md#d5)

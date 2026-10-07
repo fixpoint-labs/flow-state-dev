@@ -21,3 +21,9 @@ covers the old worker naming rule and the mailbox boards at set level; this is t
 
 None of these is wholly superseded until FIX-1792 removes the mailbox flow. Re-check each
 cited intent against `main` before building: FIX-1788 changes how a worker is reached.
+
+Amended after merge (FIX-1802's spec PR #2839): [FIX-1802's D1](../FIX-1802/DECISIONS.md#d1)
+makes the delegate list who works for any worker. BR-1a's actions reach any worker whose
+delegates have a use (a routing flow or the filing grant), and BR-4 accepts a delegate that takes
+a post or a task, each use checking its own. Both rows are marked. FIX-1802 also renames
+`coordinatorSessionId` (its S3), reading a stored key under the old name.
