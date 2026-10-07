@@ -11,7 +11,7 @@
 | **talks to one coordinator in two conversations** | n/a | Each conversation's board is its own. Running one never takes, shows or waits on the other's tasks |
 | **hands a big task to a worker that splits it** | The pieces go on a board any member can run | The worker files the pieces on its own task session's board, for its own delegates, up to five boards deep. Results come back up board by board. Built by [FIX-1802](../FIX-1802/SPEC.md), in the MVP: epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) reversed [Q](DECISIONS.md#q) after merge |
 | **has a task fail for good, or stop on a question** | Nobody hears unless they open the list | The conversation that filed it is told once, and the coordinator reassigns it, cancels it, or tells the person |
-| **builds an app on Workforce** | Finds a task's run through the board's run link only | Also finds it with `findWorkerSession({ worker, taskId, coordinatorSessionId })`, within the conversation that filed it |
+| **builds an app on Workforce** | Finds a task's run through the board's run link only | Also finds it with `findWorkerSession({ worker, taskId })` plus the filing session's key, within the conversation that filed it. *Amended after merge:* the key is FIX-1791's, named for the filing session, not `coordinatorSessionId` |
 
 The epic's assignment chain ([FIX-1786](../../epics/FIX-1786/SPEC.md), ER-9), built on private
 workers ([FIX-1788](../FIX-1788/SPEC.md)) and delegates ([FIX-1791](../FIX-1791/SPEC.md)).
@@ -33,11 +33,10 @@ flow. The conversation that filed it hears how it ended and can reassign or canc
 ```mermaid
 flowchart LR
   A["Shift Manager · two users · scripted workers on agent"] --> L1["a · a coordinator files"]
-  A --> L2["b · a delegate splits"]
   A --> L3["c · two conversations · one coordinator"]
   A --> L4["d · Bob reaches in"]
   A --> L5["e · a task fails · real model"]
-  L1 & L2 & L3 & L4 & L5 -->|"stores, sessions and notices match"| P["PASS · the goal is met"]
+  L1 & L3 & L4 & L5 -->|"stores, sessions and notices match"| P["PASS · the goal is met"]
   C["control · one ledger for all of Alice's conversations"] -.-> L3
   L3 -.->|"under the control"| F["must FAIL · a conversation runs the other's task"]
 ```
@@ -75,7 +74,7 @@ await coordinator.sendAction("fileTask", { goal: "Audit our dependencies' licens
 // refused, like a missing worker, unless researcher is one of this conversation's delegates
 await coordinator.sendAction("listTasks", {}, { sessionId: session.id })          // this conversation's board only
 await coordinator.sendAction("reassignTask", { taskId, assignee: "writer" }, { sessionId: session.id })
-const run = await workforce.findWorkerSession({ worker: "researcher", taskId, coordinatorSessionId: session.id })  // the task's own session, in this conversation
+const run = await workforce.findWorkerSession({ worker: "researcher", taskId, filingSessionId: session.id })  // the task's own session, in this conversation; the key's name is FIX-1791's
 ```
 
 The coordinator has the same four as tools. No action names a board, a ledger or an owner.

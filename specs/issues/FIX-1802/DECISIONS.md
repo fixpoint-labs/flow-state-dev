@@ -43,7 +43,7 @@ set needs it.
 | | |
 |---|---|
 | **Instead of** | FIX-1794's breadth answer: five boards deep, with each board's existing caps (`maxTotalTasks`, `maxEnqueuedTasks`, per partition) as the only bound on width |
-| **Because** | Depth bounds a loop, not a fan-out. With each board capped alone, a worker that splits at every level multiplies: at ten pieces a board, a five-board chain holds 11,110 tasks under one top task (FIX-1794's review finding). A count per chain stops it at 50, enough for a feature split across a team. It is stored, not derived: deriving it reads every board in the chain, across partitions. One record per chain, keyed by the top board's partition and the top task, so two sessions never share a budget and the task board doesn't change |
+| **Because** | Depth bounds a loop, not a fan-out. With each board capped alone, a worker that splits at every level multiplies: at ten pieces a board, a five-board chain holds 11,110 tasks under one top task (FIX-1794's review finding). A count per chain stops it at 50, enough for a feature split across a team. It is stored, not derived: deriving it, or checking it against the rows, reads every board in the chain, across partitions. A reservation whose add never landed lapses after a lease instead. One record per chain, keyed by the top board's partition and the top task, so two sessions never share a budget and the task board doesn't change |
 | **Locks in** | Two public limits, named in the refusal. Raising either is cheap; lowering breaks chains. The limit is per chain, not per owner: a coordinator posting again starts a fresh chain, which each board's caps still bound |
 
 ![D2: how big one chain can get. Five boards deep and 50 tasks under one top task, chosen, beside five deep with each board capped alone. Decides it: a worker that splits at every level stops at 50 tasks instead of thousands. The price: a real job that needs a 51st piece is refused, and a count is kept per chain. Locks in two public limits; flips if a real chain needs more than 50 pieces](figures/d2-chain-limit.svg)
@@ -71,7 +71,7 @@ and the docs state the cost per piece.
 - **The split is FIX-1794's S8, as written**: park with a server-written parent binding, and a
   settle-owed marker only the parent's settle clears.
 - **Depth and the chain's top are server-written at each task session's birth**: its parent's
-  depth plus one, and its parent's top task. A session that isn't a task session starts a chain.
+  depth plus one, and its parent's top: the top board's partition and the top task. A session that isn't a task session starts a chain.
   A post adds no depth; FIX-1791's round limit bounds posts.
 - **No Layer 1 change.** The task board, the engine and core are untouched. The parent's settle
   resolves the row above through D6's partitioned ref, with the partition from the binding, and
@@ -105,5 +105,9 @@ and the docs state the cost per piece.
   FIX-1794 amended to ship it and the board per session; the chain count made crash-safe and
   namespaced; `delegates:` given a use by capability; the task-session refusal lifted with the
   split; a stuck chain replayed from any board above it; the coordinator lookup key renamed.
+- **Review round 2** (#2839) — the chain record reads no other board: an id is *reserved*, then
+  marked *added* by its filer, and a reservation lapses after a lease; the lookup key named once,
+  in FIX-1791, so no rename here; the replay and the birth data spelled out; FIX-1794's split
+  leftovers removed.
 
 **Open: none.**

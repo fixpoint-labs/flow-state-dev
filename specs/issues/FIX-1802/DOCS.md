@@ -124,7 +124,7 @@ FIX-1794's "Splitting work" subsection is not published there; it is the section
 > in the flow's maps (the built-in `agent` and `coordinator` flows carry it). A task's worker can split it the same way, up to five boards deep and 50
 > tasks under one top task. See [Filing work](../../apps/docs/docs/workforce/filing-work.md).
 
-Wherever FIX-1791's and FIX-1794's drafts show `coordinatorSessionId`, publish the name P1 gives it.
+Wherever FIX-1791's and FIX-1794's drafts show `coordinatorSessionId`, publish the name FIX-1791 ships.
 
 ## Not changed
 

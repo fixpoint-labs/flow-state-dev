@@ -25,5 +25,6 @@ cited intent against `main` before building: FIX-1788 changes how a worker is re
 Amended after merge (FIX-1802's spec PR #2839): [FIX-1802's D1](../FIX-1802/DECISIONS.md#d1)
 makes the delegate list who works for any worker. BR-1a's actions reach any worker whose
 delegates have a use (a routing flow or the filing grant), and BR-4 accepts a delegate that takes
-a post or a task, each use checking its own. Both rows are marked. FIX-1802 also renames
-`coordinatorSessionId` (its S3), reading a stored key under the old name.
+a post or a task, each use checking its own. Both rows are marked.
+The task session's lookup key (the `findWorkerSession` criterion FIX-1788 S5a carries) is named
+for the filing session in the new terms, not `coordinatorSessionId`; the name is the implementer's.
