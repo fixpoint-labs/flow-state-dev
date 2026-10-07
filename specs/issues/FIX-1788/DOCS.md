@@ -175,7 +175,7 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 ## UPDATE · `apps/docs/docs/workforce/workers-on-disk.md` · "Where a worker's data lives", a new last part
 
 > On one flow, a user's workers share that user's scope. The built-in `agent` keeps each worker's
-> skills apart for you. A worker flow you write doesn't: anything it keeps at user scope is shared
+> skills apart for you, with a skills library partitioned by worker. A worker flow you write doesn't: anything it keeps at user scope is shared
 > by every one of that user's workers on the flow. It never reaches another user, whose data is
 > kept apart.
 >
@@ -199,7 +199,9 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > ```
 >
 > Use the id `resolveWorker` returns rather than reading the session's state yourself: it is the
-> worker the session was created with, checked on this turn.
+> worker the session was created with, checked on this turn. For skills, give your skills library a
+> `partitionBy` that returns the session's `workerId`. A run it returns nothing for gets an empty
+> catalog it can't write to, so a session with no worker never reads every worker's skills.
 
 ## UPDATE · `packages/workforce/README.md`, `packages/engine/README.md`, `packages/client/README.md`
 

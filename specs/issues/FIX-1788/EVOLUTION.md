@@ -95,8 +95,8 @@ link and promised per-worker privacy on every worker flow. Original review:
 | S1: a create field outside `state`, `useFlow` passing `worker`, `fsdev run --worker` | **Amended** to what P1 shipped | Readonly fields, an optional `createCheck`, `serverOwned`, a listing filter on readonly fields, a schema refusal on flows that bind their sessions, and a dispatcher's child `state`. `fsdev run` takes the worker through `--seed-session`; `useFlow` is unchanged | The one birth function on all five paths, the lost-race behaviour, `serverOwned` for FIX-1791 |
 | The schema refusal at create | **Narrowed**, an engineering call | Refusing on every flow would break the mailbox and the project rooms, which create half-filled sessions on purpose | Follow-up: widen it to every flow once FIX-1792 removes the mailbox |
 | BR-15: caller state for "the link or a server-written field" | **Narrowed** to server-written fields | Naming the worker in the create's state is how a session is created (BR-10) | The 400 naming the field |
-| BR-23, S7 and V6: "every flow-isolated resource on every worker flow", "and on one app flow" | **Narrowed** by [D6](DECISIONS.md#d6) | The risk stays inside one user; B repeats FIX-1789's introspection holes; C is an engine change beyond the epic's six | BR-23 on the built-in worker flows, the skills library's per-run key and `agent`'s drawer (S7). New: BR-23a and a DOCS.md section showing an author how to key data by worker |
-| The goal's `GOAL_CONTROL=caller-link` | **Replaced** by `no-create-check` | The old control read the worker from the create's state instead of a server-only field, and that field no longer exists. Removing the create check is what now lets Bob's create name Alice's worker | `org-scoped-workers`, unchanged. FIX-1797's PLAN (P3.3) still names `caller-link` |
+| BR-23, S7 and V6: "every flow-isolated resource on every worker flow", "and on one app flow" | **Narrowed** by [D6](DECISIONS.md#d6) | The risk stays inside one user; B repeats FIX-1789's introspection holes; C is an engine change beyond the epic's six | BR-23 on the built-in worker flows, the skills library's per-run key, which fails closed for a run with no partition, and `agent`'s drawer, per worker from P4 (S7). New: BR-23a and a DOCS.md section showing an author how to key data by worker |
+| The goal's `GOAL_CONTROL=caller-link` | **Replaced** by `no-create-check` | The old control read the worker from the create's state instead of a server-only field, and that field no longer exists. Removing the create check is what now lets Bob's create name Alice's worker | `org-scoped-workers`, unchanged. Renamed in FIX-1797's PLAN (P3.3) by the same amendment |
 | Pinned names: `worker` on `createSession` and `listSessions`; `workerId` in a generic create field | **Removed** | No link | `workerId`, now a readonly session-state field; `createWorkforceClient` keeps `worker` as its criteria key |
 | DOCS: the `flow.md` session rows and the "Creating sessions" paragraph, both with a `link` input; `useFlow`'s `worker`; `fsdev run --worker` | **Removed**; P1 published the real pages | They described the link | A pointer to the published pages; the React path now selects a session the client found |
 
@@ -114,6 +114,11 @@ changes, which the product owner approved on 2026-10-07:
   stores' own queries. Any other field is refused with 400.
 - **A schema refusal at create, on flows that bind their sessions.** A flow with a readonly field
   or a create check refuses a starting state its schema rejects. Other flows keep today's create.
+
+P4 carries the readonly guard onto one more path: a dispatch that reaches an existing child
+session asking for another value of a readonly field is refused rather than adopted (BR-18b).
+Today that adoption compares identity fields only, which is harmless while each worker has its
+own copy and wrong once workers share one.
 
 Beside them, as planned under item (3): the optional `session.createCheck`, whose only store read
 is one collection row at the creating caller's own scope; `session.serverOwned`; a dispatcher's
