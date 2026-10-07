@@ -1,0 +1,1704 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+:root{--paper:#f0ece1;--surface:#f8f6f0;--sidebar:#e7e2d5;--inspector:#f3f0e7;--card:#fcfbf7;--ink:#1b1a15;--inkrgb:27,26,21;--ink2:#3d3a32;--ink3:#57544a;--ink4:#6e6a5e;--ink5:#c9c4b6;--blue:#2c4f8c;--bluergb:44,79,140;--hl:#e8f551;--onhl:#1b1a15;--red:#a83e28;--redrgb:170,62,40;color-scheme:light}
+:root[data-fs-theme="night"]{--paper:#16150f;--surface:#1c1b15;--sidebar:#121109;--inspector:#1a1913;--card:#24231c;--ink:#ece7da;--inkrgb:236,231,218;--ink2:#cbc5b5;--ink3:#a6a08f;--ink4:#8d8777;--ink5:#57544a;--blue:#8fabe2;--bluergb:143,171,226;--hl:#e8f551;--onhl:#1b1a15;--red:#e27a5f;--redrgb:226,122,95;color-scheme:dark}
+:root[data-fs-theme="evening"]{--paper:#e6dfcb;--surface:#eee8d7;--sidebar:#e2dac4;--inspector:#ebe4d2;--card:#f5f0e2;--ink5:#c3bca9}
+html.fs-xfade,html.fs-xfade *{transition:background-color var(--fs-xd) linear,color var(--fs-xd) linear,border-color var(--fs-xd) linear,fill var(--fs-xd) linear,stroke var(--fs-xd) linear !important}
+html,body{margin:0;height:100%}
+body{background:var(--surface);font-family:'Space Grotesk',system-ui,sans-serif;color:var(--ink)}
+a{color:var(--blue)}a:hover{color:var(--ink)}
+input{font:inherit;color:inherit}
+input::placeholder{color:var(--ink4)}
+</style>
+</helmet>
+
+<div style="height:100vh;min-width:900px;display:grid;grid-template-columns:248px minmax(0,1fr);background:var(--surface);color:var(--ink);overflow:hidden;font-family:'Space Grotesk',system-ui,sans-serif">
+
+<aside data-screen-label="Sidebar" style="background:var(--sidebar);border-right:1px solid rgba(var(--inkrgb),.3);display:flex;flex-direction:column;min-height:0;overflow:hidden">
+  <div style="display:flex;align-items:center;gap:10px;padding:14px 14px 12px;border-bottom:1px solid rgba(var(--inkrgb),.18)">
+    <span onClick="{{ cycleTheme }}" title="{{ mkTitle }}" style="flex:none;cursor:pointer;display:flex;padding:2px 0"><svg viewBox="28 -2 94 88" style="display:block;width:42px;height:auto;overflow:visible"><path d="M31 24 Q75 -4 119 24" fill="none" stroke-width="2" stroke-dasharray="3 4" style="stroke:var(--ink3)"></path><g style="opacity:{{ mkAutoOp }};transition:opacity .32s linear"><path d="M31 45 Q53 7 75 45 Q53 83 31 45 Z" fill="#f8f6f0"></path><path d="M53 45 Q75 7 97 45 Q75 83 53 45 Z" fill="#d9cfb2"></path><path d="M75 45 Q97 7 119 45 Q97 83 75 45 Z" fill="#16150f"></path><g fill="none" stroke-width="4" style="stroke:var(--ink)"><path d="M31 45 Q53 7 75 45 Q53 83 31 45 Z"></path><path d="M53 45 Q75 7 97 45 Q75 83 53 45 Z"></path><path d="M75 45 Q97 7 119 45 Q97 83 75 45 Z"></path></g></g><g style="opacity:{{ mkManOp }};transition:opacity .32s linear"><g fill="none" stroke-width="2.4" stroke-dasharray="14 4 3 4 3 4" style="stroke:var(--ink3)"><path d="M31 45 Q53 7 75 45 Q53 83 31 45 Z"></path><path d="M53 45 Q75 7 97 45 Q75 83 53 45 Z"></path><path d="M75 45 Q97 7 119 45 Q97 83 75 45 Z"></path></g><g style="transform:translateX({{ mkTx }});transition:transform .32s cubic-bezier(.6,0,.2,1)"><path d="M31 45 Q53 7 75 45 Q53 83 31 45 Z" stroke-width="4.4" style="stroke:var(--ink);fill:{{ mkFill }};transition:fill .32s linear"></path></g></g><circle cx="{{ mkDotX }}" cy="{{ mkDotY }}" r="6" style="fill:var(--ink);opacity:{{ mkAutoOp }};transition:opacity .32s linear"></circle></svg></span>
+    <div style="min-width:0;flex:1"><div style="font-weight:700;font-size:14px;letter-spacing:-.01em">Shift Manager</div><div style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">Acme · {{ shiftName }}</div></div>
+  </div>
+
+  <div style="padding:10px 12px 4px;position:relative">
+    <div style="display:flex;align-items:center;gap:8px;border:1px solid rgba(var(--inkrgb),.28);background:var(--paper);padding:0 9px">
+      <input ref="{{ jumpRef }}" value="{{ jumpQ }}" onChange="{{ onJump }}" onKeyDown="{{ onJumpKey }}" placeholder="Jump to…" style="flex:1;min-width:0;border:0;outline:0;background:transparent;padding:7px 0;font:500 12px 'IBM Plex Mono',monospace">
+      <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3);border:1px solid rgba(var(--inkrgb),.3);padding:0 4px">⌘K</span></sc-if>
+    </div>
+    <sc-if value="{{ jumpOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:12px;right:12px;top:calc(100% - 2px);z-index:30;background:var(--card);border:1px solid var(--ink);box-shadow:0 10px 28px rgba(0,0,0,.14);display:flex;flex-direction:column">
+        <sc-for list="{{ jumpHits }}" as="h" hint-placeholder-count="0">
+          <div onClick="{{ h.go }}" style="display:grid;grid-template-columns:50px minmax(0,1fr);gap:8px;align-items:baseline;padding:7px 10px;cursor:pointer;background:{{ h.bg }}" style-hover="background:rgba(var(--bluergb),.08)">
+            <span style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.kind }}</span>
+            <div style="min-width:0;display:flex;flex-direction:column"><span style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.label }}</span><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink4)">{{ h.meta }}</span></div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ jumpNone }}" hint-placeholder-val="{{ false }}"><div style="padding:9px 10px;font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3)">No matches</div></sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="padding:8px 8px 0;display:flex;flex-direction:column;gap:1px">
+    <div onClick="{{ goCos }}" style="display:flex;align-items:center;gap:9px;padding:7px;margin-bottom:5px;font-size:13.5px;font-weight:600;cursor:pointer;border:1px solid {{ nav.cosBd }};background:{{ nav.cosBg }};color:{{ nav.cosFg }}" style-hover="border-color:var(--ink)">
+      <span style="width:18px;height:18px;box-sizing:border-box;border:1px solid {{ nav.cosAvBd }};background:{{ nav.cosAv }};color:{{ nav.cosAvFg }};font:600 7.5px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center;flex:none">SC</span>
+      <span style="flex:1">Shift Coordinator</span>
+      <span style="width:7px;height:7px;background:{{ nav.cosDot }}"></span>
+    </div>
+    <div onClick="{{ goInbox }}" style="display:flex;align-items:center;gap:9px;padding:6px 7px;font-size:13.5px;cursor:pointer;background:{{ nav.inboxBg }};font-weight:{{ nav.inboxFw }}" style-hover="background:rgba(var(--inkrgb),.06)">
+      <svg viewBox="0 0 14 14" style="width:14px;height:14px;flex:none"><path d="M1.5 1.5h11v11h-11z M1.5 8.5h3.2l1 1.8h2.6l1-1.8h3.2" fill="none" style="stroke:var(--ink)" stroke-width="1.2"></path></svg>
+      <span style="flex:1">Inbox</span>
+      <span style="font:600 10.5px 'IBM Plex Mono',monospace;padding:0 5px;background:{{ nav.inboxBadgeBg }};color:{{ nav.inboxBadgeFg }}">{{ nav.inboxCount }}</span>
+    </div>
+    <div onClick="{{ goTasks }}" style="display:flex;align-items:center;gap:9px;padding:6px 7px;font-size:13.5px;cursor:pointer;background:{{ nav.tasksBg }};font-weight:{{ nav.tasksFw }}" style-hover="background:rgba(var(--inkrgb),.06)">
+      <svg viewBox="0 0 14 14" style="width:14px;height:14px;flex:none"><path d="M1.5 3h2 M5.5 3h7 M1.5 7h2 M5.5 7h7 M1.5 11h2 M5.5 11h7" fill="none" style="stroke:var(--ink)" stroke-width="1.2"></path></svg>
+      <span style="flex:1">Tasks</span>
+      <span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--blue)">{{ nav.taskCount }}</span>
+    </div>
+    <div onClick="{{ goSchedule }}" style="display:flex;align-items:center;gap:9px;padding:6px 7px;font-size:13.5px;cursor:pointer;background:{{ nav.scheduleBg }};font-weight:{{ nav.scheduleFw }}" style-hover="background:rgba(var(--inkrgb),.06)">
+      <svg viewBox="0 0 14 14" style="width:14px;height:14px;flex:none"><path d="M1.5 2.5h11v10h-11z M1.5 5.5h11 M4.5 1v3 M9.5 1v3" fill="none" style="stroke:var(--ink)" stroke-width="1.2"></path></svg>
+      <span style="flex:1">Schedule</span>
+      <span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ nav.schedMeta }}</span>
+    </div>
+    <div onClick="{{ goRosterAll }}" style="display:flex;align-items:center;gap:9px;padding:6px 7px;font-size:13.5px;cursor:pointer;background:{{ nav.rosterBg }};font-weight:{{ nav.rosterFw }}" style-hover="background:rgba(var(--inkrgb),.06)">
+      <svg viewBox="0 0 14 14" style="width:14px;height:14px;flex:none"><path d="M1.5 1.5h4.5v4.5h-4.5z M8 1.5h4.5v4.5h-4.5z M1.5 8h4.5v4.5h-4.5z M8 8h4.5v4.5h-4.5z" fill="none" style="stroke:var(--ink)" stroke-width="1.2"></path></svg>
+      <span style="flex:1">Roster</span>
+      <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ nav.rosterMeta }}</span></sc-if>
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:0;overflow-y:auto;padding-bottom:12px">
+    <div style="padding:16px 8px 0;display:flex;flex-direction:column;gap:1px">
+      <div style="padding:0 6px 6px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:var(--ink3)">PROJECTS</div>
+      <sc-for list="{{ projects }}" as="p" hint-placeholder-count="4">
+        <div style="display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;gap:7px;padding:6px;font-size:13.5px;cursor:pointer;background:{{ p.bg }};font-weight:{{ p.fw }}" style-hover="background:rgba(var(--inkrgb),.06)">
+            <span onClick="{{ p.toggle }}" style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3);width:12px;text-align:center">{{ p.caret }}</span>
+            <span onClick="{{ p.open }}" style="flex:1">{{ p.name }}</span>
+            <span style="width:6px;height:6px;background:{{ p.dot }};border:1px solid {{ p.dotBd }};flex:none"></span>
+            <span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3);width:12px;text-align:right">{{ p.meta }}</span>
+          </div>
+          <sc-if value="{{ p.isOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:1px;margin-left:12px;padding-left:5px;border-left:1px solid rgba(var(--inkrgb),.22)">
+              <sc-for list="{{ p.streams }}" as="s" hint-placeholder-count="0">
+                <div onClick="{{ s.go }}" style="display:flex;align-items:center;gap:7px;padding:5px 6px;font-size:13px;cursor:pointer;background:{{ s.bg }};font-weight:{{ s.fw }}" style-hover="background:rgba(var(--inkrgb),.06)"><span style="font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink4)">#</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.name }}</span><span style="width:6px;height:6px;background:{{ s.dot }};border:1px solid {{ s.dotBd }};flex:none"></span><sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3);width:30px;text-align:right">{{ s.prog }}</span></sc-if></div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}">
+    <div style="padding:16px 8px 0;display:flex;flex-direction:column;gap:1px">
+      <div style="display:flex;justify-content:space-between;padding:0 6px 6px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:var(--ink3)"><span>TEAMS</span><span>on shift</span></div>
+      <sc-for list="{{ teams }}" as="t" hint-placeholder-count="3">
+        <div onClick="{{ t.go }}" style="display:flex;align-items:center;gap:9px;padding:6px;font-size:13px;cursor:pointer;background:{{ t.bg }}" style-hover="background:rgba(var(--inkrgb),.06)"><span style="flex:1">{{ t.name }}</span><span style="display:flex;gap:3px"><sc-for list="{{ t.members }}" as="m" hint-placeholder-count="3"><span title="{{ m.title }}" style="width:7px;height:7px;box-sizing:border-box;background:{{ m.mbg }};border:1px solid {{ m.mbd }}"></span></sc-for></span><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3);width:26px;text-align:right">{{ t.meta }}</span></div>
+      </sc-for>
+    </div>
+    </sc-if>
+  </div>
+
+  <div style="border-top:1px solid rgba(var(--inkrgb),.18);padding:10px 12px 12px;display:flex;flex-direction:column;gap:9px">
+    <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:center;gap:12px;font:500 11px 'IBM Plex Mono',monospace;color:var(--ink2)">
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;background:var(--blue)"></span>{{ shiftN }} on shift</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;box-sizing:border-box;border:1px solid var(--blue);background:linear-gradient(135deg,var(--blue) 50%,transparent 50%)"></span>{{ callN }} on call</span>
+      <span style="margin-left:auto;width:22px;height:22px;box-sizing:border-box;border:1px solid var(--ink);display:flex;align-items:center;justify-content:center;font-size:10px">MK</span>
+    </div>
+    </sc-if>
+    <div onClick="{{ cycleTheme }}" title="{{ mkTitle }}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--ink);padding:5px 8px;font:500 11px 'IBM Plex Mono',monospace;cursor:pointer" style-hover="background:rgba(var(--inkrgb),.06)"><span>{{ themeLabel }}</span><span style="color:var(--ink3)">{{ themeNext }}</span></div>
+  </div>
+</aside>
+
+<sc-if value="{{ isCos }}" hint-placeholder-val="{{ true }}">
+<div data-screen-label="Shift Coordinator" style="display:grid;grid-template-columns:{{ railCols }};min-width:0;min-height:0;height:100vh;overflow:hidden">
+  <main style="display:flex;flex-direction:column;min-width:0;min-height:0">
+    <div ref="{{ feedRef }}" style="flex:1;min-height:0;overflow-y:auto;padding:36px 32px 12px">
+      <div style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:24px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="width:40px;height:40px;background:var(--ink);color:var(--paper);font:600 13px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center;flex:none">SC</span>
+          <div style="min-width:0"><div style="font-size:22px;font-weight:700;letter-spacing:-.03em">Shift Coordinator</div><div style="font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ cos.sub }}</div></div>
+        </div>
+        <sc-for list="{{ cos.msgs }}" as="m" hint-placeholder-count="1">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}">
+              <div style="align-self:flex-end;max-width:80%;background:var(--ink);color:var(--paper);padding:10px 14px;font-size:15px;line-height:1.5;white-space:pre-wrap">{{ m.text }}</div>
+            </sc-if>
+            <sc-if value="{{ m.isCos }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;gap:8px;align-items:baseline;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)"><span>SHIFT COORDINATOR</span><span style="letter-spacing:0;color:var(--ink4)">{{ m.time }}</span></div>
+              <div style="font-size:16px;line-height:1.55;color:var(--ink);white-space:pre-wrap;text-wrap:pretty">{{ m.text }}</div>
+              <sc-if value="{{ m.hasItems }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;border:1px solid var(--ink);background:var(--card)">
+                  <sc-for list="{{ m.items }}" as="it" hint-placeholder-count="3">
+                    <div style="display:flex;flex-direction:column;gap:9px;padding:12px 14px;border-top:{{ it.bt }}">
+                      <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+                        <span style="background:{{ it.tagBg }};color:{{ it.tagFg }};border:1px solid var(--ink);font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;padding:1px 5px;flex:none">{{ it.kind }}</span>
+                        <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:2px"><span onClick="{{ it.open }}" style="font-size:14.5px;font-weight:600;line-height:1.3;cursor:pointer" style-hover="color:var(--blue)">{{ it.q }}</span><span style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ it.meta }}</span></div>
+                      </div>
+                      <sc-if value="{{ it.pending }}" hint-placeholder-val="{{ true }}">
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;padding-left:2px;font:500 12px 'IBM Plex Mono',monospace"><sc-for list="{{ it.acts }}" as="a" hint-placeholder-count="2"><span onClick="{{ a.pick }}" style="border:1px solid {{ a.bd }};background:{{ a.bg }};color:{{ a.fg }};padding:6px 11px;cursor:pointer" style-hover="border-color:var(--blue)">{{ a.label }}</span></sc-for></div>
+                      </sc-if>
+                      <sc-if value="{{ it.done }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font:500 12px 'IBM Plex Mono',monospace;color:var(--ink2)"><span>✓ {{ it.doneText }}</span><span onClick="{{ it.undo }}" style="color:var(--blue);cursor:pointer">undo</span></div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ m.hasActions }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <sc-for list="{{ m.actions }}" as="a" hint-placeholder-count="0">
+                    <div onClick="{{ a.go }}" style="display:flex;align-items:center;gap:10px;padding:7px 10px;border:1px solid rgba(var(--inkrgb),.25);background:var(--card);cursor:pointer;font:500 12px 'IBM Plex Mono',monospace" style-hover="border-color:var(--ink)">
+                      <span style="font-size:9.5px;letter-spacing:.12em;border:1px solid {{ a.bd }};color:{{ a.c }};padding:0 4px;flex:none">{{ a.k }}</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.label }}</span><span style="color:var(--blue);flex:none">open →</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </sc-if>
+          </div>
+        </sc-for>
+        <sc-if value="{{ cos.thinking }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3)"><span style="width:7px;height:7px;background:var(--blue)"></span>Working out who should take this…</div>
+        </sc-if>
+      </div>
+    </div>
+    <div style="padding:10px 32px 22px">
+      <div style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;font:500 11.5px 'IBM Plex Mono',monospace"><sc-for list="{{ cos.suggest }}" as="x" hint-placeholder-count="3"><span onClick="{{ x.pick }}" style="border:1px dashed rgba(var(--inkrgb),.45);color:var(--ink2);padding:5px 9px;cursor:pointer" style-hover="border-color:var(--ink);color:var(--ink)">{{ x.label }}</span></sc-for></div>
+        <div style="border:1.5px solid var(--ink);background:var(--card);display:flex;align-items:center">
+          <input ref="{{ inputRef }}" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onComposerKey }}" placeholder="{{ composerPh }}" style="flex:1;min-width:0;border:0;outline:0;background:transparent;padding:16px;font-size:16px">
+          <span onClick="{{ send }}" style="margin:8px;background:var(--ink);color:var(--paper);padding:8px 12px;font:500 12px 'IBM Plex Mono',monospace;cursor:pointer;flex:none" style-hover="background:var(--blue)">⏎</span>
+        </div>
+      </div>
+    </div>
+  </main>
+  <sc-if value="{{ showRail }}" hint-placeholder-val="{{ true }}">
+  <aside style="border-left:1px solid rgba(var(--inkrgb),.3);background:var(--inspector);display:flex;flex-direction:column;min-height:0;overflow-y:auto">
+    <div style="padding:14px 10px 10px;border-bottom:1px solid rgba(var(--inkrgb),.18)">
+      <div style="display:flex;justify-content:space-between;padding:0 8px 6px;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)"><span>STREAMS</span><span>LIVE · NEEDS YOU</span></div>
+      <sc-for list="{{ cos.streams }}" as="s" hint-placeholder-count="6">
+        <div onClick="{{ s.go }}" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer" style-hover="background:rgba(var(--inkrgb),.05)">
+          <span style="font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink4)">#</span>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.name }}</span><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink4)">{{ s.proj }}</span></div>
+          <span style="display:flex;align-items:center;gap:4px;font:500 11px 'IBM Plex Mono',monospace;color:var(--blue);width:26px"><span style="width:7px;height:7px;background:var(--blue)"></span>{{ s.live }}</span>
+          <span style="display:flex;align-items:center;gap:4px;font:500 11px 'IBM Plex Mono',monospace;width:26px;opacity:{{ s.nop }}"><span style="width:7px;height:7px;box-sizing:border-box;background:var(--hl);border:1px solid var(--ink)"></span>{{ s.needs }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="padding:14px 10px">
+      <div style="padding:0 8px 6px;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)">ON CALL · {{ cos.oncallN }}</div>
+      <sc-for list="{{ cos.oncall }}" as="w" hint-placeholder-count="3">
+        <div style="display:flex;align-items:center;gap:9px;padding:6px 8px">
+          <span style="width:22px;height:22px;box-sizing:border-box;border:1px solid var(--ink);background:{{ w.avBg }};color:{{ w.avFg }};font:600 9px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center;flex:none">{{ w.init }}</span>
+          <div style="min-width:0;display:flex;flex-direction:column"><span style="font-size:13px;font-weight:600">{{ w.name }}</span><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ w.what }}</span></div>
+        </div>
+      </sc-for>
+    </div>
+  </aside>
+  </sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isStream }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Workstream" style="display:grid;grid-template-columns:{{ railCols }};min-width:0;min-height:0;height:100vh;overflow:hidden">
+  <main style="display:flex;flex-direction:column;min-width:0;min-height:0">
+    <div style="padding:14px 22px 0;border-bottom:1px solid rgba(var(--inkrgb),.2)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:baseline;gap:8px"><span onClick="{{ st.goProj }}" style="font:500 12px 'IBM Plex Mono',monospace;color:var(--ink3);cursor:pointer" style-hover="color:var(--ink)">{{ st.proj }} /</span><span style="font:500 15px 'IBM Plex Mono',monospace;color:var(--ink3)">#</span><span style="font-size:18px;font-weight:700;letter-spacing:-.02em">{{ st.name }}</span><span style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;border:1px solid rgba(var(--inkrgb),.4);padding:1px 5px;color:var(--ink2)">WORKSTREAM</span></div>
+          <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><div style="font-size:13px;color:var(--ink3);margin-top:3px">{{ st.desc }}</div></sc-if>
+        </div>
+        <span onClick="{{ plusTask }}" style="background:var(--ink);color:var(--paper);padding:7px 12px;font:500 12px 'IBM Plex Mono',monospace;cursor:pointer;flex:none" style-hover="background:var(--blue)">+ Task</span>
+      </div>
+      <div style="display:flex;gap:22px;margin-top:12px;font:500 12px 'IBM Plex Mono',monospace">
+        <span style="padding:8px 0;border-bottom:2px solid var(--blue);color:var(--ink)">Stream</span>
+        <span onClick="{{ st.goProj }}" style="padding:8px 0;color:var(--ink3);cursor:pointer" style-hover="color:var(--ink)">Board <span style="color:var(--ink4)">{{ st.count }}</span></span>
+      </div>
+    </div>
+
+    <div ref="{{ feedRef }}" style="flex:1;min-height:0;overflow-y:auto;padding:8px 14px;display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 8px 4px;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:var(--ink4)"><span>TODAY</span><span style="flex:1;height:1px;background:rgba(var(--inkrgb),.14)"></span></div>
+      <sc-for list="{{ st.feed }}" as="m" hint-placeholder-count="4">
+        <div style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;padding:10px 8px">
+          <span style="width:26px;height:26px;box-sizing:border-box;border:1px solid var(--ink);background:{{ m.avBg }};color:{{ m.avFg }};font:600 10px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center">{{ m.init }}</span>
+          <div style="min-width:0">
+            <div style="display:flex;align-items:baseline;gap:8px"><span style="font-weight:600;font-size:13.5px">{{ m.name }}</span><span style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink4)">{{ m.meta }}</span><sc-if value="{{ m.needsTag }}" hint-placeholder-val="{{ false }}"><span style="background:var(--hl);font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;padding:2px 6px;color:var(--onhl)">NEEDS YOU</span></sc-if></div>
+
+            <sc-if value="{{ m.isText }}" hint-placeholder-val="{{ true }}">
+              <div style="font-size:14px;line-height:1.55;color:var(--ink2);margin-top:2px;text-wrap:pretty">{{ m.text }}</div>
+              <sc-if value="{{ m.hasChips }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;font:500 11px 'IBM Plex Mono',monospace"><sc-for list="{{ m.chips }}" as="c" hint-placeholder-count="0"><span onClick="{{ c.go }}" style="border:1px solid rgba(var(--inkrgb),.3);padding:3px 7px;cursor:pointer" style-hover="border-color:var(--ink)">{{ c.x }}</span></sc-for><sc-if value="{{ m.hasMore }}" hint-placeholder-val="{{ false }}"><span onClick="{{ st.goProj }}" style="border:1px dashed rgba(var(--inkrgb),.4);padding:3px 7px;color:var(--ink3);cursor:pointer">{{ m.more }}</span></sc-if></div>
+              </sc-if>
+            </sc-if>
+
+            <sc-if value="{{ m.isHuman }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:14px;line-height:1.55;color:var(--ink2);margin-top:2px;white-space:pre-wrap"><sc-for list="{{ m.segs }}" as="s" hint-placeholder-count="1"><span style="color:{{ s.c }};font-weight:{{ s.fw }}">{{ s.p }}</span></sc-for></div>
+              <sc-if value="{{ m.hasReceipt }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:6px;margin-top:5px;font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)"><span onClick="{{ m.goTo }}" style="cursor:pointer" style-hover="color:var(--blue)">{{ m.receipt }}</span><span style="color:var(--ink4)">·</span><span style="color:{{ m.ackC }}">{{ m.ack }}</span></div>
+              </sc-if>
+            </sc-if>
+
+            <sc-if value="{{ m.isReview }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:14px;line-height:1.55;color:var(--ink2);margin-top:2px">{{ m.text }}</div>
+              <div onClick="{{ m.goTo }}" style="margin-top:8px;border:1px solid rgba(var(--inkrgb),.28);background:var(--card);max-width:580px;cursor:pointer" style-hover="border-color:var(--ink)">
+                <div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid rgba(var(--inkrgb),.14);font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)"><span>{{ m.rlabel }}</span><span>{{ m.dur }}</span></div>
+                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));font-family:'IBM Plex Mono',monospace">
+                  <sc-for list="{{ m.stats }}" as="s" hint-placeholder-count="3"><div style="padding:8px 10px;border-right:{{ s.br }}"><div style="font-size:10.5px;color:var(--ink4)">{{ s.k }}</div><div style="font-size:13.5px;font-weight:600">{{ s.v }}</div></div></sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ m.isLive }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:6px;border:1px solid {{ m.card.bd }};background:var(--card);max-width:580px">
+                <div style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-bottom:1px solid rgba(var(--inkrgb),.14);background:{{ m.card.headBg }}">
+                  <span style="width:8px;height:8px;box-sizing:border-box;background:{{ m.card.dot }};border:1px solid {{ m.card.dotBd }};flex:none"></span>
+                  <span style="font:600 12px 'IBM Plex Mono',monospace">{{ m.card.id }}</span>
+                  <span style="font-size:13.5px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.card.title }}</span>
+                  <span style="font:500 11px 'IBM Plex Mono',monospace;color:{{ m.card.sc }};flex:none">{{ m.card.status }}</span>
+                </div>
+                <div style="padding:6px 11px;display:flex;flex-direction:column">
+                  <sc-for list="{{ m.card.tail }}" as="l" hint-placeholder-count="3">
+                    <div style="display:grid;grid-template-columns:12px 56px minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 0;font:500 12px 'IBM Plex Mono',monospace">
+                      <span style="width:7px;height:7px;background:{{ l.dot }}"></span>
+                      <span style="font-weight:600;color:{{ l.c }}">{{ l.tool }}</span>
+                      <span style="color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.target }}</span>
+                      <span style="color:{{ l.rc }}">{{ l.res }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:14px;padding:7px 11px;border-top:1px solid rgba(var(--inkrgb),.12);font:500 11.5px 'IBM Plex Mono',monospace"><span onClick="{{ m.card.open }}" style="color:var(--blue);cursor:pointer" style-hover="color:var(--ink)">Open session →</span><span onClick="{{ m.card.message }}" style="color:var(--ink2);cursor:pointer" style-hover="color:var(--ink)">Message {{ m.card.wname }}</span><span style="margin-left:auto;color:var(--ink3)">{{ m.card.cost }}</span></div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ m.isAsk }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:6px;border:1px solid var(--ink);background:var(--card);max-width:580px">
+                <div style="padding:11px 12px 10px">
+                  <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><span style="font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;border:1px solid rgba(var(--inkrgb),.5);padding:0 4px">{{ m.card.kind }}</span><span onClick="{{ m.card.openTask }}" style="font:600 12px 'IBM Plex Mono',monospace;color:var(--ink3);cursor:pointer" style-hover="color:var(--blue)">{{ m.card.id }}</span><span style="font-size:14px;font-weight:600">{{ m.card.q }}</span></div>
+                  <div style="font-size:13px;line-height:1.5;color:var(--ink2);margin-top:4px;text-wrap:pretty">{{ m.card.body }}</div>
+                </div>
+                <sc-if value="{{ m.card.codeOpen }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin:0 12px 12px;border:1px solid rgba(var(--inkrgb),.22);background:var(--surface);padding:8px 10px;font:500 11.5px/1.7 'IBM Plex Mono',monospace"><sc-for list="{{ m.card.code }}" as="c" hint-placeholder-count="0"><div style="white-space:pre-wrap">{{ c.l }}</div></sc-for></div>
+                </sc-if>
+                <sc-if value="{{ m.card.showApprove }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:8px;padding:0 12px 12px;align-items:center;font:500 12px 'IBM Plex Mono',monospace"><span onClick="{{ m.card.approve }}" style="background:var(--ink);color:var(--paper);padding:7px 12px;cursor:pointer" style-hover="background:var(--blue)">{{ m.card.approveLabel }}</span><sc-if value="{{ m.card.hasCode }}" hint-placeholder-val="{{ false }}"><span onClick="{{ m.card.toggleCode }}" style="border:1px solid rgba(var(--inkrgb),.45);padding:6px 12px;cursor:pointer" style-hover="border-color:var(--ink)">{{ m.card.codeLabel }}</span></sc-if><span onClick="{{ m.card.deny }}" style="padding:7px 4px;color:var(--ink3);cursor:pointer" style-hover="color:var(--red)">Deny</span><span onClick="{{ m.card.openInbox }}" style="padding:7px 4px;color:var(--ink3);margin-left:auto;cursor:pointer" style-hover="color:var(--blue)">in inbox ↗</span></div>
+                </sc-if>
+                <sc-if value="{{ m.card.showOptions }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:8px;padding:0 12px 12px;flex-wrap:wrap;align-items:center;font:500 12px 'IBM Plex Mono',monospace"><sc-for list="{{ m.card.options }}" as="o" hint-placeholder-count="0"><span onClick="{{ o.pick }}" style="border:1px solid var(--ink);background:{{ o.bg }};color:{{ o.fg }};padding:7px 12px;cursor:pointer" style-hover="border-color:var(--blue)">{{ o.label }}</span></sc-for><span onClick="{{ m.card.openInbox }}" style="padding:7px 4px;color:var(--ink3);margin-left:auto;cursor:pointer" style-hover="color:var(--blue)">in inbox ↗</span></div>
+                </sc-if>
+                <sc-if value="{{ m.card.done }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-top:1px solid rgba(var(--inkrgb),.14);font:500 12px 'IBM Plex Mono',monospace;color:var(--ink2)"><span>✓ {{ m.card.doneText }}</span><span onClick="{{ m.card.undo }}" style="color:var(--blue);cursor:pointer">undo</span></div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="padding:10px 22px 16px">
+      <div style="border:1px solid var(--ink);background:var(--card)">
+        <input ref="{{ inputRef }}" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onComposerKey }}" placeholder="{{ composerPh }}" style="display:block;width:100%;box-sizing:border-box;border:0;outline:0;background:transparent;padding:11px 12px;font-size:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px 7px 12px;border-top:1px solid rgba(var(--inkrgb),.12);font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)"><div style="display:flex;gap:14px"><sc-for list="{{ st.mentions }}" as="x" hint-placeholder-count="3"><span onClick="{{ x.pick }}" style="cursor:pointer" style-hover="color:var(--blue)">{{ x.label }}</span></sc-for><span onClick="{{ plusTask }}" style="cursor:pointer" style-hover="color:var(--blue)">/task</span></div><span onClick="{{ send }}" style="background:var(--ink);color:var(--paper);padding:4px 9px;cursor:pointer" style-hover="background:var(--blue)">⏎</span></div>
+      </div>
+    </div>
+  </main>
+
+  <sc-if value="{{ showRail }}" hint-placeholder-val="{{ true }}">
+  <aside style="border-left:1px solid rgba(var(--inkrgb),.3);background:var(--inspector);display:flex;flex-direction:column;min-height:0;overflow-y:auto">
+    <div style="padding:14px 18px;border-bottom:1px solid rgba(var(--inkrgb),.18)">
+      <div style="display:flex;justify-content:space-between;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)"><span>EPIC PROGRESS</span><span>{{ st.prog }} DONE</span></div>
+      <div style="display:flex;gap:3px;margin-top:9px"><sc-for list="{{ st.segs }}" as="g" hint-placeholder-count="10"><span style="flex:1;height:6px;background:{{ g.bg }};outline:{{ g.ol }};outline-offset:-1px"></span></sc-for></div>
+    </div>
+    <div style="padding:12px 10px 10px;border-bottom:1px solid rgba(var(--inkrgb),.18)">
+      <div style="display:flex;justify-content:space-between;padding:0 8px 6px;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)"><span>WORKERS ON THIS STREAM</span><span>{{ st.onShift }}</span></div>
+      <sc-for list="{{ st.team }}" as="w" hint-placeholder-count="5">
+        <div onClick="{{ w.pick }}" style="display:flex;align-items:center;gap:10px;padding:6px 8px;cursor:pointer;background:{{ w.bg }};outline:{{ w.ol }};outline-offset:-1px" style-hover="background:rgba(var(--inkrgb),.05)">
+          <span style="width:24px;height:24px;box-sizing:border-box;border:1px solid var(--ink);background:{{ w.avBg }};color:{{ w.avFg }};font:600 10px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center;flex:none">{{ w.init }}</span>
+          <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:1px">
+            <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-size:13px;font-weight:600">{{ w.name }}</span><span style="width:7px;height:7px;box-sizing:border-box;background:{{ w.mbg }};border:1px solid {{ w.mbd }};flex:none"></span><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:{{ w.sc }};white-space:nowrap">{{ w.slabel }}</span></div>
+            <div style="display:flex;gap:6px;font:500 11px 'IBM Plex Mono',monospace;white-space:nowrap;overflow:hidden"><span style="background:{{ w.tbg }};color:{{ w.tc }};padding:0 3px;margin-left:-3px;overflow:hidden;text-overflow:ellipsis">{{ w.txt }}</span><span style="color:var(--ink4)">{{ w.else }}</span></div>
+          </div>
+          <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><span style="font:500 10px 'IBM Plex Mono',monospace;color:var(--ink3);border:1px solid rgba(var(--inkrgb),.3);padding:0 4px;flex:none">{{ w.harness }}</span></sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <div style="padding:12px 10px 16px;display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;justify-content:space-between;padding:0 8px;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)"><span>TASKS</span><span onClick="{{ st.clearFilter }}" style="color:{{ st.filterColor }};cursor:pointer">{{ st.filterLabel }}</span></div>
+      <sc-for list="{{ st.groups }}" as="grp" hint-placeholder-count="3">
+        <div style="display:flex;flex-direction:column;gap:1px">
+          <div style="display:flex;align-items:center;gap:7px;padding:0 8px 3px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)"><span style="width:7px;height:7px;box-sizing:border-box;background:{{ grp.nb }};border:1px solid {{ grp.nbd }};border-style:{{ grp.nbs }}"></span><span>{{ grp.name }}</span><span style="color:var(--ink4)">{{ grp.count }}</span></div>
+          <sc-for list="{{ grp.rows }}" as="k" hint-placeholder-count="2">
+            <div onClick="{{ k.pick }}" style="display:grid;grid-template-columns:54px minmax(0,1fr) 22px;gap:8px;align-items:center;padding:6px 8px;cursor:pointer;opacity:{{ k.op }}" style-hover="background:rgba(var(--inkrgb),.05)">
+              <span style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ k.id }}</span>
+              <div style="min-width:0;display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.title }}</span><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:{{ k.sc }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.step }}</span></div>
+              <span style="width:20px;height:20px;box-sizing:border-box;border:1px solid var(--ink);background:{{ k.avBg }};color:{{ k.avFg }};font:600 8.5px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center">{{ k.init }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+      <div onClick="{{ toggleDone }}" style="display:flex;align-items:center;gap:7px;padding:6px 8px;border-top:1px solid rgba(var(--inkrgb),.14);font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3);cursor:pointer"><span style="width:7px;height:7px;background:var(--ink)"></span><span>DONE</span><span style="color:var(--ink4)">{{ st.doneCount }}</span><span style="margin-left:auto;letter-spacing:0;font-size:11px">{{ doneLabel }}</span></div>
+      <sc-if value="{{ showDone }}" hint-placeholder-val="{{ false }}">
+        <sc-for list="{{ st.doneRows }}" as="k" hint-placeholder-count="0">
+          <div onClick="{{ k.pick }}" style="display:grid;grid-template-columns:54px minmax(0,1fr);gap:8px;padding:3px 8px;cursor:pointer;font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)" style-hover="color:var(--ink)"><span>{{ k.id }}</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.title }}</span></div>
+        </sc-for>
+      </sc-if>
+    </div>
+  </aside>
+  </sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isTask }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Task session" style="display:grid;grid-template-columns:{{ railCols }};min-width:0;min-height:0;height:100vh;overflow:hidden">
+  <main style="display:flex;flex-direction:column;min-width:0;min-height:0">
+    <div style="padding:14px 22px 14px;border-bottom:1px solid rgba(var(--inkrgb),.2);display:flex;align-items:center;justify-content:space-between;gap:12px 16px;flex-wrap:wrap">
+      <div style="min-width:0;flex:1 1 320px">
+        <div style="font:500 12px 'IBM Plex Mono',monospace;color:var(--ink3);display:flex;gap:6px"><span onClick="{{ ts.goProj }}" style="cursor:pointer" style-hover="color:var(--ink)">{{ ts.proj }}</span><span>/</span><span onClick="{{ ts.goWs }}" style="cursor:pointer" style-hover="color:var(--ink)">#{{ ts.ws }}</span><span>/</span><span style="color:var(--ink)">{{ ts.id }}</span></div>
+        <div style="font-size:18px;font-weight:700;letter-spacing:-.02em;margin-top:3px">{{ ts.title }}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:5px;font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink2);flex-wrap:wrap"><span style="width:8px;height:8px;box-sizing:border-box;background:{{ ts.nb }};border:1.2px solid {{ ts.nbd }};border-style:{{ ts.nbs }};flex:none"></span><span style="color:{{ ts.sc }}">{{ ts.statusTxt }}</span><span style="color:var(--ink4)">·</span><span>{{ ts.wname }}</span><sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><span style="color:var(--ink4)">·</span><span style="border:1px solid rgba(var(--inkrgb),.35);padding:0 5px">{{ ts.harness }}</span><span style="color:var(--ink4)">·</span><span>⎇ {{ ts.branch }}</span></sc-if></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex:none">
+        <sc-if value="{{ ts.canPause }}" hint-placeholder-val="{{ true }}"><span onClick="{{ ts.togglePause }}" style="border:1px solid rgba(var(--inkrgb),.45);padding:6px 11px;font:500 12px 'IBM Plex Mono',monospace;cursor:pointer;white-space:nowrap" style-hover="border-color:var(--ink)">{{ ts.pauseLabel }}</span></sc-if>
+        <span onClick="{{ toggleHandoff }}" style="border:1px solid {{ ts.hoBd }};padding:6px 11px;font:500 12px 'IBM Plex Mono',monospace;cursor:pointer;white-space:nowrap" style-hover="border-color:var(--ink)">Hand off</span>
+        <span onClick="{{ ts.goWs }}" style="background:var(--ink);color:var(--paper);padding:7px 12px;font:500 12px 'IBM Plex Mono',monospace;cursor:pointer;white-space:nowrap" style-hover="background:var(--blue)">Open #{{ ts.ws }}</span>
+      </div>
+    </div>
+
+    <div ref="{{ feedRef }}" style="flex:1;min-height:0;overflow-y:auto;padding:14px 30px 8px;display:flex;flex-direction:column;gap:14px">
+      <sc-for list="{{ ts.blocks }}" as="b" hint-placeholder-count="4">
+        <div style="max-width:680px;display:flex;flex-direction:column">
+          <sc-if value="{{ b.isBrief }}" hint-placeholder-val="{{ true }}">
+            <div style="border:1px solid rgba(var(--inkrgb),.28);background:var(--card)">
+              <div style="display:flex;justify-content:space-between;padding:6px 11px;border-bottom:1px solid rgba(var(--inkrgb),.14);font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:var(--ink3)"><span>{{ b.label }}</span><span>{{ b.crit }}</span></div>
+              <div style="padding:9px 11px;font-size:13.5px;line-height:1.55;color:var(--ink2)">{{ b.text }}</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ b.isSay }}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;line-height:1.6;color:var(--ink);text-wrap:pretty">{{ b.text }}</div></sc-if>
+          <sc-if value="{{ b.isTools }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:6px;font:500 12px 'IBM Plex Mono',monospace">
+              <sc-for list="{{ b.rows }}" as="l" hint-placeholder-count="2">
+                <div style="display:grid;grid-template-columns:12px 56px minmax(0,1fr) auto;gap:8px;align-items:center"><span style="width:7px;height:7px;background:{{ l.dot }}"></span><span style="font-weight:600;color:{{ l.c }}">{{ l.tool }}</span><span style="color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.target }}</span><span style="color:{{ l.rc }}">{{ l.res }}</span></div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ b.isDiff }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-left:20px;border:1px solid rgba(var(--inkrgb),.22);background:var(--card);font:500 11.5px/1.65 'IBM Plex Mono',monospace;overflow:hidden">
+              <div style="padding:0 10px;color:var(--ink4)">{{ b.head }}</div>
+              <sc-for list="{{ b.lines }}" as="d" hint-placeholder-count="3"><div style="padding:0 10px;background:{{ d.bg }};color:{{ d.c }};white-space:pre">{{ d.l }}</div></sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ b.isMsg }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;border-left:2px solid var(--blue);padding:4px 0 4px 10px">
+              <span style="width:22px;height:22px;box-sizing:border-box;border:1px solid var(--ink);font:600 9px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center">{{ b.init }}</span>
+              <div><div style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ b.label }}</div><div style="font-size:14px;line-height:1.55;margin-top:2px">{{ b.text }}</div></div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ b.isNote }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3)"><span style="width:7px;height:7px;box-sizing:border-box;background:{{ b.nb }};border:1px solid {{ b.nbd }};border-style:{{ b.nbs }}"></span><span>{{ b.text }}</span></div></sc-if>
+          <sc-if value="{{ b.isAsk }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid var(--ink);background:var(--card)">
+              <div style="padding:11px 12px 10px">
+                <div style="display:flex;gap:8px;align-items:baseline"><span style="background:var(--hl);color:var(--onhl);font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;padding:1px 5px">{{ b.card.kind }}</span><span style="font-size:14px;font-weight:600">{{ b.card.q }}</span></div>
+                <div style="font-size:13px;line-height:1.5;color:var(--ink2);margin-top:4px">{{ b.card.body }}</div>
+              </div>
+              <sc-if value="{{ b.card.codeOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="margin:0 12px 12px;border:1px solid rgba(var(--inkrgb),.22);background:var(--surface);padding:8px 10px;font:500 11.5px/1.7 'IBM Plex Mono',monospace"><sc-for list="{{ b.card.code }}" as="c" hint-placeholder-count="0"><div style="white-space:pre-wrap">{{ c.l }}</div></sc-for></div>
+              </sc-if>
+              <sc-if value="{{ b.card.showApprove }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:8px;padding:0 12px 12px;align-items:center;font:500 12px 'IBM Plex Mono',monospace"><span onClick="{{ b.card.approve }}" style="background:var(--ink);color:var(--paper);padding:7px 12px;cursor:pointer" style-hover="background:var(--blue)">{{ b.card.approveLabel }}</span><sc-if value="{{ b.card.hasCode }}" hint-placeholder-val="{{ false }}"><span onClick="{{ b.card.toggleCode }}" style="border:1px solid rgba(var(--inkrgb),.45);padding:6px 12px;cursor:pointer" style-hover="border-color:var(--ink)">{{ b.card.codeLabel }}</span></sc-if><span onClick="{{ b.card.deny }}" style="padding:7px 4px;color:var(--ink3);cursor:pointer" style-hover="color:var(--red)">Deny</span></div>
+              </sc-if>
+              <sc-if value="{{ b.card.showOptions }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:8px;padding:0 12px 12px;flex-wrap:wrap;font:500 12px 'IBM Plex Mono',monospace"><sc-for list="{{ b.card.options }}" as="o" hint-placeholder-count="0"><span onClick="{{ o.pick }}" style="border:1px solid var(--ink);background:{{ o.bg }};color:{{ o.fg }};padding:7px 12px;cursor:pointer" style-hover="border-color:var(--blue)">{{ o.label }}</span></sc-for></div>
+              </sc-if>
+              <sc-if value="{{ b.card.done }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-top:1px solid rgba(var(--inkrgb),.14);font:500 12px 'IBM Plex Mono',monospace;color:var(--ink2)"><span>✓ {{ b.card.doneText }}</span><span onClick="{{ b.card.undo }}" style="color:var(--blue);cursor:pointer">undo</span></div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="padding:12px 22px 16px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)"><span style="width:7px;height:7px;box-sizing:border-box;background:{{ ts.actDot }};border:1px solid {{ ts.actBd }}"></span><span>{{ ts.activity }}</span><span style="margin-left:auto">{{ ts.escHint }}</span></div>
+      <div style="border:1px solid var(--ink);background:var(--card)">
+        <input ref="{{ inputRef }}" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onComposerKey }}" placeholder="{{ composerPh }}" style="display:block;width:100%;box-sizing:border-box;border:0;outline:0;background:transparent;padding:11px 12px;font-size:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px 7px 12px;border-top:1px solid rgba(var(--inkrgb),.12);font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)"><div style="display:flex;gap:14px"><sc-if value="{{ ts.canPause }}" hint-placeholder-val="{{ true }}"><span onClick="{{ ts.togglePause }}" style="cursor:pointer" style-hover="color:var(--blue)">/interrupt</span></sc-if><span onClick="{{ toggleHandoff }}" style="cursor:pointer" style-hover="color:var(--blue)">/handoff</span></div><div style="display:flex;align-items:center;gap:10px"><span onClick="{{ toggleAlso }}" style="display:flex;align-items:center;gap:6px;cursor:pointer"><span style="width:9px;height:9px;box-sizing:border-box;border:1px solid var(--ink);background:{{ alsoBox }}"></span>also post to #{{ ts.ws }}</span><span onClick="{{ send }}" style="background:var(--ink);color:var(--paper);padding:4px 9px;cursor:pointer" style-hover="background:var(--blue)">⏎</span></div></div>
+      </div>
+    </div>
+  </main>
+
+  <sc-if value="{{ showRail }}" hint-placeholder-val="{{ true }}">
+  <aside style="border-left:1px solid rgba(var(--inkrgb),.3);background:var(--inspector);display:flex;flex-direction:column;min-height:0;overflow-y:auto">
+    <div style="padding:14px 18px 12px;border-bottom:1px solid rgba(var(--inkrgb),.18)">
+      <div style="display:flex;justify-content:space-between;align-items:center;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)"><span>TASK {{ ts.id }}</span><span onClick="{{ ts.goWs }}" style="cursor:pointer" style-hover="color:var(--ink)">✕</span></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+        <span style="width:28px;height:28px;box-sizing:border-box;border:1px solid var(--ink);background:{{ ts.avBg }};color:{{ ts.avFg }};font:600 10.5px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center;flex:none">{{ ts.init }}</span>
+        <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">{{ ts.wname }} <span style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink4)">{{ ts.focus }}</span></div><div style="display:flex;align-items:center;gap:6px;font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)"><span>{{ ts.load }}</span><span style="color:{{ ts.wsc }}">· {{ ts.wslabel }}</span></div><div style="font-size:12.5px;line-height:1.45;color:var(--ink2);margin-top:4px;text-wrap:pretty">{{ ts.rules }}</div></div>
+        <span onClick="{{ toggleHandoff }}" style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3);border:1px solid rgba(var(--inkrgb),.3);padding:3px 6px;cursor:pointer" style-hover="border-color:var(--ink)">reassign</span>
+      </div>
+      <sc-if value="{{ handoff }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:10px;border:1px solid var(--ink);background:var(--card);display:flex;flex-direction:column">
+          <div style="padding:6px 10px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3);border-bottom:1px solid rgba(var(--inkrgb),.14)">HAND OFF TO · {{ ts.team }}</div>
+          <sc-for list="{{ ts.cands }}" as="c" hint-placeholder-count="0">
+            <div onClick="{{ c.pick }}" style="display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;opacity:{{ c.op }}" style-hover="background:rgba(var(--bluergb),.08)">
+              <span style="width:20px;height:20px;box-sizing:border-box;border:1px solid var(--ink);background:{{ c.avBg }};color:{{ c.avFg }};font:600 8.5px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center">{{ c.init }}</span>
+              <span style="font-size:13px;font-weight:600">{{ c.name }}</span><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink4);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.focus }}</span>
+              <span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ c.free }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:1px solid rgba(var(--inkrgb),.18);font-family:'IBM Plex Mono',monospace">
+      <sc-for list="{{ ts.facts }}" as="f" hint-placeholder-count="4"><div style="padding:9px 18px;border-right:{{ f.br }};border-bottom:{{ f.bb }}"><div style="font-size:10.5px;color:var(--ink3)">{{ f.k }}</div><div style="font-size:13px;font-weight:500">{{ f.v }}</div></div></sc-for>
+    </div>
+    <sc-if value="{{ ts.isNeeds }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ ts.openInbox }}" style="margin:14px 18px 0;border:1px solid var(--ink);background:var(--hl);color:var(--onhl);padding:8px 10px;display:flex;justify-content:space-between;font:500 11.5px 'IBM Plex Mono',monospace;cursor:pointer"><span>{{ ts.needsTxt }}</span><span>inbox ↗</span></div>
+    </sc-if>
+    <sc-if value="{{ ts.hasCriteria }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:14px 18px 4px">
+        <div style="font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3);margin-bottom:8px">ACCEPTANCE</div>
+        <sc-for list="{{ ts.criteria }}" as="c" hint-placeholder-count="0">
+          <div style="display:grid;grid-template-columns:14px minmax(0,1fr);gap:9px;padding:4px 0;font-size:13px;line-height:1.4;color:var(--ink2)"><span style="width:10px;height:10px;box-sizing:border-box;margin-top:3px;background:{{ c.nb }};border:1.3px solid {{ c.nbd }};border-style:{{ c.nbs }}"></span><span>{{ c.t }}</span></div>
+        </sc-for>
+      </div>
+    </sc-if>
+    <sc-if value="{{ ts.hasPlan }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:12px 18px 4px">
+        <div style="display:flex;justify-content:space-between;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3);margin-bottom:6px"><span>HARNESS PLAN</span><span>from {{ ts.harness }}</span></div>
+        <sc-for list="{{ ts.plan }}" as="s" hint-placeholder-count="0">
+          <div style="display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:0 10px;align-items:stretch;min-height:26px">
+            <span style="display:flex;flex-direction:column;align-items:center"><span style="width:1px;flex:1;background:{{ s.lineTop }}"></span><span style="width:9px;height:9px;box-sizing:border-box;background:{{ s.nb }};border:1.3px solid {{ s.nbd }};border-style:{{ s.nbs }};flex:none"></span><span style="width:1px;flex:1;background:{{ s.lineBot }}"></span></span>
+            <span style="display:flex;align-items:center;font:500 12px 'IBM Plex Mono',monospace;color:{{ s.color }}">{{ s.name }}</span>
+            <span style="display:flex;align-items:center;font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ s.dur }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+    <sc-if value="{{ ts.hasFiles }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:12px 18px 4px">
+        <div style="display:flex;justify-content:space-between;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3);margin-bottom:6px"><span>FILES</span><span>{{ ts.fileCount }}</span></div>
+        <div style="border:1px solid rgba(var(--inkrgb),.25);background:var(--card);padding:7px 10px;display:flex;flex-direction:column;gap:4px">
+          <sc-for list="{{ ts.files }}" as="f" hint-placeholder-count="0"><div style="display:flex;justify-content:space-between;gap:12px;font:500 11.5px 'IBM Plex Mono',monospace"><span style="color:{{ f.c }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.p }}</span><span style="color:var(--ink3);flex:none">{{ f.d }}</span></div></sc-for>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ ts.hasLinked }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:12px 18px 16px">
+        <div style="font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3);margin-bottom:6px">LINKED</div>
+        <div style="display:flex;flex-direction:column;gap:5px;font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink2)">
+          <sc-for list="{{ ts.linked }}" as="x" hint-placeholder-count="0"><div style="display:flex;gap:8px"><span style="color:var(--ink4);width:66px;flex:none">{{ x.k }}</span><span>{{ x.v }}</span></div></sc-for>
+        </div>
+      </div>
+    </sc-if>
+  </aside>
+  </sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isBoard }}" hint-placeholder-val="{{ false }}">
+<main data-screen-label="Project board" style="display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;overflow:hidden">
+  <div style="padding:14px 22px 14px;border-bottom:1px solid rgba(var(--inkrgb),.2)">
+    <div style="display:flex;align-items:baseline;gap:8px"><span style="font:500 15px 'IBM Plex Mono',monospace;color:var(--ink3)">#</span><span style="font-size:18px;font-weight:700;letter-spacing:-.02em">{{ bd.name }}</span><span style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;background:var(--ink);color:var(--paper);padding:2px 6px">PROJECT</span></div>
+    <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><div style="font-size:13px;color:var(--ink3);margin-top:3px">{{ bd.desc }}</div></sc-if>
+  </div>
+  <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex;align-items:center;gap:26px;padding:8px 22px;border-bottom:1px solid rgba(var(--inkrgb),.12);flex-wrap:wrap">
+    <sc-for list="{{ bd.strip }}" as="t" hint-placeholder-count="2">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span onClick="{{ t.go }}" style="font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3);cursor:pointer" style-hover="color:var(--ink)">{{ t.name }}</span>
+        <div style="display:flex;gap:6px"><sc-for list="{{ t.members }}" as="w" hint-placeholder-count="3"><span title="{{ w.title }}" style="display:flex;align-items:center;gap:3px"><span style="width:20px;height:20px;box-sizing:border-box;border:1px solid var(--ink);background:{{ w.avBg }};color:{{ w.avFg }};font:600 9px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center">{{ w.init }}</span><span style="width:6px;height:6px;box-sizing:border-box;background:{{ w.mbg }};border:1px solid {{ w.mbd }}"></span></span></sc-for></div>
+        <span style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink2)">{{ t.meta }}</span>
+      </div>
+    </sc-for>
+    <span style="margin-left:auto;font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ bd.summary }}</span>
+  </div>
+  </sc-if>
+  <div style="flex:1;min-height:0;overflow:auto">
+    <div style="display:grid;grid-template-columns:168px repeat(5,minmax(150px,1fr));grid-auto-rows:min-content;align-content:start">
+      <div style="border-bottom:1px solid rgba(var(--inkrgb),.2);border-right:1px solid rgba(var(--inkrgb),.12)"></div>
+      <sc-for list="{{ bd.cols }}" as="c" hint-placeholder-count="5">
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 12px 8px;border-bottom:1px solid rgba(var(--inkrgb),.2);border-right:1px solid rgba(var(--inkrgb),.12);font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:var(--ink2);background:{{ c.bg }}"><span style="width:9px;height:9px;box-sizing:border-box;background:{{ c.nb }};border:1.2px solid {{ c.nbd }};border-style:{{ c.nbs }}"></span><span>{{ c.name }}</span><span style="color:var(--ink3)">{{ c.count }}</span></div>
+      </sc-for>
+      <sc-for list="{{ bd.lanes }}" as="lane" hint-placeholder-count="3">
+        <div style="display:contents">
+          <div onClick="{{ lane.go }}" style="padding:12px 14px;border-bottom:1px solid rgba(var(--inkrgb),.16);border-right:1px solid rgba(var(--inkrgb),.12);display:flex;flex-direction:column;gap:6px;cursor:pointer" style-hover="background:rgba(var(--inkrgb),.04)">
+            <div style="display:flex;align-items:baseline;gap:5px"><span style="font:500 12px 'IBM Plex Mono',monospace;color:var(--ink4)">#</span><span style="font-size:14px;font-weight:700;letter-spacing:-.01em">{{ lane.name }}</span></div>
+            <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:2px"><sc-for list="{{ lane.segs }}" as="g" hint-placeholder-count="6"><span style="flex:1;height:4px;background:{{ g.bg }};outline:{{ g.ol }};outline-offset:-1px"></span></sc-for></div>
+            <div style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ lane.prog }} done · {{ lane.team }}</div></sc-if>
+          </div>
+          <sc-for list="{{ lane.cells }}" as="cell" hint-placeholder-count="5">
+            <div style="padding:6px 8px;border-bottom:1px solid rgba(var(--inkrgb),.16);border-right:1px solid rgba(var(--inkrgb),.12);display:flex;flex-direction:column;gap:5px;min-width:0;background:{{ cell.bg }}">
+              <sc-for list="{{ cell.cards }}" as="k" hint-placeholder-count="1">
+                <div onClick="{{ k.pick }}" style="background:var(--card);border:1px solid rgba(var(--inkrgb),.28);padding:7px 9px;display:flex;flex-direction:column;gap:5px;cursor:pointer" style-hover="border-color:var(--ink)">
+                  <div style="display:flex;justify-content:space-between;align-items:center;font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)"><span>{{ k.id }}</span><span style="background:{{ k.tagBg }};color:var(--onhl);padding:0 5px;letter-spacing:.08em;font-size:9.5px">{{ k.tag }}</span></div>
+                  <div style="font-size:13px;font-weight:500;line-height:1.3;text-wrap:pretty">{{ k.title }}</div>
+                  <div style="display:flex;align-items:center;gap:6px;font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink2)"><span style="width:18px;height:18px;box-sizing:border-box;border:1px solid var(--ink);background:{{ k.avBg }};color:{{ k.avFg }};font-size:8.5px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">{{ k.init }}</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ k.sc }}">{{ k.step }}</span></div>
+                </div>
+              </sc-for>
+              <sc-for list="{{ cell.lines }}" as="d" hint-placeholder-count="0">
+                <div onClick="{{ d.pick }}" style="display:flex;gap:8px;padding:2px;font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3);cursor:pointer" style-hover="color:var(--ink)"><span style="color:var(--ink2)">{{ d.id }}</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.title }}</span></div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</main>
+</sc-if>
+
+<sc-if value="{{ isInbox }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="Inbox" style="display:grid;grid-template-columns:400px minmax(0,1fr);min-width:0;min-height:0;height:100vh;overflow:hidden">
+  <section style="border-right:1px solid rgba(var(--inkrgb),.3);display:flex;flex-direction:column;min-height:0;min-width:0">
+    <div style="padding:14px 18px 0;border-bottom:1px solid rgba(var(--inkrgb),.2)">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px"><span style="font-size:18px;font-weight:700;letter-spacing:-.02em">Inbox</span><span style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ ib.sub }}</span></div>
+      <div style="display:flex;gap:18px;margin-top:12px;font:500 12px 'IBM Plex Mono',monospace">
+        <sc-for list="{{ ib.tabs }}" as="t" hint-placeholder-count="3"><span onClick="{{ t.pick }}" style="padding:8px 0;cursor:pointer;border-bottom:2px solid {{ t.bd }};color:{{ t.c }}">{{ t.label }} <span style="color:var(--ink4)">{{ t.n }}</span></span></sc-for>
+      </div>
+    </div>
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column">
+      <sc-for list="{{ ib.items }}" as="it" hint-placeholder-count="4">
+        <div onClick="{{ it.pick }}" style="display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:10px;padding:13px 18px;border-bottom:1px solid rgba(var(--inkrgb),.12);background:{{ it.bg }};box-shadow:inset 2px 0 0 {{ it.bar }};cursor:pointer" style-hover="background:rgba(var(--inkrgb),.04)">
+          <span style="width:8px;height:8px;margin-top:4px;box-sizing:border-box;background:var(--hl);border:1px solid var(--ink)"></span>
+          <div style="min-width:0;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:7px;font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)"><span style="border:1px solid rgba(var(--inkrgb),.5);color:var(--ink);font-size:9.5px;letter-spacing:.1em;padding:0 4px">{{ it.kind }}</span><span>{{ it.id }} · #{{ it.ws }}</span></div>
+            <div style="font-size:14px;font-weight:600;line-height:1.3;text-wrap:pretty">{{ it.q }}</div>
+            <div style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ it.from }}</div>
+          </div>
+          <span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink4)">{{ it.wait }}</span>
+        </div>
+      </sc-for>
+      <sc-if value="{{ ib.empty }}" hint-placeholder-val="{{ false }}"><div style="padding:28px 18px;font-size:14px;line-height:1.5;color:var(--ink3)">{{ ib.emptyTxt }}</div></sc-if>
+      <sc-if value="{{ ib.hasDone }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:16px 18px 6px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:var(--ink3)">RESOLVED TODAY</div>
+        <sc-for list="{{ ib.done }}" as="it" hint-placeholder-count="0">
+          <div onClick="{{ it.pick }}" style="display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:10px;padding:9px 18px;cursor:pointer;background:{{ it.bg }};box-shadow:inset 2px 0 0 {{ it.bar }}" style-hover="background:rgba(var(--inkrgb),.04)">
+            <span style="width:8px;height:8px;margin-top:4px;background:var(--ink)"></span>
+            <div style="min-width:0"><div style="font-size:13px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.q }}</div><div style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ it.ans }}</div></div>
+            <span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink4)">{{ it.id }}</span>
+          </div>
+        </sc-for>
+      </sc-if>
+    </div>
+  </section>
+
+  <main style="display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--inspector)">
+    <div style="flex:1;min-height:0;overflow-y:auto;padding:24px 34px">
+      <div style="max-width:660px;display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;align-items:center;gap:10px;font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3);flex-wrap:wrap"><span style="background:{{ d.tagBg }};color:{{ d.tagFg }};border:1px solid var(--ink);font-weight:600;letter-spacing:.12em;font-size:10px;padding:2px 6px">{{ d.kind }}</span><span onClick="{{ d.openTask }}" style="cursor:pointer" style-hover="color:var(--blue)">{{ d.id }} · {{ d.taskTitle }}</span><span onClick="{{ d.openWs }}" style="margin-left:auto;cursor:pointer" style-hover="color:var(--blue)">{{ d.proj }} / #{{ d.ws }}</span></div>
+        <h2 style="margin:0;font-size:26px;line-height:1.15;letter-spacing:-.03em;font-weight:700;text-wrap:pretty">{{ d.q }}</h2>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="width:28px;height:28px;box-sizing:border-box;border:1px solid var(--ink);background:{{ d.avBg }};color:{{ d.avFg }};font:600 10.5px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center;flex:none">{{ d.init }}</span>
+          <div style="min-width:0"><div style="font-size:14px;font-weight:600">{{ d.wname }} <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><span style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink4)">{{ d.focus }} · {{ d.team }}</span></sc-if></div><sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><div style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ d.harness }} · asked {{ d.time }} · <span style="color:{{ d.wsc }}">{{ d.wslabel }}</span></div></sc-if></div>
+        </div>
+        <div style="font-size:15px;line-height:1.6;color:var(--ink2);text-wrap:pretty">{{ d.body }}</div>
+        <sc-if value="{{ d.hasCode }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(var(--inkrgb),.28);background:var(--card);padding:10px 12px;font:500 12px/1.75 'IBM Plex Mono',monospace;color:var(--ink)"><sc-for list="{{ d.code }}" as="c" hint-placeholder-count="0"><div style="white-space:pre-wrap">{{ c.l }}</div></sc-for></div>
+        </sc-if>
+        <sc-if value="{{ d.showApprove }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:8px;font:500 12px 'IBM Plex Mono',monospace"><span onClick="{{ d.approve }}" style="background:var(--ink);color:var(--paper);padding:8px 14px;cursor:pointer" style-hover="background:var(--blue)">{{ d.approveLabel }}</span><span onClick="{{ d.deny }}" style="border:1px solid rgba(var(--inkrgb),.45);padding:7px 13px;cursor:pointer" style-hover="border-color:var(--ink)">Deny</span><span style="padding:8px 4px;color:var(--ink3);margin-left:auto">⌘⏎ approve</span></div>
+        </sc-if>
+        <sc-if value="{{ d.showOptions }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)">ANSWER · first option is {{ d.wname }}'s pick</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ d.options }}" as="o" hint-placeholder-count="0"><span onClick="{{ o.pick }}" style="border:1px solid var(--ink);background:{{ o.bg }};color:{{ o.fg }};padding:8px 13px;font:500 12px 'IBM Plex Mono',monospace;cursor:pointer" style-hover="border-color:var(--blue)">{{ o.label }}</span></sc-for></div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ d.done }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--ink);background:var(--card);padding:10px 12px;font:500 12px 'IBM Plex Mono',monospace;color:var(--ink2)"><span>✓ {{ d.doneText }}</span><span onClick="{{ d.undo }}" style="color:var(--blue);cursor:pointer">undo</span></div>
+        </sc-if>
+        <sc-if value="{{ d.pending }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid rgba(var(--inkrgb),.16);padding-top:14px;font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink2)">
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;box-sizing:border-box;background:var(--hl);border:1px solid var(--ink)"></span><span>{{ d.wait }}</span></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;background:var(--blue)"></span><span>{{ d.meanwhile }}</span></div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)">FROM THE SESSION</div>
+          <div onClick="{{ d.openTask }}" style="border:1px solid rgba(var(--inkrgb),.22);background:var(--card);padding:6px 11px;cursor:pointer" style-hover="border-color:var(--ink)">
+            <sc-for list="{{ d.ctx }}" as="c" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:12px 44px minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 0;font:500 12px 'IBM Plex Mono',monospace"><span style="width:7px;height:7px;box-sizing:border-box;background:{{ c.dot }};border:1px solid var(--ink)"></span><span style="font-weight:600">{{ c.tool }}</span><span style="color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.target }}</span><span style="color:var(--ink3)">{{ c.res }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+        <sc-for list="{{ d.replies }}" as="r" hint-placeholder-count="0">
+          <div style="display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;border-left:2px solid var(--blue);padding:4px 0 4px 10px"><span style="width:22px;height:22px;box-sizing:border-box;border:1px solid var(--ink);font:600 9px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center">MK</span><div><div style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ r.label }}</div><div style="font-size:14px;line-height:1.55;margin-top:2px">{{ r.text }}</div></div></div>
+        </sc-for>
+      </div>
+    </div>
+    <div style="padding:12px 34px 16px">
+      <div style="max-width:660px;border:1px solid var(--ink);background:var(--card)">
+        <input ref="{{ inputRef }}" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onComposerKey }}" placeholder="{{ composerPh }}" style="display:block;width:100%;box-sizing:border-box;border:0;outline:0;background:transparent;padding:11px 12px;font-size:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px 7px 12px;border-top:1px solid rgba(var(--inkrgb),.12);font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)"><div style="display:flex;gap:14px"><span onClick="{{ d.openTask }}" style="cursor:pointer" style-hover="color:var(--blue)">open task →</span><span onClick="{{ d.openWs }}" style="cursor:pointer" style-hover="color:var(--blue)">open #{{ d.ws }}</span></div><span onClick="{{ send }}" style="background:var(--ink);color:var(--paper);padding:4px 9px;cursor:pointer" style-hover="background:var(--blue)">⏎</span></div>
+      </div>
+    </div>
+  </main>
+</div>
+</sc-if>
+
+<sc-if value="{{ isTasks }}" hint-placeholder-val="{{ false }}">
+<main data-screen-label="Tasks" style="display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;overflow:hidden">
+  <div style="padding:14px 22px 14px;border-bottom:1px solid rgba(var(--inkrgb),.2);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+    <div style="min-width:0">
+      <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:18px;font-weight:700;letter-spacing:-.02em">Tasks</span><span style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;border:1px solid rgba(var(--inkrgb),.4);padding:1px 5px;color:var(--ink2)">ALL STREAMS</span></div>
+      <div style="font:500 12px 'IBM Plex Mono',monospace;color:var(--ink3);margin-top:4px">{{ tk.summary }}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;font:500 11.5px 'IBM Plex Mono',monospace">
+      <span style="font-size:10.5px;letter-spacing:.12em;color:var(--ink3)">GROUP BY</span>
+      <div style="display:flex;border:1px solid var(--ink)"><sc-for list="{{ tk.groupOpts }}" as="o" hint-placeholder-count="3"><span onClick="{{ o.pick }}" style="padding:5px 12px;cursor:pointer;background:{{ o.bg }};color:{{ o.fg }};border-left:{{ o.bl }}">{{ o.label }}</span></sc-for></div>
+      <span onClick="{{ toggleQueued }}" style="display:flex;align-items:center;gap:7px;border:1px solid rgba(var(--inkrgb),.45);padding:5px 10px;cursor:pointer" style-hover="border-color:var(--ink)"><span style="width:10px;height:10px;box-sizing:border-box;border:1px solid var(--ink);background:{{ tk.qBox }}"></span>Queued {{ tk.queuedCount }}</span>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:{{ tk.cols }};gap:12px;padding:9px 30px 7px;border-bottom:1px solid rgba(var(--inkrgb),.2);font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)"><span></span><span>ID</span><span>TASK</span><span>NOW</span><span>WORKSTREAM</span><span>WORKER</span><sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><span>TIME</span><span style="text-align:right">COST</span></sc-if></div>
+  <div style="flex:1;min-height:0;overflow-y:auto;padding:0 22px 20px">
+    <sc-for list="{{ tk.groups }}" as="g" hint-placeholder-count="3">
+      <div style="display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:9px;padding:16px 8px 7px;border-bottom:1px solid rgba(var(--inkrgb),.3);font:500 11px 'IBM Plex Mono',monospace;color:var(--ink2)">
+          <sc-if value="{{ g.isWorker }}" hint-placeholder-val="{{ false }}"><span style="width:20px;height:20px;box-sizing:border-box;border:1px solid var(--ink);background:{{ g.avBg }};color:{{ g.avFg }};font:600 8.5px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center">{{ g.init }}</span></sc-if>
+          <sc-if value="{{ g.notWorker }}" hint-placeholder-val="{{ true }}"><span style="width:9px;height:9px;box-sizing:border-box;background:{{ g.nb }};border:1.2px solid {{ g.nbd }};border-style:{{ g.nbs }}"></span></sc-if>
+          <span style="font-weight:600;letter-spacing:.08em;color:var(--ink)">{{ g.label }}</span>
+          <span style="color:var(--ink4)">{{ g.sub }}</span>
+          <sc-if value="{{ g.isWorker }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:5px;color:{{ g.sc }}"><span style="width:7px;height:7px;box-sizing:border-box;background:{{ g.mbg }};border:1px solid {{ g.mbd }}"></span>{{ g.slabel }}</span></sc-if>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:8px"><span style="color:var(--ink3)">{{ g.count }}</span></span>
+        </div>
+        <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="3">
+          <div onClick="{{ r.pick }}" style="display:grid;grid-template-columns:{{ tk.cols }};gap:12px;align-items:center;padding:8px;border-bottom:1px solid rgba(var(--inkrgb),.1);cursor:pointer" style-hover="background:rgba(var(--inkrgb),.04)">
+            <span style="width:9px;height:9px;box-sizing:border-box;background:{{ r.nb }};border:1.2px solid {{ r.nbd }};border-style:{{ r.nbs }}"></span>
+            <span style="font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ r.id }}</span>
+            <span style="font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.title }}</span>
+            <span style="font:500 11.5px 'IBM Plex Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="background:{{ r.stbg }};color:{{ r.sc }};padding:0 3px;margin-left:-3px">{{ r.step }}</span></span>
+            <span title="{{ r.proj }}" style="font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.ws }}</span>
+            <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="width:18px;height:18px;box-sizing:border-box;border:1px solid var(--ink);background:{{ r.avBg }};color:{{ r.avFg }};font:600 8px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center;flex:none">{{ r.init }}</span><span style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.wname }}</span></span>
+            <sc-if value="{{ full }}" hint-placeholder-val="{{ true }}"><span style="font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ r.el }}</span>
+            <span style="font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3);text-align:right">{{ r.cost }}</span></sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+</main>
+</sc-if>
+
+<sc-if value="{{ isSchedule }}" hint-placeholder-val="{{ false }}">
+<main data-screen-label="Schedule" style="display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;overflow:hidden">
+  <div style="padding:14px 22px 14px;border-bottom:1px solid rgba(var(--inkrgb),.2);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+    <div style="min-width:0">
+      <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:18px;font-weight:700;letter-spacing:-.02em">Schedule</span><span style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;border:1px solid rgba(var(--inkrgb),.4);padding:1px 5px;color:var(--ink2)">NOW → TOMORROW</span></div>
+      <div style="font:500 12px 'IBM Plex Mono',monospace;color:var(--ink3);margin-top:4px">{{ sc.summary }}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;font:500 11.5px 'IBM Plex Mono',monospace">
+      <span style="font-size:10.5px;letter-spacing:.12em;color:var(--ink3)">LANES</span>
+      <div style="display:flex;border:1px solid var(--ink)"><sc-for list="{{ sc.laneOpts }}" as="o" hint-placeholder-count="2"><span onClick="{{ o.pick }}" style="padding:5px 12px;cursor:pointer;background:{{ o.bg }};color:{{ o.fg }};border-left:{{ o.bl }}">{{ o.label }}</span></sc-for></div>
+    </div>
+  </div>
+  <div style="padding:10px 22px 12px;border-bottom:1px solid rgba(var(--inkrgb),.2);background:var(--inspector);display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap">
+      <span style="font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)">SEQUENCE</span>
+      <sc-for list="{{ sc.chain }}" as="n" hint-placeholder-count="3">
+        <div style="display:flex;align-items:center;gap:10px">
+          <sc-if value="{{ n.hasArrow }}" hint-placeholder-val="{{ true }}"><span style="font:500 12px 'IBM Plex Mono',monospace;color:var(--ink4)">→</span></sc-if>
+          <span onClick="{{ n.pick }}" style="display:flex;align-items:center;gap:6px;border:1px solid {{ n.bd }};background:{{ n.bg }};padding:3px 7px;font:500 11px 'IBM Plex Mono',monospace;cursor:pointer;white-space:nowrap" style-hover="border-color:var(--ink)"><span style="width:8px;height:8px;box-sizing:border-box;background:{{ n.nb }};border:1.2px solid {{ n.nbd }};border-style:{{ n.nbs }}"></span><span style="font-weight:600">{{ n.id }}</span><span style="background:{{ n.tbg }};color:{{ n.tc }};padding:0 3px">{{ n.time }}</span><span style="color:var(--ink3)">{{ n.wname }}</span></span>
+        </div>
+      </sc-for>
+      <sc-if value="{{ sc.hasSel }}" hint-placeholder-val="{{ true }}">
+        <span style="margin-left:auto;display:flex;align-items:center;gap:14px;font:500 11px 'IBM Plex Mono',monospace"><span onClick="{{ sc.open }}" style="color:var(--blue);cursor:pointer;white-space:nowrap" style-hover="color:var(--ink)">{{ sc.openLabel }}</span><span onClick="{{ sc.clear }}" style="color:var(--ink3);cursor:pointer" style-hover="color:var(--ink)">✕</span></span>
+      </sc-if>
+    </div>
+    <div style="font-size:13px;line-height:1.45;color:var(--ink2);text-wrap:pretty;max-width:860px">{{ sc.why }}</div>
+  </div>
+  <div style="flex:1;min-height:0;overflow:auto">
+    <div style="display:grid;grid-template-columns:168px minmax(130px,.8fr) repeat(4,minmax(150px,1fr));grid-auto-rows:min-content;align-content:start">
+      <div style="padding:10px 14px 8px;border-bottom:1px solid rgba(var(--inkrgb),.2);border-right:1px solid rgba(var(--inkrgb),.12);display:flex;flex-direction:column;gap:4px;font:500 10px 'IBM Plex Mono',monospace;color:var(--ink3)">
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;box-sizing:border-box;border:1.2px dashed rgba(var(--inkrgb),.5)"></span>queued</span>
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;box-sizing:border-box;border:1.2px dotted rgba(var(--inkrgb),.6)"></span>planned</span>
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;box-sizing:border-box;background:var(--hl);border:1px solid var(--ink)"></span>held on you</span>
+      </div>
+      <sc-for list="{{ sc.cols }}" as="c" hint-placeholder-count="5">
+        <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:3px;padding:10px 12px 8px;border-bottom:1px solid rgba(var(--inkrgb),.2);border-right:1px solid rgba(var(--inkrgb),.12);background:{{ c.bg }}">
+          <div style="display:flex;align-items:center;gap:8px;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.1em"><span style="font-weight:600;color:var(--ink)">{{ c.name }}</span><span style="color:var(--ink3)">{{ c.count }}</span></div>
+          <span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ c.range }}</span>
+        </div>
+      </sc-for>
+      <div style="padding:8px 14px;border-bottom:1px solid rgba(var(--inkrgb),.16);border-right:1px solid rgba(var(--inkrgb),.12);font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)">ROUTINES</div>
+      <sc-for list="{{ sc.routines }}" as="cell" hint-placeholder-count="5">
+        <div style="padding:8px 10px;border-bottom:1px solid rgba(var(--inkrgb),.16);border-right:1px solid rgba(var(--inkrgb),.12);background:{{ cell.bg }};display:flex;flex-direction:column;gap:3px;min-width:0">
+          <sc-for list="{{ cell.lines }}" as="r" hint-placeholder-count="0"><div style="display:flex;gap:7px;font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3);min-width:0"><span style="color:var(--ink)">{{ r.at }}</span><span title="{{ r.label }}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.label }}</span></div></sc-for>
+        </div>
+      </sc-for>
+      <sc-for list="{{ sc.lanes }}" as="lane" hint-placeholder-count="4">
+        <div style="display:contents">
+          <div onClick="{{ lane.go }}" style="padding:12px 14px;border-bottom:1px solid rgba(var(--inkrgb),.16);border-right:1px solid rgba(var(--inkrgb),.12);display:flex;flex-direction:column;gap:4px;cursor:pointer;min-width:0" style-hover="background:rgba(var(--inkrgb),.04)">
+            <div style="display:flex;align-items:center;gap:6px;min-width:0">
+              <sc-if value="{{ lane.isWorker }}" hint-placeholder-val="{{ false }}"><span style="width:20px;height:20px;box-sizing:border-box;border:1px solid var(--ink);background:{{ lane.avBg }};color:{{ lane.avFg }};font:600 8.5px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center;flex:none">{{ lane.init }}</span></sc-if>
+              <sc-if value="{{ lane.isStream }}" hint-placeholder-val="{{ true }}"><span style="font:500 12px 'IBM Plex Mono',monospace;color:var(--ink4)">#</span></sc-if>
+              <span style="font-size:14px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ lane.name }}</span>
+            </div>
+            <div style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">{{ lane.sub }}</div>
+          </div>
+          <sc-for list="{{ lane.cells }}" as="cell" hint-placeholder-count="5">
+            <div style="padding:6px 8px;border-bottom:1px solid rgba(var(--inkrgb),.16);border-right:1px solid rgba(var(--inkrgb),.12);display:flex;flex-direction:column;gap:5px;min-width:0;background:{{ cell.bg }}">
+              <sc-for list="{{ cell.nows }}" as="k" hint-placeholder-count="0">
+                <div onClick="{{ k.pick }}" style="display:flex;flex-direction:column;gap:3px;padding:5px 7px;border:1px solid {{ k.bd }};background:var(--card);cursor:pointer;opacity:{{ k.op }}" style-hover="border-color:var(--ink)">
+                  <div style="display:flex;align-items:center;gap:6px;font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)"><span style="width:8px;height:8px;box-sizing:border-box;background:{{ k.nb }};border:1.2px solid {{ k.nbd }};border-style:{{ k.nbs }};flex:none"></span><span style="white-space:nowrap;flex:none">{{ k.id }}</span><span style="margin-left:auto;background:{{ k.tbg }};color:{{ k.tc }};padding:0 4px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis">{{ k.line }}</span></div>
+                  <div style="font-size:12px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.title }}</div>
+                </div>
+              </sc-for>
+              <sc-for list="{{ cell.cards }}" as="k" hint-placeholder-count="1">
+                <div onClick="{{ k.pick }}" style="background:var(--card);border:1px solid {{ k.bd }};outline:{{ k.ol }};outline-offset:-2px;padding:7px 9px;display:flex;flex-direction:column;gap:5px;cursor:pointer;opacity:{{ k.op }}" style-hover="border-color:var(--ink)">
+                  <div style="display:flex;align-items:center;gap:7px;font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3);min-width:0;flex-wrap:wrap;row-gap:0"><span style="font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;flex:none">{{ k.time }}</span><span style="width:8px;height:8px;box-sizing:border-box;background:{{ k.nb }};border:1.2px solid {{ k.nbd }};border-style:{{ k.nbs }};flex:none"></span><span style="white-space:nowrap;flex:none">{{ k.id }}</span><span style="margin-left:auto;white-space:nowrap">{{ k.dur }}</span></div>
+                  <div style="font-size:13px;font-weight:500;line-height:1.3;text-wrap:pretty">{{ k.title }}</div>
+                  <div style="display:flex;align-items:center;gap:6px;font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink2);min-width:0"><span style="width:18px;height:18px;box-sizing:border-box;border:1px solid var(--ink);background:{{ k.avBg }};color:{{ k.avFg }};font-size:8.5px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none">{{ k.init }}</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.reason }}</span></div>
+                  <sc-if value="{{ k.hasTags }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;font:500 9.5px 'IBM Plex Mono',monospace;letter-spacing:.06em">
+                      <sc-if value="{{ k.hasHeld }}" hint-placeholder-val="{{ false }}"><span style="background:var(--hl);color:var(--onhl);padding:1px 5px;white-space:nowrap">{{ k.held }}</span></sc-if>
+                      <sc-if value="{{ k.hasGate }}" hint-placeholder-val="{{ false }}"><span onClick="{{ k.gatePick }}" title="{{ k.gateTitle }}" style="border:1px solid var(--ink);background:{{ k.gateBg }};color:{{ k.gateFg }};padding:0 5px;white-space:nowrap;cursor:pointer">{{ k.gateLabel }}</span></sc-if>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</main>
+</sc-if>
+
+<sc-if value="{{ isRoster }}" hint-placeholder-val="{{ false }}">
+<main data-screen-label="Roster" style="display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;overflow:hidden">
+  <div style="padding:14px 22px 14px;border-bottom:1px solid rgba(var(--inkrgb),.2);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+    <div style="min-width:0">
+      <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:18px;font-weight:700;letter-spacing:-.02em">{{ ro.title }}</span><span style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;border:1px solid rgba(var(--inkrgb),.4);padding:1px 5px;color:var(--ink2)">ROSTER</span></div>
+      <div style="font:500 12px 'IBM Plex Mono',monospace;color:var(--ink3);margin-top:4px">{{ ro.summary }}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;border:1px solid var(--ink);font:500 11.5px 'IBM Plex Mono',monospace"><sc-for list="{{ ro.teamOpts }}" as="o" hint-placeholder-count="4"><span onClick="{{ o.pick }}" style="padding:5px 12px;cursor:pointer;background:{{ o.bg }};color:{{ o.fg }};border-left:{{ o.bl }}">{{ o.label }}</span></sc-for></div>
+      <span onClick="{{ ro.toggleHire }}" style="border:1px solid var(--ink);background:{{ ro.hireBtnBg }};color:{{ ro.hireBtnFg }};padding:5px 12px;font:500 11.5px 'IBM Plex Mono',monospace;cursor:pointer;white-space:nowrap">+ Hire</span>
+    </div>
+  </div>
+  <sc-if value="{{ ro.hiring }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:16px 22px 18px;border-bottom:1px solid rgba(var(--inkrgb),.2);background:var(--inspector);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px 20px">
+      <div style="grid-column:1 / -1;display:flex;justify-content:space-between;align-items:baseline;gap:12px"><span style="font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)">HIRE A WORKER</span><span style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink4)">Or tell the Shift Coordinator: "Hire an engineer just for billing."</span></div>
+      <label style="display:flex;flex-direction:column;gap:5px"><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">Name</span><input value="{{ ro.hire.name }}" onChange="{{ ro.hName }}" onKeyDown="{{ ro.hKey }}" placeholder="billing-engineer" style="border:1px solid var(--ink);background:var(--card);outline:0;padding:8px 10px;font:500 13px 'IBM Plex Mono',monospace"></label>
+      <div style="display:flex;flex-direction:column;gap:5px"><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">Start from</span><div style="display:flex;flex-wrap:wrap;border:1px solid var(--ink);font:500 11.5px 'IBM Plex Mono',monospace;align-self:flex-start"><sc-for list="{{ ro.bases }}" as="b" hint-placeholder-count="3"><span onClick="{{ b.pick }}" title="{{ b.sub }}" style="padding:7px 12px;white-space:nowrap;cursor:pointer;background:{{ b.bg }};color:{{ b.fg }};border-left:{{ b.bl }}">{{ b.label }}</span></sc-for></div></div>
+      <label style="display:flex;flex-direction:column;gap:5px"><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">Focus</span><input value="{{ ro.hire.focus }}" onChange="{{ ro.hFocus }}" onKeyDown="{{ ro.hKey }}" placeholder="billing · invoices and proration" style="border:1px solid var(--ink);background:var(--card);outline:0;padding:8px 10px;font-size:13.5px"></label>
+      <div style="display:flex;flex-direction:column;gap:5px"><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">Harness</span><div style="display:flex;border:1px solid var(--ink);font:500 11.5px 'IBM Plex Mono',monospace;align-self:flex-start"><sc-for list="{{ ro.harnesses }}" as="h" hint-placeholder-count="2"><span onClick="{{ h.pick }}" style="padding:7px 12px;white-space:nowrap;cursor:pointer;background:{{ h.bg }};color:{{ h.fg }};border-left:{{ h.bl }}">{{ h.label }}</span></sc-for></div></div>
+      <label style="grid-column:1 / -1;display:flex;flex-direction:column;gap:5px"><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)">Instructions</span><input value="{{ ro.hire.rules }}" onChange="{{ ro.hRules }}" onKeyDown="{{ ro.hKey }}" placeholder="{{ ro.rulesPh }}" style="border:1px solid var(--ink);background:var(--card);outline:0;padding:8px 10px;font-size:13.5px"></label>
+      <div style="grid-column:1 / -1;display:flex;gap:8px;font:500 12px 'IBM Plex Mono',monospace"><span onClick="{{ ro.submitHire }}" style="background:var(--ink);color:var(--paper);padding:7px 14px;cursor:pointer;opacity:{{ ro.hireOp }}" style-hover="background:var(--blue)">Hire</span><span onClick="{{ ro.toggleHire }}" style="padding:7px 6px;color:var(--ink3);cursor:pointer">Cancel</span></div>
+    </div>
+  </sc-if>
+  <div style="display:grid;grid-template-columns:28px minmax(0,1.1fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr);gap:14px;padding:9px 30px 7px;border-bottom:1px solid rgba(var(--inkrgb),.2);font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)"><span></span><span>WORKER</span><span>PROFILE</span><span>HOLDING</span><span>ON CALL FOR</span></div>
+  <div style="flex:1;min-height:0;overflow-y:auto;padding:0 22px 24px">
+    <sc-for list="{{ ro.groups }}" as="g" hint-placeholder-count="3">
+      <div style="display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:9px;padding:18px 8px 7px;border-bottom:1px solid rgba(var(--inkrgb),.3);font:500 11px 'IBM Plex Mono',monospace;color:var(--ink2)"><span style="width:9px;height:9px;box-sizing:border-box;background:{{ g.mbg }};border:1px solid {{ g.mbd }}"></span><span style="font-weight:600;letter-spacing:.1em;color:var(--ink)">{{ g.label }}</span><span style="color:var(--ink4)">{{ g.sub }}</span><span style="margin-left:auto;color:var(--ink3)">{{ g.count }}</span></div>
+        <sc-for list="{{ g.rows }}" as="w" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:28px minmax(0,1.1fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr);gap:14px;align-items:start;padding:11px 8px;border-bottom:1px solid rgba(var(--inkrgb),.1)">
+            <span style="width:26px;height:26px;box-sizing:border-box;border:1px solid var(--ink);background:{{ w.avBg }};color:{{ w.avFg }};font:600 10px 'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:center">{{ w.init }}</span>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:2px"><div style="display:flex;align-items:baseline;gap:2px 8px;flex-wrap:wrap;min-width:0"><span style="font-size:14px;font-weight:600;overflow-wrap:anywhere">{{ w.name }}</span><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink4)">{{ w.team }}</span><sc-if value="{{ w.isHired }}" hint-placeholder-val="{{ false }}"><span style="font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.12em;border:1px solid var(--blue);color:var(--blue);padding:0 4px">HIRED</span></sc-if></div><span style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ w.focus }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font:500 10px 'IBM Plex Mono',monospace;border:1px solid rgba(var(--inkrgb),.35);padding:0 5px;align-self:flex-start">{{ w.harness }}</span><span style="font-size:12.5px;line-height:1.45;color:var(--ink2);text-wrap:pretty">{{ w.rules }}</span><sc-if value="{{ w.isHired }}" hint-placeholder-val="{{ false }}"><span style="font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink4)">{{ w.hiredMeta }}</span></sc-if></div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;min-width:0">
+              <sc-for list="{{ w.tasks }}" as="t" hint-placeholder-count="0"><span onClick="{{ t.go }}" title="{{ t.title }}" style="display:flex;align-items:center;gap:5px;border:1px solid rgba(var(--inkrgb),.3);background:{{ t.bg }};color:{{ t.fg }};padding:2px 6px;font:500 11px 'IBM Plex Mono',monospace;cursor:pointer" style-hover="border-color:var(--ink)"><span style="width:6px;height:6px;box-sizing:border-box;background:{{ t.nb }};border:1px solid {{ t.nbd }};border-style:{{ t.nbs }}"></span>{{ t.id }}</span></sc-for>
+              <sc-if value="{{ w.noTasks }}" hint-placeholder-val="{{ false }}"><span style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink4);padding-top:3px">nothing assigned</span></sc-if>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;min-width:0">
+              <sc-for list="{{ w.watches }}" as="x" hint-placeholder-count="0">
+                <div style="display:grid;grid-template-columns:66px minmax(0,1fr);gap:8px;align-items:baseline;font:500 11px 'IBM Plex Mono',monospace"><span style="font-size:9.5px;letter-spacing:.1em;border:1px solid {{ x.bd }};background:{{ x.bg }};color:{{ x.fg }};padding:0 4px;text-align:center">{{ x.k }}</span><div style="min-width:0;display:flex;flex-direction:column"><span style="color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.what }}</span><span style="color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.when }}</span></div></div>
+              </sc-for>
+              <sc-if value="{{ w.noWatch }}" hint-placeholder-val="{{ false }}"><span style="font:500 11px 'IBM Plex Mono',monospace;color:var(--ink4);padding-top:3px">—</span></sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+</main>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;streamlined&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;App&quot;},&quot;themeMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;auto&quot;,&quot;day&quot;,&quot;evening&quot;,&quot;night&quot;],&quot;default&quot;:&quot;auto&quot;,&quot;tsType&quot;:&quot;'auto' | 'day' | 'evening' | 'night'&quot;,&quot;section&quot;:&quot;App&quot;},&quot;clock&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;now&quot;,&quot;08:00&quot;,&quot;16:00&quot;,&quot;23:00&quot;],&quot;default&quot;:&quot;now&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;App&quot;},&quot;startView&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;cos&quot;,&quot;stream&quot;,&quot;task&quot;,&quot;board&quot;,&quot;inbox&quot;,&quot;tasks&quot;,&quot;schedule&quot;,&quot;roster&quot;],&quot;default&quot;:&quot;cos&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;App&quot;},&quot;live&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;App&quot;}}">
+const A = 'var(--blue)', INK = 'var(--ink)', Y = 'var(--hl)';
+const WK = {
+  SC: { name: 'coordinator', focus: 'routing · briefings', harness: 'native', mgr: true, rules: 'Reads everything you send and routes it. Never does the work itself.' },
+  LD: { name: 'lead', focus: 'planning · triage', harness: 'native', mgr: true, rules: 'Splits epics and assigns each task to the profile that fits it.' },
+  AR: { name: 'architect', focus: 'architecture decisions', harness: 'claude-code', rules: 'Writes ADRs and reviews designs against them. Never edits code.' },
+  SE: { name: 'senior-engineer', focus: 'deliberate, multi-file work', harness: 'claude-code', rules: 'Plans before editing, writes tests first, explains trade-offs in the PR.' },
+  EN: { name: 'engineer', focus: 'fast, simple changes', harness: 'codex', rules: 'Small, well-scoped diffs. Ships quickly and stops to ask when scope grows.' },
+  FE: { name: 'frontend', focus: 'UI components', harness: 'codex', rules: 'Builds against the design system and snapshots every change.', hired: 'Sep 28 · by lead · from engineer' },
+  RV: { name: 'reviewer', focus: 'code review', harness: 'claude-code', rules: 'Reviews each PR against its brief and the ADRs. Blocks on missing tests.' },
+  TS: { name: 'tester', focus: 'QA · migrations', harness: 'claude-code', rules: 'Writes and runs tests. Asks before any write to a shared environment.' },
+  PM: { name: 'pm', focus: 'specs · scope', harness: 'native', mgr: true, rules: 'Turns asks into specs with acceptance criteria.' },
+  UX: { name: 'designer', focus: 'flows · visual QA', harness: 'claude-code', rules: 'Owns flows and visual QA. Approves baselines with you.' },
+  AN: { name: 'analyst', focus: 'metrics · funnels', harness: 'claude-code', rules: 'Answers questions with queries and charts. Read-only on prod.' },
+  ML: { name: 'mkt-lead', focus: 'launch plan', harness: 'native', mgr: true, rules: 'Plans launches and the channel mix.' },
+  WR: { name: 'writer', focus: 'docs · launch copy', harness: 'claude-code', rules: 'Writes docs and launch copy in the house style.' },
+};
+const TEAMS = [{ name: 'Coordination', m: ['SC'] }, { name: 'Engineering', m: ['LD', 'AR', 'SE', 'EN', 'FE', 'RV', 'TS'] }, { name: 'Product', m: ['PM', 'UX', 'AN'] }, { name: 'Marketing', m: ['ML', 'WR'] }];
+const WS = {
+  pay: { name: 'payments-api', proj: 'checkout-v2', desc: 'Move charges and refunds to Payments API v2, with idempotent retries.' },
+  ui: { name: 'checkout-ui', proj: 'checkout-v2', desc: 'Card form and 3-D Secure on the v2 tokenizer.' },
+  mig: { name: 'data-migration', proj: 'checkout-v2', desc: 'Dual-write the ledger, backfill, then cut over.' },
+  guide: { name: 'v2-guide', proj: 'docs-site', desc: 'Migration guide and reference pages for Payments v2.' },
+  pk: { name: 'passkeys', proj: 'mobile-auth', desc: 'Passkey sign-in with a fallback for older devices.' },
+  ann: { name: 'announce', proj: 'launch-q4', desc: 'Launch post and channel plan for checkout-v2.' },
+};
+const PROJ = [
+  { name: 'checkout-v2', ws: ['pay', 'ui', 'mig'], desc: 'New payment flow on Payments API v2. Ships by Oct 30.' },
+  { name: 'docs-site', ws: ['guide'], desc: 'Developer docs for Payments v2.' },
+  { name: 'mobile-auth', ws: ['pk'], desc: 'Passkeys on iOS and Android.' },
+  { name: 'launch-q4', ws: ['ann'], desc: 'Q4 launch for checkout-v2.' },
+];
+const PREFIX = { pay: 'PAY', ui: 'UI', mig: 'MIG', guide: 'DOC', pk: 'AUTH', ann: 'LCH' };
+const LEADS = { pay: 'LD', ui: 'LD', mig: 'LD', guide: 'WR', pk: 'PM', ann: 'ML' };
+const T = (id, title, w, ws, st, step = '', el = '', cost = '') => ({ id, title, w, ws, st, step, el, cost });
+const BASE = [
+  T('PAY-15', 'Run ledger migration on staging', 'TS', 'pay', 'needs', 'approval · db write', '12m', '$0.18'),
+  T('PAY-14', 'Idempotency keys on POST /charges', 'SE', 'pay', 'run', 'write · idempotency.ts', '6m 40s', '$0.52'),
+  T('PAY-16', 'Refund endpoint parity with v1', 'EN', 'pay', 'run', 'test · 12 / 30', '18m', '$1.04'),
+  T('PAY-12', 'Retry policy with jittered backoff', 'RV', 'pay', 'review', 'review · 2 comments', '3m', '$0.21'),
+  T('PAY-17', 'Contract tests for v2 error codes', 'TS', 'pay', 'queued', 'after PAY-15'),
+  T('PAY-18', 'Feature-flag rollout plan', 'LD', 'pay', 'queued', 'waits on PAY-14'),
+  T('PAY-19', 'Remove the v1 charges client', 'EN', 'pay', 'queued', 'blocked · PAY-14, 16'),
+  T('PAY-13', 'Webhook signature verification', 'EN', 'pay', 'done'),
+  T('PAY-11', 'Charges client for Payments API v2', 'SE', 'pay', 'done'),
+  T('PAY-10', 'Spike: v2 rate limits', 'RV', 'pay', 'done'),
+  T('PAY-9', 'ADR: Redis as the idempotency key store', 'AR', 'pay', 'done'),
+  T('UI-24', 'Visual baselines after tokenizer swap', 'UX', 'ui', 'needs', 'approval · 14 snapshots', '11m', '$0.09'),
+  T('UI-21', 'Card form on the v2 tokenizer', 'FE', 'ui', 'run', 'build · storybook', '22m', '$0.88'),
+  T('UI-25', 'Tokenizer session endpoint', 'SE', 'ui', 'run', 'edit · session.ts', '9m', '$0.41'),
+  T('UI-23', 'Error copy for declined cards', 'UX', 'ui', 'run', 'draft · 6 of 9 messages', '5m', '$0.07'),
+  T('UI-22', '3-D Secure challenge modal', 'FE', 'ui', 'queued', 'after UI-21'),
+  T('UI-20', 'Address autocomplete', 'FE', 'ui', 'done'),
+  T('MIG-6', 'Dual-write shim for the ledger', 'SE', 'mig', 'run', 'edit · shim.ts', '11m', '$0.47'),
+  T('MIG-8', 'ADR: dual-write or CDC for the cutover', 'AR', 'mig', 'run', 'draft · weighing CDC', '14m', '$0.22'),
+  T('MIG-7', 'Cutover runbook', 'LD', 'mig', 'queued', 'after MIG-6, MIG-8'),
+  T('MIG-5', 'Backfill ledger ids', 'TS', 'mig', 'done'),
+  T('DOC-8', 'Payments v2 migration guide', 'WR', 'guide', 'needs', 'question · for you', '24m', '$0.31'),
+  T('DOC-7', 'Reference pages for /refunds', 'RV', 'guide', 'review', 'review · 4 comments', '8m', '$0.19'),
+  T('DOC-6', 'Quickstart rewrite', 'WR', 'guide', 'done'),
+  T('AUTH-5', 'Passkey fallback flow', 'PM', 'pk', 'needs', 'decision · for you', '42m', '$0.11'),
+  T('AUTH-3', 'Passkey enrollment sheet', 'FE', 'pk', 'run', 'build · ios sim', '7m', '$0.33'),
+  T('AUTH-4', 'Spec: device recovery', 'PM', 'pk', 'run', 'draft · edge cases', '5m', '$0.12'),
+  T('AUTH-2', 'WebAuthn server library', 'SE', 'pk', 'done'),
+  T('LCH-2', 'Launch post for checkout-v2', 'WR', 'ann', 'run', 'draft · 2nd pass', '16m', '$0.28'),
+  T('LCH-3', 'Launch plan and channel mix', 'ML', 'ann', 'run', 'plan · 4 of 7', '9m', '$0.14'),
+  T('LCH-1', 'Positioning brief', 'ML', 'ann', 'done'),
+];
+const INBOX = {
+  'PAY-15': { kind: 'APPROVAL', q: 'Run 3 migrations on staging-db', time: '10:16', wait: '6m', after: 'migrate · 1 of 3', blocks: 'PAY-17', approveLabel: 'Approve & run',
+    body: 'The ledger migration needs write access to staging. Three migrations, about 40 seconds. Each one has a down migration.',
+    code: ['ALTER TABLE ledger_entries ADD COLUMN v2_id uuid;', 'CREATE INDEX CONCURRENTLY ledger_v2_idx ON ledger_entries (v2_id);', 'UPDATE ledger_meta SET schema_version = 42;'],
+    ctx: [['Bash', 'pnpm db:plan --env staging', '3 pending'], ['Read', 'migrations/0042_ledger_v2.sql', '38 lines'], ['Ask', 'write · staging-db', 'waiting']] },
+  'UI-24': { kind: 'APPROVAL', q: 'Accept 14 new visual baselines', time: '10:11', wait: '11m', after: 'update baselines', blocks: 'UI-22', approveLabel: 'Accept all 14',
+    body: 'The tokenizer swap changed 14 snapshots. 12 are the new card field. The other 2 move the pay button down 4px.',
+    ctx: [['Bash', 'pnpm test:visual', '14 changed'], ['Diff', 'checkout/card-form × 12', 'expected'], ['Diff', 'checkout/pay-button × 2', '+4px']] },
+  'DOC-8': { kind: 'QUESTION', q: 'Include the v1 sunset dates in the guide?', time: '09:58', wait: '24m', after: 'draft · §4 of 6', blocks: '§4 of the guide',
+    body: "Legal hasn't confirmed the v1 sunset dates yet. I can print them in the guide, or link to the status page and update it later.",
+    options: ['Link the status page', 'Include the dates', 'Hold §4 for legal'],
+    ctx: [['Write', 'guide/03-refunds.mdx', '+212'], ['Read', 'status/v1-sunset.md', 'draft'], ['Ask', 'question for you', 'waiting']] },
+  'AUTH-5': { kind: 'DECISION', q: 'SMS or email as the passkey fallback?', time: '09:40', wait: '42m', after: 'spec · fallback flow', blocks: 'AUTH-6, AUTH-7',
+    body: 'Users without a passkey need a fallback. SMS costs about $0.04 per code and is faster. Email is free but adds a step.',
+    options: ['Email', 'SMS', 'Email, then SMS on retry'],
+    ctx: [['Read', 'specs/auth/passkeys.md', '4 sections'], ['Write', 'specs/auth/fallback.md', '+48'], ['Ask', 'decision for you', 'waiting']] },
+};
+const WATCH = {
+  AR: [['WEBHOOK', 'github · PR touches src/ledger/**', 'checks it against ADR-7']],
+  SC: [['WEBHOOK', 'inbox · request.created', 'triages it and briefs you'], ['ROUTINE', 'Shift handoff briefing', 'daily · 08:00 and 20:00']],
+  LD: [['ROUTINE', 'Triage new issues', 'every 30m · next at 10:30'], ['WAIT', 'PAY-14 merges', 'then drafts PAY-18']],
+  RV: [['WEBHOOK', 'github · pull_request.opened', 'auto-review on checkout-v2, docs-site']],
+  TS: [['WEBHOOK', 'ci · deploy.succeeded · staging', 'runs the smoke suite']],
+  PM: [['WEBHOOK', 'linear · issue.labeled passkeys', 'folds feedback into AUTH-4']],
+  UX: [['WEBHOOK', 'figma · Checkout file updated', 're-runs visual QA']],
+  ML: [['NOTIFY', 'legal · v1 sunset sign-off', 'then locks the launch date']],
+};
+const TAIL = {
+  'PAY-14': [['Read', 'src/charges/create.ts', '212 lines'], ['Edit', 'src/charges/create.ts', '+42 −8'], ['Bash', 'pnpm test charges', '31 passed'], ['Write', 'src/lib/idempotency.ts', 'writing…', 1]],
+  'PAY-16': [['Read', 'src/refunds/v1.ts', '164 lines'], ['Write', 'src/refunds/v2.ts', '+96'], ['Bash', 'pnpm test refunds', '12 / 30', 1]],
+  'PAY-12': [['Read', 'PR #212 · retry.ts', '+64 −10'], ['Comment', 'retry.ts:41', 'jitter cap?'], ['Review', 'PR #212', '2 comments', 1]],
+  'UI-21': [['Edit', 'checkout/CardForm.tsx', '+58 −31'], ['Bash', 'pnpm storybook:build', 'building…', 1]],
+  'UI-25': [['Read', 'api/tokenizer/README.md', 'v2 docs'], ['Edit', 'src/tokenizer/session.ts', 'editing…', 1]],
+  'UI-23': [['Read', 'copy/declines.csv', '9 codes'], ['Write', 'copy/declines.v2.md', '6 of 9', 1]],
+  'MIG-8': [['Read', 'docs/adr/0007-ledger.md', 'ADR-7'], ['Read', 'src/ledger/write.ts', '88 lines'], ['Write', 'docs/adr/0009-cutover.md', 'drafting…', 1]],
+  'MIG-6': [['Read', 'src/ledger/write.ts', '88 lines'], ['Edit', 'src/ledger/shim.ts', 'editing…', 1]],
+  'DOC-7': [['Read', 'guide/refunds/*.mdx', '6 files'], ['Comment', 'refunds/partial.mdx', '4 comments', 1]],
+  'AUTH-3': [['Edit', 'ios/Enroll.swift', '+120'], ['Bash', 'xcodebuild test -sim', 'running…', 1]],
+  'AUTH-4': [['Read', 'specs/auth/passkeys.md', '4 sections'], ['Write', 'specs/auth/recovery.md', 'drafting…', 1]],
+  'LCH-2': [['Read', 'briefs/positioning.md', 'final'], ['Write', 'posts/checkout-v2.md', '2nd pass', 1]],
+  'LCH-3': [['Read', 'plans/q4-calendar.md', '12 slots'], ['Write', 'plans/checkout-v2.md', '4 of 7', 1]],
+};
+const FEED = {
+  pay: [
+    { t: 'text', w: 'LD', time: '09:02', text: 'Split the epic into 11 tasks and matched each one to the profile it needs.', chips: [['PAY-14', 'senior-engineer'], ['PAY-16', 'engineer'], ['PAY-15', 'tester']], more: '+8' },
+    { t: 'review', w: 'RV', time: '09:44', id: 'PAY-11', text: 'Approved PAY-11 and merged it into the workstream branch.', dur: '✓ 3m 51s', stats: [['verdict', 'approved'], ['comments', '2'], ['tests', '88 / 88']] },
+    { t: 'live', w: 'SE', time: '10:05', id: 'PAY-14' },
+    { t: 'human', time: '10:14', text: '@senior-engineer reuse withRedisLock from lib/locks. No new deps.', to: 'PAY-14', ack: 'senior-engineer acknowledged 10:14' },
+    { t: 'ask', w: 'TS', time: '10:16', id: 'PAY-15' },
+    { t: 'live', w: 'EN', time: '10:18', id: 'PAY-16' },
+  ],
+  ui: [
+    { t: 'text', w: 'LD', time: '08:50', text: 'Opened checkout-ui with 6 tasks. frontend takes the card form and 3-D Secure, senior-engineer the session endpoint, designer the copy and baselines.', chips: [['UI-21', 'frontend'], ['UI-24', 'designer'], ['UI-25', 'senior-engineer']], more: '+3' },
+    { t: 'live', w: 'FE', time: '09:38', id: 'UI-21' },
+    { t: 'ask', w: 'UX', time: '10:11', id: 'UI-24' },
+    { t: 'live', w: 'SE', time: '10:13', id: 'UI-25' },
+  ],
+  mig: [
+    { t: 'review', w: 'TS', time: '08:31', id: 'MIG-5', text: 'Backfilled ledger ids. Every row matched on the checksum pass.', dur: '✓ 14m 02s', stats: [['rows', '1.24M'], ['mismatches', '0'], ['duration', '14m']] },
+    { t: 'live', w: 'AR', time: '09:58', id: 'MIG-8' },
+    { t: 'live', w: 'SE', time: '10:11', id: 'MIG-6' },
+    { t: 'text', w: 'LD', time: '10:12', text: "MIG-7 waits on the shim and architect's ADR. I'll draft the cutover runbook once both land." },
+  ],
+  guide: [
+    { t: 'text', w: 'WR', time: '09:20', text: 'Quickstart rewrite is merged. Starting on the migration guide.' },
+    { t: 'live', w: 'RV', time: '09:51', id: 'DOC-7' },
+    { t: 'ask', w: 'WR', time: '09:58', id: 'DOC-8' },
+  ],
+  pk: [
+    { t: 'text', w: 'PM', time: '09:12', text: 'Enrollment is specced. Recovery and fallback are next.' },
+    { t: 'live', w: 'FE', time: '09:30', id: 'AUTH-3' },
+    { t: 'ask', w: 'PM', time: '09:40', id: 'AUTH-5' },
+  ],
+  ann: [
+    { t: 'text', w: 'ML', time: '09:05', text: 'Positioning brief is final. Planning channels around the Oct 30 ship date.' },
+    { t: 'live', w: 'ML', time: '09:48', id: 'LCH-3' },
+    { t: 'live', w: 'WR', time: '10:02', id: 'LCH-2' },
+  ],
+};
+const STARTED = {};
+Object.values(FEED).forEach(l => l.forEach(m => { if (m.id && !STARTED[m.id]) STARTED[m.id] = m.time; }));
+const SESSION = {
+  'PAY-14': [
+    { k: 'brief', label: 'TASK BRIEF · from lead · 10:05', crit: '3 criteria', text: 'Require an Idempotency-Key header on POST /charges. A replay returns the original response for 24h. Concurrent duplicates wait on the first.' },
+    { k: 'say', text: "I'll store keys in Redis and wrap the create handler. Starting with the handler." },
+    { k: 'tools', rows: [['Read', 'src/charges/create.ts', '212 lines'], ['Edit', 'src/charges/create.ts', '+42 −8']] },
+    { k: 'diff', head: '@@ 31,6 +31,14 @@ export async function createCharge(req)', lines: [['-', 'const charge = await payments.charges.create(body)'], ['+', 'const key = requireIdempotencyKey(req)'], ['+', 'const cached = await keys.get(key)'], ['+', 'if (cached) return replay(cached)'], [' ', '… 5 more lines']] },
+    { k: 'tools', rows: [['Bash', 'pnpm test charges', '31 passed · 4.2s']] },
+    { k: 'msg', init: 'MK', label: 'Mara K. · from #payments-api · 10:14', text: 'Reuse withRedisLock from lib/locks. No new deps.' },
+    { k: 'say', text: 'Got it. Swapping the redlock package for withRedisLock and reverting package.json.' },
+    { k: 'tools', rows: [['Edit', 'package.json', '−1'], ['Write', 'src/lib/idempotency.ts', 'writing… 38 lines', 1]] },
+  ],
+};
+const PAY14 = {
+  criteria: [['Idempotency-Key required on POST /charges', 'done'], ['Replay returns the original response for 24h', 'run'], ['Concurrent duplicates wait on the first', 'queued']],
+  plan: [['read handler', '12s', 'done'], ['wrap create()', '1m 40s', 'done'], ['run tests', '4s', 'done'], ['key store', 'now', 'run'], ['replay + 24h ttl', '—', 'q'], ['concurrency test', '—', 'q']],
+  files: [['src/charges/create.ts', '+42 −8', 0], ['src/lib/idempotency.ts', 'new · 38', 1], ['src/charges/create.spec.ts', '+12', 0], ['package.json', '−1', 0]],
+  linked: [['after', 'PAY-11 · charges client ✓'], ['blocks', 'PAY-18, PAY-19'], ['review by', 'reviewer · auto on done']],
+};
+const ACKS = ['Got it. Folding that into the current step.', 'Understood. Adjusting the plan.', 'On it. I\'ll flag anything that conflicts.'];
+const NODE = {
+  needs: { nb: Y, nbd: INK, nbs: 'solid' }, run: { nb: A, nbd: A, nbs: 'solid' }, review: { nb: 'transparent', nbd: A, nbs: 'solid' },
+  queued: { nb: 'transparent', nbd: 'rgba(var(--inkrgb),.5)', nbs: 'dashed' }, done: { nb: INK, nbd: INK, nbs: 'solid' },
+};
+const PIP = { needs: { bg: Y, bd: INK, bs: 'solid' }, run: { bg: A, bd: A, bs: 'solid' }, review: { bg: 'transparent', bd: A, bs: 'solid' }, free: { bg: 'transparent', bd: 'rgba(var(--inkrgb),.4)', bs: 'dashed' } };
+const SEG = { needs: { bg: Y, ol: '1px solid var(--ink)' }, run: { bg: A, ol: 'none' }, review: { bg: 'transparent', ol: '1.5px solid ' + A },
+  queued: { bg: 'transparent', ol: '1px dashed rgba(var(--inkrgb),.45)' }, done: { bg: INK, ol: 'none' } };
+const STAT = {
+  shift: { label: 'on shift', bg: A, bd: A, c: A },
+  call: { label: 'on call', bg: 'linear-gradient(135deg,var(--blue) 50%,transparent 50%)', bd: A, c: INK },
+  off: { label: 'off shift', bg: 'transparent', bd: 'rgba(var(--inkrgb),.45)', c: 'var(--ink3)' },
+};
+const SEGORD = ['done', 'review', 'run', 'needs', 'queued'];
+const ORD = { needs: 0, run: 1, review: 2, queued: 3, done: 4 };
+const LABEL = { needs: 'NEEDS YOU', run: 'RUNNING', review: 'IN REVIEW', queued: 'QUEUED', done: 'DONE' };
+const SELBG = 'rgba(var(--bluergb),.08)', NAVSEL = 'rgba(var(--bluergb),.12)';
+const START = { cos: { v: 'cos' }, stream: { v: 'stream', ws: 'pay' }, task: { v: 'task', id: 'PAY-14' }, board: { v: 'board', proj: 'checkout-v2' }, inbox: { v: 'inbox' }, tasks: { v: 'tasks' }, schedule: { v: 'schedule' }, roster: { v: 'roster' } };
+const LS = 'shift-manager:v4';
+const toSec = s => { if (!s) return 0; const m = s.match(/(\d+)m/), x = s.match(/(\d+)s/); return (m ? +m[1] * 60 : 0) + (x ? +x[1] : 0); };
+const at = (h, m = 0, d = 0) => d * 1440 + h * 60 + m;
+const pad2 = n => String(n).padStart(2, '0');
+const hmx = m => { const r = ((m % 1440) + 1440) % 1440; return pad2(Math.floor(r / 60)) + ':' + pad2(r % 60); };
+const hm = m => hmx(Math.round(m / 5) * 5);
+const fd = m => m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
+const REM = { 'PAY-14': 25, 'PAY-16': 40, 'PAY-12': 15, 'PAY-15': 5, 'UI-24': 5, 'UI-21': 50, 'UI-25': 30, 'UI-23': 20, 'MIG-6': 70, 'MIG-8': 45, 'DOC-7': 20, 'DOC-8': 90, 'AUTH-5': 30, 'AUTH-3': 60, 'AUTH-4': 35, 'LCH-2': 30, 'LCH-3': 25 };
+const SCHED = { 'PAY-17': { after: ['PAY-15'], est: 45 }, 'PAY-18': { after: ['PAY-14'], est: 20 }, 'PAY-19': { after: ['PAY-14', 'PAY-16'], est: 180 }, 'UI-22': { after: ['UI-21', 'UI-24'], est: 180 }, 'MIG-7': { after: ['MIG-6', 'MIG-8'], est: 40 } };
+const P = (id, title, w, ws, after, est, x = {}) => ({ id, title, w, ws, after, est, ...x });
+const PLAN = [
+  P('PAY-22', 'Delete the v1 webhook handlers', 'EN', 'pay', ['PAY-19'], 40),
+  P('PAY-20', 'Load test v2 charges on staging', 'TS', 'pay', ['PAY-17', 'PAY-19'], 60, { nb: at(23), why: 'off-peak window', gate: 'staging load' }),
+  P('PAY-21', 'Turn the v2 flag on for 5% of traffic', 'LD', 'pay', ['PAY-18', 'PAY-20'], 30, { nb: at(9, 0, 1), why: 'after your morning review', gate: 'prod flag' }),
+  P('UI-27', 'Accessibility pass on the card form', 'FE', 'ui', ['UI-21'], 45),
+  P('UI-26', 'Visual QA on the 3-D Secure modal', 'UX', 'ui', ['UI-22'], 30),
+  P('MIG-9', 'Verify the backfill on a prod replica', 'TS', 'mig', ['MIG-6'], 50, { nb: at(22, 30), why: 'off-peak window' }),
+  P('MIG-10', 'Cutover dry-run on staging', 'SE', 'mig', ['MIG-7', 'MIG-9'], 90, { nb: at(2, 0, 1), why: 'quiet window', gate: 'staging write' }),
+  P('DOC-9', 'Publish the migration guide', 'WR', 'guide', ['DOC-7', 'DOC-8'], 20, { nb: at(16), why: 'docs deploy window' }),
+  P('DOC-10', 'Changelog entry for Payments v2', 'WR', 'guide', ['DOC-9'], 15),
+  P('AUTH-6', 'Fallback code endpoint', 'SE', 'pk', ['AUTH-5'], 150),
+  P('AUTH-7', 'Fallback screens on iOS and Android', 'FE', 'pk', ['AUTH-5', 'AUTH-3'], 240),
+  P('AUTH-8', 'End-to-end tests for the fallback', 'TS', 'pk', ['AUTH-6', 'AUTH-7'], 60),
+  P('LCH-4', 'Schedule the launch posts', 'WR', 'ann', ['LCH-2', 'LCH-3'], 25),
+  P('LCH-5', 'Lock the launch date', 'ML', 'ann', ['LCH-4'], 15, { nb: at(9, 0, 1), why: 'after legal signs off' }),
+];
+const fmtEl = n => { const m = Math.floor(n / 60), s = n % 60; return m < 10 ? m + 'm ' + String(s).padStart(2, '0') + 's' : m + 'm'; };
+
+class Component extends DCLogic {
+  state = { view: null, themeMode: null, resolved: {}, reassign: {}, created: [], posts: {}, turns: {}, paused: {}, replies: {}, wf: null, sel: 'PAY-15', inboxTab: 'all',
+    group: 'state', queued: false, showDone: false, showCode: {}, expanded: { 'checkout-v2': true }, jumpQ: '', jumpI: 0, draft: '', handoff: false, rosterTeam: null, tick: 0, vw: 1440, also: false, cos: [], thinking: false, hires: [], hiring: false, hire: { name: '', base: 'SE', focus: '', rules: '', harness: 'claude-code' }, schSel: 'PAY-19', schLanes: 'stream', signed: {} };
+  feedRef = React.createRef(); jumpRef = React.createRef(); inputRef = React.createRef(); uid = 0;
+
+  hour() { const c = this.props.clock ?? 'now'; if (c !== 'now') return parseInt(c, 10); const d = new Date(); return d.getHours() + d.getMinutes() / 60; }
+  themeMode() { return this.state.themeMode ?? this.props.themeMode ?? 'auto'; }
+  timeTheme(h) { return h >= 6 && h < 14 ? 'day' : h >= 14 && h < 22 ? 'evening' : 'night'; }
+  theme() { const m = this.themeMode(); return m === 'auto' ? this.timeTheme(this.hour()) : m; }
+  shift() { const h = this.hour(); return h >= 6 && h < 14 ? 'Day' : h >= 14 && h < 22 ? 'Evening' : 'Night'; }
+  cycleTheme() { const n = { auto: 'day', day: 'evening', evening: 'night', night: 'auto' }[this.themeMode()]; this.userTheme = Date.now(); this.setState({ themeMode: n }); }
+  markVals() {
+    const m = this.themeMode(), auto = m === 'auto', cur = this.theme(), idx = ['day', 'evening', 'night'].indexOf(cur);
+    const t = this.hour() / 24, u = 1 - t, N = { day: 'Day', evening: 'Evening', night: 'Night' };
+    const next = { auto: 'Day', day: 'Evening', evening: 'Night', night: 'Auto' }[m];
+    return { cycleTheme: () => this.cycleTheme(), mkAutoOp: auto ? 1 : 0, mkManOp: auto ? 0 : 1, mkTx: idx * 22 + 'px', mkFill: { day: '#f8f6f0', evening: '#d9cfb2', night: '#16150f' }[cur],
+      mkDotX: u * u * 31 + 2 * u * t * 75 + t * t * 119, mkDotY: u * u * 24 - 8 * u * t + t * t * 24,
+      themeLabel: (auto ? 'Auto · ' : '') + N[cur], themeNext: 'next: ' + next, mkTitle: 'Theme: ' + (auto ? 'Auto (' + N[cur] + ')' : N[cur]) + '. Click for ' + next + '.' };
+  }
+  view() {
+    const v = this.state.view ?? START[this.props.startView ?? 'cos'] ?? START.stream;
+    if (v.v === 'task' && !this.tasks().some(t => t.id === v.id)) return START.stream;
+    if (v.v === 'stream' && !WS[v.ws]) return START.stream;
+    if (v.v === 'board' && !PROJ.some(p => p.name === v.proj)) return START.board;
+    return v;
+  }
+  nowStr() { const m = 10 * 60 + 22 + Math.floor(this.state.tick / 60); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+  tasks() {
+    const { resolved, reassign, created } = this.state;
+    (this.state.hires || []).forEach(h => { if (!WK[h.k]) { WK[h.k] = h.def; if (h.watch) WATCH[h.k] = [h.watch]; } const tm = TEAMS.find(t => t.name === h.team) || TEAMS[1]; if (!tm.m.includes(h.k)) tm.m.push(h.k); });
+    return [...BASE, ...created].map(t => {
+      let x = t; const r = resolved[t.id];
+      if (r) x = { ...x, st: 'run', step: r === 'denied' ? 'replanning · after deny' : INBOX[t.id].after };
+      if (reassign[t.id]) x = { ...x, w: reassign[t.id] };
+      return x;
+    });
+  }
+  go(v) {
+    const ws = this.view().ws;
+    this.setState({ view: v, draft: '', handoff: false, jumpQ: '', jumpI: 0, wf: v.ws && v.ws === ws ? this.state.wf : null });
+    if (this.jumpRef.current) this.jumpRef.current.blur();
+  }
+  prefill(text) { this.setState({ draft: text }); setTimeout(() => { const el = this.inputRef.current; if (el) { el.focus(); el.setSelectionRange(text.length, text.length); } }, 30); }
+  applyTheme() {
+    const t = this.theme(), el = document.documentElement;
+    if (el.dataset.fsTheme === t) return;
+    if (el.dataset.fsTheme) { const fast = Date.now() - (this.userTheme || 0) < 800; el.style.setProperty('--fs-xd', fast ? '.32s' : '2.4s'); el.classList.add('fs-xfade'); clearTimeout(this.xfT); this.xfT = setTimeout(() => el.classList.remove('fs-xfade'), fast ? 400 : 2500); }
+    el.dataset.fsTheme = t;
+  }
+  scrollFeed() { requestAnimationFrame(() => { const el = this.feedRef.current; if (el) el.scrollTop = el.scrollHeight; }); }
+
+  componentDidMount() {
+    try { const s = JSON.parse(localStorage.getItem(LS) || 'null'); if (s) this.setState({ view: s.view ?? null, themeMode: s.themeMode ?? null }); } catch (e) {}
+    this.onResize = () => this.setState({ vw: window.innerWidth });
+    this.onKey = (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); this.jumpRef.current && this.jumpRef.current.focus(); } };
+    window.addEventListener('resize', this.onResize); window.addEventListener('keydown', this.onKey);
+    this.onResize();
+    if (this.props.live ?? true) this.timer = setInterval(() => this.setState(s => ({ tick: s.tick + 1 })), 1000);
+    this.applyTheme(); this.scrollFeed();
+  }
+  componentWillUnmount() { clearInterval(this.timer); window.removeEventListener('resize', this.onResize); window.removeEventListener('keydown', this.onKey); this.timers && this.timers.forEach(clearTimeout); }
+  componentDidUpdate() {
+    this.applyTheme();
+    const ps = this._prev || {}; const { view, themeMode, posts, turns, cos, thinking } = this.state; this._prev = { view, themeMode, posts, turns, cos, thinking };
+    if (ps.view !== this.state.view || ps.themeMode !== this.state.themeMode) { try { localStorage.setItem(LS, JSON.stringify({ view: this.state.view, themeMode: this.state.themeMode })); } catch (e) {} }
+    if (ps.view !== this.state.view || ps.posts !== this.state.posts || ps.turns !== this.state.turns || ps.cos !== this.state.cos || ps.thinking !== this.state.thinking) this.scrollFeed();
+  }
+  later(fn, ms) { (this.timers = this.timers || []).push(setTimeout(fn, ms)); }
+
+  sendStream(ws) {
+    const text = this.state.draft.trim(); if (!text) return;
+    const time = this.nowStr(), tasks = this.tasks();
+    if (/^\/task\s+\S/.test(text)) {
+      const title = text.replace(/^\/task\s+/, '');
+      const nums = tasks.filter(t => t.ws === ws).map(t => +t.id.split('-')[1]);
+      const id = PREFIX[ws] + '-' + (Math.max(0, ...nums) + 1), lead = LEADS[ws];
+      this.setState(s => ({ draft: '', created: [...s.created, T(id, title, lead, ws, 'queued', 'triage · ' + WK[lead].name)],
+        posts: { ...s.posts, [ws]: [...(s.posts[ws] || []), { t: 'human', time, text }, { t: 'text', w: lead, time, text: 'Added ' + id + ' to the queue. I\'ll assign it after triage.', chips: [[id, WK[lead].name]] }] } }));
+      return;
+    }
+    const mm = text.match(/@([\w-]+)/); let to = null;
+    if (mm) {
+      const c = Object.keys(WK).find(k => WK[k].name === mm[1]);
+      if (c) {
+        const cand = tasks.filter(t => t.w === c && t.ws === ws && t.st !== 'done').sort((a, b) => ORD[a.st] - ORD[b.st]);
+        const f = cand[0] || tasks.find(t => t.w === c && (t.st === 'run' || t.st === 'review'));
+        to = f ? f.id : null;
+      }
+    }
+    const uid = ++this.uid, body = text.replace(/@[\w-]+\s*/, '');
+    this.setState(s => ({ draft: '', posts: { ...s.posts, [ws]: [...(s.posts[ws] || []), { t: 'human', time, text, to, uid }] },
+      turns: to ? { ...s.turns, [to]: [...(s.turns[to] || []), { k: 'msg', init: 'MK', label: 'Mara K. · from #' + WS[ws].name + ' · ' + time, text: body }] } : s.turns }));
+    if (to) this.later(() => {
+      const nm = WK[this.tasks().find(t => t.id === to).w].name;
+      this.setState(s => ({ posts: { ...s.posts, [ws]: s.posts[ws].map(p => p.uid === uid ? { ...p, ack: nm + ' acknowledged ' + this.nowStr() } : p) },
+        turns: { ...s.turns, [to]: [...(s.turns[to] || []), { k: 'say', text: ACKS[uid % ACKS.length] }] } }));
+    }, 1200);
+  }
+  sendTask(id) {
+    const text = this.state.draft.trim(); if (!text) return;
+    const time = this.nowStr(), t = this.tasks().find(x => x.id === id), nm = WK[t.w].name, uid = ++this.uid;
+    this.setState(s => {
+      const p = { ...s.paused }; delete p[id];
+      const posts = s.also ? { ...s.posts, [t.ws]: [...(s.posts[t.ws] || []), { t: 'human', time, text: '@' + nm + ' ' + text, to: id, ack: 'sent from the session' }] } : s.posts;
+      return { draft: '', paused: p, posts, turns: { ...s.turns, [id]: [...(s.turns[id] || []), { k: 'msg', init: 'MK', label: 'You · ' + time, text }] } };
+    });
+    this.later(() => this.setState(s => ({ turns: { ...s.turns, [id]: [...(s.turns[id] || []), { k: 'say', text: ACKS[uid % ACKS.length] }] } })), 1100);
+  }
+  sendInbox(id) {
+    const text = this.state.draft.trim(); if (!text) return;
+    const time = this.nowStr();
+    this.setState(s => ({ draft: '', replies: { ...s.replies, [id]: [...(s.replies[id] || []), { label: 'You · ' + time + ' · sent into the ' + id + ' session', text }] },
+      turns: { ...s.turns, [id]: [...(s.turns[id] || []), { k: 'msg', init: 'MK', label: 'Mara K. · from inbox · ' + time, text }] } }));
+  }
+  send() { const v = this.view(); if (v.v === 'cos') this.askCos(); else if (v.v === 'stream') this.sendStream(v.ws); else if (v.v === 'task') this.sendTask(v.id); else if (v.v === 'inbox') this.sendInbox(this.state.sel); }
+  togglePause(id) { this.setState(s => { const p = { ...s.paused }; if (id in p) delete p[id]; else p[id] = s.tick; return { paused: p }; }); }
+
+  wcode(x) { if (!x) return null; if (WK[x]) return x; const n = String(x).toLowerCase().replace(/^@/, ''); return Object.keys(WK).find(c => WK[c].name === n) || null; }
+  doCreate(wsIn, title, wIn, actions) {
+    const ws = WS[wsIn] ? wsIn : (Object.keys(WS).find(k => WS[k].name === String(wsIn || '').replace(/^#/, '')) || 'pay');
+    let w = this.wcode(wIn); if (!w || w === 'SC') w = LEADS[ws];
+    const ts = this.tasks(); this._last = this._last || {};
+    const n = Math.max(0, ...ts.filter(t => t.ws === ws).map(t => +t.id.split('-')[1]), this._last[ws] || 0) + 1; this._last[ws] = n;
+    const id = PREFIX[ws] + '-' + n, time = this.nowStr();
+    const st = 'run';
+    const task = { ...T(id, String(title).slice(0, 80), w, ws, st, st === 'run' ? 'starting · reading the brief' : 'queued · ' + WK[w].name + ' is full', st === 'run' ? '0s' : '', st === 'run' ? '$0.00' : ''), from: 'SC', t0: this.state.tick };
+    this.setState(s => ({ created: [...s.created, task], posts: { ...s.posts, [ws]: [...(s.posts[ws] || []), { t: 'text', w: 'SC', time, text: 'Opened ' + id + ' from a note Mara sent me. ' + WK[w].name + (st === 'run' ? ' is on it.' : ' will pick it up next.'), chips: [[id, WK[w].name]] }] } }));
+    actions.push({ k: 'TASK', label: id + ' · ' + task.title + ' → ' + WK[w].name + ' · #' + WS[ws].name, go: { v: 'task', id } });
+    return { id, worker: WK[w].name, stream: WS[ws].name, status: st === 'run' ? 'started: the worker is running it now' : 'queued: the worker is full' };
+  }
+  doHire(spec, actions) {
+    const name = String(spec.name || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (!name) return 'A name is required';
+    if (Object.values(WK).some(w => w.name === name)) return name + ' is already on the roster';
+    const BASES = { engineer: 'EN', 'senior-engineer': 'SE', architect: 'AR' };
+    const base = WK[spec.base] ? spec.base : (BASES[spec.base] || 'SE');
+    const parts = name.split('-').filter(Boolean); let code = (parts.length > 1 ? parts[0][0] + parts[1][0] : name.slice(0, 2)).toUpperCase(), k = code, i = 2;
+    while (WK[k]) k = code[0] + (i++);
+    const focus = spec.focus || WK[base].focus;
+    const def = { name, focus, harness: spec.harness || WK[base].harness, rules: spec.rules || ('Only works on ' + focus + '. Follows the project conventions and asks before touching anything outside that area.'),
+      hired: this.nowStr() + ' · by ' + (spec.by || 'coordinator') + ' · from ' + WK[base].name };
+    const watch = spec.watch ? ['WEBHOOK', spec.watch, 'picks up new ' + focus + ' work'] : ['WEBHOOK', 'github · issue.labeled ' + parts[0], 'picks up new ' + focus + ' work'];
+    const team = spec.team && TEAMS.some(t => t.name === spec.team) ? spec.team : 'Engineering';
+    WK[k] = def; WATCH[k] = [watch]; const tm = TEAMS.find(t => t.name === team); if (!tm.m.includes(k)) tm.m.push(k);
+    this.setState(s => ({ hires: [...s.hires, { k, def, watch, team }] }));
+    actions.push({ k: 'HIRED', label: name + ' · ' + focus + ' · ' + def.harness, go: { v: 'roster' } });
+    return { code: k, name, focus };
+  }
+  hireFromForm() {
+    const h = this.state.hire; if (!h.name.trim()) return;
+    const r = this.doHire({ ...h, by: 'you' }, []);
+    if (typeof r === 'object') this.setState({ hiring: false, rosterTeam: null, hire: { name: '', base: 'SE', focus: '', rules: '', harness: 'claude-code' } });
+  }
+  doMessage(id, text, actions) {
+    const t = this.tasks().find(x => x.id === id); if (!t) return 'No task ' + id;
+    const time = this.nowStr(), uid = ++this.uid;
+    this.setState(s => ({ turns: { ...s.turns, [id]: [...(s.turns[id] || []), { k: 'msg', init: 'SC', label: 'Shift Coordinator · for Mara · ' + time, text }] } }));
+    this.later(() => this.setState(s => ({ turns: { ...s.turns, [id]: [...(s.turns[id] || []), { k: 'say', text: ACKS[uid % ACKS.length] }] } })), 1200);
+    actions.push({ k: 'SENT', label: WK[t.w].name + ' · ' + id + ' · ' + text, go: { v: 'task', id } });
+    return 'sent to ' + WK[t.w].name;
+  }
+  doResolve(id, decision, actions) {
+    const I = INBOX[id]; if (!I) return 'No request on ' + id; if (this.state.resolved[id]) return id + ' is already resolved';
+    const d = String(decision || '').toLowerCase(); let val;
+    if (I.kind === 'APPROVAL') val = /deny|reject|^no/.test(d) ? 'denied' : 'approved';
+    else { val = I.options.find(o => o.toLowerCase() === d) || I.options.find(o => d.includes(o.toLowerCase())) || I.options.find(o => o.toLowerCase().includes(d)); if (!val) return 'Options are: ' + I.options.join(', '); }
+    this.setState(s => ({ resolved: { ...s.resolved, [id]: val } }));
+    actions.push({ k: val === 'denied' ? 'DENIED' : val === 'approved' ? 'APPROVED' : 'ANSWERED', label: id + ' · ' + (val === 'approved' || val === 'denied' ? I.q : '"' + val + '"'), go: { v: 'task', id } });
+    return 'done: ' + val;
+  }
+  doReassign(id, wIn, actions) {
+    const t = this.tasks().find(x => x.id === id), w = this.wcode(wIn); if (!t || !w) return 'Unknown task or worker';
+    this.setState(s => ({ reassign: { ...s.reassign, [id]: w } }));
+    actions.push({ k: 'MOVED', label: id + ' · ' + WK[t.w].name + ' → ' + WK[w].name, go: { v: 'task', id } });
+    return 'moved to ' + WK[w].name;
+  }
+  cosTools(actions) {
+    const wrap = fn => async (i) => { try { const r = fn(i || {}); return typeof r === 'string' ? r : JSON.stringify(r); } catch (e) { return 'error: ' + e.message; } };
+    return [
+      { name: 'create_task', description: 'Open a new task in a workstream and assign it to a worker. Use for any new piece of work Mara describes.', input_schema: { type: 'object', properties: { stream: { type: 'string', enum: Object.keys(WS) }, title: { type: 'string', description: 'Short imperative title, under 60 characters' }, worker: { type: 'string', description: 'Worker code such as B1, TS, WR' } }, required: ['stream', 'title', 'worker'] }, run: wrap(i => this.doCreate(i.stream, i.title, i.worker, actions)) },
+      { name: 'message_worker', description: "Send direction into an existing task's live session.", input_schema: { type: 'object', properties: { task_id: { type: 'string' }, text: { type: 'string', description: 'The instruction, written to the worker' } }, required: ['task_id', 'text'] }, run: wrap(i => this.doMessage(i.task_id, i.text, actions)) },
+      { name: 'resolve_request', description: 'Approve, deny, or answer an open request, only when Mara has clearly decided.', input_schema: { type: 'object', properties: { task_id: { type: 'string' }, decision: { type: 'string', description: 'approved, denied, or one of the listed options verbatim' } }, required: ['task_id', 'decision'] }, run: wrap(i => this.doResolve(i.task_id, i.decision, actions)) },
+      { name: 'hire_worker', description: 'Hire a new specialist worker with its own instructions for one area of the project, such as billing or frontend. Use when Mara asks, or when recurring work has no fitting specialist. Then use create_task with the returned code to give it work if there is any.', input_schema: { type: 'object', properties: { name: { type: 'string', description: 'kebab-case role name, e.g. billing-engineer' }, base: { type: 'string', enum: ['engineer', 'senior-engineer', 'architect'], description: 'Profile to start from' }, focus: { type: 'string', description: 'Short area of focus' }, rules: { type: 'string', description: 'One or two sentences of standing instructions' }, harness: { type: 'string', enum: ['codex', 'claude-code'] }, watch: { type: 'string', description: 'Optional trigger it stays on call for, e.g. stripe · invoice.payment_failed' } }, required: ['name', 'base', 'focus', 'rules'] }, run: wrap(i => this.doHire(i, actions)) },
+      { name: 'reassign_task', description: 'Move a task to a different worker.', input_schema: { type: 'object', properties: { task_id: { type: 'string' }, worker: { type: 'string', description: 'Worker code' } }, required: ['task_id', 'worker'] }, run: wrap(i => this.doReassign(i.task_id, i.worker, actions)) },
+    ];
+  }
+  cosSystem() {
+    const ts = this.tasks(), R = this.state.resolved;
+    const held = c => ts.filter(t => t.w === c && ORD[t.st] < 3);
+    const st = c => held(c).some(t => t.st === 'run' || t.st === 'review') ? 'on shift' : ((WATCH[c] || []).length || held(c).some(t => t.st === 'needs')) ? 'on call' : 'off shift';
+    return [
+      'You are the Shift Coordinator in Shift Manager, an app where AI workers run tasks inside workstreams. The user is Mara K., who runs the operation. She types to you freely and you decide what happens with it.',
+      'Act with tools: create_task for new work (pick the stream and the worker profile that fits the work: engineer for fast, simple changes; senior-engineer for deliberate multi-file work; architect for decisions only, never code. Workers have no capacity limit and start immediately), message_worker for direction on existing work, resolve_request only when she clearly decides, reassign_task when she asks to move work, hire_worker when an area needs a dedicated specialist with its own instructions. For status questions, answer from the state below without tools.',
+      'After acting, reply in 1 to 3 short plain sentences. No markdown, lists or emoji. Mention task ids. Current time ' + this.nowStr() + '.',
+      'STREAMS: ' + Object.keys(WS).map(k => k + '=#' + WS[k].name + ' (' + WS[k].proj + ')').join('; '),
+      'WORKERS: ' + Object.keys(WK).filter(c => c !== 'SC').map(c => c + ' ' + WK[c].name + ' [' + WK[c].focus + '; ' + WK[c].harness + '; ' + WK[c].rules + '] ' + st(c) + ', ' + held(c).length + ' active').join('; '),
+      'TASKS: ' + ts.map(t => t.id + ' [' + t.st + '] ' + t.title + ' · ' + WK[t.w].name + ' · #' + WS[t.ws].name + (t.step ? ' · ' + t.step : '')).join('; '),
+      'OPEN REQUESTS: ' + (Object.keys(INBOX).filter(id => !R[id]).map(id => id + ' ' + INBOX[id].kind + ': ' + INBOX[id].q + ' (decisions: ' + (INBOX[id].options ? INBOX[id].options.join(' | ') : 'approved | denied') + ')').join('; ') || 'none'),
+      'ON CALL: ' + Object.keys(WATCH).map(c => WK[c].name + ' waits on ' + WATCH[c].map(w => w[1]).join(', ')).join('; '),
+    ].join('\n');
+  }
+  cosFallback(text, actions) {
+    const ts = this.tasks(), low = text.toLowerCase(), R = this.state.resolved;
+    const open = Object.keys(INBOX).filter(k => !R[k]);
+    const idm = text.toUpperCase().match(/\b(PAY|UI|MIG|DOC|AUTH|LCH)-\d+\b/);
+    const id = idm && ts.some(t => t.id === idm[0]) ? idm[0] : null;
+    const nm = c => WK[c].name;
+    const hm = low.match(/\b(hire|bring on|spin up|add)\b.*?\b(senior[- ]engineer|engineer|specialist|architect|designer|writer)\b(.*)$/);
+    if (hm && /\b(hire|bring on|spin up)\b|\bnew (engineer|specialist)\b/.test(low)) {
+      const role = hm[2].replace(' ', '-'), rest = hm[3].replace(/^(\s|\b(who|that|to|for|focused|just|only|dedicated|owns?|handles?|focuses|on|the|a|an)\b)+/, '').replace(/\b(features?|work|stuff)\b/g, '').replace(/[.!?]+$/, '').trim() || 'a dedicated area';
+      const slug = rest.split(/\s+/)[0].replace(/[^a-z0-9]/g, '');
+      const base = role === 'architect' ? 'architect' : /senior/.test(role) || !/fast|simple|quick|small/.test(low) ? 'senior-engineer' : 'engineer';
+      const r = this.doHire({ name: slug + '-' + (role === 'specialist' || role === 'senior-engineer' ? 'engineer' : role), base, focus: rest, harness: base === 'engineer' ? 'codex' : 'claude-code' }, actions);
+      return typeof r === 'object' ? 'Hired ' + r.name + ', starting from the ' + base + ' profile, with instructions to own ' + rest + ' only. It stays on call for new ' + slug + ' issues until there is work.' : r + '.';
+    }
+    if (/approve (all|every)/.test(low)) { const a = open.filter(k => INBOX[k].kind === 'APPROVAL'); a.forEach(k => this.doResolve(k, 'approved', actions)); return a.length ? 'Approved ' + a.join(' and ') + '. Both sessions are moving again.' : 'There are no approvals waiting.'; }
+    if (id && INBOX[id] && !R[id]) {
+      const I = INBOX[id], opt = (I.options || []).find(o => low.includes(o.toLowerCase()));
+      if (opt) { this.doResolve(id, opt, actions); return 'Sent "' + opt + '" to ' + nm(ts.find(t => t.id === id).w) + '. ' + id + ' is moving again.'; }
+      if (I.kind === 'APPROVAL' && /approve|yes|go ahead|ship|accept|run it|\bok\b/.test(low)) { this.doResolve(id, 'approved', actions); return 'Approved ' + id + '. ' + nm(ts.find(t => t.id === id).w) + ' is on ' + I.after + '.'; }
+      if (/deny|reject|\bno\b|don.t/.test(low)) { this.doResolve(id, 'denied', actions); return 'Denied ' + id + '. ' + nm(ts.find(t => t.id === id).w) + ' will replan.'; }
+    }
+    if (!id && /on call|who.?s on|on shift/.test(low)) { const c = Object.keys(WK).filter(k => !ts.some(t => t.w === k && (t.st === 'run' || t.st === 'review')) && ((WATCH[k] || []).length || ts.some(t => t.w === k && t.st === 'needs'))); return c.map(nm).join(', ') + ' are on call. Everyone else holding work is on shift.'; }
+    if (!id && /status|what.?s|how.?s|how are|blocked|blocking|update|summary|needs me|waiting/.test(low)) {
+      const live = ts.filter(t => t.st === 'run' || t.st === 'review').length, q = ts.filter(t => t.st === 'queued' && /blocked|waits|after/.test(t.step));
+      return (open.length ? open.length + ' things need you: ' + open.join(', ') + '. ' : 'Nothing needs you. ') + live + ' sessions are running. ' + (q.length ? q.length + ' tasks are waiting on others, including ' + q.slice(0, 2).map(t => t.id + ' (' + t.step + ')').join(' and ') + '.' : '');
+    }
+    if (id) { this.doMessage(id, text, actions); return 'Passed that to ' + nm(ts.find(t => t.id === id).w) + ' in ' + id + '.'; }
+    const named = Object.keys(WK).filter(c => c !== 'SC').sort((a, b) => WK[b].name.length - WK[a].name.length).find(c => new RegExp('(^|[^-\\w])@?' + WK[c].name.replace('-', '\\-') + '(?![-\\w])').test(low));
+    if (named && /^(tell|ask|have|let|remind)\b/.test(low)) {
+      const tk = ts.filter(t => t.w === named && ORD[t.st] < 3).sort((a, b) => ORD[a.st] - ORD[b.st])[0];
+      if (tk) { this.doMessage(tk.id, text.replace(/^(tell|ask|have|let|remind)\s+@?[\w-]+\s+(to\s+)?/i, ''), actions); return 'Sent that to ' + nm(named) + ' in ' + tk.id + '.'; }
+    }
+    const ROUTES = [[/refund|charge|payment|idempot|retry|webhook|\bapi\b/, 'pay', 'SE'], [/card|form|3-?d|modal|button|snapshot|baseline|\bui\b/, 'ui', 'FE'], [/ledger|migrat|backfill|cutover|shim/, 'mig', 'SE'], [/docs?\b|guide|reference|quickstart/, 'guide', 'WR'], [/passkey|auth|login|sign.?in|recovery/, 'pk', 'PM'], [/launch|post|announce|blog|social|campaign/, 'ann', 'ML']];
+    const BY = [[/architect|\badr\b|trade-?off|decide between/, 'AR'], [/quick|small|simple|typo|rename|bump|tweak/, 'EN'], [/test|qa\b|regression/, 'TS'], [/review/, 'RV'], [/design|visual|copy\b/, 'UX'], [/metric|funnel|analytic|dashboard/, 'AN']];
+    const r = ROUTES.find(x => x[0].test(low)) || [null, 'pay', 'LD'], b = BY.find(x => x[0].test(low));
+    let title = text.replace(/^(hey|hi|ok|okay)[,!\s]+/i, '').replace(/^(can you|could you|please|we need to|we should|let'?s|i want (you )?to|i need (you )?to|go ahead and)\s+/i, '').replace(/[.!?]+$/, '').trim();
+    title = title.charAt(0).toUpperCase() + title.slice(1); if (title.length > 64) title = title.slice(0, 61).replace(/\s+\S*$/, '') + '…';
+    const res = this.doCreate(r[1], title, named || (b ? b[1] : r[2]), actions);
+    return 'Opened ' + res.id + ' in #' + res.stream + '. ' + res.worker + (res.status.startsWith('started') ? ' is on it now.' : ' is full, so it waits in the queue.');
+  }
+  async askCos() {
+    const text = this.state.draft.trim(); if (!text || this.state.thinking) return;
+    const time = this.nowStr();
+    const prior = this.state.cos.slice(-6).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
+    while (prior.length && prior[0].role !== 'user') prior.shift();
+    this.setState(s => ({ draft: '', thinking: true, cos: [...s.cos, { role: 'user', text, time }] }));
+    const actions = []; let reply = null;
+    try {
+      if (!(window.claude && window.claude.complete)) throw new Error('offline');
+      reply = await window.claude.complete({ system: this.cosSystem(), messages: [...prior, { role: 'user', content: text }], max_tokens: 700, tools: this.cosTools(actions) });
+    } catch (e) { reply = null; }
+    if (!reply || !String(reply).trim()) reply = actions.length ? 'Done.' : this.cosFallback(text, actions);
+    this.setState(s => ({ thinking: false, cos: [...s.cos, { role: 'cos', text: String(reply).trim(), time: this.nowStr(), actions }] }));
+  }
+
+  schedule(tasks, nowM) {
+    const all = {};
+    tasks.forEach(t => { if (t.st !== 'done') all[t.id] = { ...t, ...(SCHED[t.id] || {}), real: true }; });
+    PLAN.forEach(p => { if (!all[p.id] && !tasks.some(t => t.id === p.id)) all[p.id] = { ...p, st: 'planned', real: false }; });
+    const memo = {};
+    const calc = id => {
+      if (memo[id]) return memo[id];
+      const t = all[id];
+      if (!t) return memo[id] = { start: nowM, end: nowM, held: [] };
+      if (t.st !== 'queued' && t.st !== 'planned') return memo[id] = { start: nowM, end: nowM + (REM[id] ?? 30), held: t.st === 'needs' ? [id] : [], live: true };
+      memo[id] = { start: nowM, end: nowM, held: [] };
+      const deps = (t.after || []).map(d => [d, calc(d)]);
+      const depEnd = Math.max(nowM + (deps.length ? 0 : 10), ...deps.map(x => x[1].end)), nb = t.nb || 0, start = Math.max(depEnd, nb);
+      const last = deps.reduce((a, x) => !a || x[1].end > a[1].end ? x : a, null);
+      return memo[id] = { start, end: start + (t.est || 30), depEnd, held: [...new Set(deps.flatMap(x => x[1].held))], byNb: nb > 0 && nb >= depEnd, last: last ? last[0] : null, live: false };
+    };
+    Object.keys(all).forEach(calc);
+    return Object.keys(all).map(id => ({ ...all[id], ...memo[id] }));
+  }
+  renderVals() {
+    const S = this.state, v = this.view(), tick = S.tick, tasks = this.tasks();
+    const lean = !!this.props.streamlined, rail = S.vw >= 1180 && (!lean || (v.v === 'task' && S.handoff));
+    const byId = id => tasks.find(t => t.id === id);
+    const byWs = ws => tasks.filter(t => t.ws === ws);
+    const LIVE = t => t.st === 'run' || t.st === 'review';
+    const held = c => tasks.filter(t => t.w === c && ORD[t.st] < 3).sort((a, b) => ORD[a.st] - ORD[b.st]);
+    const pips = () => [];
+    const load = c => { const n = held(c).length; return n ? n + ' active' : 'nothing active'; };
+    const av = c => ({ avBg: WK[c].mgr ? INK : 'var(--paper)', avFg: WK[c].mgr ? 'var(--paper)' : INK });
+    const teamOf = c => TEAMS.find(t => t.m.includes(c)).name;
+    const watches = c => [...(WATCH[c] || []), ...tasks.filter(t => t.w === c && t.st === 'needs').map(t => ['WAITING', 'you · ' + t.id, INBOX[t.id] ? INBOX[t.id].q : t.title])];
+    const status = c => held(c).some(LIVE) ? 'shift' : watches(c).length ? 'call' : 'off';
+    const mark = s => ({ mbg: STAT[s].bg, mbd: STAT[s].bd, slabel: STAT[s].label, sc: STAT[s].c });
+    const isPaused = id => id in S.paused;
+    const elOf = t => LIVE(t) ? fmtEl(Math.max(0, toSec(t.el) + (isPaused(t.id) ? S.paused[t.id] : tick) - (t.t0 || 0))) : (t.el || '—');
+    const prog = ws => { const l = byWs(ws); return l.filter(t => t.st === 'done').length + '/' + l.length; };
+    const segsFor = ws => SEGORD.flatMap(s => byWs(ws).filter(t => t.st === s).map(() => SEG[s]));
+    const stepColor = st => st === 'needs' ? 'var(--onhl)' : st === 'run' || st === 'review' ? A : 'var(--ink3)';
+    const goTask = id => () => this.go({ v: 'task', id });
+    const goStream = ws => () => this.go({ v: 'stream', ws });
+    const goBoard = proj => () => { this.setState(s => ({ expanded: { ...s.expanded, [proj]: true } })); this.go({ v: 'board', proj }); };
+    const goRoster = team => () => { this.setState({ rosterTeam: team }); this.go({ v: 'roster' }); };
+    const resolve = (id, val) => () => this.setState(s => ({ resolved: { ...s.resolved, [id]: val }, sel: id }));
+    const unresolve = id => () => this.setState(s => { const r = { ...s.resolved }; delete r[id]; return { resolved: r }; });
+    const doneTextOf = id => { const r = S.resolved[id], I = INBOX[id], w = byId(id).w;
+      return r === 'approved' ? 'Approved by you · ' + I.after : r === 'denied' ? 'Denied by you · ' + WK[w].name + ' is replanning' : 'Answered "' + r + '" · sent into the ' + id + ' session'; };
+    const askCard = id => {
+      const I = INBOX[id], r = S.resolved[id], isAppr = I.kind === 'APPROVAL';
+      return { id, kind: I.kind, q: I.q, body: I.body, done: !!r, showApprove: !r && isAppr, approveLabel: I.approveLabel, approve: resolve(id, 'approved'), deny: resolve(id, 'denied'),
+        hasCode: !!I.code, codeOpen: !!(I.code && S.showCode[id]), codeLabel: S.showCode[id] ? 'Hide SQL' : 'Show SQL', code: (I.code || []).map(l => ({ l })),
+        toggleCode: () => this.setState(s => ({ showCode: { ...s.showCode, [id]: !s.showCode[id] } })),
+        showOptions: !r && !isAppr, options: (I.options || []).map((o, i) => ({ label: o, pick: resolve(id, o), bg: i === 0 ? INK : 'transparent', fg: i === 0 ? 'var(--paper)' : INK })),
+        doneText: r ? doneTextOf(id) : '', undo: unresolve(id), openTask: goTask(id), openInbox: () => { this.setState({ sel: id }); this.go({ v: 'inbox' }); } };
+    };
+    const tailRow = (r, live) => { const on = live && r[3]; return { tool: r[0], target: r[1], res: r[2] || '', dot: on ? A : INK, c: on ? A : INK, rc: on ? A : 'var(--ink3)' }; };
+    const tailOf = t => TAIL[t.id] || [['Run', t.step || t.title, '', 1]];
+    const liveCard = id => {
+      const t = byId(id), live = LIVE(t) && !isPaused(id);
+      const status = t.st === 'done' ? 'done' : isPaused(id) ? 'interrupted' : t.st === 'needs' ? 'waiting on you' : t.st === 'queued' ? 'queued' : (t.st === 'review' ? 'in review · ' : 'live · ') + elOf(t);
+      return { id, title: t.title, wname: WK[t.w].name, status, sc: live ? A : 'var(--ink3)', bd: live ? A : 'rgba(var(--inkrgb),.35)', headBg: live ? 'rgba(var(--bluergb),.05)' : 'transparent',
+        dot: t.st === 'review' ? 'transparent' : live ? A : t.st === 'needs' ? Y : INK, dotBd: t.st === 'needs' ? INK : live || t.st === 'review' ? A : INK,
+        tail: tailOf(t).map(r => tailRow(r, live)), cost: [t.id === 'PAY-14' ? '38.1k tok' : '', t.cost].filter(Boolean).join(' · '),
+        open: goTask(id), message: () => this.prefill('@' + WK[t.w].name + ' ') };
+    };
+
+    const shiftIds = Object.keys(WK);
+    const shiftN = shiftIds.filter(c => status(c) === 'shift').length, callN = shiftIds.filter(c => status(c) === 'call').length, offN = shiftIds.length - shiftN - callN;
+    const openIds = Object.keys(INBOX).filter(id => !S.resolved[id]);
+    const active = tasks.filter(t => ORD[t.st] < 3);
+    const curWs = v.v === 'stream' ? v.ws : v.v === 'task' ? byId(v.id).ws : null;
+    const night = this.theme() === 'night', shiftNow = this.shift();
+
+    const nowM = 622 + Math.floor(tick / 60), sched = this.schedule(tasks, nowM), pend = sched.filter(i => !i.live).sort((a, b) => a.start - b.start);
+    const tLabel = i => i.live ? (i.st === 'needs' ? 'on you' : 'now') : i.byNb ? hmx(i.start) : '~' + hm(i.start);
+    // sidebar
+    const navOn = k => ({ [k + 'Bg']: v.v === k ? NAVSEL : 'transparent', [k + 'Fw']: v.v === k ? '700' : '500' });
+    const nav = { ...navOn('inbox'), ...navOn('tasks'), ...navOn('roster'), inboxCount: String(openIds.length), inboxBadgeBg: openIds.length ? Y : 'transparent', inboxBadgeFg: openIds.length ? 'var(--onhl)' : 'var(--ink3)',
+      taskCount: String(active.length), rosterMeta: shiftN + '·' + callN,
+      cosBg: v.v === 'cos' ? INK : 'var(--card)', cosFg: v.v === 'cos' ? 'var(--paper)' : INK, cosBd: v.v === 'cos' ? INK : 'rgba(var(--inkrgb),.3)', cosAv: v.v === 'cos' ? 'var(--paper)' : INK, cosAvFg: v.v === 'cos' ? INK : 'var(--paper)', cosAvBd: v.v === 'cos' ? 'var(--paper)' : INK, cosDot: S.thinking ? A : 'transparent' };
+    if (v.v === 'roster' && S.rosterTeam) { nav.rosterBg = 'transparent'; nav.rosterFw = '500'; }
+    Object.assign(nav, navOn('schedule'), { schedMeta: pend.length ? tLabel(pend[0]) : '' });
+    const projects = PROJ.map(p => {
+      const open = !!S.expanded[p.name], l = p.ws.flatMap(byWs), n = l.some(t => t.st === 'needs'), r = l.some(LIVE), on = v.v === 'board' && v.proj === p.name;
+      return { name: p.name, isOpen: open, caret: open ? '▾' : '▸', meta: open ? '' : String(p.ws.length), bg: on ? NAVSEL : 'transparent', fw: on ? '700' : open ? '600' : '400',
+        dot: open ? 'transparent' : n ? Y : r ? A : 'transparent', dotBd: open ? 'transparent' : n ? INK : r ? A : 'transparent',
+        toggle: (e) => { e.stopPropagation(); this.setState(s => ({ expanded: { ...s.expanded, [p.name]: !s.expanded[p.name] } })); }, open: goBoard(p.name),
+        streams: p.ws.map(ws => { const wl = byWs(ws), wn = wl.some(t => t.st === 'needs'), wr = wl.some(LIVE), s = curWs === ws;
+          return { name: WS[ws].name, prog: prog(ws), bg: s ? NAVSEL : 'transparent', fw: s ? '600' : '400', dot: wn ? Y : wr ? A : 'transparent', dotBd: wn ? INK : wr ? A : 'transparent', go: goStream(ws) }; }) };
+    });
+    const teams = TEAMS.map(t => ({ name: t.name, meta: t.m.filter(c => status(c) === 'shift').length + '/' + t.m.length, go: goRoster(t.name),
+      bg: v.v === 'roster' && S.rosterTeam === t.name ? NAVSEL : 'transparent',
+      members: t.m.map(c => ({ ...mark(status(c)), title: WK[c].name + ' · ' + STAT[status(c)].label })) }));
+
+    // jump
+    const q = S.jumpQ.trim().toLowerCase();
+    let hits = [];
+    if (q) {
+      hits = [
+        ...Object.keys(WS).map(ws => ({ kind: 'STREAM', label: '#' + WS[ws].name, meta: WS[ws].proj, go: goStream(ws) })),
+        ...PROJ.map(p => ({ kind: 'PROJECT', label: p.name, meta: p.ws.length + ' streams', go: goBoard(p.name) })),
+        ...Object.keys(WK).map(c => ({ kind: 'WORKER', label: WK[c].name, meta: WK[c].focus + ' · ' + STAT[status(c)].label, go: goRoster(null) })),
+        ...tasks.map(t => ({ kind: t.id, label: t.title, meta: '#' + WS[t.ws].name + ' · ' + WK[t.w].name, go: goTask(t.id) })),
+      ].filter(h => (h.kind + ' ' + h.label).toLowerCase().includes(q)).slice(0, 8);
+    }
+    this._hits = hits;
+    const jumpI = Math.min(S.jumpI, Math.max(0, hits.length - 1));
+
+    const out = {
+      shiftName: shiftNow + ' shift', jumpRef: this.jumpRef, feedRef: this.feedRef, inputRef: this.inputRef,
+      jumpQ: S.jumpQ, jumpOpen: !!q, jumpNone: !!q && !hits.length, jumpHits: hits.map((h, i) => ({ ...h, bg: i === jumpI ? 'rgba(var(--bluergb),.08)' : 'transparent' })),
+      onJump: e => this.setState({ jumpQ: e.target.value, jumpI: 0 }),
+      onJumpKey: e => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); this.setState(s => ({ jumpI: Math.min(s.jumpI + 1, (this._hits.length || 1) - 1) })); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); this.setState(s => ({ jumpI: Math.max(0, s.jumpI - 1) })); }
+        else if (e.key === 'Enter') { const h = this._hits[Math.min(this.state.jumpI, this._hits.length - 1)]; if (h) h.go(); }
+        else if (e.key === 'Escape') { this.setState({ jumpQ: '' }); e.target.blur(); }
+      },
+      nav, projects, teams, shiftN: String(shiftN), callN: String(callN),
+      goInbox: () => this.go({ v: 'inbox' }), goTasks: () => this.go({ v: 'tasks' }), goSchedule: () => this.go({ v: 'schedule' }), goRosterAll: goRoster(null),
+      ...this.markVals(),
+      full: !lean, isCos: v.v === 'cos', goCos: () => this.go({ v: 'cos' }), cos: {}, isStream: v.v === 'stream', isTask: v.v === 'task', isBoard: v.v === 'board', isInbox: v.v === 'inbox', isTasks: v.v === 'tasks', isSchedule: v.v === 'schedule', isRoster: v.v === 'roster',
+      showRail: rail, railCols: rail ? 'minmax(0,1fr) 340px' : 'minmax(0,1fr)',
+      draft: S.draft, onDraft: e => this.setState({ draft: e.target.value }), send: () => this.send(),
+      onComposerKey: e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(); }
+        else if (e.key === 'Escape' && v.v === 'task') { const t = byId(v.id); if (LIVE(t)) this.togglePause(v.id); }
+      },
+      plusTask: () => this.prefill('/task '), showDone: S.showDone, doneLabel: S.showDone ? 'hide ▾' : 'show ▸', toggleDone: () => this.setState(s => ({ showDone: !s.showDone })),
+      handoff: S.handoff, toggleHandoff: () => this.setState(s => ({ handoff: !s.handoff })), alsoBox: S.also ? INK : 'transparent', toggleAlso: () => this.setState(s => ({ also: !s.also })),
+      toggleQueued: () => this.setState(s => ({ queued: !s.queued })),
+      composerPh: '', st: {}, ts: {}, bd: {}, ib: {}, d: {}, tk: {}, ro: {}, sc: {},
+    };
+
+    // stream
+    if (v.v === 'stream') {
+      const ws = v.ws, W = WS[ws], wf = S.wf;
+      const feed = [...(FEED[ws] || []), ...(S.posts[ws] || [])].map(m => {
+        const human = m.t === 'human', c = m.w;
+        const base = { init: human ? 'MK' : c, name: human ? 'Mara K.' : WK[c].name, meta: human || lean ? m.time : m.time + ' · ' + (WK[c].harness === 'native' ? teamOf(c) : WK[c].harness),
+          ...(human ? { avBg: 'transparent', avFg: INK } : av(c)), isText: m.t === 'text' || (lean && m.t === 'review'), isHuman: human, isReview: !lean && m.t === 'review', isLive: m.t === 'live', isAsk: m.t === 'ask',
+          needsTag: m.t === 'ask' && !S.resolved[m.id], text: m.text || '', card: {} };
+        if (m.t === 'text') Object.assign(base, { chips: (m.chips || []).map(([id, w]) => ({ x: id + ' → ' + w, go: goTask(id) })), hasChips: !lean && !!(m.chips && m.chips.length), more: m.more || '', hasMore: !!m.more });
+        if (human) {
+          const tt = m.to && byId(m.to);
+          Object.assign(base, { segs: m.text.split(/(@[\w-]+)/).filter(Boolean).map(p => ({ p, c: p[0] === '@' ? A : 'var(--ink2)', fw: p[0] === '@' ? '500' : '400' })),
+            hasReceipt: !!tt, receipt: tt ? '↳ sent into ' + m.to + ' · ' + WK[tt.w].harness + ' session' : '', ack: m.ack || 'delivering…', ackC: m.ack ? 'var(--ink3)' : A, goTo: tt ? goTask(m.to) : null });
+        }
+        if (m.t === 'review') Object.assign(base, { rlabel: 'ReviewResult · ' + m.id, dur: m.dur, goTo: goTask(m.id), stats: m.stats.map(([k, val], i) => ({ k, v: val, br: i < 2 ? '1px solid rgba(var(--inkrgb),.12)' : 'none' })) });
+        if (m.t === 'live') { base.card = liveCard(m.id); if (lean) { base.card.tail = base.card.tail.slice(-1); base.card.cost = ''; } }
+        if (m.t === 'ask') base.card = askCard(m.id);
+        return base;
+      });
+      const workers = TEAMS.flatMap(t => t.m).filter(c => byWs(ws).some(t => t.w === c));
+      const team = workers.map(c => {
+        const h = held(c), here = h.filter(t => t.ws === ws), other = h.length - here.length, sStat = status(c);
+        const qd = byWs(ws).filter(t => t.w === c && t.st === 'queued'), needs = here.find(t => t.st === 'needs'), on = wf === c, wt = watches(c).filter(x => x[0] !== 'WAITING');
+        const txt = needs ? 'waiting on you · ' + needs.id : here.length ? here.map(t => t.id).join(' · ') : sStat === 'call' && wt.length ? wt[0][0].toLowerCase() + ' · ' + wt[0][1] : qd.length ? 'queued · ' + qd.map(t => t.id).join(', ') : 'idle';
+        return { init: c, name: WK[c].name, harness: WK[c].harness, ...av(c), ...mark(sStat), txt, else: other ? '+' + other + ' elsewhere' : '',
+          tbg: needs ? Y : 'transparent', tc: needs ? 'var(--onhl)' : here.length ? A : 'var(--ink3)',
+          bg: on ? SELBG : 'transparent', ol: on ? '1px solid ' + A : 'none', pick: () => this.setState({ wf: on ? null : c }) };
+      });
+      const groups = ['needs', 'run', 'review', 'queued'].map(stt => {
+        const rows = byWs(ws).filter(t => t.st === stt).map(t => ({ id: t.id, title: t.title, step: isPaused(t.id) ? 'interrupted · your turn' : t.step, init: t.w, ...av(t.w),
+          sc: stt === 'run' || stt === 'review' ? A : 'var(--ink3)', op: wf && wf !== t.w ? '.32' : '1', pick: goTask(t.id) }));
+        return { name: LABEL[stt], count: String(rows.length), ...NODE[stt], rows };
+      }).filter(g => g.rows.length);
+      const doneL = byWs(ws).filter(t => t.st === 'done');
+      const mentionable = workers.filter(c => byWs(ws).some(t => t.w === c && LIVE(t))).slice(0, 3);
+      out.st = { name: W.name, proj: W.proj, desc: W.desc, count: String(PROJ.find(p => p.name === W.proj).ws.flatMap(byWs).length), feed, goProj: goBoard(W.proj),
+        prog: prog(ws), segs: segsFor(ws), team, onShift: workers.filter(c => status(c) === 'shift').length + ' ON SHIFT · ' + workers.filter(c => status(c) === 'call').length + ' ON CALL',
+        groups, doneCount: String(doneL.length), doneRows: doneL.map(t => ({ id: t.id, title: t.title, pick: goTask(t.id) })),
+        filterLabel: wf ? 'ONLY ' + WK[wf].name.toUpperCase() + ' ✕' : 'ALL', filterColor: wf ? A : 'var(--ink3)', clearFilter: () => this.setState({ wf: null }),
+        mentions: mentionable.map(c => ({ label: '@' + WK[c].name, pick: () => this.prefill('@' + WK[c].name + ' ') })) };
+      out.composerPh = 'Message #' + W.name + '. @ a worker to send it into their session.';
+    }
+
+    // task
+    if (v.v === 'task') {
+      const id = v.id, t = byId(id), I = INBOX[id], c = t.w, live = LIVE(t), paused = isPaused(id), lead = LEADS[t.ws];
+      let blocks;
+      if (SESSION[id]) blocks = SESSION[id];
+      else {
+        blocks = [{ k: 'brief', label: 'TASK BRIEF · from ' + WK[t.from || lead].name + (STARTED[id] ? ' · ' + STARTED[id] : ''), crit: '', text: t.title + '.' }];
+        if (t.st === 'queued') blocks.push({ k: 'note', text: 'Not started · ' + t.step, st: 'queued' });
+        else {
+          blocks.push({ k: 'say', text: 'Picking up ' + id + '. ' + (I ? I.body : 'Working through it now.') });
+          blocks.push({ k: 'tools', rows: I ? I.ctx.slice(0, -1) : tailOf(t) });
+          if (I) blocks.push({ k: 'ask' });
+          if (t.st === 'done') blocks.push({ k: 'note', text: 'Session closed · merged into the workstream branch', st: 'done' });
+        }
+      }
+      blocks = [...blocks, ...(S.turns[id] || [])];
+      if (lean) { const lt = blocks.map(b => b.k).lastIndexOf('tools'); blocks = blocks.filter((b, i) => b.k !== 'diff' && (b.k !== 'tools' || i === lt)).map(b => b.k === 'tools' ? { ...b, rows: b.rows.slice(-1) } : b); }
+      const tools = blocks.filter(b => b.k === 'tools');
+      const lastRow = tools.length ? tools[tools.length - 1].rows.slice(-1)[0] : null;
+      const nodeSt = paused ? 'queued' : t.st;
+      const facts = [['harness', WK[c].harness], ['started', STARTED[id] || '—'], ['time', elOf(t)], ['cost', t.cost || '—']];
+      const linked = id === 'PAY-14' ? PAY14.linked : I ? [['blocks', I.blocks]] : [];
+      const lc = st => st === 'done' ? 'rgba(var(--inkrgb),.6)' : 'rgba(var(--inkrgb),.22)';
+      const nodeOf = st => st === 'done' ? NODE.done : st === 'run' ? NODE.run : NODE.queued;
+      const team = TEAMS.find(x => x.m.includes(c));
+      out.ts = { id, title: t.title, ws: WS[t.ws].name, proj: WS[t.ws].proj, goWs: goStream(t.ws), goProj: goBoard(WS[t.ws].proj),
+        ...NODE[nodeSt], sc: t.st === 'needs' ? 'var(--ink)' : live && !paused ? A : 'var(--ink3)',
+        statusTxt: paused ? 'interrupted · waiting for your turn' : t.st === 'run' ? 'running ' + elOf(t) : t.st === 'review' ? 'in review ' + elOf(t) : t.st === 'needs' ? 'waiting on you · ' + I.wait : t.st,
+        wname: WK[c].name, focus: WK[c].focus, harness: WK[c].harness, branch: id === 'PAY-14' ? 'pay-14-idempotency' : id.toLowerCase(), init: c, ...av(c),
+        canPause: live, pauseLabel: paused ? 'Resume' : 'Interrupt', togglePause: () => this.togglePause(id), hoBd: S.handoff ? INK : 'rgba(var(--inkrgb),.45)',
+        blocks: blocks.map(b => ({ isBrief: b.k === 'brief', isSay: b.k === 'say', isTools: b.k === 'tools', isDiff: b.k === 'diff', isMsg: b.k === 'msg', isAsk: b.k === 'ask', isNote: b.k === 'note',
+          text: b.text || '', label: b.label || '', crit: b.crit || '', init: b.init || '', head: b.head || '', ...(b.st ? NODE[b.st] : {}),
+          rows: (b.rows || []).map(r => tailRow(r, live && !paused)),
+          lines: (b.lines || []).map(([s, l]) => ({ l: (s === '-' ? '−  ' : s === '+' ? '+  ' : '   ') + l, bg: s === '-' ? 'rgba(var(--redrgb),.08)' : s === '+' ? 'rgba(var(--inkrgb),.06)' : 'transparent', c: s === '-' ? 'var(--red)' : s === '+' ? INK : 'var(--ink4)' })),
+          card: b.k === 'ask' ? askCard(id) : {} })),
+        activity: paused ? 'Interrupted. Your next message resumes ' + WK[c].name + '.' : live ? WK[c].name + ' · ' + (lastRow && lastRow[3] ? lastRow[0].toLowerCase() + ' ' + lastRow[1] : t.step) : t.st === 'needs' ? WK[c].name + ' is waiting on you' : WK[c].name + ' · ' + t.st,
+        actDot: paused ? 'transparent' : live ? A : t.st === 'needs' ? Y : 'transparent', actBd: t.st === 'needs' ? INK : A, escHint: live ? (paused ? '' : 'esc to interrupt') : '',
+        load: load(c), rules: WK[c].rules, wslabel: STAT[status(c)].label, wsc: STAT[status(c)].c, team: team.name.toUpperCase(),
+        cands: team.m.filter(x => x !== c && !WK[x].mgr).map(x => ({ init: x, name: WK[x].name, focus: WK[x].focus, ...av(x), free: WK[x].harness, op: '1',
+          pick: () => this.setState(s => ({ reassign: { ...s.reassign, [id]: x }, handoff: false })) })),
+        facts: facts.map(([k, val], i) => ({ k, v: val, br: i % 2 === 0 ? '1px solid rgba(var(--inkrgb),.12)' : 'none', bb: i < 2 ? '1px solid rgba(var(--inkrgb),.12)' : 'none' })),
+        isNeeds: t.st === 'needs', needsTxt: I ? I.kind.toLowerCase() + ' waiting ' + I.wait : '', openInbox: () => { this.setState({ sel: id }); this.go({ v: 'inbox' }); },
+        hasCriteria: id === 'PAY-14', criteria: id === 'PAY-14' ? PAY14.criteria.map(([tt, st]) => ({ t: tt, ...NODE[st] })) : [],
+        hasPlan: id === 'PAY-14', plan: id === 'PAY-14' ? PAY14.plan.map(([name, dur, st], i, arr) => ({ name, dur, ...nodeOf(st), color: st === 'run' ? A : st === 'done' ? INK : 'var(--ink3)',
+          lineTop: i === 0 ? 'transparent' : lc(arr[i - 1][2]), lineBot: i === arr.length - 1 ? 'transparent' : lc(st) })) : [],
+        hasFiles: id === 'PAY-14', fileCount: '4', files: id === 'PAY-14' ? PAY14.files.map(([p, dd, n]) => ({ p, d: dd, c: n ? A : INK })) : [],
+        hasLinked: linked.length > 0, linked: linked.map(([k, val]) => ({ k, v: val })) };
+      out.composerPh = 'Message ' + WK[c].name + '. Sent to ' + WK[c].harness + ' as your turn.';
+    }
+
+    // board
+    if (v.v === 'board') {
+      const P = PROJ.find(p => p.name === v.proj), projTasks = P.ws.flatMap(byWs);
+      const COLS = ['queued', 'run', 'review', 'needs', 'done'], pc = s => projTasks.filter(t => t.st === s).length;
+      out.bd = { name: P.name, desc: P.desc, summary: projTasks.length + ' tasks · ' + (pc('run') + pc('review')) + ' live · ' + pc('needs') + ' need you',
+        strip: TEAMS.map(t => { const mem = t.m.filter(c => projTasks.some(x => x.w === c));
+          return { name: t.name.toUpperCase(), go: goRoster(t.name), meta: mem.filter(c => status(c) === 'shift').length + ' on shift · ' + mem.filter(c => status(c) === 'call').length + ' on call',
+            members: mem.map(c => ({ init: c, title: WK[c].name + ' · ' + WK[c].focus + ' · ' + STAT[status(c)].label, ...mark(status(c)), ...av(c) })) }; }).filter(t => t.members.length),
+        cols: COLS.map(st => ({ name: LABEL[st], count: String(pc(st)), ...NODE[st], bg: st === 'run' ? 'rgba(var(--bluergb),.035)' : 'transparent' })),
+        lanes: P.ws.map(ws => ({ name: WS[ws].name, go: goStream(ws), team: new Set(byWs(ws).map(t => t.w)).size + ' workers', prog: prog(ws), segs: segsFor(ws),
+          cells: COLS.map(st => { const l = byWs(ws).filter(t => t.st === st);
+            return { bg: st === 'run' ? 'rgba(var(--bluergb),.035)' : 'transparent',
+              lines: st === 'done' ? l.map(t => ({ id: t.id, title: t.title, pick: goTask(t.id) })) : [],
+              cards: st === 'done' ? [] : l.map(t => ({ id: t.id, title: t.title, step: isPaused(t.id) ? 'interrupted' : t.step, init: t.w, ...av(t.w),
+                sc: st === 'run' || st === 'review' ? A : 'var(--ink2)', tag: st === 'needs' ? 'NEEDS YOU' : '', tagBg: st === 'needs' ? Y : 'transparent', pick: goTask(t.id) })) }; }) })) };
+    }
+
+    // inbox
+    if (v.v === 'inbox') {
+      const tab = S.inboxTab, kinds = openIds.map(id => INBOX[id].kind);
+      const vis = openIds.filter(id => tab === 'all' || (tab === 'appr' ? INBOX[id].kind === 'APPROVAL' : INBOX[id].kind !== 'APPROVAL'));
+      const sel = S.sel, I = INBOX[sel], b = byId(sel), w = b.w, r = S.resolved[sel], isAppr = I.kind === 'APPROVAL';
+      const others = held(w).filter(t => t.id !== sel && LIVE(t)).map(t => t.id);
+      const liveN = tasks.filter(LIVE).length;
+      const doneIds = Object.keys(INBOX).filter(id => S.resolved[id]);
+      out.ib = { sub: openIds.length ? openIds.length + ' waiting · oldest ' + INBOX[openIds[openIds.length - 1]].wait : 'all clear',
+        tabs: [['all', 'All', openIds.length], ['appr', 'Approvals', kinds.filter(k => k === 'APPROVAL').length], ['q', 'Questions', kinds.filter(k => k !== 'APPROVAL').length]].map(([k, label, n]) => ({
+          label, n: String(n), bd: tab === k ? A : 'transparent', c: tab === k ? INK : 'var(--ink3)', pick: () => this.setState({ inboxTab: k }) })),
+        items: vis.map(id => { const bb = byId(id), II = INBOX[id], s = sel === id;
+          return { id, kind: II.kind, q: II.q, wait: II.wait, ws: WS[bb.ws].name, from: WK[bb.w].name + ' · ' + teamOf(bb.w), bg: s ? 'var(--card)' : 'transparent', bar: s ? A : 'transparent', pick: () => this.setState({ sel: id }) }; }),
+        empty: vis.length === 0, emptyTxt: 'Nothing needs you. ' + liveN + ' sessions are still running and ' + callN + ' workers are on call.',
+        hasDone: doneIds.length > 0,
+        done: doneIds.map(id => { const s = sel === id; return { id, q: INBOX[id].q, ans: '✓ ' + doneTextOf(id).split(' · ')[0], bg: s ? 'var(--card)' : 'transparent', bar: s ? A : 'transparent', pick: () => this.setState({ sel: id }) }; }) };
+      out.d = { id: sel, kind: I.kind, q: I.q, taskTitle: b.title, ws: WS[b.ws].name, proj: WS[b.ws].proj, init: w, ...av(w), wname: WK[w].name, focus: WK[w].focus, team: teamOf(w),
+        harness: WK[w].harness, time: I.time, body: I.body, hasCode: !!I.code, code: (I.code || []).map(l => ({ l })), wslabel: STAT[status(w)].label, wsc: STAT[status(w)].c,
+        tagBg: r ? 'transparent' : Y, tagFg: r ? INK : 'var(--onhl)',
+        showApprove: !r && isAppr, approveLabel: I.approveLabel, approve: resolve(sel, 'approved'), deny: resolve(sel, 'denied'),
+        showOptions: !r && !isAppr, options: (I.options || []).map((o, i) => ({ label: o, pick: resolve(sel, o), bg: i === 0 ? INK : 'transparent', fg: i === 0 ? 'var(--paper)' : INK })),
+        done: !!r, doneText: r ? doneTextOf(sel) : '', undo: unresolve(sel),
+        pending: !r, wait: 'Waiting ' + I.wait + ' · blocks ' + I.blocks,
+        meanwhile: others.length ? WK[w].name + ' keeps working on ' + others.join(', ') + ' meanwhile' : WK[w].name + ' is on call until you answer',
+        ctx: I.ctx.map(([tool, target, res], i, arr) => ({ tool, target, res: i === arr.length - 1 && r ? 'answered' : res, dot: i === arr.length - 1 && !r ? Y : INK })),
+        replies: S.replies[sel] || [], openTask: goTask(sel), openWs: goStream(b.ws) };
+      out.composerPh = 'Reply to ' + WK[w].name + '. Goes into the ' + sel + ' session.';
+    }
+
+    // tasks
+    if (v.v === 'tasks') {
+      const group = S.group, shown = tasks.filter(t => S.queued ? ORD[t.st] < 4 : ORD[t.st] < 3);
+      const row = t => ({ id: t.id, title: t.title, step: isPaused(t.id) ? 'interrupted · your turn' : t.step, sc: stepColor(t.st), stbg: t.st === 'needs' ? Y : 'transparent', ws: '#' + WS[t.ws].name, proj: WS[t.ws].proj,
+        init: t.w, wname: WK[t.w].name, ...av(t.w), el: LIVE(t) ? elOf(t) : (t.el || '—'), cost: t.cost || '—', ...NODE[t.st], pick: goTask(t.id) });
+      const sortSt = l => [...l].sort((a, b) => ORD[a.st] - ORD[b.st]);
+      let groups;
+      if (group === 'worker') groups = TEAMS.flatMap(t => t.m).map(c => { const l = sortSt(shown.filter(t => t.w === c));
+        return { label: WK[c].name, sub: WK[c].focus + ' · ' + teamOf(c), count: load(c), isWorker: true, notWorker: false, init: c, ...av(c), ...mark(status(c)), nb: '', nbd: '', nbs: '', pips: pips(c), rows: l.map(row) }; }).filter(g => g.rows.length);
+      else if (group === 'stream') groups = Object.keys(WS).map(ws => { const l = sortSt(shown.filter(t => t.ws === ws));
+        return { label: '#' + WS[ws].name, sub: WS[ws].proj, count: String(l.length), isWorker: false, notWorker: true, nb: 'transparent', nbd: 'transparent', nbs: 'solid', pips: [], rows: l.map(row) }; }).filter(g => g.rows.length);
+      else groups = ['needs', 'run', 'review', 'queued'].map(st => { const l = shown.filter(t => t.st === st);
+        return { label: LABEL[st], sub: '', count: String(l.length), isWorker: false, notWorker: true, ...NODE[st], pips: [], rows: l.map(row) }; }).filter(g => g.rows.length);
+      out.tk = { groups, cols: lean ? '14px 62px minmax(0,1.4fr) minmax(0,1fr) 140px 130px' : '14px 62px minmax(0,1.4fr) minmax(0,1fr) 140px 130px 64px 50px', queuedCount: String(tasks.filter(t => t.st === 'queued').length), qBox: S.queued ? INK : 'transparent',
+        summary: active.length + ' in flight · ' + openIds.length + ' need you · ' + shiftN + ' on shift · ' + callN + ' on call · ' + new Set(active.map(t => t.ws)).size + ' streams',
+        groupOpts: ['state', 'worker', 'stream'].map((g, i) => ({ label: g[0].toUpperCase() + g.slice(1), bg: group === g ? INK : 'transparent', fg: group === g ? 'var(--paper)' : INK,
+          bl: i ? '1px solid var(--ink)' : 'none', pick: () => this.setState({ group: g }) })) };
+    }
+
+    // schedule
+    if (v.v === 'schedule') {
+      const sel = S.schSel && sched.some(i => i.id === S.schSel) ? S.schSel : null, mode = S.schLanes, signed = S.signed, find = id => sched.find(i => i.id === id);
+      const kids = {}; sched.forEach(i => (i.after || []).forEach(d => (kids[d] = kids[d] || []).push(i.id)));
+      const walk = (id, f, acc) => { (f(id) || []).forEach(x => { if (!acc.has(x) && find(x)) { acc.add(x); walk(x, f, acc); } }); return acc; };
+      const up = sel ? walk(sel, id => find(id).after, new Set()) : new Set(), down = sel ? walk(sel, id => kids[id], new Set()) : new Set();
+      const chain = sel ? new Set([...up, sel, ...down]) : null;
+      const ND = i => i.st === 'planned' ? { nb: 'transparent', nbd: 'rgba(var(--inkrgb),.6)', nbs: 'dotted' } : NODE[i.st];
+      const pick = id => () => this.setState(s => ({ schSel: s.schSel === id ? null : id }));
+      const op = id => chain && !chain.has(id) ? '.3' : '1';
+      const bkt = i => i.live ? 'now' : i.start < 840 ? 'day' : i.start < 1320 ? 'eve' : i.start < 1800 ? 'night' : 'tmrw';
+      const BK = ['now', 'day', 'eve', 'night', 'tmrw'], BG = { now: 'rgba(var(--bluergb),.035)', night: 'rgba(var(--inkrgb),.035)' };
+      const nowCard = i => ({ id: i.id, title: i.title, ...ND(i), line: i.st === 'needs' ? 'on you' : 'ends ~' + hm(i.end), tbg: i.st === 'needs' ? Y : 'transparent', tc: i.st === 'needs' ? 'var(--onhl)' : A,
+        bd: sel === i.id ? A : 'rgba(var(--inkrgb),.28)', op: op(i.id), pick: pick(i.id) });
+      const card = i => { const sg = !!signed[i.id];
+        return { id: i.id, title: i.title, time: tLabel(i), ...ND(i), init: i.w, ...av(i.w), dur: fd(i.est || 30),
+          reason: (i.st === 'planned' ? 'planned · ' : '') + (i.byNb ? i.why : i.last ? 'after ' + i.last : 'after triage'),
+          hasTags: i.held.length > 0 || !!i.gate, hasHeld: i.held.length > 0, held: 'HELD ON ' + (i.held[0] || '') + (i.held.length > 1 ? ' +' + (i.held.length - 1) : ''),
+          hasGate: !!i.gate, gateLabel: (sg ? '✓ SIGNED OFF · ' : 'SIGN OFF · ') + (i.gate || ''), gateBg: sg ? INK : 'transparent', gateFg: sg ? 'var(--paper)' : INK,
+          gateTitle: sg ? 'Signed off. Click to undo.' : 'Pre-approve so it can run without you.',
+          gatePick: e => { e.stopPropagation(); this.setState(s => ({ signed: { ...s.signed, [i.id]: !s.signed[i.id] } })); },
+          bd: sel === i.id ? A : 'rgba(var(--inkrgb),.28)', ol: sel === i.id ? '1px solid ' + A : 'none', op: op(i.id), pick: pick(i.id) }; };
+      const cellsFor = f => BK.map(b => { const l = sched.filter(i => f(i) && bkt(i) === b).sort((x, y) => x.start - y.start || (ORD[x.st] ?? 3) - (ORD[y.st] ?? 3));
+        return { bg: BG[b] || 'transparent', nows: b === 'now' ? l.map(nowCard) : [], cards: b === 'now' ? [] : l.map(card) }; });
+      const lanes = mode === 'worker'
+        ? TEAMS.flatMap(t => t.m).filter(c => sched.some(i => i.w === c)).map(c => ({ isWorker: true, isStream: false, init: c, ...av(c), name: WK[c].name, sub: WK[c].focus, go: goRoster(teamOf(c)), cells: cellsFor(i => i.w === c) }))
+        : Object.keys(WS).filter(ws => sched.some(i => i.ws === ws)).map(ws => ({ isWorker: false, isStream: true, init: '', avBg: 'transparent', avFg: INK, name: WS[ws].name, sub: WS[ws].proj, go: goStream(ws), cells: cellsFor(i => i.ws === ws) }));
+      const cnt = b => String(sched.filter(i => bkt(i) === b).length);
+      const nt = Math.ceil((nowM + 1) / 30) * 30;
+      const RT = { now: [[hmx(nt), 'triage · lead · every 30m']], eve: [['20:00', 'handoff briefing · coordinator']], tmrw: [['08:00', 'handoff briefing · coordinator']] };
+      const chainItems = sel ? sched.filter(i => chain.has(i.id)).sort((x, y) => x.start - y.start || (x.live ? 0 : 1) - (y.live ? 0 : 1)) : [];
+      let why = 'Select a task to trace what it waits on and what waits on it.', openLabel = '', open = null;
+      if (sel) {
+        const s = find(sel), dn = down.size, waits = dn ? ' ' + dn + (dn === 1 ? ' task waits' : ' tasks wait') + ' on it.' : '';
+        if (s.live) why = (s.st === 'needs' ? 'Waiting on you' + (INBOX[sel] ? ': ' + INBOX[sel].q + '.' : '.') : 'Running now, done around ' + hm(s.end) + '.') + waits;
+        else why = (s.st === 'planned' ? 'Planned, not opened yet. ' : '')
+          + (s.byNb ? 'Starts at ' + hmx(s.start) + ', the ' + s.why.replace(/^after /, 'slot after ') + '. Its inputs are ready by ~' + hm(s.depEnd) + '.' : s.last ? 'Starts ~' + hm(s.start) + ', when ' + s.last + ' finishes.' : 'Starts ~' + hm(s.start) + ', after triage.')
+          + (s.held.length ? ' Held on your answer to ' + s.held.join(' and ') + '. Times assume you answer now.' : '')
+          + (s.gate ? (signed[sel] ? ' Signed off, so it runs without you.' : ' Needs your sign-off (' + s.gate + ') to run without you.') : '') + waits;
+        openLabel = s.real ? 'Open ' + sel + ' →' : 'Open #' + WS[s.ws].name + ' →'; open = s.real ? goTask(sel) : goStream(s.ws);
+      }
+      const heldN = pend.filter(i => i.held.length).length, gn = pend.filter(i => i.gate && !signed[i.id] && bkt(i) === 'night').length;
+      out.sc = { summary: pend.length + ' queued or planned · ' + heldN + ' held on your answers' + (pend.length ? ' · next start ' + pend[0].id + ' ' + tLabel(pend[0]) : '') + (gn ? ' · ' + gn + ' night ' + (gn === 1 ? 'task needs' : 'tasks need') + ' sign-off before 22:00' : ''),
+        laneOpts: ['stream', 'worker'].map((g, i) => ({ label: g[0].toUpperCase() + g.slice(1), bg: mode === g ? INK : 'transparent', fg: mode === g ? 'var(--paper)' : INK, bl: i ? '1px solid var(--ink)' : 'none', pick: () => this.setState({ schLanes: g }) })),
+        cols: [['now', 'NOW', hmx(nowM)], ['day', 'DAY', 'until 14:00'], ['eve', 'EVENING', '14:00–22:00'], ['night', 'NIGHT', '22:00–06:00'], ['tmrw', 'TOMORROW', 'day shift']].map(([b, name, range]) => ({ name, range, count: cnt(b), bg: BG[b] || 'transparent' })),
+        routines: BK.map(b => ({ bg: BG[b] || 'transparent', lines: (RT[b] || []).map(([at, label]) => ({ at, label })) })),
+        lanes, hasSel: !!sel, why, openLabel, open, clear: () => this.setState({ schSel: null }),
+        chain: chainItems.map((i, k) => ({ id: i.id, hasArrow: k > 0, ...ND(i), time: tLabel(i), tbg: i.st === 'needs' ? Y : 'transparent', tc: i.st === 'needs' ? 'var(--onhl)' : i.live ? A : 'var(--ink2)',
+          wname: WK[i.w].name, bd: i.id === sel ? 'var(--ink)' : 'rgba(var(--inkrgb),.3)', bg: i.id === sel ? 'var(--card)' : 'transparent', pick: () => this.setState({ schSel: i.id }) })) };
+    }
+
+    // roster
+    if (v.v === 'roster') {
+      const team = S.rosterTeam, ids = TEAMS.filter(t => !team || t.name === team).flatMap(t => t.m);
+      const SUB = { shift: 'holding live work', call: 'subscribed and waiting · wakes on a trigger', off: 'nothing assigned, nothing subscribed' };
+      const WT = { WEBHOOK: [A, 'transparent', A], ROUTINE: [A, 'transparent', A], NOTIFY: [A, 'transparent', A], WAIT: ['rgba(var(--inkrgb),.5)', 'transparent', 'var(--ink2)'], WAITING: [INK, Y, 'var(--onhl)'] };
+      const n = s => ids.filter(c => status(c) === s).length;
+      out.ro = { title: (shiftNow + ' shift') + (team ? ' · ' + team : ''),
+        summary: n('shift') + ' on shift · ' + n('call') + ' on call · ' + n('off') + ' off shift · ' + ids.reduce((a, c) => a + watches(c).length, 0) + ' active subscriptions',
+        hiring: S.hiring, toggleHire: () => this.setState(s => ({ hiring: !s.hiring })), hireBtnBg: S.hiring ? INK : 'transparent', hireBtnFg: S.hiring ? 'var(--paper)' : INK,
+        hire: S.hire, canHire: !!S.hire.name.trim(), hireOp: S.hire.name.trim() ? '1' : '.4', submitHire: () => this.hireFromForm(),
+        hName: e => { const x = e.target.value; this.setState(s => ({ hire: { ...s.hire, name: x } })); },
+        hFocus: e => { const x = e.target.value; this.setState(s => ({ hire: { ...s.hire, focus: x } })); },
+        hRules: e => { const x = e.target.value; this.setState(s => ({ hire: { ...s.hire, rules: x } })); },
+        hKey: e => { if (e.key === 'Enter') this.hireFromForm(); if (e.key === 'Escape') this.setState({ hiring: false }); },
+        rulesPh: WK[S.hire.base].rules,
+        bases: ['EN', 'SE', 'AR'].map((b, i) => ({ label: WK[b].name, sub: WK[b].focus, bg: S.hire.base === b ? INK : 'transparent', fg: S.hire.base === b ? 'var(--paper)' : INK, bl: i ? '1px solid var(--ink)' : 'none',
+          pick: () => this.setState(s => ({ hire: { ...s.hire, base: b, harness: WK[b].harness } })) })),
+        harnesses: ['codex', 'claude-code'].map((h, i) => ({ label: h, bg: S.hire.harness === h ? INK : 'transparent', fg: S.hire.harness === h ? 'var(--paper)' : INK, bl: i ? '1px solid var(--ink)' : 'none',
+          pick: () => this.setState(s => ({ hire: { ...s.hire, harness: h } })) })),
+        teamOpts: [null, ...TEAMS.map(t => t.name)].map((tn, i) => ({ label: tn || 'All', bg: team === tn ? INK : 'transparent', fg: team === tn ? 'var(--paper)' : INK, bl: i ? '1px solid var(--ink)' : 'none', pick: () => this.setState({ rosterTeam: tn }) })),
+        groups: ['shift', 'call', 'off'].map(s => { const rows = ids.filter(c => status(c) === s);
+          return { label: STAT[s].label.toUpperCase(), sub: SUB[s], count: String(rows.length), mbg: STAT[s].bg, mbd: STAT[s].bd,
+            rows: rows.map(c => { const h = held(c), wl = watches(c);
+              return { init: c, name: WK[c].name, focus: WK[c].focus, team: teamOf(c), harness: WK[c].harness, rules: WK[c].rules, isHired: !!WK[c].hired, hiredMeta: WK[c].hired ? 'hired ' + WK[c].hired : '', ...av(c), load: load(c),
+                tasks: h.map(t => ({ id: t.id, title: t.title + ' · ' + t.step, go: goTask(t.id), ...NODE[t.st], bg: t.st === 'needs' ? Y : 'transparent', fg: t.st === 'needs' ? 'var(--onhl)' : INK })), noTasks: !h.length,
+                watches: wl.map(([k, what, when]) => ({ k, what, when, bd: WT[k][0], bg: WT[k][1], fg: WT[k][2] })), noWatch: !wl.length }; }) }; }).filter(g => g.rows.length) };
+    }
+    if (v.v === 'cos') {
+      const liveN = tasks.filter(LIVE).length, wsN = new Set(tasks.filter(LIVE).map(t => t.ws)).size, hi = (h => h < 5 || h >= 18 ? 'Evening' : h < 12 ? 'Morning' : 'Afternoon')(this.hour());
+      const briefText = hi + ', Mara. ' + (openIds.length ? (openIds.length === 1 ? 'One thing needs you.' : openIds.length + ' things need you.') : 'Nothing needs you right now.')
+        + (lean ? '' : ' ' + liveN + ' sessions are running across ' + wsN + ' streams, and ' + callN + ' workers are on call.') + ' Tell me anything else and I\'ll route it.';
+      const reqs = [...openIds, ...Object.keys(INBOX).filter(id => S.resolved[id])];
+      const items = reqs.map((id, i) => { const I = INBOX[id], t = byId(id), r = S.resolved[id];
+        const openInbox = () => { this.setState({ sel: id }); this.go({ v: 'inbox' }); };
+        const acts = I.kind === 'APPROVAL'
+          ? [{ label: I.approveLabel, pick: resolve(id, 'approved'), bg: INK, fg: 'var(--paper)', bd: INK }, { label: 'Deny', pick: resolve(id, 'denied'), bg: 'transparent', fg: INK, bd: 'rgba(var(--inkrgb),.45)' }, ...(lean ? [] : [{ label: 'Details', pick: openInbox, bg: 'transparent', fg: 'var(--ink3)', bd: 'transparent' }])]
+          : (I.options || []).map((o, j) => ({ label: o, pick: resolve(id, o), bg: j === 0 ? INK : 'transparent', fg: j === 0 ? 'var(--paper)' : INK, bd: INK }));
+        return { kind: I.kind, q: I.q, meta: lean ? WK[t.w].name : WK[t.w].name + ' · ' + id + ' · #' + WS[t.ws].name + ' · waiting ' + I.wait, bt: i ? '1px solid rgba(var(--inkrgb),.14)' : 'none',
+          tagBg: r ? 'transparent' : Y, tagFg: r ? INK : 'var(--onhl)', pending: !r, done: !!r, doneText: r ? doneTextOf(id) : '', undo: unresolve(id), acts, open: goTask(id) }; });
+      const KC = { HIRED: A, TASK: A, SENT: A, MOVED: A, APPROVED: INK, ANSWERED: INK, DENIED: 'var(--red)' };
+      const msgs = [{ isCos: true, isUser: false, time: '10:22', text: briefText, hasItems: items.length > 0, items, hasActions: false, actions: [] },
+        ...S.cos.map(m => ({ isCos: m.role === 'cos', isUser: m.role === 'user', time: m.time, text: m.text, hasItems: false, items: [], hasActions: !!(m.actions && m.actions.length),
+          actions: (m.actions || []).map(a => ({ k: a.k, label: a.label, bd: KC[a.k] || A, c: KC[a.k] || A, go: () => this.go(a.go) })) }))];
+      const firstAppr = openIds.find(id => INBOX[id].kind === 'APPROVAL');
+      const sugg = [firstAppr ? 'Approve ' + firstAppr : null, 'Add contract tests for partial refunds', 'Hire an engineer just for billing', 'Tell senior-engineer to skip the redlock dependency', "What's blocking checkout-v2?"].filter(Boolean).slice(0, lean ? 3 : 5);
+      const oncall = Object.keys(WK).filter(c => status(c) === 'call');
+      out.cos = { msgs, thinking: S.thinking, sub: S.thinking ? 'working…' : lean ? 'on shift' : 'on shift · watching ' + Object.keys(WS).length + ' streams and ' + Object.keys(WK).length + ' workers',
+        suggest: sugg.map(x => ({ label: x, pick: () => this.prefill(x) })),
+        streams: Object.keys(WS).map(ws => { const l = byWs(ws), n = l.filter(t => t.st === 'needs').length; return { name: WS[ws].name, proj: WS[ws].proj, live: String(l.filter(LIVE).length), needs: String(n), nop: n ? '1' : '.3', go: goStream(ws) }; }),
+        oncallN: String(oncall.length), oncall: oncall.map(c => ({ init: c, name: WK[c].name, ...av(c), what: (watches(c)[0] || ['', ''])[1] })) };
+      out.composerPh = "Tell me what you need. I'll route it to the right worker.";
+    }
+
+    return out;
+  }
+}
+</script>
+</body>
+</html>
