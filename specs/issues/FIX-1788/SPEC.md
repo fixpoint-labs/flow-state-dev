@@ -11,7 +11,7 @@
 | **wants their own version of a standard worker** | Edits its `WORKER.md` and restarts, or hires an org-wide copy | Forks it: a worker of their own with a copy of its configuration. Nobody changes a standard worker at run time |
 | **builds an app that talks to a worker** | Sends to the worker's own copy, at an address that carries its org and owner (`acme.~alice.researcher`) | Finds or starts a session with the worker. The server checks the worker and links it when the session is created. Messages go to the flow the worker names (`agent`) and never name a worker |
 | **runs several workers on one flow** | Each copy keeps its own private memory | Each worker still keeps its own, on the one shared copy |
-| **upgrades a deployment that has hired workers** | n/a | One operator step carries each hire, its memory and its conversations to its owner. Nothing is deleted ([D1](DECISIONS.md#d1), [D2](DECISIONS.md#d2)) |
+| **hired workers before this release** | Each hire is its own registered copy, with its memory and conversations | Dropped: nothing reads an old hire, its memory or its conversations ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)) |
 
 This is the epic's spine ([FIX-1786](../../epics/FIX-1786/SPEC.md), ER-1): privacy by
 construction, so the coordinator, the library and projects build on workers that are already
@@ -21,24 +21,21 @@ private.
 
 **In one org, each user's workers are theirs alone: another user can't open, read, run or link
 a session to them. Every worker runs on one shared copy of the flow it names, with its own
-memory. A user hires or forks a worker without a restart and can't change a standard one. Every
-hire made before the upgrade comes across to its owner.**
+memory. A user hires or forks a worker without a restart and can't change a standard one.**
 
 | Is it the right goal? | |
 |---|---|
 | **The real need** | The [PRD](https://linear.app/fixpoint-labs/issue/FIX-1788): a worker is a configuration plus an owner, run by one copy of the flow it names; the server sets a session's link; standard workers come from files and are forked, not changed. The epic's [security model](../../epics/FIX-1786/concept/CONCEPT.md#the-security-model), rules 2 to 4 |
 | **Smaller, and rejected** | "Bob can't reach Alice's worker." Met by narrowing today's pins, while each hire still registers a copy per process and a fire waits for a restart. Or "workers are rows": met while a caller seeds its session's link, which the [epic POC](../../epics/FIX-1786/poc/singleton-worker-link/README.md) (O1) showed it can |
 | **Bigger, and not this issue's** | Which flows can run workers ([FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789)) · user data per org ([FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790)) · coordinators ([FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791)) · the library ([FIX-1795](https://linear.app/fixpoint-labs/issue/FIX-1795)) · removing instances and pins ([FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798)) |
-| **Not done if** | The check ran with one user · only on `agent` · a session can exist without a worker · a session's link can be seeded, changed, or set to a worker on another flow · two racing `ensureWorkerSession` calls make two sessions · two of Alice's workers share a memory cell · a second process needed a restart to see a hire · the upgrade ran on a store this branch wrote, not one today's `main` wrote · Workforce still registers a copy per worker or sets a pin |
+| **Not done if** | The check ran with one user · only on `agent` · a session can exist without a worker · a session's link can be seeded, changed, or set to a worker on another flow · two racing `ensureWorkerSession` calls make two sessions · two of Alice's workers share a memory cell · a second process needed a restart to see a hire · Workforce still registers a copy per worker or sets a pin |
 
 ```mermaid
 flowchart LR
   S["one app · two users of one org · two processes on one store"] --> A["leg a · Alice forks, hires, talks"]
   S --> B["leg b · Bob reaches for Alice's workers"]
-  O["a store today's main wrote"] --> C["leg c · the upgrade step"]
   A -->|"one copy per flow · own memory · seen without restart"| P["PASS · the goal is met"]
   B -->|"refused every time"| P
-  C -->|"each hire with its owner, nothing deleted"| P
   X["control · workers at org scope"] -.-> B
   B -.->|"under the control"| F["must FAIL · Bob reads Alice's worker"]
 ```
@@ -49,9 +46,9 @@ link's value. Under the dashed control, Bob must read Alice's worker.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/workers-as-resources/keeps-each-users-workers-their-own/` · model n/a, a scripted model (access is under test, not answers) · real HTTP router, SQLite, two hosts on one store · run by the implementer at completion · verdict in the last implementation PR |
-| **Signal** | a: Alice reaches her fork, her own hire and a standard worker through `ensureWorkerSession`, and each answers as its own configuration on `agent`'s one copy; the registry gains no entry; her second worker reads none of the first's notes; the second host sees the hire with no restart. b: Bob finds none of her sessions; Bob opening her session, reading her worker, and creating a session that names it are each refused; a session created with no worker, a message naming a worker, and a link seeded through the create's state are refused; Alice creating a session for her worker on another flow is refused. c: on a store today's `main` wrote, her owned hire, its note and its conversation continue; an org-wide hire she used is hers and Bob, who never used it, has none |
+| **Signal** | a: Alice reaches her fork, her own hire and a standard worker through `ensureWorkerSession`, and each answers as its own configuration on `agent`'s one copy; the registry gains no entry; her second worker reads none of the first's notes; the second host sees the hire with no restart. b: Bob finds none of her sessions; Bob opening her session, reading her worker, and creating a session that names it are each refused; a session created with no worker, a message naming a worker, and a link seeded through the create's state are refused; Alice creating a session for her worker on another flow is refused |
 | **Input** | Two `WORKER.md` standard workers on two flows, two users. A different worker id or flow must pass too |
-| **Anti-game** | No assertion on a link's stored value or a key string. No fixture writes a worker the users didn't make through the app. Leg c's store is written by today's code, not this branch's |
+| **Anti-game** | No assertion on a link's stored value or a key string. No fixture writes a worker the users didn't make through the app |
 | **Control that must fail** | `GOAL_CONTROL=org-scoped-workers`: leg b FAILS on *Bob reads Alice's worker*. `GOAL_CONTROL=caller-link` accepts the create's caller state and reads the link from it instead of the server-only field: leg b FAILS on *a seeded link runs her other worker*. Today's `main`: legs a and b FAIL |
 
 ## What changes
@@ -100,7 +97,7 @@ worker there: a user's app, a task, a mailbox post. A session with no worker is 
 
 - A worker's `flow:` and its default to `agent`. `WORKER.md` files are unchanged.
 - Sessions stay private to one user; engine session ownership is unchanged.
-- Flow instances and owner pins stay in the engine, deprecated; [FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798) removes them.
+- Flow instances and owner pins stay in the engine untouched, with no deprecation markers, until [FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798) removes them ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)).
 - `hireWorkforce` and the other `seat*` names. FIX-1796 renames them with the docs; this issue
   renames only the hire blocks it changes, and FIX-1789 renames `kinds` to `workerFlows`.
 - Mailboxes keep working until FIX-1792 replaces them.
@@ -108,19 +105,19 @@ worker there: a user's app, a task, a mailbox post. A session with no worker is 
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** private workers, one copy per
-flow, hires without a restart, and every old hire carried to its owner. If wrong: we close the
-privacy hole and leave a deployment's existing workers behind.
+flow, and hires without a restart. If wrong: we close the privacy hole and keep a registered
+copy per worker, so a hire still waits for a restart elsewhere.
 
-**This amendment, to approve again** (the set merged in #2812 before it):
+**Still binding from the amendment merged in #2812** (its D1 and D2 are withdrawn, below):
 
 1. **[D4](DECISIONS.md#d4) · A session's worker is named once, when the session is created.** An
    app finds or starts the session with `ensureWorkerSession`; messages never name a worker. If
    wrong: every way of opening a session must know its worker up front, and an app that wanted to
    pick one after opening can't.
 
-**Signed on 2026-10-06:** [D1](DECISIONS.md#d1) (old hires move in one operator step) and
-[D2](DECISIONS.md#d2) (an org-wide hire goes to each member who used it). **Decided:**
+**Signed on 2026-10-06, withdrawn on 2026-10-07 by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9):** [D1](DECISIONS.md#d1) and
+[D2](DECISIONS.md#d2), the operator step for old hires. **Decided:**
 [D3](DECISIONS.md#d3), formerly Q1: a fork copies the standard worker's shared instructions.
 Nothing is open.
 
-Feature · `engine`, `client`, `react`, `workforce`, `orchestration`, `shift-manager` · large · 4 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)
+Feature · `engine`, `client`, `react`, `workforce`, `orchestration`, `shift-manager` · large · 3 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)

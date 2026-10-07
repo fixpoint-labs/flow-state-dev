@@ -20,3 +20,13 @@ Amended after merge (FIX-1802's spec PR #2839): [FIX-1802's D1](../FIX-1802/DECI
 makes `delegates:` the key that decides whether any worker files, so `workerConfigSchema()`
 defines `delegates`, the key FIX-1791 gives the coordinator. There is no `filing` key. Marked in
 SPEC's *What stays as it is*; the three checks and their refusals are unchanged.
+
+<a name="amendment-d9"></a>
+## Amended after merge: no upgrade note (epic D9)
+
+On 2026-10-07 the product owner wrote: "No consumers yet. No need for backwards support of any
+kind." The epic records it as [epic D9](../../epics/FIX-1786/DECISIONS.md#d9).
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| PLAN S8's `minor` changeset for `workforce` naming the `kinds` rename, and DOCS's README line that `kinds` is now `workerFlows` | **Removed** | Both tell an upgrader what changed, and there is no consumer to upgrade. No consumer, no changeset (BP-022) | The rename of `kinds` to `workerFlows` (S2), every in-repo caller moved, and S8's README entries for the new export, entry form and helpers |

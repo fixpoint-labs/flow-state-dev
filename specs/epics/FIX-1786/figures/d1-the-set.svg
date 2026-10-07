@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="D1, is the model worth a refactor now. Chosen: nine refactor children after the inventory, and a closure. Instead of: rename only, or fix privacy in place. It comes down to the first row, the model a reader learns: the chosen option leaves one rule and three parts, while renaming keeps six parts under new names and fixing in place keeps six parts and three meanings of shared. Second row, an org-locked hire: private by construction, still reaching every member, or narrowed by a rule on a part the target deletes. Third row, the cost now: nine issues, five Layer 1 mechanism changes, the fifth T1&#x27;s per-call roster on the task tools, and one public rename (D7); one issue; or about four. Locks in: a refactor across Workforce, the engine, the task board, discovery&#x27;s domain list, Shift Manager and the docs, after the inventory&#x27;s merges. Flips if no app needs a second user or its own worker this year.">
+     aria-label="D1, is the model worth a refactor now. Chosen: nine refactor children after the inventory, and a closure. Instead of: rename only, or fix privacy in place. It comes down to the first row, the model a reader learns: the chosen option leaves one rule and three parts, while renaming keeps six parts under new names and fixing in place keeps six parts and three meanings of shared. Second row, an org-locked hire: private by construction, still reaching every member, or narrowed by a rule on a part the target deletes. Third row, the cost now: nine issues, five Layer 1 mechanism changes, the fifth T1&#x27;s per-call roster on the task tools, and two public renames, the discovery domain and the task board&#x27;s seat, now assignee (D7); one issue; or about four. Locks in: a refactor across Workforce, the engine, the task board, discovery&#x27;s domain list, Shift Manager and the docs, after the inventory&#x27;s merges. Flips if no app needs a second user or its own worker this year.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -83,7 +83,7 @@
     <text class="t-lbl" x="32" y="276">COST NOW</text>
     <text class="mark minus" x="228" y="282">−</text>
     <text class="t-b" x="248" y="281">Nine issues</text>
-    <text class="t-s" x="248" y="299">5 mechanism changes + 1 rename, D7</text>
+    <text class="t-s" x="248" y="299">5 mechanism changes + 2 renames, D7</text>
     <text class="mark plus" x="468" y="282">+</text>
     <text class="t-b" x="488" y="281">One issue</text>
     <text class="t-s" x="488" y="299">names and docs</text>

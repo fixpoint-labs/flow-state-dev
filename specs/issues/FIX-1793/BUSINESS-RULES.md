@@ -13,7 +13,7 @@ each to its run. A refusal writes nothing and names its reason.
 | BR-2 | A create names no visibility | A shared project, as today | CI |
 | BR-3 | A private create lists other members | Refused, `private-has-members` | CI |
 | BR-4 | Alice has a private `apollo` and the org a shared one | Both exist; each is addressed by its visibility and id | CI |
-| BR-5 | A project row written before this is read | A shared project. Its members, repository and files read as before (BP-030) | CI, on a row today's `main` wrote |
+| ~~BR-5~~ | A project row written before this is read | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): no rule, test or code keeps old rows readable. Shared projects keep the `projects/*` collection, so an old row that still fits the schema would list as shared; the kitchen-sink app's and the DevTeam lab's stores are reset once when this ships ([FIX-1796 D2](../FIX-1796/DECISIONS.md#d2)), and that reset is what leaves none | — |
 | BR-6 | Anyone in the org reads a shared project | They see its row, its repository included, and every workstream's entry (BR-12): shared means the whole org reads it, and members decide who opens workstreams (BR-8). A private project's row, repository and files are its owner's alone | CI |
 
 ## Workstreams and the owner rule
@@ -60,9 +60,9 @@ each to its run. A refusal writes nothing and names its reason.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-29 | A client calls `join`, or posts, reads or answers on a session that was a project's talk session | Refused, naming that rooms were removed, by entries kept for the purpose: not a generic resolution failure. No room collection is read or written, and the session isn't treated as a mailbox | CI · VG leg d |
-| BR-30 | A store holds room lines, answers, deliveries and counters | Every row is still there, unchanged | VG leg d |
-| BR-31 | A `MAILBOX.md` carries `mintFor:`, or an app passes `talk` to the projects collection | Refused at load, naming the key and that rooms were removed | CI |
+| ~~BR-29~~ | A client calls `join`, or posts, reads or answers on a session that was a project's talk session | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): no entry is kept to refuse a removed room call by name | — |
+| ~~BR-30~~ | A store holds room lines, answers, deliveries and counters | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): nothing reads them, and the in-repo stores are reset once | — |
+| ~~BR-31~~ | A `MAILBOX.md` carries `mintFor:`, or an app passes `talk` to the projects collection | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): neither is refused by name; both go with the room code (PLAN S7) | — |
 | BR-32 | A row lists mailboxes, and claims hold them | They still group under the project and place their boards' coding runs, until FIX-1792. No new feature writes them | CI |
 
 ## Coding runs
@@ -75,11 +75,11 @@ each to its run. A refusal writes nothing and names its reason.
 ## Failure taxonomy
 
 Every refusal is fatal to its write and names its reason: `private-has-members`,
-`not-a-member`, `no-such-project`, a missing worker, FIX-1791's delegate cap, `not-the-owner`, the engine's owner-rule
-error, and a removed key at load. A lost compare-and-swap is retried, as the row writes are
+`not-a-member`, `no-such-project`, a missing worker, FIX-1791's delegate cap, `not-the-owner`, and the engine's
+owner-rule error. A lost compare-and-swap is retried, as the row writes are
 today. Nothing is ignored silently, and nothing stored is deleted.
 
 ## Acceptance criteria this issue owns
 
-[The goal](SPEC.md#the-goal-and-how-well-know-its-met): legs a to d pass on a real model with
+[The goal](SPEC.md#the-goal-and-how-well-know-its-met): legs a to c pass on a real model with
 two users, and leg b fails under `no-owner-rule` and leg c under `all-entries-delegate`.

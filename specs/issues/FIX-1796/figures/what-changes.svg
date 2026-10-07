@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 440" role="img" aria-label="What changes: several old names for one idea become one name each. Seat, hired seat, flow instance and owner pin become worker, a user's own, run by the flow it names. Kind, for the flow a worker runs on, becomes worker flow. Hired roster becomes roster. Mailbox, its member and its thread become coordinator, delegate and the delegate's session. Room and talk session become the project coordinator. Person, for the signed-in user, becomes user. Below a dashed line, kept by design: a task board's seat, its types and its hand-off's seat field, saved key strings, the engine's flow kind, flow instances and owner pins until FIX-1798, its dispatch target, retained specs, changelogs and blog posts, and the words in goals."
+<svg viewBox="0 0 940 484" role="img" aria-label="What changes: several old names for one idea become one name each. Seat, hired seat, flow instance and owner pin become worker, a user's own, run by the flow it names. Kind, for the flow a worker runs on, becomes worker flow. Hired roster becomes roster. Mailbox, its member and its thread become coordinator, delegate and the delegate's session. Room and talk session become the project coordinator. Person, for the signed-in user, becomes user. A task board's seat, its types and its hand-off's seat field become assignee, a board's named entry, picked by a task. Below a dashed line, kept by design: the engine's flow kind, flow instances and owner pins until FIX-1798, its dispatch target, retained specs, changelogs and blog posts, and the words in goals."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -22,7 +22,7 @@
     .c-code { fill:var(--code); }
     .c-old  { fill:var(--gone); }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="440"/>
+  <rect class="bg" x="0" y="0" width="940" height="484"/>
 
   <g id="heads">
     <text class="t-lbl" x="16" y="34">TODAY · SEVERAL NAMES FOR ONE IDEA</text>
@@ -85,12 +85,21 @@
     <text class="t-h c-code" x="550" y="312">user</text>
     <text class="t-s" x="596.8" y="312">a person, signed in, in one org</text>
   </g>
+  <g id="row-7">
+    <rect class="old" x="16" y="334" width="388" height="34" rx="5"/>
+    <text class="t-b c-old" x="30" y="356">a task board's seat · its types · the hand-off's seat</text>
+    <line class="arrow" x1="410" y1="351" x2="520" y2="351"/>
+    <polygon class="head" points="520,346 530,351 520,356"/>
+    <rect class="new" x="536" y="334" width="388" height="34" rx="5"/>
+    <text class="t-h c-code" x="550" y="356">assignee</text>
+    <text class="t-s" x="627" y="356">a board's named entry, picked by a task (D1)</text>
+  </g>
 
   <g id="kept">
-    <line class="fence" x1="16" y1="344" x2="924" y2="344"/>
-    <rect class="foot" x="16" y="356" width="908" height="70" rx="5"/>
-    <text class="t-lbl" x="32" y="375">KEPT, BY DESIGN</text>
-    <text class="t-s" x="32" y="395">a task board's seat, its types and its hand-off's seat field (D1) · saved key strings (D2)</text>
-    <text class="t-s" x="32" y="413">the engine's flow kind, flow instances and owner pins, until FIX-1798 · its dispatch target · specs, changelogs, blog posts · words in goals</text>
+    <line class="fence" x1="16" y1="388" x2="924" y2="388"/>
+    <rect class="foot" x="16" y="400" width="908" height="70" rx="5"/>
+    <text class="t-lbl" x="32" y="419">KEPT, BY DESIGN</text>
+    <text class="t-s" x="32" y="439">the engine's flow kind, flow instances and owner pins, until FIX-1798 · its dispatch target</text>
+    <text class="t-s" x="32" y="457">specs, changelogs, blog posts · words in goals</text>
   </g>
 </svg>

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D4. Does the discovery domain seats keep its name, or follow the sweep? Chosen: seats becomes workers. Instead of: pin seats as a model-facing name. It comes down to the first row, what a model reads: chosen, it asks for workers by name and seat means only a board's place; instead, a model reads seat as a worker on the one surface it reads by name. Second row, saved prompts, skills and evals: chosen, one that passes seats gets the unknown-domain listing; instead, they keep working. Third row, the owner's answer: chosen, a Layer 1 rename that binds once the epic records it; instead, it reverses part of the owner's answer and goes back to him at the gate. Locks in: a worker file's discover naming seats is refused when the worker is minted, listing the known domains, with no alias. Flips if: the epic declines the rename; then seats is pinned with its cost named, at the gate."
+<svg viewBox="0 0 940 418" role="img" aria-label="D4. Does the discovery domain seats keep its name, or follow the sweep? Chosen: seats becomes workers. Instead of: pin seats as a model-facing name. It comes down to the first row, what a model reads: chosen, it asks for workers by name and seat is retired everywhere; instead, a model reads seat as a worker on the one surface it reads by name. Second row, saved prompts, skills and evals: chosen, one that passes seats gets the unknown-domain listing; instead, they keep working. Third row, the owner's answer: chosen, a Layer 1 rename that binds once the epic records it; instead, it reverses part of the owner's answer and goes back to them at the gate. Locks in: a worker file's discover naming seats is refused when the worker is minted, listing the known domains, with no alias. Flips if: the epic declines the rename; then seats is pinned with its cost named, at the gate."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -56,7 +56,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Workers</text>
-    <text class="t-s" x="248" y="179">“seat” means only a board's place</text>
+    <text class="t-s" x="248" y="179">“seat” is retired everywhere</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Seat, meaning a worker</text>
     <text class="t-s" x="612" y="179">a Workforce seat that survives the sweep</text>
@@ -80,7 +80,7 @@
     <text class="t-s" x="248" y="299">binds once the epic records it</text>
     <text class="mark minus" x="592" y="282">−</text>
     <text class="t-b" x="612" y="281">Reverses part of it</text>
-    <text class="t-s" x="612" y="299">so it goes back to him at the gate</text>
+    <text class="t-s" x="612" y="299">so it goes back to them at the gate</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
 

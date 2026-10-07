@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 330" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two panels with the same three callers: the app's chat flow for Alice in Acme, a hired worker for Alice in Acme, and the chat flow for Alice in Globex. Today both chat runs store into one cell named alice that follows her between orgs, so Globex reads what she saved in Acme, and the worker stores apart in its own cell for alice in acme. After, every flow stores into a cell for its user and org, drawn inside the Acme and Globex boxes: the chat flow and the worker share alice in acme, flow-isolated data adds the flow to that cell, and the Globex run has alice in globex. The old cell alice sits below a fence that no run or view crosses, and only the operator step copies it, into the one org its sessions name.">
+     aria-label="Two panels with the same three callers: the app's chat flow for Alice in Acme, a hired worker for Alice in Acme, and the chat flow for Alice in Globex. Today both chat runs store into one cell named alice that follows her between orgs, so Globex reads what she saved in Acme, and the worker stores apart in its own cell for alice in acme. After, every flow stores into a cell for its user and org, drawn inside the Acme and Globex boxes: the chat flow and the worker share alice in acme, flow-isolated data adds the flow to that cell, and the Globex run has alice in globex. The old cell alice sits below a fence that no run or view crosses. It is dropped: nothing reads it and nothing copies it.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -17,10 +17,8 @@
     .org   { fill:none; stroke:var(--ink-3); stroke-width:1; stroke-dasharray:5 3; }
     .wire  { stroke:var(--ink-2); stroke-width:1.2; }
     .wbad  { stroke:var(--gone); stroke-width:1.4; }
-    .step  { stroke:var(--accent); stroke-width:1.4; stroke-dasharray:5 3; fill:none; }
     .head  { fill:var(--ink-2); }
     .hbad  { fill:var(--gone); }
-    .hacc  { fill:var(--accent); }
     .fence { stroke:var(--code); stroke-width:2; stroke-dasharray:6 4; }
     .split { stroke:var(--rule); stroke-width:1; }
     .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
@@ -29,7 +27,6 @@
     .t-k   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-ok  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
     .t-go  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
-    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
   </style>
   <rect class="bg" x="0" y="0" width="940" height="330"/>
   <path class="split" d="M469 16 L469 314"/>
@@ -89,8 +86,7 @@
 
     <rect class="old" x="500" y="258" width="260" height="46" rx="4"/>
     <text class="t-b" x="512" y="277">alice</text>
-    <text class="t-k" x="550" y="277">the old cell · kept, read by nothing</text>
-    <text class="t-acc" x="512" y="294">copied by the operator step into one org</text>
-    <path class="step" d="M490 281 L480 281 L480 180 L494 180"/><path class="hacc" d="M493 176 L500 180 L493 184 Z"/>
+    <text class="t-k" x="550" y="277">the old cell · dropped</text>
+    <text class="t-k" x="512" y="294">read by nothing, copied by nothing</text>
   </g>
 </svg>

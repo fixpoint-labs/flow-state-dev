@@ -32,21 +32,23 @@ The *proved by* column names the check in [PLAN.md](PLAN.md#checks).
 
 ## Data saved before the upgrade
 
+Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9). Data saved before this release is dropped: BR-7 makes an old cell
+unreachable by construction, and V1, V3 and V5 check that no key, view or schedule reads one. No
+step copies it. The IDs stay so a reader who remembers one finds where it went.
+
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-15 | A user has user data saved by an older release, and the step has not run | No flow and no view reads it, in any org. Each of their cells starts empty. The old cell is untouched. Nothing refuses | Goal leg c · V4 |
-| BR-16 | The operator runs the step on a cell whose possible writers' sessions all name one org: all the user's sessions for a shared cell or user record, their sessions on that flow for a flow-isolated cell. The operator also vouches that none of those sessions was deleted, or that their own records never placed the user in another org | The cell is copied into that org: state and content together, versions and deletion markers kept, a user record's id rewritten. The original stays | Goal leg c · V7 |
-| BR-17 | Those sessions name two or more orgs, or none, or some may have been deleted and the operator's records can't clear every other org. A session with no flow owner on a collection flow counts as unknown until the owner attribution has run | The step stops for that cell with `migration-required`, names it in the upgrade record, and copies nothing | Goal leg c · V7 |
-| BR-18 | The destination already holds a row, a record or a deletion marker for the user | The step stops for that user and names the keys. Nothing is overwritten or merged | V7 |
-| BR-19 | A copied cell held a dynamic schedule | After its index row is rebuilt from the new cell and the old cell's row removed, it fires once per beat. Before the step it does not fire | V5 · V7 |
-| BR-20 | A deployment's sessions only ever named one org, such as a development app on the default org | Every cell is attributable to it and copied | V7 |
+| ~~BR-15~~ | A user has user data saved by an older release, and the step has not run | Removed | — |
+| ~~BR-16~~ | The operator runs the step on a cell whose possible writers' sessions all name one org | Removed | — |
+| ~~BR-17~~ | Those sessions name two or more orgs, or none, or some may have been deleted | Removed | — |
+| ~~BR-18~~ | The destination already holds a row, a record or a deletion marker for the user | Removed | — |
+| ~~BR-19~~ | A copied cell held a dynamic schedule | Removed | — |
+| ~~BR-20~~ | A deployment's sessions only ever named one org | Removed | — |
 
 ## Failure taxonomy
 
 Nothing here is a new runtime error. A run or a view that finds a cell empty behaves as a first
-run. A missing org is refused exactly as today. The only new stop is the operator step's, per
-cell or per user, named `migration-required` like the other upgrade procedures, and it leaves
-the store as it found it for that cell.
+run. A missing org is refused exactly as today.
 
 ## Acceptance criteria this issue owns
 

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D3. Do renamed exports keep their old names as deprecated aliases for a release? Chosen: rename outright, with a changeset table. Instead of: deprecated aliases for a release. It comes down to the first row, the epic's rule ER-12 at the closure: chosen holds, no retired word left in any export; instead fails or waits, because every alias is a retired word in an export. Second row, an app on the old names: chosen breaks its build on upgrade, fixed from the changeset table; instead builds with warnings and gets one release to move. Third row, release type: a minor release, pre-1.0, either way. Locks in: every app on the old names edits its imports once, on its first upgrade past this release. Flips if: an app outside this repo was promised a deprecation window; then alias for one release and the closure waits."
+<svg viewBox="0 0 940 418" role="img" aria-label="D3. Do renamed exports keep their old names as deprecated aliases for a release? Chosen: rename outright, with no alias. Instead of: deprecated aliases for a release. It comes down to the first row, the epic's rule ER-12 at the closure: chosen holds, no retired word left in any export; instead fails or waits, because every alias is a retired word in an export. Second row, an app on the old names: chosen breaks its build on upgrade, and every caller in this repo moves in the same PR; instead builds with warnings and gets one release to move. Third row, release type: a minor release, pre-1.0, either way. Locks in: every app on the old names edits its imports once, on its first upgrade past this release. Flips if: an app outside this repo was promised a deprecation window; then alias for one release and the closure waits."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Rename outright, with a table</text>
+    <text class="t-h c-code" x="228" y="112">Rename outright, no alias</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Deprecated aliases for a release</text>
@@ -67,7 +67,7 @@
     <text class="t-lbl" x="32" y="235">OLD NAMES</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">Build breaks on upgrade</text>
-    <text class="t-s" x="248" y="241">fixed from the changeset table</text>
+    <text class="t-s" x="248" y="241">every caller in this repo moves with it</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Builds, with warnings</text>
     <text class="t-s" x="612" y="241">one release to move</text>

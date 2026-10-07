@@ -10,7 +10,7 @@
 | **shares a project with a teammate** | Both are members of one row. A workstream is a mailbox listed on the row, and anyone who can edit the row can move it | Each owns the workstreams they open. Everyone in the org reads the project and every workstream's status and objectives; members are who may open workstreams. Only the owner can change theirs, and only the owner sees its tasks |
 | **talks to a project** | Posts in the project's room, which every member shares, through a talk session of their own | Talks to their own project coordinator. It reads every workstream's status and hands work only to the user's own workstreams |
 | **asks how a project is going** | Reads the room, or opens each mailbox | Sees it computed from the workstreams: how many are on track, objectives met, the next due date, and which entries have gone quiet |
-| **had a conversation in a project's room** | Reads it in the project's Stream tab | The lines stay in the store, untouched. The app no longer shows them ([decided, not asked](DECISIONS.md#decided-not-asked)) |
+| **had a conversation in a project's room** | Reads it in the project's Stream tab | Rooms are removed, and nothing reads their lines ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)) |
 | **runs coding work on a project** | A mailbox board finds its project through a claim row | A workstream's work finds its project through the workstream. A private project's files are its owner's. Mailbox boards keep today's path until FIX-1792 converts them |
 
 This is the epic's leg b ([FIX-1786](../../epics/FIX-1786/SPEC.md), ER-7 and ER-8), and the
@@ -21,22 +21,21 @@ one new engine rule the epic allows here: a row its owner writes and the org rea
 **Two users of one org each own workstreams in one shared project: each sees both workstreams'
 status, and neither can change the other's. Each talks to the project through their own
 coordinator, which hands work only to their own workstreams. A user's private project is
-reachable by nobody else, and rooms are gone with nothing deleted.**
+reachable by nobody else, and rooms are gone.**
 
 | Is it the right goal? | |
 |---|---|
 | **The real need** | The [PRD](https://linear.app/fixpoint-labs/issue/FIX-1793): one project type, private or shared; a workstream owned by one user, readable by the project's readers and writable only by its owner; one coordinator per user per project; rooms removed; progress computed. The epic's [security model](../../epics/FIX-1786/concept/CONCEPT.md#the-security-model), rules 5 and 6 |
 | **Smaller, and rejected** | "Projects can be private." A scope option, met while every workstream is still a mailbox anyone can move. Or "workstreams are rows": met while any member's session can overwrite any row, which today's engine allows ([POC G1](poc/scope-config/README.md#what-was-observed)) |
 | **Bigger, and not this issue's** | Converting mailbox boards into workstreams and removing claims (FIX-1792) · tasks down the owner's chain (FIX-1794) · the org's worker library (FIX-1795) · a turn's own record of the collections it wrote, a fourth engine change raised to the epic; views reload after every turn until then ([decided, not asked](DECISIONS.md#decided-not-asked)) · changing members after create, or private to shared ([follow-ups](PLAN.md#follow-ups)) |
-| **Not done if** | The check ran with one user · Bob's write is refused only through the app, not through flow code writing the row · the progress is stored on the row · a project coordinator hands work to Bob's workstream · a private project shows in Alice's second org · a room row was deleted or rewritten |
+| **Not done if** | The check ran with one user · Bob's write is refused only through the app, not through flow code writing the row · the progress is stored on the row · a project coordinator hands work to Bob's workstream · a private project shows in Alice's second org |
 
 ```mermaid
 flowchart LR
   A["Shift Manager · two users of one org · real model"] --> L1["leg a · Alice makes a private and a shared project"]
   A --> L2["leg b · Alice and Bob each open a workstream"]
   A --> L3["leg c · each talks to their project coordinator"]
-  A --> L4["leg d · a store with rooms in it"]
-  L1 & L2 & L3 & L4 -->|"reads and refusals match"| P["PASS · the goal is met"]
+  L1 & L2 & L3 -->|"reads and refusals match"| P["PASS · the goal is met"]
   C["control · the entry collection without the owner rule"] -.-> L2
   L2 -.->|"under the control"| F["must FAIL · Bob changes Alice's entry"]
 ```
@@ -47,9 +46,9 @@ never a key string. Under the dashed control, Bob's write to Alice's entry must 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/projects/a-shared-project-has-one-owner-per-workstream/` · `openai/gpt-5.4-mini` for leg c, a scripted model elsewhere · Shift Manager's DevTeam install over HTTP, SQLite, two users of one org and a second org · run by the implementer at completion · verdict in the last implementation PR |
-| **Signal** | **a**: Bob can't list, open or read Alice's private project; Alice in her second org doesn't see it; both see the shared one. **b**: each opens a workstream with a lead from their own roster; each workstream session is its owner's; Bob's write to Alice's entry is refused through the app, a worker's tool and flow code writing the row; the project view counts two workstreams and both owners' objectives. **c**: asked about the project, Alice's coordinator names Bob's workstream's held-out status word; asked for work, it delivers once to her own lead's workstream session and never to Bob's. **d**: on a store today's `main` wrote with a room in it, `join` is refused, and every room row is still there, byte for byte |
+| **Signal** | **a**: Bob can't list, open or read Alice's private project; Alice in her second org doesn't see it; both see the shared one. **b**: each opens a workstream with a lead from their own roster; each workstream session is its owner's; Bob's write to Alice's entry is refused through the app, a worker's tool and flow code writing the row; the project view counts two workstreams and both owners' objectives. **c**: asked about the project, Alice's coordinator names Bob's workstream's held-out status word; asked for work, it delivers once to her own lead's workstream session and never to Bob's |
 | **Input** | The DevTeam standard install; two users and a second org through sign-in; held-out status words and asks. Another project id, workstream id or lead must pass too |
-| **Anti-game** | No entry, project or session seeded by a fixture: the users make each one through the app. Leg b's direct write runs in a registered flow, not a test double. Leg d's store is written by today's code |
+| **Anti-game** | No entry, project or session seeded by a fixture: the users make each one through the app. Leg b's direct write runs in a registered flow, not a test double |
 | **Control that must fail** | `GOAL_CONTROL=no-owner-rule`: leg b FAILS on *Bob's write is refused*. `GOAL_CONTROL=all-entries-delegate`: leg c FAILS on *never to Bob's*. Today's `main`: legs a to c FAIL |
 
 ## What changes
@@ -110,8 +109,8 @@ the one place every write meets the store, so it holds whichever flow writes the
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** private and shared projects,
-one owner per workstream enforced at the store, a coordinator per user, rooms gone with nothing
-deleted. If wrong: we rename the room and still let any member change anyone's work.
+one owner per workstream enforced at the store, a coordinator per user, rooms gone. If wrong: we
+rename the room and still let any member change anyone's work.
 
 **Decided:**
 

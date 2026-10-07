@@ -23,6 +23,10 @@ baseline, and a deleted file is reported as deleted rather than read.
 
 ## What was observed
 
+**Amended by [epic D9](../../../../epics/FIX-1786/DECISIONS.md#d9) (2026-10-07):** the classifications no longer keep
+anything as a refusal by name or mark claims deprecated; removed calls simply go. The dated
+observations below are as first recorded, including BR-31, which D9 removed.
+
 On `dc463ef26`: **PASS**. 115 matching files: 15 removed whole (1,474 source lines, 1,475 test
 lines, 6 figures), 62 edited, 1 left to FIX-1792 (`mailboxes.md`), 37 unrelated. The control:
 **CONTROL PASS**, the prose-only plant refused. With `talk.ts` moved aside, the run still passes

@@ -136,8 +136,6 @@ role, Q1).
 
 ## Follow-ups
 
-- FIX-1788 D2 keeps old org-wide hire rows "so it can become a library template": an operator
-  step that publishes them is not built here.
 - A chief-of-staff tool for the library, and Q2's richer notice if asked for, read S4's mark.
 
 ## Notes from review

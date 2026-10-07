@@ -4,17 +4,19 @@
 
 The vocabulary itself is decided in the epic's [concept](../../epics/FIX-1786/concept/CONCEPT.md#vocabulary)
 and not reopened here. These are the three calls the Architect's guidance on the issue said to
-put to the owner, priced, and a fourth that review found. The owner answered D1 in review.
+put to the owner, priced, and a fourth that review found. The owner answered D1 in review, and
+reversed it on 2026-10-07 ([epic D7](../../epics/FIX-1786/DECISIONS.md#d7)).
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-1796"] --> D1["D1 · only Workforce's seat goes"]
-  D1 -.->|"rejected · assignee would name two things"| X1["a task board's seat becomes its assignee"]
-  I --> D2["D2 · saved names keep their strings"]
-  D2 -.->|"rejected · moves or double-reads saved records"| X2["rename saved names too"]
-  I --> D3["D3 · renamed exports break, with a table"]
+  I["FIX-1796"] --> D1["D1 · seat goes everywhere: a task board's seat becomes assignee"]
+  D1 -.->|"rejected · a reader meets Workforce's old word on the board"| X1["the board keeps seat (D1 as merged)"]
+  D1 -.->|"rejected · the engine's routes and the router own it"| X1b["route"]
+  I --> D2["D2 · saved names are renamed, stores reset once"]
+  D2 -.->|"rejected · kept only for reads D9 removed"| X2["saved names keep their strings"]
+  I --> D3["D3 · renamed exports break, no alias"]
   D3 -.->|"rejected · an alias is a retired word in an export"| X3["deprecated aliases for a release"]
   I --> D4["D4 · the discovery domain seats becomes workers"]
   D4 -.->|"rejected · a model would still read seat as a worker"| X4["pin seats as a model-facing name"]
@@ -23,49 +25,59 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · Only Workforce's seat goes; a task board keeps "seat"
+## D1 · "Seat" goes everywhere: a task board's seat becomes assignee
+
+**The product owner, 2026-10-07**, recorded as an amendment to [epic D7](../../epics/FIX-1786/DECISIONS.md#d7):
+"I'm still not sold on seats for task boards. Maybe routes? Similar to router. Any other ideas",
+then, offered assignee, lane, route and station, "Ok let's go with assignee". It flips this card
+as merged, which kept "seat" on the board ([the card as merged](https://github.com/fixpoint-labs/flow-state-dev/blob/2ab5e6b0bd77c798142a48922131aa52f45f737d/specs/issues/FIX-1796/DECISIONS.md#d1)).
 
 | | |
 |---|---|
-| **Instead of** | Renaming the task board's seat to assignee too: its `TaskSeat…` and `HandOffSeat` types and the hand-off record's `seat` field |
-| **Because** | The product owner's answer (2026-10-06): "seat" is a fair word for a place on a board. An assignee is a seat on one specific task, so it names something else. Once the Workforce sweep lands, "seat" has one meaning in the codebase, the board's, and the glossary defines it there and nowhere else. Nothing in the epic's Layer 1 changes (ER-22), so the epic's "Task boards … consumed as they ship" holds, no epic decision is needed, and FIX-1794's new board text stands as written |
-| **Locks in** | The board's types and the hand-off record's `seat` field keep their names; no board app changes. The discovery tool's `seats` domain is Workforce's seat, not the board's, and is [D4](#d4)'s. The guard needs a board-seat exception scoped to the board's surface: its named types and the hand-off field read off its envelope anywhere, its bare word on its modules and the code off Workforce's ground that uses them, and a Workforce "seat" counts even on the same line |
+| **Instead of** | Only Workforce's seat going, while a task board keeps "seat" for a place on a board (D1 as merged) · or route, lane or station, the other words offered. "Route" is already the engine's HTTP routes and the router block kind |
+| **Because** | A reader who learned Workforce's seat as a worker would meet the same word on the board, for example on Shift Manager's task screens, where both meet: the case the merged card named as what would change its mind. A task already says `assignee` for the board entry it picks, so the entry and the pick take one name and one glossary row. "Seat" is then a fully retired word, and the guard needs no board exception. It changes a Layer 1 name, so it binds only through the epic, which records it as [D7](../../epics/FIX-1786/DECISIONS.md#d7) and counts it in its D3 (ER-22) |
+| **Locks in** | An assignee is a named entry in a board's `workers` map; a task's `assignee` picks it, and it runs the task inline or hands it off to a dispatch run. The board's types, its docs and the hand-off record's `seat` field take the word, with no alias ([D3](#d3)), under the names [PLAN.md](PLAN.md#pinned-names) pins; nothing reads the old field ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)). `defaultWorker`, "the floor", is the default assignee in prose; whether its `kind: "floor"` and `label: "floor"` values change is the implementer's call. The discovery tool's `seats` domain is Workforce's seat, and is [D4](#d4)'s. The guard keeps no board-seat exception: "seat" counts on every line in scope, a board's included |
 
-![D1: only Workforce's seat goes, chosen, beside a board's seat becomes its assignee. Decides it: what a seat is on a board. Price: the guard needs a board-seat exception. Flips if readers still take a board's seat for a worker after the sweep](figures/d1-board-keeps-seat.svg)
+![D1, flipped by the epic's D7: a task board's seat becomes assignee, chosen, beside the board keeps seat. Decides it: what a reader meets on a board, one word defined once. Price: the board's names change, the epic's second Layer 1 rename. Flips if one word for a board's entry and a task's pick reads ambiguously in the board's API](figures/d1-seat-becomes-assignee.svg)
 
-It comes down to what a seat is on a board: renamed, "assignee" would name both the place and the seat on one task.
+It comes down to what a reader meets on a board: one word, defined once, and nothing left of Workforce's seat.
 
-**What would change my mind:** readers who still take a board's seat for a worker once
-Workforce's seat is gone, for example on Shift Manager's task screens, where both meet. Then the
-board's word becomes assignee at 1.0, as an epic decision.
+**What would change my mind:** one word for a board's entry and a task's pick reading
+ambiguously in the board's own API, for example a `workers` map keyed by assignee beside a
+task's `assignee` in one signature. Then the entry gets a word of its own, never "seat" again,
+as an epic question.
 
 <a name="d2"></a>
-## D2 · Saved names keep their strings; only code and pages change
+## D2 · Saved names are renamed outright; the in-repo stores are reset once
+
+**The product owner, 2026-10-07**, under [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): stored keys are renamed outright, with no read of
+the old keys and no copy step, and the kitchen-sink app's and the DevTeam lab's stores are reset
+once when this ships. It flips this card as merged, which kept saved strings so the other
+children's upgrade reads would find them ([the card as merged](https://github.com/fixpoint-labs/flow-state-dev/blob/2ab5e6b0bd77c798142a48922131aa52f45f737d/specs/issues/FIX-1796/DECISIONS.md#d2)).
 
 | | |
 |---|---|
-| **Instead of** | Renaming stored keys and ids too: moving each record by an operator step, or reading the old and new name for good (BP-030) |
-| **Because** | The strings that survive the other children are names only storage sees: collection patterns such as `inventory/seats/*`, the old roster's `workforce/roster/*` that FIX-1788's upgrade step reads, the room rows FIX-1793 keeps. They are not exports and not on a published page, so ER-12 doesn't reach them. Moving them changes data for a word, and a missed read path hides records. The last rename, FIX-1748, renamed its stored names and refused older stores; this epic reads old data instead (ER-3's operator step, FIX-1788's upgrade step, FIX-1793's kept room rows), and a rename here would break those reads |
-| **Locks in** | A few storage strings keep old words. The code constant that holds each takes the new term (`LEGACY_` for a name only an upgrade reads), and the guard lists each string with the code that reads it |
+| **Instead of** | Keeping the stored strings behind renamed constants, `LEGACY_` for a name only an upgrade reads |
+| **Because** | The reads those strings were kept for are gone: D9 withdrew FIX-1788's upgrade step, FIX-1790's copy step and FIX-1793's kept room rows, and nobody outside this repo has a store to keep reading. A kept string is a retired word the guard has to except, and the devtool's storage view keeps showing it |
+| **Locks in** | Every stored key, collection pattern, id or saved field name that uses a retired word takes the new word, in the PR that renames the code writing it. Nothing reads the old name, and nothing copies a record. A store written before this release loses those records: the kitchen-sink app and the DevTeam lab reset theirs once. The guard keeps no stored-key exception |
 
-![D2: saved names keep their strings, chosen, beside rename saved names too. Decides it: records saved before. Price: raw storage views still show old words. Flips if app builders read those keys as product names](figures/d2-saved-names.svg)
+![D2, flipped by the epic's D9: rename saved names outright, chosen, beside saved names keep their strings. Decides it: records saved before, dropped because there are no consumers and the two in-repo stores are reset once. Price: a store written before this release loses its Workforce records. Flips if a consumer appears before the closure](figures/d2-saved-names.svg)
 
-It comes down to saved records: renaming them moves or double-reads every one, for a word.
+It comes down to who still reads the old names: since D9, nobody.
 
-**What would change my mind:** app builders reading those keys as product names, in the
-devtool's storage view or on a published page. Then the still-written ones get new names with
-the old read alongside, and an only-read one stays.
+**What would change my mind:** a consumer outside this repo before the closure run. Then D9's
+reversal applies: the product owner decides what upgrade path that consumer needs.
 
 <a name="d3"></a>
-## D3 · Renamed exports break outright, with a rename table, and no aliases
+## D3 · Renamed exports break outright, with no aliases
 
 | | |
 |---|---|
 | **Instead of** | Keeping each old export as a deprecated alias for one release |
-| **Because** | ER-12 forbids a retired term in any package export at the closure, and every alias is one. The epic locks deprecate-then-remove only for flow instances and owner pins. Pre-1.0, a minor release may break (BP-022), and the last rename, FIX-1748, shipped with no aliases. Every in-repo caller moves in the same PR |
-| **Locks in** | An app on the old names edits its imports once, on its first upgrade past this release, from each package's changeset table and the upgrading page. A custom worker flow with a hand-written schema on the old keys is refused at boot, naming the key it lacks |
+| **Because** | ER-12 forbids a retired term in any package export at the closure, and every alias is one. Since [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) the epic deprecates nothing first, not even flow instances and owner pins. Pre-1.0, a minor release may break (BP-022), and the last rename, FIX-1748, shipped with no aliases. Every in-repo caller moves in the same PR |
+| **Locks in** | An app on the old names edits its imports once, on its first upgrade past this release. There is no rename table and no upgrading page ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)). A custom worker flow with a hand-written schema on the old keys is refused at boot, naming the key it lacks |
 
-![D3: rename outright with a table, chosen, beside deprecated aliases for a release. Decides it: the epic's ER-12 at the closure. Price: an app on the old names breaks on upgrade. Release type is a tie](figures/d3-no-aliases.svg)
+![D3: rename outright with no alias, chosen, beside deprecated aliases for a release. Decides it: the epic's ER-12 at the closure. Price: an app on the old names breaks on upgrade. Release type is a tie](figures/d3-no-aliases.svg)
 
 It comes down to ER-12: an alias is a retired word in an export, so the closure fails or waits.
 
@@ -78,16 +90,16 @@ deprecation window. Then alias for one release, and the closure waits for their 
 | | |
 |---|---|
 | **Instead of** | Keeping `seats` in `MANIFEST_DOMAINS` (`contracts`) as a pinned, model-facing name |
-| **Because** | The domain lists Workforce's workers, so it is Workforce's seat, not the board's, and the owner's rule is seat for boards, not workers. It is the one surface a model reads by name, so a surviving `seats` would teach a model the meaning the sweep removes. D3 rules out an alias |
-| **Locks in** | `MANIFEST_DOMAINS`, core's discovery tool and Workforce's `discover:` key say `workers`. A saved prompt, skill or eval that passes `seats` gets the "unknown domain" listing, and a worker file with `discover: [seats]` is refused when it is minted, listing the known domains. `patch` changesets for `contracts`, `core` and `workforce` name that cost. **Binds once the epic records it** in its next amendment (amend-5): it is a Layer 1 public name (ER-22) |
+| **Because** | The domain lists Workforce's workers, so it is Workforce's seat, and since [D1](#d1)'s flip "seat" names nothing anywhere. It is the one surface a model reads by name, so a surviving `seats` would teach a model the meaning the sweep removes. D3 rules out an alias |
+| **Locks in** | `MANIFEST_DOMAINS`, core's discovery tool and Workforce's `discover:` key say `workers`. A saved prompt, skill or eval that passes `seats` gets the "unknown domain" listing, and a worker file with `discover: [seats]` is refused when it is minted, listing the known domains. **Binds once the epic records it** in its next amendment (amend-5): it is a Layer 1 public name (ER-22) |
 
 ![D4: seats becomes workers, chosen, beside pin seats as a model-facing name. Decides it: what a model reads by name. Price: saved prompts that pass seats get the unknown-domain listing. Flips if the epic declines the rename](figures/d4-workers-domain.svg)
 
 It comes down to what a model reads by name: pinned, "seats" keeps a Workforce meaning that only a model sees.
 
 **What would change my mind:** the epic declining the rename at amend-5. Then `seats` is pinned
-with that cost named, and it goes to the product owner at the gate, because it reverses part of
-his answer to D1.
+with that cost named, and it goes to the product owner at the gate, because it keeps a word they
+retired ([D1](#d1)).
 
 The `mailboxes` domain is not decided here: FIX-1792 removes it ([its PLAN S9](https://github.com/fixpoint-labs/flow-state-dev/pull/2833)).
 
@@ -116,15 +128,16 @@ The `mailboxes` domain is not decided here: FIX-1792 removes it ([its PLAN S9](h
 - **`hireWorkforce` is renamed only if it no longer hires.** Neither word is retired; what it
   returns stops saying seat.
 - **Two PRs**: Workforce and its apps, then prose, the glossary and the guard
-  ([PLAN.md](PLAN.md#pr-plan)). With D1 the task-board PR has no renames left; its few lines
-  where "seat" means a Workforce worker ride with the first. Each PR's pages move with its code (ER-25).
+  ([PLAN.md](PLAN.md#pr-plan)). Since D1 flipped, the task board's renames ride with the first,
+  beside the code that uses them; if that PR is too big to review, they go first as their own,
+  the implementer's call. Each PR's pages move with its code (ER-25).
 - **Glossary entries promise no memory layer a flow doesn't keep** (ER-15, FIX-1364).
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
-| A scripted find and replace | "Seat" is a worker in Workforce and a place on a board; "person" is sometimes any human. A blind replace writes wrong words |
+| A scripted find and replace | "Seat" is a worker in Workforce and an assignee on a board; "person" is sometimes any human. A blind replace writes wrong words |
 | One PR | About 600 files across several packages. Code and its pages first, prose and the guard after, review faster apart |
 | Sweep `goals/` too | Outside the PRD's scope: about 250 files of test prose and folder names. A follow-up if wanted |
 | Keep the CI guard for "channel" | Its subject, the mailbox, is retired, and channels come back as their own feature |
@@ -154,5 +167,15 @@ The `mailboxes` domain is not decided here: FIX-1792 removes it ([its PLAN S9](h
 - **Review round 2** — the board's surface is defined by module, like Workforce's ground, not by
   a closed file list that left about 125 of the board's own lines to rename against D1; the
   hand-off field strips like `TaskSeat`. D4's `seats` value reaches `goals/` too.
+- **Amended after merge, the D9 sweep (2026-10-07)** — [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) and the product owner's answer of
+  the same day flipped D2: stored names are renamed outright, and the kitchen-sink app's and the
+  DevTeam lab's stores are reset once. The `LEGACY_` constants, the upgrading page and its rename
+  table, the changeset rows, V5 and the refusal-module exception (BR-12) went with it
+  ([EVOLUTION.md](EVOLUTION.md#amendment-d9)).
+- **Amended after merge, the board's seat (2026-10-07)** — the product owner chose assignee for a
+  task board's seat ([epic D7](../../epics/FIX-1786/DECISIONS.md#d7)), which flipped D1: the
+  board's types, its docs and the hand-off record are renamed, the glossary defines assignee only,
+  and the guard's board-seat exceptions and board surface went
+  ([EVOLUTION.md](EVOLUTION.md#amendment-d9)).
 
 **Open: none.**

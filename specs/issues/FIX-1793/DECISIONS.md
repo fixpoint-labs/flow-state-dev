@@ -63,6 +63,8 @@ an epic amendment ([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is
 
 It comes down to today's projects: they are shared already, so private-only takes sharing away.
 
+**Amended by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) (2026-10-07):** the decision stands, but rows stored before this release are dropped, not read as shared, so the figure's "every existing row reads as shared" no longer holds. A project created after it is shared unless made private.
+
 <a name="q2"></a>
 ## Q2 · decided · Only a shared project's members open workstreams
 
@@ -124,8 +126,8 @@ Engineering calls, recorded so nobody re-derives them.
   neither shape the engine has today is the rule.
 - **The visibility is where the row lives**, not a field on it, so the two can't disagree. A
   create with no visibility makes a shared project, as today.
-- **Room rows stay in the store, unread.** No history view: rooms are removed, and nothing is
-  deleted (BP-030). An operator can still read them.
+- **Room rows are dropped.** No history view: rooms are removed, and nothing reads their rows
+  ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)).
 - **Claims and a row's mailbox list stay, deprecated, until FIX-1792.** They place a mailbox
   board's coding runs in a project today; they go when FIX-1792 converts each board, and its
   per-board table can use them. This moves their removal to FIX-1792, so it binds once the epic
@@ -153,14 +155,10 @@ Engineering calls, recorded so nobody re-derives them.
   docs say it plainly.
 - **Each entry carries FIX-1789's `writtenBy`**, stamped through its helper on every write
   ([FIX-1789 D1](../FIX-1789/DECISIONS.md#d1), epic ER-11). Who may write stays the owner rule.
-- **Removed room calls are refused by name.** `join`, and `post`, `read` and `answer` on a stored
-  talk session, keep entries that refuse with the removed-room reason (BR-29), so an old caller
-  gets that reason and not a generic failure.
 - **A workstream's lead is chosen when it opens and doesn't change**, because a session's
   worker never does (FIX-1788). A workstream id is unique per project and owner.
 - **Out of scope:** changing members after create, private to shared, and waking a lead on a
   schedule. A quiet entry shows as stale.
-- **`mintFor:` and `defineProjectsCollection({ talk })` are refused by name**, with the reason.
 
 ## Considered and dropped
 
@@ -196,5 +194,9 @@ their READMEs.
   projects stay in the MVP, and only a shared project's members open workstreams. Opening a
   workstream from the coordinator follows FIX-1791's Q1, and S3 and S5 cite FIX-1791's internal
   delegate mutation for records that carry a target.
+- **Amended after merge, the D9 sweep (2026-10-07)** — [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): old project rows aren't read as
+  shared (BR-5), room rows aren't kept for an operator (BR-30), and nothing refuses room calls,
+  `mintFor:` or `talk` by name (BR-29, BR-31). Leg d, V7 and the deprecation markers went with
+  them. Claims stay until FIX-1792, as build order ([EVOLUTION.md](EVOLUTION.md#amendment-d9)).
 
 **Open: none.**

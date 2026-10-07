@@ -192,3 +192,6 @@ Settled by [the POC](poc/two-shapes/README.md); resolved, don't reopen:
   #2811 folded: configuration checked by value, attribution by behaviour, the stamp's promise
   narrowed. `writtenBy.workerId`'s source after FIX-1788 named. "Seat" retired in prose; `kinds`
   renamed `workerFlows`.
+- **Amended after merge, the D9 sweep (2026-10-07)** — [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): no changeset and no README line
+  telling upgraders that `kinds` is now `workerFlows`. The rename itself stands
+  ([EVOLUTION.md](EVOLUTION.md#amendment-d9)).
