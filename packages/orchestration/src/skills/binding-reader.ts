@@ -25,7 +25,7 @@ import {
   resolveInitialSkills,
   type InitialSkillsSource,
 } from "./initial-skills";
-import { resolveResourceCollection } from "../tasks";
+import { resolveSkillsCollection } from "./partition";
 import { renderActiveSkillBody } from "./render-skill-body";
 import { ensureSeeded } from "./seeding";
 
@@ -57,7 +57,7 @@ export function buildSkillBindingReader(
 ): (input: unknown, ctx: BlockContext) => Promise<string | null> {
   const staticActive = opts.active ?? [];
   return async (_input: unknown, ctx: BlockContext) => {
-    const collection = resolveResourceCollection(ctx, opts.collectionKey);
+    const collection = resolveSkillsCollection(ctx, opts.collectionKey);
     if (!collection) return null;
     // Seed on first render so static bodies resolve on turn 1. Idempotent and
     // memoized per collection ref; failures fall through with an empty catalog.

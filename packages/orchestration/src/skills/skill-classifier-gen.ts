@@ -13,7 +13,7 @@
 
 import { z } from "zod";
 import { generator, handler, sequencer } from "@flow-state-dev/core";
-import { resolveResourceCollection } from "../tasks";
+import { resolveSkillsCollection } from "./partition";
 import { listOfferedSkills } from "./skill-catalog";
 import {
   skillActivatorStateSchema,
@@ -69,7 +69,7 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
     outputSchema: skillClassifierOutputSchema,
     itemVisibility: { client: false, history: false },
     prompt: async (_input, ctx) => {
-      const collection = resolveResourceCollection(ctx, opts.collectionKey);
+      const collection = resolveSkillsCollection(ctx, opts.collectionKey);
       const skills = await listOfferedSkills(collection, cap, allowedSet);
       if (skills.length === 0) {
         return [
@@ -99,7 +99,7 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
     outputSchema: z.object({ accepted: z.boolean() }),
     sequencerStateSchema: skillActivatorStateSchema,
     execute: async (input, ctx) => {
-      const collection = resolveResourceCollection(ctx, opts.collectionKey);
+      const collection = resolveSkillsCollection(ctx, opts.collectionKey);
       const validNames = new Set(
         (await listOfferedSkills(collection, Number.POSITIVE_INFINITY, allowedSet)).map(
           (s) => s.name,

@@ -17,7 +17,7 @@
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import type { SkillState } from "@flow-state-dev/core";
-import { resolveResourceCollection } from "../tasks";
+import { resolveSkillsCollection } from "./partition";
 import { skillActivatorStateSchema } from "./skill-activation-types";
 
 const inputSchema = z.object({ message: z.string() }).passthrough();
@@ -51,7 +51,7 @@ export function createSkillKeywordMatch(opts: KeywordMatchOptions) {
       const lowered = message.toLowerCase();
 
       const matchedSkills: Array<{ name: string }> = [];
-      const collection = resolveResourceCollection(ctx, opts.collectionKey);
+      const collection = resolveSkillsCollection(ctx, opts.collectionKey);
       if (collection) {
         const seen = new Set<string>();
         for (const ref of await collection.list()) {

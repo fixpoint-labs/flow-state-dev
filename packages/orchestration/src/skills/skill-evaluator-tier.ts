@@ -20,6 +20,7 @@ import { z } from "zod";
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { EvaluatorDefinition } from "@flow-state-dev/core";
 import { resolveResourceCollection } from "../tasks";
+import { resolveSkillsCollection } from "./partition";
 import { listOfferedSkills } from "./skill-catalog";
 import {
   matchedSkillSchema,
@@ -54,7 +55,7 @@ export function createSkillEvaluatorTier(opts: SkillEvaluatorTierOptions) {
 
   const offered = (ctx: Parameters<typeof resolveResourceCollection>[0]) =>
     listOfferedSkills(
-      resolveResourceCollection(ctx, opts.collectionKey),
+      resolveSkillsCollection(ctx, opts.collectionKey),
       opts.maxSkillsInClassifier,
       allowedSet,
     );

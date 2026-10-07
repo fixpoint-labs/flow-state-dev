@@ -10,7 +10,7 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import { resolveResourceCollection } from "../tasks";
+import { resolveSkillsCollection } from "./partition";
 import {
   resolveInitialSkills,
   type InitialSkillsSource,
@@ -32,7 +32,7 @@ export function createCatalogSeedStep(opts: CatalogSeedStepOptions) {
     inputSchema,
     outputSchema: z.object({ seeded: z.boolean() }),
     execute: async (_input, ctx) => {
-      const collection = resolveResourceCollection(ctx, opts.collectionKey);
+      const collection = resolveSkillsCollection(ctx, opts.collectionKey);
       if (collection) {
         try {
           await ensureSeeded(collection, resolveInitialSkills(opts.initialSkills, ctx));
