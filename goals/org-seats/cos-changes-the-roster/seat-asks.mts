@@ -44,23 +44,7 @@ import {
 } from "@flow-state-dev/workforce";
 import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
-
-/** Every worker flow has one door: this fixture's answers by saying what it heard. */
-const workerDoor = {
-  message: {
-    inputSchema: z.object({ message: z.string() }),
-    userMessage: (input: { message: string }) => input.message,
-    block: handler({
-      name: "fixture-door",
-      inputSchema: z.object({ message: z.string() }),
-      outputSchema: z.object({ heard: z.string() }),
-      execute: (input, ctx) => {
-        ctx.emit.message(`Heard: ${input.message}`);
-        return { heard: input.message };
-      },
-    }),
-  },
-};
+import { workerDoor } from "../../lib/worker-door.mts";
 
 const ORG = "seat-asks";
 const USER = "u_seat_asks";

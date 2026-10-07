@@ -3,7 +3,8 @@
  *
  * Deliberately small. It covers only the scaffolding every goal repeats —
  * verdicts, fixtures, env, paths, capture reading, harness driving, durable
- * setup — and nothing that belongs to an individual goal. The grading logic IS
+ * setup, and the one door a fixture worker flow needs — and nothing that
+ * belongs to an individual goal. The grading logic IS
  * the goal and stays in `run.mts`; retry POLICY stays there too (the corpus has
  * three, and they mean different things).
  *
@@ -21,3 +22,4 @@ export * from "./durable.mts";
 export * from "./model.mts";
 export * from "./specs.mts";
 export * from "./server.mts";
+export * from "./worker-door.mts";
