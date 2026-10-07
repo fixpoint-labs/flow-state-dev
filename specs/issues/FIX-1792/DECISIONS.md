@@ -2,20 +2,20 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-What was chosen, what lost, and what each choice locks in. One decision is the sign-off surface,
-D2. D1 is decided, not asked. The counts here are the checker's ([poc/inventory](poc/inventory/README.md)),
+What was chosen, what lost, and what each choice locks in. D2 was the sign-off surface, and the
+product owner answered it (2026-10-07). D1 is decided, not asked. The counts here are the checker's ([poc/inventory](poc/inventory/README.md)),
 not a hand count.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-1792"] --> D2["D2 · old mailbox data left unread"]
+  I["FIX-1792"] --> D2["D2 · old mailbox data is dropped<br/>no consumers yet"]
+  D2 -.->|"rejected"| X1["leave it unread, with refusals and an upgrade page<br/>support for a consumer nobody is"]
   D2 -.->|"rejected"| X2["move pending rows onto a conversation<br/>an org row has no one user to give it to"]
-  D2 -.->|"rejected"| X3["stop the boot until the store is reset<br/>loses every project for rows nobody can place"]
 ```
 
-Solid edges are what you're signing. Dashed edges lost, and the label says why.
+Solid edges are what was answered. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
 ## D1 · Where each board goes: now decided, not asked
@@ -27,83 +27,93 @@ the checker cite it.
 
 | Tree · coordinator | Board | What it is used for | Becomes |
 |---|---|---|---|
-| kitchen-sink · `support.help` | `escalations` | A specialist files a case that needs a person; nobody works it; the team panel lists it | **Removed** with the escalation feature (product owner, 2026-10-06). `support.help` is a best-fit coordinator with no board, so no grant |
-| `mailbox-boards` hire goal · `ops.desk` | `work` | A coordinator hires a worker and files it a task by name | Conversation board, granted |
-| `mailbox-boards` row goal · `eng.feature` | `triage`, `parked` | One worker files a row and another's board runs it; nobody drains `parked` | The filer's own session board; the filer is granted. `parked` goes |
-| `manager-queue-lab` · `eng.queue` (lab and two refusal trees) | `work` | The manager files a row per desk; each desk's worker takes its own | The manager's own session board; the manager is granted, and a row names its delegate |
-| Shift Manager chief-of-staff goal · `desk.front` (two labs) | `work` | The landing summary counts what waits and what runs | Conversation board, granted |
-| Shift Manager look goal · `desk.front` | `work` | Every screen draws the board's rows | Conversation board, granted |
-| Shift Manager roster goal · `eng.desk` | `work` | The roster shows each worker's tasks; the lead drains it | Conversation board, granted |
-| `task-run-link` · `lab.desk` | `work` | Each handed-off row links its run | Conversation board, granted |
-| Shift Manager test labs · `ops.desk`, `eng.queue`, `lab.desk` | `work` | Tasks, asks, parked rows and runs in Shift Manager's tests | Conversation board, granted; multi-seat-collab's planner (`eng.queue`) is granted too and files on its own session board |
-| **DevTeam · `eng.feature`** | `work` | The team builds a feature; the storefront project lists it; its coding runs find the project through the claim | **Workstream** on storefront, led by the EM, which is granted and files the coder's tasks |
+| kitchen-sink · `support.help` | `escalations` | A specialist files a case that needs a person; nobody works it; the team panel lists it | **Removed** with the escalation feature (product owner, 2026-10-06). `support.help` is a best-fit coordinator whose specialists take tasks, so it has the task tools; nothing asks it to file |
+| `mailbox-boards` hire goal · `ops.desk` | `work` | A coordinator hires a worker and files it a task by name | Conversation board, with the task tools |
+| `mailbox-boards` row goal · `eng.feature` | `triage`, `parked` | One worker files a row and another's board runs it; nobody drains `parked` | The filer's own session board; the filer has the task tools through its delegates. `parked` goes |
+| `manager-queue-lab` · `eng.queue` (lab; two refusal trees) | `work` | The manager files a row per desk; each desk's worker takes its own | The manager's own session board; the manager has the task tools through its delegates, and a row names its delegate. The two board-in-a-seat-folder refusal trees go: no file declares a board, so the leg they served has no subject |
+| Shift Manager chief-of-staff goal · `desk.front` (two labs) | `work` | The landing summary counts what waits and what runs | Conversation board, with the task tools |
+| Shift Manager look goal · `desk.front` | `work` | Every screen draws the board's rows | Conversation board, with the task tools |
+| Shift Manager roster goal · `eng.desk` | `work` | The roster shows each worker's tasks; the lead drains it | Conversation board, with the task tools |
+| `task-run-link` · `lab.desk` | `work` | Each handed-off row links its run | Conversation board, with the task tools |
+| Shift Manager test labs · `ops.desk`, `eng.queue`, `lab.desk` | `work` | Tasks, asks, parked rows and runs in Shift Manager's tests | Conversation board, with the task tools; multi-seat-collab's planner (`eng.queue`) has them too, through its delegates, and files on its own session board |
+| **DevTeam · `eng.feature`** | `work` | The team builds a feature; the storefront project lists it; its coding runs find the project through the claim | **Workstream** on storefront, led by the EM, which has the task tools through its delegates and files the coder's tasks |
 | DevTeam · `ops.release` | none | Storefront lists it beside `eng.feature` | **Workstream** on storefront, led by the EM |
 
 Every file, with or without a board, is a row in the checker; [PLAN](PLAN.md#the-files) lists the
 other 18.
 
-**Granted** means the worker's `WORKER.md` says `filing: true` (FIX-1802 D1). Every worker that
-files is granted, coordinators included, and files through `createTaskFilingCapability()`. The
-built-in `agent` and coordinator flows carry it. An app flow adds it in two parts: the capability
-on its worker's generator block's `uses`, and the entries it spreads into the flow's own
-`actions`, `internal` and `task` maps (the EM keeps `flow: em`). That is each converted coordinator that
-keeps a conversation board, the chief of staff (FIX-1802 S7), the members that filed on a mailbox's board when a post reached it (manager-queue-lab's manager,
-multi-seat-collab's planner, the row goal's filer) and the DevTeam's EM. A member lists who it
-files for in `delegates:`, and its rows land on its own session's board. A coordinator converted
-with no board gets no grant. No coordinator files for a member, and no coordinator needs `rounds:`.
+**With the task tools** means the worker's turn has orchestration's eight task tools (`addTask`,
+`assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks`),
+from `createTaskToolsCapability(resolver, roster)` with the session's board as the resolver and
+the delegates that can take a task as the roster. A worker has them when at least one of its
+`delegates:` can take a task, as an `agent` worker does through the task entry
+([FIX-1794 S6](../FIX-1794/PLAN.md#surfaces)); no line in its file grants them, and there is no
+`filing:` key (product owner, 2026-10-07). A routing coordinator whose delegates only take posts
+has none. The built-in `agent` and coordinator flows carry them through FIX-1802's wiring of the
+existing task tools. The EM's `em` flow composes the capability on its generator block and spreads
+`taskToolActions(board)` into its `actions` (the EM keeps `flow: em`). So each converted coordinator
+whose delegates are agents has them, board or not, kitchen-sink's help desk included; so do the
+chief of staff, the members that filed on a mailbox's board when a post reached it
+(manager-queue-lab's manager, multi-seat-collab's planner, the row goal's filer) and the DevTeam's
+EM. Each keeps its `delegates:` list, and that list is what gives the tools. A member's rows land
+on its own session's board. No coordinator files for a member, and no coordinator needs `rounds:`.
 
 <a name="d2"></a>
-## D2 · Old mailbox data stays in the store, unread; no pending task carries over
+## D2 · Old mailbox data is dropped; no consumers yet
 
 | | |
 |---|---|
-| **Instead of** | Moving each pending row on an old board onto the converted coordinator's conversation at first boot · or stopping the boot until the store is reset, as the channel rename did ([FIX-1748 D1](../FIX-1748/DECISIONS.md#d1)) |
-| **Because** | A mailbox board is an org row, filed and run by whoever; a conversation belongs to one user. Moving a row means picking a user, and any pick can hand one member another's task, the leak the epic closes. A reset costs every project, worker and conversation in the store for rows nobody can place anyway. Rooms set the precedent: left in the store, unread, refused by name ([FIX-1793](../FIX-1793/DECISIONS.md#decided-not-asked)) |
-| **Locks in** | Upgrading a store with tasks waiting on a mailbox board drops them from every view. The upgrade page says so, and says to finish or re-file them first. An operator can still read the rows; nothing reads them for you |
+| **Answered** | Approved by the product owner (2026-10-07), and widened: no backwards support of any kind while there are no consumers |
+| **Instead of** | Leaving it in the store, unread, with refusals that name each old file and key and an upgrade page that says to finish or re-file tasks first (this spec's draft) · moving each pending row onto the converted coordinator's conversation at first boot · stopping the boot until the store is reset, as the channel rename did ([FIX-1748 D1](../FIX-1748/DECISIONS.md#d1)) |
+| **Because** | Nobody outside this repo runs a mailbox yet. Every file is in the repo and converted here, so an old file could only exist by mistake, and the conversion deletes them. Every path kept for old files or data (a refusal, a dual-read, an upgrade page, a pinned old store) is code to build, test and remove later for a reader who doesn't exist. Moving rows would also have to pick a user for an org row, the leak the epic closes |
+| **Locks in** | No code reads, moves, migrates or refuses an old `MAILBOX.md`, a `flows/mailboxes/` folder, a `boards:` line, a `workstreams` write, the `mailboxes` discovery domain, or a store's mailbox sessions, board rows, claims and inventory rows. No upgrade page. Pending tasks on an old board don't carry over |
 
-![D2, what happens to a mailbox's stored sessions and board rows. Chosen: left in the store, unread. Instead of: moving each pending row onto the converted coordinator's conversation, or stopping the boot until the store is reset. It comes down to the first row: whose a row is. Left unread, nobody guesses; moved, the boot must pick one user for an org row, and a pick can hand one member another's task. A reset keeps nothing else in the store. The price is the last row: a waiting task drops out of view and has to be re-filed, where moving it would keep it waiting. Locks in: pending mailbox tasks don't carry over on upgrade. Flips if: a store you run holds pending board tasks you want kept](figures/d2-old-data.svg)
+![D2, what happens to old mailbox files and data. Chosen: dropped, since there are no consumers yet. Instead of: leaving them unread, with refusals and an upgrade page, or moving each pending row onto a conversation. It comes down to the first row: what we build and keep for them. Dropped keeps nothing; left unread keeps a refusal, a page and a pinned old store, each to test and remove later; moved keeps a migration that must pick a user for an org row. Whose a row is: dropped and left unread guess nothing; moved can hand one member another's task. The price is the last row: a waiting task is gone, where moving it keeps it waiting, but nobody has one yet. Locks in: no reader, refusal, upgrade page or dual-read for old files and data. Flips if: a consumer runs mailboxes before the removal lands](figures/d2-old-data.svg)
 
-It comes down to whose a row is: moving it means guessing, and a wrong guess shares a task.
+It comes down to who needs it: nobody yet, so anything kept for it is a second path with no reader.
 
-**What would change my mind:** your DevTeam lab store, or the deployed kitchen-sink database,
-holding pending board tasks you want kept. Then a one-off script you run once files them on the
-converted coordinator's conversation as the user you name, and nothing reads old rows after.
+**What would change my mind:** a consumer outside this repo running mailboxes before P4 lands.
+Then a refusal and an upgrade page land first, as one PR ahead of P4, and BP-030 applies from then
+on.
 
 ## Decided, not asked
 
 - **D1 · Where each board goes ([the table](#the-table)): the DevTeam's feature becomes a
-  Storefront workstream the EM leads, 13 other board files keep a session board, and kitchen-sink's
-  escalations goes with its feature.** Its only close call was that escalations board, and the
+  Storefront workstream the EM leads, 11 other board files keep a session board, manager-queue-lab's
+  two board-in-a-seat-folder trees go with the leg they served, and kitchen-sink's escalations goes
+  with its feature.** Its only close call was that escalations board, and the
   product owner answered it by removing the escalation feature (2026-10-06).
 - **The conversion, key by key.** `description:` and the body unchanged; `flow: coordinator`
   added; `members:` → `delegates:`; `routing: { fallback: x }` → `routing: best-fit` and
   `fallback: x`; no `routing:` → `routing: everyone`. FIX-1791's default for a missing
   `routing:` calls a model (judgment as merged; evaluator first once #2837 lands), so a file
   without the line would start calling a model where its mailbox woke everyone. `rounds:` is left out (zero). `boards:` and `boardActions:` go. The epic's draft said
-  "`routing:` unchanged"; FIX-1791's pinned keys made that wrong, and this DOCS.md corrects it.
+  "`routing:` unchanged"; FIX-1791's pinned keys made that wrong. The old file is deleted.
 - **A `flow:` naming a kind of the tree's own has no conversion.** Both such files name `digest`,
-  a goal fixture's kind: one goes with the goal it served, one stays as an old file the refusal
-  goal reads. `flows/mailboxes/` is refused by name at `fsdev gen` and, separately, at load, so an
-  app that never regenerates is still refused. It is refused whatever it holds, where an empty
-  `mailboxes/` team folder is passed over: a code slot is itself a declaration, a team folder
-  declares only through its file. A flow that should run workers moves to `flows/workers/` and the
-  worker-flow list ([FIX-1789](../FIX-1789/SPEC.md)).
-- **A renamed file that keeps the old lines is refused by name**: `members:`, `boards:`,
-  `boardActions:` or `mintFor:` on a `WORKER.md`, each with what replaced it.
-- **The `CHANNEL.md` refusal stays until 1.0** ([FIX-1748](../FIX-1748/DECISIONS.md#d1)); it now
-  names the `WORKER.md` conversion, so it never sends someone to a file that is itself refused.
+  a goal fixture's kind, and both go with the goals they served. `flows/mailboxes/` stops being a
+  codegen slot, and nothing reads or refuses the folder. A flow that should run workers belongs in
+  `flows/workers/` and the worker-flow list ([FIX-1789](../FIX-1789/SPEC.md)).
+- **BP-030 does not apply while there are no consumers** (epic decision, product owner,
+  2026-10-07). No dual-read, no tolerated legacy field, and no refusal of an old file, key, write
+  or domain by name. It applies again from the first consumer.
+- **The pre-rename refusal goes too.** `PRE_RENAME_NAMES` and its refusals of `CHANNEL.md`,
+  `channels/` and a store from before the rename are backwards support for the same nobody, and
+  kept they would point at `MAILBOX.md`, a file that no longer exists. They go in P4 with the
+  pre-rename goal and the DevTeam's pre-rename store test. This supersedes FIX-1748 D1's "until
+  1.0" by D2's answer. Flips if D2's rule was meant to stop at mailboxes: then S3 comes back as a
+  re-pointed refusal.
 - **A standard coordinator naming a delegate no file declares is refused at load**, by FIX-1791's
   BR-11. The pentest scenario that opened and skipped such a member now asserts the refusal.
-- **No refusing `mailbox` flow is kept for old sessions.** The engine already answers
-  `Unknown flow "mailbox"`; a flow kept only to refuse is a second path.
+- **No `mailbox` flow is kept for old sessions.** A flow kept only for old data is a second path.
 - **Goals convert by default.** 13 rewrite an outcome the epic or the product owner changes (who
   sees a board's rows, a delegate instead of a desk, an unknown member refused, kitchen-sink's
-  escalation legs gone). Two retire, each named under BR-24 with its reason: one whose subjects are
-  gone, and kitchen-sink's filed-case goal, whose feature is removed. No converted step waits on
-  another issue. The pre-rename goal folds into this issue's goal check. The table is in
+  escalation legs gone). Three retire, each named under BR-24 with its reason: one whose subjects
+  are gone, kitchen-sink's filed-case goal, whose feature is removed, and the pre-rename goal,
+  whose refusal is removed. No converted step waits on another issue. The table is in
   [PLAN](PLAN.md#goals).
 - **Claims, a project's list of mailboxes, `setWorkstreams` and `projectWritesMailboxInventory`
-  are removed here**, as the epic records; the chief of staff loses `post-to-mailbox` and
+  are removed here**, as the epic records, and the project's `workstreams` field with them; nothing
+  refuses a write that still carries it. The chief of staff loses `post-to-mailbox` and
   `setWorkstreams`.
 - **The DevTeam's `feature` and `release` files become workstreams, not coordinators.**
   Storefront's seed opens both as the lab's member, each led by the EM, and lists them as entries,
@@ -112,35 +122,41 @@ converted coordinator's conversation as the user you name, and nothing reads old
 - **Desks are lab code** (`answersFor:` is read only by lab flows). A converted lab files for the
   delegate, through the worker that filed today. A step that can't hold on a session board is
   retired under BR-24 with its reason; none waits on another issue.
-- **Filing is a granted tool** (product owner, 2026-10-06; FIX-1802 D1). Every worker that files
-  is granted with `filing: true` in its `WORKER.md`, coordinators included, and files through
-  `createTaskFilingCapability()`; [the table](#the-table) names who. A converted file lists who a
-  worker files for in `delegates:`, a key of the worker contract (FIX-1802 S2). The same grant lets
-  a filed task's worker file pieces in turn. A coordinator converted with no board gets no grant,
-  and no coordinator files for a member.
+- **The task tools come from a worker's delegates** (product owner, 2026-10-07). A worker has
+  orchestration's eight task tools when at least one of its `delegates:` can take a task; there is
+  no `filing:` key, and nothing else grants them. They are the existing
+  `createTaskToolsCapability(resolver, roster)` and, for an app's own actions,
+  `taskToolActions(board)`, both in `packages/orchestration/src/skills/task-tools-capability.ts`;
+  FIX-1802's wiring of the existing task tools puts them on worker flows. `mailboxBoardTaskTools`,
+  the mailbox's wrapper over them, is retired here. [The table](#the-table) names who has them.
+  A converted coordinator with no board still has them when its delegates take tasks; the two
+  files with an empty `members:` list, and a coordinator whose delegates only take posts, have
+  none. The same rule lets a filed task's worker file pieces in turn. No coordinator files for a
+  member.
 - **Kitchen-sink's escalation feature is removed, not replaced** (product owner, 2026-10-06): the
   `escalate` tool, its test and `no-filing` control, the escalations board and panel, and the
   specialists' instruction to escalate. Shift Manager is where Workforce is proved now. The help
-  desk converts key by key, to best fit with its fallback.
+  desk converts key by key, to best fit with its fallback. Its specialists take tasks, so it has
+  the task tools; nothing asks it to file a case.
 - **A converted coordinator keeps its mailbox's id**, `<team>.<name>`, as a worker id; no tree on
   `main` has a worker by that name. Its conversation is found by `findWorkerSession({ worker })`,
   whose key-set match (FIX-1788 S5a) never returns a delegate's or a task's session.
-- **The last PR is two.** P4a adds the refusals and the goal check; P4b removes the mailbox floor
-  and adds no behaviour. Each is reviewed against one question, and S1 lands before S9.
-- **Leg d's old store is a checked-in file** generated once from the commit P4a branches from, by a
-  committed script, with the SHA beside it. After P4b no commit on `main` can write a mailbox
-  store, so a store seeded "through today's code" would stop being old. A published older package
-  can't seed it: the labs that open mailboxes aren't published.
+- **The last PR is one.** With nothing to refuse first, P4 removes the mailbox floor, the codegen
+  slot, the pre-rename refusal and the last readers of claims, and adds the goal check. It adds no
+  behaviour and reviews as one question: does anything still import this.
 - **The retiring goal retires on a condition**: each leg that still has a subject is named against
   a leg FIX-1791's, FIX-1794's or a converted goal passes on `main`, or it moves rather than goes.
-- **Old-term exports left for FIX-1796:** `PRE_RENAME_NAMES` and its refusal helpers (until 1.0).
-  The mailbox floor's exports are removed, not left.
+- **No old-term export is left for FIX-1796:** the mailbox floor's and the pre-rename module's
+  exports are removed, not left.
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
-| A loader that reads `MAILBOX.md` as a coordinator | The FIX-1367 lock: one way to declare a worker, and old files refused loudly |
+| A loader that reads `MAILBOX.md` as a coordinator | The FIX-1367 lock: one way to declare a worker |
+| Refusing an old `MAILBOX.md`, `boards:`, a `workstreams` write and the `mailboxes` domain by name, with an upgrade page (this spec's draft; the epic's ER-6) | No consumer has an old file or store, and every one in the repo is converted. Cut by the product owner (2026-10-07) |
+| Proving old data stays unread on a pinned old store (the draft's leg d) | A promise to nobody; D2's answer drops the data |
+| A `filing: true` line that grants the task tools (FIX-1802's draft) | The product owner's answer (2026-10-07): the `delegates:` list is the grant |
 | Converting files at boot | The same lock; every file is in this repo |
 | Keeping org-scoped boards as a third shape | The epic's [D5](../../epics/FIX-1786/DECISIONS.md#d5): the shape this epic removes |
 | Every board a lab's people look at becomes a workstream: Shift Manager's `desk.front` and `eng.desk` labs too | Each lab grows a project and a workstream nobody follows, where D5 sends a working list to a session board. It flips if a Shift Manager lab's board is meant to list work across a person's conversations; that lab then opens a workstream, as the DevTeam does |
@@ -149,8 +165,9 @@ converted coordinator's conversation as the user you name, and nothing reads old
 ## Settled
 
 - **The counts**: 33 files, 15 with boards, 16 boards, 3 `boardActions:`, 0 `mintFor:`, 2 `flow:`
-  (both `digest`) — **CONFIRMED** by [poc/inventory](poc/inventory/README.md) on `cad4e2780`, and
-  again on `ce06cb5c7` with the full removed-export list, its control refusing every plant.
+  (both `digest`) — **CONFIRMED** by [poc/inventory](poc/inventory/README.md) on `cad4e2780`, again
+  on `ce06cb5c7` with the full removed-export list, and again after the sign-off fold, its control
+  refusing every plant.
 - **FIX-1794's filing takes a delegate's session as a caller** — **REFUTED** at spec time against
   FIX-1794 S1, S4 and BR-21 ([architect](https://github.com/fixpoint-labs/flow-state-dev/pull/2833#issuecomment-6026639909)).
   Kitchen-sink's case was settled by the coordinator, then made moot when the product owner
@@ -182,5 +199,12 @@ converted coordinator's conversation as the user you name, and nothing reads old
 - **Aligned with FIX-1802** (2026-10-07) — took its pinned names. Every worker that files is
   granted, coordinators included, through `createTaskFilingCapability()`, and lists who it files
   for in `delegates:`. D1 moved to decided, not asked, so D2 is the one sign-off item.
+- **Sign-off** (product owner, 2026-10-07) — D2 approved and widened: no backwards support of any
+  kind while there are no consumers. The refusals, the upgrade page, the pinned old store and the
+  goal check's refusal and old-store legs went; P4a collapsed into the removal, now P4; the
+  pre-rename refusal went by the same rule; BP-030 recorded as not applying. No `filing:` key: a
+  worker has the task tools when one of its delegates can take a task, and the tools are
+  orchestration's existing eight, `createTaskToolsCapability(resolver, roster)` and
+  `taskToolActions(board)`.
 
 **Open: none.**

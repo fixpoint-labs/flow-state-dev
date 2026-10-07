@@ -30,11 +30,11 @@
  * `--control` plants an unclassified source file, an unclassified goal that
  * names a mailbox only in prose, and an unlisted mailbox-named export, and
  * requires the census to FAIL on all three. It then requires `--after` to FAIL
- * on a plant naming exports the first `--after` missed, and on the two old
- * refusal fixtures still at their pre-move paths. It removes the plants.
- * `--after` asserts the end state: the only `MAILBOX.md` files are
- * AFTER_FIXTURES, under the pinned goal check, no file outside REFUSAL_HOMES
- * names a REMOVED_EXPORTS name, and MANIFEST_DOMAINS has no `mailboxes`.
+ * on a plant naming exports the first `--after` missed, and on a `MAILBOX.md`
+ * left in the tree. It removes the plants.
+ * `--after` asserts the end state: no `MAILBOX.md` is left, no file names a
+ * REMOVED_EXPORTS name, and MANIFEST_DOMAINS has no `mailboxes`. Nothing is
+ * exempt: no refusal of an old shape survives (D2, product owner, 2026-10-07).
  *
  * Out of scope on purpose: the word "mailbox" in package source and docs that
  * name no removed surface. That sweep is FIX-1796's.
@@ -60,7 +60,7 @@ const SURFACE = new RegExp(
 
 /**
  * The removal inventory: every exported name the conversion removes (S1, S2,
- * S9, S10). `--after` refuses each outside REFUSAL_HOMES, so the end-state gate
+ * S3, S9, S10). `--after` refuses each anywhere, so the end-state gate
  * covers the whole removed surface, not a sample of it. Kept total by
  * `exportProblems()` in census mode.
  */
@@ -93,6 +93,10 @@ const REMOVED_EXPORTS = [
   "readMailboxesDirectory", "ReadMailboxesDirectoryResult", "MailboxManifest", "MailboxManifestError", "MailboxManifestErrorKind",
   // S2 · codegen
   "mailboxKinds",
+  // S3 · the pre-rename refusal (mailbox/pre-rename.ts)
+  "PRE_RENAME_NAMES", "preRenameRecordProblem", "preRenameRecordFolderProblem", "preRenameKindsFolderProblem",
+  "preRenameKindNameProblem", "preRenameOccupantProblem", "PreRenameStoreView", "PreRenameMarks", "findPreRenameMarks",
+  "describePreRenameMarks",
   // S10 · claims, the project's list, setWorkstreams
   "WORKSTREAM_CLAIMS_RESOURCE", "WorkstreamClaim", "workstreamClaimSchema", "defineWorkstreamClaimsCollection",
   "SetWorkstreamsInput", "setWorkstreamsInputSchema", "setWorkstreamsOutputSchema", "projectWritesMailboxInventory",
@@ -140,27 +144,6 @@ const SURFACE_NAME = /[Mm]ailbox|MAILBOX|[Ww]orkstreamClaim|WORKSTREAM_CLAIMS|[S
 
 const REMOVED_NAME = new RegExp(`\\b(${REMOVED_EXPORTS.join("|")})\\b`);
 
-/** Where the end state may still name an old shape: the refusals and their own tests and fixtures. */
-const REFUSAL_HOMES = [
-  "packages/workforce/src/mailbox/pre-rename.ts",
-  "packages/workforce/src/loader/read-mailboxes-directory.ts",
-  "packages/workforce/src/codegen/discover.ts",
-  "packages/workforce/test/pre-rename.test.ts",
-  "packages/workforce/test/read-mailboxes-directory.test.ts",
-  "goals/coordinators/refuses-a-mailbox-file-by-name/",
-  "apps/docs/docs/workforce/upgrading.md",
-];
-
-/**
- * The only `MAILBOX.md` files the end state keeps: the pre-rename goal's two
- * old files, moved unchanged under the pinned goal check (PLAN P4a). Exact
- * paths, so a fixture left at its old path, or a new one anywhere else, fails.
- */
-const AFTER_FIXTURES = [
-  "goals/coordinators/refuses-a-mailbox-file-by-name/fixtures/tree/teams/desk/mailboxes/front/MAILBOX.md",
-  "goals/coordinators/refuses-a-mailbox-file-by-name/fixtures/tree/teams/desk/mailboxes/notices/MAILBOX.md",
-];
-
 const SKIP = (f) =>
   /^(specs\/|docs\/internal\/|\.changeset\/)/.test(f) || /CHANGELOG\.md$/.test(f) ||
   /\.(png|jpe?g|gif|ico|woff2?|db|sqlite|lock)$/.test(f) || f === "pnpm-lock.yaml";
@@ -172,9 +155,8 @@ const SKIP = (f) =>
  * uses it for. Targets: `session` (a coordinator; its board becomes a session
  * board, the conversation's own or the filing worker's, D1), `workstream` (the
  * file becomes a Storefront workstream its lead worker opens; no WORKER.md),
- * `coordinator` (no board, or a board that goes with its feature), `fixture`
- * (kept as an old file for the refusal goal check), `removed` (goes with the
- * legs it served).
+ * `coordinator` (no board, or a board that goes with its feature), `removed`
+ * (goes with the goal or legs it served). No old file is kept: D2.
  */
 const FILES = {
   "apps/kitchen-sink/workforce/teams/support/mailboxes/help/MAILBOX.md":
@@ -182,13 +164,13 @@ const FILES = {
   "goals/mailbox-boards/it-hands-a-task-to-a-fresh-hire/fixtures/workforce/teams/ops/mailboxes/desk/MAILBOX.md":
     { target: "session", boards: ["work"], use: "a coordinator hires a worker and files it a task by name" },
   "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/fixtures/workforce/teams/eng/mailboxes/feature/MAILBOX.md":
-    { target: "session", boards: ["triage", "parked"], use: "one worker files a row and another's board runs it; the filer is granted `filing: true` and files on its own session board; parked is drained by nobody and goes" },
+    { target: "session", boards: ["triage", "parked"], use: "one worker files a row and another's board runs it; the filer has the task tools through its delegates and files on its own session board; parked is drained by nobody and goes" },
   "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/fixtures/workforce/teams/eng/mailboxes/notices/MAILBOX.md":
     { target: "removed", boards: [], use: "a mailbox on a kind of its own (digest), kept only for the retired a-mailbox-holds-the-work goal" },
   "goals/manager-queue-lab/lab/refusal-trees/board-in-a-seat-folder-corrected/teams/eng/mailboxes/queue/MAILBOX.md":
-    { target: "session", boards: ["work"], use: "the corrected twin of a refusal tree: the board declared where it belongs loads" },
+    { target: "removed", boards: ["work"], use: "the corrected twin of a refusal tree: the board declared where it belongs loads. No file declares a board after the conversion, so the leg it served goes" },
   "goals/manager-queue-lab/lab/refusal-trees/board-in-a-seat-folder/teams/eng/mailboxes/queue/MAILBOX.md":
-    { target: "session", boards: ["work"], use: "a refusal tree: a worker folder that declares the board is refused" },
+    { target: "removed", boards: ["work"], use: "a refusal tree: a worker folder that declares the board is refused. No file declares a board after the conversion, so the leg goes" },
   "goals/manager-queue-lab/lab/workforce/teams/eng/mailboxes/queue/MAILBOX.md":
     { target: "session", boards: ["work"], use: "the manager files one row per desk; each desk's worker takes only its own" },
   "goals/pentest-lab/lab/refusal-trees/unknown-kind-corrected/teams/pentest/mailboxes/findings/MAILBOX.md":
@@ -220,9 +202,9 @@ const FILES = {
   "goals/workforce-mailboxes/a-fresh-host-wakes-its-member-agents/fixtures/workforce/teams/desk/mailboxes/front/MAILBOX.md":
     { target: "coordinator", boards: [], use: "a post wakes each agent member once, never on its own post" },
   "goals/workforce-mailboxes/a-pre-rename-lab-is-refused-by-name/fixtures/tree/teams/desk/mailboxes/front/MAILBOX.md":
-    { target: "fixture", boards: [], use: "kept as an old file: this issue's goal check reads it and must refuse it" },
+    { target: "removed", boards: [], use: "the pre-rename goal's renamed tree; it goes with the goal, whose refusal is removed (D2)" },
   "goals/workforce-mailboxes/a-pre-rename-lab-is-refused-by-name/fixtures/tree/teams/desk/mailboxes/notices/MAILBOX.md":
-    { target: "fixture", boards: [], use: "kept as an old file naming a kind of its own; the goal check must refuse it" },
+    { target: "removed", boards: [], use: "the pre-rename goal's mailbox on a kind of its own; it goes with the goal (D2)" },
   "goals/workforce-mailboxes/a-routed-post-gets-one-answer/fixtures/workforce/teams/support/mailboxes/help/MAILBOX.md":
     { target: "coordinator", boards: [], use: "a routed post gets one specialist's answer" },
   "goals/workforce-mailboxes/a-routed-post-gets-one-answer/fixtures/workforce/teams/support/mailboxes/lounge/MAILBOX.md":
@@ -272,7 +254,7 @@ function frontmatter(text) {
 /**
  * Every non-goal file naming the removed surface. R removed whole · E edited ·
  * C converted (a host, fixture or test moves to a coordinator, a conversation
- * board or a workstream) · F carries a refusal · T FIX-1793 removes or rewrites
+ * board or a workstream) · T FIX-1793 removes or rewrites
  * it first · W the word or a figure only, FIX-1796's sweep · U unrelated.
  * Each line is `path: "CLASS · surface · why"`; the surface IDs are PLAN.md's.
  */
@@ -357,6 +339,7 @@ const FILE_CLASS = {
   "packages/shift-manager/src/surfaces/Stream.tsx": "T · — · FIX-1793 removes the Stream tab; names MailboxTranscriptLine",
   "packages/shift-manager/src/surfaces/TaskFrame.tsx": "E · S8 · mailboxOf goes with the board ref",
   "packages/shift-manager/src/surfaces/Workstream.tsx": "E · S8 · a workstream reads its entry and lead session",
+  "packages/shift-manager/teams/devteam/legacy-org-store.mts": "E · S3 · its pre-rename half goes with the refusal (D2); the old-org half stays",
   "packages/shift-manager/teams/devteam/README.md": "C · S7 · the DevTeam's coordinators and workstreams",
   "packages/shift-manager/teams/devteam/board.mts": "C · S7 · the feature board is the workstream session's",
   "packages/shift-manager/teams/devteam/fsdev.config.mts": "C · S7 · storefront opens its two workstreams, led by the EM; no mailbox list",
@@ -364,14 +347,14 @@ const FILE_CLASS = {
   "packages/shift-manager/teams/devteam/notify.mts": "C · S7 · the mailbox wake goes",
   "packages/shift-manager/teams/devteam/phase.mts": "E · S7 · a comment hands the mailbox its charter",
   "packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts": "C · S7 · reads its workstream, not a mailbox board",
-  "packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts": "C · S7 · leads the workstreams; granted `filing: true`; the generator block takes createTaskFilingCapability()'s capability, the flow spreads its actions, internal and task entries",
+  "packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts": "C · S7 · leads the workstreams; its delegates take tasks, so it has the task tools: the generator block composes createTaskToolsCapability(resolver, roster), the flow spreads taskToolActions(board) into its actions",
   "packages/shift-manager/teams/devteam/workforce/org/workers/chief-of-staff/WORKER.md": "C · S7 · post-to-mailbox and setWorkstreams leave its tools",
   "packages/shift-manager/test/build-inputs.test.ts": "E · S8 · tests",
   "packages/shift-manager/test/chief-of-staff.test.ts": "E · S8 · workstreams as mailboxes in a fixture",
   "packages/shift-manager/test/columns.test.ts": "E · S8 · tests",
   "packages/shift-manager/test/devforce-lab-hired-boot.test.ts": "C · S7 · tests",
-  "packages/shift-manager/test/devteam-legacy-org.test.ts": "E · S7 · an old store's mailbox session stays unread",
-  "packages/shift-manager/test/devteam-pre-rename-store.test.ts": "E · S7 · the pre-rename store check stays; its fixture's mailbox goes",
+  "packages/shift-manager/test/devteam-legacy-org.test.ts": "E · S7 · the mailbox session leaves its old-org fixture",
+  "packages/shift-manager/test/devteam-pre-rename-store.test.ts": "R · S3 · the pre-rename store check goes with the refusal (D2)",
   "packages/shift-manager/test/devteam-repository-ask.test.ts": "C · S7 · the project's workstream, not a claim",
   "packages/shift-manager/test/fixtures/ask-lab/asker.mts": "C · S8 · the fixture lab's coordinator",
   "packages/shift-manager/test/fixtures/ask-lab/lab.mts": "C · S8 · the fixture lab's coordinator",
@@ -398,7 +381,7 @@ const FILE_CLASS = {
   "packages/workforce/README.md": "E · S12 · the mailbox floor's exports",
   "packages/workforce/src/agent-worker-flow.ts": "E · S9 · taskLists from mailbox boards go",
   "packages/workforce/src/browser.ts": "E · S9 · browser exports",
-  "packages/workforce/src/codegen/discover.ts": "F · S2 · the flows/mailboxes slot is refused by name",
+  "packages/workforce/src/codegen/discover.ts": "E · S2 · the flows/mailboxes slot goes",
   "packages/workforce/src/codegen/index.ts": "E · S2 · the slot list",
   "packages/workforce/src/codegen/render.ts": "E · S2 · mailboxKinds is not rendered",
   "packages/workforce/src/hire.ts": "E · S9 · mailbox board ids leave the hire",
@@ -408,7 +391,7 @@ const FILE_CLASS = {
   "packages/workforce/src/inventory/open-inventory.ts": "E · S9 · mailbox and membership rows go",
   "packages/workforce/src/loader/index.ts": "E · S1 · the loader's exports",
   "packages/workforce/src/loader/read-declared-roster.ts": "E · S1 · the roster has no mailboxes",
-  "packages/workforce/src/loader/read-mailboxes-directory.ts": "F · S1 · becomes the refusal",
+  "packages/workforce/src/loader/read-mailboxes-directory.ts": "R · S1 · nothing reads mailboxes/",
   "packages/workforce/src/mailbox-post-capability.ts": "R · S9 · post-to-mailbox",
   "packages/workforce/src/mailbox/index.ts": "R · S9 · the mailbox barrel",
   "packages/workforce/src/mailbox/mailbox-binder.ts": "R · S9 · the binder",
@@ -417,7 +400,7 @@ const FILE_CLASS = {
   "packages/workforce/src/mailbox/mailbox-items.ts": "R · S9 · post lines, unless FIX-1791 took them over",
   "packages/workforce/src/mailbox/mailbox-post-line.ts": "R · S9 · post lines, unless FIX-1791 took them over",
   "packages/workforce/src/mailbox/mailbox-route.ts": "R · S9 · the mailbox's route record",
-  "packages/workforce/src/mailbox/pre-rename.ts": "F · S3 · the CHANNEL.md refusal names the WORKER.md conversion",
+  "packages/workforce/src/mailbox/pre-rename.ts": "R · S3 · the pre-rename refusal goes (D2)",
   "packages/workforce/src/mailbox/route-by-purpose.ts": "R · S9 · the mailbox's wrapper over best fit",
   "packages/workforce/src/mailbox/wake-member-seats.ts": "R · S9 · the mailbox's wake",
   "packages/workforce/src/manifest-sources.ts": "E · S1 · mailbox records leave the sources",
@@ -436,7 +419,7 @@ const FILE_CLASS = {
   "packages/workforce/test/browser-exports.test-d.ts": "E · S9 · browser exports",
   "packages/workforce/test/browser-subpath-safe.test.ts": "E · S9 · exports",
   "packages/workforce/test/codegen-resource-modules.test.ts": "E · S2 · tests",
-  "packages/workforce/test/codegen.test.ts": "E · S2 · the slot refused",
+  "packages/workforce/test/codegen.test.ts": "E · S2 · the slot goes",
   "packages/workforce/test/cross-org-collection-read.test.ts": "E · S9 · its mailbox-board case goes",
   "packages/workforce/test/inventory-binder.test.ts": "E · S9 · tests",
   "packages/workforce/test/inventory-collections.test.ts": "E · S9 · tests",
@@ -458,13 +441,13 @@ const FILE_CLASS = {
   "packages/workforce/test/mailbox-substrate-premises.test.ts": "R · S9 · tests of the mailbox flow",
   "packages/workforce/test/manifest-sources.test.ts": "E · S1 · tests",
   "packages/workforce/test/merge-seat-flows.test.ts": "E · S9 · a mailbox flow key in an example",
-  "packages/workforce/test/pre-rename.test.ts": "F · S3 · tests",
+  "packages/workforce/test/pre-rename.test.ts": "R · S3 · tests",
   "packages/workforce/test/project-talk-template.test.ts": "T · — · FIX-1793 removes it with rooms",
   "packages/workforce/test/project-workspace.test.ts": "E · S10 · the claim path goes",
   "packages/workforce/test/projects.test.ts": "E · S10 · setWorkstreams and claims go",
   "packages/workforce/test/published-tree-surface.test.ts": "E · S1 · tests",
   "packages/workforce/test/read-declared-roster.test.ts": "E · S1 · tests",
-  "packages/workforce/test/read-mailboxes-directory.test.ts": "F · S1 · becomes the refusal's tests",
+  "packages/workforce/test/read-mailboxes-directory.test.ts": "R · S1 · tests",
   "packages/workforce/test/resources-doors-characterization.test.ts": "E · S1 · mailboxes/ decoy paths",
   "packages/workforce/test/seat-discovery.test.ts": "E · S9 · the mailboxes domain goes",
   "packages/workforce/test/seat-door.test.ts": "E · S9 · the roster's mailboxes field",
@@ -481,7 +464,7 @@ const FILE_CLASS = {
  * Every goal unit that names the surface or says "mailbox". CONVERT: the
  * outcome holds, on the converted files. REWRITE: the epic changes the outcome,
  * and the goal states the new one. RETIRE: its subject is gone; the reason
- * names what proves the rest. FOLD: it becomes this issue's goal check. EDIT: a
+ * names what proves the rest. EDIT: a
  * field or a word, no behaviour. FIX-1793: rewritten there first, re-run here.
  */
 const GOALS = {
@@ -491,7 +474,7 @@ const GOALS = {
   "goals/devforce-lab/it-codes-in-the-projects-repository": "CONVERT · the run finds its project through the feature workstream",
   "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board": "REWRITE · the org sees the workstream's entry; only its owner sees the rows (epic ER-7)",
   "goals/devforce-lab/it-ships-an-artifact-a-person-can-open": "CONVERT · posts to the feature workstream",
-  "goals/devforce-lab/it-waits-for-a-person-before-it-files": "CONVERT · the EM asks before it files, granted `filing: true`",
+  "goals/devforce-lab/it-waits-for-a-person-before-it-files": "CONVERT · the EM asks before it files, with the task tools its delegates give it",
   "goals/devforce-lab/it-wakes-the-seat-a-file-declared": "CONVERT · a filed row wakes the delegate it names",
   "goals/devtool-workforce-visibility/the-checklist-rows": "REWRITE · row 5 reads every worker and a coordinator's delegates",
   "goals/devtool-workforce-visibility/works-a-task-from-its-row": "CONVERT · the task is on a conversation's board",
@@ -504,11 +487,11 @@ const GOALS = {
   "goals/kitchen-sink-talk/lists-a-filed-case-without-a-reload": "RETIRE · the escalation feature is removed (product owner, 2026-10-06); nothing files a case (BR-24)",
   "goals/kitchen-sink-talk/shows-the-reply-without-a-reload": "CONVERT · the help coordinator",
   "goals/mailbox-boards/it-hands-a-task-to-a-fresh-hire": "CONVERT · hire, add as a delegate, file",
-  "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds": "CONVERT · a worker granted `filing: true` files a row that its board runs; the FIX-1611 extras go",
-  "goals/manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name": "REWRITE · the manager, granted `filing: true`, files for its delegates; a row names its delegate, not a desk",
-  "goals/manager-queue-lab/it-stands-the-team-and-its-board-up-from-files": "REWRITE · a WORKER.md declaring boards: is refused by name",
+  "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds": "CONVERT · a worker whose delegates take tasks files a row that its board runs; the FIX-1611 extras go",
+  "goals/manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name": "REWRITE · the manager files for its delegates, which give it the task tools; a row names its delegate, not a desk",
+  "goals/manager-queue-lab/it-stands-the-team-and-its-board-up-from-files": "REWRITE · the team stands up from WORKER.md files; the board-in-a-seat-folder leg goes with its trees, since no file declares a board",
   "goals/manager-queue-lab/lab": "REWRITE · the lab both manager-queue goals share",
-  "goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view": "REWRITE · the planner, granted `filing: true`, files for its delegates, not desks",
+  "goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view": "REWRITE · the planner files for its delegates, which give it the task tools, not desks",
   "goals/multi-seat-collab/run-scenario.mts": "REWRITE · the scenario that goal runs",
   "goals/org-seats/cos-changes-the-roster": "REWRITE · who is on a coordinator is its delegate read, not discover",
   "goals/pentest-lab/a-post-reaches-both-declared-seats": "REWRITE · BR-10's unknown member is refused at load, not skipped",
@@ -529,9 +512,9 @@ const GOALS = {
   "goals/task-run-link/it-names-the-run-working-each-task": "CONVERT · rows on a conversation's board",
   "goals/workforce-conventions/a-mailbox-holds-the-work-a-seat-drains": "RETIRE · its subjects are gone (an unattended file board, a kind of its own, two boards on one mailbox); FIX-1791's and FIX-1794's goal checks and kitchen-sink-talk prove the rest",
   "goals/workforce-conventions/capabilities-come-from-files-alone": "EDIT · a generated module's empty mailboxKinds",
-  "goals/workforce-conventions/code-comes-from-files-alone": "REWRITE · its flows/mailboxes leg becomes the refusal",
+  "goals/workforce-conventions/code-comes-from-files-alone": "REWRITE · its flows/mailboxes leg goes with the slot",
   "goals/workforce-mailboxes/a-fresh-host-wakes-its-member-agents": "CONVERT · routing: everyone",
-  "goals/workforce-mailboxes/a-pre-rename-lab-is-refused-by-name": "FOLD · its tree and store legs move into goals/coordinators/refuses-a-mailbox-file-by-name",
+  "goals/workforce-mailboxes/a-pre-rename-lab-is-refused-by-name": "RETIRE · the pre-rename refusal is removed (D2); none of its legs has a subject left",
   "goals/workforce-mailboxes/a-routed-post-gets-one-answer": "CONVERT · routing: best-fit, one answer",
   "goals/workforce-packages/a-held-package-reaches-one-worker": "EDIT · a generated module's empty mailboxKinds",
 };
@@ -607,7 +590,7 @@ function run(mode) {
       if (!c) problems.push(`unclassified: ${f}`);
       else classed[c[0]] = (classed[c[0]] ?? 0) + 1;
     }
-    if (mode === "after" && REMOVED_NAME.test(text) && !REFUSAL_HOMES.some((h) => f.startsWith(h))) afterHits.push(`${f} (${REMOVED_NAME.exec(text)[1]})`);
+    if (mode === "after" && REMOVED_NAME.test(text)) afterHits.push(`${f} (${REMOVED_NAME.exec(text)[1]})`);
   }
   for (const u of goalUnits) {
     const d = GOALS[u];
@@ -617,9 +600,7 @@ function run(mode) {
   const stale = Object.keys(FILE_CLASS).filter((f) => !files.includes(f));
 
   if (mode === "after") {
-    const left = mailboxes.filter((f) => !AFTER_FIXTURES.includes(f));
-    if (left.length > 0) problems.push(`still a MAILBOX.md: ${left.join(", ")}`);
-    for (const f of AFTER_FIXTURES) if (!mailboxes.includes(f)) problems.push(`refusal fixture missing: ${f}`);
+    for (const f of mailboxes) problems.push(`still a MAILBOX.md: ${f}`);
     for (const f of afterHits) problems.push(`names a removed export: ${f}`);
     // S9: discovery's `mailboxes` domain leaves the pinned list (a value, not an export).
     const domains = /MANIFEST_DOMAINS\s*=\s*\[([^\]]*)\]/.exec(read(MANIFEST_DOMAINS_FILE) ?? "");
@@ -636,11 +617,14 @@ function run(mode) {
 function report(r) {
   console.log(`census: ${JSON.stringify(r.census)}`);
   console.log(`targets: ${JSON.stringify(r.byTarget)}`);
-  console.log(`files naming the surface: ${JSON.stringify(r.classed)} (R removed · E edited · C converted · F refusal · T FIX-1793 · W FIX-1796 · U unrelated)`);
+  console.log(`files naming the surface: ${JSON.stringify(r.classed)} (R removed · E edited · C converted · T FIX-1793 · W FIX-1796 · U unrelated)`);
   console.log(`goal units: ${r.goalUnits} ${JSON.stringify(r.unitsSeen)}`);
   if (r.stale.length) console.log(`classified but gone (re-check): ${r.stale.join(", ")}`);
   for (const p of r.problems) console.log(`FAIL ${p}`);
 }
+
+/** The control's left-behind old file; under the plant goal so the cleanup removes it. */
+const LEFT_MAILBOX = "goals/__fix1792-control__/tree/teams/desk/mailboxes/front/MAILBOX.md";
 
 if (MODE === "control") {
   const plants = [
@@ -652,6 +636,8 @@ if (MODE === "control") {
     ["packages/workforce/src/__fix1792_control_export__.ts", "export const mailboxControlPlant = 1;\n"],
     // after: names exports the first `--after` regex missed
     ["apps/kitchen-sink/lib/__fix1792_after__.ts", "// MAILBOX_ROUTE_COMPONENT emitMailboxPostLine MAILBOX_KIND mailboxKinds\n"],
+    // after: an old file left in the tree, which the conversion must delete
+    [LEFT_MAILBOX, "---\nmembers: [desk.a]\n---\n"],
   ];
   for (const [p, t] of plants) { mkdirSync(p.split("/").slice(0, -1).join("/"), { recursive: true }); writeFileSync(p, t); }
   let census;
@@ -661,13 +647,12 @@ if (MODE === "control") {
     rmSync("goals/__fix1792-control__", { recursive: true, force: true });
   }
   const has = (r, s) => r.problems.some((p) => p.includes(s));
-  const oldFixtures = Object.keys(FILES).filter((f) => FILES[f].target === "fixture");
   const checks = {
     "census · unclassified source": has(census, "__fix1792_control__.ts"),
     "census · unclassified goal": has(census, "__fix1792-control__/it-talks-in-a-mailbox"),
     "census · unlisted export": has(census, "mailboxControlPlant"),
     "after · newly covered exports": has(after, "__fix1792_after__.ts"),
-    "after · fixtures at their old paths": oldFixtures.length === 2 && oldFixtures.every((f) => has(after, f)),
+    "after · a MAILBOX.md left in the tree": has(after, `still a MAILBOX.md: ${LEFT_MAILBOX}`),
     "after · the mailboxes discovery domain": has(after, "MANIFEST_DOMAINS still lists mailboxes"),
   };
   for (const [k, v] of Object.entries(checks)) console.log(`${v ? "caught" : "MISSED"} · ${k}`);

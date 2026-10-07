@@ -1,69 +1,65 @@
-# FIX-1792 · MAILBOX.md becomes WORKER.md on the coordinator flow, and old files are refused by name
+# FIX-1792 · MAILBOX.md becomes WORKER.md on the coordinator flow, and the mailbox is removed
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-## Six people, before and after
+## Five people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
 | **declares a team in files** | Writes a `WORKER.md` per worker and a `MAILBOX.md` per place they talk: two formats, two loaders | Writes `WORKER.md` for both. A coordinator is a worker whose `flow:` is `coordinator`, with its `delegates:` |
-| **upgrades an app that still has a `MAILBOX.md`** | n/a | The app stops at load. The message names the file, where its `WORKER.md` goes, and what each line becomes |
-| **renames the file and keeps the old lines** | n/a | Refused, naming `members:` (now `delegates:`) and `boards:` (gone), not a generic unknown key |
 | **keeps work on a mailbox's board** | The board is an org row any member's session can run | The board belongs to one user's session: the coordinator's conversation, or the worker that files on it. The DevTeam's feature work is a Storefront workstream the EM leads |
+| **wants a worker to hand out tasks** | A mailbox file declares the board, and a seat's kind composes its tools | The worker has orchestration's eight task tools when at least one of its `delegates:` can take a task. No line in its file grants them |
 | **runs coding work for a project in Shift Manager** | A claim row puts the run in the project | The run finds its project through its workstream. Claims, and a project's list of mailboxes, are gone |
-| **has tasks waiting on an old board** | n/a | They stay in the store, unread. The upgrade page says to finish or re-file them first |
+| **still has a `MAILBOX.md`, or mailbox data in a store** | n/a | Nobody does yet. Every file in the repo is converted and its old file deleted; stored mailbox data is dropped. Nothing reads, refuses or migrates either ([D2](DECISIONS.md#d2)) |
 
 The epic's one way to declare a worker ([FIX-1786](../../epics/FIX-1786/SPEC.md), ER-6, D5), on
 the coordinator flow ([FIX-1791](../FIX-1791/SPEC.md)), conversation boards
-([FIX-1794](../FIX-1794/SPEC.md)), workstreams ([FIX-1793](../FIX-1793/SPEC.md)) and filing,
-which any worker's file grants with `filing: true` ([FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802)).
+([FIX-1794](../FIX-1794/SPEC.md)), workstreams ([FIX-1793](../FIX-1793/SPEC.md)) and
+orchestration's existing task tools, which a worker has when one of its delegates can take a task
+(FIX-1802's wiring of the existing task tools, [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802)).
 
 ## The goal, and how we'll know it's met
 
 **Every coordinator in the repo is declared in a `WORKER.md` on the coordinator flow, naming only
 standard workers as delegates; no board is an org row and no project finds its work through a
-claim; an old `MAILBOX.md` stops the app at load with the file and its conversion named; and every
-goal and kitchen-sink check that ran on a mailbox passes on the converted files, unless the
-feature it tested was removed.**
+claim; no `MAILBOX.md` and no mailbox code is left; and every goal and kitchen-sink check that ran
+on a mailbox passes on the converted files, unless the feature it tested was removed.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | The [issue](https://linear.app/fixpoint-labs/issue/FIX-1792): one way to declare a worker, a standard coordinator that names only standard workers, old files refused by name with the conversion, every file converted and every board resolved. The Architect's locks: no compatibility loader, no conversion at runtime, and kitchen-sink and the goals keep passing |
-| **Smaller, and rejected** | "The loader refuses `MAILBOX.md`." Met by deleting the mailbox loader while the 30 files still in use stop loading and the goals built on them stop running. Or "the files are renamed": met while every board stays an org row, the shape the epic removes |
-| **Bigger, and not this issue's** | The word "mailbox" gone from code and docs ([FIX-1796](https://linear.app/fixpoint-labs/issue/FIX-1796)) · filing as a granted tool and multi-level delegation (FIX-1802) · files as migrations (held for later) · channels |
-| **Not done if** | A `MAILBOX.md` loads, or is skipped without a word · a board is still org-scoped · a goal that ran on a mailbox stopped running with no line naming what proves it now · a claim is still read · the check ran on a tree with no old file in it |
+| **The real need** | The [issue](https://linear.app/fixpoint-labs/issue/FIX-1792): one way to declare a worker, a standard coordinator that names only standard workers, every file converted and every board resolved. Its "old files refused by name" is cut: no backwards support of any kind while there are no consumers (product owner, 2026-10-07; [D2](DECISIONS.md#d2)). The Architect's locks: no compatibility loader, no conversion at runtime, and kitchen-sink and the goals keep passing |
+| **Smaller, and rejected** | "The mailbox code is deleted." Met by deleting it while the 30 files still in use stop loading and the goals built on them stop running. Or "the files are renamed": met while every board stays an org row, the shape the epic removes |
+| **Bigger, and not this issue's** | The word "mailbox" gone from code and docs ([FIX-1796](https://linear.app/fixpoint-labs/issue/FIX-1796)) · the task tools on any worker flow and multi-level delegation (FIX-1802) · a refusal or upgrade path for old files and data, until there is a consumer (D2) · files as migrations (held for later) · channels |
+| **Not done if** | A `MAILBOX.md` is left in the repo, or anything reads one · a board is still org-scoped · a goal that ran on a mailbox stopped running with no line naming what proves it now · a claim is still read · a `filing:` line is written anywhere, or a worker has the task tools with no delegate that can take a task |
 
 ```mermaid
 flowchart LR
-  T["a lab tree with an old MAILBOX.md"] --> A["legs a, b · the old file, then renamed"]
-  T --> C["leg c · its converted twin"]
-  D["leg d · a store main wrote at a pinned commit"] -->|"its mailbox and pending row left unread"| P["PASS · the goal is met"]
-  E["leg e · every goal that ran on a mailbox"] -->|"re-run on the converted files"| P
-  A -->|"refused · file and conversion named"| P
-  C -->|"a post answered by its delegates"| P
-  X["control · the loader skips the folder silently"] -.-> A
-  A -.->|"under the control"| F["must FAIL · the lab opens and says nothing"]
+  T["a converted desk · a coordinator's WORKER.md"] --> A["leg a · one post, one answer per delegate"]
+  E["leg b · check.mjs --after, and every goal that ran on a mailbox"] -->|"re-run on the converted files"| P["PASS · the goal is met"]
+  A --> P
+  X["control · an old MAILBOX.md and a removed export left in the tree"] -.-> E
+  E -.->|"under the control"| F["must FAIL · the old surface is still there"]
 ```
 
-The check reads what a person reads when the boot stops, and what the store and the converted
-coordinator hold. Under the control the old folder is passed over, and leg a must fail.
+The check reads what the converted coordinator answers and what the tree still holds. Under the
+control an old file and a removed export are left in the tree, and leg b must fail.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/coordinators/refuses-a-mailbox-file-by-name/`, which folds in `a-pre-rename-lab-is-refused-by-name` · scripted model for leg c, n/a elsewhere · a real host from the published packages, on SQLite · run by the implementer · legs a to d pass in P4a; the verdict, with leg e, in P4b |
-| **Signal** | **a**: the boot stops naming `teams/desk/mailboxes/front/MAILBOX.md`, `teams/desk/workers/front/WORKER.md`, `members:` → `delegates:` and that boards are removed; a `flows/mailboxes/` folder, with no `fsdev gen` run, and the old `CHANNEL.md` are named too; nothing is registered. **b**: the file renamed with its old lines is refused naming `members:` and `boards:`. **c**: the converted desk loads, and one post gets one answer per delegate, as the mailbox gave. **d**: on a store `main` wrote at a pinned commit, with the desk's mailbox session and a pending board row, the converted lab boots; a request to the old session is refused naming the `mailbox` flow; the row is unchanged byte for byte, and no conversation's board lists it. **e**: `check.mjs --after` passes, every goal [PLAN](PLAN.md#goals) marks convert or rewrite has a PASS line on the same commit, and each retired goal names its proof under BR-24 |
-| **Input** | The folded goal's desk tree (a mailbox on the built-in kind, one on a kind of its own, and a `flows/mailboxes/` folder). For leg d, a SQLite store checked in once, written by the mailbox code at the commit P4a branches from, with that SHA and its generator beside it. Another team, mailbox name or delegate list must pass too |
-| **Anti-game** | Assert on the words a person reads, never only that something threw: an unknown key already throws today and names nothing useful. The old store is never hand-written and never regenerated from a later commit, which by then can't write one. Leg e reads verdict lines, not a subset's exit codes |
-| **Control that must fail** | `GOAL_CONTROL=silent-skip`, the loader passing over `mailboxes/` as deleting it would: leg a FAILS on *the boot names the file*. Today's `main`: every leg FAILS |
+| **Goal check** | `goals/coordinators/every-coordinator-is-a-worker-file/` · scripted model for leg a, n/a for leg b · a real host from the published packages, on SQLite · run by the implementer · the verdict in P4 |
+| **Signal** | **a**: the converted desk loads, and one post gets one answer per delegate, as the mailbox gave. **b**: `check.mjs --after` passes (no `MAILBOX.md`, no removed export, no `mailboxes` discovery domain), every goal [PLAN](PLAN.md#goals) marks convert or rewrite has a PASS line on the same commit, and each retired goal names its proof under BR-24 |
+| **Input** | A converted desk tree: a coordinator's `WORKER.md` on `routing: everyone` and its `agent` delegates. Another team, coordinator name or delegate list must pass too |
+| **Anti-game** | Leg a asserts on the answers a person reads, never only that the load didn't throw. Leg b reads verdict lines, not a subset's exit codes |
+| **Control that must fail** | `GOAL_CONTROL=mailbox-left`, the desk's old `MAILBOX.md` and one removed export left in the tree: leg b FAILS on *no old file and no removed export remain*. Today's `main`: every leg FAILS |
 
 ## What changes
 
-![Two panels, today and after, for one support team. Today the team folder holds worker files and a mailboxes folder whose MAILBOX.md lists members and a board; the board's rows are an org row any member's session runs. After, the same team folder holds only worker files: the help desk is a WORKER.md on the coordinator flow with delegates, its escalations board is removed with the feature it served, and a MAILBOX.md left in the tree stops the load with its conversion named. Case by case: how a coordinator is declared goes from its own file to a worker file; who keeps a board goes from the org to one user's session, or a workstream's owner; how a coding run finds its project goes from a claim row to a workstream, never a claim; an old file goes from loading to stopping the load; tasks on an old board stay in the store, unread](figures/what-changes.svg)
+![Two panels, today and after, for one support team. Today the team folder holds worker files and a mailboxes folder whose MAILBOX.md lists members and a board; the board's rows are an org row any member's session runs. After, the same team folder holds only worker files: the help desk is a WORKER.md on the coordinator flow with delegates, its escalations board is removed with the feature it served, and its MAILBOX.md is deleted in the conversion. Case by case: how a coordinator is declared goes from its own file to a worker file; who keeps a board goes from the org to one user's session, or a workstream's owner; how a coding run finds its project goes from a claim row to a workstream, never a claim; an old MAILBOX.md goes from loading to deleted, with nothing reading one; tasks on an old board go from waiting on the org row to dropped, since nobody has one yet](figures/what-changes.svg)
 
 One folder, one file shape. The board moves from the org to whoever's session or workstream it
-is, and the old file can't load by accident.
+is, and the old file is deleted with the code that read it.
 
-**What an installation writes**, kitchen-sink's help desk:
+**What the repo's files say**, kitchen-sink's help desk:
 
 ```diff
 - # teams/support/mailboxes/help/MAILBOX.md
@@ -81,18 +77,20 @@ is, and the old file can't load by accident.
 ```
 
 Its `escalations` board goes with kitchen-sink's escalation feature, which the product owner
-removed (2026-10-06): a specialist answers, and nothing files a case. A file with no `routing:`
-line gets `routing: everyone`, which is what its mailbox did. The
-coordinator keeps the mailbox's id, `support.help`. The full table is the upgrade page in
-[DOCS.md](DOCS.md).
+removed (2026-10-06): a specialist answers, and nothing asks anyone to file a case. Its
+specialists run on `agent`, which takes tasks, so the help desk has the task tools, as every
+coordinator whose delegates take tasks does. A file with no `routing:` line gets
+`routing: everyone`, which is what its mailbox did. The coordinator keeps the mailbox's id,
+`support.help`. The conversion, key by key, is in [DECISIONS](DECISIONS.md#decided-not-asked).
 
 ## Where each board goes
 
 ```mermaid
 flowchart LR
   B["a board a MAILBOX.md declared · 16 in 15 files"] -->|"work a person tracks past one conversation"| W["a Storefront workstream · the EM leads it and files · 1 file"]
-  B -->|"a working list, or a fixture"| S["a session board · the coordinator's conversation or the worker that files · 13 files"]
+  B -->|"a working list, or a fixture"| S["a session board · the coordinator's conversation or the worker that files · 11 files"]
   B -.->|"its feature is removed"| X["kitchen-sink's escalations · gone · 1 file"]
+  B -.->|"the leg they served is gone"| Y["manager-queue-lab's board-in-a-seat-folder trees · gone · 2 files"]
   W --> O["owned by one user · never an org row"]
   S --> O
 ```
@@ -103,27 +101,30 @@ table is [D1's](DECISIONS.md#the-table).
 ## What stays as it is
 
 - The coordinator flow and its keys ([FIX-1791](../FIX-1791/SPEC.md)), conversation boards
-  ([FIX-1794](../FIX-1794/SPEC.md)), workstreams ([FIX-1793](../FIX-1793/SPEC.md)) and filing
-  as a grant, `createTaskFilingCapability()` (FIX-1802). This issue converts onto them and builds none.
+  ([FIX-1794](../FIX-1794/SPEC.md)), workstreams ([FIX-1793](../FIX-1793/SPEC.md)) and
+  orchestration's task tools, `createTaskToolsCapability(resolver, roster)` and
+  `taskToolActions(board)` (FIX-1802's wiring of the existing task tools). This issue converts
+  onto them and builds none.
 - A `WORKER.md` that isn't a coordinator keeps the flow it names; nothing moves onto `agent`.
-- Stored data: nothing is deleted or rewritten.
-- The pre-rename `CHANNEL.md` refusal, until 1.0. Channels themselves aren't built.
+- Channels aren't built.
 - Goal folder names and other words that say "mailbox" without naming a removed part: FIX-1796.
 
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** one declaration, every file and
-board converted, old files refused by name, and the goals still green. If wrong: we delete a
-loader and call it a conversion while half the proof spine stops running.
+board converted, the mailbox removed with no backwards support, and the goals still green. If
+wrong: we delete a loader and call it a conversion while half the proof spine stops running.
 
-1. **[D2](DECISIONS.md#d2) · Old mailbox data stays in the store, unread; no pending task carries
-   over.** If wrong: someone's waiting task drops out of view on upgrade.
+**Answered:** [D2](DECISIONS.md#d2) (product owner, 2026-10-07). Old mailbox data is dropped, and
+nothing supports old files or data while there are no consumers: no refusal, no upgrade page, no
+dual-read. BP-030 does not apply until there is one.
 
 **Decided, not asked:** [D1](DECISIONS.md#d1), where each board goes. Its only close call,
 kitchen-sink's escalations board, went with the escalation feature the product owner removed
-(2026-10-06).
+(2026-10-06). The pre-rename `CHANNEL.md` refusal goes too, by D2's rule
+([DECISIONS](DECISIONS.md#decided-not-asked)).
 
 **Open: none.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Improvement · `workforce`, `shift-manager`, kitchen-sink, `goals/`, docs · large · 5 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)
+Improvement · `workforce`, `shift-manager`, kitchen-sink, `goals/`, docs · large · 4 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)
