@@ -31,6 +31,7 @@ The first argument is the flow **instance** id — see [Flows](/docs/fundamental
 | `--org <id>` | Run in this organization and skip the app's resolver. See [Who a run is](/docs/cli/configuration#who-a-run-is) |
 | `-u, --user <id>` | Run as this user. The organization comes from the app's resolver unless you also pass `--org`. Default: the user your app's resolver returns, or `cli-user` if the app has none or you pass `--org` |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
+| `--worker <id>` | The link for a new session, on a flow that declares `session.createCheck`. The run fails, and nothing is written, if the check refuses it or the `--session` already exists with a different link. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |

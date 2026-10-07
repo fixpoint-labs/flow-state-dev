@@ -46,6 +46,8 @@ flow.createSession();    // Promise<string>
 flow.selectSession(id);  // void
 ```
 
+On a flow that declares `session.createCheck`, pass `worker`: the hook lists only the sessions with that link and creates new ones with it. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
+
 ### `useSession(sessionId, options?)`
 
 Primary hook for session data and actions.

@@ -69,6 +69,8 @@ await sessions.updateSessionMetadata(created.id, { tags: ["planning"] });
 await sessions.deleteSession(created.id);
 ```
 
+On a flow that declares `session.createCheck`, pass the new session's link to `createSession` as `worker`. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
+
 `updateSessionMetadata` changes only the fields you pass. `title`, `description` and `tags` are each replaced whole, so the call above leaves the session with the one tag `planning`. `metadata` is merged key by key: the keys you send are written over the stored ones, and the rest stay. [Session management](/docs/client/overview#session-management) covers the errors it throws.
 
 ### `sessions.listSessions(options?)`
@@ -91,6 +93,7 @@ const withRuns = await sessions.listSessions({
 | `userId` | `string` | Filter to one user. An authenticated caller always gets their own sessions only. |
 | `limit` / `offset` | `number` | Paging. |
 | `include` | `"dispatch-runs"` | Also return the sessions dispatchers ran work in. |
+| `worker` | `string` | Only sessions whose `link` is this value. Sent as `link`. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project). |
 
 Without `include`, the response holds the sessions a person started. With it, a
 row a dispatcher started carries `parentSessionId` — the session it was started
