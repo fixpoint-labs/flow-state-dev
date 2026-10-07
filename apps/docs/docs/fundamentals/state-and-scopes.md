@@ -178,29 +178,218 @@ const recent = await ctx.session.getJournal({ limit: 10 });
 
 A new session typically starts via `sessions.createSession({...})` on the client, which returns a stable `sess_<id>` you reuse on every subsequent action call. See [Client Overview](/docs/client/overview).
 
-If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through.
+If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through. On a flow that declares `session.createCheck`, such an action is refused instead (see the [example below](#example-one-session-per-project)).
 
 A caller can pass initial `state` when it creates a session. That suits preferences and drafts, and it is the wrong place for a value that grants anything: the caller wrote it.
 
-Use the session's `link` for a value fixed for the session's whole life, such as which project or worker it belongs to. Declare `session.createCheck`: it runs before the session exists, receives the `link` the create named, and accepts or refuses it. An accepted `link` is stored as sent. Your blocks read it as `ctx.session.link`, and a caller lists the sessions with one value by passing `link` to the session listing (`GET /api/flows/sessions?link=...`).
-
-A value your flow changes as it runs belongs in a field listed in `session.serverOwned`. A create that sets one is refused with a 400 naming the field, and only a block in your flow can write it.
+For a field your flow changes as it runs, and that a caller must never set, list it in `session.serverOwned`:
 
 ```ts
 session: {
-  stateSchema: z.object({ delegates: z.array(z.string()).default([]) }),
-  serverOwned: ["delegates"],
-  createCheck: async ({ link, principal }) => {
-    if (link === undefined) return { ok: false, message: "Name the project to open." }
-    const project = await lookUpProject(principal.userId, link)
-    return project === undefined
-      ? { ok: false, status: 404, message: `No project "${link}".` }
-      : { ok: true }
-  },
+  stateSchema: z.object({ reviewers: z.array(z.string()).default([]) }),
+  serverOwned: ["reviewers"],
 },
 ```
 
-A create that names no link reaches the check with `link: undefined`, as above, so refuse it with your own message. If a check accepts it anyway, the framework refuses it with a 400. Either way the caller gets the refusal's status and a body of `{ error: message }`, and no session is written. An action sent to a session id that doesn't exist yet names no link, so on a flow with a check it is always refused: create the session first. The HTTP create takes `link` in its body; the client's `createSession` sends its `worker` option as `link`. A `dispatcher()` that starts a child session on such a flow names it with `session: { key, link }`.
+A create that sets `reviewers` in its `state` is refused with a 400 whose body names the field (`{ error, field: "reviewers" }`), and nothing is written. Blocks in your flow write it like any other session state.
+
+When a session exists to work on one particular thing, such as one of the user's projects, give it a **link**. A link is a single string chosen when the session is created and fixed for the rest of its life. Your flow decides whether to allow it by declaring `session.createCheck`, a function that runs before the session is written and either accepts the link or refuses the create. Blocks read the accepted value as `ctx.session.link`, and callers can list sessions by it. The client, `useFlow` and `fsdev run` call this option `worker`. It carries any link value (here, a project slug) and is sent as `link`. The [example below](#example-one-session-per-project) walks through the whole thing.
+
+### Example: one session per project
+
+Say each user of your app keeps a list of projects, and every assistant session works on exactly one of them. A user should not be able to open a session on a project that doesn't exist, or on someone else's.
+
+**1. Keep the projects in a user-scoped collection.** A [resource collection](/docs/resources/collections) with `scope: "user"` holds a separate set of rows for each user. Here a small `projects` flow writes to it:
+
+```ts
+// flows/projects.ts
+import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+// One row per project, in each user's own scope.
+export const projects = defineResourceCollection({
+  pattern: "projects/*",
+  scope: "user",
+  stateSchema: z.object({ name: z.string() }),
+});
+
+const createProjectInput = z.object({ slug: z.string(), name: z.string() });
+
+const createProject = handler({
+  name: "create-project",
+  inputSchema: createProjectInput,
+  resources: { projects },
+  execute: async (input, ctx) => {
+    await ctx.resources.projects.create(input.slug, { name: input.name });
+    return { slug: input.slug };
+  },
+});
+
+export const projectsFlow = defineFlow({
+  kind: "projects",
+  resources: { projects },
+  actions: {
+    create: { inputSchema: createProjectInput, block: createProject },
+  },
+})();
+```
+
+Every flow in the same organization that declares `projects` sees the same rows for a given user, unless a flow sets [`isolateUserState`](/docs/configuration/flow#defineflow-fields). After `user_1` runs `create` with `{ slug: "q3-launch", name: "Q3 launch" }`, their scope holds the row `projects/q3-launch`.
+
+**2. Declare the check on the assistant flow.**
+
+```ts
+// flows/project-assistant.ts
+import { defineFlow } from "@flow-state-dev/core";
+import { z } from "zod";
+import { loadProject } from "./load-project"; // defined in step 4
+import { projects } from "./projects";
+
+export const projectAssistant = defineFlow({
+  kind: "project-assistant",
+  resources: { projects },
+  session: {
+    createCheck: async ({ link, readCollectionItem }) => {
+      if (link === undefined) {
+        return { ok: false, message: "Pick a project to open." };
+      }
+      const project = await readCollectionItem("projects", link);
+      if (project === undefined) {
+        return { ok: false, status: 404, message: `No project "${link}".` };
+      }
+      return { ok: true };
+    },
+  },
+  actions: {
+    loadProject: { inputSchema: z.object({}), block: loadProject },
+  },
+})();
+```
+
+The check gets one object:
+
+| Field | What it is |
+|-------|------------|
+| `link` | The link the create named, or `undefined` if it named none. |
+| `principal` | The caller: `{ userId, orgId, tenantId? }`. |
+| `readCollectionItem(ref, topic)` | Reads one row of a user- or org-scoped collection this flow declares. `ref` is the key in the flow's `resources` (`"projects"`). `topic` is the row's key in the collection: `"q3-launch"` for `projects/q3-launch`, or the parameters for a pattern like `[room]/info` (`{ room: "lobby" }`). Resolves the row's state, or `undefined` when there is no such row. Throws if `ref` isn't a user- or org-scoped collection of this flow. |
+| `sessionId`, `flow`, `via` | The id being created, the flow (`{ kind, id }`), and which path is creating it: `"create"`, `"action"`, `"webhook"`, `"cli"` or `"dispatch"`. |
+
+`readCollectionItem` only ever reads the caller's own scope. `user_2` asking for `q3-launch` gets `undefined` even though `user_1` has one, so "not yours" and "doesn't exist" get the same answer.
+
+Return `{ ok: true }` to create the session, or `{ ok: false, message, status }` to refuse it. `status` can be 400, 403 or 404, and defaults to 400.
+
+The check is only as strong as the caller identity it receives. With [authentication](/docs/server/authentication) set up, `principal` is the authenticated user. Without it, `principal.userId` is whatever `userId` the request sends.
+
+Register both flows with your server as usual (see [Engine setup](/docs/server/setup)).
+
+**3. Create a session for a project.** Pass the project's slug as `worker`:
+
+```ts
+import { createSessionClient } from "@flow-state-dev/client";
+
+const sessions = createSessionClient();
+
+const session = await sessions.createSession({
+  flowKind: "project-assistant",
+  userId: "user_1",
+  worker: "q3-launch",
+});
+
+session.link; // "q3-launch"
+```
+
+Over HTTP, the same create is:
+
+```http
+POST /api/flows/project-assistant/sessions
+Content-Type: application/json
+
+{ "userId": "user_1", "link": "q3-launch" }
+```
+
+It answers `201` with `{ "session": { "id": "sess_...", "link": "q3-launch", ... } }`.
+
+In React, pass the value to `useFlow`. The hook lists only that project's sessions and creates new ones with it:
+
+```ts
+import { useFlow } from "@flow-state-dev/react";
+
+const flow = useFlow({
+  flowKind: "project-assistant",
+  worker: projectSlug,
+  autoCreateSession: true,
+});
+```
+
+**4. Read the link in a block.** `ctx.session.link` is the value the check accepted:
+
+```ts
+// flows/load-project.ts
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import { projects } from "./projects";
+
+export const loadProject = handler({
+  name: "load-project",
+  inputSchema: z.object({}),
+  resources: { projects },
+  execute: async (_input, ctx) => {
+    const slug = ctx.session.link;
+    if (slug === undefined) throw new Error("This session has no project.");
+
+    const project = await ctx.resources.projects.get(slug);
+    return { slug, name: project.state.name };
+  },
+});
+```
+
+Run `loadProject` in the session from step 3 and it returns `{ slug: "q3-launch", name: "Q3 launch" }`. Every turn in that session sees the same link. No route, action or block can change it. The type is `string | undefined` because a flow with no `createCheck` has no link; on this flow it is always set.
+
+**5. List a project's sessions.**
+
+```ts
+const forProject = await sessions.listSessions({
+  flowKind: "project-assistant",
+  userId: "user_1",
+  worker: "q3-launch",
+});
+```
+
+Over HTTP: `GET /api/flows/sessions?flowKind=project-assistant&userId=user_1&link=q3-launch`. Each row carries its `link`. The filter narrows the listing the caller already gets, so another user's sessions on a project with the same slug never show up.
+
+**6. Handle a refusal.** When the check refuses, no session is written. The create answers with your `status` and a body of `{ error: message }`, and the client throws `ClientHttpError`:
+
+```ts
+import { ClientHttpError } from "@flow-state-dev/client";
+
+try {
+  await sessions.createSession({
+    flowKind: "project-assistant",
+    userId: "user_2",
+    worker: "q3-launch",
+  });
+} catch (error) {
+  if (error instanceof ClientHttpError) {
+    error.status; // 404
+    error.body; // { error: 'No project "q3-launch".' }
+  }
+}
+```
+
+With the check above:
+
+| The create names | Status | Body |
+|------------------|--------|------|
+| A project the user has | `201` | `{ session: { ..., link: "q3-launch" } }` |
+| A project that doesn't exist, or another user's | `404` | `{ error: 'No project "q3-launch".' }` |
+| No project | `400` | `{ error: "Pick a project to open." }` |
+
+A create with no link is refused with a 400 even if your check returns `{ ok: true }` for it, so every session of a flow with a check has a link. From `useFlow`, `createSession` rejects with the same error, and `autoCreateSession` leaves the hook with no active session.
+
+An action sent without a session id, or to a session id that doesn't exist yet, is refused the same way, and so is a webhook delivery to a new session id. These name no link, so they get the 400 above and nothing is written. Create the session first, as in step 3.
+
+**Where else the check runs.** The same check runs on the other paths that create a session of this flow: a [`dispatcher()`](/docs/server/background-work#starting-a-job-from-a-flow) starting a child session with `session: { key, link }`, and `fsdev run project-assistant loadProject --worker q3-launch` when it starts a new session. A turn on an existing session never runs it.
 
 ## The `client` block: exposing state safely
 

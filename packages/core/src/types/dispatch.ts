@@ -116,6 +116,15 @@ export type TaskFlowTarget = (
 ) => string | undefined | Promise<string | undefined>;
 
 /**
+ * A `task` dispatcher's child-session link, looked up per task: the value the
+ * target flow's `session.createCheck` receives when the task's child session
+ * is created. Handed the same server-derived task a per-task flow target is
+ * (assignee, id, input), because a link names who runs the row. Resolved once
+ * per dispatch, before anything is dispatched.
+ */
+export type TaskLinkTarget = (task: TaskTargetQuery, ctx: BlockContext) => string | Promise<string>;
+
+/**
  * Where a dispatcher sends. `(type, action)` is static by construction: it is
  * what the block declares, so its reachable entries are declared rather than
  * computed at run time. An action chosen from data is a router over declared
@@ -164,6 +173,13 @@ export type DispatchAddress =
        * per task (see {@link TaskFlowTarget}) and is always cross-flow.
        */
       readonly flowKind?: string | TaskFlowTarget;
+      /**
+       * The link each task's child session is created with, when the target
+       * flow declares `session.createCheck`: a fixed string, or looked up per
+       * task (see {@link TaskLinkTarget}). A child that already exists keeps
+       * the link it was created with.
+       */
+      readonly link?: string | TaskLinkTarget;
     };
 
 /**
@@ -427,6 +443,33 @@ export class DispatchRefusedError extends Error {
     );
     this.name = "DispatchRefusedError";
   }
+}
+
+/**
+ * The link a `task` dispatch creates its child session with: the address's
+ * string as declared, or its per-task target's answer for this task.
+ * `undefined` when the address declares none.
+ *
+ * @throws when the answer is not a non-empty string. The link is what the
+ *   target's create check judges, so an empty one is a computed refusal.
+ */
+export async function resolveTaskLink(
+  blockName: string,
+  address: Extract<DispatchAddress, { type: "task" }>,
+  task: TaskTargetQuery,
+  ctx: BlockContext
+): Promise<string | undefined> {
+  const link = address.link;
+  if (link === undefined) return undefined;
+  const resolved = typeof link === "function" ? await link(task, ctx) : link;
+  if (typeof resolved !== "string" || resolved.length === 0) {
+    throw new Error(
+      `[dispatcher] "${blockName}" computed an empty session link for task "${task.taskId}" ` +
+        `(${JSON.stringify(resolved)}). The link is what the target flow's create check receives; ` +
+        `return the value it expects.`
+    );
+  }
+  return resolved;
 }
 
 /**

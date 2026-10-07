@@ -7,7 +7,8 @@ import {
   ownsRecord,
   refuseServerOwnedState,
   resolveInitialSessionState,
-  SessionCreateRefusedError
+  SessionCreateRefusedError,
+  type SessionRecord
 } from "@flow-state-dev/engine";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
@@ -326,31 +327,35 @@ export async function executeRunCommand(
       options.seedSession !== undefined
         ? (parseSeedArg(options.seedSession, "session") as JsonObject)
         : undefined;
-    const existing = options.session !== undefined ? await stores.session.get(sessionId) : undefined;
-    if (existing !== undefined) {
-      if (!ownsRecord(flow, existing)) {
+    // A session this run did not create — found here, or created by another
+    // run between this one's read and its write — is checked the same way
+    // before anything runs on it: this flow's, this principal's, and, when
+    // `--worker` is given, created with that worker, since a link never changes.
+    const checkHeldSession = (held: SessionRecord): void => {
+      if (!ownsRecord(flow, held)) {
         throw new CliError(
-          `Session "${sessionId}" belongs to flow instance "${existing.flowId ?? existing.flowKind}", ` +
+          `Session "${sessionId}" belongs to flow instance "${held.flowId ?? held.flowKind}", ` +
             `not "${flow.id}"; nothing was written`,
           EXIT_INVALID_ARGS,
         );
       }
-      const refusal = checkSessionOwner(existing, sessionId, principal);
+      const refusal = checkSessionOwner(held, sessionId, principal);
       if (refusal !== undefined) throw new CliError(refusal, EXIT_INVALID_ARGS);
-    }
-
-    if (!options.quiet) process.stderr.write(describePrincipal(principal, { org: options.org, user: options.user }) + "\n");
-
-    if (existing !== undefined) {
-      // A session's link is decided once, when it is created.
-      if (options.worker !== undefined && existing.link !== options.worker) {
+      if (options.worker !== undefined && held.link !== options.worker) {
         throw new CliError(
           `Session "${sessionId}" already exists ${
-            existing.link == null ? "with no worker" : `with worker "${existing.link}"`
+            held.link == null ? "with no worker" : `with worker "${held.link}"`
           }; a session's worker never changes. Start a new session for another worker; nothing was written`,
           EXIT_INVALID_ARGS,
         );
       }
+    };
+    const existing = options.session !== undefined ? await stores.session.get(sessionId) : undefined;
+    if (existing !== undefined) checkHeldSession(existing);
+
+    if (!options.quiet) process.stderr.write(describePrincipal(principal, { org: options.org, user: options.user }) + "\n");
+
+    if (existing !== undefined) {
       if (seedData !== undefined) {
         try {
           refuseServerOwnedState(flow, sessionId, seedData);
@@ -377,8 +382,9 @@ export async function executeRunCommand(
       // any other. A flow that checks its creates is born here rather than by
       // the run, so a refusal is this command's error, not a failed run.
       const now = Date.now();
+      let held: SessionRecord;
       try {
-        await ensureSessionRecord(
+        held = await ensureSessionRecord(
           stores,
           sessionId,
           {
@@ -415,6 +421,9 @@ export async function executeRunCommand(
         }
         throw err;
       }
+      // A lost race returns the winner's record, which this run never
+      // checked: it may be another worker's, or another principal's.
+      checkHeldSession(held);
     }
 
     // 6. Resolve the effective model resolver. With a config, `--model` wraps

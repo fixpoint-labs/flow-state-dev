@@ -38,13 +38,16 @@ Nested providers merge `renderers` (child keys override parent keys).
 Session lifecycle management.
 
 ```ts
+// flowKind and userId come from the FlowProvider above, or pass them here.
 const flow = useFlow({ autoCreateSession: true });
 
-flow.sessions;           // SessionDetail[]
-flow.activeSessionId;    // string | null
-flow.createSession();    // Promise<string>
-flow.selectSession(id);  // void
+flow.sessions;                 // SessionSummary[]
+flow.activeSessionId;          // string | undefined
+flow.createSession();          // Promise<SessionDetail>
+flow.selectSession(id);        // void; pass undefined to clear the selection
 ```
+
+On a flow that declares `session.createCheck`, pass `worker`: the hook lists only the sessions with that link and creates new ones with it. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
 
 ### `useSession(sessionId, options?)`
 
