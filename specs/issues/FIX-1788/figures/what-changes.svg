@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 486" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two panels, today and after, then five cases. Today each hire registers its own copy of a flow, carrying a pin and its configuration, and a session runs on that copy at an address with the org and the owner in it. After, each flow is registered once; a worker is a row its owner holds, or a standard worker read from the files; a session names its worker when it is created and loads it on every turn. Cases: a worker hired for the whole org is reachable by every member today, and belongs to one user after. A hire on another process waits for a restart today, and is seen on the next turn after. A standard worker is changed by editing a file and restarting today, and forked into the user's own after. A session's worker is fixed by the copy's address today, and set by the server when the session is created after, never by the caller and never changed. Two workers on one flow each have their own memory, before and after.">
+     aria-label="Two panels, today and after, then five cases. Today each hire registers its own copy of a flow, carrying a pin and its configuration, and a session runs on that copy at an address with the org and the owner in it. After, each flow is registered once; a worker is a row its owner holds, or a standard worker read from the files; a session names its worker when it is created and loads it on every turn. Cases: a worker hired for the whole org is reachable by every member today, and belongs to one user after. A hire on another process waits for a restart today, and is seen on the next turn after. A standard worker is changed by editing a file and restarting today, and forked into the user's own after. A session's worker is fixed by the copy's address today; after, it is named in the session's starting state when the session is created, checked by the server there, and never changed. Two workers on a built-in worker flow each have their own memory, before and after.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -50,7 +50,7 @@
     <path class="head" d="M696 114 L701 122 L706 114 Z"/>
     <rect class="n-new" x="494" y="124" width="414" height="50" rx="5"/>
     <text class="t-h" x="510" y="145">A session names its worker at create</text>
-    <text class="t-s" x="510" y="163">the server checks and links it; every turn loads it</text>
+    <text class="t-s" x="510" y="163">the server checks it there; every turn loads it</text>
   </g>
   <g id="case-1">
     <text class="t-lbl" x="32" y="216">A WORKER HIRED FOR THE WHOLE ORG</text>
@@ -73,11 +73,11 @@
   <g id="case-4">
     <text class="t-lbl" x="32" y="378">WHICH WORKER A SESSION RUNS</text>
     <text class="t-old" x="32" y="398">Fixed by the copy's address</text>
-    <text class="t-new" x="494" y="398">Set by the server at create; never changes</text>
+    <text class="t-new" x="494" y="398">Named at create, checked there; never changes</text>
     <line class="row" x1="16" y1="412" x2="924" y2="412"/>
   </g>
   <g id="case-5">
-    <text class="t-lbl" x="32" y="432">TWO WORKERS ON ONE FLOW, EACH WITH PRIVATE NOTES</text>
+    <text class="t-lbl" x="32" y="432">TWO WORKERS ON A BUILT-IN FLOW, EACH WITH PRIVATE NOTES</text>
     <text class="t-same" x="32" y="452">Each reads only its own</text>
     <text class="t-same" x="494" y="452">Each reads only its own, on the one copy</text>
     <text class="t-s" x="494" y="470">kept per worker, not per copy</text>

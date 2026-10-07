@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 418" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="D4, the call: where does a session learn which worker it runs, when it is created or on its first message? Chosen: at create, named once in the session's starting state. Instead of: on the first turn, in server-owned session state. The row that decides it, what carries the worker: the session, once, so messages never name a worker, against the first message, so every app call carries it. Second row, where it is checked: an engine check on every way a session is made, against flow code on a turn with no create hook. Third row, a session with no worker: never written, refused at create, against existing until its first turn and refused only then. Locks in a create check on every path that opens a session, the worker named in the create's starting state, and two lookup helpers. Flips if an app must open a session before it knows which worker it runs.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D4 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where does a session learn its worker: when it is created, or on its first message?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">At create, named once</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">On the first turn, server-owned state</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT CARRIES</text>
+    <text class="t-lbl" x="32" y="169">THE WORKER</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">The session, once</text>
+    <text class="t-s" x="248" y="179">messages never name a worker</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">The first message</text>
+    <text class="t-s" x="612" y="179">every app call shape carries it</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">WHERE IT IS</text>
+    <text class="t-lbl" x="32" y="231">CHECKED</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">An engine check at create</text>
+    <text class="t-s" x="248" y="241">on every way a session is made</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Flow code, on a turn</text>
+    <text class="t-s" x="612" y="241">no create hook</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">A SESSION WITH</text>
+    <text class="t-lbl" x="32" y="289">NO WORKER</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">Never written</text>
+    <text class="t-s" x="248" y="299">refused at create</text>
+    <text class="mark minus" x="592" y="282">−</text>
+    <text class="t-b" x="612" y="281">Exists until its first turn</text>
+    <text class="t-s" x="612" y="299">refused only then</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">A create check on every way in</text>
+    <text class="t-s" x="32" y="387">the worker in the create's state; two helpers</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">An app must open a session</text>
+    <text class="t-s" x="494" y="387">before it knows which worker runs it</text>
+  </g>
+</svg>

@@ -10,22 +10,18 @@ worker flow, user.
 
 | Shipped names | |
 |---|---|
-| **Pinned** ([PLAN.md](PLAN.md#pinned-names)) | `worker` on `createSession` · `worker` on `listSessions` · the roster's `flow` · `createWorkforceClient` and its methods `findWorkerSession` and `ensureWorkerSession` · `workerFlows` (FIX-1789's) |
-| **Drafts**, reconciled with the shipped code before publishing | `createCheck` and its `link` input · `serverOwned` · `createWorkerHireBlocks` · `fork` · the React hook `useWorkforce` · `useFlow`'s `worker` · `fsdev run --worker` |
+| **Pinned** ([PLAN.md](PLAN.md#pinned-names)) | a worker flow's readonly `workerId`, set with `createSession({ state })` and listed with `listSessions({ state })` · the roster's `flow` · `createWorkforceClient` and its methods `findWorkerSession` and `ensureWorkerSession`, with the criteria key `worker` · `workerFlows` (FIX-1789's) |
+| **Published with P1** ([#2850](https://github.com/fixpoint-labs/flow-state-dev/pull/2850)) | `session.createCheck` · `session.serverOwned` · readonly `stateSchema` fields · `listSessions({ state })` · `fsdev run --seed-session` on a flow that binds its sessions |
+| **Drafts**, reconciled with the shipped code before publishing | `createWorkerHireBlocks` · `fork` · the React hook `useWorkforce` |
 
-## UPDATE · `apps/docs/docs/configuration/flow.md` · the `session` table, two new rows after `client`
+## Published with P1 · the session's starting state, readonly fields and the create check
 
-> | `createCheck` | function | none | Runs before a session of this flow is written, on every path that creates one: the create request, an action sent to a session id that doesn't exist yet, and a transport that opens sessions. It receives the verified caller and the create's `link` input. It refuses the create, or returns a value stored on the session that nothing can change afterwards. A create with no `link` input is refused. |
-> | `serverOwned` | `string[]` | none | Session-state fields only your flow's code writes. Creating a session with a value for one is refused with a 400 that names the field. Use it for state that decides what a session may do and changes as it runs. |
-
-## UPDATE · `apps/docs/docs/fundamentals/state-and-scopes.md` · "Creating sessions", a new last paragraph
-
-> A caller can pass initial `state` when it creates a session. That suits preferences and
-> drafts, and it is the wrong place for a value that grants anything: the caller wrote it. A
-> value fixed for the session's life, such as which worker it runs, belongs to `createCheck`,
-> which checks it before the session exists. A value your flow changes as it runs belongs in a
-> `serverOwned` field: the create refuses a value for it, and only a block in your flow can set
-> it.
+P1 ([#2850](https://github.com/fixpoint-labs/flow-state-dev/pull/2850)) published these, so they
+are no longer drafts here: the `session` table in `apps/docs/docs/configuration/flow.md`
+(`stateSchema`'s readonly fields, `createCheck`, `serverOwned`), "Creating sessions" and
+"Example: one session per project" in `apps/docs/docs/fundamentals/state-and-scopes.md`, and the
+`state` option and filter in `apps/docs/docs/api/client.md`. A worker flow is that example with a
+worker in place of a project; the pages below link to it rather than repeat it.
 
 ## REPLACE · `apps/docs/docs/workforce/durable-hire.md` · the whole page
 
@@ -89,8 +85,9 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 >
 > Each worker the user hires or forks is one row in their user scope at `workforce/workers/<id>`.
 > A standard worker isn't stored: it is read from your files each time, so a deploy that changes
-> a file changes it for everyone. What a worker remembers is kept per worker, so two of one
-> user's workers never read each other's notes.
+> a file changes it for everyone. On the built-in `agent` flow, what a worker remembers is kept per
+> worker, so two of one user's workers never read each other's notes. On a flow you write, that is
+> up to you: see [Where a worker's data lives](./workers-on-disk.md#where-a-workers-data-lives).
 >
 > ## After a hire, refresh the roster
 >
@@ -105,7 +102,8 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 >
 > Each flow a worker names runs as one copy, shared by every worker that names it. A hundred
 > workers on `agent` are one registered flow, not a hundred. What makes them different is their
-> configuration, which the flow reads on each turn, and their memory, which is kept per worker.
+> configuration, which the flow reads on each turn, and, on `agent`, their memory, which is kept
+> per worker.
 
 ## UPDATE · `apps/docs/docs/workforce/workers-on-disk.md` · a new section "Talking to a worker", before "What this does not do"
 
@@ -140,14 +138,15 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > import { createSessionClient } from "@flow-state-dev/client"
 >
 > const sessions = createSessionClient({ baseUrl })
-> const mine = await sessions.listSessions({ flowKind: "agent", userId, worker: "researcher" })
-> const fresh = await sessions.createSession({ flowKind: "agent", userId, worker: "researcher" })
+> const mine = await sessions.listSessions({ flowKind: "agent", userId, state: { workerId: "researcher" } })
+> const fresh = await sessions.createSession({ flowKind: "agent", userId, state: { workerId: "researcher" } })
 > ```
 >
 > The server checks the worker when the session is created: it must be yours or a standard
 > one, and it must run on this flow. A worker that isn't yours is refused with the same answer
-> as one that doesn't exist. A session created without a worker is refused. The link is stored
-> where callers can't write it, and it never changes.
+> as one that doesn't exist. A session created without a worker is refused. `workerId` is a
+> readonly field of the session's state: nothing can change it after the create. It works the way
+> a project does in [Example: one session per project](../fundamentals/state-and-scopes.md#example-one-session-per-project).
 >
 > **3. Talk to it.** An ordinary action on that session:
 >
@@ -158,16 +157,51 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > await agent.sendAction("run", { message }, { sessionId: session.id })
 > ```
 >
-> In React, `useWorkforce` gives you the same client, and `useFlow` takes the worker, so it lists
-> and creates only that worker's sessions:
+> In React, `useWorkforce` gives you the same client. `useFlow` creates sessions with no starting
+> state, so a worker's flow refuses them: find or start the session with the client, then make it
+> the hook's active session.
 >
 > ```tsx
 > const workforce = useWorkforce()
-> const flow = useFlow({ flowKind: "agent", worker: "researcher", autoCreateSession: true })
+> const flow = useFlow({ flowKind: "agent" })
+>
+> const session = await workforce.ensureWorkerSession({ worker: "researcher" })
+> flow.selectSession(session.id)
 > ```
 >
 > Tasks and messages your other workers hand to this one open sessions the same way, naming the
 > worker when the session is created.
+
+## UPDATE · `apps/docs/docs/workforce/workers-on-disk.md` · "Where a worker's data lives", a new last part
+
+> On one flow, a user's workers share that user's scope. The built-in `agent` keeps each worker's
+> skills apart for you, with a skills library partitioned by worker. A worker flow you write doesn't: anything it keeps at user scope is shared
+> by every one of that user's workers on the flow. It never reaches another user, whose data is
+> kept apart.
+>
+> If each worker should keep its own, put the worker in the key. Load the worker at the start of
+> the turn, then use its id:
+>
+> ```ts
+> import { defineResourceCollection } from "@flow-state-dev/core"
+> import { z } from "zod"
+>
+> // One row per worker, in the user's scope.
+> const notes = defineResourceCollection({
+>   pattern: "worker-notes/*",
+>   scope: "user",
+>   stateSchema: z.object({ text: z.string().default("") }),
+> })
+>
+> // inside your flow's block, which declares `resources: { notes, ...installation.resources }`
+> const worker = await installation.resolveWorker(ctx, "research")
+> await ctx.resources.notes.upsert(worker.id, { text: "Prefers short answers." })
+> ```
+>
+> Use the id `resolveWorker` returns rather than reading the session's state yourself: it is the
+> worker the session was created with, checked on this turn. For skills, give your skills library a
+> `partitionBy` that returns the session's `workerId`. A run it returns nothing for gets an empty
+> catalog it can't write to, so a session with no worker never reads every worker's skills.
 
 ## UPDATE · `packages/workforce/README.md`, `packages/engine/README.md`, `packages/client/README.md`
 
@@ -175,10 +209,8 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > names. `hire`, `fork` and `fire` write it. A session names its worker when it is created;
 > `createWorkforceClient(...).ensureWorkerSession` and `findWorkerSession` find or start one.
 >
-> **engine:** `session.createCheck` checks a value at session create and stores it where nothing
-> changes it; `session.serverOwned` names session-state fields the session create refuses.
->
-> **client:** `createSession` takes `worker`, and `listSessions` filters by it.
+> **engine** and **client** were documented with P1: readonly session-state fields, the optional
+> `session.createCheck`, `session.serverOwned`, and `listSessions({ state })`. Nothing more here.
 
 ## Publication ownership
 

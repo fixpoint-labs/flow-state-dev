@@ -143,7 +143,7 @@ stands for that child's control and is not run again.
 |---|---|---|---|
 | P3.1 | FIX-1789 · `goals/worker-contract/runs-workers-only-on-registered-flows/` | its own | — |
 | P3.2 | FIX-1790 · `goals/user-scope/keeps-a-users-data-in-the-org-it-was-saved-in/` | `cross-org-key` | — |
-| P3.3 | FIX-1788 · `goals/workers-as-resources/keeps-each-users-workers-their-own/` | `caller-link` | `org-scoped-workers` (c2) |
+| P3.3 | FIX-1788 · `goals/workers-as-resources/keeps-each-users-workers-their-own/` | `no-create-check` | `org-scoped-workers` (c2) |
 | P3.4 | FIX-1791 · `goals/coordinators/hands-each-post-to-its-delegates/` | `no-round-limit`, `no-delegate-read` | `no-roster-check` (c4) |
 | P3.5 | FIX-1793 · `goals/projects/a-shared-project-has-one-owner-per-workstream/` | `no-owner-rule`, `all-entries-delegate` | — |
 | P3.6 | FIX-1794 · `goals/coordinators/files-tasks-down-the-owners-chain/`, one level of hand-off (its split leg went to FIX-1802, P3.10) | — | `unpartitioned` (b4), `no-follow-up` (b5) |
