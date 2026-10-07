@@ -46,7 +46,7 @@ other 18.
 files is granted, coordinators included, and files through `createTaskFilingCapability()`. The
 built-in `agent` and coordinator flows carry it. An app flow adds it in two parts: the capability
 on its worker's generator block's `uses`, and the entries it spreads into the flow's own
-`internal` and `task` maps (the EM keeps `flow: em`). That is each converted coordinator that
+`actions`, `internal` and `task` maps (the EM keeps `flow: em`). That is each converted coordinator that
 keeps a conversation board, the chief of staff (FIX-1802 S7), the members that filed on a mailbox's board when a post reached it (manager-queue-lab's manager,
 multi-seat-collab's planner, the row goal's filer) and the DevTeam's EM. A member lists who it
 files for in `delegates:`, and its rows land on its own session's board. A coordinator converted

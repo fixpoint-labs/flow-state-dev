@@ -76,7 +76,7 @@ the Workforce category of `sidebars.ts`, after `workforce/ui`, replacing `workfo
 > The built-in `agent` and coordinator flows can file as they are. A worker on a flow of your own
 > app also needs that flow to add `createTaskFilingCapability()`. It gives you two things: a
 > capability for the `uses` of the worker's generator block, and entries the flow spreads into its
-> own `internal` and `task` maps.
+> own `actions`, `internal` and `task` maps.
 >
 > Work that people track across conversations belongs to a workstream on a
 > [project](./projects.md), led by one of your workers. The lead's workstream session keeps the
