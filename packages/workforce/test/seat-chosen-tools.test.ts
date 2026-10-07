@@ -87,10 +87,10 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
 /** Hire a roster and address the seats by id — never by position. */
 function hire(
   manifests: WorkerManifest[],
-  kinds: HireOptions["kinds"],
+  kinds: HireOptions["workerFlows"],
   seatBlocks?: HireOptions["seatBlocks"]
 ): (id: string) => FlowInstance {
-  const seats = hireWorkforce(manifests, { kinds, ...(seatBlocks ? { seatBlocks } : {}) });
+  const seats = hireWorkforce(manifests, { workerFlows: kinds, ...(seatBlocks ? { seatBlocks } : {}) });
   return (id) => {
     const seat = seats.find((candidate) => candidate.id === id);
     if (!seat) throw new Error(`no seat "${id}" in [${seats.map((s) => s.id).join(", ")}]`);
@@ -370,7 +370,7 @@ describe("chosen tools that cannot all be granted are refused at the hire", () =
             declared: { capabilities: { fieldwork: ["survey"], archive: ["shelf"] }, ...extra }
           })
         ],
-        { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork, other] }) } }
+        { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork, other] }) } }
       );
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);

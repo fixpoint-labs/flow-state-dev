@@ -762,6 +762,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (emRecords.length > 1) {
     throw new Error(`the tree declares ${emRecords.length} EM seats; this lab runs one`);
   }
+  // With no EM seat the coder kind has no door, and a worker flow with none is
+  // refused when it is registered. An open asked to raise the ask names that
+  // step instead, since it is the one that has nothing to ask from.
+  if (emRecords.length === 0 && options.ask !== undefined) {
+    throw new Error(`${RAISE_ASK_STEP}: wanted one "${EM_KIND}" seat to ask from, found 0`);
+  }
   const coderKind = defineCoderWorkerFlow({
     ledger,
     ...(emRecords[0] === undefined ? {} : { coordinatorSeatId: emRecords[0].id }),
@@ -803,13 +809,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // members' private roster, so the chief of staff lists, fires and repairs
   // the organization's seats only. The register reaches
   // the flow state built below, so it is bound once that exists.
-  const kinds: NonNullable<HireOptions["kinds"]> = {
+  const kinds: NonNullable<HireOptions["workerFlows"]> = {
     [EM_KIND]: emKind as never,
     [CODER_KIND]: coderKind as never,
   };
   let registrar: { state: FlowState; registry: { get(id: string): FlowInstance | undefined } } | undefined;
   const seatHire = createSeatHireCapability({
-    kinds,
+    workerFlows: kinds,
     register: (seat, pin) => registrar!.state.register(seat, { pin }),
     unregister: (id) => registrar!.state.unregister(id),
     kindAt: (id) => registrar?.registry.get(id)?.kind,
@@ -854,7 +860,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // Handed the tree's board ids, so a kind that stopped declaring the board
   // would be named in hire's unattended-board warning.
   const hired = hireWorkforce(workers, {
-    kinds,
+    workerFlows: kinds,
     mailboxBoards: mailboxBoardIds(roster.mailboxes),
   });
   const seats: Record<string, FlowInstance> = Object.fromEntries(
@@ -944,7 +950,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // A seat the registry refuses (its address is now a file-declared seat's,
   // say) is that seat's problem, not the Lab's: it is named and skipped, and
   // the rows after it still load.
-  const reload = await reloadHiredSeats({ stores: runtime.stores, orgIds: [LAB_ORG_ID], kinds });
+  const reload = await reloadHiredSeats({ stores: runtime.stores, orgIds: [LAB_ORG_ID], workerFlows: kinds });
   const reloaded: FlowInstance[] = [];
   const reloadProblems = [...reload.problems];
   for (const seat of reload.seats) {

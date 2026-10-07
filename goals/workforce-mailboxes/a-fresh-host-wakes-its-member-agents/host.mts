@@ -31,6 +31,28 @@ import {
 } from "@flow-state-dev/workforce";
 import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 
+/**
+ * `{ message: string }`, built off the contract's own `instructions` string so
+ * this host imports nothing outside `@flow-state-dev/*`.
+ */
+const messageInput = workerConfigSchema().pick({}).extend({ message: workerConfigSchema().shape.instructions.unwrap() });
+
+/** Every worker flow has one door: this fixture's answers by saying what it heard. */
+const workerDoor = {
+  message: {
+    inputSchema: messageInput,
+    userMessage: (input: { message: string }) => input.message,
+    block: handler({
+      name: "fixture-door",
+      inputSchema: messageInput,
+      execute: (input, ctx) => {
+        ctx.emit.message(`Heard: ${input.message}`);
+        return {};
+      },
+    }),
+  },
+};
+
 /** The user the mailboxes are opened under, and who posts to them. */
 export const MAILBOX_OWNER = "u_fresh_host";
 
@@ -42,7 +64,7 @@ const note = defineFlow({
   kind: "note",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
-  actions: { take: { block: handler({ name: "note-take", execute: () => ({}) }) } }
+  actions: { ...workerDoor, take: { block: handler({ name: "note-take", execute: () => ({}) }) } }
 } as never);
 
 /** The app, booted: its router, what it hired, and a way to shut it down. */
@@ -73,7 +95,7 @@ export async function startFreshHost(
   }
 
   // Hire first: the wake reaches these seats, never a mailbox's stored members.
-  const seats = hireWorkforce(workers, { kinds: { note: note as never } });
+  const seats = hireWorkforce(workers, { workerFlows: { note: note as never } });
   const wake = wakeMemberSeats(seats);
   const notify = adaptNotify === undefined ? wake : adaptNotify(wake);
   const mailboxFlows = mailboxInstances(mailboxes, {

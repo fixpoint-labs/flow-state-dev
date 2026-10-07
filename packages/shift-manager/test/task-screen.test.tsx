@@ -356,10 +356,10 @@ describe("the disabled acts and empty tabs carry their gap lines (BR-15 to BR-17
       expect((el as HTMLButtonElement).disabled).toBe(true);
       expect(el.getAttribute("data-gap")).toBe(GAPS.task.handOff);
     }
-    // This Lab's kinds declare no door, so the composer says the worker takes
-    // no message, once it has read the run (BR-18).
-    expect((screen.getByTestId("task-composer-input") as HTMLTextAreaElement).disabled).toBe(true);
-    await waitFor(() => expect(screen.getByTestId("task-composer-blocked").textContent).toContain(GAPS.turn.noDoor));
+    // Every worker flow has a door, so once the composer has read the run it
+    // takes a message (BR-18); posting to the workstream is still a gap.
+    await waitFor(() => expect((screen.getByTestId("task-composer-input") as HTMLTextAreaElement).disabled).toBe(false));
+    expect(screen.queryByTestId("task-composer-blocked")).toBeNull();
     expect((screen.getByTestId("task-also-post") as HTMLInputElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("tab", { name: "checks" }));
     expect((await screen.findByTestId("task-checks-empty")).textContent).toContain(GAPS.task.checks.body);

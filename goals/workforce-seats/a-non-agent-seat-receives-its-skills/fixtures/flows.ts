@@ -121,12 +121,28 @@ const recordDesk = handler({
   }
 });
 
+/** Every worker flow has one door: this fixture's answers by saying what it heard. */
+const door = {
+  inputSchema: z.object({ message: z.string() }),
+  userMessage: (input: { message: string }) => input.message,
+  block: handler({
+    name: "triage-door",
+    inputSchema: z.object({ message: z.string() }),
+    outputSchema: z.object({ heard: z.string() }),
+    execute: (input, ctx) => {
+      ctx.emit.message("Heard: " + input.message);
+      return { heard: input.message };
+    }
+  })
+};
+
 /** The delivery claim's action set — reads the admitted `seatSkills`. */
 const actions = {
   run: {
     inputSchema,
     block: sequencer({ name: "triage-work", inputSchema }).tap(start).tap(recordSkills)
-  }
+  },
+  message: door
 };
 
 /**
@@ -139,7 +155,8 @@ const controlActions = {
   run: {
     inputSchema,
     block: sequencer({ name: "triage-control-work", inputSchema }).tap(start).tap(recordDesk)
-  }
+  },
+  message: door
 };
 
 /** Composes the contract. No model, no generator — handlers only. */
@@ -178,6 +195,8 @@ export const noContractFlow = defineFlow({
     // Declared so `seatSkills` stays the SINGLE missing key: the contract grew a
     // fourth, and a control that omitted two would no longer isolate one cause.
     seatTools: z.array(z.any()).default([]),
+    // The packages a seat holds, checked at boot like every other key.
+    seatPackages: z.array(z.any()).optional(),
     // The sixth, imposed on every seat: its own id.
     seatId: z.string().optional(),
     // `seatSkills` omitted — the single reason the imposed bag is refused.
@@ -208,6 +227,7 @@ export const handRolledFlow = defineFlow({
     // contract grows — which is the cost this fixture exists to show, not a
     // reason to stop hand-rolling.
     seatTools: z.array(z.any()).default([]),
+    seatPackages: z.array(z.any()).optional(),
     // The sixth, imposed on every seat: its own id.
     seatId: z.string().optional(),
     desk: z.string().default("front")

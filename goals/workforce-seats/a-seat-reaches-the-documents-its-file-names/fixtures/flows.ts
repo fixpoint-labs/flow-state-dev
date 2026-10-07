@@ -18,6 +18,23 @@ import type { ResourceDoc } from "@flow-state-dev/workforce";
 import { resourcesFromDocs, workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
+/** Every worker flow has one door: this fixture's answers by saying what it heard. */
+const workerDoor = {
+  message: {
+    inputSchema: z.object({ message: z.string() }),
+    userMessage: (input: { message: string }) => input.message,
+    block: handler({
+      name: "fixture-door",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({ heard: z.string() }),
+      execute: (input, ctx) => {
+        ctx.emit.message(`Heard: ${input.message}`);
+        return { heard: input.message };
+      },
+    }),
+  },
+};
+
 export const DESK_KIND = "desk";
 
 /** The app's own store, declared at flow level beside the documents. Not a document. */
@@ -122,7 +139,7 @@ export function buildDesk(documents: ResourceDoc[]): {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { ...catalog, [STORE]: auditLog } as DeclaredResources,
-    actions: {
+    actions: { ...workerDoor,
       run: {
         inputSchema,
         block: sequencer({ name: "desk-work", inputSchema }).tap(start).tap(probe(probedKeys))

@@ -25,6 +25,7 @@ import { hireWorkforce, type HireOptions } from "../src/hire";
 import { resolveHeldPackages } from "../src/seat-packages";
 import { SEAT_PACKAGES_KEY, type PackageManifest, type WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 /** A named tool that does nothing; the checks read whether it was OFFERED. */
 function tool(name: string) {
@@ -242,7 +243,7 @@ describe("a package in a worker's own folder", () => {
         })
       ],
       {
-        kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { ledger } }) },
+        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { ledger } }) },
         packageBlocks: {
           ...packageBlocks,
           "teams/support/workers/auditor/packages/refunds": { "issue-refund": issueRefund, "void-refund": voidRefund }
@@ -263,7 +264,7 @@ describe("a package in a worker's own folder", () => {
     const seat = hire([
       record({ id: "support.clerk", packages: clerkReach }),
       record({ id: "support.lister", declared: { tools: ["ledger"] }, packages: siblingReach })
-    ], { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { ledger } }) } });
+    ], { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { ledger } }) } });
 
     // No line: nothing listed, so the fence (which reads `tools`) sees nothing.
     expect(seat("support.clerk").config).not.toHaveProperty("tools");
@@ -277,7 +278,7 @@ describe("a package in a worker's own folder", () => {
   it("keeps a listed package block off the fenced list too, like a worker's own block", () => {
     const seat = hire(
       [record({ id: "support.clerk", declared: { tools: ["issue-refund", "ledger"] }, packages: clerkReach })],
-      { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { ledger } }) } }
+      { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { ledger } }) } }
     );
     expect(seat("support.clerk").config).toMatchObject({ tools: ["ledger"] });
     const own = (seat("support.clerk").config as { seatTools: BlockDefinition[] }).seatTools;
@@ -462,7 +463,7 @@ describe("a package block's name is one tool's name (BR-21, BR-22, BR-23)", () =
     });
     const message = refusal(
       [record({ id: "support.clerk", declared: { capabilities: { billing: ["refunds"] } }, packages: clerkReach })],
-      { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [refundsCap] }) } }
+      { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [refundsCap] }) } }
     );
     expect(message).toContain('worker "support.clerk"');
     expect(message).toContain('"issue-refund"');
@@ -477,7 +478,7 @@ describe("a package block's name is one tool's name (BR-21, BR-22, BR-23)", () =
     });
     const seat = hire(
       [record({ id: "support.clerk", declared: { capabilities: { phone: ["line"] } }, packages: clerkReach })],
-      { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [perTurn] }) } }
+      { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [perTurn] }) } }
     );
     const got = await turn(seat("support.clerk"));
     expect(String((got.error as Error | undefined)?.message)).toContain('two tools named "issue-refund"');
@@ -487,7 +488,7 @@ describe("a package block's name is one tool's name (BR-21, BR-22, BR-23)", () =
     const agent = defineAgentWorkerFlow({ catalog: { "issue-refund": tool("issue-refund") } });
     const message = refusal(
       [record({ id: "support.clerk", declared: { tools: ["issue-refund"] }, packages: clerkReach })],
-      { kinds: { [AGENT_KIND]: agent } }
+      { workerFlows: { [AGENT_KIND]: agent } }
     );
     expect(message).toContain('worker "support.clerk"');
     expect(message).toContain('"issue-refund"');
@@ -499,7 +500,7 @@ describe("a package block's name is one tool's name (BR-21, BR-22, BR-23)", () =
     const agent = defineAgentWorkerFlow({ catalog: { "issue-refund": tool("issue-refund") } });
     const seat = hire(
       [record({ id: "support.clerk", declared: { tools: ["void-refund"] }, packages: clerkReach })],
-      { kinds: { [AGENT_KIND]: agent } }
+      { workerFlows: { [AGENT_KIND]: agent } }
     );
     expect(seat("support.clerk").id).toBe("support.clerk");
   });
@@ -557,10 +558,10 @@ describe("the settings key a package arrives on (BR-32)", () => {
       kind: "desk",
       cardinality: "collection",
       configSchema: workerConfigSchema(),
-      actions: { run: { inputSchema, block: work } }
+      actions: { ...workerDoor, run: { inputSchema, block: work } }
     });
     const seat = hire([record({ id: "support.clerk", declared: { flow: "desk" }, packages: clerkReach })], {
-      kinds: { desk: custom as never }
+      workerFlows: { desk: custom as never }
     });
     expect((seat("support.clerk").config as Record<string, unknown>)[SEAT_PACKAGES_KEY]).toEqual([
       {
@@ -572,7 +573,12 @@ describe("the settings key a package arrives on (BR-32)", () => {
     ]);
   });
 
-  it("imposes nothing on a worker that holds no package, so a hand-rolled kind without the key still hires", () => {
+  it("imposes nothing on a worker that holds no package", () => {
+    const seat = hire([record({ id: "support.greeter", packages: siblingReach })]);
+    expect(seat("support.greeter").config).not.toHaveProperty(SEAT_PACKAGES_KEY);
+  });
+
+  it("refuses a hand-rolled kind without the key when it is registered, before any worker holds a package", () => {
     const handRolled = defineFlow({
       kind: "old-desk",
       cardinality: "collection",
@@ -581,24 +587,17 @@ describe("the settings key a package arrives on (BR-32)", () => {
         teamInstructions: z.string().optional(),
         seatSkills: z.array(z.any()).default([]),
         seatTools: z.array(z.any()).default([]),
-        // Imposed on every record, so a hand-rolled kind declares it to hire at all.
         seatId: z.string().optional()
       }),
-      actions: { run: { inputSchema, block: work } }
+      actions: { ...workerDoor, run: { inputSchema, block: work } }
     });
-    const kinds = { "old-desk": handRolled as never };
 
-    // Holding nothing: exactly today's bag, no new key.
-    const seat = hire([record({ id: "support.greeter", declared: { flow: "old-desk" }, packages: siblingReach })], {
-      kinds
+    // Holding nothing is no way around it: the flow is checked, not the worker.
+    const message = refusal([record({ id: "support.greeter", declared: { flow: "old-desk" }, packages: siblingReach })], {
+      workerFlows: { "old-desk": handRolled as never }
     });
-    expect(seat("support.greeter").config).not.toHaveProperty(SEAT_PACKAGES_KEY);
-
-    // Holding one: refused loudly, naming the key, never dropped in silence.
-    const message = refusal([record({ id: "support.clerk", declared: { flow: "old-desk" }, packages: clerkReach })], {
-      kinds
-    });
-    expect(message).toContain(`"${SEAT_PACKAGES_KEY}" is not a declared setting`);
+    expect(message).toContain('worker flow "old-desk"');
+    expect(message).toContain(`\`${SEAT_PACKAGES_KEY}\``);
     expect(message).toContain("workerConfigSchema()");
   });
 

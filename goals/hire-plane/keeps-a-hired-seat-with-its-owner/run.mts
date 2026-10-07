@@ -25,6 +25,23 @@ import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { loadFixture, runGoal, stripIntentOverrides } from "../../lib/index.mts";
 
+/** Every worker flow has one door: this fixture's answers by saying what it heard. */
+const workerDoor = {
+  message: {
+    inputSchema: z.object({ message: z.string() }),
+    userMessage: (input: { message: string }) => input.message,
+    block: handler({
+      name: "fixture-door",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({ heard: z.string() }),
+      execute: (input, ctx) => {
+        ctx.emit.message(`Heard: ${input.message}`);
+        return { heard: input.message };
+      },
+    }),
+  },
+};
+
 type Fixture = {
   ownerOrg: string;
   otherOrg: string;
@@ -118,7 +135,7 @@ const seatKind = defineFlow({
   cardinality: "collection",
   configSchema: z.object({ instructions: z.string().nullable().default(null) }),
   resources,
-  actions: { whoami: { inputSchema: tagInput, block: whoami } },
+  actions: { ...workerDoor, whoami: { inputSchema: tagInput, block: whoami } },
   authentication: verified,
 });
 
@@ -334,7 +351,7 @@ await runGoal(async () => {
   const reloaded = await reloadHiredSeats({
     stores: runtime.stores,
     orgIds: [fixture.ownerOrg],
-    kinds: { seat: seatKind },
+    workerFlows: { seat: seatKind },
   });
   const claimed = reloaded.seats.find((seat) => seat.id === claimedAddress || seat.id === legacyAddress);
   if (claimed !== undefined) fail("g", `reload minted ${claimed.id}`);
@@ -350,12 +367,12 @@ await runGoal(async () => {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources,
-    actions: { whoami: { inputSchema: tagInput, block: whoami } },
+    actions: { ...workerDoor, whoami: { inputSchema: tagInput, block: whoami } },
     authentication: verified,
   });
-  const hireKinds: NonNullable<HireOptions["kinds"]> = { hired: hiredKind };
+  const hireKinds: NonNullable<HireOptions["workerFlows"]> = { hired: hiredKind };
   const seatHire = createSeatHireCapability({
-    kinds: hireKinds,
+    workerFlows: hireKinds,
     register: (seat, pin) => state.register(seat, { pin }),
     unregister: (id) => state.unregister(id),
     kindAt: (id) => runtime.registry.get(id)?.kind,
@@ -364,7 +381,7 @@ await runGoal(async () => {
   hireKinds.agent = defineAgentWorkerFlow({ uses: [seatHire] });
   const [manager] = hireWorkforce(
     [{ id: fixture.managerId, declared: { tools: ["hire"] }, body: "Expands the roster." }],
-    { kinds: hireKinds },
+    { workerFlows: hireKinds },
   );
   const hiredAddress = seatAddress(fixture.ownerOrg, fixture.hiredSeatId);
   const copiedAddress = seatAddress(fixture.otherOrg, fixture.hiredSeatId);
@@ -418,7 +435,7 @@ await runGoal(async () => {
     const home = await reloadHiredSeats({
       stores: runtime.stores,
       orgIds: [fixture.ownerOrg],
-      kinds: hireKinds,
+      workerFlows: hireKinds,
     });
     if (!home.seats.some((seat) => seat.id === hiredAddress)) {
       fail("h", `the capability's row did not reload in ${fixture.ownerOrg}: ${home.problems.join("; ")}`);
@@ -426,7 +443,7 @@ await runGoal(async () => {
     const away = await reloadHiredSeats({
       stores: runtime.stores,
       orgIds: [fixture.otherOrg],
-      kinds: hireKinds,
+      workerFlows: hireKinds,
     });
     // What a host does with a reload: register each seat under its own pin.
     for (const seat of away.seats) {

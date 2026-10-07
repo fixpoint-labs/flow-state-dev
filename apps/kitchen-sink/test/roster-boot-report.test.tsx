@@ -125,7 +125,7 @@ async function harness() {
     const reload = await reloadHiredSeats({
       stores: runtime.stores,
       orgIds: ORGS,
-      kinds: kitchenSinkKinds,
+      workerFlows: kitchenSinkKinds,
     });
     await admitReloadedSeats({
       reload,

@@ -28,7 +28,7 @@ const seats = hireWorkforce(workers);
 flowRegistry.registerMany(seats);
 ```
 
-No `kinds` argument, no flow of your own. The body becomes the worker's instructions and steers its answers; `description` is a label for the roster and never reaches the model.
+No `workerFlows` argument, no flow of your own. The body becomes the worker's instructions and steers its answers; `description` is a label for the roster and never reaches the model.
 
 The settings a worker writes for itself are `instructions`, `model`, `tools`, the `skills` switches below, `capabilities` — which picks presets from the capabilities the kind carries, covered in [Capabilities on disk](./capabilities-on-disk.md) — and `packages`, which takes [packages](./packages-on-disk.md) from its team's or the org's library. Four more reach the seat in the same bag, put there by the hire rather than by the file: the team's instructions, the skills the worker's folders hold, the blocks its `tools:` resolved out of its own levels, and the instructions and blocks of the packages it holds. A file that declares one of those four is refused by name. `flow: agent` names the same kind explicitly, and hires the same way.
 
@@ -66,7 +66,7 @@ import { boardTool, searchTool } from "./tools";
 const { workers } = await readWorkforce("./workforce");
 
 const seats = hireWorkforce(workers, {
-  kinds: {
+  workerFlows: {
     agent: defineAgentWorkerFlow({
       catalog: { board: boardTool, search: searchTool },
     }),
@@ -74,7 +74,7 @@ const seats = hireWorkforce(workers, {
 });
 ```
 
-`defineAgentWorkerFlow()` with no arguments is the built-in itself, so the copy you pass replaces it rather than adding to it. It takes over for every seat that runs on the `agent` kind: the records that leave `flow:` out, and any that name `agent` outright. A worker naming any other kind is unaffected. Hire with no `kinds` at all and the workers have no tool catalog.
+`defineAgentWorkerFlow()` with no arguments is the built-in itself, so the copy you pass replaces it rather than adding to it. It takes over for every seat that runs on the `agent` kind: the records that leave `flow:` out, and any that name `agent` outright. A worker naming any other kind is unaffected. Hire with no `workerFlows` at all and the workers have no tool catalog.
 
 `defineAgentWorkerFlow` takes:
 
@@ -104,23 +104,23 @@ import { defineAgentWorkerFlow, hireWorkforce, mailboxBoardIds } from "@flow-sta
 const boardIds = mailboxBoardIds(mailboxes);
 
 const hired = hireWorkforce(workers, {
-  kinds: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) },
+  workerFlows: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) },
 });
 ```
 
 Each task runs as one turn, in a session of its own when the board hands tasks over `per-task`. The worker answers with its own instructions, tools and model. The message is the task's title, goal and context. The answer is stored as the task's result, and the task completes. If the turn fails, the attempt fails, and the task's `maxAttempts` decides whether it runs again. Nothing is posted to a mailbox unless the worker's own tools post it.
 
-Without `taskLists` the kind takes no tasks, and that includes the built-in you get when you pass no `kinds`. A task given to one of its workers is refused, saying the worker takes no tasks. The board side, and who a task's name can reach, is in [Handing a row to the worker it names](./mailboxes.md#handing-a-row-to-the-worker-it-names).
+Without `taskLists` the kind takes no tasks, and that includes the built-in you get when you pass no `workerFlows`. A task given to one of its workers is refused, saying the worker takes no tasks. The board side, and who a task's name can reach, is in [Handing a row to the worker it names](./mailboxes.md#handing-a-row-to-the-worker-it-names).
 
 ## What a worker keeps
 
-A conversation keeps its recent turns, the organization keeps the worker's skills, and memory, once you add it, is kept per person.
+A conversation keeps its recent turns, each person keeps their own copy of the worker's skills, and memory, once you add it, is kept per person.
 
-![A conversation holds recent turns, a worker's skills are kept per organization, and memory is kept per person](./built-in-worker-memory.svg)
+![A conversation holds recent turns, a worker's skills are kept per person, and memory is kept per person](./built-in-worker-memory.svg)
 
 ## Skills
 
-A worker's skills are that worker's, stored at organization scope. Send `userId` with the input. The skills read are the ones stored for the organization the caller already belongs to. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) is where that organization comes from.
+A worker's skills are that worker's, kept in the scope of the person it runs for: two people never share one worker's copy. Send `userId` with the input. The skills read are the ones stored for that user.
 
 Which skills a worker gets is decided by where the folders sit. Three places feed a worker on a team:
 
@@ -185,7 +185,7 @@ Pulling an edit through is a separate, explicit act — `refreshSeededSkills` fr
 
 ### Custom worker kinds
 
-Skills reach every hireable kind the same way, this one included: they arrive in the settings bag as `seatSkills`, because the kind's `configSchema` composed `workerConfigSchema()`. The built-in is built that way, and so is [a kind you define yourself](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare). That page has the contract and what it holds. Your kind is free to ignore the skills it receives; what it cannot do is skip the door, since hiring hands the same settings to every seat.
+Skills reach every hireable kind the same way, this one included: they arrive in the settings bag as `seatSkills`, because the kind's `configSchema` composed `workerConfigSchema()`. The built-in is built that way, and so is [a kind you define yourself](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare). That page has the contract and what it holds. Your flow is free to ignore the skills it receives. What it can't skip are the three things every worker flow does: [which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers).
 
 ## Giving workers memory
 
@@ -229,7 +229,7 @@ const remembers = defineAgentWorkerFlow({
 
 const { workers } = await readWorkforce("./workforce");
 
-const seats = hireWorkforce(workers, { kinds: { [AGENT_KIND]: remembers } });
+const seats = hireWorkforce(workers, { workerFlows: { [AGENT_KIND]: remembers } });
 ```
 
 Tell a worker something in one conversation and it knows it in the next.

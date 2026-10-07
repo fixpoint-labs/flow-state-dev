@@ -26,8 +26,8 @@ All of these come from `@flow-state-dev/workforce`:
 | `defineHiredRosterCollection()` | Declares the stored roster: an organization-scoped resource collection at `workforce/roster/*`, one row per hired seat. Takes no options. |
 | `defineHiredRosterPrivateCollection()` | Declares where a [user-owned seat](#hiring-a-seat-only-one-member-can-reach)'s row is written, at `workforce/roster/~<user>/<seatId>`. Server-side only, and a block that has it in `resources` reaches only the calling user's rows. |
 | `seatAddress(orgId, seatId, ownerUserId?)` | The address a hired seat answers on. Org-visible seats are `<orgId>.<seatId>`. A user-owned seat is `<orgId>.~<user>.<seatId>`, so two people can hire the same seat id. The organization id and the user are percent-escaped, as [The organization has to come from the credential](#the-organization-has-to-come-from-the-credential) spells out. Throws when the organization id is empty, whitespace-only, or not well-formed Unicode (a lone UTF-16 surrogate), or when the seat id is empty or starts with `~`. |
-| `hireWorkforce(records, { kinds })` | Turns records into configured flow copies, one per record. The same call the file-declared roster goes through. |
-| `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems, byOrg }`. It registers nothing. |
+| `hireWorkforce(records, { workerFlows })` | Turns records into configured flow copies, one per record. The same call the file-declared roster goes through. |
+| `reloadHiredSeats({ stores, orgIds, workerFlows })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems, byOrg }`. It registers nothing. |
 | `createSeatHireBlocks(options)` | Returns `{ hire, fire, brokenSeats, rehire }`: two handlers that run the whole hire and fire sequence, and two that list and [repair a seat whose kind is gone](#repairing-a-seat-whose-kind-is-gone). Mount them as a flow's actions. See [the ready-made handlers](#the-ready-made-hire-and-fire-handlers). |
 
 `registerHiredSeat` calls your register function with the seat's pin, and refuses a pin that names no organization. `toHiredSeatRow` builds a stored row out of what a hire supplied, and `hiredSeatManifest` turns a row back into the record `hireWorkforce` takes.
@@ -149,11 +149,11 @@ import {
 } from "@flow-state-dev/workforce";
 
 export async function openApp(options: AppOptions) {
-  const kinds: NonNullable<HireOptions["kinds"]> = { coder: coderKind };
+  const kinds: NonNullable<HireOptions["workerFlows"]> = { coder: coderKind };
   let live: { state: FlowState; registry: FlowStateRuntime["registry"] } | undefined;
 
   const hire = createSeatHireCapability({
-    kinds,
+    workerFlows: kinds,
     register: (worker, pin) => {
       if (!live) throw new Error("No FlowState to register into.");
       const { state } = live;
@@ -166,7 +166,7 @@ export async function openApp(options: AppOptions) {
   });
   kinds.agent = defineAgentWorkerFlow({ uses: [hire] });
 
-  const hired = hireWorkforce(options.workers, { kinds });
+  const hired = hireWorkforce(options.workers, { workerFlows: kinds });
   const state = createFlowState({
     flows: { ...Object.fromEntries(hired.map((worker) => [worker.id, worker])) /* , your other flows */ },
     stores: options.stores,
@@ -204,7 +204,7 @@ import { registerSeat, releaseSeat } from "./registry-access";
 export const kinds = { "desk-clerk": deskClerkFlow };
 
 const seatHire = createSeatHireBlocks({
-  kinds,
+  workerFlows: kinds,
   register: registerSeat,
   unregister: releaseSeat,
 });
@@ -233,13 +233,13 @@ export default workforceAdmin();
 
 | Option | What it's for |
 | --- | --- |
-| `kinds` | The flow kinds a hire may name, the same map you pass to `hireWorkforce` and `reloadHiredSeats`. The built-in `agent` kind is always hireable too, unless `allowKinds` leaves it out. |
+| `workerFlows` | The worker flows a hire may name, the same map you pass to `hireWorkforce` and `reloadHiredSeats`. The built-in `agent` kind is always hireable too, unless `allowKinds` leaves it out. |
 | `register(seat, pin)` | Puts a minted seat on the air. `pin` is `{ orgId, userId? }` for the organization the hire ran under. |
 | `unregister(address)` | Releases an address in this process and returns whether anything held it. |
 | `kindAt?(address)` | The kind serving an address right now, if any. Lets `hire` refuse an address that is already served, or a seat id a declared seat answers on, before writing anything, and lets `fire` leave an address registered when a different kind holds it. |
 | `instanceAt?(address)` | The seat serving an address right now, if any. With it, `fire` releases only the seat its roster row minted, and a hire or re-hire stopped part-way by another call releases only its own seat. Without it, `fire` goes by the kind, and a stopped call leaves its seat registered in this process until the next start. |
 | `refuseRosterAdmin?` | When `true`, `hire` and `rehire` refuse settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`. Default `false`. |
-| `allowKinds?` | The subset of `kinds` these handlers may mint. |
+| `allowKinds?` | The subset of `workerFlows` these handlers may mint. |
 | `mailboxBoards?` | Mailbox board ids. For each one the new seat doesn't declare, the hire's `warning` names it, since rows filed on that board sit pending until something works them. |
 
 The seats these handlers and the `seat-hire` tools hire are always org-visible: pinned to the organization and no user, so any caller the seat's resolver places in that organization can call one, and its roster row, `instructions` included, is readable by a browser in that organization. For a seat only one member can reach, write the hire yourself as in [Hiring a seat only one member can reach](#hiring-a-seat-only-one-member-can-reach).
@@ -276,7 +276,7 @@ It returns the seat id and the address the seat answers on:
 
 A hire runs in this order:
 
-1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served, an address a seat declared in a worker file has an inventory row at, and a seat id `kindAt` reports a declared seat under: `"chief-of-staff" is the id of a seat this app declares (kind "agent"). Hire under another id.` With `refuseRosterAdmin: true`, it also refuses settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`.
+1. It refuses a kind that isn't in `workerFlows`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served, an address a seat declared in a worker file has an inventory row at, and a seat id `kindAt` reports a declared seat under: `"chief-of-staff" is the id of a seat this app declares (kind "agent"). Hire under another id.` With `refuseRosterAdmin: true`, it also refuses settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`.
 2. It mints the seat, which runs the kind's settings schema. If the schema refuses the seat, nothing is written and the hire fails with a message that quotes the kind's own refusal. For a kind `coder` whose schema requires `document: z.string().min(1)`, hired as `coder-2` in organization `acme` with no settings, the message is below. The kind's own refusal is quoted after `refused it:`.
 
    ```text
@@ -353,7 +353,7 @@ const orgIds = [...new Set((await runtime.stores.org.list()).map((r) => r.orgId)
 const { seats, problems } = await reloadHiredSeats({
   stores: runtime.stores,
   orgIds,
-  kinds, // the map the hire action uses: exported from flow.ts or hire.ts, whichever path you took
+  workerFlows: kinds, // the map the hire action uses: exported from flow.ts or hire.ts, whichever path you took
 });
 
 for (const seat of seats) {
@@ -507,7 +507,7 @@ export const hireSeat = handler({
     // at the next start. The kind's settings schema runs here, before any write.
     const record = hiredSeatManifest(orgId, row);
     if ("problem" in record) throw new Error(record.problem);
-    const [seat] = hireWorkforce([record.manifest], { kinds });
+    const [seat] = hireWorkforce([record.manifest], { workerFlows: kinds });
     if (!seat) throw new Error(`"${address}" could not be hired.`);
 
     const roster = ctx.resources.roster as unknown as ResourceCollectionRef;

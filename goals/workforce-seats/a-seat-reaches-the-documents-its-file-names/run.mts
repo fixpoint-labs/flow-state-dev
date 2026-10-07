@@ -119,7 +119,7 @@ await runGoal(async () => {
   const { deskFlow, catalog } = buildDesk(declared.documents);
   const kinds = { [DESK_KIND]: deskFlow as never };
 
-  const seats = hireWorkforce(declared.workers, { kinds, documents: catalog });
+  const seats = hireWorkforce(declared.workers, { workerFlows: kinds, documents: catalog });
   if (seats.length !== roster.length) failures.push(`hired ${seats.length} seat(s), wanted ${roster.length}`);
   evidence.push(
     `the real loader read ${declared.workers.length} seat files and ${declared.documents.length} documents, and one hireWorkforce call turned them into ${seats.length} seats of one kind`
@@ -267,7 +267,7 @@ await runGoal(async () => {
       let hired: FlowInstance[] | undefined;
       let refusal = "";
       try {
-        hired = hireWorkforce([...declared.workers, ...typo.workers], { kinds, documents: catalog });
+        hired = hireWorkforce([...declared.workers, ...typo.workers], { workerFlows: kinds, documents: catalog });
       } catch (error) {
         refusal = messageOf(error);
       }

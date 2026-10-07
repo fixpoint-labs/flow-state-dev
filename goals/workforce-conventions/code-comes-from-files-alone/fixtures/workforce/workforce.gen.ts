@@ -13,7 +13,7 @@ import worker_desk_clerk from "./flows/workers/desk-clerk";
 
 export const kinds = {
   "desk-clerk": worker_desk_clerk,
-} satisfies NonNullable<HireOptions["kinds"]>;
+} satisfies NonNullable<HireOptions["workerFlows"]>;
 
 export const mailboxKinds = {};
 

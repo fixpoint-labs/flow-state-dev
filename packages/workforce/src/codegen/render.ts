@@ -47,7 +47,7 @@ const SLOT_TYPES: Record<CodeSlotId, { imported: string; from: string; expressio
   worker: {
     imported: "HireOptions",
     from: "@flow-state-dev/workforce",
-    expression: 'NonNullable<HireOptions["kinds"]>',
+    expression: 'NonNullable<HireOptions["workerFlows"]>',
   },
   mailbox: {
     imported: "MailboxInstancesOptions",

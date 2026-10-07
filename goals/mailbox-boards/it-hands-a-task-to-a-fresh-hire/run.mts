@@ -102,7 +102,7 @@ async function boot(adapter: unknown): Promise<Host> {
     taskLists: CONTROL === "pinned-gate" ? [mailboxBoard("ops.own", listName).id] : listIds
   });
   const kinds = { agent } as never;
-  const declared = hireWorkforce(roster.workers, { kinds, mailboxBoards: listIds });
+  const declared = hireWorkforce(roster.workers, { workerFlows: kinds, mailboxBoards: listIds });
   const declaredWorker = declared[0]!.id;
 
   const [mailbox] = mailboxInstances(mailboxes, {
@@ -115,7 +115,7 @@ async function boot(adapter: unknown): Promise<Host> {
 
   let state: ReturnType<typeof createFlowState> | undefined;
   const hire = createSeatHireBlocks({
-    kinds,
+    workerFlows: kinds,
     register: (seat, pin) => state!.register(seat, { pin }),
     unregister: (id) => state!.unregister(id),
     kindAt: (id) => runtime?.registry.get(id)?.kind,
@@ -161,7 +161,7 @@ async function boot(adapter: unknown): Promise<Host> {
   const live = runtime;
 
   // The host's boot: workers hired before this start come back.
-  const reloaded = await reloadHiredSeats({ stores: live.stores, orgIds: [ORG_ID], kinds });
+  const reloaded = await reloadHiredSeats({ stores: live.stores, orgIds: [ORG_ID], workerFlows: kinds });
   for (const seat of reloaded.seats) state.register(seat, { pin: seat.ownerPin! });
   lookup = createWorkerLookup({ instanceAt: (id) => live.registry.get(id), declared: declared.map((w) => w.id) });
 

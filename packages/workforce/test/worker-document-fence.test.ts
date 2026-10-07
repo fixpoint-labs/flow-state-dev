@@ -36,6 +36,7 @@ import { hireWorkforce } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
 import { resourcesFromDocs } from "../src/resources-from-docs";
 import { DERIVED_RESOURCE_KEYS, type WorkerManifest } from "../src/manifest";
+import { workerDoor } from "./worker-door";
 
 const ORG_ID = "test-org";
 const TEAM = "pentest";
@@ -105,7 +106,7 @@ async function hireTwoSeatsOver(root: string) {
   const reconFlow = defineFlow({
     kind: "recon",
     cardinality: "collection",
-    actions: { run: { inputSchema: z.string(), block: noop } },
+    actions: { ...workerDoor, run: { inputSchema: z.string(), block: noop } },
     // Admission, not decoration: a hireable kind declares where a seat's
     // instructions and resolved skills arrive, or `hireWorkforce` refuses the
     // whole roster. This kind adds no settings of its own, so it composes the
@@ -127,7 +128,7 @@ async function hireTwoSeatsOver(root: string) {
   // The production factory, not a hand-built pair of instances: what makes the
   // fence work is that `hireWorkforce` mints one flow INSTANCE ID per seat, and
   // a hand-built pair would be assuming exactly the thing under test.
-  const seats = hireWorkforce(manifests, { kinds: { recon: reconFlow } });
+  const seats = hireWorkforce(manifests, { workerFlows: { recon: reconFlow } });
   expect(seats.map((s) => s.id)).toEqual([ALICE, BOB]);
 
   // Both seats really carry the documents. Without this, a roster hired into

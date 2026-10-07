@@ -54,6 +54,7 @@ import {
   type WorkerManifest
 } from "../src/index";
 import { hiredSeatManifest, toHiredSeatRow } from "../src/roster/rows";
+import { workerDoor } from "./worker-door";
 
 const USER_ID = "u_wake";
 
@@ -90,20 +91,20 @@ function kinds() {
     kind: "listener",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: { ask: { block: answer } },
+    actions: { ...workerDoor, ask: { block: answer } },
     internal: { actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: listen } } }
   } as never);
   const note = defineFlow({
     kind: "note",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: { ask: { block: answer } }
+    actions: { ...workerDoor, ask: { block: answer } }
   } as never);
   const picky = defineFlow({
     kind: "picky",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: { ask: { block: answer } },
+    actions: { ...workerDoor, ask: { block: answer } },
     internal: {
       actions: {
         onMailboxPost: {
@@ -272,7 +273,7 @@ describe("wakeMemberSeats · who a post wakes", () => {
     const { heard, map } = kinds();
     const seats = hireWorkforce(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note"), worker("desk.idle", "listener")],
-      { kinds: map }
+      { workerFlows: map }
     );
     const { mailbox, state } = host(seats, wakeMemberSeats(seats));
     try {
@@ -311,7 +312,7 @@ describe("wakeMemberSeats · who a post wakes", () => {
     const { heard, map } = kinds();
     const seats = hireWorkforce(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
-      { kinds: map }
+      { workerFlows: map }
     );
     const fallback = recordingFallback();
     const { mailbox, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
@@ -336,7 +337,7 @@ describe("wakeMemberSeats · who a post wakes", () => {
     const { heard, map } = kinds();
     const seats = hireWorkforce(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
-      { kinds: map }
+      { workerFlows: map }
     );
     const fallback = recordingFallback();
     const { mailbox, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
@@ -360,7 +361,7 @@ describe("wakeMemberSeats · who a post wakes", () => {
     const { heard, map } = kinds();
     const seats = hireWorkforce(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
-      { kinds: map }
+      { workerFlows: map }
     );
     const fallback = recordingFallback();
     const { mailbox, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
@@ -393,7 +394,7 @@ describe("wakeMemberSeats · who a post wakes", () => {
 
   it("gives a member with no seat the fallback, and everyone the fallback when no seats are passed (BR-4, BR-15)", async () => {
     const { heard, map } = kinds();
-    const seats = hireWorkforce([worker("desk.ivy", "listener")], { kinds: map });
+    const seats = hireWorkforce([worker("desk.ivy", "listener")], { workerFlows: map });
     const fallback = recordingFallback();
     const { mailbox, state } = host([], wakeMemberSeats([], { fallback: fallback.block }), seats);
     try {
@@ -415,7 +416,7 @@ describe("wakeMemberSeats · where a woken seat runs", () => {
   it("wakes a seat the boot reload minted at <org>.<seatId>, by its logical id, in the post's organization (BR-5)", async () => {
     const { heard, map } = kinds();
     const seats = hireWorkforce([reloaded("acme", "desk.rex", "listener"), reloaded("globex", "desk.rex", "listener")], {
-      kinds: map
+      workerFlows: map
     });
     expect(seats.map((s) => s.id).sort()).toEqual(["acme.desk.rex", "globex.desk.rex"]);
     const { mailbox, state } = host(seats, wakeMemberSeats(seats));
@@ -436,7 +437,7 @@ describe("wakeMemberSeats · where a woken seat runs", () => {
     // Another user's seat first, so a pick by organization alone takes the wrong one.
     const seats = hireWorkforce(
       [reloaded("acme", "desk.rex", "listener", "u_other"), reloaded("acme", "desk.rex", "listener", USER_ID)],
-      { kinds: map }
+      { workerFlows: map }
     );
     const fallback = recordingFallback();
     const { mailbox, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
@@ -456,7 +457,7 @@ describe("wakeMemberSeats · where a woken seat runs", () => {
 
   it("keeps one conversation per mailbox for a seat in two mailboxes (BR-10)", async () => {
     const { heard, map } = kinds();
-    const seats = hireWorkforce([worker("desk.ivy", "listener")], { kinds: map });
+    const seats = hireWorkforce([worker("desk.ivy", "listener")], { workerFlows: map });
     const { mailbox, state } = host(seats, wakeMemberSeats(seats));
     try {
       const runtime = await state.getRuntime();
@@ -479,7 +480,7 @@ describe("wakeMemberSeats · where a woken seat runs", () => {
 
   it("fails one member's delivery when its entry refuses the post, and still runs the others (BR-7)", async () => {
     const { heard, map } = kinds();
-    const seats = hireWorkforce([worker("desk.pip", "picky"), worker("desk.ivy", "listener")], { kinds: map });
+    const seats = hireWorkforce([worker("desk.pip", "picky"), worker("desk.ivy", "listener")], { workerFlows: map });
     const { mailbox, state } = host(seats, wakeMemberSeats(seats));
     try {
       const runtime = await state.getRuntime();

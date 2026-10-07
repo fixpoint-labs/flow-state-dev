@@ -33,6 +33,23 @@ import {
 import { z } from "zod";
 import { loadFixture, runGoal, stripIntentOverrides } from "../../lib/index.mts";
 
+/** Every worker flow has one door: this fixture's answers by saying what it heard. */
+const workerDoor = {
+  message: {
+    inputSchema: z.object({ message: z.string() }),
+    userMessage: (input: { message: string }) => input.message,
+    block: handler({
+      name: "fixture-door",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({ heard: z.string() }),
+      execute: (input, ctx) => {
+        ctx.emit.message(`Heard: ${input.message}`);
+        return { heard: input.message };
+      },
+    }),
+  },
+};
+
 type Fixture = {
   ownerOrg: string;
   otherOrg: string;
@@ -142,7 +159,7 @@ const seatKind = defineFlow({
   configSchema: workerConfigSchema(),
   resources: { notes, seen },
   user: { stateSchema: z.object({ marker: z.string().nullable().default(null) }) },
-  actions: {
+  actions: { ...workerDoor,
     save: { inputSchema: saveInput, block: save },
     read: { inputSchema: tagInput, block: read },
     // The seat's own board binds the claim gate on `work`; it holds no rows.
@@ -322,7 +339,7 @@ await runGoal(async () => {
   const reloaded = await reloadHiredSeats({
     stores: runtime.stores,
     orgIds: [fixture.ownerOrg, fixture.otherOrg],
-    kinds: { research: seatKind },
+    workerFlows: { research: seatKind },
   });
   if (reloaded.problems.length > 0) fail("setup", `reload problems: ${reloaded.problems.join("; ")}`);
   for (const seat of reloaded.seats) {

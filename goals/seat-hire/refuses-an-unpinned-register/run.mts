@@ -146,9 +146,9 @@ await runGoal(async () => {
   }
 
   // ---- (b) hire pins the roster owner --------------------------------------
-  const kinds: NonNullable<HireOptions["kinds"]> = {};
+  const kinds: NonNullable<HireOptions["workerFlows"]> = {};
   const seatHire = createSeatHireCapability({
-    kinds,
+    workerFlows: kinds,
     register: live.register,
     unregister: live.unregister,
     kindAt: live.kindAt,
@@ -158,7 +158,7 @@ await runGoal(async () => {
 
   const [manager] = hireWorkforce(
     [record({ id: fixture.managerId, declared: { tools: ["hire"] }, body: "Expands the roster." })],
-    { kinds },
+    { workerFlows: kinds },
   );
   if (manager === undefined) {
     return { failures: ["leg (b): hireWorkforce minted no manager"], evidence: "" };

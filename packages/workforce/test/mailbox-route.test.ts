@@ -55,6 +55,7 @@ import {
 } from "../src/index";
 import { hireWorkforce } from "../src/hire";
 import { failLineWrite, postedLines } from "./mailbox-post-lines";
+import { workerDoor } from "./worker-door";
 
 const USER_ID = "u_route";
 const HELP = "support.help";
@@ -93,14 +94,14 @@ function listeningKinds(failOn?: string) {
     kind: "listener",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: { ask: { block: answer } },
+    actions: { ...workerDoor, ask: { block: answer } },
     internal: { actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: listen } } }
   } as never);
   const note = defineFlow({
     kind: "note",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: { ask: { block: answer } }
+    actions: { ...workerDoor, ask: { block: answer } }
   } as never);
   return { heard, kinds: { listener, note } as never };
 }
@@ -155,7 +156,7 @@ function host(
   } = {}
 ) {
   const { heard, kinds } = listeningKinds(options.failOn);
-  const seats = hireWorkforce(workers(options.pinGeneralTo, options.undescribed), { kinds });
+  const seats = hireWorkforce(workers(options.pinGeneralTo, options.undescribed), { workerFlows: kinds });
   const route = scriptedRoute();
   const [mailbox] = mailboxInstances(options.mailboxes ?? manifests(), {
     kinds: {

@@ -139,9 +139,9 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
  */
 function hire(
   manifests: WorkerManifest[],
-  kinds: HireOptions["kinds"] = {}
+  kinds: HireOptions["workerFlows"] = {}
 ): (id: string) => FlowInstance {
-  const seats = hireWorkforce(manifests, { kinds });
+  const seats = hireWorkforce(manifests, { workerFlows: kinds });
   return (id) => {
     const seat = seats.find((candidate) => candidate.id === id);
     if (!seat) throw new Error(`no seat "${id}" in [${seats.map((s) => s.id).join(", ")}]`);
@@ -149,9 +149,9 @@ function hire(
   };
 }
 
-function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["kinds"] = {}): string {
+function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): string {
   try {
-    hireWorkforce(manifests, { kinds });
+    hireWorkforce(manifests, { workerFlows: kinds });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }

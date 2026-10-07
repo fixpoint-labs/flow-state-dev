@@ -109,7 +109,7 @@ async function main(): Promise<void> {
 
   const agent = defineAgentWorkerFlow();
   const seats = hireWorkforce(loaded.workers, {
-    kinds: { agent },
+    workerFlows: { agent },
     packageBlocks: generated.packageBlocks,
   });
   out.seatIds = seats.map((s) => s.id);

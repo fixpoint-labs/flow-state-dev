@@ -454,7 +454,7 @@ describe("the rendered module", () => {
     // types are what make the app's own typecheck read every discovered file.
     expect(rendered).toContain(`import worker_code_reviewer from "./flows/workers/code-reviewer";`);
     expect(rendered).toContain(`"code-reviewer": worker_code_reviewer`);
-    expect(rendered).toContain(`satisfies NonNullable<HireOptions["kinds"]>`);
+    expect(rendered).toContain(`satisfies NonNullable<HireOptions["workerFlows"]>`);
     expect(rendered).toContain(`satisfies NonNullable<MailboxInstancesOptions["kinds"]>`);
     expect(rendered).toContain(`satisfies Record<string, BlockDefinition>`);
     expect(rendered).toContain("Do not edit");

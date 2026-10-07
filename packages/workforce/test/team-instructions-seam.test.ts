@@ -40,6 +40,7 @@ import {
   type WorkerManifest,
 } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 const USER_ID = "one-human";
 
@@ -329,7 +330,7 @@ describe("a kind that ignores the layer", () => {
       kind: "quiet-desk",
       cardinality: "collection",
       configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-      actions: {
+      actions: { ...workerDoor,
         run: {
           inputSchema: noteSchema,
           block: sequencer({ name: "quiet-work", inputSchema: noteSchema }).tap(
@@ -356,7 +357,7 @@ describe("a kind that ignores the layer", () => {
           declared: { description: "The scribe.", flow: "quiet-desk" },
         }),
       ],
-      { kinds: { "quiet-desk": quiet as never } },
+      { workerFlows: { "quiet-desk": quiet as never } },
     );
 
     expect(seats).toHaveLength(2);

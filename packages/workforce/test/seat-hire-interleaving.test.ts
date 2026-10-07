@@ -30,6 +30,7 @@ import { incarnationOf } from "../src/roster/incarnation";
 import { listedSeatRows } from "../src/inventory/listed-seats";
 import { toHiredSeatRow } from "../src/roster/rows";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 const ROSTER = "workforce/roster/";
 const SEATS = "inventory/seats/";
@@ -45,7 +46,7 @@ const desk = defineFlow({
   kind: "desk",
   cardinality: "collection",
   configSchema: workerConfigSchema().extend({ queue: z.string() }),
-  actions: { run: { inputSchema: z.object({}), block: noop } },
+  actions: { ...workerDoor, run: { inputSchema: z.object({}), block: noop } },
 });
 
 type Rows = (prefix: string) => Promise<Record<string, Record<string, unknown>>>;
@@ -68,7 +69,7 @@ type Outcome = { label: string; error?: string };
 async function world(options: { lazyInventory?: boolean } = {}) {
   const held = new Map<string, FlowInstance>();
   const blocks = createSeatHireBlocks({
-    kinds: { desk },
+    workerFlows: { desk },
     register: (seat: FlowInstance) => {
       const existing = held.get(seat.id);
       if (existing !== undefined) {

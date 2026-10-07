@@ -55,6 +55,7 @@ import { SEAT_REFERENCES_KEY, placeOfReference } from "../src/seat-references";
 import { SEAT_RESOURCES_KEY } from "../src/seat-resources";
 import { workerConfigSchema } from "../src/worker-config";
 import { hiredSeatManifest, toHiredSeatRow } from "../src/roster/rows";
+import { workerDoor } from "./worker-door";
 
 const ORG = "org_fix1467";
 const USER = "user_fix1467";
@@ -132,7 +133,7 @@ function kindWith(resources: DeclaredResources) {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { ...resources } as DeclaredResources,
-    actions: { run: { inputSchema: z.object({}), block: work } },
+    actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } },
   });
 }
 
@@ -182,7 +183,7 @@ async function seatOn(root: string, seatRecord: WorkerManifest = seat(ENG_SEAT))
   const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
   const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
   const hired = hireWorkforce([seatRecord], {
-    kinds: { [KIND]: kindWith({ ...documents, ...references }) as never },
+    workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never },
     documents,
     references,
   });
@@ -372,7 +373,7 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const before = hireWorkforce([seat(ENG_SEAT)], {
-      kinds: { [KIND]: kindWith(documents) as never },
+      workerFlows: { [KIND]: kindWith(documents) as never },
       documents,
     });
     const era1 = await ctxFor(before[0]!, stores);
@@ -630,7 +631,7 @@ describe("V4 · BR-14 — the mutable path is untouched", () => {
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const hired = hireWorkforce([seat(ENG_SEAT)], {
-      kinds: { [KIND]: kindWith(documents) as never },
+      workerFlows: { [KIND]: kindWith(documents) as never },
       documents,
     });
     const { ctx } = await ctxFor(hired[0]!);
@@ -690,7 +691,7 @@ describe("BR-15 · a ref claimed by both slots is refused at both doors", () => 
     });
     expect(() =>
       hireWorkforce([seat(ENG_SEAT)], {
-        kinds: { [KIND]: kindWith({ [ORG_HANDBOOK]: shared }) as never },
+        workerFlows: { [KIND]: kindWith({ [ORG_HANDBOOK]: shared }) as never },
         documents: { [ORG_HANDBOOK]: shared },
         references: { [ORG_HANDBOOK]: shared },
       }),
@@ -744,7 +745,7 @@ describe("the wall places a reference by its minted ref, not by its accessor key
       companyHandbook: references[ENG_HANDBOOK]!,
     };
     const hired = hireWorkforce([seat(seatId)], {
-      kinds: { [KIND]: kindWith({ ...documents, ...aliased }) as never },
+      workerFlows: { [KIND]: kindWith({ ...documents, ...aliased }) as never },
       documents,
       references: aliased,
     });
@@ -925,7 +926,7 @@ describe("the wall cannot be turned off by omission", () => {
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
     return hireWorkforce([seatRecord], {
-      kinds: { [KIND]: kindWith({ ...documents, ...references }) as never },
+      workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never },
       documents,
       // `references` deliberately NOT passed. This is the whole case.
     });
@@ -950,7 +951,7 @@ describe("the wall cannot be turned off by omission", () => {
     );
     expect(() =>
       hireWorkforce([seat(ENG_SEAT)], {
-        kinds: { [KIND]: kindWith({ ...documents, ...all }) as never },
+        workerFlows: { [KIND]: kindWith({ ...documents, ...all }) as never },
         documents,
         references: partial,
       }),
@@ -965,7 +966,7 @@ describe("the wall cannot be turned off by omission", () => {
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const hired = hireWorkforce([seat(ENG_SEAT)], {
-      kinds: { [KIND]: kindWith(documents) as never },
+      workerFlows: { [KIND]: kindWith(documents) as never },
       documents,
     });
     const { ctx } = await ctxFor(hired[0]!);

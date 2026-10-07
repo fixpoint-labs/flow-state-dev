@@ -178,7 +178,7 @@ function answerFlow() {
 
 function host() {
   const agent = defineAgentWorkerFlow({ uses: [mailboxPostCapability] });
-  const seats = hireWorkforce(workers(), { kinds: { agent } });
+  const seats = hireWorkforce(workers(), { workerFlows: { agent } });
   const [mailbox] = mailboxInstances(manifests, {
     kinds: {
       mailbox: defineMailboxFlow({

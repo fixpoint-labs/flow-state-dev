@@ -15,8 +15,12 @@
  * loudly, for the whole roster, at boot — and composing `workerConfigSchema()`
  * is how a kind makes sure it can.
  *
- * What the kind's probed shape is still read for is the WORDING of that
- * refusal, and nothing else. See {@link admissionHint}.
+ * **Before any record, the flows themselves.** The installation's worker
+ * flows, the built-in `agent` among them, are checked against the worker
+ * contract (`worker-flow-contract.ts`) once per flow, and any problem refuses
+ * the whole call: no flow is registered and no worker is hired over one. A
+ * worker then resolves to a registered flow — `agent` when it names none —
+ * and a flow the installation keeps for standard workers refuses a user's own.
  */
 
 import type {
@@ -66,10 +70,9 @@ import {
   applyReferenceWall,
   verifySeatReferenceWall
 } from "./seat-references";
-import { workerConfigSchema } from "./worker-config";
 import { heldPackageProblems, resolveHeldPackages } from "./seat-packages";
 import { recordSeatDescription } from "./seat-description";
-import { seatDoorOf } from "./seat-door";
+import { workerFlowProblems } from "./worker-flow-contract";
 
 /**
  * The keys the factory itself reads. Everything else is the worker's settings.
@@ -89,24 +92,86 @@ const RESERVED_KEYS = [
 ] as const;
 
 /**
- * The stock `agent` kind, built once for the life of the module.
+ * The stock `agent` flow, built once for the life of the module.
  *
  * Held here rather than exported: an app that wants a different one registers
- * its own under `agent` (`kinds: { agent: defineAgentWorkerFlow({ ... }) }`), which
- * merges over this one. Define once, hire many — never per hire or per request.
+ * its own under `agent` (`workerFlows: { agent: defineAgentWorkerFlow({ ... }) }`),
+ * which merges over this one. Define once, hire many — never per hire or per request.
  */
 const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType;
 
 /**
- * The kinds a hire resolves a `flow:` against: the built-in `agent` underneath
- * the caller's map, so a caller's own `agent` wins.
+ * One entry of {@link HireOptions.workerFlows}: a flow, or a flow and whether
+ * this installation keeps it for standard workers.
+ */
+export type WorkerFlowEntry = AnyFlowType | { flow: AnyFlowType; standardOnly?: boolean };
+
+/** One worker flow as a hire resolves a `flow:` against it. */
+export type ResolvedWorkerFlow = { flow: AnyFlowType; standardOnly: boolean };
+
+/**
+ * The worker flows a hire resolves a `flow:` against: the built-in `agent`
+ * underneath the installation's map, so the installation's own `agent` wins,
+ * each entry read as a flow and its standard-only flag.
  *
+ * Unchecked: {@link hireWorkforce} checks every one before any worker runs.
  * Shared with the roster's per-row check (`roster/check.ts`), which decides a
- * stored seat's kind is gone before anything is minted, and has to decide it
+ * stored worker's flow is gone before anything is minted, and has to decide it
  * against exactly this map.
  */
-export function resolvableKinds(kinds: HireOptions["kinds"]): Record<string, AnyFlowType> {
-  return { [AGENT_KIND]: builtInAgentWorkerFlow, ...kinds };
+export function resolveWorkerFlows(
+  workerFlows: HireOptions["workerFlows"]
+): Record<string, ResolvedWorkerFlow> {
+  const all: Record<string, WorkerFlowEntry> = { [AGENT_KIND]: builtInAgentWorkerFlow, ...workerFlows };
+  const resolved: Record<string, ResolvedWorkerFlow> = {};
+  for (const [name, entry] of Object.entries(all)) {
+    resolved[name] =
+      typeof entry === "function"
+        ? { flow: entry, standardOnly: false }
+        : { flow: entry.flow, standardOnly: entry.standardOnly === true };
+  }
+  return resolved;
+}
+
+/**
+ * Each flow's contract problems, by the name it was registered under — kept
+ * for the life of the flow definition, so a flow is checked once however many
+ * hires, reloads and runtime hires resolve against it.
+ */
+const contractVerdicts = new WeakMap<object, Map<string, readonly string[]>>();
+
+function contractProblemsOf(name: string, flow: AnyFlowType): readonly string[] {
+  let byName = contractVerdicts.get(flow);
+  if (byName === undefined) {
+    byName = new Map();
+    contractVerdicts.set(flow, byName);
+  }
+  let problems = byName.get(name);
+  if (problems === undefined) {
+    problems = workerFlowProblems(name, flow as never);
+    byName.set(name, problems);
+  }
+  return problems;
+}
+
+/**
+ * Refuse unless every worker flow meets the contract — every problem with
+ * every flow in one error, so an author fixes them in one pass.
+ */
+function checkWorkerFlows(flows: Record<string, ResolvedWorkerFlow>): void {
+  const refused: string[] = [];
+  const problems: string[] = [];
+  for (const name of Object.keys(flows).sort()) {
+    const found = contractProblemsOf(name, flows[name]!.flow);
+    if (found.length === 0) continue;
+    refused.push(name);
+    problems.push(...found);
+  }
+  if (problems.length === 0) return;
+  throw new Error(
+    `hireWorkforce refused ${refused.length} worker flow${refused.length === 1 ? "" : "s"} ` +
+      `(${refused.map((name) => `"${name}"`).join(", ")}); nothing was hired:\n  - ${problems.join("\n  - ")}`
+  );
 }
 
 function availableKinds(kindNames: readonly string[]): string {
@@ -115,6 +180,19 @@ function availableKinds(kindNames: readonly string[]): string {
 
 function missingKindReason(kind: string, available: string): string {
   return `names flow kind "${kind}", which was not passed to hireWorkforce. Kinds passed: ${available}`;
+}
+
+/**
+ * Why a user's own worker can't run on `kind`: the installation keeps it for
+ * the workers its files define. `defaulted` when the worker named no flow and
+ * `agent` is the default it fell to.
+ */
+function standardOnlyReason(kind: string, defaulted: boolean): string {
+  return (
+    `${defaulted ? `names no flow, so it runs on "${kind}"` : `names flow "${kind}"`}, which this ` +
+    `installation keeps for standard workers, the ones its files define. A worker of a user's own ` +
+    `can't run on it`
+  );
 }
 
 /**
@@ -133,37 +211,49 @@ function hireRefusalMessage(refused: number, total: number, problems: readonly s
 }
 
 /**
- * What `hireWorkforce` throws for one record whose only fault is a kind it was
+ * What `hireWorkforce` throws for one record whose only fault is a flow it was
  * not passed — the same sentence, built without a hire.
  *
- * The roster's per-row check names a stored seat whose kind is gone before it
+ * The roster's per-row check names a stored worker whose flow is gone before it
  * mints anything, and the boot report it feeds must not change wording because
  * of that. One builder for both is what keeps them saying the same thing.
  *
- * @param manifestId The record's id (a hired seat's address).
- * @param kind The kind it names.
- * @param kinds The caller's kind map, as passed to `hireWorkforce`.
+ * @param manifestId The record's id (a hired worker's address).
+ * @param kind The flow it names.
+ * @param workerFlows The installation's worker flows, as passed to `hireWorkforce`.
  */
-export function missingKindRefusal(
+export function missingWorkerFlowRefusal(
   manifestId: string,
   kind: string,
-  kinds: HireOptions["kinds"]
+  workerFlows: HireOptions["workerFlows"]
 ): string {
-  const available = availableKinds(Object.keys(resolvableKinds(kinds)));
+  const available = availableKinds(Object.keys(resolveWorkerFlows(workerFlows)));
   return hireRefusalMessage(1, 1, [`worker "${manifestId}" — ${missingKindReason(kind, available)}`]);
 }
 
 export interface HireOptions {
   /**
-   * The flows the app defined, by kind — `defineFlow(...)` results, passed
-   * directly. A record's `flow` names one, and it is called once per worker to
-   * mint that worker's copy.
+   * The installation's worker flows, by kind — `defineFlow(...)` results,
+   * passed directly, or `{ flow, standardOnly: true }` for a flow kept for the
+   * workers the installation's files define. A record's `flow` names one, and
+   * it is called once per worker to mint that worker's copy.
    *
-   * Optional: the built-in `agent` kind is always available underneath, so a
-   * roster of records that name no kind needs none of these. Passing a flow
-   * under `agent` replaces the built-in for every seat.
+   * Every flow here, and the built-in `agent` under them, is checked against
+   * the worker contract before any worker is hired: it takes the configuration
+   * a hire supplies, has one door, and declares any `writtenBy` in full
+   * (`workerFlowProblems`). One problem refuses the whole call.
+   *
+   * Optional: the built-in `agent` flow is always available underneath, so a
+   * roster of records that name no flow needs none of these. Passing a flow
+   * under `agent` replaces the built-in for every worker, and its
+   * `standardOnly` is the entry's.
+   *
+   * Standard-only is checked after the `agent` default: a worker of a user's
+   * own (a runtime hire, or a stored roster row: any record carrying an owner
+   * pin) that names no flow is refused when `agent` is kept for standard
+   * workers.
    */
-  kinds?: Record<string, AnyFlowType>;
+  workerFlows?: Record<string, WorkerFlowEntry>;
 
   /**
    * The blocks each seat's own folders REGISTER, keyed by worker id and then by
@@ -330,88 +420,6 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * The keys the contract declares, in the order an author reads them — **read
- * off the contract rather than listed here.**
- *
- * A hand-maintained copy of this membership is the same defect one level up
- * from the one {@link admissionHint} exists to prevent: the hint's whole job is
- * to name the key an author has to add, and the key it is needed for most is
- * the NEWEST one, which is exactly the one a hand-written list is missing the
- * day it is added. The refusal still fires either way, so the symptom is a
- * diagnostic that goes quiet on the one case nobody has heard of yet — and an
- * author reads that silence as "not that".
- *
- * `workerConfigSchema()` is the one definition of the set, so it is the one
- * thing consulted. Built once at module scope: the schema is a fresh object per
- * call, and its SHAPE is what is read.
- */
-const CONTRACT_KEYS: readonly string[] = Object.keys(workerConfigSchema().shape);
-
-/**
- * Why a mint refused, in one added sentence — **or nothing, which is the
- * common case.**
- *
- * A MESSAGE, never a gate. It runs only after the kind's own schema has already
- * refused, and it cannot refuse on its own: the moment it could, admission
- * would have two authorities. What it does is spare an author the guess between
- * *"I misspelt a setting"* and *"my kind never opened the door the framework
- * hands things through."*
- *
- * **It reads the refusal, not the kind.** An earlier version inferred contract
- * absence from the blueprint's PROBED default bag — the shape a kind publishes
- * for an empty config — and that inference was wrong in a case nobody had to
- * contrive: a kind declaring `seatSkills` optional *without a default* probes
- * to a bag with no such key, so a refusal about some other setting's bad value
- * got "this kind has not composed the contract" appended to it. The kind
- * accepted the whole imposed bag. The accusation was false.
- *
- * So the only thing consulted now is whether the refusal that actually happened
- * named one of the contract's keys as undeclared. That is the sole condition
- * under which the door is demonstrably missing; anything else, including a
- * shape this function cannot interpret, gets silence. A hint that cannot know
- * says nothing, because a confident wrong answer costs more than no answer.
- *
- * @param refusal The flow's own refusal message, already stringified.
- * @returns One sentence naming the missing keys and the fix, or `undefined`.
- */
-function admissionHint(refusal: string): string | undefined {
-  // The blunt case, and the only other one this can be sure of: the kind
-  // declares no `configSchema` at all, so core refuses the bag outright rather
-  // than reporting a key. No door of any kind, no ambiguity, nothing to infer.
-  if (refusal.includes("declares no configSchema")) {
-    return (
-      `A hireable kind must declare somewhere for what the hire step imposes — ` +
-      `${CONTRACT_KEYS.map((key) => `\`${key}\``).join(", ")} — to arrive: ` +
-      `\`configSchema: workerConfigSchema()\`, extended with this kind's own settings.`
-    );
-  }
-
-  // `describeFlowConfigIssues` renders an undeclared TOP-LEVEL key as
-  // `"x" is not a declared setting`, and a key inside one of the kind's own
-  // nested objects as `… is not a declared setting of "path"`. Only the first
-  // is about the contract, so the suffixed form must not match — a nested
-  // `seatSkills` of someone else's object is not our door.
-  const missing = CONTRACT_KEYS.filter((key) =>
-    refusal
-      .replace(/\.$/, "")
-      .split("; ")
-      .some(
-        (segment) => segment.endsWith("is not a declared setting") && segment.includes(`"${key}"`)
-      )
-  );
-
-  if (missing.length === 0) return undefined;
-
-  const named = missing.map((key) => `\`${key}\``).join(", ");
-  return (
-    `${missing.length === 1 ? "That key is" : "Those keys are"} the framework's: every hireable kind ` +
-    `admits ${named} by composing \`workerConfigSchema()\`, which is where everything the hire step ` +
-    `imposes on a seat arrives. Wrap this kind's settings: ` +
-    `\`configSchema: workerConfigSchema().extend({ ...its own settings })\`.`
-  );
-}
-
-/**
  * Why one seat's own block registry cannot be used as written — every reason,
  * or an empty list.
  *
@@ -480,11 +488,13 @@ function resolveDeclaredTools(
  * hire would not be a refusal.
  *
  * @param manifests The roster — from the loader, or hand-built.
- * @param options   `kinds`: the flow factories the app defined. Optional — the
- *                  built-in `agent` kind is always available underneath, and a
- *                  flow passed under `agent` replaces it for every seat.
+ * @param options   `workerFlows`: the worker flows the installation defined.
+ *                  Optional — the built-in `agent` flow is always available
+ *                  underneath, and a flow passed under `agent` replaces it for
+ *                  every seat.
  * @returns One `FlowInstance` per record, ordered by id. Register these.
- * @throws If any record cannot be hired; the message names every bad worker.
+ * @throws If a worker flow misses the contract (naming every problem with
+ *   every flow), or if any record cannot be hired (naming every bad worker).
  */
 export function hireWorkforce(
   manifests: WorkerManifest[],
@@ -494,9 +504,15 @@ export function hireWorkforce(
   // own `agent` wins — for every seat, not just the ones that name it. This is
   // precedence, not extension: configuring the built-in's tools or skills means
   // replacing the kind (`defineAgentWorkerFlow({ ... })` registered here), never a
-  // second option on this function. A roster hired with `kinds: {}` therefore
-  // carries an empty tool catalog, because nothing ever merges into ours.
-  const kinds = resolvableKinds(options.kinds);
+  // second option on this function. A roster hired with `workerFlows: {}`
+  // therefore carries an empty tool catalog, because nothing ever merges into
+  // ours.
+  const flows = resolveWorkerFlows(options.workerFlows);
+
+  // The flows before any record: a worker flow that misses the contract is
+  // the installation's problem, not one worker's, so it refuses the call
+  // whatever the roster holds — an empty one included.
+  checkWorkerFlows(flows);
 
   // One ref cannot be both a document and a reference. Checked here as well as
   // at the loader, the same two-door reason every other refusal in this file
@@ -516,7 +532,7 @@ export function hireWorkforce(
     );
   }
 
-  const available = availableKinds(Object.keys(kinds));
+  const available = availableKinds(Object.keys(flows));
 
   const ordered = [...manifests].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const seats: FlowInstance[] = [];
@@ -659,25 +675,24 @@ export function hireWorkforce(
     const kind = declaredFlow.kind;
 
     // `hasOwn` rather than a bare lookup: a record's `flow` is author-supplied,
-    // and `kinds["constructor"]` would otherwise resolve off the prototype and
+    // and `flows["constructor"]` would otherwise resolve off the prototype and
     // hand us something that is not a flow factory at all.
-    const factory = Object.hasOwn(kinds, kind) ? kinds[kind] : undefined;
-    if (factory === undefined) {
+    const entry = Object.hasOwn(flows, kind) ? flows[kind] : undefined;
+    if (entry === undefined) {
       refuse(missingKindReason(kind, available));
       continue;
     }
 
-    // A flow filed under someone else's name. Nothing downstream would notice:
-    // the copy mints, registers under this worker's id, and then runs the other
-    // kind's graph whenever its settings happen to validate — a worker doing a
-    // different worker's job, which is the one failure this whole epic refuses.
-    if (factory.kind !== kind) {
-      refuse(
-        `declares flow kind "${kind}", but the flow passed under that key is kind "${String(factory.kind)}" — ` +
-          `this seat would run a different worker's graph. Pass each flow under its own kind.`
-      );
+    // Standard-only, AFTER the default above: a worker naming no flow is an
+    // `agent` worker, and it is refused here when `agent` is kept. A user's own
+    // worker is one with an owner pin — a runtime hire or a stored roster row,
+    // which a `WORKER.md` never sets — so every path that runs a worker meets
+    // this one check.
+    if (entry.standardOnly && manifest.ownerPin !== undefined) {
+      refuse(standardOnlyReason(kind, !Object.hasOwn(manifest.declared, "flow")));
       continue;
     }
+    const factory = entry.flow;
 
     // The seat's own skills, imposed on EVERY record — loaded or hand-built,
     // non-empty or empty, whatever kind this is.
@@ -912,12 +927,9 @@ export function hireWorkforce(
       if (typeof description === "string") recordSeatDescription(seat, description);
       seats.push(seat);
     } catch (error) {
-      // The flow's own refusal, with the worker's id in front of it, and — when
-      // the kind's shape says what most likely went wrong — one sentence naming
-      // the fix. Still no check of our own: `admissionHint` cannot refuse.
-      const message = messageOf(error);
-      const hint = admissionHint(message);
-      refuse(hint === undefined ? message : `${message} ${hint}`);
+      // The flow's own refusal, with the worker's id in front of it. The flow
+      // already met the contract, so this is about the worker's own settings.
+      refuse(messageOf(error));
       if (minting) kindRefusedWorkers.add(manifest.id);
     }
   }
@@ -956,18 +968,6 @@ export function hireWorkforce(
       if (firstInProcess(`workforce/unattended-board/${boardId}`)) console.warn(warning);
     }
   }
-  // A kind with two doors is reported, not refused: the seat is hired, and
-  // published with no door, so it takes no message until one is removed.
-  // Once per process per problem: keyed on the sentence, which names the seat,
-  // its kind and its doors, so a hot reload stays quiet while a changed problem
-  // still prints.
-  for (const seat of seats) {
-    const { problem } = seatDoorOf(seat);
-    if (problem !== undefined && firstInProcess(`workforce/two-doors/${problem}`)) {
-      console.warn(`[workforce] ${problem}`);
-    }
-  }
-
   return seats;
 }
 

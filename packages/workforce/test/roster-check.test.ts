@@ -10,6 +10,7 @@ import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { workerConfigSchema } from "../src/worker-config";
 import { toHiredSeatRow } from "../src/roster/rows";
+import { workerDoor } from "./worker-door";
 
 const hires = vi.hoisted(() => ({ calls: [] as string[] }));
 
@@ -39,7 +40,7 @@ const desk = defineFlow({
   kind: "desk",
   cardinality: "collection",
   configSchema: workerConfigSchema().extend({ queue: z.string() }),
-  actions: { run: { inputSchema: z.object({}), block: noop } },
+  actions: { ...workerDoor, run: { inputSchema: z.object({}), block: noop } },
 });
 
 const kinds = { desk };
@@ -70,7 +71,7 @@ describe("checkHiredSeatRow", () => {
     try {
       hireWorkforce(
         [{ id: "acme.support.joe", declared: { flow: "desk-clerk" }, body: "", seatId: "support.joe" }],
-        { kinds },
+        { workerFlows: kinds },
       );
     } catch (error) {
       thrown = (error as Error).message;
@@ -108,7 +109,7 @@ describe("checkHiredSeatRow", () => {
     const reload = await reloadHiredSeats({
       stores: { resourceState: { getByPrefix: async () => rows } },
       orgIds: ["acme"],
-      kinds,
+      workerFlows: kinds,
     });
     expect(reload.seats.map((seat) => seat.id)).toEqual(["acme.support.ada"]);
     const expected = ["support.joe", "support.lin"].map((seatId) => {

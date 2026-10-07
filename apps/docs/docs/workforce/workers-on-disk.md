@@ -267,7 +267,7 @@ import { hireWorkforce } from "@flow-state-dev/workforce";
 import { customAgentFlow, intakeFlow } from "./flows";
 
 const seats = hireWorkforce(workers, {
-  kinds: { "custom-agent": customAgentFlow, intake: intakeFlow },
+  workerFlows: { "custom-agent": customAgentFlow, intake: intakeFlow },
 });
 
 flowRegistry.registerMany(seats);
@@ -276,9 +276,9 @@ seats.map((seat) => seat.id);
 // ["engineering.analyst", "engineering.lead", "support.intake"] — ordered by id
 ```
 
-Pass `defineFlow(...)` results directly as `kinds`. The call reads no files and builds no flow graph; your flows already exist, and a record only says which one a worker runs and how that copy is configured. It registers nothing either. You register what comes back.
+Pass `defineFlow(...)` results directly as `workerFlows`. The call reads no files and builds no flow graph; your flows already exist, and a record only says which one a worker runs and how that copy is configured. It registers nothing either. You register what comes back.
 
-`kinds` is optional. A record that names no `flow:` is hired into [the built-in worker kind](./built-in-worker.md), which ships with the framework, so one roster can mix workers running your flows with workers running that one.
+`workerFlows` is optional. A record that names no `flow:` is hired into [the built-in worker kind](./built-in-worker.md), which ships with the framework, so one roster can mix workers running your flows with workers running that one.
 
 ### The flow decides what a worker may declare
 
@@ -296,14 +296,14 @@ export const customAgentFlow = defineFlow({
     model: z.string().default("openai/gpt-5.4-mini"),
     tools: z.array(z.string()).default([]),
   }),
-  actions: { run: { inputSchema, block: runTurn } },
+  actions: { run: { inputSchema, block: runTurn, userMessage: (input) => input.message } },
 });
 
 export const intakeFlow = defineFlow({
   kind: "intake",
   cardinality: "collection",
   configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-  actions: { run: { inputSchema, block: greet } },
+  actions: { run: { inputSchema, block: greet, userMessage: (input) => input.message } },
 });
 ```
 
@@ -316,7 +316,7 @@ schema stays closed around all of them.
 You do not have to read any of it. A kind that composes the contract and never looks at the skills
 runs exactly as it would otherwise. A kind with nowhere to put them stops hiring: the seat factory
 hands every worker the same settings, and a schema that cannot take them refuses at startup, naming
-the worker and the line to add.
+the flow and the line to add.
 
 What hiring checks is what your schema accepts, not which function built it, so declaring those
 keys by hand works too. Composing is how you stay current: a key added to the contract reaches a
@@ -357,6 +357,83 @@ hireWorkforce refused 1 of 3 workers; nothing was hired:
 ```
 
 Settings are spelled the way the flow declares them.
+
+### Which flows can run workers
+
+A worker runs on a flow. Not every flow can run one: your installation says which flows are
+worker flows, and checks each one when it starts, before any worker runs. A worker that names a
+flow your installation didn't register is refused, by name.
+
+A worker flow does three things:
+
+- **It takes the standard configuration.** Its `configSchema` composes `workerConfigSchema()`,
+  as [above](#the-flow-decides-what-a-worker-may-declare). If you declare the keys yourself, each
+  must accept the value a worker brings: `seatId` is a string, for instance.
+- **It has a door.** Exactly one public action declares `userMessage` and takes `{ message }`,
+  so an app can talk to any worker without knowing which flow it runs on.
+- **What it shares names who wrote it.** A shared resource makes the writer a required field on
+  every entry. The startup check refuses a resource that declares that field some other way, such
+  as optional.
+
+The flows you pass in `workerFlows` are your installation's worker flows, with the built-in
+`agent` underneath. To keep a flow for the workers your installation's files define, so that a
+user can't put a worker of their own on it, mark the entry:
+
+```ts
+const workforce = hireWorkforce(workers, {
+  workerFlows: {
+    triage: triageFlow,
+    coordinator: { flow: coordinatorFlow, standardOnly: true },
+  },
+});
+```
+
+A worker that names no flow runs on `agent`, and the mark is checked after that. So if you keep
+`agent` for standard workers, a user's own worker that names no flow is refused, and the message
+names `agent`. Replacing `agent` with a flow of your own keeps the mark you wrote.
+
+Writing a library of worker flows? Check each one in your own tests, without an installation:
+
+```ts
+import { workerFlowProblems } from "@flow-state-dev/workforce";
+
+expect(workerFlowProblems("triage", triageFlow)).toEqual([]);
+```
+
+#### Where a worker's data lives
+
+Session, request and user state belong to one user. Org scope is shared with every member of the
+org: anything a flow writes there, every member's runs can read. A worker flow can write there
+when that is what it's built to do. Nothing stops it, because only the flow's author knows when
+org data is relevant.
+
+The built-in `agent` keeps its own working state, such as its skills, in its user's scope. Write
+your own worker flows the same way, and put what you mean to share in a shared resource.
+
+#### Sharing something from a worker
+
+To let a worker write something every member can read, declare a shared resource and write
+through the helper. The entry records the user, and the worker that wrote it:
+
+```ts
+import { sharedResource, writeShared } from "@flow-state-dev/workforce";
+
+const notes = sharedResource("team-notes/*", { text: z.string() });
+
+// inside a block that declares `resources: { notes }`
+await writeShared(ctx, "notes", "launch", { text: "Launch moved to Friday." });
+// stored: { text: "Launch moved to Friday.", writtenBy: { userId: "alice", workerId: "research.scout" } }
+```
+
+`writeShared` takes `writtenBy` from the session, never from its input, so whoever calls your
+flow can't sign as someone else. It records what your flow's code wrote: a block that writes the
+resource directly can set its own value. So `writtenBy` is as trustworthy as the worker flows your
+installation registers. An entry written without it is refused by the resource's own schema. A
+second write to the same key replaces the entry, which then names whoever wrote it last. Who may
+change an entry after it is written is not decided here; every member can read it.
+
+`writtenBy` is for display and audit. The framework never uses it to decide who may write an
+entry: that comes from the resource's scope and its ownership rules, never from this field.
 
 ### The body arrives as `instructions`
 
@@ -414,11 +491,11 @@ export const customAgentFlow = defineFlow({
     tools: z.array(z.string()).default([]),
   }),
   resources: { board: boardResource, ...catalog },
-  actions: { run: { inputSchema, block: runTurn } },
+  actions: { run: { inputSchema, block: runTurn, userMessage: (input) => input.message } },
 });
 
 const seats = hireWorkforce(workers, {
-  kinds: { "custom-agent": customAgentFlow },
+  workerFlows: { "custom-agent": customAgentFlow },
   documents: catalog,
 });
 ```
@@ -445,7 +522,7 @@ Every problem here is a startup misconfiguration, so every problem throws. They 
 A record is refused when it:
 
 - declares a `flow` that is present but empty, or only whitespace — that names no kind. Leave the key out entirely to get the built-in `agent` kind;
-- names a kind that was not passed in `kinds`; the message lists the kinds that were, including `agent`;
+- names a kind that was not passed in `workerFlows`; the message lists the kinds that were, including `agent`;
 - declares a setting its flow never declared, or omits one its flow requires;
 - names a flow kind whose schema will not take what hiring imposes, leaving it nowhere to receive a seat's skills and instructions — composing `workerConfigSchema()` is the fix. That one refuses the whole roster, not just this record;
 - declares `instructions:` and carries a body;
@@ -458,11 +535,18 @@ A record is refused when it:
 - reaches a document it never named, because one of its kind's blocks declares that document and a block's declaration merges back in after the worker's narrowed list is applied. Keep the document at flow level and let the block reach it there, or grant it to the worker deliberately;
 - shares an id with another record in the same call, which is two workers claiming one address.
 
-`kinds` itself is checked too. A flow passed under a key that is not its own `kind` is refused.
+`workerFlows` itself is checked too, once per flow, when the installation starts. A flow is
+refused when it is passed under a key that is not its own `kind`, has no door or more than one,
+doesn't accept a worker's configuration, or declares `writtenBy` some other way than a shared
+resource does. One run names every problem with every flow, and nothing is hired.
+
+A worker is refused when it names a flow kept for standard workers and isn't one. A stored
+worker refused this way is skipped at startup and reported; it stays as it is, and runs again if
+the mark is removed.
 
 ## When a worker needs more than settings
 
-A `WORKER.md` is data: a description, the flow kind the worker runs, and that kind's settings. Behavior lives in the flow it names. So a worker that has to *do* something no kind on your roster does is a flow you define in your app, pass to `hireWorkforce` in `kinds`, and name in that worker's `flow:`.
+A `WORKER.md` is data: a description, the flow kind the worker runs, and that kind's settings. Behavior lives in the flow it names. So a worker that has to *do* something no kind on your roster does is a flow you define in your app, pass to `hireWorkforce` in `workerFlows`, and name in that worker's `flow:`.
 
 Say the engineering team wants a worker that routes an incoming request in code, rather than asking a model where it should go. That is a flow kind of its own:
 
@@ -472,7 +556,7 @@ import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { answer, escalate } from "./triage-blocks";
 
-const requestSchema = z.object({ subject: z.string(), priority: z.number() });
+const requestSchema = z.object({ message: z.string(), priority: z.number().default(0) });
 
 // The decision is the flow's graph: a router block picks the branch from the
 // request itself. `answer` is a generator; `escalate` hands off to a person.
@@ -495,7 +579,7 @@ export const requestTriageFlow = defineFlow({
     model: z.string().default("openai/gpt-5.4-mini"),
     escalateAbove: z.number().default(3),
   }),
-  actions: { run: { inputSchema: requestSchema, block: triage } },
+  actions: { run: { inputSchema: requestSchema, block: triage, userMessage: (input) => input.message } },
 });
 ```
 
@@ -512,13 +596,13 @@ Answer directly when the request is a question about a feature that already
 shipped. Keep it to a paragraph, and name the page you took the answer from.
 ```
 
-And at startup, the new kind goes in `kinds` beside the ones the rest of the roster runs:
+And at startup, the new kind goes in `workerFlows` beside the ones the rest of the roster runs:
 
 ```ts
 import { hireWorkforce } from "@flow-state-dev/workforce";
 
 const seats = hireWorkforce(workers, {
-  kinds: { "custom-agent": customAgentFlow, "request-triage": requestTriageFlow },
+  workerFlows: { "custom-agent": customAgentFlow, "request-triage": requestTriageFlow },
 });
 ```
 
@@ -526,7 +610,7 @@ const seats = hireWorkforce(workers, {
 
 ## Kinds and blocks from files
 
-The snippet above names `request-triage` twice: once in the flow, once in the `kinds` map at startup. Add a third kind and you edit two places. Forget the second, and the app boots and then refuses every worker that named it.
+The snippet above names `request-triage` twice: once in the flow, once in the `workerFlows` map at startup. Add a third kind and you edit two places. Forget the second, and the app boots and then refuses every worker that named it.
 
 There is a file convention for the code half too. Put a flow kind in `workforce/flows/workers/`, a block in a `blocks/` folder, and run `fsdev gen`: it writes a module of static imports that your app passes straight to `hireWorkforce`. Adding a kind becomes adding a file.
 

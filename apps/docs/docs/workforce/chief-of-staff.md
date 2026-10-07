@@ -61,10 +61,10 @@ import { instanceAt, kindAt, registerSeat, releaseSeat } from "./registry-access
 import { roster } from "./roster";
 
 // Typed as the whole map, so the `agent` entry can be added below.
-export const kinds: NonNullable<HireOptions["kinds"]> = { "desk-clerk": deskClerkFlow, coder: coderFlow };
+export const kinds: NonNullable<HireOptions["workerFlows"]> = { "desk-clerk": deskClerkFlow, coder: coderFlow };
 
 const seatHire = createSeatHireCapability({
-  kinds,
+  workerFlows: kinds,
   register: registerSeat,
   unregister: releaseSeat,
   kindAt,
@@ -103,7 +103,7 @@ The capabilities on the kind each add one part:
 Build in this order:
 
 1. Finish any edits or additions to the mailbox records.
-2. Build the `agent` kind above, which `hireWorkforce(workers, { kinds })` hires the chief of staff onto.
+2. Build the `agent` kind above, which `hireWorkforce(workers, { workerFlows: kinds })` hires the chief of staff onto.
 3. Build the mailbox kind with `wakeMemberSeats(seats)`. It comes after `hireWorkforce`, because it takes the hired workers.
 4. Call `mailboxInstances` last.
 

@@ -80,6 +80,18 @@ export const ROOM_ENTRY = "onRoomPost";
 export const DRAIN_ENTRY = "drain";
 
 /**
+ * The seat's door: the action a person's own line in the EM's session
+ * reaches. Every worker flow has exactly one.
+ *
+ * It reads the line the way a post is read — `<issue-slug>: <what the feature
+ * is>` — and files that feature, or says why it filed nothing. Public, unlike
+ * {@link POST_ENTRY}: this is the person writing to the EM in its own session,
+ * not a mailbox delivery, so no address map stands behind it, and it carries
+ * the request's own principal like {@link FILE_ENTRY} does.
+ */
+export const MESSAGE_ENTRY = "message";
+
+/**
  * What filing one feature takes.
  *
  * `phase` is not an input: this board runs one phase, and letting a caller pick
@@ -273,33 +285,65 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
    * this seat, so the authority is the address map, which is the app's and not
    * caller-controllable (BP-031). The field is carried for the record.
    */
+  const lineFiledSchema = z.object({
+    filed: z.boolean(),
+    taskId: z.string().nullable(),
+    /** Why nothing was filed. Absent when a row was. */
+    reason: z.string().optional(),
+  });
+
+  /**
+   * Read one line as `<issue-slug>: <what the feature is>` and file it.
+   * Shared by the post entry and the door, so a line files the same row
+   * whichever way it arrived.
+   */
+  const fileFromLine = async (line: string, ctx: BlockContext): Promise<z.infer<typeof lineFiledSchema>> => {
+    const match = POST_SHAPE.exec(line);
+    if (match === null) {
+      return {
+        filed: false,
+        taskId: null,
+        reason:
+          `the line does not name a feature; this seat files from ` +
+          `"<issue-slug>: <what the feature is>"`,
+      };
+    }
+    const filed = await addRow((ctx as { cap: Record<string, any> }).cap[BOARD_ID], {
+      issue: match[1]!,
+      goal: match[2]!.trim(),
+      maxAttempts: fileInputSchema.shape.maxAttempts.parse(undefined),
+    });
+    return { filed: !filed.existed, taskId: filed.taskId };
+  };
+
   const fileFromPost = handler({
     name: "devforce-em-file-from-post",
     inputSchema: postInputSchema,
-    outputSchema: z.object({
-      filed: z.boolean(),
-      taskId: z.string().nullable(),
-      /** Why nothing was filed. Absent when a row was. */
-      reason: z.string().optional(),
-    }),
+    outputSchema: lineFiledSchema,
     uses: [board.capability],
-    execute: async (input: z.infer<typeof postInputSchema>, ctx: BlockContext) => {
-      const match = POST_SHAPE.exec(input.body);
-      if (match === null) {
-        return {
-          filed: false,
-          taskId: null,
-          reason:
-            `the line does not name a feature; this mailbox files from ` +
-            `"<issue-slug>: <what the feature is>"`,
-        };
-      }
-      const filed = await addRow((ctx as { cap: Record<string, any> }).cap[BOARD_ID], {
-        issue: match[1]!,
-        goal: match[2]!.trim(),
-        maxAttempts: fileInputSchema.shape.maxAttempts.parse(undefined),
-      });
-      return { filed: !filed.existed, taskId: filed.taskId };
+    execute: async (input: z.infer<typeof postInputSchema>, ctx: BlockContext) => await fileFromLine(input.body, ctx),
+  });
+
+  /**
+   * The door: a person's line, read and answered in the EM's own session.
+   * Files nothing it can't read, and says so; never runs the board, which
+   * stays the drain's, as it is for a post.
+   */
+  const fileFromMessage = handler({
+    name: "devforce-em-file-from-message",
+    inputSchema: z.object({ message: z.string() }),
+    outputSchema: lineFiledSchema,
+    uses: [board.capability],
+    execute: async (input: { message: string }, ctx: BlockContext) => {
+      const result = await fileFromLine(input.message, ctx);
+      ctx.emit.message(
+        result.reason !== undefined
+          ? `Nothing filed: ${result.reason}.`
+          : result.filed
+            ? `Filed ${result.taskId} on the board.`
+            : `${result.taskId} is already on the board.`,
+      );
+      return result;
     },
   });
 
@@ -422,6 +466,12 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       [INSPECT_ENTRY]: {
         block: readOwnFacts,
         description: "Read what this seat can see of its own configuration. Writes nothing.",
+      },
+      [MESSAGE_ENTRY]: {
+        block: fileFromMessage,
+        inputSchema: z.object({ message: z.string() }),
+        userMessage: (input: { message: string }) => input.message,
+        description: "A person's line: `<issue-slug>: <what the feature is>` files that feature.",
       },
     },
     internal: {

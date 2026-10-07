@@ -170,7 +170,7 @@ describe("V3 · a specialist files what needs a person", () => {
     const { hireWorkforce } = await import("@flow-state-dev/workforce");
     const [outsider] = hireWorkforce(
       [{ id: "support.bo", declared: { tools: ["escalate"] }, body: "Answer questions." }],
-      { kinds: kitchenSinkKinds },
+      { workerFlows: kitchenSinkKinds },
     );
     app.flowstate.register(outsider as FlowInstance);
     const mark = token();

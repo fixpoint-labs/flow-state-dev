@@ -44,6 +44,7 @@ import { workerConfigSchema, type MailboxBoardCollection } from "@flow-state-dev
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
 import { pieceInputSchema } from "../piece.mts";
+import { hearingDoor } from "../hearing-door.mts";
 
 /** The kind every worker `WORKER.md` names in its `flow:` line. **Pinned** — the basename must match. */
 export const WORKER_KIND = "worker";
@@ -263,6 +264,7 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
     cardinality: "collection",
     configSchema: workerConfigSchema().extend({ answersFor: z.string().min(1) }),
     actions: {
+      ...hearingDoor,
       [DRAIN_ENTRY]: {
         block: board.drain,
         description: "Work this seat's share of the mailbox's board.",

@@ -25,13 +25,13 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
   return { declared: {}, body: "", ...over };
 }
 
-function hire(manifests: WorkerManifest[], kinds: HireOptions["kinds"] = {}): FlowInstance[] {
-  return hireWorkforce(manifests, { kinds });
+function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): FlowInstance[] {
+  return hireWorkforce(manifests, { workerFlows: kinds });
 }
 
-function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["kinds"] = {}): string {
+function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): string {
   try {
-    hireWorkforce(manifests, { kinds });
+    hireWorkforce(manifests, { workerFlows: kinds });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -410,6 +410,7 @@ describe("replacing the built-in agent kind", () => {
     actions: {
       run: {
         inputSchema: z.object({ message: z.string() }),
+        userMessage: (input: { message: string }) => input.message,
         block: handler({
           name: "their-answer",
           inputSchema: z.object({ message: z.string() }),

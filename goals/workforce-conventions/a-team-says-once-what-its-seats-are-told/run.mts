@@ -45,7 +45,7 @@ stripIntentOverrides();
 const fixture = loadFixture<Fixture>(import.meta.url);
 const allSeats = [...fixture.withLayer.seats, ...fixture.withoutLayer.seats];
 
-const kinds: HireOptions["kinds"] = { [TRIAGE_KIND]: triageFlow as never };
+const kinds: HireOptions["workerFlows"] = { [TRIAGE_KIND]: triageFlow as never };
 
 const tree = (name: string): string => join(fixtureDir(import.meta.url), name);
 
@@ -137,7 +137,7 @@ await runGoal(async () => {
     );
   }
 
-  const seats = hireWorkforce(workers, { kinds });
+  const seats = hireWorkforce(workers, { workerFlows: kinds });
   if (seats.length !== allSeats.length) {
     failures.push(`hired ${seats.length} seat(s), wanted ${allSeats.length}`);
   }

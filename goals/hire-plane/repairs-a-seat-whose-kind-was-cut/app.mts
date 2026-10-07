@@ -56,12 +56,29 @@ const answer = handler({
   execute: (input, ctx) => ({ answeredAs: (ctx.flow as unknown as { id: string }).id, tag: input.tag }),
 });
 
+/** Every worker flow has one door: this fixture's answers by saying what it heard. */
+const workerDoor = {
+  message: {
+    inputSchema: z.object({ message: z.string() }),
+    userMessage: (input: { message: string }) => input.message,
+    block: handler({
+      name: "fixture-door",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({ heard: z.string() }),
+      execute: (input, ctx) => {
+        ctx.emit.message(`Heard: ${input.message}`);
+        return { heard: input.message };
+      },
+    }),
+  },
+};
+
 function seatKind(kind: string, setting: string, required: boolean) {
   return defineFlow({
     kind,
     cardinality: "collection",
     configSchema: workerConfigSchema().extend({ [setting]: required ? z.string() : z.string().optional() }),
-    actions: { answer: { inputSchema: tagInput, block: answer } },
+    actions: { answer: { inputSchema: tagInput, block: answer }, ...workerDoor },
   } as never);
 }
 
@@ -128,7 +145,7 @@ export async function openApp(options: { fixture: Fixture; release: Release; dbF
   const register = (seat: FlowInstance, pin: { orgId: string; userId?: string }) => state.register(seat, { pin });
   const unregister = (id: string) => state.unregister(id);
   const blocks = createSeatHireBlocks({
-    kinds,
+    workerFlows: kinds,
     register,
     unregister,
     kindAt: (id) => registry?.get(id)?.kind,
@@ -171,7 +188,7 @@ export async function openApp(options: { fixture: Fixture; release: Release; dbF
   registry = runtime.registry as never;
 
   // The boot: the stored roster read back, each seat registered under its own pin.
-  const reload = await reloadHiredSeats({ stores: runtime.stores, orgIds: [fixture.orgId], kinds });
+  const reload = await reloadHiredSeats({ stores: runtime.stores, orgIds: [fixture.orgId], workerFlows: kinds });
   for (const seat of reload.seats) {
     state.register(seat, { pin: (seat as { ownerPin?: { orgId: string } }).ownerPin ?? { orgId: fixture.orgId } });
   }

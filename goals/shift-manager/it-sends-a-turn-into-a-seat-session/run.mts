@@ -25,7 +25,7 @@
  *                the stored row
  *   picker       `@coder` asks which of the coder's two tasks, and the line
  *                reaches the one chosen and not the other
- *   no door      Inbox's reply to DevTeam's EM ask is disabled, naming the seat
+ *   em door      Inbox's reply to DevTeam's EM ask lands in the EM's session, and the EM answers it
  *   heard        Inbox's reply to the fixture seat's ask is in the ask's
  *                session, the seat says it heard it, and Inbox then draws it
  *                under the ask as the person's reply
@@ -54,6 +54,7 @@ import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { mailboxBoard } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { LAB_ORG_ID } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { seatSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -448,16 +449,19 @@ await runGoal(async () => {
       if (await api.holds(other.run!.sessionId, "user", turn.line)) fail("picker", `the line also reached ${other.id}, which was not chosen`);
     });
 
-    // Inbox, on DevTeam's EM ask: a seat whose kind takes no message.
-    await leg("Inbox, no door", async (fail) => {
+    // Inbox, on DevTeam's EM ask: every worker flow has a door, the EM's too. A
+    // line that names no feature files nothing, and the EM says so in its session.
+    await leg("Inbox, EM door", async (fail) => {
       await open(page, served.devteam.origin, "/inbox");
       await page.getByTestId("inbox-item").first().click();
-      const input = page.getByTestId("inbox-reply-input");
-      await input.waitFor();
-      if (!(await input.isDisabled())) fail("no door", "the reply box is enabled on a seat whose kind takes no message");
-      const line = (await page.getByTestId("inbox-reply-blocked").textContent().catch(() => null)) ?? "";
-      if (!line.includes(em.id)) fail("no door", `the reply box doesn't say why, naming ${em.id}: "${line}"`);
-      evidence.push(`Inbox on ${em.id}: reply disabled, "${line}"`);
+      const emSession = seatSessionId(em.id);
+      const line = token("em");
+      await page.getByTestId("inbox-reply-input").fill(line);
+      const sent = await sendAndWatch(page, "inbox-reply", () => api.holds(emSession, "user", line));
+      if (sent.state !== "delivered") fail("em door", `the reply never read delivered: ${sent.state}${sent.error === null ? "" : `, "${sent.error}"`}`);
+      if (!(await api.holds(emSession, "user", line))) fail("em door", `${emSession} holds no user item with the reply`);
+      if (!(await api.holds(emSession, "assistant", "Nothing filed"))) fail("em door", `${em.id} never answered the line in ${emSession}`);
+      evidence.push(`Inbox reply on ${em.id}: ${sent.state}, in ${emSession}, answered`);
     });
 
     // ---- the fixture seat ----------------------------------------------------

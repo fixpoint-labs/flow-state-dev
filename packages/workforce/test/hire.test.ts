@@ -14,6 +14,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { hireWorkforce, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 const inputSchema = z.object({ note: z.string() });
 
@@ -41,7 +42,7 @@ const customAgentFlow = defineFlow({
     model: z.string().default("openai/gpt-5.4-mini"),
     tools: z.array(z.string()).default([])
   }),
-  actions: { run: { inputSchema, block: work } }
+  actions: { run: { inputSchema, block: work }, ...workerDoor }
 });
 
 /**
@@ -52,21 +53,22 @@ const intakeFlow = defineFlow({
   kind: "intake",
   cardinality: "collection",
   configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-  actions: { run: { inputSchema, block: work } }
+  actions: { run: { inputSchema, block: work }, ...workerDoor }
 });
 
 /**
  * The kind whose schema cannot accept the imposed bag — **kept that way on purpose.**
  *
  * It declares no settings at all, which is the thinnest a kind can be and the
- * furthest thing from an opt-in. A bag reaches it like every other kind, so it
- * refuses, and its author is told which door to open. This is the upgrade cost
- * the design accepts, and the fixture that pins it.
+ * furthest thing from an opt-in. It is refused when it is registered, before
+ * any worker is hired, and its author is told what to compose. This is the
+ * upgrade cost the design accepts, and the fixture that pins it. Kept off the
+ * shared map below: one flow missing the contract refuses every hire.
  */
 const doorFlow = defineFlow({
   kind: "door",
   cardinality: "collection",
-  actions: { run: { inputSchema, block: work } }
+  actions: { run: { inputSchema, block: work }, ...workerDoor }
 });
 
 /**
@@ -83,13 +85,12 @@ const staleDeskFlow = defineFlow({
     desk: z.string().default("front"),
     persona: z.string().optional()
   }),
-  actions: { run: { inputSchema, block: work } }
+  actions: { run: { inputSchema, block: work }, ...workerDoor }
 });
 
-const kinds: HireOptions["kinds"] = {
+const kinds: HireOptions["workerFlows"] = {
   "custom-agent": customAgentFlow,
   intake: intakeFlow,
-  door: doorFlow,
   "stale-desk": staleDeskFlow
 };
 
@@ -116,17 +117,17 @@ const intake = record({
 });
 
 function hireOne(manifest: WorkerManifest): FlowInstance {
-  const [seat] = hireWorkforce([manifest], { kinds });
+  const [seat] = hireWorkforce([manifest], { workerFlows: kinds });
   return seat!;
 }
 
 function refusalOf(
   manifests: WorkerManifest[],
-  withKinds: HireOptions["kinds"] = kinds
+  withKinds: HireOptions["workerFlows"] = kinds
 ): string {
   let seats: FlowInstance[] | undefined;
   try {
-    seats = hireWorkforce(manifests, { kinds: withKinds });
+    seats = hireWorkforce(manifests, { workerFlows: withKinds });
   } catch (error) {
     expect(seats).toBeUndefined();
     return error instanceof Error ? error.message : String(error);
@@ -137,14 +138,14 @@ function refusalOf(
 describe("hireWorkforce", () => {
   // 1
   it("mints one copy per record, carrying its own id, in id order", () => {
-    const seats = hireWorkforce([lead, intake], { kinds });
+    const seats = hireWorkforce([lead, intake], { workerFlows: kinds });
     expect(seats.map((s) => s.id)).toEqual(["engineering.intake", "engineering.lead"]);
     expect(seats.map((s) => s.kind)).toEqual(["intake", "custom-agent"]);
   });
 
   // 2
   it("gives each copy its own settings, frozen, with no trace of its sibling's", () => {
-    const seats = hireWorkforce([lead, intake], { kinds });
+    const seats = hireWorkforce([lead, intake], { workerFlows: kinds });
     const [thin, opinionated] = seats as [FlowInstance, FlowInstance];
 
     expect(opinionated.config).toMatchObject({
@@ -229,8 +230,11 @@ describe("hireWorkforce", () => {
   // kind declaring no settings at all used to hire this record by being handed
   // no bag — admission skipped rather than passed. There is no such record now.
   it("refuses the thinnest possible record on a kind that never composed the contract", () => {
-    const message = refusalOf([record({ id: "engineering.door", declared: { flow: "door" } })]);
-    expect(message).toContain('worker "engineering.door"');
+    const message = refusalOf([record({ id: "engineering.door", declared: { flow: "door" } })], {
+      ...kinds,
+      door: doorFlow
+    });
+    expect(message).toContain('worker flow "door"');
     expect(message).toContain("workerConfigSchema()");
   });
 
@@ -249,10 +253,11 @@ describe("hireWorkforce", () => {
     const greeter = hireOne(record({ ...intake, body: "You greet people." }));
     expect(greeter.config).toMatchObject({ instructions: "You greet people." });
 
-    const message = refusalOf([
-      record({ id: "engineering.door", declared: { flow: "door" }, body: "You greet people." })
-    ]);
-    expect(message).toContain('worker "engineering.door"');
+    const message = refusalOf(
+      [record({ id: "engineering.door", declared: { flow: "door" }, body: "You greet people." })],
+      { ...kinds, door: doorFlow }
+    );
+    expect(message).toContain('worker flow "door"');
     expect(message).toContain("workerConfigSchema()");
   });
 
@@ -274,19 +279,19 @@ describe("hireWorkforce", () => {
   });
 
   // 6 (the mis-keyed map) — a flow filed under another kind's name would mint
-  // and register fine, and then run the wrong worker's graph.
+  // and register fine, and then run the wrong worker's graph. Refused when the
+  // flows are registered, before any worker.
   it("refuses a flow passed under a key that is not its own kind", () => {
     let seats: FlowInstance[] | undefined;
     let message = "";
     try {
-      seats = hireWorkforce([lead], { kinds: { ...kinds, "custom-agent": intakeFlow } });
+      seats = hireWorkforce([lead], { workerFlows: { ...kinds, "custom-agent": intakeFlow } });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
     expect(seats).toBeUndefined();
-    expect(message).toContain('worker "engineering.lead"');
-    expect(message).toContain('"custom-agent"');
-    expect(message).toContain('"intake"');
+    expect(message).toContain('worker flow "custom-agent"');
+    expect(message).toContain('its kind is "intake"');
   });
 
   // 7 — a record with no `flow:` no longer refuses; it hires the built-in
@@ -357,7 +362,7 @@ describe("hireWorkforce", () => {
     let seats: FlowInstance[] | undefined;
     expect(() => {
       seats = hireWorkforce([lead, intake, record({ id: "engineering.ghost", declared: { flow: "   " } })], {
-        kinds
+        workerFlows: kinds
       });
     }).toThrow();
     expect(seats).toBeUndefined();
@@ -372,7 +377,7 @@ describe("hireWorkforce", () => {
 
   // 12
   it("returns an empty roster for empty input", () => {
-    expect(hireWorkforce([], { kinds })).toEqual([]);
+    expect(hireWorkforce([], { workerFlows: kinds })).toEqual([]);
   });
 
   // 13
@@ -477,10 +482,11 @@ describe("hireWorkforce", () => {
         // `seatSkills`, so it has to keep accepting every key the factory
         // imposes as the contract grows.
         seatTools: z.array(z.any()).optional(),
+        seatPackages: z.array(z.any()).optional(),
         seatId: z.string().optional(),
         retries: z.number().default(3)
       }),
-      actions: { run: { inputSchema, block: work } }
+      actions: { run: { inputSchema, block: work }, ...workerDoor }
     });
     const withKind = { ...kinds, "optional-no-default": optionalNoDefault as never };
 
@@ -488,7 +494,7 @@ describe("hireWorkforce", () => {
     // for a kind that is genuinely missing the door.
     const [ok] = hireWorkforce(
       [record({ id: "engineering.ok", declared: { flow: "optional-no-default" }, body: "Work." })],
-      { kinds: withKind }
+      { workerFlows: withKind }
     );
     expect(ok!.config).toMatchObject({ instructions: "Work.", seatSkills: [] });
 
@@ -502,7 +508,7 @@ describe("hireWorkforce", () => {
             body: "Work."
           })
         ],
-        { kinds: withKind }
+        { workerFlows: withKind }
       );
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
@@ -513,34 +519,32 @@ describe("hireWorkforce", () => {
     expect(message).not.toContain("workerConfigSchema()");
   });
 
-  // BR-2's other half: a kind with no contract is a ROSTER problem, collected
-  // alongside the others so one run names all of them, not thrown on its own.
-  it("reports a missing contract alongside the roster's other problems", () => {
-    const message = refusalOf([
-      record({ id: "engineering.door", declared: { flow: "door" } }),
-      record({ id: "engineering.scribe", declared: { flow: "note-taker" } })
-    ]);
-    expect(message).toContain("refused 2 of 2 workers");
-    expect(message).toContain('worker "engineering.door"');
+  // A kind with no contract is the installation's problem, not one worker's:
+  // it refuses before any record is read, so the roster's own problems wait
+  // for the next run.
+  it("refuses a flow missing the contract before reading any record", () => {
+    const message = refusalOf(
+      [
+        record({ id: "engineering.door", declared: { flow: "door" } }),
+        record({ id: "engineering.scribe", declared: { flow: "note-taker" } })
+      ],
+      { ...kinds, door: doorFlow }
+    );
+    expect(message).toContain('refused 1 worker flow ("door")');
     expect(message).toContain("workerConfigSchema()");
-    expect(message).toContain('worker "engineering.scribe"');
+    expect(message).not.toContain('worker "engineering.scribe"');
   });
 
-  // The hint's whole job is to name the key an author has to add, and the case
-  // it is most needed for is the NEWEST key — the one nobody has heard of yet.
-  // A hand-rolled kind that declared the older three refuses either way, so
-  // asserting on the refusal proves nothing: what is asserted is the hint's
-  // CONTENT.
-  //
-  // This is the check that keeps the hint's key list from drifting behind the
-  // contract. It is written against whichever key the contract declares last,
-  // read off the schema rather than spelled here, so the fifth key inherits it.
-  it("names the newest contract key in the hint when a hand-rolled kind is missing it", () => {
+  // The refusal's whole job is to name the key an author has to add, and the
+  // case it is most needed for is the NEWEST key — the one nobody has heard of
+  // yet. Written against whichever key the contract declares last, read off the
+  // schema rather than spelled here, so the next key inherits it.
+  it("names the newest contract key when a hand-rolled kind is missing it", () => {
     const declaredKeys = Object.keys(workerConfigSchema().shape);
     const newest = declaredKeys[declaredKeys.length - 1]!;
 
     // Declares every contract key EXCEPT the newest — so the only thing wrong
-    // with this kind is the one thing the hint has to be able to say.
+    // with this kind is the one thing the refusal has to be able to say.
     const shape: Record<string, z.ZodTypeAny> = { retries: z.number().default(3) };
     for (const key of declaredKeys) {
       if (key !== newest) shape[key] = z.any().optional();
@@ -549,41 +553,12 @@ describe("hireWorkforce", () => {
       kind: "missing-newest",
       cardinality: "collection",
       configSchema: z.object(shape),
-      actions: { run: { inputSchema, block: work } }
+      actions: { run: { inputSchema, block: work }, ...workerDoor }
     });
 
-    // Some contract keys are imposed only on a condition — a team that wrote
-    // instructions, a package the seat holds — so the record meets every one
-    // of them: the newest key has to actually arrive for its absence from the
-    // kind to be what refuses.
-    const message = refusalOf(
-      [
-        record({
-          id: "engineering.stale",
-          declared: { flow: "missing-newest" },
-          body: "Work.",
-          teamInstructions: "Team.",
-          packages: [
-            {
-              name: "kit",
-              path: "teams/engineering/workers/stale/packages/kit",
-              level: "worker",
-              team: "engineering",
-              worker: "engineering.stale",
-              description: "A kit.",
-              instructions: "Use the kit."
-            }
-          ]
-        })
-      ],
-      { ...kinds, "missing-newest": missingNewest as never }
-    );
-
-    // The refusal itself fires whatever the hint says — that half is the
-    // control, and it is why the hint's own text is what is asserted next.
-    expect(message).toContain(`"${newest}" is not a declared setting`);
-    // The hint, naming the key and the fix.
-    expect(message).toContain(`\`${newest}\``);
+    const message = refusalOf([], { ...kinds, "missing-newest": missingNewest as never });
+    expect(message).toContain('worker flow "missing-newest"');
+    expect(message).toContain(`doesn't accept \`${newest}\``);
     expect(message).toContain("workerConfigSchema()");
   });
 

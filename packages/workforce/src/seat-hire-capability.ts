@@ -103,7 +103,7 @@ const ASK_VERBS: readonly SeatHireAskVerb[] = ["hire", "fire"];
 /**
  * Build the seat-hire capability.
  *
- * @param options The kinds map, register/unregister, the optional allowlist /
+ * @param options The worker flows, register/unregister, the optional allowlist /
  *   board ids, and `askBefore`. Org is never an option: it comes from the
  *   principal at the call.
  * @returns A capability named `seat-hire`, contributing catalog `hire`,

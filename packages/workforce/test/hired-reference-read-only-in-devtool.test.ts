@@ -29,6 +29,7 @@ import { referencesFromDocs } from "../src/references-from-docs";
 import { resourcesFromDocs } from "../src/resources-from-docs";
 import { hireWorkforce } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 const KIND = "desk";
 const SEAT = "engineering.ada";
@@ -72,7 +73,7 @@ function kindWith(resources: DeclaredResources) {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { ...resources } as DeclaredResources,
-    actions: { run: { inputSchema: z.object({}), block: work } },
+    actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } },
   });
 }
 
@@ -118,7 +119,7 @@ async function devtoolResources(root: string): Promise<SnapshotEntry[]> {
 
   const [seat] = hireWorkforce(
     [{ id: SEAT, declared: { flow: KIND, description: SEAT }, body: "" }],
-    { kinds: { [KIND]: kindWith({ ...documents, ...references }) as never }, documents, references },
+    { workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never }, documents, references },
   );
 
   const stores = createInMemoryStores();

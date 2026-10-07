@@ -147,7 +147,7 @@ async function boot(stores = inMemoryStores(), options: { hostResolver?: boolean
     const { seats, problems } = await reloadHiredSeats({
       stores: runtime.stores,
       orgIds: [KITCHEN_SINK_ORG_ID],
-      kinds: kitchenSinkKinds,
+      workerFlows: kitchenSinkKinds,
     });
     expect(problems).toEqual([]);
     for (const seat of seats) workforceRegistrar.registerFromRoster(seat, { pin: seat.ownerPin });

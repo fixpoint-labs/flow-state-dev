@@ -211,7 +211,7 @@ const hire = handler({
     if ("problem" in record) {
       throw new Error(record.problem);
     }
-    const [seat] = hireWorkforce([record.manifest], { kinds: kitchenSinkKinds });
+    const [seat] = hireWorkforce([record.manifest], { workerFlows: kitchenSinkKinds });
     if (seat === undefined) {
       throw new Error(`"${address}" could not be hired, and no reason was given.`);
     }

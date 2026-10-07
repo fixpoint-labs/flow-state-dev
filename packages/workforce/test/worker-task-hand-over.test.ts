@@ -36,6 +36,7 @@ import {
   type WorkerLookup
 } from "../src/index";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 const ORG = DEFAULT_ORG_ID;
 const USER_ID = "u_coordinator";
@@ -53,7 +54,7 @@ const deskClerk = defineFlow({
   kind: "desk-clerk",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
-  actions: {
+  actions: { ...workerDoor,
     answer: {
       inputSchema: z.object({ note: z.string() }),
       block: handler({
@@ -83,11 +84,11 @@ describe("which worker a name on a task means", () => {
         toHiredSeatRow({ seatId, flow, instructions: "Hired.", owningOrgId: orgId, ownerUserId })
       );
       if (!("manifest" in bound)) throw new Error(bound.problem);
-      const [seat] = hireWorkforce([bound.manifest], { kinds });
+      const [seat] = hireWorkforce([bound.manifest], { workerFlows: kinds });
       add(seat!);
       return seat!;
     };
-    const [declared] = hireWorkforce([{ id: "eng.auditor", declared: {}, body: "You audit." }], { kinds });
+    const [declared] = hireWorkforce([{ id: "eng.auditor", declared: {}, body: "You audit." }], { workerFlows: kinds });
     add(declared!);
     const lookup = createWorkerLookup({ instanceAt: (id) => flows.get(id), declared: ["eng.auditor"] });
     return { flows, hire, lookup };
@@ -160,7 +161,7 @@ describe("which worker a name on a task means", () => {
     const flows = new Map<string, FlowInstance>();
     const declaredIds: string[] = [];
     const lookup = createWorkerLookup({ instanceAt: (id) => flows.get(id), declared: () => declaredIds });
-    const [declared] = hireWorkforce([{ id: "eng.auditor", declared: {}, body: "You audit." }], { kinds });
+    const [declared] = hireWorkforce([{ id: "eng.auditor", declared: {}, body: "You audit." }], { workerFlows: kinds });
     flows.set(declared!.id, declared!);
     expect(lookup.find("eng.auditor", run("acme")).found).toBe(false);
     // Declared after the lookup was built, as a host that hires later does.
@@ -205,7 +206,7 @@ describe("a task filed for a worker by name, on a real host", () => {
     const heard: string[] = [];
     const agent = defineAgentWorkerFlow({ taskLists: [list.id] });
     const kinds = { agent } as never;
-    const [auditor] = hireWorkforce([{ id: "eng.auditor", declared: {}, body: "You audit." }], { kinds });
+    const [auditor] = hireWorkforce([{ id: "eng.auditor", declared: {}, body: "You audit." }], { workerFlows: kinds });
     const [mailbox] = mailboxInstances(roster, {
       kinds: {
         mailbox: defineMailboxFlow({
@@ -280,7 +281,7 @@ describe("a task filed for a worker by name, on a real host", () => {
         toHiredSeatRow({ seatId, flow: "agent", instructions: "Hired.", owningOrgId: ORG, ownerUserId: null })
       );
       if (!("manifest" in bound)) throw new Error(bound.problem);
-      const [seat] = hireWorkforce([bound.manifest], { kinds });
+      const [seat] = hireWorkforce([bound.manifest], { workerFlows: kinds });
       state.register(seat!, { pin: { orgId: ORG } });
       return seat!;
     };

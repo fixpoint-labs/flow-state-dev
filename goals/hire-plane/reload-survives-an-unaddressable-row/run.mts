@@ -22,6 +22,23 @@ import {
 import { z } from "zod";
 import { loadFixture, runGoal } from "../../lib/index.mts";
 
+/** Every worker flow has one door: this fixture's answers by saying what it heard. */
+const workerDoor = {
+  message: {
+    inputSchema: z.object({ message: z.string() }),
+    userMessage: (input: { message: string }) => input.message,
+    block: handler({
+      name: "fixture-door",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({ heard: z.string() }),
+      execute: (input, ctx) => {
+        ctx.emit.message(`Heard: ${input.message}`);
+        return { heard: input.message };
+      },
+    }),
+  },
+};
+
 type Fixture = {
   namedOrg: string;
   namedUser: string;
@@ -97,7 +114,7 @@ const clerk = defineFlow({
   kind: "clerk",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
-  actions: { answer: { inputSchema: tagInput, block: answer } },
+  actions: { ...workerDoor, answer: { inputSchema: tagInput, block: answer } },
 });
 const kinds = { clerk };
 
@@ -234,7 +251,7 @@ await runGoal(async () => {
     reload = await reloadHiredSeats({
       stores: restartedRuntime.stores,
       orgIds: [DEFAULT_ORG_ID, fixture.namedOrg],
-      kinds,
+      workerFlows: kinds,
     });
   } catch (error) {
     fail("c", `reload rejected, so no org's seats came back: ${(error as Error).message}`);

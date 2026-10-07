@@ -81,7 +81,9 @@ export {
   postToMailboxInputSchema,
   type PostToMailboxInput,
 } from "./mailbox-post-capability";
-export { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
+export { hireWorkforce, unattendedBoardWarnings, type HireOptions, type WorkerFlowEntry } from "./hire";
+export { workerFlowProblems } from "./worker-flow-contract";
+export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } from "./shared-resource";
 export { WORKER_TASK_ENTRY } from "./worker-task-entry";
 export {
   createWorkerLookup,

@@ -25,6 +25,7 @@ import { HIRED_ROSTER_BROWSER_PATTERN, HIRED_ROSTER_PRIVATE_PATTERN } from "../s
 import type { FlowInstance, InstanceOwnerPin } from "@flow-state-dev/core/types";
 import { hireWorkforce } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 const work = handler({
   name: "desk-work",
@@ -37,7 +38,7 @@ const deskClerk = defineFlow({
   kind: "desk-clerk",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
-  actions: { answer: { inputSchema: z.object({ note: z.string() }), block: work } },
+  actions: { ...workerDoor, answer: { inputSchema: z.object({ note: z.string() }), block: work } },
 });
 const kinds = { "desk-clerk": deskClerk };
 
@@ -64,7 +65,7 @@ describe("hire row pin", () => {
     expect(bound.manifest.id).toBe("acme.~alice.research");
     expect(bound.manifest.ownerPin).toEqual({ orgId: "acme", userId: "alice" });
 
-    const [seat] = hireWorkforce([bound.manifest], { kinds });
+    const [seat] = hireWorkforce([bound.manifest], { workerFlows: kinds });
     expect(seat!.ownerPin).toEqual({ orgId: "acme", userId: "alice" });
 
     const back = hiredSeatRowFromManifest("acme", bound.manifest);
@@ -94,7 +95,7 @@ describe("hire row pin", () => {
     const { seats, problems } = await reloadHiredSeats({
       stores,
       orgIds: ["acme"],
-      kinds,
+      workerFlows: kinds,
     });
     expect(seats).toEqual([]);
     expect(problems.join("\n")).toContain("globex");
@@ -122,7 +123,7 @@ describe("hire row pin", () => {
     const { seats, problems } = await reloadHiredSeats({
       stores,
       orgIds: ["acme"],
-      kinds,
+      workerFlows: kinds,
     });
     expect(problems).toEqual([]);
     expect(seats.map((seat) => seat.id)).toEqual(["acme.eng.lead"]);

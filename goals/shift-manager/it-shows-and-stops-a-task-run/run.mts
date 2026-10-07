@@ -31,7 +31,7 @@
  *   gaps          Diff, Checks, Hand off, reassign, Open PR, *also post* and
  *                 the inspector's unread values each carry a gap line naming
  *                 its owner, or saying it is not planned in the first cut; the
- *                 composer is disabled because this Lab's kinds take no message
+ *                 composer takes a message, since every worker flow has a door
  *   no run        the unclaimed row says no run has started and can't be stopped
  *   reach         the page throws nothing
  *
@@ -429,7 +429,7 @@ async function checkInspector({ page, devtool, api, tree, fail }: Ctx, row: Row)
   }
 }
 
-async function checkGaps({ page, fail }: Ctx): Promise<void> {
+async function checkGaps({ page, fail }: Ctx, running: boolean): Promise<void> {
   const owned = async (testId: string, disabled: boolean) => {
     const els = page.getByTestId(testId);
     const count = await els.count();
@@ -443,10 +443,16 @@ async function checkGaps({ page, fail }: Ctx): Promise<void> {
   };
   await owned("task-disabled-action", true);
   if ((await page.getByTestId("task-disabled-action").count()) !== 3) fail("gaps", "Hand off, reassign and Open PR are not all there");
-  // No kind in this Lab declares a door, so the composer says the worker takes no message.
-  if (!(await page.getByTestId("task-composer-input").isDisabled())) fail("gaps", "the composer is enabled");
-  const blocked = (await page.getByTestId("task-composer-blocked").textContent().catch(() => null)) ?? "";
-  if (!blocked.includes("takes no message.")) fail("gaps", `the composer doesn't say the worker takes no message: "${blocked}"`);
+  // Every worker flow has a door, so the composer takes a message on a running
+  // task, and says why not on a finished one.
+  if (running) {
+    if (await page.getByTestId("task-composer-input").isDisabled()) fail("gaps", "the composer is disabled on a running task whose worker has a door");
+    if ((await page.getByTestId("task-composer-blocked").count()) > 0) fail("gaps", "the composer says it is blocked on a running task whose worker has a door");
+  } else {
+    if (!(await page.getByTestId("task-composer-input").isDisabled())) fail("gaps", "the composer is enabled on a finished task");
+    const blocked = (await page.getByTestId("task-composer-blocked").textContent().catch(() => null)) ?? "";
+    if (!blocked.includes("finished task takes no message")) fail("gaps", `the composer doesn't say a finished task takes no message: "${blocked}"`);
+  }
   await owned("task-also-post", true);
   await owned("inspector-harness-gap", false);
   await owned("inspector-acceptance-gap", false);
@@ -520,7 +526,7 @@ await runGoal(async () => {
       await reach(page, served.origin, tree, row);
       await leg(fail, "items equal the run session's", () => checkItems(ctx, row, running));
       await leg(fail, "inspector", () => checkInspector(ctx, row));
-      await leg(fail, "gaps", () => checkGaps(ctx));
+      await leg(fail, "gaps", () => checkGaps(ctx, running));
       if (running) await leg(fail, "the request reads aborted first", () => checkInterrupt(ctx, row));
       evidence.push(`${name}: ${drawn.get(row.id) ?? 0} items drawn = stored, run-state ${await page.getByTestId("run-state").getAttribute("data-state").catch(() => "none")}`);
     }

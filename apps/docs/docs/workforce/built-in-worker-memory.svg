@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 478" role="img" aria-labelledby="title desc">
   <title id="title">What a built-in worker keeps, and who shares it</title>
-  <desc id="desc">One conversation is one session: it holds the recent turns, up to the history window of 50, and the skills made active in it; nothing in it reaches another conversation. Each worker's skills are stored per organization and per worker, so two workers never read each other's and two organizations do not share them. Memory is off until you add it; when on, it is kept per person and shared by the workers serving that person unless isolateUserState gives each worker its own.</desc>
+  <desc id="desc">One conversation is one session: it holds the recent turns, up to the history window of 50, and the skills made active in it; nothing in it reaches another conversation. Each worker's skills are stored per person and per worker, so two workers never read each other's and two people do not share them. Memory is off until you add it; when on, it is kept per person and shared by the workers serving that person unless isolateUserState gives each worker its own.</desc>
   <defs>
     <style>
       :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
@@ -44,14 +44,14 @@
 
   <!-- Skills -->
   <rect x="320" y="84" width="272" height="250" rx="14" class="wall-org"/>
-  <text x="336" y="108" class="h">One worker, one organization</text>
-  <text x="336" y="126" class="muted">Stored at organization scope</text>
+  <text x="336" y="108" class="h">One worker, one person</text>
+  <text x="336" y="126" class="muted">Stored at user scope</text>
   <text x="336" y="158" class="p">The worker's skills</text>
   <text x="336" y="176" class="code">skills</text>
   <text x="336" y="198" class="muted">Seeded from the folders around</text>
   <text x="336" y="214" class="muted">its WORKER.md</text>
   <text x="336" y="250" class="p">Two workers never read each</text>
-  <text x="336" y="268" class="p">other's. Two organizations do</text>
+  <text x="336" y="268" class="p">other's. Two people do</text>
   <text x="336" y="286" class="p">not share one worker's skills.</text>
 
   <!-- Memory -->
@@ -69,7 +69,7 @@
   <!-- Not a copy -->
   <rect x="28" y="354" width="864" height="104" rx="12" class="box"/>
   <text x="44" y="378" class="h">Not a copy</text>
-  <text x="44" y="402" class="p">A conversation holds which skills are active in it. The skills themselves live with the worker, per organization.</text>
+  <text x="44" y="402" class="p">A conversation holds which skills are active in it. The skills themselves live with the worker, per person.</text>
   <text x="44" y="422" class="p">Memory is about a person, not a conversation. A new conversation starts with no turns but the same memory.</text>
   <text x="44" y="444" class="muted">isolateUserState is set once for the whole kind: a roster is all shared or all separate.</text>
 </svg>

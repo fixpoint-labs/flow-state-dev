@@ -146,9 +146,9 @@ async function boot(stores: StoreRegistry, script: Step[], options: BootOptions 
   const seen = stepModel(script, options.streaming);
   const registry = createFlowRegistry();
   const released: string[] = [];
-  const kinds: NonNullable<HireOptions["kinds"]> = {};
+  const kinds: NonNullable<HireOptions["workerFlows"]> = {};
   const seatHire = createSeatHireCapability({
-    kinds,
+    workerFlows: kinds,
     register: (seat, pin) => registry.register(seat, { pin }),
     unregister: (id) => {
       released.push(id);
@@ -164,10 +164,10 @@ async function boot(stores: StoreRegistry, script: Step[], options: BootOptions 
 
   const [cos] = hireWorkforce(
     [{ id: COS, declared: { tools: COS_TOOLS }, body: "You are the chief of staff." }],
-    { kinds },
+    { workerFlows: kinds },
   );
   registry.register(cos!);
-  const reload = await reloadHiredSeats({ stores, orgIds: [ORG], kinds });
+  const reload = await reloadHiredSeats({ stores, orgIds: [ORG], workerFlows: kinds });
   expect(reload.problems).toHaveLength(options.reloadProblems ?? 0);
   for (const seat of reload.seats) {
     registry.register(seat, { pin: (seat as { ownerPin?: { orgId: string } }).ownerPin ?? { orgId: ORG } });

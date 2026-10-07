@@ -299,7 +299,7 @@ export const hiredRosterReload: { seats: string[]; problems: string[]; reportErr
   const reload = await reloadHiredSeats({
     stores: runtime.stores,
     orgIds,
-    kinds: kitchenSinkKinds,
+    workerFlows: kitchenSinkKinds,
   });
   hiredRosterReload.problems.push(...reload.problems);
 

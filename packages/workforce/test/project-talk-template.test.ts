@@ -49,6 +49,7 @@ import {
 import { MAILBOX_ANSWER_ACTION } from "../src/mailbox/mailbox-flow";
 import { forgetOrgTalkTemplate, forgetTalkTemplate, registeredTalkTemplate } from "../src/projects/talk-template";
 import { roomLineKey } from "../src/projects/collections";
+import { workerDoor } from "./worker-door";
 
 const ORG = "lab";
 const projects = defineProjectsCollection();
@@ -422,7 +423,7 @@ function listeningKind(heard: Heard[], kept: { postId?: string; token?: string }
     kind: "listener",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: {},
+    actions: { ...workerDoor,},
     internal: {
       actions: {
         onMailboxPost: {
@@ -505,7 +506,7 @@ async function boot(options: {
   const heard: Heard[] = [];
   const kept: { postId?: string; token?: string } = {};
   const seats = hireWorkforce((options.seats ?? ["eng.em", "ops.lead", "chief-of-staff"]).map(seatRecord), {
-    kinds: { listener: listeningKind(heard, kept) as never }
+    workerFlows: { listener: listeningKind(heard, kept) as never }
   });
   // Each boot stands for a fresh process: nothing declared or registered before it.
   forgetOrgTalkTemplate(projects);

@@ -67,6 +67,23 @@ import {
 import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 import { goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
 
+/** Every worker flow has one door: this fixture's answers by saying what it heard. */
+const workerDoor = {
+  message: {
+    inputSchema: z.object({ message: z.string() }),
+    userMessage: (input: { message: string }) => input.message,
+    block: handler({
+      name: "fixture-door",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({ heard: z.string() }),
+      execute: (input, ctx) => {
+        ctx.emit.message(`Heard: ${input.message}`);
+        return { heard: input.message };
+      },
+    }),
+  },
+};
+
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_task_run_link";
 const ORG_ID = DEFAULT_ORG_ID;
@@ -228,7 +245,7 @@ await runGoal(async () => {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { [ledger.id]: ledger },
-    actions: { drain: { block: leadBoard.drain } },
+    actions: { drain: { block: leadBoard.drain }, ...workerDoor },
     task: { actions: { [ENTRY]: { block: work } } }
   } as never);
 
@@ -249,7 +266,7 @@ await runGoal(async () => {
           cardinality: "collection",
           configSchema: seatConfig,
           resources: { [ledger.id]: ledger },
-          actions: { drain: { block: board.drain } },
+          actions: { drain: { block: board.drain }, ...workerDoor },
           task: { actions: { [ENTRY]: { block: work } } }
         } as never)
       ];
@@ -260,12 +277,12 @@ await runGoal(async () => {
     kind: PASSIVE_KIND,
     cardinality: "collection",
     configSchema: seatConfig,
-    actions: {}
+    actions: { ...workerDoor,}
   } as never);
 
   const instances = mailboxInstances(mailboxes);
   const hired = hireWorkforce(workers, {
-    kinds: {
+    workerFlows: {
       [drainer.declared.flow as string]: leadKind as never,
       [PASSIVE_KIND]: passiveKind as never,
       ...(otherKinds as Record<string, never>)

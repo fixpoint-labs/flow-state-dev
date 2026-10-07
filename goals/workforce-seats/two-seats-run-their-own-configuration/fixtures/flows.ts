@@ -16,6 +16,23 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
+/** Every worker flow has one door: this fixture's answers by saying what it heard. */
+const workerDoor = {
+  message: {
+    inputSchema: z.object({ message: z.string() }),
+    userMessage: (input: { message: string }) => input.message,
+    block: handler({
+      name: "fixture-door",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({ heard: z.string() }),
+      execute: (input, ctx) => {
+        ctx.emit.message(`Heard: ${input.message}`);
+        return { heard: input.message };
+      },
+    }),
+  },
+};
+
 export const CUSTOM_AGENT_KIND = "custom-agent";
 export const INTAKE_KIND = "intake";
 export const NO_CONTRACT_KIND = "legacy-desk";
@@ -102,7 +119,7 @@ export const customAgentFlow = defineFlow({
     model: z.string().default("openai/gpt-5.4-mini"),
     tools: z.array(z.string()).default([])
   }),
-  actions: {
+  actions: { ...workerDoor,
     run: { inputSchema, block: sequencer({ name: "custom-agent-work", inputSchema }).step(start).tap(recordInstructions) }
   },
   session: { stateSchema: seatState, client: clientView }
@@ -115,7 +132,7 @@ export const intakeFlow = defineFlow({
   // like every hireable kind, so `instructions` is a door it has and leaves
   // empty; the seat under it carries none because its record has no body.
   configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-  actions: {
+  actions: { ...workerDoor,
     run: { inputSchema, block: sequencer({ name: "intake-work", inputSchema }).step(start).tap(recordDesk) }
   },
   session: { stateSchema: seatState, client: clientView }
@@ -141,12 +158,14 @@ export const noContractFlow = defineFlow({
     // Declared so `seatSkills` stays the SINGLE missing key: the contract grew a
     // fourth, and a control that omitted two would no longer isolate one cause.
     seatTools: z.array(z.any()).default([]),
+    // The packages a seat holds, checked at boot like every other key.
+    seatPackages: z.array(z.any()).optional(),
     // The sixth, imposed on every seat: its own id.
     seatId: z.string().optional(),
     // `seatSkills` is absent — the one key that makes the bag unacceptable.
     desk: z.string().default("front")
   }),
-  actions: {
+  actions: { ...workerDoor,
     run: { inputSchema, block: sequencer({ name: "legacy-work", inputSchema }).step(start).tap(recordDesk) }
   },
   session: { stateSchema: seatState, client: clientView }
@@ -172,11 +191,12 @@ export const handRolledFlow = defineFlow({
     // contract grows — which is the cost this fixture exists to show, not a
     // reason to stop hand-rolling.
     seatTools: z.array(z.any()).default([]),
+    seatPackages: z.array(z.any()).optional(),
     // The sixth, imposed on every seat: its own id.
     seatId: z.string().optional(),
     desk: z.string().default("front")
   }),
-  actions: {
+  actions: { ...workerDoor,
     run: { inputSchema, block: sequencer({ name: "hand-rolled-work", inputSchema }).step(start).tap(recordDesk) }
   },
   session: { stateSchema: seatState, client: clientView }

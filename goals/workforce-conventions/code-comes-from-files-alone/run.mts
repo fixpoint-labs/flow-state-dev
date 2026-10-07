@@ -377,7 +377,7 @@ await runGoal(async () => {
     const first = workers[0]!.declared;
     workers = workers.map((worker) => ({ ...worker, declared: { ...first } }));
   }
-  const seats = hireWorkforce(workers, { kinds: generated.kinds as never });
+  const seats = hireWorkforce(workers, { workerFlows: generated.kinds as never });
   const state = createFlowState({
     flows: Object.fromEntries(seats.map((seat) => [seat.id, seat])),
     stores: { default: { primary: inMemoryStores() } },
