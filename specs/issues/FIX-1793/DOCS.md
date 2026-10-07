@@ -198,6 +198,18 @@ on this page.
 > | **A project** | Shared with your org, or private to you. Tabs: Stream (your own project coordinator), Board (the boards of your own workstreams), Workstreams (every workstream's entry, with progress worked out from them) and Brief, which also names the project's repository, or says its coding work runs on the project's files. See [Projects](../workforce/projects.md). |
 > | **A workstream** | On a project, its owner sees the lead's workstream session and its board; everyone else sees its entry. A mailbox and its boards keep their own Stream, Board, Brief and Results tabs. |
 
+And under the table:
+
+> **Opening a workstream.** Open one from its project and it comes with a coordinator of its own:
+> a new worker on your roster, copied from the standard workstream coordinator, that leads
+> it. Each workstream gets its own, so changing one coordinator's instructions or delegates
+> changes only its workstream. Nobody else sees it on their roster. It stays when you mark the
+> workstream done, so you can pick the workstream up again; fire it from your roster like any
+> worker once you no longer need it.
+>
+> In your own app, `openWorkstream` takes whichever lead you name. See
+> [Projects](../workforce/projects.md#workstreams).
+
 ## UPDATE · `apps/docs/docs/workforce/chief-of-staff.md`
 
 Remove the paragraph about the project template's `seats` and the room. In "Starting projects",
@@ -237,7 +249,8 @@ project. It reads every workstream and hands work only to the user's own."
 
 Replace the room lines with the project view in the screens table above: Stream is your own
 project coordinator, Board your own workstreams' boards, Workstreams every entry with its
-progress. Remove "The room reads only at set times" and the room's sentence in the DevTeam
+progress. Add the "Opening a workstream" paragraph above, and the DevTeam's workstream
+coordinator to its list of standard workers. Remove "The room reads only at set times" and the room's sentence in the DevTeam
 paragraph.
 
 ## UPDATE · `apps/docs/docs/workforce/inventory.md`

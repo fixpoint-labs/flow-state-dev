@@ -7,7 +7,8 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 once FIX-1787's merge-first rows land (ER-23); P2 waits on FIX-1790 and FIX-1788, P3 on FIX-1791,
 FIX-1794's P2 and FIX-1802's P1 (epic PLAN step 4). P3's Board and S6's walk-up test need a
 lead's session board (FIX-1794's P2) and the task tools for a lead on `em` or `agent`
-(FIX-1802's P1). *Amended after merge: the cross-spec alignment.*
+(FIX-1802's P1). *Amended after merge: the cross-spec alignment, and each workstream's own
+coordinator in Shift Manager ([D2](DECISIONS.md#d2)).*
 
 ## Surfaces
 
@@ -20,8 +21,8 @@ lead's session board (FIX-1794's P2) and the task tools for a lead on `em` or `a
 | S5 | `workforce` · the project coordinator | A session of a standard coordinator worker the installation names, linked at create to one project by a `projectId` criterion on FIX-1788's helpers, created on first open. Its delegates are delegate records in server-written session state, one source: no defaults ([#2821](https://github.com/fixpoint-labs/flow-state-dev/pull/2821) BR-1), one record per open workstream the user owns there, taken when the session is created and kept by S3's writes. Every record carries a target, so it is written only through FIX-1791's internal delegate mutation, never its public delegate actions, which refuse `target` ([FIX-1791 BR-2](../FIX-1791/BUSINESS-RULES.md#delegates)); the records taken at create go through it too. A post reads delegates from session state only, never from entries. Each delivery goes through FIX-1791's ledger into the session its caller resolves from the record's target, the workstream session, by the resolver this spec supplies ([FIX-1791 BR-20a](../FIX-1791/BUSINESS-RULES.md#answers-and-rounds), PLAN S5, on `main` via [#2821](https://github.com/fixpoint-labs/flow-state-dev/pull/2821)). Tools: read the project (row, every entry, S4), hand a post to one of the user's workstreams. Opening a workstream from the coordinator (FIX-1774's leg d) is this issue's: FIX-1791's Q1 moved task filing and follow-through to FIX-1794 and sent leg d here ([FIX-1791 DECISIONS Q1](../FIX-1791/DECISIONS.md#q1), Jake, 2026-10-06) | BR-21–BR-27 |
 | S6 | `workforce` · `projectWorkspace` | A run finds its project from its workstream, by server-written data on the workstream session, then the entry, then the row by visibility; files from that scope. The run's owner must be the workstream's owner. The claim path stays for mailbox boards (S7) | BR-32–BR-34 |
 | S7 | `workforce` · **removals** | Rooms: `talk.ts`, `room-store.ts`, `room-answer.ts`, `talk-template.ts`; the mailbox kind's `bind`, `onTalkPosted`, `join`, and the talk branches of `post`, `read`, `answer`, with no entry kept to refuse them. No room collection is read or written, and the room collections stop being declared; their rows are dropped ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)). `mintFor` and the `talk` option go with them, not refused by name. Claims, `setWorkstreams` and a row's mailbox list stay, with no markers, until FIX-1792 | BR-32 |
-| S8 | `shift-manager` · views | PROJECTS lists shared and the viewer's private projects. A project's Workstreams tab lists entries with S4; its Stream tab is the viewer's project coordinator session; its Board draws the viewer's own workstream sessions' boards only, never through the Lab-wide inventory walk. An entry's view: its owner sees the lead's workstream session, others the entry. Open a workstream from the project. A project view opens on the row plus one entry prefix, not a Lab read; the whole Lab is read again only after a coordinator turn. `lib/talk.ts`, `talkFor` and the room session **removed** | BR-12 BR-18 BR-28 |
-| S9 | `shift-manager` · DevTeam install | A standard `project-coordinator` `WORKER.md` (`flow: coordinator`, `routing: judgment`), named in the project setup; the chief of staff's project tools gain `visibility` and `openWorkstream`. Default projects stay shared. The room parts out: `resources/projects.ts`'s `talk:` template (the option goes, S7), the EM's room-answer action, and the room door in `notify.mts` ([inventory](poc/removal-inventory/README.md#what-was-observed)) | BR-21 |
+| S8 | `shift-manager` · views | PROJECTS lists shared and the viewer's private projects. A project's Workstreams tab lists entries with S4; its Stream tab is the viewer's project coordinator session; its Board draws the viewer's own workstream sessions' boards only, never through the Lab-wide inventory walk. An entry's view: its owner sees the lead's workstream session, others the entry. Open a workstream from the project, with a coordinator of its own as the lead ([D2](DECISIONS.md#d2)): the view forks the standard workstream coordinator (S9) onto the viewer's roster through FIX-1788's fork action, under an id derived from the workstream's address, then sends `openWorkstream` naming it as the lead. S3 is unchanged, and so is every rule it runs: the roster check on the lead, the workstream session, the delegate record. The view offers no choice of an existing worker. A worker already at that id, forked from the standard workstream coordinator, is used, not forked again; any other worker at that id refuses the open, naming it. A refused open fires the coordinator that open forked. A project view opens on the row plus one entry prefix, not a Lab read; the whole Lab is read again only after a coordinator turn. `lib/talk.ts`, `talkFor` and the room session **removed** | BR-12 BR-18 BR-28 BR-35–BR-37 |
+| S9 | `shift-manager` · DevTeam install | A standard `project-coordinator` `WORKER.md` (`flow: coordinator`, `routing: judgment`), named in the project setup. Beside it, the standard workstream coordinator: a `WORKER.md` on `flow: coordinator`, `routing: judgment`, whose default delegates are standard DevTeam workers, at least one that takes a task, so its workstream session keeps a board (FIX-1802 BR-2); the project setup names it as the worker S8 forks; the chief of staff's project tools gain `visibility` and `openWorkstream`. Default projects stay shared. The room parts out: `resources/projects.ts`'s `talk:` template (the option goes, S7), the EM's room-answer action, and the room door in `notify.mts` ([inventory](poc/removal-inventory/README.md#what-was-observed)) | BR-21 BR-35 |
 | S10 | goals | `goals/projects/a-shared-project-has-one-owner-per-workstream/` with both controls. `it-groups-workstreams-under-their-projects` rewritten to entries; the room legs of `one-person-runs-a-labs-projects-and-people` retired with a line saying rooms were removed (S7); the shell goal's Stream part moved to the coordinator. The coding goal keeps its claim path until FIX-1792 | goal |
 | S11 | Docs | [DOCS.md](DOCS.md); `core`, `engine`, `workforce` and `shift-manager` READMEs; the owner-key contracts in `docs/architecture/resources-and-client-data.md` and `docs/contributing/architecture-reference.md`, reconciled with `ownerWrites`; `minor` changesets for `core`, `engine`, `workforce`; the two unreleased changesets announcing rooms rewritten | — |
 
@@ -63,10 +64,11 @@ Rooms come out only once the coordinator that replaces them is in (P3).
 | V6 | S6 | BR-33, BR-34 on both visibilities; BR-32's claim path on a mailbox board. Its walk-up leg, a run in a task session filed from the workstream session, runs in P3, once a lead files (FIX-1794's P2, FIX-1802's P1) |
 | ~~V7~~ | ~~S7~~ | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9), with BR-29 to BR-31. V9's inventory rerun shows the room code is gone |
 | V8 | S8 | BR-12, BR-18, BR-28 in Shift Manager's tests: a project view's open reads the row and one prefix, and its Board reads only the viewer's own workstream sessions |
+| V8a | S8, S9 | BR-35–BR-37 in Shift Manager's tests, two users, the view's open with no lead chosen: Alice's open puts exactly one new coordinator on her roster, forked from the standard workstream coordinator, and it is the entry's lead, its workstream session's worker and her project coordinator's delegate record; her second workstream gets a second one; Bob's roster is unchanged. A repeated open and two at once fork once; a refused open (`not-a-member`) leaves her roster as it was; marking the workstream done keeps its coordinator, and moving it back out of done restores the record |
 | V9 | S10 | Rerun [`poc/removal-inventory/`](poc/removal-inventory/README.md): every match classified, every file it removes reported deleted |
 | VG | P4 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): the run PASSES, after it FAILED leg b under `GOAL_CONTROL=no-owner-rule`, leg c under `all-entries-delegate`, and legs a to c on today's `main` |
 
-One check per decision: D1 by V2, Q1 by V1 and VG leg b, Q2 by V3's BR-8. The second path
+One check per decision: D1 by V2, D2 by V8a, Q1 by V1 and VG leg b, Q2 by V3's BR-8. The second path
 (BP-035): a second process (V1), the default visibility (V2),
 two writers at once (V3, V4), a lead on another user's roster (V3).
 
@@ -139,6 +141,12 @@ owner rule as new engine work) and [`poc/removal-inventory/`](poc/removal-invent
   on a run's session.
 - Take FIX-1788's shipped helper names and criteria shape, FIX-1790's key, and the epic's record
   of Q1, Q2 and the claims move.
+- **Each workstream's own coordinator ([D2](DECISIONS.md#d2))** rests on two facts to check on
+  the shipped siblings before P3 builds S8. FIX-1791's coordinator flow must take a delegated
+  post, so the project coordinator's post reaches a lead on it: a delegate that takes only tasks
+  is accepted but skipped for posts (FIX-1802 BR-9), and leg c would fail. And the DevTeam must
+  not keep the coordinator flow for standard workers, or the fork is refused (FIX-1788 BR-6). If
+  either doesn't hold, raise it to that issue; don't build it here.
 - Old-term exports left for FIX-1792 and FIX-1796: `setWorkstreams`, `setWorkstreamsInputSchema`,
   `setWorkstreamsOutputSchema`, `SetWorkstreamsInput`, `WORKSTREAM_CLAIMS_RESOURCE`,
   `defineWorkstreamClaimsCollection`, `workstreamClaimSchema`, `WorkstreamClaim`,
@@ -161,5 +169,7 @@ blind spot: fold it back and say so.
 
 - The project's creator changes its members after create (Q2's price).
 - A private project becomes shared, or the reverse.
+- Choosing an existing worker as the lead in Shift Manager's open, beside the default ([D2](DECISIONS.md#d2)).
+- The chief of staff's `openWorkstream` tool still names a lead; giving it the same default.
 - A lead woken on a schedule to refresh its entry.
 - A request's durable record of the collections it wrote, if the epic takes it (ER-19, ER-22).
