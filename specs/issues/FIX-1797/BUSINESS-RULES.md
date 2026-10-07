@@ -11,7 +11,7 @@ step or report line that shows the rule held.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| QR-1 | Any child of FIX-1786 other than FIX-1795 is not merged (every PR of a multi-PR child), or CI is red on `main` | No final run. Each blocks this issue in Linear | Linear · the report lists each merge commit |
+| QR-1 | Any child of FIX-1786 other than FIX-1795 is not merged (every PR of a multi-PR child; FIX-1802, which joined under the epic's [D8](../../epics/FIX-1786/DECISIONS.md#d8), included), or CI is red on `main` | No final run. Each blocks this issue in Linear | Linear · the report lists each merge commit |
 | QR-2 | FIX-1788's last PR merges | The coordinator dispatches the milestone run on that merge commit ([D1](DECISIONS.md#d1)), under the milestone sub-issue it created when this spec merged, related to FIX-1791 and FIX-1795, not blocking them: their builds run in parallel, and neither gets implementation merge authorization while the sub-issue is open. The run uses the milestone's own steps, which use only what that commit has. It and its reruns (QR-15) are the only runs before QR-1 holds | The milestone report names the commit |
 | QR-3 | A child joins FIX-1786 mid-run, a finding included | It blocks this issue ([ER-27](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is-run)); the run in flight opens no closure PR | The epic wake |
 | QR-4 | QR-1 holds | One `main` commit is picked, and every check in parts 1 to 4 runs against it | Every verdict row carries that SHA |

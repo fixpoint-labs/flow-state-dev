@@ -13,7 +13,7 @@ check. Names below are directional: read every name off the children's **merged*
 |---|---|---|
 | S1 | `goals/workforce-privacy/two-users-share-a-project-and-nothing-else/` | `goal.md` from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met) in the `goals/README.md` format, with the on-demand posture (QR-5). `run.mts` is a thin orchestrator: build Shift Manager once, run the legs, the controls, J1, the part-3 manifest and the part-4 assertions, write the report. `GOAL_ONLY=milestone` runs [the milestone](#the-milestone) |
 | S2 | `goals/lib` | Extend the existing `goals/lib/shift-manager.mts` (and its Playwright and server helpers) rather than adding a harness: a second bearer context, so each user gets a browser context and a route client carrying only their own bearer; a restart over the same run-scoped store; store reads through the install's routes. The template for S1, S3 and S4 is `goals/shift-manager/one-person-runs-a-labs-projects-and-people/run.mts`. Never import across goal directories |
-| S3 | `controls/` under S1 | The scratch patches: `org-scoped-workers`, `unpartitioned`, `no-roster-check`, and `second-org` when the commit has no second-org principal. Applied to a copy of the commit, never committed, printed in full in the report |
+| S3 | `controls/` under S1 | The scratch patches: `org-scoped-workers`, `unpartitioned`, `no-parent-settle`, `no-grant-check`, `no-roster-check`, and `second-org` when the commit has no second-org principal. Applied to a copy of the commit, never committed, printed in full in the report |
 | S4 | Part 3's manifest, under S1 | Each child's goal path with the controls still owed, and P3.9's list, computed from the pre-epic baseline's tree and the run's commit together (see [Part 3](#part-3--every-childs-check-and-every-older-check-the-epic-touched)). Each runs as its own subprocess |
 | S5 | J1's scratch app | A fresh directory the writer builds in; deleted after the run |
 | S6 | The closure PR | Only after a final run that files nothing: S1 to S4 with the verdict log, the report as its body. No changeset |
@@ -28,7 +28,7 @@ flowchart TD
   M1["FIX-1791 and FIX-1795 build meanwhile"] -.->|"merge held while the sub-issue is open"| MS
   W --> M["QR-1 holds · pick the commit · build"]
   M --> A["leg a · roster, fork, coordinator, post · restart"]
-  A --> B["leg b · projects, workstreams, hand-offs, boards · restart"]
+  A --> B["leg b · projects, workstreams, hand-offs, boards · the DevTeam chain splits · restart"]
   M --> C["leg c · Bob's reaches · second org · old store"]
   B --> K["controls · each on a fresh store"]
   C --> K
@@ -54,13 +54,15 @@ surface each step uses follows [D2](DECISIONS.md#d2); the column says which is e
 | a1 | screen | **Roster.** Alice's roster lists every standard worker, marked standard with its flow, and nothing of Bob's. Bob's lists the same standard workers and nothing of Alice's |
 | a2 | screen, else turn | **Fork.** Alice forks a standard worker under a held-out name. One new worker row at Alice's user scope naming the same flow; the standard worker unchanged; Bob's roster unchanged |
 | a3 | turn, then screen | **Coordinator.** Alice gets a coordinator on her roster with `best-fit` routing, and adds her fork and one standard worker as delegates in the delegates panel. Its session's delegates are exactly those two |
-| a4 | screen | **Post.** Alice posts a held-out ask that fits her fork. One delivery, to the fork's session; one routing record `by: best-fit`; the fork's answer on screen; every session the post created belongs to Alice and links the worker it names. Alice then opens her fork from the roster: she lands in its plain session, never the delegate session the post created ([FIX-1788 S5a](../FIX-1788/PLAN.md#surfaces)'s key-set match) |
+| a4 | screen | **Post.** Alice posts a held-out ask that fits her fork. One delivery, to the fork's session; one routing record under best fit, made by its evaluator's pick, not by the coordinator's own judgment turn that best fit now falls back to with no fallback delegate set ([FIX-1791 BR-16](../FIX-1791/BUSINESS-RULES.md)): a judgment-turn delivery is a miss (QR-10), so a4 can't pass hollowly; the fork's answer on screen; every session the post created belongs to Alice and links the worker it names. Alice then opens her fork from the roster: she lands in its plain session, never the delegate session the post created ([FIX-1788 S5a](../FIX-1788/PLAN.md#surfaces)'s key-set match) |
 | a5 | — | **Restart.** a1 to a4 read the same on a new process over the same store |
 | b1 | turn or screen | **Projects.** Alice creates a shared project P (held-out) with Bob as a member, and a private project Q. Both are on Alice's PROJECTS; P only on Bob's |
 | b2 | screen | **Workstreams.** Alice opens a workstream on P led by her fork; Bob opens one led by a worker on his roster. Each workstream session belongs to its owner; the project view, for each of them, counts two workstreams and both owners' objectives |
 | b3 | screen | **Hand-offs.** Each asks their own project coordinator for work. It delivers to that owner's own workstream session, never the other's ([FIX-1793](../FIX-1793/SPEC.md#the-goal-and-how-well-know-its-met)), and the lead answers there. Every session the ask created is its owner's; no session of one owner's hand-off is the other's |
-| b4 | screen | **Two boards.** Two of Alice's conversations with her coordinator each file one task for a delegate on another flow. Each task runs in a new session of Alice's and completes there; the delegate files nothing. Each conversation runs and lists only its own row, and its drain doesn't wait on the other's |
-| b5 | — | **Restart.** b1 to b4 read the same on a new process |
+| b4 | screen | **Two boards.** Two of Alice's conversations with a coordinator of hers that carries the filing grant (a coordinator files only with it, [FIX-1802 BR-1](../FIX-1802/BUSINESS-RULES.md#the-grant); the chief of staff carries it) each file one task for a delegate on another flow. Each task runs in a new session of Alice's and completes there. Each conversation runs and lists only its own row, and its drain doesn't wait on the other's |
+| b5 | screen, then turn | **The chain, split.** On the DevTeam as shipped, Alice asks Storefront's project coordinator for a held-out two-part job. It delivers to the `feature` workstream session the EM leads, and the EM files the coder's tasks from that session with the filing tools (`fileTask`). At least one of those tasks splits: its worker files pieces on its own task session's board ([FIX-1802 BR-14](../FIX-1802/BUSINESS-RULES.md#the-split)), so the chain reaches a third board. Each piece ends, the split task settles on the board above, and the EM's workstream session hears each of its tasks end once; the EM's answer, carrying the pieces' results, is on Alice's project screen. Every session in the chain is Alice's, every row is on its own session's board, and every assignee is a DevTeam standard worker. Graded once (QR-10). If no worker the EM files for carries the grant and delegates of its own, b5 fails as a finding (QR-13); no patch grants one |
+| b6 | turn, then action as Alice | **No grant, no tools.** A DevTeam worker whose `WORKER.md` doesn't grant filing, picked off the shipped tree: Alice talks to it. Its turn's tool list holds none of `fileTask`, `listTasks`, `reassignTask`, `cancelTask`, read from the turn's items, not its prompt; the app's `fileTask` on its session is refused, naming the missing grant, and nothing is stored ([FIX-1802 BR-2](../FIX-1802/BUSINESS-RULES.md#the-grant)) |
+| b7 | — | **Restart.** b1 to b6 read the same on a new process |
 | c1 | HTTP as Bob | **Session.** Bob opens Alice's coordinator conversation and posts to it: refused |
 | c2 | HTTP as Bob, then screen | **Worker.** Bob reads Alice's fork: refused, or not found. Bob's roster doesn't list it. Bob forks the same standard worker and asks his fork for a held-out word Alice's fork was given: his answer and his fork's state hold none of it |
 | c3 | HTTP as Bob | **Link.** Bob creates a session naming Alice's fork, and one seeding a worker link or delegates in the create's state: each refused |
@@ -105,6 +107,8 @@ skip their scope assertion there, and the step the control names is the one mean
 |---|---|---|---|---|---|
 | `org-scoped-workers` | The worker collection at org scope | c | c2, *Bob reads Alice's worker* | c6 · c7 | Epic goal; FIX-1788's name |
 | `unpartitioned` | One ledger per owner, no partition per conversation | b | b4, *each runs only its own* | b1 · b2 | FIX-1794's name |
+| `no-parent-settle` | A split task never settles from its pieces | b | b5, *the result comes back up* | b4 · b6 | FIX-1802's name |
+| `no-grant-check` | The grant isn't checked: every worker gets the filing tools and the app's filing | b | b6, *an ungranted worker has no filing tool* | b4 · b5 | FIX-1802's name |
 | `no-roster-check` | The delegate check skipped | c4 | c4, *Bob's delegate refused* | — | FIX-1791's name |
 
 **The pre-epic baseline** (the commit before the first child's implementation merged, resolved
@@ -142,10 +146,11 @@ stands for that child's control and is not run again.
 | P3.3 | FIX-1788 · `goals/workers-as-resources/keeps-each-users-workers-their-own/` | `caller-link` | `org-scoped-workers` (c2) |
 | P3.4 | FIX-1791 · `goals/coordinators/hands-each-post-to-its-delegates/` | `no-round-limit`, `no-delegate-read` | `no-roster-check` (c4) |
 | P3.5 | FIX-1793 · `goals/projects/a-shared-project-has-one-owner-per-workstream/` | `no-owner-rule`, `all-entries-delegate` | — |
-| P3.6 | FIX-1794 · `goals/coordinators/files-tasks-down-the-owners-chain/`, one level of hand-off (its split leg went to FIX-1802, outside this epic) | `no-follow-up` | `unpartitioned` (b4) |
-| P3.7 | FIX-1792 · its check, from its merged spec | its own | — |
+| P3.6 | FIX-1794 · `goals/coordinators/files-tasks-down-the-owners-chain/`, one level of hand-off (its split leg went to FIX-1802, P3.10) | `no-follow-up` | `unpartitioned` (b4) |
+| P3.7 | FIX-1792 · its check, from its merged spec (`goals/coordinators/refuses-a-mailbox-file-by-name/` at its fold) | its own (`silent-skip` at its fold) | — |
 | P3.8 | FIX-1796 · the retired-terms census, with `--control`. Its list decides what is retired: Workforce's seat goes, the task board's `seat` stays | its control | — |
 | P3.9 | **Every other goal directory** whose code reaches `@flow-state-dev/workforce`, the task board or `packages/shift-manager`, computed by import on the pre-epic baseline's tree and on the commit, and taken as the union. This closure's S1 excluded | their own, as each goal names | — |
+| P3.10 | FIX-1802 · `goals/workers/files-and-splits-down-the-chain/`, legs a to e, leg e on the real model | — | `no-parent-settle` (b5) for its leg a, `no-grant-check` (b6) for its leg c |
 
 For P3.9, the union is what keeps a deleted goal in scope: a directory on the baseline and gone
 from the commit is still listed, and needs its retirement line like any other. Each directory
@@ -199,8 +204,8 @@ milestone's comment, in the same shape:
 | Where | Name |
 |---|---|
 | Goal check | `goals/workforce-privacy/two-users-share-a-project-and-nothing-else/` |
-| Steps | `a1` to `a5`, `b1` to `b5`, `c1` to `c7`, `m1` to `m6`, `J1`, `P3.1` to `P3.9` |
-| Controls | `org-scoped-workers`, `unpartitioned`, `no-roster-check`; scratch patch `second-org` |
+| Steps | `a1` to `a5`, `b1` to `b7`, `c1` to `c7`, `m1` to `m6`, `J1`, `P3.1` to `P3.10` |
+| Controls | `org-scoped-workers`, `unpartitioned`, `no-parent-settle`, `no-grant-check`, `no-roster-check`; scratch patch `second-org` |
 | Subset | `GOAL_ONLY=milestone` |
 
 Everything else is yours to name.
@@ -217,7 +222,6 @@ Everything else is yours to name.
 | Part 4's required rows are executed, not read (BP-003) | A tired reader skips the row a script can't |
 | Scratch patches printed in full | A patch that changes more than it says is how a step passes hollow |
 | Every final check on the one commit; the pre-epic baseline only as a control | A pass elsewhere proves nothing about the set |
-| No step needs a delegate to split a task | FIX-1794 ships one level of hand-off, and a task session's filing is refused; the split is FIX-1802's, outside this epic |
 | Findings are filed, never fixed here | The closure rule |
 
 ## Docs
@@ -226,9 +230,19 @@ No reader-facing change. [DOCS.md](DOCS.md) lists the pages J1 follows.
 
 ## At implement time
 
-- Re-read every child's merged spec and amendments. FIX-1792 and FIX-1796 were not merged when
-  this was folded; FIX-1794 (one level of hand-off) and the epic's D6 (one board partition per
-  conversation) were.
+- Re-read every child's merged spec and amendments. FIX-1792, FIX-1796 and FIX-1802 were not
+  merged when this was folded; FIX-1794 (one level of hand-off) and the epic's D6 (one board
+  partition per conversation) were. FIX-1802 joined under the epic's
+  [D8](../../epics/FIX-1786/DECISIONS.md#d8): filing is a grant any worker can carry, and the split
+  is in the MVP. Read how a worker flow takes the filing capability off its merged spec; FIX-1802's
+  review was changing it, so no step here names it.
+- **Tell FIX-1792 b5's need early.** At its fold, the DevTeam grants filing to the EM only; b5's
+  split needs a worker the EM files for (the coder, say) to carry the grant and delegates of its
+  own. Report it to the coordinator now, so FIX-1792 grants one in its P3 rather than b5 filing it
+  as a finding.
+- Kitchen-sink's escalation feature is removed by FIX-1792 (the `escalate` tool, the escalations
+  board and panel, and the `no-filing` control). No step here used it; P3.9 expects that PR's
+  retirement line for `lists-a-filed-case-without-a-reload` and its rewrites of the talk goals.
 - Take the users' bearers and the store's env name from the DevTeam host as shipped
   (`LAB_USERS` today); Alice's second org per *Decided, not asked*.
 - **The milestone needs a sub-issue and a dispatch.** When this spec merges, the coordinator
