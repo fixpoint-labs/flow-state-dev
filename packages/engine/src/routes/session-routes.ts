@@ -161,6 +161,7 @@ export async function handleListSessions(
     principal !== undefined && !(await ownResolverNamesAnotherCaller(ctx, principal))
       ? principal
       : undefined;
+  const linkFilter = url.searchParams.get("link");
   const sessions = await ctx.stores.session.list({
     flowKind: getString(url.searchParams.get("flowKind")),
     // Exact owner: one instance of a collection flow. A record with no owner
@@ -193,9 +194,8 @@ export async function handleListSessions(
     ...(include.parentage === undefined ? {} : { parentage: include.parentage }),
     // Exact match on the link a flow's create check accepted. A narrowing only:
     // owner, organization and tenant are scoped above whatever it says.
-    ...(getString(url.searchParams.get("link")) === undefined
-      ? {}
-      : { link: getString(url.searchParams.get("link")) }),
+    // Taken as sent, never trimmed: a link is opaque and stored unchanged.
+    ...(linkFilter === null || linkFilter.length === 0 ? {} : { link: linkFilter }),
     limit: getPositiveInteger(url.searchParams.get("limit")),
     offset: getPositiveInteger(url.searchParams.get("offset"))
   });
@@ -408,7 +408,8 @@ export async function handleCreateSession(
         flow,
         sessionId,
         principal: { userId, orgId, ...(ctx.tenantId !== undefined ? { tenantId: ctx.tenantId } : {}) },
-        link: getString(linkInput),
+        // As sent, never trimmed: the accepted link is stored unchanged.
+        link: typeof linkInput === "string" && linkInput.length > 0 ? linkInput : undefined,
         callerState: callerState ?? undefined,
         via: "create"
       },

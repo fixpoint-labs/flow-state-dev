@@ -9,7 +9,14 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_ORG_ID, defineFlow, defineResourceCollection, dispatcher, handler } from "@flow-state-dev/core";
+import {
+  DEFAULT_ORG_ID,
+  defineFlow,
+  defineResourceCollection,
+  dispatcher,
+  handler,
+  taskDispatchInputSchema
+} from "@flow-state-dev/core";
 import type {
   FlowInstance,
   SessionCreateCheckInput,
@@ -87,7 +94,17 @@ function flows(): Harness {
       whoami: { inputSchema: z.object({}).passthrough(), block: whoAmI },
       delegate: { inputSchema: z.object({ to: z.array(z.string()) }), block: writeDelegates }
     },
-    internal: { actions: { work: { block: handler({ name: "linked-work", execute: () => ({}) }) } } }
+    internal: { actions: { work: { block: handler({ name: "linked-work", execute: () => ({}) }) } } },
+    // `from` with a gate that lets every task through: what is under test is
+    // the child's birth, which happens before any gate runs.
+    task: {
+      actions: {
+        work: {
+          block: handler({ name: "linked-task-work", execute: () => ({}) }),
+          from: { boardId: "board", gate: (entry) => entry }
+        }
+      }
+    }
   })({ id: "linked" }) as unknown as FlowInstance;
   const plain = defineFlow({
     kind: "plain",
@@ -450,6 +467,96 @@ describe("a dispatch through the public dispatcher()", () => {
     const { sent, children } = await send(false);
     expect(sent?.status).toBe("failed");
     expect(children).toEqual([]);
+  });
+});
+
+describe("a dispatch through a public task dispatcher()", () => {
+  function relay(withLink: boolean): FlowInstance {
+    return defineFlow({
+      kind: withLink ? "task-relay" : "task-relay-nolink",
+      actions: {
+        send: {
+          inputSchema: taskDispatchInputSchema,
+          block: dispatcher({
+            name: withLink ? "task-relay-send" : "task-relay-nolink-send",
+            type: "task",
+            action: "work",
+            flowKind: "linked",
+            session: "per-task",
+            ...(withLink ? { link: (task: { assignee: string }) => task.assignee } : {})
+          })
+        }
+      }
+    })({ id: withLink ? "task-relay" : "task-relay-nolink" }) as unknown as FlowInstance;
+  }
+
+  async function send(withLink: boolean) {
+    const h = flows();
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    registry.register(h.flow);
+    const from = relay(withLink);
+    registry.register(from);
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    await hold(stores, "alice", "researcher", "linked");
+    expect((await create(router, from.id, { userId: "alice", sessionId: "tparent" })).status).toBe(201);
+    const envelope = { boardId: "board", seat: "researcher", taskId: "t1", attempt: 1, createdAt: 1, payload: {} };
+    const res = await router.POST(
+      new Request(`http://localhost/api/flows/${from.id}/tparent/actions/send`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: "alice", input: envelope })
+      }),
+      { params: { path: [from.id, "tparent", "actions", "send"] } }
+    );
+    expect(res.status).toBe(202);
+    const deadline = Date.now() + 5_000;
+    while ((await stores.request.list({ sessionId: "tparent" })).some((r) => r.status === "in_progress")) {
+      if (Date.now() > deadline) throw new Error("the send never finished");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const [sent] = await stores.request.list({ sessionId: "tparent" });
+    const children = await stores.session.list({ parentage: { parentOf: "tparent" } });
+    return { sent, children };
+  }
+
+  it("creates each task's child with the link the dispatcher looked up for it", async () => {
+    const { sent, children } = await send(true);
+    expect(sent?.status).toBe("completed");
+    expect(children.map((c) => c.link)).toEqual(["researcher"]);
+  });
+
+  it("is refused by the target's check when the task dispatcher names no link", async () => {
+    const { sent, children } = await send(false);
+    expect(sent?.status).toBe("failed");
+    expect(children).toEqual([]);
+  });
+});
+
+describe("a link is stored and matched exactly as sent", () => {
+  it("keeps surrounding spaces through create and the listing", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    registry.register(
+      defineFlow({
+        kind: "opaque",
+        session: { createCheck: () => ({ ok: true }) },
+        actions: { run: { inputSchema: z.object({}), block: handler({ name: "opaque-run", execute: () => ({}) }) } }
+      })({ id: "opaque" }) as unknown as FlowInstance
+    );
+    const router = createFlowApiRouter({ registry, stores });
+    expect((await create(router, "opaque", { userId: "alice", sessionId: "o1", link: "  spaced  " })).status).toBe(201);
+    expect((await stores.session.get("o1"))?.link).toBe("  spaced  ");
+
+    const list = async (link: string) => {
+      const res = await router.GET(
+        new Request(`http://localhost/api/flows/sessions?userId=alice&link=${encodeURIComponent(link)}`),
+        { params: { path: ["sessions"] } }
+      );
+      return ((await res.json()) as { sessions: Array<{ id: string }> }).sessions.map((row) => row.id);
+    };
+    expect(await list("  spaced  ")).toEqual(["o1"]);
+    expect(await list("spaced")).toEqual([]);
   });
 });
 

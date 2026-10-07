@@ -645,6 +645,20 @@ describe("--worker, on a flow that checks its session creates", () => {
     expect((await stores.session.get("w-7"))?.state).toEqual({ note: "hi", granted: [] });
   });
 
+  it("checks a session another run created first: two runs with two workers, one runs", async () => {
+    const stores = createInMemoryStores();
+    const run = (worker: string) =>
+      executeRunCommand("linked", "who", { input: "{}", session: "w-race", worker, cwd: fixturesDir, stores, quiet: true });
+    const results = await Promise.allSettled([run("ok-a"), run("ok-b")]);
+    const ran = results.filter((r) => r.status === "fulfilled");
+    const refused = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(ran).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(String(refused[0]!.reason)).toMatch(/never changes/);
+    const stored = (await stores.session.get("w-race"))?.link;
+    expect((ran[0] as PromiseFulfilledResult<{ output: unknown }>).value.output).toEqual({ link: stored });
+  });
+
   it("refuses a different --worker on an existing session, which keeps its link", async () => {
     const stores = createInMemoryStores();
     await executeRunCommand("linked", "who", {

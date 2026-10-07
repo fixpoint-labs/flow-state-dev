@@ -92,11 +92,13 @@ import {
   dispatchThroughSeam,
   markDispatcher,
   resolveTaskFlowKind,
+  resolveTaskLink,
   taskDispatchInputSchema,
   taskSessionKeyFor,
   type DispatchAddress,
   type SessionTarget,
   type TaskFlowTarget,
+  type TaskLinkTarget,
   type TaskSessionPolicy
 } from "../types/dispatch";
 import { handler } from "./handler";
@@ -216,6 +218,14 @@ export interface TaskDispatcherConfig<TPayload = unknown> {
   flowKind?: string | TaskFlowTarget;
   /** Which child session each row runs in. See {@link TaskSessionPolicy}. */
   session: TaskSessionPolicy<TPayload>;
+  /**
+   * The link each row's child session is created with, when the target flow
+   * declares `session.createCheck`: a fixed string, or `(task, ctx) => string`,
+   * looked up per task and handed the row's assignee, id and input. A child
+   * that already exists keeps the link it was created with. See
+   * {@link TaskLinkTarget}.
+   */
+  link?: string | TaskLinkTarget;
   /** Hide this block's trace from clients. Default: false. */
   transient?: boolean;
 }
@@ -225,7 +235,18 @@ export type DispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny, TPayl
   | InternalDispatcherConfig<TInputSchema>
   | TaskDispatcherConfig<TPayload>;
 
-/** Build a dispatcher block. See the module header. */
+/**
+ * Build a dispatcher block. See the module header.
+ *
+ * The first signature takes an `internal` dispatcher that declares its
+ * `inputSchema`, ahead of the task one, so the session callbacks (`key`,
+ * `link`, `id`) are typed with that schema's input. TypeScript types a
+ * callback against the first signature it tries, and a task config's
+ * `(task: unknown)` would otherwise stick.
+ */
+export function dispatcher<TInputSchema extends ZodTypeAny>(
+  config: InternalDispatcherConfig<TInputSchema> & { inputSchema: TInputSchema }
+): BlockDefinition<TInputSchema, typeof dispatchHandleSchema>;
 export function dispatcher<TPayload = unknown>(
   config: TaskDispatcherConfig<TPayload>
 ): BlockDefinition<typeof taskDispatchInputSchema, typeof dispatchHandleSchema>;
@@ -292,11 +313,13 @@ export function dispatcher(
           `target hands each task over in a session of its own: declare \`session: "per-task"\`.`
       );
     }
+    const link = (config as TaskDispatcherConfig).link;
     const address: DispatchAddress = {
       type: "task",
       action,
       session,
-      ...(flowKind !== undefined ? { flowKind } : {})
+      ...(flowKind !== undefined ? { flowKind } : {}),
+      ...(link !== undefined ? { link } : {})
     };
     const block = handler({
       ...common,
@@ -304,16 +327,14 @@ export function dispatcher(
       outputSchema: dispatchHandleSchema,
       execute: async (envelope, ctx): Promise<DispatchHandle> => {
         const key = taskSessionKeyFor(name, session, envelope, ctx);
-        const target = await resolveTaskFlowKind(
-          name,
-          address as Extract<DispatchAddress, { type: "task" }>,
-          { assignee: envelope.seat, taskId: envelope.taskId, input: envelope.payload },
-          ctx
-        );
+        const task = { assignee: envelope.seat, taskId: envelope.taskId, input: envelope.payload };
+        const taskAddress = address as Extract<DispatchAddress, { type: "task" }>;
+        const target = await resolveTaskFlowKind(name, taskAddress, task, ctx);
+        const childLink = await resolveTaskLink(name, taskAddress, task, ctx);
         const outcome = await dispatchThroughSeam(ctx, {
           type: "task",
           action,
-          session: { key },
+          session: childLink === undefined ? { key } : { key, link: childLink },
           payload: envelope,
           from: name,
           provenance: { taskId: envelope.taskId },
