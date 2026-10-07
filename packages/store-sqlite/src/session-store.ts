@@ -62,12 +62,13 @@ export function createSQLiteSessionStore(db: Database.Database): SessionStore {
       }
       // `"all"` emits no clause at all — today's unrestricted query, unchanged.
 
-      // Link filter: an equality on the record's server-written `link`, read
-      // out of the stored JSON. No column of its own: the query is already
-      // narrowed by the indexed owner columns, and a session has one link.
-      if (options?.link !== undefined) {
-        parts.push("json_extract(data, '$.link') = ?");
-        params.push(options.link);
+      // State filter: an equality per readonly state field, read out of the
+      // stored JSON in the query. The query is already narrowed by the indexed
+      // owner columns. The JSON path is a bound parameter, and a field name is
+      // a plain identifier, so neither can change the statement.
+      for (const [field, value] of Object.entries(options?.state ?? {})) {
+        parts.push("json_extract(data, ?) = ? AND json_type(data, ?) = 'text'");
+        params.push(`$.state.${field}`, value, `$.state.${field}`);
       }
 
       return { clause: parts.join(" AND "), params };

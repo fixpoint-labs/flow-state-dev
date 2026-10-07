@@ -575,35 +575,43 @@ Adapters must implement all four options:
 - Both types accept `orgId`, with the same present-vs-absent NULL-safe matching
   as `tenantId`: an absent key filters nothing, a present key (including an
   explicit `undefined`) exact-matches.
-- `SessionListOptions.link` exact-matches the record's `link`. Absent filters
-  nothing; a record with no link never matches a present one.
+- `SessionListOptions.state` exact-matches top-level session-state fields: a
+  record matches when each named field holds that string. Absent filters
+  nothing. Filter in the query (the SQL adapters bind the field path), never
+  after it.
 
 ## Checking a session at create
 
-`session.createCheck` runs before a session of the flow is written, on every
-path that creates one: the create route, an action to a session id that does
-not exist yet, a webhook delivery, `fsdev run`, and a dispatch into a child
-session. It receives the verified caller and the create's `link` input (the
-create body's `link`, `fsdev run --worker`, or the `link` a `dispatcher()`'s
-`{ key, link }` session computes), and accepts or refuses it. An accepted link
-is stored as the record's `link`, unchanged; nothing writes it afterwards, and a
-turn on an existing session never calls the check. `session.serverOwned` names
-session-state fields a create may not seed; the create route answers 400
-naming the field.
+Every path that creates a session (the create route, an action to a session
+id that does not exist yet, a webhook delivery, `fsdev run`, and a dispatch
+into a child session) creates it from an initial state: the create body's
+`state`, `fsdev run --seed-session`, or the `state` a `dispatcher()`'s
+`{ key, state }` session names. The flow's session `stateSchema` parses it; a
+state the schema refuses is refused, never stored raw. `session.serverOwned`
+names fields a caller may not seed. Most flows need nothing more. The optional
+`session.createCheck` is for a rule that depends on who is creating the session
+or on what exists in the store: it receives the verified caller and the parsed
+state, and accepts or refuses the create. A turn on an existing session never
+calls it.
+
+A top-level `stateSchema` field declared `.readonly()` is set when the session
+is created and never changes: a run's write that changes it throws
+`ReadonlySessionStateError` and writes nothing, and `fsdev run --seed-session`
+refuses the same change. Only readonly
+fields are filterable on the list route (`?state.<field>=<value>`, with
+`flowKind` or `flowId`).
 
 A host that creates sessions itself calls `ensureSessionRecord(stores, key,
-request, build)`. It runs the flow's `createCheck` and the `serverOwned`
-refusal, then writes the record you build. If another caller created the same
-id first, it returns that caller's record. A refused create throws
-`SessionCreateRefusedError`, which carries the `message` and the HTTP `status`
-to answer with (and `field`, when a server-owned field was the reason).
-`refuseServerOwnedState(flow, sessionId, state)` throws the same error for a
-state seed that sets a server-owned field, for a host that writes seeded state
-into a session that already exists. `resolveInitialSessionState(flow, state)`
-gives a new session's state with the flow's schema defaults under the caller's
-values.
-
-Flow code reads its own session's link as `ctx.session.link`.
+request, build)`. It parses the request's `state`, runs the `serverOwned`
+refusal and the flow's `createCheck`, then writes the record you build with
+that state. If another caller created the same id first, it returns that
+caller's record. A refused create throws `SessionCreateRefusedError`, which
+carries the `message` and the HTTP `status` to answer with (and `field`, when
+one field was the reason). For a host that writes seeded state into a session
+that already exists, `refuseServerOwnedState(flow, sessionId, state)` throws the
+same error for a server-owned field, and `refuseReadonlyStateChange(flowKind,
+sessionId, readonlyFields, createdWith, next)` throws
+`ReadonlySessionStateError` for a changed readonly field.
 
 ## Session retention policies
 

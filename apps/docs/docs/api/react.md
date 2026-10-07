@@ -47,7 +47,7 @@ flow.createSession();          // Promise<SessionDetail>
 flow.selectSession(id);        // void; pass undefined to clear the selection
 ```
 
-On a flow that declares `session.createCheck`, pass `worker`: the hook lists only the sessions with that link and creates new ones with it. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
+`createSession` and `autoCreateSession` send no initial state. On a flow whose sessions need some, such as a required readonly field, create the session with the [session client](/docs/api/client) and pass its id to `selectSession`. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
 
 ### `useSession(sessionId, options?)`
 

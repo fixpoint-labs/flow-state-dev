@@ -235,9 +235,9 @@ export async function handleExecuteAction(
       if (error instanceof UserBindingMismatchError || error instanceof OrgBindingMismatchError) {
         return unknownSessionResponse(error.sessionId);
       }
-      // A session this action would have created, refused by the flow's
-      // create check: an action names no link, so a flow that links its
-      // sessions is created through the session-create route instead.
+      // A session this action would have created, refused by the flow: an
+      // action carries no initial state, so a flow whose sessions need some
+      // is created through the session-create route instead.
       if (error instanceof SessionCreateRefusedError) return sessionCreateRefusedResponse(error);
       // A request id another principal took between the check above and the
       // dispatch's write. Nothing of theirs was touched, and the same call

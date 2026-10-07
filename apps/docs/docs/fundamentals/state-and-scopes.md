@@ -178,9 +178,11 @@ const recent = await ctx.session.getJournal({ limit: 10 });
 
 A new session typically starts via `sessions.createSession({...})` on the client, which returns a stable `sess_<id>` you reuse on every subsequent action call. See [Client Overview](/docs/client/overview).
 
-If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through. On a flow that declares `session.createCheck`, such an action is refused instead (see the [example below](#example-one-session-per-project)).
+If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through. Such an action starts the session with no initial state, so on a flow whose `stateSchema` requires a field, or whose `createCheck` refuses an empty state, it is refused instead (see the [example below](#example-one-session-per-project)).
 
-A caller can pass initial `state` when it creates a session. That suits preferences and drafts, and it is the wrong place for a value that grants anything: the caller wrote it.
+A caller can pass initial `state` when it creates a session. It is parsed through the flow's session `stateSchema`, so missing fields take their defaults. A state the schema refuses is refused with a 400 that names the field (`{ error, field }`), and nothing is written.
+
+Initial state suits preferences and drafts. On its own it is the wrong place for a value that grants anything, because the caller wrote it; a `createCheck` that confirms the value (below) changes that.
 
 For a field your flow changes as it runs, and that a caller must never set, list it in `session.serverOwned`:
 
@@ -193,34 +195,48 @@ session: {
 
 A create that sets `reviewers` in its `state` is refused with a 400 whose body names the field (`{ error, field: "reviewers" }`), and nothing is written. Blocks in your flow write it like any other session state.
 
-When a session exists to work on one particular thing, such as one of the user's projects, give it a **link**. A link is a single string chosen when the session is created and fixed for the rest of its life. Your flow decides whether to allow it by declaring `session.createCheck`, a function that runs before the session is written and either accepts the link or refuses the create. Blocks read the accepted value as `ctx.session.link`, and callers can list sessions by it. The client, `useFlow` and `fsdev run` call this option `worker`. It carries any link value (here, a project slug) and is sent as `link`. The [example below](#example-one-session-per-project) walks through the whole thing.
+When a session exists to work on one particular thing, such as one project, put that thing in the session's `stateSchema` and declare it with zod's `.readonly()`. The schema checks the shape of every new session's initial state, and a create it refuses is refused. A readonly field is set when the session is created and never changes. Blocks read it like any other session state, and callers can list sessions by it.
+
+Most flows need only the schema. When a rule depends on who is creating the session, or on what exists in the store, such as "this project is yours or shared with you", also declare `session.createCheck`. It runs after the schema has parsed the initial state, receives that state and the caller's identity, and accepts or refuses the create. The [example below](#example-one-session-per-project) walks through both.
 
 ### Example: one session per project
 
-Say each user of your app keeps a list of projects, and every assistant session works on exactly one of them. A user should not be able to open a session on a project that doesn't exist, or on someone else's.
+Say your app keeps projects, and every assistant session works on exactly one of them. A session should name a project, keep it for its whole life, and only open on a project the user owns or has been given.
 
-**1. Keep the projects in a user-scoped collection.** A [resource collection](/docs/resources/collections) with `scope: "user"` holds a separate set of rows for each user. Here a small `projects` flow writes to it:
+**1. Keep the projects in a collection.** A [resource collection](/docs/resources/collections) with `scope: "org"` holds one set of rows for the whole organization, so a project can be shared between its users. Here a small `projects` flow writes to it:
 
 ```ts
 // flows/projects.ts
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 
-// One row per project, in each user's own scope.
+// One row per project, shared across the organization.
 export const projects = defineResourceCollection({
   pattern: "projects/*",
-  scope: "user",
-  stateSchema: z.object({ name: z.string() }),
+  scope: "org",
+  stateSchema: z.object({
+    name: z.string(),
+    owner: z.string(),
+    sharedWith: z.array(z.string()).default([]),
+  }),
 });
 
-const createProjectInput = z.object({ slug: z.string(), name: z.string() });
+const createProjectInput = z.object({
+  slug: z.string(),
+  name: z.string(),
+  sharedWith: z.array(z.string()).default([]),
+});
 
 const createProject = handler({
   name: "create-project",
   inputSchema: createProjectInput,
   resources: { projects },
   execute: async (input, ctx) => {
-    await ctx.resources.projects.create(input.slug, { name: input.name });
+    await ctx.resources.projects.create(input.slug, {
+      name: input.name,
+      owner: ctx.user.identity.userId,
+      sharedWith: input.sharedWith,
+    });
     return { slug: input.slug };
   },
 });
@@ -234,31 +250,22 @@ export const projectsFlow = defineFlow({
 })();
 ```
 
-Every flow in the same organization that declares `projects` sees the same rows for a given user, unless a flow sets [`isolateUserState`](/docs/configuration/flow#defineflow-fields). After `user_1` runs `create` with `{ slug: "q3-launch", name: "Q3 launch" }`, their scope holds the row `projects/q3-launch`.
+After `user_1` runs `create` with `{ slug: "q3-launch", name: "Q3 launch", sharedWith: ["user_2"] }`, the organization holds the row `projects/q3-launch`, owned by `user_1` and shared with `user_2`.
 
-**2. Declare the check on the assistant flow.**
+**2. Declare the session's state.** On the assistant flow, the `stateSchema` says every session names a project:
 
 ```ts
 // flows/project-assistant.ts
 import { defineFlow } from "@flow-state-dev/core";
 import { z } from "zod";
-import { loadProject } from "./load-project"; // defined in step 4
+import { loadProject } from "./load-project"; // defined in step 5
 import { projects } from "./projects";
 
 export const projectAssistant = defineFlow({
   kind: "project-assistant",
   resources: { projects },
   session: {
-    createCheck: async ({ link, readCollectionItem }) => {
-      if (link === undefined) {
-        return { ok: false, message: "Pick a project to open." };
-      }
-      const project = await readCollectionItem("projects", link);
-      if (project === undefined) {
-        return { ok: false, status: 404, message: `No project "${link}".` };
-      }
-      return { ok: true };
-    },
+    stateSchema: z.object({ projectId: z.string().readonly() }),
   },
   actions: {
     loadProject: { inputSchema: z.object({}), block: loadProject },
@@ -266,16 +273,39 @@ export const projectAssistant = defineFlow({
 })();
 ```
 
+That one line does the shape validation. `projectId` is required and has no default, so a create without a string `projectId` is refused with a 400 that names the field, and nothing is written. `.readonly()` makes it fixed: it is set when the session is created and never changes. Many flows stop here.
+
+**3. Add a check for the rule that depends on the caller.** The schema can't know whether `q3-launch` exists, or whether this user may open it. That depends on who is asking and on what is stored, which is what `session.createCheck` is for:
+
+```ts
+  session: {
+    stateSchema: z.object({ projectId: z.string().readonly() }),
+    createCheck: async ({ state, principal, readCollectionItem }) => {
+      // The schema has already parsed the state, so this is a string.
+      const projectId = state.projectId as string;
+      const project = await readCollectionItem("projects", projectId);
+      const mayOpen =
+        project !== undefined &&
+        (project.owner === principal.userId ||
+          (project.sharedWith as string[]).includes(principal.userId));
+      if (!mayOpen) {
+        return { ok: false, status: 404, message: `No project "${projectId}".` };
+      }
+      return { ok: true };
+    },
+  },
+```
+
 The check gets one object:
 
 | Field | What it is |
 |-------|------------|
-| `link` | The link the create named, or `undefined` if it named none. |
+| `state` | The session's initial state, after the schema parsed it. A state the schema refuses never reaches the check. |
 | `principal` | The caller: `{ userId, orgId, tenantId? }`. |
 | `readCollectionItem(ref, topic)` | Reads one row of a user- or org-scoped collection this flow declares. `ref` is the key in the flow's `resources` (`"projects"`). `topic` is the row's key in the collection: `"q3-launch"` for `projects/q3-launch`, or the parameters for a pattern like `[room]/info` (`{ room: "lobby" }`). Resolves the row's state, or `undefined` when there is no such row. Throws if `ref` isn't a user- or org-scoped collection of this flow. |
 | `sessionId`, `flow`, `via` | The id being created, the flow (`{ kind, id }`), and which path is creating it: `"create"`, `"action"`, `"webhook"`, `"cli"` or `"dispatch"`. |
 
-`readCollectionItem` only ever reads the caller's own scope. `user_2` asking for `q3-launch` gets `undefined` even though `user_1` has one, so "not yours" and "doesn't exist" get the same answer.
+`readCollectionItem` reads only the caller's own scope: their own rows of a user-scoped collection, their own organization's rows of an org-scoped one. The check above answers "not yours" with the same 404 as "doesn't exist", so it doesn't reveal which projects exist.
 
 Return `{ ok: true }` to create the session, or `{ ok: false, message, status }` to refuse it. `status` can be 400, 403 or 404, and defaults to 400.
 
@@ -283,7 +313,7 @@ The check is only as strong as the caller identity it receives. With [authentica
 
 Register both flows with your server as usual (see [Engine setup](/docs/server/setup)).
 
-**3. Create a session for a project.** Pass the project's slug as `worker`:
+**4. Create a session for a project.** Pass the project's slug in the session's initial `state`:
 
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
@@ -292,11 +322,9 @@ const sessions = createSessionClient();
 
 const session = await sessions.createSession({
   flowKind: "project-assistant",
-  userId: "user_1",
-  worker: "q3-launch",
+  userId: "user_2",
+  state: { projectId: "q3-launch" },
 });
-
-session.link; // "q3-launch"
 ```
 
 Over HTTP, the same create is:
@@ -305,24 +333,14 @@ Over HTTP, the same create is:
 POST /api/flows/project-assistant/sessions
 Content-Type: application/json
 
-{ "userId": "user_1", "link": "q3-launch" }
+{ "userId": "user_2", "state": { "projectId": "q3-launch" } }
 ```
 
-It answers `201` with `{ "session": { "id": "sess_...", "link": "q3-launch", ... } }`.
+It answers `201` with `{ "session": { "id": "sess_...", ... } }`.
 
-In React, pass the value to `useFlow`. The hook lists only that project's sessions and creates new ones with it:
+In React, `useFlow`'s `createSession` and `autoCreateSession` send no initial state, so this flow refuses them. Create the session with the session client as above, then make it the hook's active session with `flow.selectSession(session.id)`.
 
-```ts
-import { useFlow } from "@flow-state-dev/react";
-
-const flow = useFlow({
-  flowKind: "project-assistant",
-  worker: projectSlug,
-  autoCreateSession: true,
-});
-```
-
-**4. Read the link in a block.** `ctx.session.link` is the value the check accepted:
+**5. Read the field in a block.**
 
 ```ts
 // flows/load-project.ts
@@ -333,32 +351,33 @@ import { projects } from "./projects";
 export const loadProject = handler({
   name: "load-project",
   inputSchema: z.object({}),
+  sessionStateSchema: z.object({ projectId: z.string().readonly() }),
   resources: { projects },
   execute: async (_input, ctx) => {
-    const slug = ctx.session.link;
-    if (slug === undefined) throw new Error("This session has no project.");
-
-    const project = await ctx.resources.projects.get(slug);
-    return { slug, name: project.state.name };
+    const projectId = ctx.session.state.projectId;
+    const project = await ctx.resources.projects.get(projectId);
+    return { projectId, name: project.state.name };
   },
 });
 ```
 
-Run `loadProject` in the session from step 3 and it returns `{ slug: "q3-launch", name: "Q3 launch" }`. Every turn in that session sees the same link. No route, action or block can change it. The type is `string | undefined` because a flow with no `createCheck` has no link; on this flow it is always set.
+Run `loadProject` in the session from step 4 and it returns `{ projectId: "q3-launch", name: "Q3 launch" }`. Every turn in that session sees the same value. A block that writes a different `projectId` fails its run with an error naming the field, and the session keeps the value it was created with. The flow's `session.stateSchema` is what makes the field readonly; the block's `sessionStateSchema` only types `ctx.session.state`.
 
-**5. List a project's sessions.**
+**6. List a project's sessions.**
 
 ```ts
 const forProject = await sessions.listSessions({
   flowKind: "project-assistant",
-  userId: "user_1",
-  worker: "q3-launch",
+  userId: "user_2",
+  state: { projectId: "q3-launch" },
 });
 ```
 
-Over HTTP: `GET /api/flows/sessions?flowKind=project-assistant&userId=user_1&link=q3-launch`. Each row carries its `link`. The filter narrows the listing the caller already gets, so another user's sessions on a project with the same slug never show up.
+Over HTTP: `GET /api/flows/sessions?flowKind=project-assistant&userId=user_2&state.projectId=q3-launch`. The filter narrows the listing the caller already gets, so another user's sessions on the same project never show up.
 
-**6. Handle a refusal.** When the check refuses, no session is written. The create answers with your `status` and a body of `{ error: message }`, and the client throws `ClientHttpError`:
+A `state` filter needs `flowKind` (or `flowId`), takes string values matched exactly, and only names readonly fields. A filter on any other field is refused with a 400.
+
+**7. Handle a refusal.** When the create is refused, no session is written. The create answers with the status and a body of `{ error: message }`, and the client throws `ClientHttpError`:
 
 ```ts
 import { ClientHttpError } from "@flow-state-dev/client";
@@ -366,8 +385,8 @@ import { ClientHttpError } from "@flow-state-dev/client";
 try {
   await sessions.createSession({
     flowKind: "project-assistant",
-    userId: "user_2",
-    worker: "q3-launch",
+    userId: "user_3",
+    state: { projectId: "q3-launch" },
   });
 } catch (error) {
   if (error instanceof ClientHttpError) {
@@ -377,19 +396,19 @@ try {
 }
 ```
 
-With the check above:
+With the flow above:
 
-| The create names | Status | Body |
-|------------------|--------|------|
-| A project the user has | `201` | `{ session: { ..., link: "q3-launch" } }` |
-| A project that doesn't exist, or another user's | `404` | `{ error: 'No project "q3-launch".' }` |
-| No project | `400` | `{ error: "Pick a project to open." }` |
+| The create's state | Refused by | Status | Body |
+|--------------------|------------|--------|------|
+| A project the user owns or was given | | `201` | `{ session: { ... } }` |
+| A project that doesn't exist, or one the user wasn't given | `createCheck` | `404` | `{ error: 'No project "q3-launch".' }` |
+| No `projectId`, or one that isn't a string | `stateSchema` | `400` | `{ error, field: "projectId" }` |
 
-A create with no link is refused with a 400 even if your check returns `{ ok: true }` for it, so every session of a flow with a check has a link. From `useFlow`, `createSession` rejects with the same error, and `autoCreateSession` leaves the hook with no active session.
+The last row is refused the same way on a flow with no `createCheck`.
 
-An action sent without a session id, or to a session id that doesn't exist yet, is refused the same way, and so is a webhook delivery to a new session id. These name no link, so they get the 400 above and nothing is written. Create the session first, as in step 3.
+An action sent without a session id, or to a session id that doesn't exist yet, would start a session with no `projectId`, so it gets that 400 and nothing is written. So does a webhook delivery to a new session id. Create the session first, as in step 4.
 
-**Where else the check runs.** The same check runs on the other paths that create a session of this flow: a [`dispatcher()`](/docs/server/background-work#starting-a-job-from-a-flow) starting a child session with `session: { key, link }`, and `fsdev run project-assistant loadProject --worker q3-launch` when it starts a new session. A turn on an existing session never runs it.
+**Where else this runs.** The schema and the check run on every path that creates a session of this flow: a [`dispatcher()`](/docs/server/background-work#starting-a-job-from-a-flow) starting a child session with `session: { key, state }`, and `fsdev run project-assistant loadProject --seed-session '{"projectId":"q3-launch"}'` when it starts a new session. A turn on an existing session runs neither.
 
 ## The `client` block: exposing state safely
 

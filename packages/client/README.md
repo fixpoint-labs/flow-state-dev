@@ -185,20 +185,24 @@ const runs = rows.filter((row) => row.parentSessionId != null);
 Leave the option off and you get the sessions a person started. Rows belonging to
 another principal, organization or tenant are absent either way.
 
-### Sessions created with a worker
+### Sessions created with readonly state
 
-A flow can declare a [`session.createCheck`](https://flow-state.dev/docs/fundamentals/state-and-scopes#creating-sessions)
-that accepts or refuses each new session, and `worker` is the value that check
-receives. `listSessions` takes the same option as a filter.
+A flow's session `stateSchema` can declare a field `.readonly()`: it is set when
+the session is created and never changes. Pass it in the create's `state`, and
+list sessions by it with `listSessions`'s `state` filter.
 
 ```ts
-const fresh = await sessions.createSession({ flowKind: "agent", userId, worker: "researcher" });
-const mine = await sessions.listSessions({ flowKind: "agent", userId, worker: "researcher" });
+const fresh = await sessions.createSession({ flowKind: "agent", userId, state: { projectId: "q3-launch" } });
+const mine = await sessions.listSessions({ flowKind: "agent", userId, state: { projectId: "q3-launch" } });
 ```
 
-Each returned session carries it as `link`. It is set at creation and never
-changes. A refused create rejects with the server's status (400, 403 or 404) and
-its message, and no session is written.
+The filter needs `flowKind` or `flowId`, matches string values exactly, and is
+refused for a field that isn't readonly on that flow. A create whose `state` the
+schema refuses rejects with a 400 naming the field. A flow can also declare a
+[`session.createCheck`](https://flow-state.dev/docs/fundamentals/state-and-scopes#creating-sessions)
+for a rule that depends on the caller, such as whether the project is theirs; it
+rejects with the server's status (400, 403 or 404) and message. Either way, no
+session is written.
 
 `listChildSessions` asks one session which dispatch runs were started from it.
 

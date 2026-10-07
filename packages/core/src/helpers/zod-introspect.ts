@@ -64,6 +64,49 @@ export function getZodInnerType(schema: ZodTypeAny): ZodTypeAny | undefined {
 }
 
 /**
+ * A schema's kind, read from zod 3 (`_def.typeName`, e.g. `"ZodReadonly"`) or
+ * zod 4 (`_def.type`, e.g. `"readonly"`), normalized to zod 4's lowercase
+ * spelling. An app may hand the framework a schema from either.
+ */
+function zodKind(schema: unknown): string | undefined {
+  const def = (schema as { _def?: { typeName?: unknown; type?: unknown } } | undefined)?._def;
+  if (typeof def?.typeName === "string") return def.typeName.replace(/^Zod/, "").toLowerCase();
+  return typeof def?.type === "string" ? def.type : undefined;
+}
+
+/**
+ * The top-level keys of an object schema declared `.readonly()`: on a session
+ * `stateSchema`, the fields set when a session is created that never change.
+ *
+ * Only a plain `z.object({...})` at the top is read; anything else (a union,
+ * an intersection, a lazy or wrapped root) has no readonly keys, rather than
+ * a guess. A key counts when a readonly wrapper sits anywhere in its own
+ * wrapper chain (`.readonly().default(x)` and `.default(x).readonly()` both
+ * count). `.readonly()` deeper inside a field's value doesn't make the field
+ * readonly. Reads zod 3 and zod 4 schemas alike.
+ */
+export function getReadonlyStateKeys(schema: ZodTypeAny | undefined): string[] {
+  if (schema === undefined || zodKind(schema) !== "object") return [];
+  const shape = (schema as unknown as { shape?: unknown }).shape;
+  if (typeof shape !== "object" || shape === null) return [];
+  const keys: string[] = [];
+  for (const [key, field] of Object.entries(shape as Record<string, unknown>)) {
+    let current: unknown = field;
+    const seen = new Set<unknown>();
+    while (current !== undefined && !seen.has(current)) {
+      seen.add(current);
+      if (zodKind(current) === "readonly") {
+        keys.push(key);
+        break;
+      }
+      const def = (current as { _def?: { innerType?: unknown; schema?: unknown } })._def;
+      current = def?.innerType ?? def?.schema;
+    }
+  }
+  return keys;
+}
+
+/**
  * Peel wrapper layers (`.default()`, `.optional()`, `.nullable()`, effects) off
  * a schema until a `ZodObject` is reached, and return it — or `undefined` when
  * the schema isn't object-shaped (scalar/array/record). Handles the dominant

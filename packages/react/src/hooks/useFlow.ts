@@ -1,7 +1,7 @@
 /**
  * Flow-level hook for session browsing, creation, and auto-creation.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createClient,
   createSessionClient,
@@ -27,12 +27,6 @@ export type UseFlowOptions = {
    * the hook doesn't auto-load a session the consumer didn't ask for.
    */
   autoSelectSession?: boolean;
-  /**
-   * The worker this hook's sessions run, on a flow whose sessions each run
-   * one worker. Lists only that worker's sessions, and creates new ones with
-   * it, so the server links each new session to it.
-   */
-  worker?: string;
 };
 
 /**
@@ -67,13 +61,6 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
   const userId = options.userId ?? context.userId ?? "devuser";
   const baseUrl = options.baseUrl ?? context.baseUrl;
   const apiPath = context.apiPath;
-  const worker = options.worker;
-  // Spread into every listing and create, so a hook with no worker sends
-  // exactly what it always has.
-  const workerFilter = useMemo(
-    (): { worker?: string } => (worker === undefined ? {} : { worker }),
-    [worker]
-  );
 
   const [flows, setFlows] = useState<FlowListEntry[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -109,21 +96,19 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
       const created = await sessionClient.createSession({
         flowKind,
         userId,
-        metadata,
-        ...workerFilter
+        metadata
       });
 
       const updated = await sessionClient.listSessions({
         ...sessionQueryFor(flowKind, flows),
-        userId,
-        ...workerFilter
+        userId
       });
       setSessions(updated);
       setActiveSessionId(created.id);
 
       return created;
     },
-    [flowKind, flows, userId, sessionClient, workerFilter]
+    [flowKind, flows, userId, sessionClient]
   );
 
   const ensureSession = useCallback(
@@ -149,26 +134,15 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
     if (!flowKind?.trim()) return;
     const updated = await sessionClient.listSessions({
       ...sessionQueryFor(flowKind, flows),
-      userId,
-      ...workerFilter
+      userId
     });
     setSessions(updated);
-  }, [flowKind, flows, userId, sessionClient, workerFilter]);
+  }, [flowKind, flows, userId, sessionClient]);
 
   // Fetch flows + sessions on mount, auto-create if requested and none exist.
-  // The worker the active session was chosen for. When the worker changes, the
-  // old selection is another worker's session: clear it before the new
-  // listing lands, so nothing sends to it in between, and let the listing
-  // below pick from the new worker's sessions (or create one).
-  const selectedForWorker = useRef(worker);
-
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
-    if (selectedForWorker.current !== worker) {
-      selectedForWorker.current = worker;
-      setActiveSessionId(undefined);
-    }
 
     void (async () => {
       try {
@@ -177,8 +151,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
         const nextSessions: SessionSummary[] = flowKind?.trim()
           ? await sessionClient.listSessions({
               ...sessionQueryFor(flowKind, nextFlows),
-              userId,
-              ...workerFilter
+              userId
             })
           : [];
 
@@ -194,8 +167,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
         } else if (options.autoCreateSession && flowKind?.trim()) {
           const created = await sessionClient.createSession({
             flowKind,
-            userId,
-            ...workerFilter
+            userId
           });
           if (cancelled) return;
 
@@ -203,8 +175,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
 
           const updated = await sessionClient.listSessions({
             ...sessionQueryFor(flowKind, nextFlows),
-            userId,
-            ...workerFilter
+            userId
           });
           if (cancelled) return;
 
@@ -223,8 +194,6 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
     sessionClient,
     flowKind,
     userId,
-    worker,
-    workerFilter,
     options.autoCreateSession,
     options.autoSelectSession,
   ]);

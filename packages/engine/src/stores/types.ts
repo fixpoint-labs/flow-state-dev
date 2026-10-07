@@ -118,14 +118,6 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * contract for both fields.
    */
   coordinate?: string;
-  /**
-   * The create's link input, as the flow's `session.createCheck` accepted it
-   * when this record was created (`context/session-birth.ts`). Written once, at birth, and
-   * never again: no route, action or block writes it, and every later write
-   * carries it over unchanged from the record it read. Absent on a session of
-   * a flow that declares no create check.
-   */
-  link?: string;
   title?: string;
   description?: string;
   tags?: string[];
@@ -412,11 +404,13 @@ export type SessionListOptions = {
    */
   parentage?: SessionParentage;
   /**
-   * Exact-match filter on {@link SessionRecord.link}. Absent applies no filter;
-   * present matches only records whose stored link equals it, so a record with
-   * no link never matches.
+   * Exact-match filter on top-level session-state fields: a record matches
+   * when, for every entry, its `state[field]` is that string. Absent applies
+   * no filter. The list route admits only the flow's readonly state fields,
+   * which are fixed for a session's life; an adapter filters in its query,
+   * never after it. Field names are plain identifiers.
    */
-  link?: string;
+  state?: Readonly<Record<string, string>>;
   /**
    * Sort key for the returned (and limited) set, descending (FIX-1010).
    *

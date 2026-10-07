@@ -1,8 +1,9 @@
 export { createExecutionContext } from "./context/createExecutionContext";
 export {
   ensureSessionRecord,
+  ReadonlySessionStateError,
+  refuseReadonlyStateChange,
   refuseServerOwnedState,
-  resolveInitialSessionState,
   SessionCreateRefusedError
 } from "./context/session-birth";
 export type { SessionCreateRequest, SessionRecordSeed } from "./context/session-birth";
