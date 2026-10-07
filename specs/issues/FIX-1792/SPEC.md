@@ -103,7 +103,7 @@ table is [D1's](DECISIONS.md#the-table).
 - The coordinator flow and its keys ([FIX-1791](../FIX-1791/SPEC.md)), conversation boards
   ([FIX-1794](../FIX-1794/SPEC.md)), workstreams ([FIX-1793](../FIX-1793/SPEC.md)) and
   orchestration's task tools, `createTaskToolsCapability(resolver, roster)` and
-  `taskToolActions(board)` (FIX-1802's wiring of the existing task tools). This issue converts
+  `taskToolActions(<board id>, resolver, roster)` (FIX-1802's wiring of the existing task tools). This issue converts
   onto them and builds none.
 - A `WORKER.md` that isn't a coordinator keeps the flow it names; nothing moves onto `agent`.
 - Channels aren't built.

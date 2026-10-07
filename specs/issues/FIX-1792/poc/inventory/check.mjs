@@ -347,7 +347,7 @@ const FILE_CLASS = {
   "packages/shift-manager/teams/devteam/notify.mts": "C · S7 · the mailbox wake goes",
   "packages/shift-manager/teams/devteam/phase.mts": "E · S7 · a comment hands the mailbox its charter",
   "packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts": "C · S7 · reads its workstream, not a mailbox board",
-  "packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts": "C · S7 · leads the workstreams; its delegates take tasks, so it has the task tools: the generator block composes createTaskToolsCapability(resolver, roster), the flow spreads taskToolActions(board) into its actions",
+  "packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts": "C · S7 · leads the workstreams; its delegates take tasks, so it has the task tools: the generator block composes createTaskToolsCapability(resolver, roster), the flow spreads taskToolActions(<board id>, resolver, roster) into its actions",
   "packages/shift-manager/teams/devteam/workforce/org/workers/chief-of-staff/WORKER.md": "C · S7 · post-to-mailbox and setWorkstreams leave its tools",
   "packages/shift-manager/test/build-inputs.test.ts": "E · S8 · tests",
   "packages/shift-manager/test/chief-of-staff.test.ts": "E · S8 · workstreams as mailboxes in a fixture",

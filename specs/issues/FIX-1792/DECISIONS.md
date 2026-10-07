@@ -51,7 +51,7 @@ the delegates that can take a task as the roster. A worker has them when at leas
 `filing:` key (product owner, 2026-10-07). A routing coordinator whose delegates only take posts
 has none. The built-in `agent` and coordinator flows carry them through FIX-1802's wiring of the
 existing task tools. The EM's `em` flow composes the capability on its generator block and spreads
-`taskToolActions(board)` into its `actions` (the EM keeps `flow: em`). So each converted coordinator
+`taskToolActions(<board id>, resolver, roster)` into its `actions` (the EM keeps `flow: em`). So each converted coordinator
 whose delegates are agents has them, board or not, kitchen-sink's help desk included; so do the
 chief of staff, the members that filed on a mailbox's board when a post reached it
 (manager-queue-lab's manager, multi-seat-collab's planner, the row goal's filer) and the DevTeam's
@@ -126,7 +126,7 @@ on.
   orchestration's eight task tools when at least one of its `delegates:` can take a task; there is
   no `filing:` key, and nothing else grants them. They are the existing
   `createTaskToolsCapability(resolver, roster)` and, for an app's own actions,
-  `taskToolActions(board)`, both in `packages/orchestration/src/skills/task-tools-capability.ts`;
+  `taskToolActions(<board id>, resolver, roster)`, both in `packages/orchestration/src/skills/task-tools-capability.ts`;
   FIX-1802's wiring of the existing task tools puts them on worker flows. `mailboxBoardTaskTools`,
   the mailbox's wrapper over them, is retired here. [The table](#the-table) names who has them.
   A converted coordinator with no board still has them when its delegates take tasks; the two
@@ -205,6 +205,6 @@ on.
   pre-rename refusal went by the same rule; BP-030 recorded as not applying. No `filing:` key: a
   worker has the task tools when one of its delegates can take a task, and the tools are
   orchestration's existing eight, `createTaskToolsCapability(resolver, roster)` and
-  `taskToolActions(board)`.
+  `taskToolActions(<board id>, resolver, roster)`.
 
 **Open: none.**
