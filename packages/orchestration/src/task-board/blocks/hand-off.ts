@@ -157,6 +157,9 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
         ...(claim.incarnationId !== undefined
           ? { incarnationId: claim.incarnationId }
           : {}),
+        // The partition the claim was taken in, on a partitioned ledger: the
+        // child's gate reads the row there, never where its own context would.
+        ...(claim.partition !== undefined ? { partition: claim.partition } : {}),
         payload: snapshot,
       };
 

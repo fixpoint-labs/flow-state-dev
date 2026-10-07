@@ -212,6 +212,12 @@ export interface ResourceBackedOptions {
    * is durable, so no other backing can host one.
    */
   immutableAssignee?: boolean;
+  /**
+   * The partition `collection` is narrowed to, reported as the ref's
+   * `partition`. The narrowing itself is `collection`'s: this backing reads and
+   * writes only through it.
+   */
+  partition?: string;
 }
 
 /**
@@ -563,6 +569,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,
+    ...(options.partition !== undefined ? { partition: options.partition } : {}),
     // The one clock this collection stamps and judges leases against
     // (FIX-1005). Everything comparing against `leaseUntil` reads it, so the
     // claim write and the readers cannot end up on two timelines.

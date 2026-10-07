@@ -78,6 +78,28 @@ pass, such as `ctx.sequencer` for one board invocation. `backing: "resource"` ou
 request: a user's queue, an org work pool, declared with `defineTaskCollection`. Every
 mutation that changes a field emits a `task-change` component item.
 
+**A ledger per partition.** A `user`-scoped collection can take a `partitionBy`
+function, keeping one set of rows per partition at the user's scope:
+
+```ts
+const work = defineTaskCollection({
+  id: "work",
+  scope: "user",
+  partitionBy: (ctx) => conversationKey(ctx), // from data only the server writes
+});
+```
+
+A board over it resolved in one session reads, claims, waits on and settles only the
+partition that session's context names, and so do its task tools. That is how each
+conversation keeps a board of its own whose rows a task entry on another flow still
+works: the user scope crosses the flow, and a board's hand-off puts the partition on
+the dispatch, so the receiving gate reads the row there (a `taskLedgers` resolver gets
+it as its third argument; pass it to `getOrCreateTaskCollection({ partition })`).
+Return a value no caller can set, and one minted per owner: a session id alone is
+reused when a session is deleted and created again. The function gets the running
+context without the parent block's input. Task ids on a partitioned ledger are one
+path segment, and `maxInstances` is refused, since it would count every partition.
+
 **Server-only task fields.** A `task-change` item carries the whole post-mutation
 row, and that stream is client-visible. A few fields on `Task` are substrate
 bookkeeping that must not reach a browser — `claimedBy`, the execution coordinate a
@@ -530,7 +552,9 @@ board and the fix:
   request that claimed it.
 - **A session-scoped collection declares `sharedToLineage: true`**, or the child
   would resolve an empty ledger and never find its row. `user` and `org` scope need
-  nothing extra; they already span every session the principal touches.
+  nothing extra; they already span every session the principal touches. To hand
+  rows to another flow and still keep a board per session, use a partitioned
+  `user`-scoped collection (`partitionBy`, above).
 
 `defineFlow` adds one more: **no handed-off entry block declares
 `sessionStateSchema`**, at its root or in a composed child. Keep the block's

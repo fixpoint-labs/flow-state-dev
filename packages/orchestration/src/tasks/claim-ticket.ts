@@ -81,6 +81,13 @@ export interface TaskClaimTicket {
    * task resolves "the filer's own" against it. Not part of the write fence.
    */
   readonly createdBy?: string;
+  /**
+   * The partition the claim was taken in, on a ledger declared with
+   * `partitionBy`: the claiming ref's own. A board's hand-off puts it on the
+   * dispatch so the receiving gate reads the row where it was claimed. Not part
+   * of the write fence: the ref a write goes through is already narrowed to it.
+   */
+  readonly partition?: string;
 }
 
 /**
@@ -104,6 +111,8 @@ export const taskClaimTicketSchema = z.object({
   assignee: z.string().optional(),
   /** The claimed row's filer, when recorded. See {@link TaskClaimTicket.createdBy}. */
   createdBy: z.string().optional(),
+  /** The partition the claim was taken in. See {@link TaskClaimTicket.partition}. */
+  partition: z.string().optional(),
 });
 
 /**
@@ -112,8 +121,15 @@ export const taskClaimTicketSchema = z.object({
  * Pass the task **returned by `claim()`**, never the pre-claim task: `attempts`
  * is incremented by the claim, so a ticket built from an `addTask()` result
  * names an attempt nobody holds and every write presenting it is refused.
+ *
+ * `partition` is the claiming ref's own (`TaskCollectionRef.partition`), on a
+ * partitioned ledger.
  */
-export function ticketForClaim(collectionId: string, claimed: Task): TaskClaimTicket {
+export function ticketForClaim(
+  collectionId: string,
+  claimed: Task,
+  partition?: string
+): TaskClaimTicket {
   return {
     collectionId,
     taskId: claimed.id,
@@ -128,6 +144,7 @@ export function ticketForClaim(collectionId: string, claimed: Task): TaskClaimTi
       : {}),
     ...(claimed.assignee !== undefined ? { assignee: claimed.assignee } : {}),
     ...(claimed.createdBy !== undefined ? { createdBy: claimed.createdBy } : {}),
+    ...(partition !== undefined ? { partition } : {}),
   };
 }
 

@@ -14,8 +14,9 @@ import {
   type DefinedTaskCollection,
   type TaskCollectionRef,
 } from "../tasks";
+import { resolveTaskPartition } from "../tasks/collection/partition";
 
-export function resolveResourceTaskCollection<TInput = unknown, TOutput = unknown>(
+export async function resolveResourceTaskCollection<TInput = unknown, TOutput = unknown>(
   ctx: BlockContext,
   opts: {
     boardName: string;
@@ -34,6 +35,13 @@ export function resolveResourceTaskCollection<TInput = unknown, TOutput = unknow
      * captured before the handed-off board was declared would be stale besides.
      */
     ledger: DefinedTaskCollection;
+    /**
+     * The partition to read, when a dispatch names one: the receiving gate
+     * reads the row where the board claimed it, never where its own context
+     * would put it. Omitted, a partitioned ledger reads the partition its
+     * `partitionBy` names for the running context.
+     */
+    partition?: string;
   }
 ): Promise<TaskCollectionRef<TInput, TOutput>> {
   const collection = resolveResourceCollection(ctx, opts.resourceKey);
@@ -44,11 +52,18 @@ export function resolveResourceTaskCollection<TInput = unknown, TOutput = unknow
         `board.drain or list board.capability in \`uses\`.`
     );
   }
+  const partitionBy = opts.ledger.__taskCollection.partitionBy;
+  const partition =
+    opts.partition ??
+    (partitionBy === undefined
+      ? undefined
+      : await resolveTaskPartition(opts.collectionId, partitionBy, ctx));
   return getOrCreateTaskCollection<TInput, TOutput>({
     ctx,
     backing: "resource",
     collectionId: opts.collectionId,
     collection,
     immutableAssignee: hasFrozenLedgerAssignee(opts.ledger),
+    ...(partition !== undefined ? { partition } : {}),
   });
 }

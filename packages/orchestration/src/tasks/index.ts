@@ -130,6 +130,8 @@ export {
   type DefinedTaskCollection,
   type DefineTaskCollectionOptions,
 } from "./collection/define-task-collection";
+// A ledger kept per partition (`defineTaskCollection({ partitionBy })`).
+export type { TaskPartitionContext, TaskPartitionFn } from "./collection/partition";
 export { resolveResourceCollection } from "./collection/resolve-resource-collection";
 
 // Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.

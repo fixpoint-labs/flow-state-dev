@@ -25,6 +25,8 @@ import type { TaskClaimIdentity } from "../schema/task";
 import { toEmittedTask, type TaskChangeEvent } from "./change-event";
 import { createStateBackedTaskCollection } from "./state-backed";
 import { createResourceBackedTaskCollection } from "./resource-backed";
+import { isDefinedTaskCollection } from "./define-task-collection";
+import { partitionedResourceCollection } from "./partition";
 import type { TaskCapOptions } from "./task-caps";
 
 /** Component-item type emitted on every task lifecycle transition. */
@@ -95,6 +97,13 @@ export interface ResourceBackingSpec extends CommonOptions {
    * construction on any other.
    */
   immutableAssignee?: boolean;
+  /**
+   * The partition to read and write, required when `collection` was declared
+   * with `partitionBy` and refused otherwise. A board passes the value its
+   * `partitionBy` returns, or the one a dispatch names; a task entry's
+   * `taskLedgers` resolver passes the one it is handed.
+   */
+  partition?: string;
 }
 
 export type GetOrCreateTaskCollectionOptions =
@@ -191,16 +200,49 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     });
   }
 
+  const partition = checkedPartition(options);
   return await createResourceBackedTaskCollection<TInput, TOutput>({
     collectionId: options.collectionId,
-    collection: options.collection,
+    collection:
+      partition === undefined
+        ? options.collection
+        : partitionedResourceCollection(options.collection, options.collectionId, partition),
     onChange,
     getItems,
     now: options.now,
     claimIdentity,
     ...(createdBy !== undefined ? { createdBy } : {}),
     immutableAssignee: options.immutableAssignee,
+    ...(partition !== undefined ? { partition } : {}),
   });
+}
+
+/**
+ * The partition a resource-backed resolution reads, checked against the
+ * ledger's declaration: a partitioned ledger is never read whole, and an
+ * unpartitioned one is never addressed by a partition.
+ */
+function checkedPartition(options: ResourceBackingSpec): string | undefined {
+  const declared = options.collection.config as unknown;
+  const partitioned =
+    isDefinedTaskCollection(declared) && declared.__taskCollection.partitionBy !== undefined;
+  const where = `[tasks] getOrCreateTaskCollection("${options.collectionId}")`;
+  if (partitioned && options.partition === undefined) {
+    throw new Error(
+      `${where}: this ledger keeps its rows per partition (partitionBy), so it is resolved ` +
+        `with a partition, never read whole.`
+    );
+  }
+  if (!partitioned && options.partition !== undefined) {
+    throw new Error(
+      `${where}: a partition was named (${JSON.stringify(options.partition)}), but this ledger ` +
+        `was not declared with partitionBy.`
+    );
+  }
+  if (options.partition !== undefined && (typeof options.partition !== "string" || options.partition.length === 0)) {
+    throw new Error(`${where}: partition must be a non-empty string`);
+  }
+  return options.partition;
 }
 
 /**
