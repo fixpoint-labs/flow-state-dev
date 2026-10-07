@@ -63,6 +63,8 @@ an epic amendment ([ER-24](../../epics/FIX-1786/BUSINESS-RULES.md#how-the-set-is
 
 It comes down to today's projects: they are shared already, so private-only takes sharing away.
 
+**Amended by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) (2026-10-07):** the decision stands, but rows stored before this release are dropped, not read as shared, so the figure's "every existing row reads as shared" no longer holds. A project created after it is shared unless made private.
+
 <a name="q2"></a>
 ## Q2 · decided · Only a shared project's members open workstreams
 
