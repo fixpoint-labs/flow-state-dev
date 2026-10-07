@@ -173,6 +173,24 @@ describe("configuration (BR-2)", () => {
     expect(problems[0]).toContain('"flattened"');
   });
 
+  it("refuses a flow that accepts a configuration key but rewrites it", () => {
+    // Every worker on it would read the same `seatId`.
+    const fixed = flowWith("fixed-seat", {
+      configSchema: workerConfigSchema().extend({ seatId: z.string().transform(() => "fixed") })
+    });
+    const problems = workerFlowProblems("fixed-seat", fixed);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('"fixed-seat"');
+    expect(problems[0]).toContain('`seatId` reads "fixed" where the hire gave "probe"');
+  });
+
+  it("refuses a flow that replaces the instructions a hire supplies with its own", () => {
+    const flow = flowWith("one-instruction", {
+      configSchema: workerConfigSchema().extend({ instructions: z.string().transform(() => "always this") })
+    });
+    expect(workerFlowProblems("one-instruction", flow)[0]).toContain("`instructions`");
+  });
+
   it("passes a flow whose own setting refuses only the probe, whatever its message says", () => {
     // The probe brings no `desk`, so the default fails its own rule; a real hire
     // names a desk. The message holds a `; `, which is not two issues.

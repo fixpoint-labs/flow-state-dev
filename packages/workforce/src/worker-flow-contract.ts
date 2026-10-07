@@ -29,6 +29,7 @@
  * pass.
  */
 import { FlowConfigRefusalError } from "@flow-state-dev/core";
+import { deepEqual } from "@flow-state-dev/core/helpers";
 import type { FlowType } from "@flow-state-dev/core/types";
 import { seatDoorOf } from "./seat-door";
 import { workerConfigSchema } from "./worker-config";
@@ -128,16 +129,35 @@ function listed(keys: readonly string[]): string {
   return keys.map((key) => `\`${key}\``).join(", ");
 }
 
+/**
+ * Check 1, when the flow took the bag: every contract key reads back as the
+ * hire supplied it. A schema that accepts a key but transforms or defaults it
+ * over would give every worker on the flow the same value, such as one
+ * `seatId` for all of them.
+ */
+function changedValuesProblem(name: string, minted: unknown): string | undefined {
+  const config = ((minted as { config?: unknown } | null)?.config ?? {}) as Record<string, unknown>;
+  const changed = CONTRACT_KEYS.filter((key) => !deepEqual(config[key], CONTRACT_PROBE_BAG[key]));
+  if (changed.length === 0) return undefined;
+  const reads = changed
+    .map((key) => `\`${key}\` reads ${JSON.stringify(config[key])} where the hire gave ${JSON.stringify(CONTRACT_PROBE_BAG[key])}`)
+    .join("; ");
+  return (
+    `worker flow "${name}" changes the value a worker's hire supplies for ${listed(changed)} (${reads}). ` +
+    `Take each as given: compose \`workerConfigSchema()\` without a transform or default over its keys.`
+  );
+}
+
 /** Check 1: the flow's own refusal of a full bag, read for the contract's keys. */
 function configurationProblem(name: string, flow: WorkerFlowDefinition): string | undefined {
   let refused: ContractRefusal;
   let refusal: string;
   try {
-    (flow as unknown as (options: { id: string; config: Record<string, unknown> }) => unknown)({
+    const minted = (flow as unknown as (options: { id: string; config: Record<string, unknown> }) => unknown)({
       id: `${flow.kind}::worker-contract-probe`,
       config: { ...CONTRACT_PROBE_BAG }
     });
-    return undefined;
+    return changedValuesProblem(name, minted);
   } catch (error) {
     refusal = messageOf(error);
     refused = contractKeysRefused(error);

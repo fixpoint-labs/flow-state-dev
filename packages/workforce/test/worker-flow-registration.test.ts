@@ -238,3 +238,32 @@ describe("a stored worker on a flow that became standard-only (V4)", () => {
     expect(JSON.stringify(await stores.resourceState.get("org", "acme", key))).toBe(before);
   });
 });
+
+describe("a block requirement the registration check can't reach", () => {
+  // The flow requires a setting of its own, so the probe stops at it before
+  // core checks what the door block needs. Pre-checking that would mean a
+  // second way to mint; the hire refuses instead, with core's own error.
+  const needsNumericSeat = handler({
+    name: "needs-numeric-seat",
+    inputSchema: message,
+    outputSchema: message,
+    flowConfigSchema: z.object({ seatId: z.number() }),
+    execute: (i) => i
+  });
+  const desk = workerFlow("desk", {
+    configSchema: workerConfigSchema().extend({ desk: z.string() }),
+    actions: { run: { ...door, block: needsNumericSeat } }
+  });
+
+  it("is refused when a worker is hired on the flow, naming the block, and nothing is hired", () => {
+    let seats: unknown;
+    const refusal = refusalOf(() => {
+      seats = hireWorkforce([{ id: "support.front", declared: { flow: "desk", desk: "front" }, body: "" }], {
+        workerFlows: { desk }
+      });
+    });
+    expect(seats).toBeUndefined();
+    expect(refusal).toContain('block "needs-numeric-seat" cannot read');
+    expect(refusal).toContain('"seatId"');
+  });
+});

@@ -368,7 +368,8 @@ A worker flow must:
 
 - **Take the standard configuration.** Compose `workerConfigSchema()` into its `configSchema`, as
   [above](#the-flow-decides-what-a-worker-may-declare). If you declare the keys yourself, each must
-  accept the value a worker brings: `seatId` is a string, for instance.
+  accept the value a worker brings and keep it as given: `seatId` is a string, for instance, and a
+  transform that replaces it is refused.
 - **Have one door.** Exactly one public action declares `userMessage` and takes `{ message }`, so
   an app can talk to any worker without knowing which flow it runs on.
 - **Declare any resource with `writtenBy` through `sharedResource()`.** A resource that has a
