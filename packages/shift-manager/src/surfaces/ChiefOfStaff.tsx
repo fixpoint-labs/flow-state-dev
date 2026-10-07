@@ -27,6 +27,7 @@ import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext } fro
 import { AskCard } from "../components/AskCard";
 import { chatAssistantRenderers } from "../components/flow-state/chat-assistant";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
+import { ToolGroup } from "../components/flow-state/tool";
 import { TurnComposer } from "../components/TurnComposer";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { currentConversation, newConversationId, readConversation, sendToChiefOfStaff } from "../lib/cos";
@@ -397,10 +398,8 @@ function Items({ stored }: { stored: SessionItems }) {
       ),
     [stored],
   );
-  const shown = useMemo(
-    () => buildItemRenderStream(stored.items, renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items)),
-    [stored, renderers],
-  );
+  // A run of tool calls stays one segment: the feed draws it as one quiet line.
+  const shown = useMemo(() => buildItemRenderStream(stored.items, renderers), [stored, renderers]);
   return (
     <SessionItemsProvider value={stored.items}>
       {stored.truncated ? (
@@ -409,7 +408,16 @@ function Items({ stored }: { stored: SessionItems }) {
         </p>
       ) : null}
       <ol className="flex flex-col gap-2.5" data-testid="cos-items">
-        {shown.map((item) => {
+        {shown.map((segment) => {
+          if (segment.kind === "group") {
+            const first = segment.items[0]!;
+            return (
+              <li key={`${first.requestId}/${first.id}`} data-testid="cos-item" data-item-id={first.id} data-request-id={first.requestId} data-item-type="tool_output" data-role="">
+                <ToolGroup items={segment.items} />
+              </li>
+            );
+          }
+          const item = segment.item;
           const role = (item as { role?: string }).role ?? "";
           return (
             <li
