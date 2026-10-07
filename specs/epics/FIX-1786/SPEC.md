@@ -74,8 +74,9 @@ makes leg c's PASS mean something.
 
 ![What's in the box: workers, coordinators and projects, each private to one user; composed from what ships; the app's own standard install and users; below a fence, what is not built, from channels to a session shared between users](figures/end-state.svg)
 
-Everything in the box composes what ships, plus five Layer 1 changes the box names
-([D3](DECISIONS.md#d3)). The fence is the PRD's out-of-scope list and the locks the Architect
+Everything in the box composes what ships, plus five Layer 1 mechanism changes and one public
+rename ([D3](DECISIONS.md#d3)). The fifth mechanism change is T1, the task tools' roster read per
+call, built by FIX-1794 (amended) ([D8](DECISIONS.md#d8)). The fence is the PRD's out-of-scope list and the locks the Architect
 carried: what would turn a privacy refactor into a collaboration product. The library in the
 box builds after the MVP.
 
@@ -93,7 +94,7 @@ blocked by FIX-1787 ([ER-23](BUSINESS-RULES.md#how-the-set-is-run)).
 | [FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791) · coordinator flow | Delegates in session state, four routing policies, one answer per delegate, a routing record | Replaces the mailbox with a worker, and fixes its fixed membership | Backlog · spec route · carries FIX-1774's dogfood legs and *not done if* list, except leg d (FIX-1793's) and leg e (FIX-1794's) |
 | [FIX-1795](https://linear.app/fixpoint-labs/issue/FIX-1795) · worker library | Templates in the org, copied into a user's scope | With hires private, the only way a team shares a worker | In Spec Review ([#2819](https://github.com/fixpoint-labs/flow-state-dev/pull/2819)) · build after the MVP (Jake, 2026-10-06; [Q2](DECISIONS.md#q2)) |
 | [FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793) · projects and workstreams | Private or shared projects; workstream resources an owner writes and the org reads; a project coordinator; rooms removed | Leg b, and the one new engine rule | Spec merged ([#2823](https://github.com/fixpoint-labs/flow-state-dev/pull/2823)) · private and shared projects in, and a shared project's members open its workstreams ([Q2](DECISIONS.md#q2)) |
-| [FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794) · assignment chain | Tasks assigned from delegates, down the owner's boards, run as the owner, and followed through | Today a drain runs as whoever triggers it | Backlog · spec route · carries FIX-1777's "runs as the filer" rule, FIX-1774's leg e and FIX-1780's follow-through |
+| [FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794) · assignment chain | Tasks assigned from delegates, down the owner's boards, run as the owner, and followed through; T1, the task tools' roster read per call, amended in [#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839) ([D8](DECISIONS.md#d8)) | Today a drain runs as whoever triggers it | Backlog · spec route · carries FIX-1777's "runs as the filer" rule, FIX-1774's leg e and FIX-1780's follow-through |
 | [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802) · filing and the split | Orchestration's task tools for any worker whose delegates can take a task; a filed task's worker files pieces in turn, five boards deep and 100 tasks a chain by default | The split is in the MVP, and the DevTeam's workstream is led by an ordinary worker that files ([D8](DECISIONS.md#d8)) | Backlog · joined 2026-10-06 · spec being written, no PR yet |
 | [FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792) · `MAILBOX.md` to `WORKER.md` | 33 charters converted, all 16 boards in 15 files: 13 files keep a session board, the DevTeam's feature becomes a workstream, and kitchen-sink's escalations board goes with its feature, old mailbox data dropped ([D9](DECISIONS.md#d9)); project claims and a project row's mailbox list removed | One way to declare a worker | Backlog · spec route |
 | [FIX-1796](https://linear.app/fixpoint-labs/issue/FIX-1796) · terminology | The retired terms gone from code, docs and the glossary | One term, one thing | Backlog · spec route |
@@ -144,7 +145,9 @@ chain and then the split.
   mailbox code ([D9](DECISIONS.md#d9)).
 - **Task boards** and `sharedToLineage`, consumed as they ship, except one change: a ledger kept
   per conversation at the owner's user scope ([D6](DECISIONS.md#d6)). A board keeps its word
-  "seat", a place on a board ([D7](DECISIONS.md#d7)).
+  "seat", a place on a board ([D7](DECISIONS.md#d7)). Orchestration's task tools are consumed as
+  they ship except T1, built by FIX-1794 (amended): the roster is read per call, and the app's
+  actions check it too ([D8](DECISIONS.md#d8)).
 - **Flow instances and owner pins** stay in the engine, deprecated; Workforce stops using them.
   Their removal is [FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798), outside this epic.
 - **Memory**: the memory package's tiers, and long-lived session memory, which is FIX-1775's.
@@ -169,8 +172,8 @@ the shared half stays in the MVP.
 [Q3](DECISIONS.md#q3) · FIX-1774 and FIX-1777 are closed into FIX-1791 and FIX-1794. At FIX-1789's
 gate, no engine rule on org-scope writes. At FIX-1794's, [D6](DECISIONS.md#d6) · a board keeps its
 tasks per conversation, a Layer 1 change in [D3](DECISIONS.md#d3). At FIX-1796's,
-[D7](DECISIONS.md#d7) · discovery's `seats` domain becomes `workers` with no alias, the fifth
-Layer 1 change, and a task board keeps "seat". The product owner, [D8](DECISIONS.md#d8) · any
+[D7](DECISIONS.md#d7) · discovery's `seats` domain becomes `workers` with no alias, [D3](DECISIONS.md#d3)'s
+one public rename, and a task board keeps "seat". The product owner, [D8](DECISIONS.md#d8) · any
 worker can file work, and the split is in the MVP: FIX-1802 joins the set.
 
 **Answered by the product owner, 2026-10-07.** [D8](DECISIONS.md#d8) · a worker gets
