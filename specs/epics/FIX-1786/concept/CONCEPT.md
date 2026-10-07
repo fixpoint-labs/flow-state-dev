@@ -4,7 +4,9 @@
      2026-10-06 Jake asked that it say plainly that each worker names its own flow (the roster, Workers,
      Worker flows, the Flow and Worker terms, and the gap table's flow rows). Its six snapshot images are
      redrawn as SVGs in ../figures/concept-*.svg. On 2026-10-07 the product owner's answers amended
-     the lead's tools (D8) and the old-file rule (D9). This copy is canonical now; edit it, not the source. -->
+     the lead's tools (D8) and the old-file rule (D9), and the binding amendment (../EVOLUTION.md,
+     amendment-binding) amended how a session holds its worker: the session paragraph, the note after
+     the costs, and security rule 4. This copy is canonical now; edit it, not the source. -->
 
 # Workforce: How It Should Work
 
@@ -59,7 +61,7 @@ Each part uses only the ones above it.
 
 **Each worker picks its flow, and each flow is a singleton.** An installation has many worker flows, and a worker's configuration names the one it runs on: `flow:` in its `WORKER.md`, or the same field on its resource. There is one registered copy of each flow, such as `agent` or the coordinator, and every worker that names it shares that copy. All of a flow's behavior lives there, including how it handles memory.
 
-**A session is where a worker works.** Each session records which worker it belongs to and loads that worker's configuration when it runs. The server sets that link when the session is created, from a worker the user can read. A caller can never supply or change it.
+**A session is where a worker works.** Each session records which worker it belongs to and loads that worker's configuration when it runs. The worker is a readonly field of the session's starting state: the caller names it when creating the session, the server checks it is a worker the user can read, and nobody can change it after.
 
 ![Workers, their flow and their sessions](../figures/concept-2-workers-flow-sessions.svg)
 
@@ -154,7 +156,7 @@ What it costs, and how each cost is handled:
 * **Resources are declared on flows.** A resource collection is what defines a schema, so it's declared statically. Only standard workers, in files, can bring a resource with a new schema, and those are known at startup, so their flows declare them. A non-standard worker can only use collections its flow already has.
 * **Validation moves.** Today a bad configuration fails at startup. A non-standard worker's configuration is checked when it's saved, and again when a session loads it.
 
-The server sets a session's link to its worker. The worker resource is also user-scoped, so even a forged link would point at nothing the caller can read.
+The server checks a session's worker when the session is created, and it can't change after. The worker resource is also user-scoped, so the check accepts only the caller's own workers or a standard one, and refuses a forged value.
 
 ## Coordinators and transcripts
 
@@ -336,7 +338,7 @@ A behavior none of them explains is a bug in the model.
 1. Every action is taken by one user, inside one org.
 2. Every session is private to the user it belongs to.
 3. A worker belongs to one user and acts as them. It never acts as itself or as anyone else.
-4. A session's link to its worker is set by the server, from a worker the user can read, and never changes.
+4. A session's worker is named when the session is created, checked by the server against the workers the user can read, and never changes.
 5. The only way to share is to write to a shared resource: a channel, a shared project, org memory, or the library.
 6. Shared work enters a private roster only through its owner. A workstream is owned by a user, never by someone else's worker.
 7. Everything written to a shared resource names who wrote it: the user, and the worker if one did.

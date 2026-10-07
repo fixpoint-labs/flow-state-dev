@@ -4,6 +4,7 @@
 
 Lineage that spans more than one child. Two predecessor epics are superseded in part, one
 lock is amended, and today's code differs from the target in the ways the second table checks.
+This epic's own D3 was amended after merge, as [the last section](#amendment-binding) records.
 Child-specific lineage belongs in each child's own evolution record.
 
 ## Predecessor designs
@@ -42,3 +43,54 @@ because the Architect named them.
 
 Neither predecessor epic is wholly superseded. FIX-1650's children land first, as the
 inventory found. Re-check each cited intent against current code before implementing.
+
+<a name="amendment-binding"></a>
+## Amended after merge: a session's worker is a readonly field of its starting state (2026-10-07)
+
+**The problem.** [D3](DECISIONS.md#d3)'s third change said a session's worker sat in a
+server-only field on the session record, beside its state, set and checked when the session is
+created. FIX-1788's P1 ([#2850](https://github.com/fixpoint-labs/flow-state-dev/pull/2850))
+built something else: the worker is a readonly field of the session's starting state. The caller
+sets it with `createSession({ state })`, the flow's optional create check confirms it, the engine
+refuses any later change to it, and sessions can be listed by it. The product owner approved that
+on 2026-10-07 and rejected a separate link concept. FIX-1788's own amendment
+([#2857](https://github.com/fixpoint-labs/flow-state-dev/pull/2857)) records it as its D5, with
+the issue-level detail in [its evolution record](../../issues/FIX-1788/EVOLUTION.md#amendment-binding).
+This section covers what spans the set. Original epic review:
+[#2795](https://github.com/fixpoint-labs/flow-state-dev/pull/2795).
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| [D3](DECISIONS.md#d3) *Locks in* (3): "session data only the server writes", held in "a server-only field on the session record, set and checked when the session is created" | **Superseded** by what shipped | The product owner rejected a separate link. A readonly field, the create check and the listing filter answer each reason the field was kept out of state: it was writable, set by the caller unchecked, and not listable | Named at create, never on a turn; a session's worker never changes; no action names a worker; a coordinator's delegates are server-owned; FIX-1788 builds it, FIX-1791 consumes it |
+| D3 *Because*: "session state a caller can't write", and the POC's "a link held there accepts the caller's own other worker" | **Amended** | The caller does write the worker, once, at create. What the POC found was a value stored unchecked, and stored as sent when the schema refused it | The POC's findings (its O1 and R1 legs): plain, unchecked state and a row only flow code writes still don't hold ER-1 |
+| [ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt): "no caller and no action names a worker", "a forged link reads nothing" | **Amended** | The caller names the worker when creating the session. A forged value is answered by the create check, which accepts only the caller's own workers or a standard one, and a readonly value can't change after | A session's worker never changes; no action or message names one |
+| [ER-17](BUSINESS-RULES.md#what-no-child-may-do): "a worker link" among the fields that grant nothing | **Amended** in wording | One name per thing | The rule: access is the engine-recorded owner, checked against the resource. The session's worker passes that check once, in the create check |
+| The set table's FIX-1788 row, the plan's FIX-1788 row and its "session data only the server writes" seam, the end-state POC record, and the concept's session paragraph, forged-link note and security rule 4 | **Amended** in wording | Each described the link | Ownership: FIX-1788 lands it, FIX-1791 consumes it. The POC's findings stand as run |
+| The *How it got here* entries for the POC, review round 2 and FIX-1789's gate | **Kept as written** | They record what was decided then | A new *How it got here* entry |
+
+No stored data changes: the server-only field never shipped.
+
+### The three engine changes, and D3's count of six
+
+P1 shipped three engine changes that item (3) didn't name as first written:
+
+- **A readonly guard on session state.** A top-level `.readonly()` field of a flow's session
+  `stateSchema` is refused on any change after create, on every path that writes session state.
+- **A state filter on listing, inside the store.** `listSessions({ state })` filters on readonly
+  fields only, in each store's own query.
+- **A schema refusal at create, on flows that bind their sessions.** A flow with a readonly field
+  or a create check refuses a starting state its schema rejects. Other flows keep today's create.
+
+**D3 still counts six mechanism changes.** D3 counts what Workforce cannot fake, and the three
+build the third of them, session state a caller can't change after create. Each answers one
+reason item (3) existed: the guard makes the worker fixed, the schema refusal lets the create
+check see the state the session keeps, and the filter replaces the listing the server-only field
+would have needed. None names a worker, so D3's call, no worker noun in Layer 1, stands. Item (3)
+is restated to name them, so [ER-22](BUSINESS-RULES.md#what-no-child-may-do) is not tripped going
+forward.
+
+**The honest part.** Item (3) as written named one field, and P1 merged three general engine
+changes before this epic recorded them. ER-22 asks for an escalation before such a change; this
+one came after, as the product owner's approval on 2026-10-07. Widening the schema refusal to every
+flow, FIX-1788's follow-up once FIX-1792 removes the mailbox, is the same refusal reaching further,
+not a seventh change. Any other engine change on this path comes back to this epic first.
