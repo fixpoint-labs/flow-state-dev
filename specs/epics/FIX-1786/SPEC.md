@@ -74,10 +74,11 @@ makes leg c's PASS mean something.
 
 ![What's in the box: workers, coordinators and projects, each private to one user; composed from what ships; the app's own standard install and users; below a fence, what is not built, from channels to a session shared between users](figures/end-state.svg)
 
-Everything in the box composes what ships, plus six Layer 1 mechanism changes, two public
+Everything in the box composes what ships, plus seven Layer 1 mechanism changes, two public
 renames and one public removal ([D3](DECISIONS.md#d3)). The fifth mechanism change is T1, the task tools' roster read per
 call, built by FIX-1794 (amended) ([D8](DECISIONS.md#d8)); the sixth is the skills library taking
-its key per run, built by FIX-1788; the removal is discovery's `mailboxes` domain, FIX-1792's. The fence is the PRD's out-of-scope list and the locks the Architect
+its key per run, built by FIX-1788; the seventh is a per-turn rule in core for which of a shared copy's
+resources the model reaches, so a worker's document grants hold through every tool, built by FIX-1788; the removal is discovery's `mailboxes` domain, FIX-1792's. The fence is the PRD's out-of-scope list and the locks the Architect
 carried: what would turn a privacy refactor into a collaboration product. The library in the
 box builds after the MVP.
 
@@ -91,7 +92,7 @@ blocked by FIX-1787 ([ER-23](BUSINESS-RULES.md#how-the-set-is-run)).
 | [FIX-1787](https://linear.app/fixpoint-labs/issue/FIX-1787) · inventory | A merge, close or untouched call for every open PR and active issue in the areas the refactor changes | The refactor starts from its result. Route: inventory, no spec, user-approved outside this gate | In Review · posted 2026-10-06 [on FIX-1786](https://linear.app/fixpoint-labs/issue/FIX-1786#comment-9e837aa5): 38 items, 13 merge first, 13 close, 12 untouched; its two owner calls answered 2026-10-06 ([Q2](DECISIONS.md#q2), [Q3](DECISIONS.md#q3)) |
 | [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789) · worker contract | Registered worker flows on the installation's list, their registration checks, a standard-only flag per entry | A worker's configuration must name a flow the installation registered and checked | Spec merged ([#2811](https://github.com/fixpoint-labs/flow-state-dev/pull/2811)) · [Q1](DECISIONS.md#q1) decided at its gate: the list |
 | [FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790) · user data per org | User-scoped data kept per (user, org), for every flow; records stored before dropped ([D9](DECISIONS.md#d9)) | Without it a user's private workers show in every org they belong to | Backlog · spec route |
-| [FIX-1788](https://linear.app/fixpoint-labs/issue/FIX-1788) · workers as resources | A worker as a user-scoped resource, run by the singleton flow it names; standard workers projected from files; fork; a session's worker, named at create, checked and never changed; Workforce stops using instances and pins | The spine: privacy by construction | Backlog · spec route |
+| [FIX-1788](https://linear.app/fixpoint-labs/issue/FIX-1788) · workers as resources | A worker as a user-scoped resource, run by the singleton flow it names; standard workers projected from files; fork; a session's worker, named at create, checked and never changed; a worker's document grants held through every model-facing tool on one shared copy ([D3](DECISIONS.md#d3)'s seventh change); Workforce stops using instances and pins | The spine: privacy by construction | Backlog · spec route |
 | [FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791) · coordinator flow | Delegates in session state, four routing policies, one answer per delegate, a routing record | Replaces the mailbox with a worker, and fixes its fixed membership | Backlog · spec route · carries FIX-1774's dogfood legs and *not done if* list, except leg d (FIX-1793's) and leg e (FIX-1794's) |
 | [FIX-1795](https://linear.app/fixpoint-labs/issue/FIX-1795) · worker library | Templates in the org, copied into a user's scope | With hires private, the only way a team shares a worker | In Spec Review ([#2819](https://github.com/fixpoint-labs/flow-state-dev/pull/2819)) · build after the MVP (Jake, 2026-10-06; [Q2](DECISIONS.md#q2)) |
 | [FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793) · projects and workstreams | Private or shared projects; workstream resources an owner writes and the org reads; a project coordinator; rooms removed | Leg b, and the one new engine rule | Spec merged ([#2823](https://github.com/fixpoint-labs/flow-state-dev/pull/2823)) · private and shared projects in, and a shared project's members open its workstreams ([Q2](DECISIONS.md#q2)) |
@@ -185,6 +186,9 @@ migration, upgrade step, dual-read or refusal by name, and old data is dropped. 
 apply to this epic until a consumer exists. FIX-1792's D2 is answered: old data is dropped.
 [D7](DECISIONS.md#d7), amended · a task board's seat becomes assignee ("Ok let's go with
 assignee"), [D3](DECISIONS.md#d3)'s second public rename, and "seat" is retired everywhere.
+[D3](DECISIONS.md#d3), amended · option A at FIX-1788's S8: a per-turn resource visibility rule
+in core, so a worker's grants hold through every model-facing tool on one shared copy; D3's
+seventh mechanism change.
 
 Engineering calls I
 made as EM, for the record: [D2](DECISIONS.md#d2) to [D5](DECISIONS.md#d5). Rules:

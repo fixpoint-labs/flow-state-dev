@@ -130,9 +130,15 @@ copy per worker, so a hire still waits for a restart elsewhere.
    written: a readonly guard on session state, a state filter on listing inside the store, and a
    create-time schema refusal on flows that bind their sessions.
 
+**Chosen by the product owner on 2026-10-07 at S8's guardrail, recorded after merge** ([EVOLUTION.md](EVOLUTION.md#amendment-visibility)):
+
+5. **[D7](DECISIONS.md#d7) · A worker's grants hold through every model-facing tool on one shared
+   copy, by a per-turn visibility rule in core.** The epic's seventh Layer 1 mechanism change. If
+   wrong: an app tool built on core's document tools sees documents its worker wasn't granted.
+
 **Signed on 2026-10-06, withdrawn on 2026-10-07 by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9):** [D1](DECISIONS.md#d1) and
 [D2](DECISIONS.md#d2), the operator step for old hires. **Decided:**
 [D3](DECISIONS.md#d3), formerly Q1: a fork copies the standard worker's shared instructions.
 Nothing is open.
 
-Feature · `engine`, `client`, `react`, `workforce`, `orchestration`, `shift-manager` · large · 3 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)
+Feature · `core`, `engine`, `client`, `react`, `workforce`, `orchestration`, `shift-manager` · large · 3 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)

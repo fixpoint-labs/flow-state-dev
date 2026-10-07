@@ -67,7 +67,7 @@ doesn't change when the template does."
 | Material | Publisher | Specific draft |
 |---|---|---|
 | The overview opening and its figure | FIX-1796, once the assembled behaviour is verified | This document |
-| Standard and non-standard workers, forking, a session's worker (`workers-on-disk.md`, `durable-hire.md`) | FIX-1788 | Its `DOCS.md` |
+| Standard and non-standard workers, forking, a session's worker (`workers-on-disk.md`, `durable-hire.md`); narrowing what the model reaches on a turn (`resources/overview.md`) | FIX-1788 | Its `DOCS.md` |
 | Which flows can run workers (`built-in-worker.md` → custom worker flows) | FIX-1789 | Its `DOCS.md` |
 | Which org a user's record belongs to (`persistence/overview.md`) | FIX-1790 | Its `DOCS.md` |
 | CREATE `coordinators.md`; the chief of staff page reworded | FIX-1791 | Its `DOCS.md` |

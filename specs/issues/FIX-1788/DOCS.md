@@ -3,7 +3,8 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
 FIX-1788 publishes the specifics the epic's [ownership table](../../epics/FIX-1786/DOCS.md#ownership)
-gives it: standard and non-standard workers, forking, and a session's worker. The shared
+gives it: standard and non-standard workers, forking, a session's worker, and narrowing what the
+model reaches on a turn. The shared
 opening is the epic's, published by FIX-1796. Quoted prose follows the outsider rule
 ([`user-docs.md`](../../../docs/contributing/user-docs.md)) and uses the new terms: worker,
 worker flow, user.
@@ -12,7 +13,7 @@ worker flow, user.
 |---|---|
 | **Pinned** ([PLAN.md](PLAN.md#pinned-names)) | a worker flow's readonly `workerId`, set with `createSession({ state })` and listed with `listSessions({ state })` · the roster's `flow` · `createWorkforceClient` and its methods `findWorkerSession` and `ensureWorkerSession`, with the criteria key `worker` · `workerFlows` (FIX-1789's) |
 | **Published with P1** ([#2850](https://github.com/fixpoint-labs/flow-state-dev/pull/2850)) | `session.createCheck` · `session.serverOwned` · readonly `stateSchema` fields · `listSessions({ state })` · `fsdev run --seed-session` on a flow that binds its sessions |
-| **Drafts**, reconciled with the shipped code before publishing | `createWorkerHireBlocks` · `fork` · the React hook `useWorkforce` |
+| **Drafts**, reconciled with the shipped code before publishing | `createWorkerHireBlocks` · `fork` · the React hook `useWorkforce` · the per-turn resource visibility rule, named by P4 ([D7](DECISIONS.md#d7)) |
 
 ## Published with P1 · the session's starting state, readonly fields and the create check
 
@@ -202,6 +203,18 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > worker the session was created with, checked on this turn. For skills, give your skills library a
 > `partitionBy` that returns the session's `workerId`. A run it returns nothing for gets an empty
 > catalog it can't write to, so a session with no worker never reads every worker's skills.
+
+## UPDATE · `apps/docs/docs/resources/overview.md` · "LLM access patterns", a new last paragraph
+
+The rule's real name replaces the description when P4 publishes.
+
+> A flow can also narrow what the model reaches on a single turn. Give the turn a visibility rule,
+> and the built-in resource tools, and any tool you build on them, treat a resource the rule hides
+> as one that doesn't exist: it isn't listed, searched, read or written, and asking for it by its
+> uri gets the same answer as asking for a missing one. With no rule, the model reaches what it
+> reaches today. The rule decides what the model sees, not what your code does: a block that
+> reads a resource by reference still reads it. Workforce sets the rule for you, so a worker's
+> model reaches only the documents its `WORKER.md` grants, even when many workers share one flow.
 
 ## UPDATE · `packages/workforce/README.md`, `packages/engine/README.md`, `packages/client/README.md`
 
