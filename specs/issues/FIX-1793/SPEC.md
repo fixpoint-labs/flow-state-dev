@@ -126,6 +126,10 @@ rename the room and still let any member change anyone's work.
 4. **[Shared means the whole org reads it](DECISIONS.md#decided-not-asked)**, the project and
    every workstream, as epic ER-7 has it; members decide who opens workstreams. If wrong: keeping
    reads to members is a reader rule on a row, an epic amendment.
+5. **[D2](DECISIONS.md#d2) · In Shift Manager, every workstream comes with its own coordinator**
+   (the product owner, 2026-10-07, after merge): opening one forks a new coordinator onto the
+   owner's roster and names it as the lead. The framework is unchanged. If wrong: rosters fill
+   with coordinators nobody tunes, cleared one by one.
 
 **Open:** none.
 

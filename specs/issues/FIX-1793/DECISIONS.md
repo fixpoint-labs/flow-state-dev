@@ -5,8 +5,10 @@
 Two questions and one decision are the sign-off surface, all decided: Jake answered Q1 and Q2 on
 2026-10-06 ("yes to all recommendations"). Q1 is the epic's own ask
 ([epic Q2](../../epics/FIX-1786/DECISIONS.md#q2)), put here as it said. Q2 is the Architect's.
-D1 answers the epic's cost check. The model itself (a workstream is an entry plus its lead's
-session, rooms removed, progress computed) is the epic's, and is not reopened.
+D1 answers the epic's cost check. D2 is the product owner's call after merge, on 2026-10-07: in
+Shift Manager, every workstream comes with its own coordinator. The model itself (a workstream is
+an entry plus its lead's session, rooms removed, progress computed) is the epic's, and is not
+reopened.
 
 ## The tree
 
@@ -18,6 +20,9 @@ flowchart TD
   Q2 -.->|"rejected"| XQ2["anyone in the org"]
   I --> D1["D1 · a private project is the same row in user scope"]
   D1 -.->|"rejected"| X1["an org row under the owner-private fence · no browser read"]
+  I --> D2["D2 · decided · each workstream in Shift Manager gets its own new coordinator"]
+  D2 -.->|"rejected"| X2["no default · the owner names a lead"]
+  D2 -.->|"rejected"| X2b["one coordinator for all of an owner's workstreams"]
   I --> E1["engineering · the owner rule is a mode of the owner-key fence"]
   E1 -.->|"rejected"| XE1["the owner stamped in state · a Workforce-only gate"]
 ```
@@ -113,6 +118,28 @@ wait, and this issue ships shared ones first rather than hold. Or the epic choos
 Layer 1 changes on an owner-only browser read and `**` under the fence; then private projects
 don't wait on FIX-1790.
 
+<a name="d2"></a>
+## D2 · decided · In Shift Manager, every workstream comes with its own coordinator
+
+**The product owner, 2026-10-07:** every workstream in Shift Manager comes with its own
+coordinator by default. Recorded after merge ([EVOLUTION.md](EVOLUTION.md#amendment-default-coordinator)).
+
+| | |
+|---|---|
+| **Instead of** | No default: the owner names a lead from their roster on every open · one coordinator for all of an owner's workstreams, made on their first open and named on every later one |
+| **Because** | The product owner's call. It buys a lead of its own with no step first, even on a roster with nothing fit to lead, and an edit to one coordinator changes one workstream. With no default, every open waits on a hire or a pick; with one shared coordinator, an edit reaches every workstream. Shift Manager forks the standard workstream coordinator through FIX-1788's fork action, then sends `openWorkstream` naming it, so S3's roster check (BR-10), the workstream session (`ensureWorkerSession` with a `workstreamId` criterion) and the delegate record (BR-21a) run as written. The framework doesn't change |
+| **Locks in** | One worker per workstream on the owner's roster, kept when it is done (BR-37), so a roster grows with every workstream. No choice of an existing worker in the open, for now ([follow-ups](PLAN.md#follow-ups)). Each coordinator leads one workstream: one workstream session, one delegate record, and BR-21b's cap counts workstreams as before |
+
+![D2, decided: what leads a workstream opened in Shift Manager. Its own new coordinator, chosen, beside no default and one coordinator for all of an owner's workstreams. Decides it: whether each workstream has a lead of its own with no step first; no default needs a hire or a pick on every open, and a shared coordinator carries one edit into every workstream. Price: one worker per workstream on the roster, kept after done. A tie: the framework is unchanged under all three. Flips if owners' rosters become hard to read for workstream coordinators](figures/d2-own-coordinator.svg)
+
+It comes down to a lead of its own: no default makes every open wait on a pick, and a shared one carries each edit everywhere.
+
+**What would change my mind:** owners with many workstreams finding their roster hard to read.
+Then a picker, or a roster that groups these coordinators, earns its cost.
+
+**If wrong:** rosters cluttered with coordinators nobody tunes, fired one by one. It is Shift
+Manager's alone, and flips in the view.
+
 <a name="decided-not-asked"></a>
 ## Decided, not asked
 
@@ -157,6 +184,16 @@ Engineering calls, recorded so nobody re-derives them.
   ([FIX-1789 D1](../FIX-1789/DECISIONS.md#d1), epic ER-11). Who may write stays the owner rule.
 - **A workstream's lead is chosen when it opens and doesn't change**, because a session's
   worker never does (FIX-1788). A workstream id is unique per project and owner.
+- **A workstream's own coordinator is kept when the workstream is done** ([D2](#d2), BR-37):
+  the smaller rule, since it is what happens to any worker. Firing would be a new path, and it
+  would break moving the workstream back out of done: restoring the delegate record runs
+  FIX-1791's roster check on the lead, and a fired worker's session takes no new turn (FIX-1788
+  BR-7). The owner can fire it like any worker.
+- **Its id is derived from the workstream's address**, so a repeated or concurrent open forks
+  once (BR-36) with no second record of who leads what: the entry's `lead` says it. The
+  encoding is the implementer's, if no two of one owner's workstreams share an id.
+- **The chief of staff's `openWorkstream` tool still names a lead** (S9). The product owner's
+  default is the view's (S8); giving the tool the same default is a follow-up.
 - **Out of scope:** changing members after create, private to shared, and waking a lead on a
   schedule. A quiet entry shows as stale.
 
@@ -202,5 +239,11 @@ their READMEs.
   against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): P3 waits on
   FIX-1794's P2 and FIX-1802's P1, and carries V6's walk-up leg.
   ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
+
+- **Amended after merge (each workstream's own coordinator, 2026-10-07)** — the product owner
+  decided that every workstream opened in Shift Manager comes with its own coordinator ([D2](#d2)).
+  S8's open forks one through FIX-1788's fork action and names it as the lead; S9 adds the
+  standard workstream coordinator it forks; BR-35 to BR-37 and V8a. The framework is unchanged
+  ([EVOLUTION.md](EVOLUTION.md#amendment-default-coordinator)).
 
 **Open: none.**

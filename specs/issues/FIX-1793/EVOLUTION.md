@@ -48,3 +48,19 @@ spec changed:
 | What | Treatment | Why | What is retained |
 |---|---|---|---|
 | The PR plan: P3 waits on FIX-1791 | **Amended**: P3 also waits on FIX-1794's P2 and FIX-1802's P1, and carries V6's walk-up leg | The Board view and the walk-up test need a lead's session board and a lead that files | P1 and P2 as written |
+
+<a name="amendment-default-coordinator"></a>
+## Amended after merge: each workstream's own coordinator (2026-10-07)
+
+**The decision.** The product owner decided on 2026-10-07 that every workstream in Shift Manager
+comes with its own coordinator by default ([D2](DECISIONS.md#d2)). The spec as merged in
+[#2823](https://github.com/fixpoint-labs/flow-state-dev/pull/2823) had Shift Manager's open name a
+lead from the owner's roster and said nothing of how the view picked one. P1 had already merged
+([#2827](https://github.com/fixpoint-labs/flow-state-dev/pull/2827)); nothing in it changes.
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| S8, "open a workstream from the project" | **Amended**: the view forks the standard workstream coordinator onto the owner's roster through FIX-1788's fork action, under an id derived from the workstream's address, and opens the workstream naming it as the lead. No choice of an existing worker | D2 | S3's `openWorkstream`, which still takes a lead; its roster check, the workstream session through `ensureWorkerSession` with a `workstreamId` criterion, and the one delegate record on the owner's project coordinator, all as written |
+| S9, the DevTeam install | **Amended**: adds the standard workstream coordinator, on the coordinator flow, as the worker S8 forks | Neither standard coordinator fits as the seed: the chief of staff hires, fires and opens projects, and the project coordinator hands posts to workstreams | The project coordinator and the chief of staff's tools |
+| Who leads a workstream opened in Shift Manager | **Added**: BR-35 to BR-37, V8a. A workstream's coordinator is kept when it is done | D2; keeping is the smaller rule, and moving a workstream back out of done needs its lead (BR-21a) | BR-7 to BR-17, BR-21a, BR-21b unchanged |
+| The docs | **Amended**: Shift Manager's project screen and its README say each workstream opens with a coordinator of its own | Reader-facing | The Workforce projects page: an app still names the lead |
