@@ -69,9 +69,9 @@ await sessions.updateSessionMetadata(created.id, { tags: ["planning"] });
 await sessions.deleteSession(created.id);
 ```
 
-On a flow that declares `session.createCheck`, pass the new session's link to `createSession` as `worker`. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
-
 `updateSessionMetadata` changes only the fields you pass. `title`, `description` and `tags` are each replaced whole, so the call above leaves the session with the one tag `planning`. `metadata` is merged key by key: the keys you send are written over the stored ones, and the rest stay. [Session management](/docs/client/overview#session-management) covers the errors it throws.
+
+On a flow that declares `session.createCheck`, pass the new session's link to `createSession` as `worker`. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
 
 ### `sessions.listSessions(options?)`
 

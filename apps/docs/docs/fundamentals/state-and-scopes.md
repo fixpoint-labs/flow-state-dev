@@ -178,11 +178,9 @@ const recent = await ctx.session.getJournal({ limit: 10 });
 
 A new session typically starts via `sessions.createSession({...})` on the client, which returns a stable `sess_<id>` you reuse on every subsequent action call. See [Client Overview](/docs/client/overview).
 
-If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through.
+If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through. On a flow that declares `session.createCheck`, such an action is refused instead (see the [example below](#example-one-session-per-project)).
 
 A caller can pass initial `state` when it creates a session. That suits preferences and drafts, and it is the wrong place for a value that grants anything: the caller wrote it.
-
-When a session exists to work on one particular thing, such as one of the user's projects, give it a **link**. A link is a single string chosen when the session is created and fixed for the rest of its life. Your flow decides whether to allow it by declaring `session.createCheck`, a function that runs before the session is written and either accepts the link or refuses the create. Blocks read the accepted value as `ctx.session.link`, and callers can list sessions by it. The [example below](#example-one-session-per-project) walks through the whole thing.
 
 For a field your flow changes as it runs, and that a caller must never set, list it in `session.serverOwned`:
 
@@ -194,6 +192,8 @@ session: {
 ```
 
 A create that sets `reviewers` in its `state` is refused with a 400 whose body names the field (`{ error, field: "reviewers" }`), and nothing is written. Blocks in your flow write it like any other session state.
+
+When a session exists to work on one particular thing, such as one of the user's projects, give it a **link**. A link is a single string chosen when the session is created and fixed for the rest of its life. Your flow decides whether to allow it by declaring `session.createCheck`, a function that runs before the session is written and either accepts the link or refuses the create. Blocks read the accepted value as `ctx.session.link`, and callers can list sessions by it. The client, `useFlow` and `fsdev run` call this option `worker`. It carries any link value (here, a project slug) and is sent as `link`. The [example below](#example-one-session-per-project) walks through the whole thing.
 
 ### Example: one session per project
 
@@ -234,7 +234,7 @@ export const projectsFlow = defineFlow({
 })();
 ```
 
-Every flow in the same organization that declares `projects` sees the same rows for a given user, unless a flow sets `isolateUserState`. After `user_1` runs `create` with `{ slug: "q3-launch", name: "Q3 launch" }`, their scope holds the row `projects/q3-launch`.
+Every flow in the same organization that declares `projects` sees the same rows for a given user, unless a flow sets [`isolateUserState`](/docs/configuration/flow#defineflow-fields). After `user_1` runs `create` with `{ slug: "q3-launch", name: "Q3 launch" }`, their scope holds the row `projects/q3-launch`.
 
 **2. Declare the check on the assistant flow.**
 
@@ -242,7 +242,7 @@ Every flow in the same organization that declares `projects` sees the same rows 
 // flows/project-assistant.ts
 import { defineFlow } from "@flow-state-dev/core";
 import { z } from "zod";
-import { loadProject } from "./load-project";
+import { loadProject } from "./load-project"; // defined in step 4
 import { projects } from "./projects";
 
 export const projectAssistant = defineFlow({
@@ -283,7 +283,7 @@ The check is only as strong as the caller identity it receives. With [authentica
 
 Register both flows with your server as usual (see [Engine setup](/docs/server/setup)).
 
-**3. Create a session for a project.** The client's option for the link is `worker`. It goes over the wire as `link`.
+**3. Create a session for a project.** Pass the project's slug as `worker`:
 
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
@@ -387,7 +387,9 @@ With the check above:
 
 A create with no link is refused with a 400 even if your check returns `{ ok: true }` for it, so every session of a flow with a check has a link. From `useFlow`, `createSession` rejects with the same error, and `autoCreateSession` leaves the hook with no active session.
 
-**Where else the check runs.** The same check runs on every other path that creates a session of this flow: an action or webhook delivery sent to a session id that doesn't exist yet (these name no link, so on this flow they are refused with the 400 above; create the session first), a [`dispatcher()`](/docs/server/background-work#starting-a-job-from-a-flow) starting a child session with `session: { key, link }`, and `fsdev run project-assistant loadProject --worker q3-launch` when it starts a new session. A turn on an existing session never runs it.
+An action sent without a session id, or to a session id that doesn't exist yet, is refused the same way, and so is a webhook delivery to a new session id. These name no link, so they get the 400 above and nothing is written. Create the session first, as in step 3.
+
+**Where else the check runs.** The same check runs on the other paths that create a session of this flow: a [`dispatcher()`](/docs/server/background-work#starting-a-job-from-a-flow) starting a child session with `session: { key, link }`, and `fsdev run project-assistant loadProject --worker q3-launch` when it starts a new session. A turn on an existing session never runs it.
 
 ## The `client` block: exposing state safely
 
