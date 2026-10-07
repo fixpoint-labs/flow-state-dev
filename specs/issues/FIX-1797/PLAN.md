@@ -148,7 +148,7 @@ stands for that child's control and is not run again.
 | P3.5 | FIX-1793 · `goals/projects/a-shared-project-has-one-owner-per-workstream/` | `no-owner-rule`, `all-entries-delegate` | — |
 | P3.6 | FIX-1794 · `goals/coordinators/files-tasks-down-the-owners-chain/`, one level of hand-off (its split leg went to FIX-1802, P3.10) | — | `unpartitioned` (b4), `no-follow-up` (b5) |
 | P3.7 | FIX-1792 · its check, from its merged spec. Not the refuse-by-name check its P4a carried, retired since nothing refuses an old file while there are no consumers | its own | — |
-| P3.8 | FIX-1796 · the retired-terms census, with `--control`. Its list decides what is retired: Workforce's seat goes, the task board's `seat` stays | its control | — |
+| P3.8 | FIX-1796 · the retired-terms census, with `--control`. Its list decides what is retired: Workforce's seat goes, and so does the task board's `seat`, now `assignee` (the epic's [D7](../../epics/FIX-1786/DECISIONS.md#d7), 2026-10-07) | its control | — |
 | P3.9 | **Every other goal directory** whose code reaches `@flow-state-dev/workforce`, the task board or `packages/shift-manager`, computed by import on the pre-epic baseline's tree and on the commit, and taken as the union. This closure's S1 excluded | their own, as each goal names | — |
 | P3.10 | FIX-1802 · `goals/workers/files-and-splits-down-the-chain/`, legs a to e, leg e on the real model. The split is graded here, on goal-local workers | `no-parent-settle` (its leg a) | `no-delegate-check` (b6) for its leg c |
 

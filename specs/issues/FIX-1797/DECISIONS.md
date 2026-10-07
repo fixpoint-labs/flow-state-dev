@@ -165,3 +165,6 @@ anything rests on.
   store is upgraded), part 4 checks no refusal of a `MAILBOX.md` and no upgrade page, and P3.7
   no longer names the refuse-by-name check FIX-1792's P4a carried. The chain cap (100, was 50)
   touches no step here.
+- **Terminology** (product owner, 2026-10-07; the epic's
+  [D7](../../epics/FIX-1786/DECISIONS.md#d7)) — a task board's seat is now an *assignee*, so
+  P3.8's census retires the board's `seat` too.
