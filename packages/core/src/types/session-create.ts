@@ -1,21 +1,22 @@
 /**
- * Server-owned session data, decided when a session is created.
+ * What a session is created with, checked once, and what of it never changes.
  *
- * Two declarations on a flow's `session` config, both enforced by the engine
- * on every path that writes a new session record (the create route, an action
+ * Three declarations on a flow's `session` config, enforced by the engine on
+ * every path that writes a new session record (the create route, an action
  * sent to a session id that does not exist yet, a webhook delivery, `fsdev
  * run`, and a dispatch into a child session):
  *
  * - `createCheck` runs before the record is written. It sees the verified
- *   caller and the create's `link` input, and accepts or refuses it. An
- *   accepted `link` is stored on the session unchanged. Nothing changes it
- *   afterwards: no route, no action and no block writes it.
+ *   caller and the session's initial state, parsed through the flow's
+ *   `stateSchema`, and accepts or refuses the create.
+ * - A `.readonly()` field of `stateSchema` is set at create and never changes
+ *   afterwards. A write that would change one is refused, whatever writes it.
+ *   Readonly fields are also the fields the session listing can filter by.
  * - `serverOwned` names session-state fields only the flow's own code writes.
  *   A create that seeds one is refused with a 400 naming the field.
  *
- * The engine attaches no meaning to `link`. It is one string the flow decided
- * at create, readable as `ctx.session.link` and filterable in the session
- * listing.
+ * Together they let a session carry a binding a caller chooses once and can't
+ * forge or move: the create check confirms it, `.readonly()` keeps it.
  */
 
 /** Which path is bringing a session into existence. */
@@ -39,10 +40,10 @@ export type SessionCreatePrincipal = {
 };
 
 /**
- * What a create check sees. Every field is server-derived except `link`,
- * which is the create's input: the request body's `link` on the create route,
- * `--worker` on `fsdev run`, or the value a dispatching block put on its
- * session target.
+ * What a create check sees. Every field is server-derived except `state`,
+ * which is the session's initial state: the create request's `state`,
+ * `fsdev run --seed-session`, or the `state` a dispatching block put on its
+ * session target, parsed through the flow's `stateSchema`.
  */
 export type SessionCreateCheckInput = {
   /** The caller the session is created for, from the verified principal. */
@@ -51,15 +52,15 @@ export type SessionCreateCheckInput = {
   readonly sessionId: string;
   /** The flow instance the session will belong to. */
   readonly flow: { readonly kind: string; readonly id: string };
-  /** The create's link input. `undefined` when the create named none. */
-  readonly link: string | undefined;
+  /** The session's initial state, after the flow's `stateSchema` parsed it. */
+  readonly state: Readonly<Record<string, unknown>>;
   /** Which path is creating the session. */
   readonly via: SessionCreatePath;
   /**
    * Read the state of one item of a user- or org-scoped collection this flow
    * declares, at the creating principal's own scope. `ref` is the accessor key
    * in the flow's `resources`; `topic` is the item's key within the
-   * collection: a string for a wildcard pattern (`workers/*`), or the
+   * collection: a string for a wildcard pattern (`projects/*`), or the
    * parameter values for a parameterized one (`[topic]/notes`). Resolves
    * `undefined` when the item does not exist.
    *
@@ -76,7 +77,7 @@ export type SessionCreateCheckInput = {
 
 /** A create check's answer. */
 export type SessionCreateCheckResult =
-  /** Create the session, storing the create's `link` on it unchanged, for its whole life. */
+  /** Create the session with the state it was given. */
   | { readonly ok: true }
   /**
    * Refuse the create. Nothing is written. `message` reaches the caller.

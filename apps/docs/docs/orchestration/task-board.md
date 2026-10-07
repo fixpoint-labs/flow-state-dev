@@ -375,7 +375,7 @@ export default defineFlow({
 
 The two presets fold `boardId` into the key, so two boards' `per-task` runs stay apart even when their task ids coincide. A custom `key` is used as returned: two seats, or two boards, that return the same string share one session. The sharing is scoped to the conversation dispatching them — the same key from another conversation is a different run — and to the instance a cross-flow seat names. A `key` function that returns an empty string fails that task.
 
-When the flow a seat hands off to checks each new session with [`createCheck`](../fundamentals/state-and-scopes.md#creating-sessions), give the seat a `link`: a fixed string, or `(task) => string`, which receives the row's `assignee`, `taskId` and `input`. Each new run is created with it, and the target's check accepts or refuses it. A run that already exists keeps the link it was created with. Without a `link`, that flow refuses every new run, and the task fails with `create-refused`.
+When the flow a seat hands off to needs state in each new session, such as a required readonly field its [`createCheck`](../fundamentals/state-and-scopes.md#creating-sessions) confirms, give the dispatcher a `state`: a fixed object, or `(task) => object`, which receives the row's `assignee`, `taskId` and `input`. Each new run is created with it, and the target flow accepts or refuses it. A run that already exists keeps its own state. Without one, that flow refuses every new run, and the task fails with `create-refused`.
 
 ```ts
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";

@@ -133,6 +133,13 @@ export type ScopeStateOpsOptions<TState extends object> = {
    * stored record.
    */
   mutationTimeoutMs?: number;
+  /**
+   * Refuse a next state before it is written: called with every state a
+   * mutation proposes (on each retry, on every path), and a throw aborts the
+   * mutation with nothing written. The session scope uses it to keep its
+   * readonly state fields as the session was created with them.
+   */
+  guard?: (next: Readonly<TState>) => void;
 };
 
 /**
@@ -171,6 +178,15 @@ async function applyMutation<TState extends object>(
   hint: CASMutationHint
 ): Promise<boolean> {
   const persist = options?.persist;
+  const guard = options?.guard;
+  if (guard !== undefined) {
+    const propose = mutator;
+    mutator = async (state) => {
+      const next = await propose(state);
+      guard(next);
+      return next;
+    };
+  }
 
   if (persist === undefined) {
     let committed = false;

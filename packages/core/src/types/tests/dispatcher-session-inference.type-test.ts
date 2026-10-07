@@ -1,5 +1,5 @@
 /**
- * Type-level tests for `dispatcher()`'s `{ key, link }` session: both
+ * Type-level tests for `dispatcher()`'s `{ key, state }` session: both
  * callbacks receive the input its `inputSchema` declares, with no annotation.
  *
  * Under `src/` so this package's `typecheck` (whose `include` is `src/**`)
@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { dispatcher } from "../../blocks/dispatcher";
 
-const input = z.object({ worker: z.string(), job: z.string() });
+const input = z.object({ project: z.string(), job: z.string() });
 
 // `key` alone: `input` is the schema's output.
 dispatcher({
@@ -18,26 +18,26 @@ dispatcher({
   session: { key: (value) => value.job }
 });
 
-// `key` with a `link` callback: both callbacks see the schema's output.
+// `key` with a `state` callback: both callbacks see the schema's output.
 dispatcher({
-  name: "linked",
+  name: "with-state",
   action: "work",
   inputSchema: input,
-  session: { key: (value) => value.job, link: (value) => value.worker }
+  session: { key: (value) => value.job, state: (value) => ({ projectId: value.project }) }
 });
 
-// `link` as a fixed string.
+// `state` as a fixed object.
 dispatcher({
-  name: "linked-fixed",
+  name: "with-fixed-state",
   action: "work",
   inputSchema: input,
-  session: { key: (value) => value.job, link: "researcher" }
+  session: { key: (value) => value.job, state: { projectId: "p1" } }
 });
 
 dispatcher({
-  name: "linked-wrong-field",
+  name: "with-state-wrong-field",
   action: "work",
   inputSchema: input,
   // @ts-expect-error `nope` is not on the input
-  session: { key: (value) => value.job, link: (value) => value.nope }
+  session: { key: (value) => value.job, state: (value) => ({ projectId: value.nope }) }
 });

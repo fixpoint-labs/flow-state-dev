@@ -304,7 +304,7 @@ describe("FIX-1258: a write after a delete does not revive the resource", () => 
           flow: { kind: "fix1258-revival", id: "fix1258-revival" },
           sessionId: "sess_ordering",
           principal: { userId: "user_1", orgId: DEFAULT_ORG_ID },
-          link: undefined,
+          fromCaller: false,
           via: "action"
         },
         () => ({

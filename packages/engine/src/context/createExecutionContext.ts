@@ -68,12 +68,12 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
-import { ensureSessionRecord } from "./session-birth";
+import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause, isValidOrgId } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
-import { cloneValue, getTransientKeys } from "@flow-state-dev/core/helpers";
+import { cloneValue, getTransientKeys, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
@@ -708,8 +708,7 @@ export async function createExecutionContext<
   // Created through the one birth function (`session-birth.ts`): it runs the
   // flow's create check, mints the lineage id and writes create-if-absent
   // (FIX-1068), so this request cannot overwrite a concurrent first action and
-  // cannot invent a second address for the same session. An action names no
-  // link, so a flow that declares a create check refuses a session born here.
+  // cannot invent a second address for the same session.
   let sessionRecord =
     loadedSession ??
     ((await ensureSessionRecord(
@@ -723,8 +722,8 @@ export async function createExecutionContext<
           orgId: options.orgId,
           ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {})
         },
-        link: undefined,
-        callerState: options.sessionState,
+        state: options.sessionState,
+        fromCaller: true,
         via: "action"
       },
       () => ({
@@ -734,7 +733,6 @@ export async function createExecutionContext<
       userId,
       orgId: options.orgId,
       tenantId: options.tenantId,
-      state: (options.sessionState ?? {}) as TSessionState,
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
       version: 0,
       createdAt: now,
@@ -2227,8 +2225,19 @@ export async function createExecutionContext<
     reread: createScopeReread<TUserState, UserRecord>(userRef, stores.user)
   });
 
+  // The session's readonly state fields, as it was created with them. A
+  // mutation that would change one is refused before anything is written,
+  // whichever path proposed it: a block, a tool, an action.
+  const readonlyFields = getReadonlyStateKeys(flow.session?.stateSchema);
+  const createdWith = sessionRef.current.state as Record<string, unknown>;
   const sessionOps = createScopeStateOps(sessionContainer, {
     cas: flow.session?.cas,
+    ...(readonlyFields.length === 0
+      ? {}
+      : {
+          guard: (next: Readonly<TSessionState>) =>
+            refuseReadonlyStateChange(flow.kind, sessionId, readonlyFields, createdWith, next)
+        }),
     persist: createScopePersist<TSessionState, SessionRecord>(
       sessionRef,
       stores.session,
@@ -2620,7 +2629,7 @@ export async function createExecutionContext<
       const stored = await stores.session.get(sessionRef.current.id);
       // A session deleted while this request ran stays deleted. Writing the
       // held copy back would bring a record into existence outside the one
-      // birth function, carrying the old incarnation's lineage and link.
+      // birth function, carrying the old incarnation's lineage and state.
       if (stored === undefined) {
         throw new Error(`Session "${sessionId}" was deleted while this request was running`);
       }
@@ -2656,8 +2665,7 @@ export async function createExecutionContext<
         orgId: sessionRef.current.orgId,
         tenantId: options.tenantId
       },
-      // Read off the record, never the request: both written once at birth.
-      link: sessionRef.current.link ?? undefined,
+      // Read off the record, never the request: written once at birth.
       lineageId,
       get metadata() {
         const s = sessionRef.current;

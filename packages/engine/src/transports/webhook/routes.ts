@@ -200,8 +200,8 @@ export async function handleWebhook(
         eventType
       });
     } catch (err) {
-      // The flow refused to create this session (its create check, or a
-      // create that names no link where one is required). Not retryable: the
+      // The flow refused to create this session (its stateSchema or its
+      // create check refused a session with no initial state). Not retryable: the
       // same delivery would be refused again.
       if (err instanceof SessionCreateRefusedError) return sessionCreateRefusedResponse(err);
       // The session store is unavailable; the action can't run coherently

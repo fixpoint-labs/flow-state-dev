@@ -45,11 +45,12 @@ export type ListSessionsOptions = {
    */
   include?: "dispatch-runs";
   /**
-   * Only the sessions created with this worker: the sessions whose stored
-   * `link` equals it. On a flow whose sessions each run one worker, the
-   * server sets that link when the session is created.
+   * Only the sessions whose readonly state fields hold these values: a field
+   * the flow's session `stateSchema` declares `.readonly()`, set when the
+   * session was created. Needs `flowKind` or `flowId`; the server refuses a
+   * field that isn't readonly on that flow.
    */
-  worker?: string;
+  state?: Readonly<Record<string, string>>;
 };
 
 /**
@@ -111,14 +112,6 @@ export type CreateSessionOptions = {
   tags?: string[];
   metadata?: Record<string, unknown>;
   state?: Record<string, unknown>;
-  /**
-   * The worker this session runs, on a flow whose sessions each run one
-   * worker. Sent as the create's `link`; the flow's create check accepts or
-   * refuses it before the session exists, and an accepted value is stored as
-   * the session's `link`, unchanged and for good.
-   * A create on such a flow without it is refused.
-   */
-  worker?: string;
 };
 
 export type UpdateSessionMetadataOptions = {
@@ -338,8 +331,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
           description: createOptions.description,
           tags: createOptions.tags,
           metadata: createOptions.metadata,
-          state: createOptions.state,
-          link: createOptions.worker
+          state: createOptions.state
         })
       }
     });
@@ -540,13 +532,15 @@ function requireId(value: string, name: string): string {
   return trimmed;
 }
 
-/** The listing's query string: `worker` goes on the wire as `link`. */
+/** The listing's query string: each `state` entry goes on the wire as `state.<field>`. */
 function asSessionListQuery(
   value: ListSessionsOptions | undefined
 ): Record<string, QueryValue> | undefined {
   if (value === undefined) return undefined;
-  const { worker, ...rest } = value;
-  return asQuery({ ...rest, link: worker });
+  const { state, ...rest } = value;
+  const stateQuery: Record<string, QueryValue> = {};
+  for (const [field, fieldValue] of Object.entries(state ?? {})) stateQuery[`state.${field}`] = fieldValue;
+  return asQuery({ ...rest, ...stateQuery });
 }
 
 function asQuery(

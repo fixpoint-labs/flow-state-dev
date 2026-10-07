@@ -604,90 +604,88 @@ describe("seed state", () => {
   });
 });
 
-describe("--worker, on a flow that checks its session creates", () => {
-  it("creates a new session through the flow's check, storing the --worker it accepted", async () => {
+describe("--seed-session, on a flow that checks its session creates", () => {
+  const seeded = (workerId: string, extra: Record<string, unknown> = {}) => JSON.stringify({ workerId, ...extra });
+
+  it("creates a new session through the flow's check, with the state the schema parsed", async () => {
     const stores = createInMemoryStores();
-    const result = await executeRunCommand("linked", "who", {
+    const result = await executeRunCommand("bound", "who", {
       input: "{}",
       session: "w-1",
-      worker: "ok-researcher",
+      seedSession: seeded("ok-researcher"),
       cwd: fixturesDir,
       stores,
       quiet: true,
     });
     expect(result.success).toBe(true);
-    expect(result.output).toEqual({ link: "ok-researcher" });
-    expect((await stores.session.get("w-1"))?.link).toBe("ok-researcher");
+    expect(result.output).toEqual({ workerId: "ok-researcher" });
+    expect((await stores.session.get("w-1"))?.state).toEqual({ workerId: "ok-researcher", granted: [] });
   });
 
-  it("refuses a new session without --worker, and writes nothing", async () => {
+  it("refuses a new session without the state the flow needs, and writes nothing", async () => {
     const stores = createInMemoryStores();
-    const run = executeRunCommand("linked", "who", { input: "{}", session: "w-2", cwd: fixturesDir, stores, quiet: true });
-    await expect(run).rejects.toThrow(/Name a worker to create this session\. Pass --worker <id>\./);
+    const run = executeRunCommand("bound", "who", { input: "{}", session: "w-2", cwd: fixturesDir, stores, quiet: true });
+    await expect(run).rejects.toThrow(/workerId[\s\S]*Pass the session's initial state with --seed-session\./);
     await expect(run).rejects.toMatchObject({ exitCode: EXIT_INVALID_ARGS });
     expect(await stores.session.get("w-2")).toBeUndefined();
   });
 
-  it("runs again on an existing session with the same --worker", async () => {
+  it("runs again on an existing session with no seed, or the same readonly value", async () => {
     const stores = createInMemoryStores();
-    const first = { input: "{}", session: "w-6", worker: "ok-a", cwd: fixturesDir, stores, quiet: true };
-    await executeRunCommand("linked", "who", first);
-    const again = await executeRunCommand("linked", "who", first);
-    expect(again.success).toBe(true);
-    expect(again.output).toEqual({ link: "ok-a" });
-  });
-
-  it("starts a seeded session with the flow's state defaults, as an HTTP create does", async () => {
-    const stores = createInMemoryStores();
-    await executeRunCommand("linked", "who", {
-      input: "{}", session: "w-7", worker: "ok-a", seedSession: '{"note": "hi"}', cwd: fixturesDir, stores, quiet: true,
-    });
-    expect((await stores.session.get("w-7"))?.state).toEqual({ note: "hi", granted: [] });
+    const first = { input: "{}", session: "w-6", seedSession: seeded("ok-a"), cwd: fixturesDir, stores, quiet: true };
+    await executeRunCommand("bound", "who", first);
+    expect((await executeRunCommand("bound", "who", first)).output).toEqual({ workerId: "ok-a" });
+    const bare = await executeRunCommand("bound", "who", { input: "{}", session: "w-6", cwd: fixturesDir, stores, quiet: true });
+    expect(bare.output).toEqual({ workerId: "ok-a" });
   });
 
   it("checks a session another run created first: two runs with two workers, one runs", async () => {
     const stores = createInMemoryStores();
-    const run = (worker: string) =>
-      executeRunCommand("linked", "who", { input: "{}", session: "w-race", worker, cwd: fixturesDir, stores, quiet: true });
+    const run = (workerId: string) =>
+      executeRunCommand("bound", "who", {
+        input: "{}", session: "w-race", seedSession: seeded(workerId), cwd: fixturesDir, stores, quiet: true,
+      });
     const results = await Promise.allSettled([run("ok-a"), run("ok-b")]);
     const ran = results.filter((r) => r.status === "fulfilled");
     const refused = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
     expect(ran).toHaveLength(1);
     expect(refused).toHaveLength(1);
-    expect(String(refused[0]!.reason)).toMatch(/never changes/);
-    const stored = (await stores.session.get("w-race"))?.link;
-    expect((ran[0] as PromiseFulfilledResult<{ output: unknown }>).value.output).toEqual({ link: stored });
+    expect(String(refused[0]!.reason)).toMatch(/readonly/);
+    const stored = (await stores.session.get("w-race"))?.state.workerId;
+    expect((ran[0] as PromiseFulfilledResult<{ output: unknown }>).value.output).toEqual({ workerId: stored });
   });
 
-  it("refuses a different --worker on an existing session, which keeps its link", async () => {
+  it("refuses a seed that changes a readonly field on an existing session, which keeps it", async () => {
     const stores = createInMemoryStores();
-    await executeRunCommand("linked", "who", {
-      input: "{}", session: "w-3", worker: "ok-a", cwd: fixturesDir, stores, quiet: true,
+    await executeRunCommand("bound", "who", {
+      input: "{}", session: "w-3", seedSession: seeded("ok-a"), cwd: fixturesDir, stores, quiet: true,
     });
     await expect(
-      executeRunCommand("linked", "who", { input: "{}", session: "w-3", worker: "ok-b", cwd: fixturesDir, stores, quiet: true }),
-    ).rejects.toThrow(/never changes/);
-    expect((await stores.session.get("w-3"))?.link).toBe("ok-a");
+      executeRunCommand("bound", "who", {
+        input: "{}", session: "w-3", seedSession: seeded("ok-b"), cwd: fixturesDir, stores, quiet: true,
+      }),
+    ).rejects.toThrow(/readonly/);
+    expect((await stores.session.get("w-3"))?.state.workerId).toBe("ok-a");
   });
 
   it("refuses a seeded server-owned field, new session or existing", async () => {
     const stores = createInMemoryStores();
     await expect(
-      executeRunCommand("linked", "who", {
-        input: "{}", session: "w-4", worker: "ok-a", seedSession: '{"granted": ["x"]}', cwd: fixturesDir, stores, quiet: true,
+      executeRunCommand("bound", "who", {
+        input: "{}", session: "w-4", seedSession: seeded("ok-a", { granted: ["x"] }), cwd: fixturesDir, stores, quiet: true,
       }),
     ).rejects.toThrow(/"granted"/);
     expect(await stores.session.get("w-4")).toBeUndefined();
 
-    await executeRunCommand("linked", "who", {
-      input: "{}", session: "w-5", worker: "ok-a", seedSession: '{"note": "hi"}', cwd: fixturesDir, stores, quiet: true,
+    await executeRunCommand("bound", "who", {
+      input: "{}", session: "w-5", seedSession: seeded("ok-a", { note: "hi" }), cwd: fixturesDir, stores, quiet: true,
     });
     await expect(
-      executeRunCommand("linked", "who", {
+      executeRunCommand("bound", "who", {
         input: "{}", session: "w-5", seedSession: '{"granted": ["x"]}', cwd: fixturesDir, stores, quiet: true,
       }),
     ).rejects.toThrow(/"granted"/);
-    expect((await stores.session.get("w-5"))?.state).toEqual({ note: "hi", granted: [] });
+    expect((await stores.session.get("w-5"))?.state).toEqual({ workerId: "ok-a", note: "hi", granted: [] });
   });
 });
 

@@ -116,13 +116,17 @@ export type TaskFlowTarget = (
 ) => string | undefined | Promise<string | undefined>;
 
 /**
- * A `task` dispatcher's child-session link, looked up per task: the value the
- * target flow's `session.createCheck` receives when the task's child session
- * is created. Handed the same server-derived task a per-task flow target is
- * (assignee, id, input), because a link names who runs the row. Resolved once
- * per dispatch, before anything is dispatched.
+ * A `task` dispatcher's child-session initial state, looked up per task: what
+ * the target flow's `stateSchema` parses and its `session.createCheck` judges
+ * when the task's child session is created. Handed the same server-derived
+ * task a per-task flow target is (assignee, id, input), because the state
+ * names who runs the row. Resolved once per dispatch, before anything is
+ * dispatched.
  */
-export type TaskLinkTarget = (task: TaskTargetQuery, ctx: BlockContext) => string | Promise<string>;
+export type TaskStateTarget = (
+  task: TaskTargetQuery,
+  ctx: BlockContext
+) => Readonly<Record<string, unknown>> | Promise<Readonly<Record<string, unknown>>>;
 
 /**
  * Where a dispatcher sends. `(type, action)` is static by construction: it is
@@ -174,12 +178,11 @@ export type DispatchAddress =
        */
       readonly flowKind?: string | TaskFlowTarget;
       /**
-       * The link each task's child session is created with, when the target
-       * flow declares `session.createCheck`: a fixed string, or looked up per
-       * task (see {@link TaskLinkTarget}). A child that already exists keeps
-       * the link it was created with.
+       * The initial state each task's child session is created with: a fixed
+       * object, or looked up per task (see {@link TaskStateTarget}). A child
+       * that already exists keeps its own.
        */
-      readonly link?: string | TaskLinkTarget;
+      readonly state?: Readonly<Record<string, unknown>> | TaskStateTarget;
     };
 
 /**
@@ -305,12 +308,13 @@ export type SessionTarget =
   | {
       readonly key: string;
       /**
-       * The create's link input for the child, when the target flow declares
-       * a `session.createCheck`. Read only when the child is created; a child
-       * that already exists keeps the link it was created with. Computed by
-       * the dispatching block's own code, never taken from a caller's input.
+       * The child's initial session state, read only when the child is
+       * created: a child that already exists keeps its own. The target flow's
+       * `stateSchema` parses it and its `session.createCheck` judges it.
+       * Computed by the dispatching block's own code, never taken from a
+       * caller's input.
        */
-      readonly link?: string;
+      readonly state?: Readonly<Record<string, unknown>>;
     }
   | { readonly id: string }
   | { readonly from: true };
@@ -446,27 +450,25 @@ export class DispatchRefusedError extends Error {
 }
 
 /**
- * The link a `task` dispatch creates its child session with: the address's
- * string as declared, or its per-task target's answer for this task.
+ * The initial state a `task` dispatch creates its child session with: the
+ * address's object as declared, or its per-task target's answer for this task.
  * `undefined` when the address declares none.
  *
- * @throws when the answer is not a non-empty string. The link is what the
- *   target's create check judges, so an empty one is a computed refusal.
+ * @throws when the answer is not a plain object.
  */
-export async function resolveTaskLink(
+export async function resolveTaskState(
   blockName: string,
   address: Extract<DispatchAddress, { type: "task" }>,
   task: TaskTargetQuery,
   ctx: BlockContext
-): Promise<string | undefined> {
-  const link = address.link;
-  if (link === undefined) return undefined;
-  const resolved = typeof link === "function" ? await link(task, ctx) : link;
-  if (typeof resolved !== "string" || resolved.length === 0) {
+): Promise<Readonly<Record<string, unknown>> | undefined> {
+  const state = address.state;
+  if (state === undefined) return undefined;
+  const resolved = typeof state === "function" ? await state(task, ctx) : state;
+  if (typeof resolved !== "object" || resolved === null || Array.isArray(resolved)) {
     throw new Error(
-      `[dispatcher] "${blockName}" computed an empty session link for task "${task.taskId}" ` +
-        `(${JSON.stringify(resolved)}). The link is what the target flow's create check receives; ` +
-        `return the value it expects.`
+      `[dispatcher] "${blockName}" computed a child session state for task "${task.taskId}" that ` +
+        `is not an object (${JSON.stringify(resolved)}).`
     );
   }
   return resolved;

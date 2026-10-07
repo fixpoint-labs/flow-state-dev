@@ -1,11 +1,11 @@
 ---
 "@flow-state-dev/engine": minor
-"@flow-state-dev/core": patch
-"@flow-state-dev/client": patch
-"@flow-state-dev/react": patch
-"@flow-state-dev/fsdev": patch
-"@flow-state-dev/store-sqlite": patch
-"@flow-state-dev/store-postgres": patch
+"@flow-state-dev/core": minor
+"@flow-state-dev/client": minor
+"@flow-state-dev/fsdev": minor
+"@flow-state-dev/orchestration": minor
+"@flow-state-dev/store-sqlite": minor
+"@flow-state-dev/store-postgres": minor
 ---
 
-A flow can check every session at create with `session.createCheck`, which stores a `link` nothing changes afterwards, and refuse seeded state with `session.serverOwned`; `ensureSessionRecord` now takes the create request beside the record it builds (FIX-1788).
+A flow can check every new session's initial state with `session.createCheck`, refuse caller-seeded fields with `session.serverOwned`, and fix a field for a session's life by declaring it `.readonly()` in its session `stateSchema`; `listSessions({ state })` and the list route's `state.<field>` filter select sessions by a readonly field. On a flow that binds its sessions this way (a readonly field or a create check), an initial state that fails the `stateSchema` is refused on every path that creates a session; other flows keep it as sent. A dispatcher's `session: { key, state }` and a task dispatcher's `state` create the child session with that state. `ensureSessionRecord` now takes the create request beside the record it builds (FIX-1788).

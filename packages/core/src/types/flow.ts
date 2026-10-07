@@ -312,6 +312,14 @@ export type RetentionPolicy = {
  */
 export type SessionConfig = {
   metadata?: ZodTypeAny;
+  /**
+   * The session state's shape. A top-level field declared `.readonly()`
+   * (`z.object({ projectId: z.string().readonly() })`) is set when the session
+   * is created and never changes: a write that would change it is refused,
+   * whoever writes it. Readonly fields are also the only state fields the
+   * session listing filters by (`listSessions({ state: { ... } })`). Only a
+   * plain `z.object` at the top is read for them.
+   */
   stateSchema?: ZodTypeAny;
   cas?: CASOptions;
   /**
@@ -335,11 +343,9 @@ export type SessionConfig = {
    * Runs before a session of this flow is written, on every path that creates
    * one: the create route, an action sent to a session id that does not exist
    * yet, a webhook delivery, `fsdev run` and a dispatch into a child session.
-   * It receives the verified caller and the create's `link` input, and accepts
-   * or refuses it. An accepted `link` is stored on the session unchanged, and
-   * nothing changes it afterwards. A create that names no link is refused even
-   * if the check accepts it. A turn on an existing session never calls it.
-   * Undeclared: sessions are created as they always were, with no link.
+   * It receives the verified caller and the session's initial state, parsed
+   * through `stateSchema`, and accepts or refuses the create. A turn on an
+   * existing session never calls it.
    */
   createCheck?: SessionCreateCheck;
   /**

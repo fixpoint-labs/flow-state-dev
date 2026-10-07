@@ -5,11 +5,13 @@ import {
   createFlowRegistry,
   ensureSessionRecord,
   ownsRecord,
+  ReadonlySessionStateError,
+  refuseReadonlyStateChange,
   refuseServerOwnedState,
-  resolveInitialSessionState,
   SessionCreateRefusedError,
   type SessionRecord
 } from "@flow-state-dev/engine";
+import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
@@ -112,7 +114,6 @@ export function registerRunCommand(program: Command): void {
     .option("--org <id>", "Run in this organization and skip the app's resolver")
     .option("-u, --user <id>", "Run as this user. The organization comes from the app's resolver unless you also pass --org. Default: the user your app's resolver returns, or cli-user if the app has none or you pass --org")
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
-    .option("--worker <id>", "The worker a new session runs, on a flow whose sessions each run one worker")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
@@ -143,12 +144,6 @@ export interface RunCommandOptions {
   model?: string;
   session?: string;
   seedSession?: string;
-  /**
-   * `--worker`: the link input a new session's create check receives, on a
-   * flow that declares `session.createCheck` (a worker flow names the worker).
-   * Refused for an existing session whose link differs: a link never changes.
-   */
-  worker?: string;
   /** `--org`: run in this organization; the app's resolver is not asked. */
   org?: string;
   /** `--user`: run as this user. The organization comes from the app's resolver unless `--org` is also given. */
@@ -329,8 +324,9 @@ export async function executeRunCommand(
         : undefined;
     // A session this run did not create — found here, or created by another
     // run between this one's read and its write — is checked the same way
-    // before anything runs on it: this flow's, this principal's, and, when
-    // `--worker` is given, created with that worker, since a link never changes.
+    // before anything runs on it: this flow's, this principal's, and, when a
+    // seed is given, one the seed may be written into (no server-owned field,
+    // no change to a readonly one).
     const checkHeldSession = (held: SessionRecord): void => {
       if (!ownsRecord(flow, held)) {
         throw new CliError(
@@ -341,13 +337,21 @@ export async function executeRunCommand(
       }
       const refusal = checkSessionOwner(held, sessionId, principal);
       if (refusal !== undefined) throw new CliError(refusal, EXIT_INVALID_ARGS);
-      if (options.worker !== undefined && held.link !== options.worker) {
-        throw new CliError(
-          `Session "${sessionId}" already exists ${
-            held.link == null ? "with no worker" : `with worker "${held.link}"`
-          }; a session's worker never changes. Start a new session for another worker; nothing was written`,
-          EXIT_INVALID_ARGS,
+      if (seedData === undefined) return;
+      try {
+        refuseServerOwnedState(flow, sessionId, seedData);
+        refuseReadonlyStateChange(
+          flow.kind,
+          sessionId,
+          getReadonlyStateKeys(flow.session?.stateSchema),
+          held.state,
+          { ...held.state, ...seedData },
         );
+      } catch (err) {
+        if (err instanceof SessionCreateRefusedError || err instanceof ReadonlySessionStateError) {
+          throw new CliError(`${err.message} Nothing was written`, EXIT_INVALID_ARGS);
+        }
+        throw err;
       }
     };
     const existing = options.session !== undefined ? await stores.session.get(sessionId) : undefined;
@@ -357,30 +361,19 @@ export async function executeRunCommand(
 
     if (existing !== undefined) {
       if (seedData !== undefined) {
-        try {
-          refuseServerOwnedState(flow, sessionId, seedData);
-        } catch (err) {
-          if (err instanceof SessionCreateRefusedError) {
-            throw new CliError(`${err.message} Nothing was written`, EXIT_INVALID_ARGS);
-          }
-          throw err;
-        }
         await stores.session.set(sessionId, {
           ...existing,
           state: { ...existing.state, ...seedData },
           updatedAt: Date.now(),
         }, "any");
       }
-    } else if (
-      seedData !== undefined ||
-      options.worker !== undefined ||
-      flow.session?.createCheck !== undefined
-    ) {
-      // The one birth function: it runs the flow's create check with
-      // `--worker` as the link, refuses a seeded server-owned field, and mints
-      // the lineage id (FIX-1068), which a seeded CLI session needs as much as
-      // any other. A flow that checks its creates is born here rather than by
-      // the run, so a refusal is this command's error, not a failed run.
+    } else if (seedData !== undefined || flow.session?.createCheck !== undefined) {
+      // The one birth function: it parses the seed through the flow's state
+      // schema, refuses a seeded server-owned field, runs the flow's create
+      // check on what it parsed, and mints the lineage id (FIX-1068), which a
+      // seeded CLI session needs as much as any other. A flow that checks its
+      // creates is born here rather than by the run, so a refusal is this
+      // command's error, not a failed run.
       const now = Date.now();
       let held: SessionRecord;
       try {
@@ -391,8 +384,8 @@ export async function executeRunCommand(
             flow,
             sessionId,
             principal: { userId: principal.userId, orgId: principal.orgId },
-            link: options.worker,
-            ...(seedData !== undefined ? { callerState: seedData } : {}),
+            ...(seedData !== undefined ? { state: seedData } : {}),
+            fromCaller: true,
             via: "cli",
           },
           () => ({
@@ -403,8 +396,6 @@ export async function executeRunCommand(
             // record it seeded.
             userId: principal.userId,
             orgId: principal.orgId,
-            // The flow's state defaults under the seed, as an HTTP create gets.
-            state: resolveInitialSessionState(flow, seedData),
             version: 0,
             createdAt: now,
             updatedAt: now,
@@ -414,15 +405,16 @@ export async function executeRunCommand(
       } catch (err) {
         if (err instanceof SessionCreateRefusedError) {
           const hint =
-            flow.session?.createCheck !== undefined && options.worker === undefined
-              ? " Pass --worker <id>."
+            flow.session?.createCheck !== undefined && seedData === undefined
+              ? " Pass the session's initial state with --seed-session."
               : "";
           throw new CliError(`${err.message}${hint} Nothing was written`, EXIT_INVALID_ARGS);
         }
         throw err;
       }
       // A lost race returns the winner's record, which this run never
-      // checked: it may be another worker's, or another principal's.
+      // checked: it may be another principal's, or created with another value
+      // for a readonly field than this run's seed.
       checkHeldSession(held);
     }
 

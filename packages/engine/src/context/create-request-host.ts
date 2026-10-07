@@ -81,7 +81,6 @@ import { ownsRecord } from "./record-owner";
 import type { DispatchOperation } from "./dispatch-operation";
 import {
   birthSession,
-  resolveInitialSessionState,
   SessionCreateRefusedError,
   type SessionRecordSeed
 } from "./session-birth";
@@ -278,7 +277,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
    */
   const resolveDispatchRunSession = async (
     key: string,
-    link: string | undefined,
+    initialState: Readonly<Record<string, unknown>> | undefined,
     address: { type: string; action: string },
     targetFlow: FlowInstance
   ): Promise<ResolvedSession> => {
@@ -331,11 +330,6 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     const ts = nowMs();
     const build = (): SessionRecordSeed => ({
       id: storageKey,
-      // Session-state defaults, applied before the write — the create route
-      // parses initial state through the flow's schema precisely so typed
-      // block reads never observe missing keys, and execution does not
-      // retroactively initialize an existing record.
-      state: resolveInitialSessionState(targetFlow),
       version: 0,
       createdAt: ts,
       updatedAt: ts,
@@ -360,9 +354,10 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       ...label("coordinate", `${address.type}:${address.action}`)
     });
 
-    // Through the one birth function every new session record takes: it runs
-    // the target flow's create check with the link the dispatching block's
-    // code named, reclaims the id's resource-state tombstones (FIX-1258) — a
+    // Through the one birth function every new session record takes: it
+    // parses the state the dispatching block's code named through the target
+    // flow's schema (defaults applied, so typed block reads never observe a
+    // missing key), runs its create check, reclaims the id's resource-state tombstones (FIX-1258) — a
     // child's id is DERIVED from its key, so reuse is the norm — and writes
     // create-if-absent, which is how a caller wins or loses a create race
     // rather than silently overwriting a concurrent adopter's child.
@@ -379,7 +374,10 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
             orgId: identity.orgId,
             ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {})
           },
-          link,
+          ...(initialState !== undefined ? { state: { ...initialState } } : {}),
+          // From the dispatching block's code, not a caller, so a
+          // server-owned field is the flow's to set here.
+          fromCaller: false,
           via: "dispatch"
         },
         build
@@ -399,7 +397,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     // TOMBSTONED, which the store contract requires a caller to treat as
     // deleted and stop on. So it refuses exactly like a mismatched record
     // does; only a present, adoptable child is adopted. The winner is adopted
-    // without checking this call's link: it was checked when it was born.
+    // without checking this call's state: it was checked when it was born.
     const current = outcome.record;
     const verdict = current === undefined ? undefined : evaluateAdoption(current, expected);
     if (verdict === undefined || !verdict.adoptable) {
@@ -450,7 +448,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     if ("id" in spec.session) {
       return resolveExistingSession(spec.session.id, targetFlow);
     }
-    return resolveDispatchRunSession(spec.session.key, spec.session.link, spec, targetFlow);
+    return resolveDispatchRunSession(spec.session.key, spec.session.state, spec, targetFlow);
   };
 
   const crossInstance = (targetFlow: FlowInstance): boolean => targetFlow.id !== flow.id;

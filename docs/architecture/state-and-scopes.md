@@ -698,8 +698,12 @@ overwrite the winner with a *different* id, stranding its shared writes at an
 address nothing reads.
 
 Every creator goes through one function, `birthSession`
-(`context/session-birth.ts`). It runs the flow's `session.createCheck` and its
-`serverOwned` refusal, reclaims the id's resource-state tombstones (FIX-1258),
+(`context/session-birth.ts`). It parses the session's initial state through the
+flow's session `stateSchema` (on a flow that binds its sessions, with a
+`.readonly()` field or a `createCheck`, a state the schema refuses is refused;
+any other flow keeps it as sent, because the workforce mailbox creates
+sessions half-filled on purpose), runs the `serverOwned` refusal for caller-seeded state and the
+flow's `session.createCheck` on the parsed state, reclaims the id's resource-state tombstones (FIX-1258),
 mints the lineage id unless the caller derives one, and writes `"absent"`. The
 caller describes the record it wants and chooses only what a lost race means:
 
@@ -724,6 +728,17 @@ The lineage rule binds a new creator on the child side: **reaching for
 have inherited one**, which silently splits a child session's shared resources
 away from the conversation that owns them. Pass the inherited `lineageId` in
 the seed instead.
+
+**What a session is born with, it keeps, for its readonly fields.** A top-level
+session `stateSchema` field declared `.readonly()` (`getReadonlyStateKeys` in
+core's `helpers/zod-introspect.ts`, which reads zod 3 and zod 4 alike and finds
+none under a root that isn't a plain object) is fixed at birth. The session's
+state operations in `createExecutionContext` carry a guard that refuses any
+mutation changing one (`ReadonlySessionStateError`), so every block write path
+goes through it; `fsdev run --seed-session` refuses the same change before it
+writes. Because these fields cannot move, they are the only ones the list
+route filters on (`?state.<field>=<value>`), and each store filters in its
+query.
 
 **The testing helpers are outside this contract, and that costs coverage rather
 than correctness.** `createTestContext` and `testFlow` seed a session record

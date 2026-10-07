@@ -162,7 +162,7 @@ export {
   framed,
   readFramed,
   resolveTaskFlowKind,
-  resolveTaskLink,
+  resolveTaskState,
   taskDispatchInputSchema,
   taskSessionKeyFor
 } from "./types/dispatch";
@@ -180,7 +180,7 @@ export type {
   TaskDispatchInput,
   TaskEntry,
   TaskFlowTarget,
-  TaskLinkTarget,
+  TaskStateTarget,
   TaskSessionPolicy,
   TaskTargetQuery
 } from "./types/dispatch";

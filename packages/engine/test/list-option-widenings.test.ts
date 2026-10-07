@@ -79,16 +79,19 @@ function request(id: string, overrides: Partial<RequestRecord> = {}): RequestRec
 
 describe.each(adapters)("list-option widenings — $name adapter", ({ create }) => {
 
-  it("session link filters exactly, and a session with no link never matches", async () => {
+  it("session state filter matches top-level string fields exactly, in the query", async () => {
     const { session: store } = await create();
-    await store.set("w1", session("w1", { link: "researcher" }), "any");
-    await store.set("w2", session("w2", { link: "editor" }), "any");
+    await store.set("w1", session("w1", { state: { workerId: "researcher", n: 1 } }), "any");
+    await store.set("w2", session("w2", { state: { workerId: "editor" } }), "any");
+    await store.set("num", session("num", { state: { workerId: 7 } }), "any");
     await store.set("none", session("none"), "any");
 
-    expect((await store.list({ link: "researcher" })).map((r) => r.id)).toEqual(["w1"]);
-    expect((await store.list({ link: "nobody" })).map((r) => r.id)).toEqual([]);
+    expect((await store.list({ state: { workerId: "researcher" } })).map((r) => r.id)).toEqual(["w1"]);
+    expect((await store.list({ state: { workerId: "7" } })).map((r) => r.id)).toEqual([]);
+    expect((await store.list({ state: { workerId: "nobody" } })).map((r) => r.id)).toEqual([]);
     expect((await store.list({ userId: "alice" })).map((r) => r.id).sort()).toEqual([
       "none",
+      "num",
       "w1",
       "w2"
     ]);

@@ -73,12 +73,14 @@ export function createPostgresSessionStore(executor: QueryExecutor): SessionStor
       }
       // `"all"` emits no clause at all — today's unrestricted query, unchanged.
 
-      // Link filter: an equality on the record's server-written `link`, read
-      // out of the stored JSONB. No column of its own: the query is already
-      // narrowed by the indexed owner columns, and a session has one link.
-      if (options?.link !== undefined) {
-        parts.push(`data->>'link' = $${p++}`);
-        params.push(options.link);
+      // State filter: an equality per readonly state field, read out of the
+      // stored JSONB in the query. The query is already narrowed by the
+      // indexed owner columns. The path is a bound parameter, so a field name
+      // can't change the statement.
+      for (const [field, value] of Object.entries(options?.state ?? {})) {
+        parts.push(`jsonb_typeof(data #> $${p}::text[]) = 'string' AND data #>> $${p}::text[] = $${p + 1}`);
+        params.push(["state", field], value);
+        p += 2;
       }
 
       return { clause: parts.join(" AND "), params };

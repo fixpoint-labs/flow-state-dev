@@ -23,16 +23,17 @@
  * - **Reclaiming** (FIX-1258). A record coming into existence starts a new
  *   resource-state incarnation, and the previous one's tombstones go with it
  *   ({@link purgeStaleResourceState}).
- * - **Checking.** The flow's `createCheck` and `serverOwned` refusal.
+ * - **Checking.** The session's initial state, parsed through the flow's
+ *   `stateSchema` (on a flow that binds its sessions, a state the schema
+ *   refuses is refused; see {@link parseInitialSessionState}), the
+ *   `serverOwned` refusal for state a caller seeded, and the flow's
+ *   `createCheck` on what the schema parsed.
  *
  * The check runs on a miss only. A session that already exists is returned
  * without calling it, so a turn on an existing session costs no check, and a
  * loser of a create race adopts the winner without its own input being checked
  * again: the winner was checked when it was born.
  *
- * The link stored is the create's input, unchanged. A check accepts or refuses
- * it and cannot rewrite it, so the value a caller creates with is the value it
- * lists and compares by.
  */
 import type {
   FlowInstance,
@@ -51,6 +52,7 @@ import {
   toIsolationFlow
 } from "../stores/scope-keys";
 import { toBareState } from "../stores/resource-state-views";
+import { deepEqual, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 
 /**
  * Release a newborn session from the resource-state tombstones a previous
@@ -159,10 +161,11 @@ export type BirthFlow = Pick<FlowInstance, "kind" | "id" | "session" | "resource
 export type SessionBirthStores = Pick<StoreRegistry, "session" | "resourceState">;
 
 /**
- * Thrown when a create is refused: the flow's create check said no, the create
- * named no link for a flow that requires one, or it seeded a server-owned
- * state field. Nothing was written. `status` is the HTTP status the create
- * route answers with; `field` names the state field when that was the reason.
+ * Thrown when a create is refused: the flow's create check said no, the
+ * initial state failed the flow's `stateSchema`, or a caller seeded a
+ * server-owned state field. Nothing was written. `status` is the HTTP status
+ * the create route answers with; `field` names the state field when one was
+ * the reason.
  */
 export class SessionCreateRefusedError extends Error {
   readonly code = "session-create-refused";
@@ -184,14 +187,18 @@ export type SessionCreateRequest = {
   /** The bare session id being created. */
   sessionId: string;
   principal: SessionCreatePrincipal;
-  /** The create's link input. */
-  link: string | undefined;
   /**
-   * State the caller asked the session to start with (the create route's
-   * `state`, `fsdev run --seed-session`). Only its keys are read, to refuse a
-   * server-owned field.
+   * The state the session starts with, before the flow's `stateSchema` parses
+   * it. Absent is `{}`.
    */
-  callerState?: Record<string, unknown>;
+  state?: Record<string, unknown>;
+  /**
+   * Whether `state` came from a caller (the create route's `state`, `fsdev
+   * run --seed-session`, an action's seed) rather than from flow code (a
+   * dispatcher's child state). A caller's state may not set a `serverOwned`
+   * field.
+   */
+  fromCaller: boolean;
   via: SessionCreatePath;
 };
 
@@ -220,44 +227,82 @@ export function refuseServerOwnedState(
 }
 
 /**
+ * Whether a flow binds its sessions: it declares a top-level `.readonly()`
+ * session-state field or a `session.createCheck`. A bound session is defined
+ * by what it starts with, so its starting state must fit the schema.
+ */
+function bindsSessions(flow: Pick<BirthFlow, "session">): boolean {
+  return (
+    flow.session?.createCheck !== undefined ||
+    getReadonlyStateKeys(flow.session?.stateSchema).length > 0
+  );
+}
+
+/**
+ * A new session's initial state: `state` parsed through the flow's session
+ * `stateSchema`, so every declared key starts with its default and a block
+ * never reads `undefined` for one.
+ *
+ * A state the schema refuses is refused on a flow that binds its sessions
+ * ({@link bindsSessions}). Any other flow keeps it as sent, and its actions
+ * validate it when they run: some create sessions half-filled on purpose and
+ * complete them later (the workforce mailbox reads the missing fields as
+ * "not yet opened").
+ *
+ * @throws SessionCreateRefusedError (400, naming the first failing field) when
+ *   a bound flow's schema refuses the state.
+ */
+export function parseInitialSessionState(
+  flow: Pick<BirthFlow, "kind" | "session">,
+  sessionId: string,
+  state: Record<string, unknown> | undefined
+): JsonObject {
+  const raw = (state ?? {}) as JsonObject;
+  const schema = flow.session?.stateSchema;
+  if (schema === undefined) return raw;
+  const parsed = schema.safeParse(raw);
+  if (parsed.success) return parsed.data as JsonObject;
+  if (!bindsSessions(flow)) return raw;
+  const [issue] = parsed.error.issues;
+  const field = issue?.path[0];
+  throw new SessionCreateRefusedError(
+    sessionId,
+    400,
+    `The initial state of a session of flow "${flow.kind}" doesn't fit its stateSchema` +
+      (issue === undefined ? "." : ` at "${issue.path.join(".")}": ${issue.message}`),
+    typeof field === "string" ? field : undefined
+  );
+}
+
+/**
  * Check a create against the flow's declarations, before anything is written.
- * Resolves the link to store, which is the create's input unchanged, or
- * `undefined` for a flow with no create check.
+ * Resolves the session's initial state as the flow's schema parsed it.
  *
  * @throws SessionCreateRefusedError when the create is refused.
  */
 export async function checkSessionCreate(
   stores: Pick<StoreRegistry, "resourceState">,
   request: SessionCreateRequest
-): Promise<string | undefined> {
-  const { flow, sessionId, principal, link, via } = request;
-  refuseServerOwnedState(flow, sessionId, request.callerState);
+): Promise<JsonObject> {
+  const { flow, sessionId, principal, via } = request;
+  if (request.fromCaller) refuseServerOwnedState(flow, sessionId, request.state);
+  const state = parseInitialSessionState(flow, sessionId, request.state);
 
   const check = flow.session?.createCheck;
-  if (check === undefined) return undefined;
+  if (check === undefined) return state;
 
   const verdict = await check({
     principal,
     sessionId,
     flow: { kind: flow.kind, id: flow.id },
-    link,
+    state,
     via,
     readCollectionItem: (ref, topic) => readCollectionItemAt(stores, flow, principal, ref, topic)
   });
   if (!verdict.ok) {
     throw new SessionCreateRefusedError(sessionId, verdict.status ?? 400, verdict.message);
   }
-  // A create that named nothing has nothing to have been checked. Refused
-  // here whatever the check answered, so a check that forgets the case cannot
-  // admit a session with no link on a flow that links every session.
-  if (link === undefined || link.length === 0) {
-    throw new SessionCreateRefusedError(
-      sessionId,
-      400,
-      `Creating a session of flow "${flow.kind}" requires a link.`
-    );
-  }
-  return link;
+  return state;
 }
 
 /**
@@ -305,11 +350,11 @@ async function readCollectionItemAt(
 }
 
 /**
- * A session record as a birth's caller builds it: everything but the link,
- * which only a checked create sets, and the lineage id, which is minted
- * unless the caller derives it.
+ * A session record as a birth's caller builds it: everything but its state,
+ * which the birth parses and checks from the request, and the lineage id,
+ * which is minted unless the caller derives it.
  */
-export type SessionRecordSeed = Omit<SessionRecord, "lineageId" | "link"> & {
+export type SessionRecordSeed = Omit<SessionRecord, "lineageId" | "state"> & {
   /** Supplied by a caller that derives the lineage (a cross-flow child); minted otherwise. */
   lineageId?: string;
 };
@@ -332,7 +377,7 @@ export type SessionBirthOutcome =
  * In order: the existing record, if any, is returned unchecked; the create is
  * checked (`checkSessionCreate`); the previous incarnation's tombstones are
  * reclaimed (`purgeStaleResourceState`, which must run before the write); the
- * record is written create-if-absent with the checked link and a lineage id.
+ * record is written create-if-absent with the checked state and a lineage id.
  *
  * @throws SessionCreateRefusedError when the create is refused. Nothing is
  *   written.
@@ -349,7 +394,7 @@ export async function birthSession(
   const existing = await stores.session.get(storageKey);
   if (existing !== undefined) return { born: false, raced: false, record: existing };
 
-  const link = await checkSessionCreate(stores, request);
+  const state = await checkSessionCreate(stores, request);
 
   // Before the create, so nothing is committed until it has succeeded. See
   // `purgeStaleResourceState` for why this order and no other.
@@ -358,8 +403,8 @@ export async function birthSession(
   const seed = build();
   const record: SessionRecord = {
     ...seed,
-    lineageId: seed.lineageId ?? generateId("lin"),
-    ...(link !== undefined ? { link } : {})
+    state,
+    lineageId: seed.lineageId ?? generateId("lin")
   };
   const created = await stores.session.set(storageKey, record, "absent");
   if (created.ok) return { born: true, record };
@@ -398,19 +443,44 @@ export async function ensureSessionRecord(
 }
 
 /**
- * A new session's initial state: the caller's state parsed through the flow's
- * session `stateSchema`, so every declared key starts with its default and a
- * block never reads `undefined` for one. A caller state the schema refuses is
- * kept as sent (validation happens when an action runs). The create route, a
- * dispatched child and `fsdev run` all start a session from this.
+ * Thrown when a write would change a session's readonly state field: a
+ * top-level `.readonly()` field of the flow's session `stateSchema`, set when
+ * the session was created. Nothing is written.
  */
-export function resolveInitialSessionState(
-  flow: Pick<BirthFlow, "session">,
-  callerState?: Record<string, unknown>
-): JsonObject {
-  const schema = flow.session?.stateSchema;
-  const raw = (callerState ?? {}) as JsonObject;
-  if (schema === undefined) return raw;
-  const parsed = schema.safeParse(raw);
-  return parsed.success ? (parsed.data as JsonObject) : raw;
+export class ReadonlySessionStateError extends Error {
+  readonly code = "readonly-session-state";
+
+  constructor(
+    readonly flowKind: string,
+    readonly sessionId: string,
+    readonly field: string
+  ) {
+    super(
+      `Session "${sessionId}" of flow "${flowKind}" can't change state field "${field}": it is ` +
+        `readonly, set when the session was created. Start a new session for another value.`
+    );
+    this.name = "ReadonlySessionStateError";
+  }
+}
+
+/**
+ * Refuse a proposed session state that changes a readonly field from what the
+ * session was created with.
+ *
+ * @throws ReadonlySessionStateError naming the first field that changed.
+ */
+export function refuseReadonlyStateChange(
+  flowKind: string,
+  sessionId: string,
+  readonlyFields: readonly string[],
+  createdWith: Readonly<Record<string, unknown>>,
+  next: Readonly<Record<string, unknown>>
+): void {
+  for (const field of readonlyFields) {
+    const had = Object.hasOwn(createdWith, field);
+    const has = Object.hasOwn(next, field);
+    if (had !== has || (has && !deepEqual(createdWith[field], next[field]))) {
+      throw new ReadonlySessionStateError(flowKind, sessionId, field);
+    }
+  }
 }

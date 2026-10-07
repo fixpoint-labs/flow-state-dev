@@ -353,6 +353,23 @@ export function matchesParentageFilter(
 }
 
 /**
+ * Session-state list-filter predicate: every entry of `filter` names a
+ * top-level state field that holds exactly that string. Absent matches every
+ * record. The memory and filesystem session stores call it directly; the SQL
+ * adapters restate it in their `WHERE` builders.
+ */
+export function matchesStateFilter(
+  filter: Readonly<Record<string, string>> | undefined,
+  state: Record<string, unknown> | undefined
+): boolean {
+  if (filter === undefined) return true;
+  for (const [field, value] of Object.entries(filter)) {
+    if (state === undefined || !Object.hasOwn(state, field) || state[field] !== value) return false;
+  }
+  return true;
+}
+
+/**
  * Effective isolation for a single resource: its own `flowIsolation` when
  * set, otherwise the scope's flow-level default. Resource-level declarations
  * always win (FIX-435), in both the opt-in and opt-out directions.

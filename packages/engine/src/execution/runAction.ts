@@ -1161,8 +1161,8 @@ async function runActionAttempt<
   }
   // A session this run would bring into existence, on a flow that checks its
   // creates: refused here, at the door, with nothing registered or written.
-  // Two layers on purpose, so neither can be optimized away: an action never
-  // carries a link, so this refuses before anything is registered; the birth in
+  // Two layers on purpose, so neither can be optimized away: this refuses
+  // before anything is registered; the birth in
   // `createExecutionContext` runs the same check again only if the session is
   // still absent when the context is built (deleted in between).
   if (admittedSession === undefined && options.flow.session?.createCheck !== undefined) {
@@ -1174,7 +1174,7 @@ async function runActionAttempt<
         orgId: options.orgId,
         ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {})
       },
-      link: undefined,
+      fromCaller: true,
       via: "action"
     });
   }

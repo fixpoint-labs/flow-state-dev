@@ -56,7 +56,7 @@ import {
   dispatchThroughSeam,
   markDispatcher,
   resolveTaskFlowKind,
-  resolveTaskLink,
+  resolveTaskState,
   taskSessionKeyFor,
 } from "@flow-state-dev/core/types";
 import type { BlockDefinition, TaskBinding, TaskDispatchInput } from "@flow-state-dev/core/types";
@@ -181,9 +181,9 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
         ctx
       );
 
-      // The child's link, when the seat names one: looked up now, like the
-      // flow, so an empty answer refuses with the claim still held.
-      const link = await resolveTaskLink(
+      // The child's initial state, when the seat names one: looked up now,
+      // like the flow, so a bad answer refuses with the claim still held.
+      const initialState = await resolveTaskState(
         name,
         address,
         {
@@ -201,7 +201,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
       const outcome = await dispatchThroughSeam(ctx, {
         type: "task",
         action: address.action,
-        session: link === undefined ? { key } : { key, link },
+        session: initialState === undefined ? { key } : { key, state: initialState },
         payload: envelope,
         from: name,
         // Stamped onto the dispatched REQUEST record, so a run can be correlated

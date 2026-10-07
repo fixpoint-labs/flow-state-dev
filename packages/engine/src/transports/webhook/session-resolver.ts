@@ -28,8 +28,9 @@ export interface EnsureWebhookSessionArgs {
 /**
  * Create the session row for a webhook delivery if it doesn't already exist.
  *
- * @throws SessionCreateRefusedError when the flow's create check refuses: a
- *   webhook names no link, so a flow that declares one gets no session here.
+ * @throws SessionCreateRefusedError when the flow refuses the create: a
+ *   webhook carries no initial state, so a flow whose sessions need some (a
+ *   required field, or a create check that wants one) gets no session here.
  */
 export async function ensureSessionForWebhook(args: EnsureWebhookSessionArgs): Promise<void> {
   const { stores, sessionId, flow, principal, provider, eventType } = args;
@@ -43,7 +44,7 @@ export async function ensureSessionForWebhook(args: EnsureWebhookSessionArgs): P
       flow,
       sessionId,
       principal: { userId: principal.userId, orgId: principal.orgId },
-      link: undefined,
+      fromCaller: false,
       via: "webhook"
     },
     () => ({
@@ -52,7 +53,6 @@ export async function ensureSessionForWebhook(args: EnsureWebhookSessionArgs): P
       flowId: flow.id,
       userId: principal.userId,
       ...(principal.orgId !== undefined ? { orgId: principal.orgId } : {}),
-      state: {},
       version: 0,
       createdAt: now,
       updatedAt: now,

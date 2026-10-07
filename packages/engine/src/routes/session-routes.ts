@@ -9,11 +9,8 @@ import type { SessionRecordSeed } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
-import {
-  birthSession,
-  resolveInitialSessionState,
-  SessionCreateRefusedError
-} from "../context/session-birth";
+import { birthSession, SessionCreateRefusedError } from "../context/session-birth";
+import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { resolveRecordOwner } from "../context/record-owner";
 import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
 import { isOrgAttributed } from "../context/org-attribution";
@@ -144,6 +141,50 @@ async function ownResolverNamesAnotherCaller(
   return false;
 }
 
+/** The query parameters that filter the listing by session state. */
+const STATE_FILTER_PREFIX = "state.";
+
+/**
+ * Read `?state.<field>=<value>` off a listing request.
+ *
+ * Only a flow's readonly state fields are filterable: they are set when a
+ * session is created and never change, so a filter on one names sessions by
+ * something a run can't move. The flow is the one `flowId` or `flowKind`
+ * names; a state filter without one, or on any other field, is refused with
+ * a 400 rather than ignored, which would answer with the unfiltered list.
+ */
+function resolveStateFilter(
+  url: URL,
+  registry: FlowRegistry
+): { state?: Record<string, string> } | { error: string } {
+  const entries = [...url.searchParams.entries()].filter(([name]) => name.startsWith(STATE_FILTER_PREFIX));
+  if (entries.length === 0) return {};
+  const address = getString(url.searchParams.get("flowId")) ?? getString(url.searchParams.get("flowKind"));
+  const flow = address === undefined ? undefined : registry.get(address);
+  if (flow === undefined) {
+    return {
+      error:
+        "A state filter needs the flow whose readonly state fields it names: pass flowId, or " +
+        "the flowKind of a registered flow."
+    };
+  }
+  const readonly = new Set(getReadonlyStateKeys(flow.session?.stateSchema));
+  const state: Record<string, string> = {};
+  for (const [name, value] of entries) {
+    const field = name.slice(STATE_FILTER_PREFIX.length);
+    if (!readonly.has(field)) {
+      return {
+        error:
+          `Sessions of flow "${flow.kind}" can't be filtered by state field "${field}": only ` +
+          `readonly state fields are filterable` +
+          (readonly.size === 0 ? ", and this flow declares none." : ` (${[...readonly].join(", ")}).`)
+      };
+    }
+    state[field] = value;
+  }
+  return { state };
+}
+
 export async function handleListSessions(
   request: Request,
   _route: Extract<ParsedFlowRoute, { kind: "list_sessions" }>,
@@ -161,7 +202,8 @@ export async function handleListSessions(
     principal !== undefined && !(await ownResolverNamesAnotherCaller(ctx, principal))
       ? principal
       : undefined;
-  const linkFilter = url.searchParams.get("link");
+  const stateFilter = resolveStateFilter(url, ctx.registry);
+  if ("error" in stateFilter) return jsonResponse(400, { error: stateFilter.error });
   const sessions = await ctx.stores.session.list({
     flowKind: getString(url.searchParams.get("flowKind")),
     // Exact owner: one instance of a collection flow. A record with no owner
@@ -192,10 +234,10 @@ export async function handleListSessions(
     // put there on purpose; the include is the only way past it, and it widens
     // parentage alone — never owner, tenant or organization.
     ...(include.parentage === undefined ? {} : { parentage: include.parentage }),
-    // Exact match on the link a flow's create check accepted. A narrowing only:
-    // owner, organization and tenant are scoped above whatever it says.
-    // Taken as sent, never trimmed: a link is opaque and stored unchanged.
-    ...(linkFilter === null || linkFilter.length === 0 ? {} : { link: linkFilter }),
+    // Exact match on the flow's readonly state fields (`?state.<field>=`),
+    // taken as sent, never trimmed. A narrowing only: owner, organization and
+    // tenant are scoped above whatever it says.
+    ...(stateFilter.state === undefined ? {} : { state: stateFilter.state }),
     limit: getPositiveInteger(url.searchParams.get("limit")),
     offset: getPositiveInteger(url.searchParams.get("offset"))
   });
@@ -344,10 +386,10 @@ export async function handleCreateSession(
   //     terminal-status snapshot refresh.
   //  2. Block code that reads `ctx.session.state.foo` before any patch
   //     would observe `undefined` rather than the schema's default.
-  // Caller-supplied `body.state` overrides the defaults. The same rule every
-  // path that starts a session from caller state uses.
+  // Caller-supplied `body.state` overrides the defaults. The birth parses it;
+  // on a flow that binds its sessions it refuses one the schema refuses, and
+  // any other flow keeps it as sent.
   const callerState = asObject(body.state);
-  const initialState = resolveInitialSessionState(flow, callerState);
 
   const orgId = ctx.principal?.orgId ?? DEFAULT_ORG_ID;
   const build = (): SessionRecordSeed => ({
@@ -376,7 +418,6 @@ export async function handleCreateSession(
     description: getString(body.description),
     tags: asStringArray(body.tags),
     metadata: asObject(body.metadata),
-    state: initialState,
     // `lineageId` is minted per record by the birth. Recreating a deleted id
     // therefore yields a NEW lineage, which is what makes a surviving
     // descendant of the old one keep its own address with nothing conjoined
@@ -386,13 +427,6 @@ export async function handleCreateSession(
     updatedAt: now,
     journal: []
   });
-
-  // `body.link` is the create's input to the flow's `session.createCheck`.
-  // The check accepts or refuses it; an accepted value is stored unchanged.
-  const linkInput = body.link;
-  if (linkInput !== undefined && linkInput !== null && typeof linkInput !== "string") {
-    return jsonResponse(400, { error: "link must be a string" });
-  }
 
   // Through the one birth function every new session record takes: it checks
   // the create, reclaims the id's resource-state tombstones (FIX-1258) and
@@ -408,9 +442,8 @@ export async function handleCreateSession(
         flow,
         sessionId,
         principal: { userId, orgId, ...(ctx.tenantId !== undefined ? { tenantId: ctx.tenantId } : {}) },
-        // As sent, never trimmed: the accepted link is stored unchanged.
-        link: typeof linkInput === "string" && linkInput.length > 0 ? linkInput : undefined,
-        callerState: callerState ?? undefined,
+        ...(callerState !== undefined ? { state: callerState } : {}),
+        fromCaller: true,
         via: "create"
       },
       build
