@@ -97,7 +97,7 @@ the dispatcher's input as-is.
 | `session` | Runs in | When it does not exist |
 |---|---|---|
 | `{ key: (input) => string }` | a session derived from the key, recorded against the running one | created; the next call with the same key from the same conversation adopts it |
-| `{ key, state: (input) => object }` | the same, created with that initial state | created with that state, if the target flow's `stateSchema` and [`createCheck`](../fundamentals/state-and-scopes.md#creating-sessions) accept it. `state` can also be a fixed object. A run that already exists keeps its own state |
+| `{ key, state: (input) => object }` | the same, created with that initial state | created with that state, if the target flow's `stateSchema` and [`createCheck`](../fundamentals/state-and-scopes.md#creating-sessions) accept it. `state` can also be a fixed object. A run that already exists keeps its own state. A task board's dispatcher takes `state` beside `session` instead; see [Which session a task runs in](../orchestration/task-board.md#which-session-a-task-runs-in) |
 | `{ id: (input) => string }` | the session with that id | refused. Nothing is created |
 
 A `key` run is a job in every sense on this page: it runs the same flow as the
