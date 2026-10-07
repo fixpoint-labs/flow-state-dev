@@ -111,7 +111,7 @@ existing task tools, and the actions are named for the board id, drafted `tasks`
 >
 > Rows are stored at the user's scope, under the partition the running session's context
 > returns. A board resolved in one session reads, claims, waits on and settles only its own
-> partition, and so do its task tools. A seat that hands off puts the partition on the dispatch,
+> partition, and so do its task tools. An assignee that hands off puts the partition on the dispatch,
 > and the run on the other flow reads its one row there, with every check a board's entry runs.
 > Declare the same collection on the receiving flow and serve its task entry with `taskLedgers`;
 > the ledger's `resolve` gets the partition with the ledger id.
@@ -124,7 +124,7 @@ existing task tools, and the actions are named for the board id, drafted `tasks`
 
 And in "What the board requires", the `sharedToLineage` bullet becomes:
 
-> - **A `session`-scoped collection declares `sharedToLineage: true`**, and its seats hand off
+> - **A `session`-scoped collection declares `sharedToLineage: true`**, and its assignees hand off
 >   within this flow. To hand rows to another flow, use a partitioned `user`-scoped collection
 >   ([A board per conversation](#a-board-per-conversation-worked-on-another-flow)). `org` scope
 >   needs nothing extra.
@@ -152,7 +152,7 @@ And in "What the board requires", the `sharedToLineage` bullet becomes:
 ## UPDATE · `packages/orchestration/README.md` · "Task board", after the durable-collection paragraph
 
 > A `user`-scoped collection can take a `partitionBy` function, keeping one set of rows per
-> partition, so each conversation has its own board that a seat can still hand off to another
+> partition, so each conversation has its own board that an assignee can still hand off to another
 > flow. See the task-board guide's "A board per conversation, worked on another flow".
 
 ## Not changed

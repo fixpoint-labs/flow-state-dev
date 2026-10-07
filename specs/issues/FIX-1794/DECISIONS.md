@@ -208,5 +208,8 @@ left.
   file". The product owner, 2026-10-07: build on the existing task tools, not new ones; their one
   extension, T1, is a Layer 1 change for the epic to record. The split's acceptance (leg b,
   BR-30 to BR-32, S8, S10, V6) points there; BR-7 is the interim refusal.
+- **Terminology** (the product owner, 2026-10-07; epic [D7](../../epics/FIX-1786/DECISIONS.md#d7)) —
+  a board's seat is now an *assignee*, so the plan and the docs draft say "an assignee that hands
+  off" and "the default assignee".
 
 **Open: none.** [Q](#q) is answered: the split moves to FIX-1802, which is in the MVP (epic D8).
