@@ -2,19 +2,13 @@
 
 /**
  * Tool call rendering for block_trace and tool_output items.
- *
- * Tool calls are background, not content: each one is a single quiet line
- * ("Used discover ›") that opens to its details, and a run of consecutive
- * calls is one line ("Used 3 tools ›") that opens to one row per call.
- *
- *  - <Tool> — one call, as a quiet line.
- *  - <ToolGroup> — a run of `tool_output` items, as one quiet line.
+ * <Tool> is one call. <ToolGroup> is a run of them. Both are a muted line
+ * that opens to the call's input, result, and metadata.
  */
 
 import { Fragment, isValidElement, type ComponentProps, type ReactNode } from "react";
 import type { BlockTraceItem, ToolOutputItem } from "@flow-state-dev/core/items";
 
-import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
   CollapsibleContent,
@@ -33,13 +27,6 @@ import {
 
 import { CodeBlock } from "./code-block";
 
-export {
-  composeToolGroupLabel,
-  TOOL_GROUP_DISTINCT_CAP,
-  TOOL_VERB_MAP,
-  type ToolVerbs,
-} from "./tool-grouping";
-
 /**
  * Framework-agnostic tool execution state.
  * Replaces the AI SDK ToolUIPart["state"] with neutral vocabulary.
@@ -52,22 +39,6 @@ export type ToolState =
   | "completed"    // finished successfully
   | "error"        // failed
   | "denied";      // user rejected
-
-export type ToolProps = ComponentProps<typeof Collapsible>;
-
-export const ToolShell = ({ className, ...props }: ToolProps) => (
-  <Collapsible
-    className={cn("group not-prose mb-2 w-full rounded-md border", className)}
-    {...props}
-  />
-);
-
-export type ToolHeaderProps = {
-  name: string;
-  state: ToolState;
-  title?: string;
-  className?: string;
-};
 
 const statusLabels: Record<ToolState, string> = {
   pending: "Pending",
@@ -88,48 +59,6 @@ const statusIcons: Record<ToolState, ReactNode> = {
   error: <XCircleIcon className="size-4 text-destructive" />,
   denied: <XCircleIcon className="size-4 text-warning" />,
 };
-
-export const getStatusBadge = (state: ToolState) => (
-  <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
-    {statusIcons[state]}
-    {statusLabels[state]}
-  </Badge>
-);
-
-export const ToolHeader = ({
-  className,
-  title,
-  name,
-  state,
-  ...props
-}: ToolHeaderProps) => (
-  <CollapsibleTrigger
-    className={cn(
-      "flex w-full items-center justify-between gap-4 p-3",
-      className
-    )}
-    {...props}
-  >
-    <div className="flex items-center gap-2">
-      <WrenchIcon className="size-4 text-muted-foreground" />
-      <span className="font-medium text-sm">{title ?? name}</span>
-      {getStatusBadge(state)}
-    </div>
-    <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-  </CollapsibleTrigger>
-);
-
-export type ToolContentProps = ComponentProps<typeof CollapsibleContent>;
-
-export const ToolContent = ({ className, ...props }: ToolContentProps) => (
-  <CollapsibleContent
-    className={cn(
-      "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 space-y-4 p-4 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
-      className
-    )}
-    {...props}
-  />
-);
 
 export type ToolInputProps = ComponentProps<"div"> & {
   input: unknown;
@@ -240,7 +169,6 @@ function getToolErrorText(item: ToolItem): string | undefined {
   return raw === undefined ? undefined : String(raw);
 }
 
-/** The input, result and metadata of one call: what a quiet line opens to. */
 function ToolDetails({ item }: { item: ToolItem }) {
   const args = getToolArgs(item);
   const output = getToolOutput(item);
@@ -256,11 +184,6 @@ function ToolDetails({ item }: { item: ToolItem }) {
   );
 }
 
-/**
- * The quiet line every tool presentation shares: muted text and a chevron,
- * opening to `children`. A call that is running or failed says so in words
- * ("Using discover…", "discover failed"), since there is no badge.
- */
 function QuietToolLine({ label, state, children }: { label: string; state: ToolState; children: ReactNode }) {
   return (
     <Collapsible className="group/quiet not-prose w-full" data-testid="tool-group" data-state-kind={state}>
@@ -273,7 +196,6 @@ function QuietToolLine({ label, state, children }: { label: string; state: ToolS
   );
 }
 
-/** "Used discover", "Using discover…" while it runs, "discover failed" when it did. */
 function callLabel(name: string, state: ToolState): string {
   if (state === "error") return `${name} failed`;
   if (state === "running" || state === "streaming" || state === "pending") return `Using ${name}…`;
@@ -290,11 +212,7 @@ export function Tool({ item }: { item: BlockTraceItem | ToolOutputItem }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// <ToolGroup> / <ToolRow> — Level-1 / Level-2 rendering.
-// ---------------------------------------------------------------------------
-
-/** Worst status in a batch, used to color the group summary. */
+/** Worst status in a batch: a failure wins, then anything still running. */
 function aggregateGroupState(items: ToolOutputItem[]): ToolState {
   let hasError = false;
   let hasRunning = false;
@@ -308,29 +226,10 @@ function aggregateGroupState(items: ToolOutputItem[]): ToolState {
   return "completed";
 }
 
-export type ToolGroupProps = {
-  items: ToolOutputItem[];
-  /** Default-open state. Defaults to false (collapsed). */
-  defaultOpen?: boolean;
-  className?: string;
-};
-
-/**
- * A run of tool calls as one quiet line: the call's own name for one call
- * ("Used discover"), a count for several ("Used 3 tools"). Opens to the
- * call's details, or to one row per call that opens to its own.
- */
-export function ToolGroup({ items }: ToolGroupProps) {
+export function ToolGroup({ items }: { items: ToolOutputItem[] }) {
   if (items.length === 0) return null;
+  if (items.length === 1) return <Tool item={items[0]!} />;
   const state = aggregateGroupState(items);
-  if (items.length === 1) {
-    const item = items[0]!;
-    return (
-      <QuietToolLine label={callLabel(item.toolCall.name, state)} state={state}>
-        <ToolDetails item={item} />
-      </QuietToolLine>
-    );
-  }
   const label = state === "running" ? `Using ${items.length} tools…` : state === "error" ? `Used ${items.length} tools, one failed` : `Used ${items.length} tools`;
   return (
     <QuietToolLine label={label} state={state}>
@@ -351,33 +250,20 @@ export type ToolRowProps = {
   className?: string;
 };
 
-/**
- * Level-2 individual tool call row — a compact, independently collapsible
- * line that expands to the Level-3 detail (input args, output, metadata).
- */
 export function ToolRow({ item, defaultOpen = false, className }: ToolRowProps) {
   const state = mapToolStatus(item.status);
-  const name = item.toolCall.name;
-  const args = getToolArgs(item);
-  const output = getToolOutput(item);
-  const errorText = getToolErrorText(item);
-
   return (
     <Collapsible defaultOpen={defaultOpen} className={cn("group/row", className)}>
       <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-muted/40">
         <div className="flex min-w-0 items-center gap-2">
           <WrenchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate font-mono text-xs">{name}</span>
+          <span className="truncate font-mono text-xs">{item.toolCall.name}</span>
           <ToolRowStatus state={state} />
         </div>
         <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/row:rotate-180" />
       </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-3 px-3 pt-2 pb-3">
-        {args !== undefined && <ToolInput input={args} />}
-        {item.status !== "in_progress" && (output !== undefined || errorText !== undefined) && (
-          <ToolOutput output={output} errorText={errorText} />
-        )}
-        <ToolRowMetadata item={item} />
+      <CollapsibleContent className="px-3 pt-2 pb-3">
+        <ToolDetails item={item} />
       </CollapsibleContent>
     </Collapsible>
   );

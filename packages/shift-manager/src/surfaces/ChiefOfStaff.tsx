@@ -398,8 +398,10 @@ function Items({ stored }: { stored: SessionItems }) {
       ),
     [stored],
   );
-  // A run of tool calls stays one segment: the feed draws it as one quiet line.
-  const shown = useMemo(() => buildItemRenderStream(stored.items, renderers), [stored, renderers]);
+  const shown = useMemo(
+    () => buildItemRenderStream(stored.items, renderers, { groupToolCalls: true }),
+    [stored, renderers],
+  );
   return (
     <SessionItemsProvider value={stored.items}>
       {stored.truncated ? (
