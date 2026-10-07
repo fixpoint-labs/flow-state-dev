@@ -24,7 +24,9 @@ before implementing; FIX-1789 and FIX-1790 may have moved two of them first.
 Forward lineage: the criteria object of `findWorkerSession` and `ensureWorkerSession` (PLAN S5a)
 is extended later by FIX-1794 (`taskId`), FIX-1793 (`workstreamId`) and FIX-1791 (the
 coordinator conversation a delegate's session belongs to; FIX-1791 names the key). Each later key
-is added to the same lookup path, not to a second helper.
+is added to the same lookup path, not to a second helper. Since the binding amendment
+([below](#amendment-binding)), each later key is a readonly field of the worker flow's session
+state, because the listing filters on readonly fields only.
 
 Amended after merge (epic amendment #2831): the lookup matches on the key set, not only on
 values (S5a, BR-14a, V4). Without it, a narrower lookup returned a wider session: plain talk
@@ -70,3 +72,51 @@ spec changed:
 | The guardrail "no Layer 1 change beyond S1" | **Amended**: S1 and S7's per-run key, with orchestration named as Layer 1 | Follows from S7 | — |
 | BR-22a's BP-030 citation | **Amended**: the rule gives its own reason | Epic D9: BP-030 doesn't apply to this epic | The rule: the row is untouched |
 | DOCS, "After a hire, refresh the roster" | **Amended** | Follows from BR-8 | — |
+
+<a name="amendment-binding"></a>
+## Amended after merge: binding through readonly state, and privacy on a custom worker flow (2026-10-07)
+
+**The problem.** This spec said a session's worker sat in a server-only field on the session
+record, beside its state, set from a `worker` option on `createSession` and filtered by one on
+`listSessions`. P1 ([#2850](https://github.com/fixpoint-labs/flow-state-dev/pull/2850)) built a
+different mechanism instead: the worker is a readonly field of the session's starting state,
+checked at create. The product owner approved that on 2026-10-07 and rejected a separate link
+concept. The same day, the product owner answered Q6, raised on P2
+([#2856](https://github.com/fixpoint-labs/flow-state-dev/pull/2856)), as A: on a custom worker
+flow, keeping one user's workers apart is the flow's author's job. The spec still described the
+link and promised per-worker privacy on every worker flow. Original review:
+[#2812](https://github.com/fixpoint-labs/flow-state-dev/pull/2812), amended by
+[#2818](https://github.com/fixpoint-labs/flow-state-dev/pull/2818).
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| [D4](DECISIONS.md#d4)'s mechanism: a server-only field on the session record, a `worker` option on create and list, and a create check that returned the value the engine stored | **Superseded** by [D5](DECISIONS.md#d5) | The product owner rejected a separate link. A readonly field, the optional create check and the store-level filter answer each reason D4 gave for keeping the worker out of state: writable, set unchecked by the caller, not listable | D4's call, named once at create; its card as signed is linked from it, and its figure is renamed `d4-named-at-create.svg` |
+| *Considered and dropped*: the worker in plain session state (O1) | **Kept as dropped, reasoning answered** | "Checked on read" is still wrong. Checked at create and readonly after is D5 | The R1 row: state is deleted with its record, so nothing outlives a deleted session |
+| S1: a create field outside `state`, `useFlow` passing `worker`, `fsdev run --worker` | **Amended** to what P1 shipped | Readonly fields, an optional `createCheck`, `serverOwned`, a listing filter on readonly fields, a schema refusal on flows that bind their sessions, and a dispatcher's child `state`. `fsdev run` takes the worker through `--seed-session`; `useFlow` is unchanged | The one birth function on all five paths, the lost-race behaviour, `serverOwned` for FIX-1791 |
+| The schema refusal at create | **Narrowed**, an engineering call | Refusing on every flow would break the mailbox and the project rooms, which create half-filled sessions on purpose | Follow-up: widen it to every flow once FIX-1792 removes the mailbox |
+| BR-15: caller state for "the link or a server-written field" | **Narrowed** to server-written fields | Naming the worker in the create's state is how a session is created (BR-10) | The 400 naming the field |
+| BR-23, S7 and V6: "every flow-isolated resource on every worker flow", "and on one app flow" | **Narrowed** by [D6](DECISIONS.md#d6) | The risk stays inside one user; B repeats FIX-1789's introspection holes; C is an engine change beyond the epic's six | BR-23 on the built-in worker flows, the skills library's per-run key and `agent`'s drawer (S7). New: BR-23a and a DOCS.md section showing an author how to key data by worker |
+| The goal's `GOAL_CONTROL=caller-link` | **Replaced** by `no-create-check` | The old control read the worker from the create's state instead of a server-only field, and that field no longer exists. Removing the create check is what now lets Bob's create name Alice's worker | `org-scoped-workers`, unchanged. FIX-1797's PLAN (P3.3) still names `caller-link` |
+| Pinned names: `worker` on `createSession` and `listSessions`; `workerId` in a generic create field | **Removed** | No link | `workerId`, now a readonly session-state field; `createWorkforceClient` keeps `worker` as its criteria key |
+| DOCS: the `flow.md` session rows and the "Creating sessions" paragraph, both with a `link` input; `useFlow`'s `worker`; `fsdev run --worker` | **Removed**; P1 published the real pages | They described the link | A pointer to the published pages; the React path now selects a session the client found |
+
+### Engine changes beyond the epic's D3 item (3)
+
+The epic's [D3](../../epics/FIX-1786/DECISIONS.md#d3) item (3) reads "a server-only field on the
+session record, set and checked when the session is created". P1 shipped it as three engine
+changes, which the product owner approved on 2026-10-07:
+
+- **A readonly guard on session state.** A top-level `.readonly()` field of a flow's session
+  `stateSchema` is refused on any change after create, on every path that writes session state:
+  a block, a tool, an action, and `fsdev run --seed-session` on an existing session.
+- **A state filter on listing, inside the store.** `listSessions({ state })` and the route's
+  `?state.<field>=` filter on readonly fields only, in the SQLite, Postgres, memory and filesystem
+  stores' own queries. Any other field is refused with 400.
+- **A schema refusal at create, on flows that bind their sessions.** A flow with a readonly field
+  or a create check refuses a starting state its schema rejects. Other flows keep today's create.
+
+Beside them, as planned under item (3): the optional `session.createCheck`, whose only store read
+is one collection row at the creating caller's own scope; `session.serverOwned`; a dispatcher's
+child `state`; and `ensureSessionRecord` taking the create request. The epic's D3 card text may
+need a matching amendment. That is the epic's to make, and this amendment leaves
+`specs/epics/FIX-1786/` untouched.
