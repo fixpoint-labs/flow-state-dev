@@ -686,7 +686,7 @@ describe("Chief of Staff (FIX-1722)", () => {
       const url = String(i instanceof Request ? i.url : i);
       // The send's own read of the turn's suspended request fails, so it can't tell what the
       // turn stopped on; the refresh after it reads normally.
-      if (failing > 0 && /\/sessions\/cos_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
+      if (failing > 0 && /\/sessions\/conv_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
         failing -= 1;
         return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
       }
@@ -713,7 +713,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);
       // The send's read of the turn's suspended request finds it no longer suspended.
-      if (emptying > 0 && /\/sessions\/cos_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
+      if (emptying > 0 && /\/sessions\/conv_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
         emptying -= 1;
         return new Response(JSON.stringify({ requests: [] }), {
           status: 200,

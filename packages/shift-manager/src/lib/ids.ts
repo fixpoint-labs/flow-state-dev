@@ -5,7 +5,7 @@
 
 /**
  * A fresh session id, `<prefix><separator><32 hex digits>`, the separator
- * `-` unless given (`cos_…` passes `_`). Built from
+ * `-` unless given (`conv_…` passes `_`). Built from
  * `getRandomValues`, which a page served over plain HTTP has, unlike
  * `randomUUID`.
  */

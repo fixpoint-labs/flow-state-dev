@@ -26,6 +26,8 @@ import { useEffect, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { AskCard } from "../components/AskCard";
 import { Conversation, ConversationFrame } from "../components/Conversation";
+import { useSessionItems } from "../components/flow-state/session-items-context";
+import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
 import { chiefOfStaffOf, seatStates, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
@@ -217,12 +219,25 @@ function ChiefOfStaffConversation({ snapshot, gaps, lead }: { snapshot: LoadedSn
   );
 }
 
-/** Whether the person has answered the ask `item` raised: the session holds its resume. */
-const isAnswered = (item: OutputItem, all: readonly OutputItem[]) =>
-  all.some((other) => other.type === "suspension_resume" && (other as { suspensionId?: string }).suspensionId === (item as { suspensionId?: string }).suspensionId);
+/**
+ * An ask the seat raised: a needs-you line that opens Inbox, where it is
+ * answered, until the person has answered it (the session holds its resume).
+ * Answered, it is the registry's own card.
+ */
+function renderAsk(item: OutputItem) {
+  return item.type === "suspension" ? <AskLine item={item} /> : undefined;
+}
 
-/** An ask the seat raised and nobody has answered: a needs-you line that opens Inbox, where it is answered. */
-function AskLine() {
+function AskLine({ item }: { item: OutputItem }) {
+  const items = useSessionItems();
+  const id = (item as { suspensionId?: string }).suspensionId;
+  if (items.some((other) => other.type === "suspension_resume" && (other as { suspensionId?: string }).suspensionId === id)) {
+    return (
+      <div data-look="registry-item">
+        <ItemRenderer item={item} />
+      </div>
+    );
+  }
   return (
     <button type="button" className="flex items-baseline gap-[9px] text-left" onClick={() => navigate({ level: "inbox", suspensionId: null })}>
       <NeedsYouTag />
@@ -269,7 +284,8 @@ function Talk({
       suggestions={suggestions}
       autoSend={handed}
       onAutoSend={clearHandedLine}
-      renderItem={(item, all) => (item.type === "suspension" && !isAnswered(item, all) ? <AskLine /> : undefined)}
+      renderItem={renderAsk}
+      scale="cos"
     />
   );
 }

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { seatAddress } from "@flow-state-dev/workforce/browser";
 import { chiefOfStaffOf, shiftSummary, streamCounts, type LoadedSnapshot } from "../src/lib/derive";
-import { conversationSession, currentConversation, newConversationId } from "../src/lib/cos";
+import { conversationSession, currentConversation, newConversationId } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
 import { STAFF_TEAM, toSeat, type Ask, type BoardRow, type Seat } from "../src/lib/reads";
 
@@ -233,7 +233,7 @@ describe("a new conversation's id", () => {
     try {
       const a = newConversationId();
       const b = newConversationId();
-      expect(a).toMatch(/^cos_[0-9a-f]{32}$/);
+      expect(a).toMatch(/^conv_[0-9a-f]{32}$/);
       expect(a).not.toBe(b);
     } finally {
       Object.defineProperty(globalThis.crypto, "randomUUID", { value: real, configurable: true, writable: true });
