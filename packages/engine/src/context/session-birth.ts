@@ -24,7 +24,8 @@
  *   resource-state incarnation, and the previous one's tombstones go with it
  *   ({@link purgeStaleResourceState}).
  * - **Checking.** The session's initial state, parsed through the flow's
- *   `stateSchema` (a state the schema refuses is refused, never kept raw), the
+ *   `stateSchema` (on a flow that binds its sessions, a state the schema
+ *   refuses is refused; see {@link parseInitialSessionState}), the
  *   `serverOwned` refusal for state a caller seeded, and the flow's
  *   `createCheck` on what the schema parsed.
  *
@@ -51,7 +52,7 @@ import {
   toIsolationFlow
 } from "../stores/scope-keys";
 import { toBareState } from "../stores/resource-state-views";
-import { deepEqual } from "@flow-state-dev/core/helpers";
+import { deepEqual, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 
 /**
  * Release a newborn session from the resource-state tombstones a previous
@@ -226,12 +227,30 @@ export function refuseServerOwnedState(
 }
 
 /**
+ * Whether a flow binds its sessions: it declares a top-level `.readonly()`
+ * session-state field or a `session.createCheck`. A bound session is defined
+ * by what it starts with, so its starting state must fit the schema.
+ */
+function bindsSessions(flow: Pick<BirthFlow, "session">): boolean {
+  return (
+    flow.session?.createCheck !== undefined ||
+    getReadonlyStateKeys(flow.session?.stateSchema).length > 0
+  );
+}
+
+/**
  * A new session's initial state: `state` parsed through the flow's session
  * `stateSchema`, so every declared key starts with its default and a block
  * never reads `undefined` for one.
  *
+ * A state the schema refuses is refused on a flow that binds its sessions
+ * ({@link bindsSessions}). Any other flow keeps it as sent, and its actions
+ * validate it when they run: some create sessions half-filled on purpose and
+ * complete them later (the workforce mailbox reads the missing fields as
+ * "not yet opened").
+ *
  * @throws SessionCreateRefusedError (400, naming the first failing field) when
- *   the schema refuses the state. It is never kept raw.
+ *   a bound flow's schema refuses the state.
  */
 export function parseInitialSessionState(
   flow: Pick<BirthFlow, "kind" | "session">,
@@ -243,6 +262,7 @@ export function parseInitialSessionState(
   if (schema === undefined) return raw;
   const parsed = schema.safeParse(raw);
   if (parsed.success) return parsed.data as JsonObject;
+  if (!bindsSessions(flow)) return raw;
   const [issue] = parsed.error.issues;
   const field = issue?.path[0];
   throw new SessionCreateRefusedError(

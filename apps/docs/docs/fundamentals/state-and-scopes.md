@@ -178,9 +178,9 @@ const recent = await ctx.session.getJournal({ limit: 10 });
 
 A new session typically starts via `sessions.createSession({...})` on the client, which returns a stable `sess_<id>` you reuse on every subsequent action call. See [Client Overview](/docs/client/overview).
 
-If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through. Such an action starts the session with no initial state, so on a flow whose `stateSchema` requires a field, or whose `createCheck` refuses an empty state, it is refused instead (see the [example below](#example-one-session-per-project)).
+If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through. Such an action starts the session with no initial state, so on a flow that binds its sessions (see below) and needs a starting value, it is refused instead (see the [example below](#example-one-session-per-project)).
 
-A caller can pass initial `state` when it creates a session. It is parsed through the flow's session `stateSchema`, so missing fields take their defaults. A state the schema refuses is refused with a 400 that names the field (`{ error, field }`), and nothing is written.
+A caller can pass initial `state` when it creates a session. It is parsed through the flow's session `stateSchema`, so missing fields take their defaults. A state that doesn't fit the schema is kept as sent, and your actions validate it when they run, unless the flow binds its sessions (below).
 
 Initial state suits preferences and drafts. On its own it is the wrong place for a value that grants anything, because the caller wrote it; a `createCheck` that confirms the value (below) changes that.
 
@@ -195,7 +195,9 @@ session: {
 
 A create that sets `reviewers` in its `state` is refused with a 400 whose body names the field (`{ error, field: "reviewers" }`), and nothing is written. Blocks in your flow write it like any other session state.
 
-When a session exists to work on one particular thing, such as one project, put that thing in the session's `stateSchema` and declare it with zod's `.readonly()`. The schema checks the shape of every new session's initial state, and a create it refuses is refused. A readonly field is set when the session is created and never changes. Blocks read it like any other session state, and callers can list sessions by it.
+When a session exists to work on one particular thing, such as one project, put that thing in the session's `stateSchema` and declare it with zod's `.readonly()`. A readonly field is set when the session is created and never changes. Blocks read it like any other session state, and callers can list sessions by it.
+
+If your flow binds sessions this way (a readonly field or a create check), the starting state must match the schema or the create is refused, with a 400 that names the field (`{ error, field }`) and nothing written.
 
 Most flows need only the schema. When a rule depends on who is creating the session, or on what exists in the store, such as "this project is yours or shared with you", also declare `session.createCheck`. It runs after the schema has parsed the initial state, receives that state and the caller's identity, and accepts or refuses the create. The [example below](#example-one-session-per-project) walks through both.
 
@@ -273,7 +275,7 @@ export const projectAssistant = defineFlow({
 })();
 ```
 
-That one line does the shape validation. `projectId` is required and has no default, so a create without a string `projectId` is refused with a 400 that names the field, and nothing is written. `.readonly()` makes it fixed: it is set when the session is created and never changes. Many flows stop here.
+That one line does the shape validation. `.readonly()` makes `projectId` fixed: it is set when the session is created and never changes. It also makes this a flow that binds its sessions, so the starting state must match the schema. `projectId` is required and has no default, so a create without a string `projectId` is refused with a 400 that names the field, and nothing is written. Many flows stop here.
 
 **3. Add a check for the rule that depends on the caller.** The schema can't know whether `q3-launch` exists, or whether this user may open it. That depends on who is asking and on what is stored, which is what `session.createCheck` is for:
 
@@ -404,7 +406,7 @@ With the flow above:
 | A project that doesn't exist, or one the user wasn't given | `createCheck` | `404` | `{ error: 'No project "q3-launch".' }` |
 | No `projectId`, or one that isn't a string | `stateSchema` | `400` | `{ error, field: "projectId" }` |
 
-The last row is refused the same way on a flow with no `createCheck`.
+The last row is refused by the schema alone: the readonly field binds the flow's sessions, with or without a `createCheck`.
 
 An action sent without a session id, or to a session id that doesn't exist yet, would start a session with no `projectId`, so it gets that 400 and nothing is written. So does a webhook delivery to a new session id. Create the session first, as in step 4.
 

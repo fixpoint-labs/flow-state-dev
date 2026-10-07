@@ -280,6 +280,30 @@ describe("the create route", () => {
     expect(res.status).toBe(201);
     expect((await stores.session.get("p1"))?.state).toEqual({ anything: 1 });
   });
+
+  // Off state of the create-time schema refusal: only a flow that binds its
+  // sessions (a readonly field or a create check) refuses. A flow with a schema
+  // and neither keeps today's behaviour, which workforce's half-filled mailbox
+  // sessions rely on.
+  it("keeps a state the schema rejects as sent, on a flow with no readonly field and no check", async () => {
+    const loose = defineFlow({
+      kind: "loose",
+      session: { stateSchema: z.object({ members: z.array(z.string()), mode: z.string().default("chat") }) },
+      actions: { noop: { inputSchema: z.object({}).passthrough(), block: handler({ name: "loose-noop", execute: () => ({}) }) } }
+    })({ id: "loose" }) as unknown as FlowInstance;
+    const registry = createFlowRegistry();
+    registry.register(loose);
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+
+    const rejected = await create(router, "loose", { userId: "alice", sessionId: "l1", state: { members: "nope" } });
+    expect(rejected.status).toBe(201);
+    expect((await stores.session.get("l1"))?.state).toEqual({ members: "nope" });
+
+    const fits = await create(router, "loose", { userId: "alice", sessionId: "l2", state: { members: [] } });
+    expect(fits.status).toBe(201);
+    expect((await stores.session.get("l2"))?.state).toEqual({ members: [], mode: "chat" });
+  });
 });
 
 describe("a readonly state field", () => {

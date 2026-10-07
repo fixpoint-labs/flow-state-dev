@@ -586,8 +586,10 @@ Every path that creates a session (the create route, an action to a session
 id that does not exist yet, a webhook delivery, `fsdev run`, and a dispatch
 into a child session) creates it from an initial state: the create body's
 `state`, `fsdev run --seed-session`, or the `state` a `dispatcher()`'s
-`{ key, state }` session names. The flow's session `stateSchema` parses it; a
-state the schema refuses is refused, never stored raw. `session.serverOwned`
+`{ key, state }` session names. The flow's session `stateSchema` parses it. A
+flow that binds its sessions (a top-level `.readonly()` field or a
+`createCheck`) refuses a state the schema refuses; any other flow keeps it as
+sent, for its actions to validate when they run. `session.serverOwned`
 names fields a caller may not seed. Most flows need nothing more. The optional
 `session.createCheck` is for a rule that depends on who is creating the session
 or on what exists in the store: it receives the verified caller and the parsed

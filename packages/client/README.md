@@ -197,8 +197,9 @@ const mine = await sessions.listSessions({ flowKind: "agent", userId, state: { p
 ```
 
 The filter needs `flowKind` or `flowId`, matches string values exactly, and is
-refused for a field that isn't readonly on that flow. A create whose `state` the
-schema refuses rejects with a 400 naming the field. A flow can also declare a
+refused for a field that isn't readonly on that flow. On a flow with a readonly
+field or a create check, a create whose `state` doesn't match the schema rejects
+with a 400 naming the field. A flow can also declare a
 [`session.createCheck`](https://flow-state.dev/docs/fundamentals/state-and-scopes#creating-sessions)
 for a rule that depends on the caller, such as whether the project is theirs; it
 rejects with the server's status (400, 403 or 404) and message. Either way, no

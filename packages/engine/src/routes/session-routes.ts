@@ -386,8 +386,9 @@ export async function handleCreateSession(
   //     terminal-status snapshot refresh.
   //  2. Block code that reads `ctx.session.state.foo` before any patch
   //     would observe `undefined` rather than the schema's default.
-  // Caller-supplied `body.state` overrides the defaults. The birth parses it,
-  // and refuses one the schema refuses rather than storing it raw.
+  // Caller-supplied `body.state` overrides the defaults. The birth parses it;
+  // on a flow that binds its sessions it refuses one the schema refuses, and
+  // any other flow keeps it as sent.
   const callerState = asObject(body.state);
 
   const orgId = ctx.principal?.orgId ?? DEFAULT_ORG_ID;
