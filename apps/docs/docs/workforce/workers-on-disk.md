@@ -423,7 +423,10 @@ your own worker flows the same way, and put what you mean to share in a shared r
 #### Sharing something from a worker
 
 To let a worker write something every member can read, declare a shared resource and write
-through the helper. The entry records the user, and the worker that wrote it:
+through the helper. What the entry records depends on how the worker runs:
+
+- A seat hired with `hireWorkforce`, from your tree or at runtime, records `{ userId }` only.
+- A worker loaded with [`resolveWorker`](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/workforce/README.md#workers-as-data) records `{ userId, workerId }`.
 
 ```ts
 import { sharedResource, writeShared } from "@flow-state-dev/workforce";
@@ -432,11 +435,15 @@ const notes = sharedResource("team-notes/*", { text: z.string() });
 
 // inside a block that declares `resources: { notes }`
 await writeShared(ctx, "notes", "launch", { text: "Launch moved to Friday." });
-// stored: { text: "Launch moved to Friday.", writtenBy: { userId: "alice", workerId: "research.scout" } }
+// stored, from a turn that loaded the worker "researcher" with resolveWorker:
+//   { text: "Launch moved to Friday.", writtenBy: { userId: "alice", workerId: "researcher" } }
+// stored, from a seat hired with hireWorkforce:
+//   { text: "Launch moved to Friday.", writtenBy: { userId: "alice" } }
 ```
 
 `writeShared` sets `writtenBy` from the session and ignores any `writtenBy` in its input, so
-whoever calls your flow can't sign as someone else. A block that writes the resource directly can
+whoever calls your flow can't sign as someone else. The worker it records is the one the session
+was created with. A block that writes the resource directly can
 set any value, so trust `writtenBy` as far as you trust your worker flows' code. An entry written
 without it is refused by the resource's own schema. A second write to the same key replaces the
 entry, `writtenBy` included. Every member can read an entry.
@@ -448,7 +455,7 @@ from the resource's scope and its ownership rules.
 
 A record's `body` is the worker's instructions, and it reaches the flow as one setting named `instructions`, alongside everything the record declared. Hiring imposes `instructions` when the body is not empty, `seatSkills`, `seatTools` and `seatId` always, `teamInstructions` when the record carries what its team's [`TEAM.md`](#what-a-teammd-says) said, and `seatPackages` when the worker holds a package.
 
-Every hired seat knows its own id. It arrives as the `seatId` setting, the same id the team's `members:` lists, so a block running inside the seat can sign what it files or posts without being told who it is. A worker file can't set it.
+Every hired seat knows its own id. It arrives as the `seatId` setting, the same id the team's `members:` lists, so a block running inside the seat can read who it is without being told. A worker file can't set it. `writeShared` doesn't sign with it: a seat hired with `hireWorkforce` records its user only, as above.
 
 What the refusals cover is what a **file** declares. No frontmatter may set `teamInstructions`, `seatSkills`, `seatTools` or `seatId`: they are refused in a `WORKER.md`, and at hiring for a record you built by hand. A `TEAM.md` refuses `teamInstructions` too. On a record you build yourself, the *fields* of the same name are yours to set, and hiring uses them. `skills` works the same way: whatever a record carries there arrives as the seat's `seatSkills`.
 

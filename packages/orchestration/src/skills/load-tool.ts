@@ -26,7 +26,7 @@ import {
   type ActivationLocation,
 } from "./activation-store";
 import { skillManifestKey } from "./collection";
-import { resolveResourceCollection } from "../tasks";
+import { resolveSkillsCollection } from "./partition";
 import { listLoadableInlineSkills } from "./internal/list-loadable-inline-skills";
 import {
   resolveInitialSkills,
@@ -115,7 +115,7 @@ export function createLoadSkillTool(opts: LoadSkillToolOptions) {
     execute: async (input, ctx: BlockContext) => {
       validateSkillName(input.name);
 
-      const collection = resolveResourceCollection(ctx, collectionKey);
+      const collection = resolveSkillsCollection(ctx, collectionKey);
       if (!collection) {
         throw new Error(
           `Skills collection "${collectionKey}" is not registered on ctx.resources`,
@@ -190,7 +190,7 @@ export function buildLoadCatalogContext(
 ): (input: unknown, ctx: BlockContext) => Promise<string | null> {
   const allowedSet = opts.allowed ? new Set(opts.allowed) : undefined;
   return async (_input: unknown, ctx: BlockContext) => {
-    const collection = resolveResourceCollection(ctx, opts.collectionKey);
+    const collection = resolveSkillsCollection(ctx, opts.collectionKey);
     if (!collection) return null;
     try {
       await ensureSeeded(collection, resolveInitialSkills(opts.initialSkills, ctx));

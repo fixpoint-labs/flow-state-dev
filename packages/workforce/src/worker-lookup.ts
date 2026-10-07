@@ -22,9 +22,10 @@
  * task filed for one would silently run on the other.
  */
 
-import type { BlockContext, FlowInstance, TaskFlowTarget } from "@flow-state-dev/core/types";
+import type { BlockContext, FlowInstance, TaskFlowTarget, TaskStateTarget } from "@flow-state-dev/core/types";
 import { seatAddress } from "./roster/address";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
+import { WORKER_ID_STATE_KEY } from "./workers/keys";
 
 
 export interface WorkerLookupOptions {
@@ -80,6 +81,14 @@ export interface WorkerLookup {
    * held, so the task fails through the list's ordinary error path.
    */
   flowKind: TaskFlowTarget;
+  /**
+   * The per-task child state for a list's fallback, beside {@link flowKind}:
+   * `dispatcher({ ..., flowKind: lookup.flowKind, state: lookup.state })`.
+   * Names the worker the task names, so a worker flow's create check
+   * confirms it when the task's session is created (FIX-1788 BR-18). Read from
+   * the task the board hands over, never from its input.
+   */
+  state: TaskStateTarget;
   /**
    * The check a door makes before it files a task for `name` on list
    * `listId`: `undefined` when the name is fine, else the sentence to refuse
@@ -179,7 +188,9 @@ export function createWorkerLookup(options: WorkerLookupOptions): WorkerLookup {
     return answer.found ? undefined : answer.message;
   };
 
-  return { find, flowKind, filingCheck };
+  const state: TaskStateTarget = (task) => ({ [WORKER_ID_STATE_KEY]: task.assignee });
+
+  return { find, flowKind, state, filingCheck };
 }
 
 /** A hired worker's address, or `undefined` for a name no address can carry. */

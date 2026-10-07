@@ -42,7 +42,7 @@
 
 import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { resolveResourceCollection } from "../tasks";
+import { resolveSkillsCollection } from "./partition";
 import { listLoadableInlineSkills } from "./internal/list-loadable-inline-skills";
 import { resolveInitialSkills, type InitialSkillsSource } from "./initial-skills";
 import { ensureSeeded } from "./seeding";
@@ -79,7 +79,7 @@ export function skillsManifestSource(
     domain: "skills",
     origin: `skillsManifestSource("${collectionKey}")`,
     entries: async (ctx: BlockContext): Promise<ManifestEntry[]> => {
-      const collection = resolveResourceCollection(ctx, collectionKey);
+      const collection = resolveSkillsCollection(ctx, collectionKey);
       if (!collection) {
         throw new Error(
           `Skills collection "${collectionKey}" is not registered on ctx.resources. ` +

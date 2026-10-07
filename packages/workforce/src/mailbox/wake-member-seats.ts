@@ -37,6 +37,7 @@ import { dispatcher, handler, router, type RouterConfig } from "@flow-state-dev/
 import type { BlockContext, BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { SEAT_ID_KEY } from "../manifest";
+import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import { mailboxNotifyInputSchema, type MailboxNotifyInput } from "./mailbox-flow";
 
 /** The internal entry a seat's kind declares to hear a mailbox's posts. */
@@ -133,7 +134,14 @@ export function wakeMemberSeats(
         action: MAILBOX_POST_ENTRY,
         inputSchema: mailboxNotifyInputSchema,
         // One conversation per seat per mailbox, adopted on every post after the first.
-        session: { key: (post: MailboxNotifyInput) => `mailbox:${post.mailboxId}` }
+        // The worker is named when the conversation is created, from the seat
+        // this code chose, never the post's fields: a worker flow's create
+        // check confirms it (FIX-1788 BR-18). A conversation that exists keeps
+        // its own.
+        session: {
+          key: (post: MailboxNotifyInput) => `mailbox:${post.mailboxId}`,
+          state: { [WORKER_ID_STATE_KEY]: seatIdOf(seat) }
+        }
       })
     );
   }

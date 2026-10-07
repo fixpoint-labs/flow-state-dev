@@ -187,7 +187,7 @@ function missingKindReason(kind: string, available: string): string {
  * the workers its files define. `defaulted` when the worker named no flow and
  * `agent` is the default it fell to.
  */
-function standardOnlyReason(kind: string, defaulted: boolean): string {
+export function standardOnlyReason(kind: string, defaulted: boolean): string {
   return (
     `${defaulted ? `names no flow, so it runs on "${kind}"` : `names flow "${kind}"`}, which this ` +
     `app keeps for declared workers, the ones its WORKER.md files define. A hired worker can't run ` +
@@ -208,6 +208,24 @@ function hireRefusalMessage(refused: number, total: number, problems: readonly s
     `hireWorkforce refused ${refused} of ${total} worker${total === 1 ? "" : "s"}; ` +
     `nothing was hired:\n  - ${problems.join("\n  - ")}`
   );
+}
+
+/**
+ * The reasons a one-worker {@link hireWorkforce} call refused `workerId` for,
+ * each without the call's header or the worker's name in front of it: the
+ * sentences a caller that names the worker itself shows. Reads the message
+ * {@link hireRefusalMessage} builds, so the two stay in one file.
+ *
+ * @param error What `hireWorkforce` threw.
+ * @param workerId The one worker it was given.
+ * @returns The reasons, or the whole message when it isn't a hire refusal.
+ */
+export function hireRefusalReasons(error: unknown, workerId: string): string[] {
+  const message = error instanceof Error ? error.message : String(error);
+  const [head, ...lines] = message.split("\n  - ");
+  if (!head?.startsWith("hireWorkforce refused") || lines.length === 0) return [message];
+  const prefix = `worker "${workerId}" — `;
+  return lines.map((line) => (line.startsWith(prefix) ? line.slice(prefix.length) : line));
 }
 
 /**

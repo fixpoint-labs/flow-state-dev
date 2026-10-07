@@ -299,6 +299,13 @@ describe("wakeMemberSeats · who a post wakes", () => {
       expect(turns).toHaveLength(1);
       expect(turns[0]!.sort()).toEqual(["u_wake in desk.front: first", "u_wake in desk.front: second"]);
       expect(await agentTurns(runtime, "desk.ned", "desk.front")).toEqual([]);
+      // That conversation was created naming its worker, from the seat the
+      // wake chose (FIX-1788 BR-18), so a worker flow's create check can
+      // confirm it.
+      const conversations = (await runtime.stores.session.list({ flowId: "desk.amy", parentage: "all" })).filter(
+        (s) => s.parentSessionId === "desk.front"
+      );
+      expect(conversations.map((s) => s.state.workerId)).toEqual(["desk.amy"]);
 
       // No fallback passed: the fan-out wrote nothing for anyone it did not wake.
       const items = JSON.stringify(await runtime.stores.request.list({ sessionId: "desk.front", withItems: true }));

@@ -15,9 +15,10 @@
  */
 import { join } from "node:path";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowState, ensureSessionRecord, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
+  createWorkerInstallation,
   HIRED_ROSTER_PREFIX,
   hireWorkforce,
   reloadHiredSeats,
@@ -32,8 +33,8 @@ import {
   doorlessFlow,
   looseAttributionFlow,
   numberedFlow,
+  defineSharerFlow,
   orgKeeperFlow,
-  sharerFlow,
   triageFlow
 } from "./fixtures/flows.ts";
 
@@ -56,11 +57,14 @@ stripIntentOverrides();
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 
-/** The app's worker flows. The coordinator is kept for declared workers. */
+/**
+ * The app's worker flows. The coordinator is kept for declared workers. The
+ * sharer runs its worker on the worker model, which the files' roster builds
+ * once read, so it joins the map then.
+ */
 const registered: NonNullable<HireOptions["workerFlows"]> = {
   triage: triageFlow,
   [fixture.keptFlow]: { flow: coordinatorFlow, standardOnly: true },
-  sharer: sharerFlow,
   "org-keeper": orgKeeperFlow
 };
 
@@ -79,6 +83,8 @@ await runGoal(async () => {
     return { failures: [`the fixture tree did not load: ${JSON.stringify([tree.errors, tree.skillErrors])}`], evidence: "" };
   }
   const workers = tree.workers;
+  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => registered });
+  registered.sharer = defineSharerFlow(installation);
 
   // ---- leg a · three broken flows refused at boot, by name; nothing hired ----
   let brokenSeats: FlowInstance[] | undefined;
@@ -195,8 +201,34 @@ await runGoal(async () => {
       evidence.push(`b: alice's ${aliceWrites.length} drawer write(s) landed in ${[...aliceCells].map((c) => c.split("/")[0]).join(", ")} scope, none in the org's cells, and bob's run touched none of them`);
     }
 
-    // Her shared note names her, and her worker.
+    // Her shared note names her, and her worker: the one her session was
+    // created with, which the turn loaded.
     const scout = seat(fixture.scout);
+    const shareSession = `${fixture.alice}-${scout.id}-share`;
+    const now = Date.now();
+    await ensureSessionRecord(
+      runtime.stores,
+      shareSession,
+      {
+        flow: scout,
+        sessionId: shareSession,
+        principal: { userId: fixture.alice, orgId: fixture.orgId },
+        state: { workerId: fixture.scout },
+        fromCaller: true,
+        via: "create"
+      },
+      () => ({
+        id: shareSession,
+        flowKind: scout.kind,
+        flowId: scout.id,
+        userId: fixture.alice,
+        orgId: fixture.orgId,
+        version: 0,
+        createdAt: now,
+        updatedAt: now,
+        journal: []
+      })
+    );
     const shared = await run(scout, "share", fixture.alice, fixture.note);
     if (shared.error !== undefined) fail("b", `alice's note failed: ${JSON.stringify(shared.error)}`);
     const stored = (await get("org", fixture.orgId, `team-notes/${fixture.note.key}`)) as { state?: unknown } | undefined;

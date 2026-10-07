@@ -2210,6 +2210,113 @@ passes it through). An answer with no token, naming another seat, or sent throug
 template is built onto the kind at every boot, so an edit reaches every project's room at the next
 restart.
 
+## Workers as data
+
+A worker can also be data rather than a registered copy: a row its owner holds in their user
+scope, or a standard worker your files declare, run by one registered copy of the flow it names.
+A session names its worker once, when it is created, and each turn loads it. This runs beside
+`hireWorkforce`: nothing here mints a copy or sets a pin.
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import {
+  createWorkerHireBlocks,
+  createWorkerInstallation,
+  defineWorkerRosterFlow,
+  workerConfigSchema,
+} from "@flow-state-dev/workforce";
+
+const installation = createWorkerInstallation({
+  standardWorkers: roster,                  // readWorkforce(...)'s workers
+  workerFlows: () => ({ research: researchFlow }),
+});
+
+const researchFlow = defineFlow({
+  kind: "research",
+  configSchema: workerConfigSchema(),
+  session: installation.session(),          // a readonly `workerId`, and the create check
+  resources: { ...installation.resources }, // the user's workers, and the standard ones
+  actions: { run: { inputSchema, block: door, userMessage: (i) => i.message } },
+});
+
+// inside the door's block, which also declares `installation.resources`:
+const worker = await installation.resolveWorker(ctx, "research");
+worker.config.instructions; // the worker's own, as the flow's configSchema parsed them
+worker.reaches("handbook"); // its document grants, applied on this turn
+
+const { hire, fork, edit, fire } = createWorkerHireBlocks(installation);
+const rosterFlow = defineWorkerRosterFlow(installation, {
+  hire: { inputSchema: hire.inputSchema, block: hire },
+  fork: { inputSchema: fork.inputSchema, block: fork },
+  edit: { inputSchema: edit.inputSchema, block: edit },
+  fire: { inputSchema: fire.inputSchema, block: fire },
+});
+```
+
+Register `researchFlow()` and `rosterFlow()`.
+
+- **Creating a session.** A session of a worker flow is created with `state: { workerId }`. The
+  worker must be the creating user's own or a standard one. Asking for another user's worker
+  returns the same 404 as asking for one that doesn't exist. A worker on another flow is refused
+  with a 400 naming both flows. A session created with no worker is refused, and so is an action
+  sent to a session id that doesn't exist yet. `workerId` is readonly: nothing changes it after the
+  create.
+- **Each turn.** `resolveWorker(ctx, flowKind)` loads the session's worker and resolves its tools,
+  skills and packages against what the installation registers. Read the worker's settings from
+  `worker.config`: `ctx.flow.config` is the flow's own config, the same for every worker on it.
+  When the turn can't run, `resolveWorker` throws `WorkerTurnRefusedError` and nothing is written:
+  - the worker was fired: its sessions stay readable; start a session with another worker;
+  - the worker now runs on another flow: call `ensureWorkerSession` again, which starts a session
+    on the new flow;
+  - it names a tool, skill or package this installation doesn't register: `edit` the worker to drop
+    or replace the name, or register it; the next turn reads the change;
+  - it is one of the user's own workers on a flow marked `standardOnly`: `edit` it onto another
+    flow.
+- **A worker's own data.** Data a flow keeps per user is shared by all of that user's workers on
+  the flow, and never reaches another user. Keeping one worker's data apart from the user's other
+  workers is the flow author's job: key a collection by the session's readonly `workerId`, or use a
+  skills library with `partitionBy` reading it
+  ([Partitioning a library](../orchestration/README.md#partitioning-a-library)). The framework
+  neither refuses nor partitions it for you.
+- **The roster.** Each worker the user hires or forks is a row at `workforce/workers/<id>` in their
+  user scope, one roster per organization. Every write is checked the way a turn would check it,
+  and a standard worker's id is refused with a suggestion to fork it:
+  - `hire({ id, flow?, description?, instructions?, skills?, settings? })` returns `{ id, flow }`;
+    `flow` defaults to `agent`, and `settings` takes the keys a `WORKER.md` frontmatter accepts;
+  - `fork({ from, id })` returns `{ id, flow }`, copying a standard worker's, or one of the user's
+    own, configuration and shared instructions; a later edit to the files doesn't reach the fork;
+  - `edit({ id, flow?, description?, instructions?, skills?, settings? })` returns `{ id, flow }`,
+    replacing each field given;
+  - `fire({ id })` returns `{ id }` and deletes the row.
+- **From an app.** `createWorkforceClient`, from `@flow-state-dev/workforce/browser`, takes the
+  transport options `createSessionClient` takes:
+
+  ```ts
+  import { createClient } from "@flow-state-dev/client";
+  import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+
+  const workforce = createWorkforceClient({ userId, baseUrl });
+
+  const roster = await workforce.roster();
+  // [{ id: "scribe", flow: "research", standard: false, description: "Takes notes." },
+  //  { id: "researcher", flow: "research", standard: true, description: "Finds things out." }]
+
+  const session = await workforce.ensureWorkerSession({ worker: roster[0].id });
+  // { id: "wks_…", flowKind: "research", userId, createdAt, updatedAt, … }
+
+  const research = createClient({ flowKind: session.flowKind, userId, baseUrl });
+  const { requestId } = await research.sendAction("run", { message: "Summarize the launch notes." }, {
+    sessionId: session.id,
+  });
+  ```
+
+  `ensureWorkerSession` returns the user's most recent session with the worker, or creates one.
+  Two calls at once get the same session. `findWorkerSession` takes the same argument and returns
+  the session or `undefined`, creating nothing. The roster flow keeps one session per user, of the
+  kind `workforce-roster`; if you list every flow's sessions, filter out
+  `flowKind === "workforce-roster"`. Two first calls at once may create two roster sessions, which
+  is harmless: the roster lives in the user's scope, not in either session.
+
 ## Importing from a browser component
 
 The package root is server code. The mailbox floor reaches the task board, which imports
@@ -2225,6 +2332,9 @@ import {
   type MailboxTranscriptLine,
 } from "@flow-state-dev/workforce/browser";
 ```
+
+It also exports `createWorkforceClient`, `deriveWorkerSessionId`, `isDerivedWorkerSessionId`,
+`ROSTER_FLOW_KIND` and `WORKER_ID_STATE_KEY`.
 
 It exports `HIRED_ROSTER_RESOURCE`, `SEAT_INVENTORY_RESOURCE`, `HIRED_ROSTER_BROWSER_PATTERN`, `splitSeatAddress`,
 `MAILBOX_POST_COMPONENT`, `mailboxTranscriptLineSchema` and `MailboxTranscriptLine`, the same values
@@ -2252,6 +2362,14 @@ before fire removed inventory rows is left out that way.
 | `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and mailbox sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` meaning as `createWorkforceCapability`. |
 | `createSeatHireCapability({ workerFlows, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, mailboxBoards?, askBefore? })` | Puts catalog tools `hire`, `fire`, `brokenSeats` and `rehire` on a worker kind; `askBefore` puts `hire` and/or `fire` behind a person's approval, and `rehire` is always behind one. Compose it into `defineAgentWorkerFlow({ uses })`. A seat calls them by selecting `seat-hire: [tools]` with no `tools:` line, or by naming them in `tools:`; `tools: []` withholds them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
 | `createSeatHireBlocks({ workerFlows, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, mailboxBoards? })` | Returns `{ hire, fire, brokenSeats, rehire }`; `hire` and `fire` are the handlers behind `createSeatHireCapability`'s catalog tools, for mounting as a flow's actions, where they never ask for approval. Same options, inputs, outputs and refusals. Declare `defineHiredRosterCollection()` under `HIRED_ROSTER_RESOURCE` and `defineSeatInventoryCollection()` under `SEAT_INVENTORY_RESOURCE` on that flow. The organization comes from the session's principal; a body `orgId` is ignored, and with no resolver in play the session is in the default organization, so the hire lands there. Each hire and re-hire stamps a fresh `incarnation` on its roster row, its inventory row and the seat it mints; `fire` deletes only that incarnation's inventory row and, given `instanceAt` (the registry's instance at an address), releases only the seat minted from the row. Without `instanceAt` those checks fall back to the kind, and a `rehire` retry that finds the address already served is refused. `refuseRosterAdmin: true` refuses a hire or re-hire whose settings would give the seat the roster tools; off by default. |
+| `createWorkerInstallation({ standardWorkers?, workerFlows?, seatBlocks?, packageBlocks?, documents?, references?, skills?, packages? })` | The worker model's one module (see [Workers as data](#workers-as-data)). Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
+| `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |
+| `defineWorkerRosterFlow(installation, actions?)` | The roster flow (`workforce-roster`), which declares the two worker collections so a client reads a user's roster through one session of it. Mount the hire blocks on it as actions. |
+| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession({ worker })` and `ensureWorkerSession({ worker })`, over the session and resource clients. From `./browser` only. |
+| `deriveWorkerSessionId({ userId, orgId, flow, criteria })` / `isDerivedWorkerSessionId(id)` | The id `ensureWorkerSession` creates a session at, and the shape a worker flow's create check reserves for the user it derives to. |
+| `WorkerTurnRefusedError` | What `resolveWorker` throws when a turn can't run as the session's worker; nothing is written. |
+| `defineWorkerCollection()` / `workerRowSchema` / `parseWorkerRow(value)` | The user's worker collection at `workforce/workers/*`, user scope, and its row. |
+| `WORKER_ID_STATE_KEY`, `WORKERS_RESOURCE`, `STANDARD_WORKERS_RESOURCE`, `ROSTER_FLOW_KIND` | The readonly session-state field naming a session's worker (`"workerId"`), the accessors the two worker collections are declared under, and the roster flow's kind. |
 | `registerHiredSeat(register, seat, pin)` | The hire writer's register path. Refuses when `pin` has no `orgId`. The pin is the hire row's roster owner, not the address. |
 | `HiredSeatOwnerPin` | Another name for core's `InstanceOwnerPin`: `{ orgId, userId? }`, with `userId` present only for a user-owned hire row. Either name works wherever the other is expected. |
 | `SEAT_HIRE_CAPABILITY` | The capability name, `"seat-hire"`. |
@@ -2279,7 +2397,7 @@ before fire removed inventory rows is left out that way.
 | `unattendedBoardWarnings(boardIds, seats)` | The unattended-board warning strings `hireWorkforce` prints. The `hire` tool puts the same sentences on `warning` when a named board has no seat that declares it. |
 | `workerFlowProblems(name, flow)` | Every way `flow`, registered as `name`, misses the worker contract: a name that is not its `kind`, a configuration it refuses by key or by value, or takes but rewrites, no door or two, a resource with `writtenBy` that `sharedResource()` didn't build. An empty list for a worker flow. The check `hireWorkforce` runs, exported for a library's own tests. |
 | `sharedResource(pattern, shape)` | An org-scoped collection whose every entry carries a required `writtenBy: { userId, workerId? }` beside the fields of `shape`. An entry written without it is refused by the resource's own schema. The only way to declare a resource with `writtenBy` on a worker flow: the contract refuses one defined by hand, or a copy of this one with its schema replaced. |
-| `writeShared(ctx, accessor, key, data)` / `WrittenBy` | Write one entry of a shared resource, creating or replacing it, stamped with the session's user and, when a worker is running, its `seatId`. A `writtenBy` in `data` is ignored. Flow code that writes the resource directly can set its own value, so `writtenBy` is as trustworthy as the registered flow's code; it is for display and audit, never for deciding who may write. |
+| `writeShared(ctx, accessor, key, data)` / `WrittenBy` | Write one entry of a shared resource, creating or replacing it, stamped with the session's user and, when the turn loaded the session's worker with `resolveWorker`, that worker's id. A `writtenBy` in `data` is ignored, and so are a `seatId` setting and a `workerId` in the session's state: a turn that loaded no worker records the user alone. Flow code that writes the resource directly can set its own value, so `writtenBy` is as trustworthy as the registered flow's code; it is for display and audit, never for deciding who may write. |
 | `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools`, `seatPackages?` and `seatId`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatPackageSchema` | One held package as it rides into the bag — `{ name, path, instructions?, tools }`, closed. The shape `seatPackages` is an array of. |
 | `seatSkillSchema` | One skill as it rides into the bag — `{ name, skillMd, files? }`, closed. The shape `seatSkills` is an array of; reach for it when declaring your own variant of that key. |

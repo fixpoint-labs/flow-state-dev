@@ -19,6 +19,7 @@
  */
 import { z } from "zod";
 import { defineResourceCollection } from "@flow-state-dev/core";
+import { verifiedWorkerOf } from "./workers/verified-worker";
 
 /** The field every entry of a shared resource carries. */
 export const WRITTEN_BY_KEY = "writtenBy";
@@ -125,7 +126,6 @@ export function sharedResource<T extends z.ZodRawShape>(pattern: string, shape: 
  */
 export type SharedWriteContext = {
   session: { identity: { userId?: string } };
-  flow: { config: unknown };
   resources: Readonly<Record<string, unknown>>;
 };
 
@@ -139,9 +139,11 @@ type WritableCollection = {
  *
  * Creates the entry, or replaces it when the key is taken; the entry then
  * names whoever wrote it last. A `writtenBy` in `data` is ignored: the name
- * always comes from the session. The worker is the running worker's id, read
- * from the configuration its hire stamped (`seatId`); a flow that isn't a
- * worker's has none, and the entry names the user alone.
+ * always comes from the session. The worker is the session's worker, as the
+ * turn's `resolveWorker` loaded and checked it: the one the session was
+ * created with, never anything the input or a caller's state says. A turn
+ * that resolved no worker, which is every turn on a flow that isn't a worker
+ * flow, names the user alone.
  *
  * @param ctx The block's context. Its block must declare `accessor`.
  * @param accessor The resource's accessor on the block, e.g. `"notes"`.
@@ -170,9 +172,8 @@ export async function writeShared(
         `that name. Add it to the block's \`resources\`.`
     );
   }
-  const seatId = (ctx.flow.config as { seatId?: unknown } | undefined)?.seatId;
-  const writtenBy: WrittenBy =
-    typeof seatId === "string" && seatId.length > 0 ? { userId, workerId: seatId } : { userId };
+  const workerId = verifiedWorkerOf(ctx.session);
+  const writtenBy: WrittenBy = workerId !== undefined ? { userId, workerId } : { userId };
   const entry: Record<string, unknown> = { ...data };
   delete entry[WRITTEN_BY_KEY];
   entry[WRITTEN_BY_KEY] = writtenBy;

@@ -58,6 +58,7 @@ import {
   defineSkillsCollection,
   type DefineSkillsCollectionOptions,
 } from "./collection";
+import type { SkillsPartitionFn } from "./partition";
 import {
   isInitialSkillsResolver,
   type InitialSkillsSource,
@@ -119,6 +120,15 @@ export interface SkillsLibraryOptions {
     DefineSkillsCollectionOptions,
     "maxInstances" | "prefix" | "flowIsolation"
   >;
+  /**
+   * Keep one catalog per partition, named per run: a function of the running
+   * context the composing layer supplies, returning a value derived from data
+   * only the server writes. A run it returns `undefined` for reads no
+   * partition's skills and writes none. Use it when several
+   * parties run through one registered copy of the declaring flow and each
+   * must hold its own catalog; `flowIsolation` separates copies, not parties.
+   */
+  partitionBy?: SkillsPartitionFn;
   /**
    * Restrict this library's bindings to blocks with a matching
    * `itemVisibility`. See `createSkillsCapability` for the multi-agent rationale.
@@ -337,6 +347,7 @@ export function createSkillsLibrary(
     ...(options.collectionConfig?.flowIsolation !== undefined
       ? { flowIsolation: options.collectionConfig.flowIsolation }
       : {}),
+    ...(options.partitionBy !== undefined ? { partitionBy: options.partitionBy } : {}),
   });
 
   const resources: Record<string, DeclaredResourceEntry> = {

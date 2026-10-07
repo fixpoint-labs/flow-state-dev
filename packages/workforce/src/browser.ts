@@ -24,3 +24,15 @@ export {
   mailboxTranscriptLineSchema,
   type MailboxTranscriptLine
 } from "./mailbox/mailbox-post-line";
+export {
+  createWorkforceClient,
+  type RosterEntry,
+  type WorkforceClient,
+  type WorkforceClientOptions
+} from "./workers/client";
+export {
+  deriveWorkerSessionId,
+  isDerivedWorkerSessionId,
+  type WorkerSessionCriteria
+} from "./workers/derive-session-id";
+export { ROSTER_FLOW_KIND, WORKER_ID_STATE_KEY } from "./workers/keys";

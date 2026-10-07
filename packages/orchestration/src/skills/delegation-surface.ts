@@ -54,11 +54,11 @@ import type {
 import { z } from "zod";
 import {
   getOrCreateTaskCollection,
-  resolveResourceCollection,
   resolveTaskCapDefaults,
   RETRY_BUDGET_NOT_APPLICABLE,
   taskStatusSchema,
 } from "../tasks";
+import { resolveSkillsCollection } from "./partition";
 import type { TaskCollectionRef } from "../tasks";
 import { taskBoard } from "../task-board";
 import { readActivations, type ActivationLocation } from "./activation-store";
@@ -232,7 +232,7 @@ export async function collectAgentSources(
   ctx: BlockContext,
   deps: DelegationSurfaceDeps,
 ): Promise<DelegationAgentSource[]> {
-  const collection = resolveResourceCollection(ctx, deps.collectionKey);
+  const collection = resolveSkillsCollection(ctx, deps.collectionKey);
 
   // Honor a live `disable-model-invocation` on a statically-bound skill. The
   // body renderer reads the live manifest and suppresses a disabled skill even
@@ -874,7 +874,7 @@ async function buildTools(
   // prompt-refs are pre-resolved for bundled skills; a missing collection
   // only matters for a non-bundled prompt-ref, which materializeWorker
   // reports precisely when it tries to read it.
-  const collection: ResourceCollectionRef | undefined = resolveResourceCollection(ctx, deps.collectionKey);
+  const collection: ResourceCollectionRef | undefined = resolveSkillsCollection(ctx, deps.collectionKey);
 
   for (const source of sources) {
     for (const [agentKey, spec] of Object.entries(source.agents)) {

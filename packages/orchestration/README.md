@@ -643,6 +643,17 @@ turn, so keep it to an O(1) read of something already resolved; and because ther
 is no build-time catalog under one, binding a skill by name (`active` / `allowed`)
 is refused rather than left unvalidated.
 
+### Partitioning a library
+
+When many users or workers share one copy, use `partitionBy` instead of `flowIsolation`. It
+returns the partition for the running context, and each partition gets its own catalog. Derive it
+from server-written data, such as session state, never from input. A run it returns `undefined`
+for reads no partition's skills: its catalog is empty, and a write to it is refused.
+
+```ts
+createSkillsLibrary({ scope: "user", partitionBy: (ctx) => ctx.session.state.workerId });
+```
+
 Seeding writes a **copy**, so a later edit to the source does not reach a catalog
 that already holds the skill. `refreshSeededSkills(collection, sources)` is the
 deliberate act that pulls one through. It replaces a touched skill's folder whole,
