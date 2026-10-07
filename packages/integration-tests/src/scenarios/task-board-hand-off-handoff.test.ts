@@ -74,6 +74,8 @@ import { z } from "zod";
 const TASK_SOURCE = "task";
 
 const USER_ID = "u_handoff";
+/** The user's cell in the default org, where every flow keeps their user data. */
+const USER_ID_CELL = `${USER_ID}:~org:${DEFAULT_ORG_ID}`;
 
 /**
  * No block here calls a model. A mock resolver keeps the scenario independent
@@ -191,7 +193,7 @@ async function durableRow(
 ): Promise<Task | undefined> {
   const row = await stores.resourceState.get(
     "user",
-    USER_ID,
+    USER_ID_CELL,
     `${kind}-ledger/${taskId}`
   );
   return row?.state as Task | undefined;
@@ -218,10 +220,10 @@ async function rewriteRow(
   patch: Partial<Task>
 ): Promise<void> {
   const key = `${kind}-ledger/${taskId}`;
-  const current = await stores.resourceState.get("user", USER_ID, key);
+  const current = await stores.resourceState.get("user", USER_ID_CELL, key);
   await stores.resourceState.set(
     "user",
-    USER_ID,
+    USER_ID_CELL,
     key,
     { ...(current!.state as object), ...patch } as never,
     "any"

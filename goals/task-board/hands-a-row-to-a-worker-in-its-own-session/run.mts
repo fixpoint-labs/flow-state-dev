@@ -165,7 +165,7 @@ await runGoal(async () => {
 
     childSessions = await stores.session.list({ parentage: { parentOf: PARENT_SESSION } });
     for (const task of fixture.tasks) {
-      const record = await stores.resourceState.get("user", USER_ID, `${COLLECTION_ID}/${task.id}`);
+      const record = await stores.resourceState.get("user", `${USER_ID}:~org:${DEFAULT_ORG_ID}`, `${COLLECTION_ID}/${task.id}`);
       rows.set(task.id, record?.state as LedgerRow | undefined);
     }
   } finally {

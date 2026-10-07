@@ -270,9 +270,9 @@ tools: [memory/recall]
 
 ### What isolation does and does not give you
 
-`isolateUserState: true` keys each worker's storage on that worker's id, so two workers serving the same person do not read each other's memory. Leave it off and they share one, per organization for [workers hired at runtime](./durable-hire.md#what-a-seat-saves-for-a-person).
+`isolateUserState: true` keys each worker's storage on that worker's id, so two workers serving the same person do not read each other's memory. Leave it off and they share one per user per organization, as every flow does.
 
-![Where a hired seat keeps what it learns about alice. Inside the acme organization: one shared cell for alice in acme, holding her user record, which every hired seat in acme shares unless it is flow-isolated, and her user-scoped resources, shared by the seats that declare them; and one cell per seat address for flow-isolated data, such as alice at acme.support.ada. In globex, alice has a separate cell of her own, which acme's seats cannot read. Outside hired seats, alice's own data, keyed by her id alone and kept by your app's other flows, is a third place that no hired seat reads or writes. Nothing moves between organizations. A projected resource is stored by your own hooks, so key its rows by the organization too.](./seat-person-data.svg)
+![Where a hired seat keeps what it learns about alice. Inside the acme organization: one cell for alice in acme, holding her user record and her shared user-scoped resources, which every flow in acme uses, hired seats included; and one cell per seat for flow-isolated data, such as alice in acme for acme.support.ada. In globex, alice has a separate cell of her own, which nothing in acme reads. A projected resource is stored by your own hooks, so key its rows by the organization too.](./seat-person-data.svg)
 
 It is a decision for the whole kind. A roster is all-separate or all-shared; you cannot keep one shared store across the team while giving each worker its own of something else.
 

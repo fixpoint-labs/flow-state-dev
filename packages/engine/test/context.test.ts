@@ -85,7 +85,7 @@ describe("createExecutionContext", () => {
     await ctx.session.appendJournal({ text: "started", source: "test" });
 
     const savedRequest = await stores.request.get("req_1");
-    const savedUser = await stores.user.get("user_1");
+    const savedUser = await stores.user.get(`user_1:~org:${DEFAULT_ORG_ID}`);
     const savedSession = await stores.session.get("sess_1");
 
     expect(savedRequest?.state).toEqual({ count: 2 });
@@ -112,7 +112,7 @@ describe("createExecutionContext", () => {
 
     expect(ctx.session).toBeDefined();
     expect(ctx.session.identity.type).toBe("session");
-    expect(ctx.user.identity.id).toBe("user_no_session");
+    expect(ctx.user.identity.userId).toBe("user_no_session");
   });
 
   it("applies token-based llm history limit using the active model (turn-aligned)", async () => {

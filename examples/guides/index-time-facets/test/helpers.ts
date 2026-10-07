@@ -2,7 +2,7 @@
  * Test helpers: a per-body scripted evaluation model on the testing package's
  * mock, and a way to run turns against one shared store.
  */
-import { evaluator, type EvaluationModel } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, evaluator, type EvaluationModel } from "@flow-state-dev/core";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import {
   mockEvaluationModel,
@@ -74,6 +74,7 @@ export async function turn(
 
 /** Read a ticket's stored state straight from the store. */
 export async function storedTicket(stores: StoreRegistry, key: string): Promise<TicketState | undefined> {
-  const row = await stores.resourceState.get("user", USER, `tickets/${key}`);
+  // `testFlow` runs in the default org; the user's cell there holds the row.
+  const row = await stores.resourceState.get("user", `${USER}:~org:${DEFAULT_ORG_ID}`, `tickets/${key}`);
   return row?.state as TicketState | undefined;
 }

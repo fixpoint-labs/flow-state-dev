@@ -1,6 +1,7 @@
 /**
  * Session state projection route handler.
  */
+import { isValidOrgId } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
@@ -72,7 +73,11 @@ export async function handleGetSessionState(
   const flow = owner.flow;
 
   const url = new URL(request.url);
-  const user = await ctx.stores.user.get(resolveUserStorageKey(session.userId, flow));
+  // The user's cell in the session's stored org (FIX-1790), the one its runs
+  // wrote. A session with no org has no cell to read, never the cross-org one.
+  const user = isValidOrgId(session.orgId)
+    ? await ctx.stores.user.get(resolveUserStorageKey(session.userId, session.orgId, flow))
+    : undefined;
   const org =
     session.orgId === undefined
       ? undefined

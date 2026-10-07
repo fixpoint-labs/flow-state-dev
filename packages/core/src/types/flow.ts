@@ -577,8 +577,9 @@ export type FlowDefinition<
 
   /**
    * Isolation for the user scope. Two roles:
-   *   - keys the scope's `state` record (`ctx.user.state`) — bare `{userId}`
-   *     when false, `{userId}:{instance id}` when true; and
+   *   - keys the scope's `state` record (`ctx.user.state`) — the user's cell
+   *     in the org, `{userId}:~org:{orgId}`, when false, and that cell plus
+   *     `:{instance id}` when true; and
    *   - the default `flowIsolation` for user-scoped resources that don't
    *     declare their own.
    *

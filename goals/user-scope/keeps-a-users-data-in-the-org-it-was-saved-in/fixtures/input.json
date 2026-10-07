@@ -1,0 +1,11 @@
+{
+  "alice": "alice:smith",
+  "bob": "bob",
+  "acme": "acme",
+  "globex": "globex:eu",
+  "markers": {
+    "state": "ALICE-STATE-7f3c",
+    "shared": "ALICE-SHARED-2c91",
+    "isolated": "ALICE-ISOLATED-b41e"
+  }
+}

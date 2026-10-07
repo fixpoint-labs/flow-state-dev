@@ -128,7 +128,7 @@ Connectors can read from scope state or sequencer state when shaping input:
 .step(
   (output, ctx) => ({
     query: output.text,
-    userId: ctx.user.identity.id,
+    userId: ctx.user.identity.userId,
     preferences: ctx.user.state.preferences,
   }),
   personalizedSearch

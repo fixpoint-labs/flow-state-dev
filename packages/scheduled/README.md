@@ -95,22 +95,28 @@ defineFlow({
 });
 ```
 
-The default URL convention is `<userId>/<collectionKey>`. Override with
-`parseId` for richer compositions. A row whose `kind` isn't in the `blocks`
-map resolves to `null` (404).
+The default id is `<orgId>/<userId>/<collectionKey>`.
+`formatScheduleId(orgId, userId, key)` builds one and `defaultParseScheduleId`
+reads one back, keeping a key that contains `/` whole. Encode the whole id as
+one path segment: `encodeURIComponent(formatScheduleId(orgId, userId, key))`.
+Override with `parseId` for richer compositions. A row whose `kind` isn't in
+the `blocks` map resolves to `null` (404).
 
-On an owner-pinned instance (one registered with an owner `pin`: the
-organization, and user if any, it is registered to), the dispatch route passes
-that pin to the resolver as `ctx.ownerPin`. The helper then reads the row from
-that instance's storage for that organization and person, derived with the engine's
-`resolveUserStorageKey`, and a row naming another organization than the pin's
-resolves to `null`. A hand-written resolver that reads user-scoped storage
-derives its key the same way:
+The helper reads the row from that user's data in the organization the id
+names, derived with the engine's `resolveUserStorageKey`, and resolves to
+`null` when the id names no organization or the row names a different one. On
+an owner-pinned instance (registered with an owner `pin`), the dispatch route
+passes the pin as `ctx.ownerPin`, and an id naming another organization than
+the pin's, or another user on a user-owned pin, resolves to `null` too. A
+hand-written resolver that reads user-scoped storage derives its key the same
+way:
 
 ```ts
-const [userId, key] = scheduleId.split("/");
-const scopeId = resolveUserStorageKey(userId, { id: ctx.flowKind, isolateUserState: false, ownerPin: ctx.ownerPin });
-const row = await ctx.stores.resourceState.get("user", scopeId, `schedules/${key}`);
+const parsed = defaultParseScheduleId(scheduleId); // { orgId, userId, collectionKey }, or null
+if (parsed === null) return null;
+const scopeId = resolveUserStorageKey(parsed.userId, parsed.orgId, { id: ctx.flowKind, isolateUserState: false });
+const row = await ctx.stores.resourceState.get("user", scopeId, `schedules/${parsed.collectionKey}`);
+if (row?.state.orgId !== parsed.orgId) return null;
 ```
 
 `isolateUserState: false` is right for a schedule collection declared without

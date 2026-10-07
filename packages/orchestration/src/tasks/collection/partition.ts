@@ -92,7 +92,9 @@ export async function resolveTaskPartition(
  */
 function partitionContextOf(collectionId: string, ctx: BlockContext): TaskPartitionContext {
   const identity = ctx.session?.identity;
-  const userId = identity?.userId ?? ctx.user?.identity?.id;
+  // The user scope's `userId`, never its `id`: that is the user record's
+  // storage key, which carries the org.
+  const userId = identity?.userId ?? ctx.user?.identity?.userId;
   if (identity?.id === undefined || userId === undefined) {
     throw new Error(
       `[tasks] ledger "${collectionId}" keeps its rows per partition, and this context has no ` +

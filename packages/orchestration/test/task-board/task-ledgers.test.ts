@@ -99,7 +99,7 @@ function senderFlow(kind: string, list: ReturnType<typeof ledger>, taskId: strin
 }
 
 async function durableRow(stores: StoreRegistry, ledgerId: string, taskId: string) {
-  const row = await stores.resourceState.get("user", USER_ID, `${ledgerId}/${taskId}`);
+  const row = await stores.resourceState.get("user", `${USER_ID}:~org:${DEFAULT_ORG_ID}`, `${ledgerId}/${taskId}`);
   return row?.state as Task | undefined;
 }
 

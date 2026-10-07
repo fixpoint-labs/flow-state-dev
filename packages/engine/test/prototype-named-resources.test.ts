@@ -92,7 +92,7 @@ async function makeCtx(stores: StoreRegistry, scope: "session" | "user", request
 describe.each(["session", "user"] as const)(
   "resources named after Object.prototype members (%s scope)",
   (scope) => {
-    const scopeId = scope === "session" ? "sess_1" : "user_1";
+    const scopeId = scope === "session" ? "sess_1" : `user_1:~org:${DEFAULT_ORG_ID}`;
 
     it("declares every accessor as its own resource", () => {
       const declared = makeFlow(scope).resources ?? {};

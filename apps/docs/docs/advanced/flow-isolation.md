@@ -12,13 +12,11 @@ This page covers how that sharing works, the guardrail that catches conflicts, a
 
 ## The default: shared user and org state
 
-Every flow you register on a server reads from and writes to the same `UserRecord` for a given `userId`. Same for org. Sessions and requests are different — those carry the flow's identity and stay separate per flow.
+Every flow you register on a server reads from and writes to the same `UserRecord` for a given user in a given organization. Same for org. Sessions and requests are different: those carry the flow's identity and stay separate per flow.
+
+The organization is part of the user's key. What a flow saves for Alice while she works in Acme is not what any flow reads for her in Globex.
 
 So if two flows declare a `user.stateSchema`, they're declaring it over the *same* underlying record. That's powerful when the schemas agree, and it would be a silent data-loss bug if they didn't.
-
-### Hired seats share within one organization
-
-A seat hired at runtime is registered with the organization that hired it. Its shared user data is kept per organization and person rather than per person, so what a seat saves for Alice in Acme is not what her seat in Globex reads. Alice's seats in Acme share with each other, and your other flows share with each other, but the two groups do not share with each other. See [What a seat saves for a person](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person).
 
 ## The guardrail: schema conflicts caught at startup
 

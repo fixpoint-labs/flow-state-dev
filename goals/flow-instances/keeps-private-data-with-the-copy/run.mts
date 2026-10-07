@@ -28,6 +28,8 @@ type Fixture = {
 stripIntentOverrides();
 
 const fixture = loadFixture<Fixture>(import.meta.url);
+/** The user's cell in the org: every flow keeps their user data in it, plus the copy when private. */
+const userCell = `${fixture.userId}:~org:${fixture.orgId}`;
 
 const east = () => reviewDefinition({ id: fixture.east.id }) as unknown as FlowInstance;
 const west = () => reviewDefinition({ id: fixture.west.id }) as unknown as FlowInstance;
@@ -36,7 +38,11 @@ const digest = () => digestDefinition() as unknown as FlowInstance;
 function host(stores: StoreRegistry, ...flows: FlowInstance[]) {
   const registry = createFlowRegistry();
   registry.registerMany(flows);
-  return createFlowApiRouter({ registry, stores, runtimeConfig: { logger: silentLogger } } as never);
+  // A verified principal naming the fixture's user and org: the server never
+  // takes the org from a request body, so without a resolver every run would
+  // be in the default org rather than the one the fixture names.
+  const resolvePrincipal = () => ({ userId: fixture.userId, orgId: fixture.orgId });
+  return createFlowApiRouter({ registry, stores, resolvePrincipal, runtimeConfig: { logger: silentLogger } } as never);
 }
 
 type Router = ReturnType<typeof createFlowApiRouter>;
@@ -59,7 +65,7 @@ async function act(
 
 /** Every cell East owns, as one comparable snapshot. */
 async function eastCells(stores: StoreRegistry): Promise<unknown> {
-  const key = `${fixture.userId}:${fixture.east.id}`;
+  const key = `${userCell}:${fixture.east.id}`;
   return {
     user: (await stores.user.get(key))?.state,
     org: (await stores.org.get(`${fixture.orgId}:${fixture.east.id}`))?.state,
@@ -164,25 +170,25 @@ await runGoal(async () => {
     const userState = async (key: string) => (await stores.user.get(key))?.state as { marker?: unknown } | undefined;
     const orgState = async (key: string) => (await stores.org.get(key))?.state as { marker?: unknown } | undefined;
     for (const copy of [fixture.east, fixture.west, fixture.singleton]) {
-      const u = await userState(`${fixture.userId}:${copy.id}`);
+      const u = await userState(`${userCell}:${copy.id}`);
       const o = await orgState(`${fixture.orgId}:${copy.id}`);
       if (u?.marker !== copy.marker) failures.push(`${copy.id}: user cell holds ${JSON.stringify(u)}`);
       if (o?.marker !== copy.marker) failures.push(`${copy.id}: org cell holds ${JSON.stringify(o)}`);
-      const notes = await stores.resourceState.get("user", `${fixture.userId}:${copy.id}`, "notes");
+      const notes = await stores.resourceState.get("user", `${userCell}:${copy.id}`, "notes");
       if ((notes?.state as { text?: string } | undefined)?.text !== copy.marker) {
         failures.push(`${copy.id}: notes cell holds ${JSON.stringify(notes?.state)}`);
       }
     }
     // Nothing was ever filed under the bare kind: that address is the one the
     // old key rule used, and a copy still writing there is the whole bug.
-    if ((await stores.user.get(`${fixture.userId}:${REVIEW_KIND}`)) !== undefined) {
+    if ((await stores.user.get(`${userCell}:${REVIEW_KIND}`)) !== undefined) {
       failures.push(`a user cell exists at the bare kind ${REVIEW_KIND}`);
     }
     if ((await stores.org.get(`${fixture.orgId}:${REVIEW_KIND}`)) !== undefined) {
       failures.push(`an org cell exists at the bare kind ${REVIEW_KIND}`);
     }
-    // The shared resource is one row at the bare identity id, not one per copy.
-    const shared = await stores.resourceState.get("user", fixture.userId, "directory");
+    // The shared resource is one row in the user's cell, not one per copy.
+    const shared = await stores.resourceState.get("user", userCell, "directory");
     if ((shared?.state as { entry?: string } | undefined)?.entry !== fixture.shared) {
       failures.push(`shared directory row holds ${JSON.stringify(shared?.state)}`);
     }

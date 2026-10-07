@@ -79,9 +79,9 @@ describe("where the engine writes a declaration", () => {
 
     await notes.create("x", { body: "hi" });
 
-    expect(await stores.resourceState.get("user", "user_1", "files/x")).toBeDefined();
-    expect(await stores.resourceState.get("user", "user_1", "alpha/x")).toBeUndefined();
-    expect(await stores.resourceState.get("user", "user_1", "alpha")).toBeUndefined();
+    expect(await stores.resourceState.get("user", `user_1:~org:${DEFAULT_ORG_ID}`, "files/x")).toBeDefined();
+    expect(await stores.resourceState.get("user", `user_1:~org:${DEFAULT_ORG_ID}`, "alpha/x")).toBeUndefined();
+    expect(await stores.resourceState.get("user", `user_1:~org:${DEFAULT_ORG_ID}`, "alpha")).toBeUndefined();
   });
 
   it("routes a defineResource carrying a pattern down the collection branch", async () => {
@@ -90,8 +90,8 @@ describe("where the engine writes a declaration", () => {
 
     await notes.create("x", { body: "hi" });
 
-    expect(await stores.resourceState.get("user", "user_1", "files/x")).toBeDefined();
-    expect(await stores.resourceState.get("user", "user_1", "notes")).toBeUndefined();
+    expect(await stores.resourceState.get("user", `user_1:~org:${DEFAULT_ORG_ID}`, "files/x")).toBeDefined();
+    expect(await stores.resourceState.get("user", `user_1:~org:${DEFAULT_ORG_ID}`, "notes")).toBeUndefined();
   });
 });
 

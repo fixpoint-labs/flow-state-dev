@@ -113,7 +113,7 @@ function senderFlow() {
 }
 
 async function durableRow(stores: StoreRegistry, taskId: string): Promise<Task | undefined> {
-  const row = await stores.resourceState.get("user", USER_ID, `${LEDGER_ID}/${taskId}`);
+  const row = await stores.resourceState.get("user", `${USER_ID}:~org:${DEFAULT_ORG_ID}`, `${LEDGER_ID}/${taskId}`);
   return row?.state as Task | undefined;
 }
 
@@ -392,12 +392,12 @@ async function bootPartitioned(sameFlow = false) {
       runtimeConfig: { ...runtime.runtimeConfig },
     });
 
-  /** The row as stored: `<ledger>/<partition segment>/<task id>`, at the user's scope. */
+  /** The row as stored: `<ledger>/<partition segment>/<task id>`, in the user's cell in the org. */
   const row = async (userId: string, partition: string, taskId: string) =>
     (
       await stores.resourceState.get(
         "user",
-        userId,
+        `${userId}:~org:${DEFAULT_ORG_ID}`,
         `${PARTITION_LEDGER}/${encodeUserSegment(partition)}/${taskId}`
       )
     )?.state as Task | undefined;

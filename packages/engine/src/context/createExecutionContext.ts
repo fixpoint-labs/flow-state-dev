@@ -71,7 +71,7 @@ import { readDispatchStamp } from "../execution/dispatch-metadata";
 import { ensureSessionRecord } from "./ensure-session-record";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
-import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled, errorDetailsWithCause, isValidOrgId } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
@@ -592,14 +592,17 @@ export async function createExecutionContext<
   const sessionKey = resolveSessionStorageKey(sessionId, options.tenantId);
 
   // Storage keys — namespaced by the resolved INSTANCE id when the flow opts
-  // into per-flow isolation for user/org scope. Bare identity ids otherwise.
-  // Two registered copies of one collection definition therefore keep separate
-  // private scope records (FIX-1323). An owner-pinned instance — one
-  // registered with an owner pin — keys its shared user data at the (org,
-  // person) cell, the org taken from that pin and never from the request
-  // (FIX-1538). See `packages/engine/src/stores/scope-keys.ts` and FIX-431.
-  const userKey = resolveUserStorageKey(userId, flow);
+  // into per-flow isolation for user/org scope. Two registered copies of one
+  // collection definition therefore keep separate private scope records
+  // (FIX-1323). Every user key carries the org (FIX-1790): the admitted
+  // run's, which must equal the session's below or the run is refused before
+  // anything is written. A malformed org builds no key here, so the refusal
+  // below names it instead of the key derivation. See
+  // `packages/engine/src/stores/scope-keys.ts`.
   const optionsOrgId = options.orgId;
+  const userKey = isValidOrgId(optionsOrgId)
+    ? resolveUserStorageKey(userId, optionsOrgId, flow)
+    : undefined;
   const optionsOrgKey = resolveOrgStorageKey(optionsOrgId, flow);
 
   // Window the cross-turn history load to the most recent N completed
@@ -657,7 +660,7 @@ export async function createExecutionContext<
   // Parallelize the remaining independent store lookups — user, org, and the
   // history window don't depend on each other for the initial load.
   const [loadedUser, loadedOrg, priorRequests] = await Promise.all([
-    stores.user.get(userKey),
+    userKey !== undefined ? stores.user.get(userKey) : undefined,
     optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     // The N most-recently-started completed requests — `status:"completed"`
     // excludes the current (in-progress) request and any in-flight siblings;
@@ -800,16 +803,16 @@ export async function createExecutionContext<
 
   // The user record is created only now, after every refusal above (BR-9,
   // FIX-1538). A caller outside the pin must not leave even an empty record
-  // in the cell it would have keyed — for an owner-pinned instance that cell
-  // is keyed by the pin's org, so an early write would plant a record in
-  // another org's or another person's cell.
+  // in the cell it would have keyed.
   let userRecord = loadedUser;
   if (userRecord === undefined) {
-    // `id` is the storage key (namespaced when isolated, the (org, person)
-    // cell for an owner-pinned instance); `userId` stays as the bare identity
-    // so listing and cross-reference by userId work across every record shape.
+    // `id` is the storage key `loadedUser` was read under. The org check
+    // above refused any run whose org is not the session's (attributed, so
+    // valid), so `userKey` is defined here and names the session's cell.
+    // `userId` stays as the bare identity so listing and cross-reference by
+    // userId work across every record shape.
     userRecord = {
-      id: userKey,
+      id: userKey!,
       userId,
       state: (options.userState ?? {}) as TUserState,
       resources: normalizeScopeResources(userResourceConfigs, undefined),
@@ -1072,8 +1075,8 @@ export async function createExecutionContext<
   const orgFlowLevelConfigs = filterFlowLevelEager(orgResourceConfigs, flowLevelResourceKeys);
 
   // FIX-735: per-resource isolation. Resource storage (resourceState +
-  // content) keys per resource — bare identity id when shared
-  // (`flowIsolation` false), `${id}:${flow.id}` when isolated — instead of
+  // content) keys per resource — the shared bucket when shared
+  // (`flowIsolation` false), plus `flow.id` when isolated — instead of
   // collapsing the whole scope onto one flow-wide key. The scope *record*
   // (`stores.user`/`stores.org`, holding `ctx.user.state`) still keys on the
   // flow-level `isolateUserState`/`isolateOrgState` flag via `userKey` /
@@ -1093,6 +1096,9 @@ export async function createExecutionContext<
   // with no orgId is no longer a reachable runtime state (BR-12).
   const scopeIdentityId = (scope: ContentScopeType): string | undefined =>
     scope === "session" ? sessionKey : scope === "user" ? userId : resolvedOrgId;
+  // The (user, org) every user- and org-scoped resource bucket derives from:
+  // a user bucket is the user's cell in the session's org (FIX-1790).
+  const cellIdentity = { userId, orgId: resolvedOrgId };
 
   // Per scope: which storage keys (singles) and collection prefixes carry the
   // scope's storage-routing flag. Built once from the full config maps so any
@@ -1191,7 +1197,7 @@ export async function createExecutionContext<
       flow,
       scope
     );
-    return resolveResourceScopeId(identityId, flow, scope, isolated);
+    return resolveResourceScopeId(cellIdentity, flow, scope, isolated);
   };
 
   // Resolve the per-resource storage `scopeId` from a (scope, storageKey). Used
@@ -1240,7 +1246,7 @@ export async function createExecutionContext<
     if (isolated === undefined) {
       isolated = scope === "user" ? flow.isolateUserState : flow.isolateOrgState;
     }
-    return resolveResourceScopeId(identityId, flow, scope, isolated);
+    return resolveResourceScopeId(cellIdentity, flow, scope, isolated);
   };
 
   // Group a per-scope config subset by the storage scopeId each entry resolves

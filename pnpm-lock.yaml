@@ -1832,9 +1832,15 @@ importers:
         specifier: ^8.13.0
         version: 8.20.0
     devDependencies:
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../core
       '@flow-state-dev/scheduled':
         specifier: workspace:*
         version: link:../scheduled
+      '@flow-state-dev/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13

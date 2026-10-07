@@ -70,14 +70,14 @@ function boot(options: { flowIsolation?: boolean } = {}) {
 }
 
 describe("CollectionHookContext.cell", () => {
-  it("is the person's own cell for an unpinned flow", async () => {
+  it("is the person's cell in the org for an unpinned flow", async () => {
     const { ctx, stored } = await boot().run("alice", "acme");
-    expect(ctx.cell).toBe("alice");
+    expect(ctx.cell).toBe("alice:~org:acme");
     expect(ctx.scopeId).toBe("alice");
     expect(stored?.state).toEqual({ text: "hi" });
   });
 
-  it("is the (org, person) cell for a hired seat, while scopeId stays the person", async () => {
+  it("is the same cell for a hired seat, while scopeId stays the person", async () => {
     const { ctx, stored } = await boot().run("alice", "acme", { orgId: "acme", userId: "alice" });
     expect(ctx.cell).toBe("alice:~org:acme");
     expect(ctx.scopeId).toBe("alice");
@@ -86,13 +86,13 @@ describe("CollectionHookContext.cell", () => {
 
   it("is the escaped key when the person's id needs escaping", async () => {
     const { ctx, stored } = await boot().run("a:b", "acme");
-    expect(ctx.cell).toBe("a\\:b");
+    expect(ctx.cell).toBe("a\\:b:~org:acme");
     expect(stored?.state).toEqual({ text: "hi" });
   });
 
   it("is the flow-isolated cell for a flow-isolated collection", async () => {
     const { ctx, stored } = await boot({ flowIsolation: true }).run("alice", "acme");
-    expect(ctx.cell).toBe("alice:notes.app");
+    expect(ctx.cell).toBe("alice:~org:acme:notes.app");
     expect(stored?.state).toEqual({ text: "hi" });
   });
 });
@@ -153,8 +153,8 @@ describe("CollectionHookContext.cell with overlapping collections", () => {
     expect(result.error).toBeUndefined();
 
     expect(seen).toEqual([
-      { key: "sched/private/x", cell: "alice:sched" },
-      { key: "sched/public", cell: "alice" },
+      { key: "sched/private/x", cell: "alice:~org:acme:sched" },
+      { key: "sched/public", cell: "alice:~org:acme" },
     ]);
     for (const { key, cell } of seen) {
       expect((await stores.resourceState.get("user", cell, key))?.state).toEqual({ text: "hi" });

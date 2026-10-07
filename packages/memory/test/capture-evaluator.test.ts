@@ -22,7 +22,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { boolean, choice, defineFlow, evaluator, handler, sequencer } from '@flow-state-dev/core'
+import { boolean, choice, DEFAULT_ORG_ID, defineFlow, evaluator, handler, sequencer } from '@flow-state-dev/core'
 import type { EvaluationModel } from '@flow-state-dev/core'
 import {
   createMockModelResolver,
@@ -38,6 +38,8 @@ import type { MemorySystemConfig } from '../src/index.js'
 import { CAPTURE_EVALUATOR_NAME } from '../src/capture-evaluator.js'
 
 const USER = 'u1'
+/** The user's cell in the org `testFlow` runs under, where user-scoped memory lives. */
+const USER_CELL = `${USER}:~org:${DEFAULT_ORG_ID}`
 const SESSION = 'session-1'
 
 /** What the mocked observer extracts from every turn it reads: one durable fact. */
@@ -213,8 +215,8 @@ async function harness(
     async stores() {
       const working = await read('session', SESSION, 'workingMemory')
       const system = await read('session', SESSION, 'memorySystem')
-      const episodic = await read('user', USER, 'episodicMemory')
-      const semantic = await read('user', USER, 'semanticMemory')
+      const episodic = await read('user', USER_CELL, 'episodicMemory')
+      const semantic = await read('user', USER_CELL, 'semanticMemory')
       return {
         entries: working?.entries ?? [],
         currentTurn: working?.currentTurn ?? 0,

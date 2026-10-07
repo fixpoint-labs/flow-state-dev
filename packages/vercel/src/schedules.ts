@@ -18,6 +18,7 @@
 
 import { timingSafeEqual } from "node:crypto";
 import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
+import { dynamicScheduleId } from "./schedule-id";
 
 /** Options for `createGetToPostCronShim`. */
 export interface CreateGetToPostCronShimOptions {
@@ -129,10 +130,30 @@ export function createScheduleTickHandler(
 
     const baseUrl = trimTrailingSlash(base);
     const flowKind = encodeURIComponent(opts.flowKind);
+    // Never let an observer throw kill the worker — Promise.allSettled
+    // on the worker pool would swallow the rejection and every later
+    // item assigned to this slot would be silently skipped.
+    const notify = (row: ScheduleIndexRow, status: number): void => {
+      try {
+        opts.onDispatch?.(row, status);
+      } catch {
+        /* swallow observer errors */
+      }
+    };
 
     await runWithConcurrency(due, concurrency, async (row) => {
-      const url = `${baseUrl}/api/flows/${flowKind}/schedules/${encodeURIComponent(row.userId)}/${encodeURIComponent(row.key)}/dispatch`;
       let status = 0;
+      // A row with no org names no cell to fire from; the framework would
+      // refuse its dispatch, so it is not sent.
+      if (row.orgId === undefined) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[flow-state/vercel/schedules] not dispatched: ${row.userId}/${row.key} has no organization`
+        );
+        notify(row, status);
+        return;
+      }
+      const url = `${baseUrl}/api/flows/${flowKind}/schedules/${encodeURIComponent(dynamicScheduleId(row.orgId, row.userId, row.key))}/dispatch`;
       try {
         const res = await fetch(url, {
           method: "POST",
@@ -157,14 +178,7 @@ export function createScheduleTickHandler(
           err
         );
       }
-      // Never let an observer throw kill the worker — Promise.allSettled
-      // on the worker pool would swallow the rejection and every later
-      // item assigned to this slot would be silently skipped.
-      try {
-        opts.onDispatch?.(row, status);
-      } catch {
-        /* swallow observer errors */
-      }
+      notify(row, status);
     });
 
     return new Response(null, { status: 200 });

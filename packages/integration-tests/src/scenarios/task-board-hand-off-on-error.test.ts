@@ -32,6 +32,8 @@ import { z } from "zod";
 
 const TASK_SOURCE = "task";
 const USER_ID = "u_onerror";
+/** The user's cell in the default org, where every flow keeps their user data. */
+const USER_ID_CELL = `${USER_ID}:~org:${DEFAULT_ORG_ID}`;
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
 
 type RecordedDispatch = { sessionId: string; actionName: string; input: unknown };
@@ -76,7 +78,7 @@ async function durableRow(
   kind: string,
   taskId: string
 ): Promise<Task | undefined> {
-  const row = await stores.resourceState.get("user", USER_ID, `${kind}-ledger/${taskId}`);
+  const row = await stores.resourceState.get("user", USER_ID_CELL, `${kind}-ledger/${taskId}`);
   return row?.state as Task | undefined;
 }
 

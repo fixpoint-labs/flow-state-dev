@@ -33,6 +33,8 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 
 const USER_ID = "u_death";
+/** The user's cell in the default org, where every flow keeps their user data. */
+const USER_ID_CELL = `${USER_ID}:~org:${DEFAULT_ORG_ID}`;
 const KIND = "hand-off-child-death";
 /** The provenance a hand-off dispatch carries; spelled literally because the constant is internal to `engine`. */
 const TASK_SOURCE = "task";
@@ -80,7 +82,7 @@ function buildFlow() {
 }
 
 async function durableRow(stores: StoreRegistry, taskId: string): Promise<Task | undefined> {
-  const row = await stores.resourceState.get("user", USER_ID, `${KIND}-ledger/${taskId}`);
+  const row = await stores.resourceState.get("user", USER_ID_CELL, `${KIND}-ledger/${taskId}`);
   return row?.state as Task | undefined;
 }
 
@@ -94,11 +96,11 @@ async function durableRow(stores: StoreRegistry, taskId: string): Promise<Task |
  */
 async function lapseLease(stores: StoreRegistry, taskId: string): Promise<void> {
   const key = `${KIND}-ledger/${taskId}`;
-  const current = await stores.resourceState.get("user", USER_ID, key);
+  const current = await stores.resourceState.get("user", USER_ID_CELL, key);
   const row = current!.state as Task;
   await stores.resourceState.set(
     "user",
-    USER_ID,
+    USER_ID_CELL,
     key,
     { ...row, leaseUntil: row.updatedAt } as never,
     "any"

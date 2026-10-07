@@ -35,5 +35,12 @@ node specs/issues/FIX-1790/poc/key-sites/check.mjs --plant   # negative control:
 one, which is plan surface S4. The two harness files bypass the derivation, which is S5. Same
 nine files FIX-1538's `cell-sites` found; nothing new has appeared since.
 
+**Re-run at implementation (2026-10-07).** Before the build: PASS, the same nine files. After
+it: the check failed on two sites until the table was updated, which is what it is for.
+`createExecutionContext.ts` derived a fourth key for the user record; review round 1 reused the
+run's own key there (the org guards make the two equal), so it is back to three. And the harness gained `testing/src/internal/user-cell.ts`, the one place both
+seeders call the derivation. Every site now passes an org; the schedule resolver takes it from the
+dispatch id. Ten files, PASS; `--plant` still FAILS.
+
 Retained design evidence. Not wired into CI or any default discovery. A grep can miss a call
 written through an alias; the required org argument in S1 is what catches those at build time.

@@ -25,8 +25,8 @@
  * A row is identified by `(cell, key)` — the same address as the schedule
  * it mirrors — so one schedule is always exactly one row. `userId` is who
  * the schedule runs as, and is data, not identity: one person holds several
- * rows with one key when they have schedules in several storage cells (a
- * hired seat per organization, and their own app-wide cell).
+ * rows with one key when they have schedules in several storage cells (one
+ * per organization, and a flow-isolated cell).
  */
 export interface ScheduleIndexRow {
   /**

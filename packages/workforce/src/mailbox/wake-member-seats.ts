@@ -95,7 +95,9 @@ export function hearingSeatsById(seats: readonly FlowInstance[]): Map<string, Fl
  */
 export function reachableSeat(group: readonly FlowInstance[], ctx: BlockContext): FlowInstance | undefined {
   const orgId = ctx.org?.identity.orgId ?? ctx.org?.identity.id;
-  const userId = ctx.user?.identity.userId ?? ctx.user?.identity.id;
+  // A bare user id, never `ctx.user.identity.id`: that is the user record's
+  // storage key, which carries the org.
+  const userId = ctx.user?.identity.userId ?? ctx.session?.identity.userId;
   return (
     group.find((seat) => seat.ownerPin?.orgId === orgId && seat.ownerPin?.userId !== undefined && seat.ownerPin?.userId === userId) ??
     group.find((seat) => seat.ownerPin !== undefined && seat.ownerPin.orgId === orgId && seat.ownerPin.userId === undefined) ??

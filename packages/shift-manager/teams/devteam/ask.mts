@@ -42,7 +42,7 @@
  * read, names this step.
  */
 
-import { runAction, type FlowState } from "@flow-state-dev/engine";
+import { resolveUserStorageKey, runAction, type FlowState } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import type { FeatureLedger } from "./board.mts";
@@ -149,10 +149,12 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
 
   const taskId = harnessTaskId(feature.issue, PHASE);
   const orgLedger = ledger.collection.scope === "org";
+  // The principal's cell in their org, where every flow keeps their user data.
+  const userCell = resolveUserStorageKey(principal.userId, principal.orgId, { id: emSeat.id, isolateUserState: false });
   const row = await guarded("reading the board", () =>
     stores.resourceState.get(
       orgLedger ? "org" : "user",
-      orgLedger ? principal.orgId : principal.userId,
+      orgLedger ? principal.orgId : userCell,
       `${ledger.id}/${taskId}`,
     ),
   );
@@ -162,7 +164,7 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
   const claimKey = `${ASK_CLAIM_PREFIX}${feature.issue}`;
   const requestId = `req_ask_${globalThis.crypto.randomUUID()}`;
   const existing = await guarded("reading the claim", () =>
-    stores.resourceState.get("user", principal.userId, claimKey),
+    stores.resourceState.get("user", userCell, claimKey),
   );
   let expected: number = 0;
   if (existing !== undefined) {
@@ -178,7 +180,7 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
   const claimed = await guarded("claiming the feature", () =>
     stores.resourceState.set(
       "user",
-      principal.userId,
+      userCell,
       claimKey,
       { requestId, issue: feature.issue, claimedAt: Date.now() },
       expected,
@@ -192,7 +194,7 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
   /** Give the claim back, so a failure this step saw does not hold the feature. */
   const release = async (): Promise<void> => {
     try {
-      await stores.resourceState.delete("user", principal.userId, claimKey, claimed.version);
+      await stores.resourceState.delete("user", userCell, claimKey, claimed.version);
     } catch {
       // The refusal below is the failure worth reporting.
     }

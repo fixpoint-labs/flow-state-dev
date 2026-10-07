@@ -51,30 +51,62 @@ function buildCtx(
 }
 
 describe("defaultParseScheduleId", () => {
-  it("splits on the first slash", () => {
-    expect(defaultParseScheduleId("u_1/weekly-digest")).toEqual({
+  it("splits on the first two slashes", () => {
+    expect(defaultParseScheduleId("org_sys/u_1/weekly-digest")).toEqual({
+      orgId: "org_sys",
       userId: "u_1",
       collectionKey: "weekly-digest"
     });
   });
 
-  it("returns null when there is no slash", () => {
+  it("returns null when the id names no org", () => {
     expect(defaultParseScheduleId("monolith")).toBeNull();
+    expect(defaultParseScheduleId("u_1/weekly-digest")).toBeNull();
   });
 
   it("returns null on a leading slash", () => {
-    expect(defaultParseScheduleId("/weekly-digest")).toBeNull();
+    expect(defaultParseScheduleId("/u_1/weekly-digest")).toBeNull();
   });
 
   it("returns null on a trailing slash", () => {
-    expect(defaultParseScheduleId("u_1/")).toBeNull();
+    expect(defaultParseScheduleId("org_sys/u_1/")).toBeNull();
   });
 
   it("preserves additional slashes in the collection key", () => {
-    expect(defaultParseScheduleId("u_1/nested/key/path")).toEqual({
+    expect(defaultParseScheduleId("org_sys/u_1/nested/key/path")).toEqual({
+      orgId: "org_sys",
       userId: "u_1",
       collectionKey: "nested/key/path"
     });
+  });
+});
+
+describe("createResourceCollectionScheduleResolver, the org", () => {
+  const collection = { pattern: "schedules/*" };
+  const row = JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON", kind: "sendDigest" });
+
+  it("returns null for an id naming a blank org, before any store is read", async () => {
+    const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
+    const config = await resolve(" /u_1/weekly-digest", buildCtx(new Map()));
+    expect(config).toBeNull();
+  });
+
+  it("reads only the named org's cell", async () => {
+    const records = new Map([["user:u_1:~org:org_sys:schedules/weekly-digest", row]]);
+    const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
+    expect(await resolve("org_other/u_1/weekly-digest", buildCtx(records))).toBeNull();
+    expect(await resolve("org_sys/u_1/weekly-digest", buildCtx(records))).not.toBeNull();
+  });
+
+  it("returns null for a row naming another org than the id", async () => {
+    const records = new Map([
+      [
+        "user:u_1:~org:org_other:schedules/weekly-digest",
+        JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON", kind: "sendDigest" })
+      ]
+    ]);
+    const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
+    expect(await resolve("org_other/u_1/weekly-digest", buildCtx(records))).toBeNull();
   });
 });
 
@@ -84,12 +116,12 @@ describe("createResourceCollectionScheduleResolver", () => {
   it("reads a resource, maps kind→block, and synthesizes a principal", async () => {
     const records = new Map([
       [
-        "user:u_1:schedules/weekly-digest",
+        "user:u_1:~org:org_sys:schedules/weekly-digest",
         JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON", kind: "sendDigest", input: { topic: "weekly" } })
       ]
     ]);
     const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
-    const config = await resolve("u_1/weekly-digest", buildCtx(records));
+    const config = await resolve("org_sys/u_1/weekly-digest", buildCtx(records));
     expect(config).not.toBeNull();
     expect(config?.cron).toBe("0 9 * * MON");
     expect(config?.block).toBe(sendDigest);
@@ -100,18 +132,18 @@ describe("createResourceCollectionScheduleResolver", () => {
   it("returns null when the kind is absent from the blocks map", async () => {
     const records = new Map([
       [
-        "user:u_1:schedules/weekly-digest",
+        "user:u_1:~org:org_sys:schedules/weekly-digest",
         JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON", kind: "unknownKind" })
       ]
     ]);
     const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
-    const config = await resolve("u_1/weekly-digest", buildCtx(records));
+    const config = await resolve("org_sys/u_1/weekly-digest", buildCtx(records));
     expect(config).toBeNull();
   });
 
   it("returns null when the resource does not exist", async () => {
     const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
-    const config = await resolve("u_1/missing", buildCtx(new Map()));
+    const config = await resolve("org_sys/u_1/missing", buildCtx(new Map()));
     expect(config).toBeNull();
   });
 
@@ -124,7 +156,7 @@ describe("createResourceCollectionScheduleResolver", () => {
   it("returns null when the resource is disabled", async () => {
     const records = new Map([
       [
-        "user:u_1:schedules/weekly-digest",
+        "user:u_1:~org:org_sys:schedules/weekly-digest",
         JSON.stringify({
           orgId: "org_sys",
           cron: "0 9 * * MON",
@@ -134,7 +166,7 @@ describe("createResourceCollectionScheduleResolver", () => {
       ]
     ]);
     const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
-    const config = await resolve("u_1/weekly-digest", buildCtx(records));
+    const config = await resolve("org_sys/u_1/weekly-digest", buildCtx(records));
     expect(config).toBeNull();
   });
 
@@ -144,28 +176,28 @@ describe("createResourceCollectionScheduleResolver", () => {
     // behind it is not a schedule.
     const content = new Map([
       [
-        "user:u_1:schedules/weekly-digest",
+        "user:u_1:~org:org_sys:schedules/weekly-digest",
         JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON", kind: "sendDigest" })
       ]
     ]);
     const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
-    const config = await resolve("u_1/weekly-digest", buildCtx(new Map(), content));
+    const config = await resolve("org_sys/u_1/weekly-digest", buildCtx(new Map(), content));
     expect(config).toBeNull();
   });
 
   it("returns null when required fields are missing", async () => {
     const records = new Map([
-      ["user:u_1:schedules/weekly-digest", JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON" })]
+      ["user:u_1:~org:org_sys:schedules/weekly-digest", JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON" })]
     ]);
     const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
-    const config = await resolve("u_1/weekly-digest", buildCtx(records));
+    const config = await resolve("org_sys/u_1/weekly-digest", buildCtx(records));
     expect(config).toBeNull();
   });
 
   it("supports a custom parseId for richer composite keys", async () => {
     const records = new Map([
       [
-        "user:u_42:schedules/lead-456",
+        "user:u_42:~org:org_sys:schedules/lead-456",
         JSON.stringify({ orgId: "org_sys", cron: "0 9 * * MON", kind: "followUp" })
       ]
     ]);
@@ -173,12 +205,12 @@ describe("createResourceCollectionScheduleResolver", () => {
       collection,
       blocks,
       parseId: (id) => {
-        const match = id.match(/^agent-followup:([^:]+):(.+)$/);
+        const match = id.match(/^agent-followup:([^:]+):([^:]+):(.+)$/);
         if (!match) return null;
-        return { userId: match[1]!, collectionKey: match[2]! };
+        return { orgId: match[1]!, userId: match[2]!, collectionKey: match[3]! };
       }
     });
-    const config = await resolve("agent-followup:u_42:lead-456", buildCtx(records));
+    const config = await resolve("agent-followup:org_sys:u_42:lead-456", buildCtx(records));
     expect(config?.block).toBe(followUp);
     expect(config?.principal).toEqual({ userId: "u_42", orgId: "org_sys" });
   });
@@ -186,7 +218,7 @@ describe("createResourceCollectionScheduleResolver", () => {
   it("propagates timezone, onOverlap, description on the synthesized config", async () => {
     const records = new Map([
       [
-        "user:u_1:schedules/weekly-digest",
+        "user:u_1:~org:org_sys:schedules/weekly-digest",
         JSON.stringify({
           orgId: "org_sys",
           cron: "0 9 * * MON",
@@ -198,7 +230,7 @@ describe("createResourceCollectionScheduleResolver", () => {
       ]
     ]);
     const resolve = createResourceCollectionScheduleResolver({ collection, blocks });
-    const config = await resolve("u_1/weekly-digest", buildCtx(records));
+    const config = await resolve("org_sys/u_1/weekly-digest", buildCtx(records));
     expect(config?.timezone).toBe("America/New_York");
     expect(config?.onOverlap).toBe("allow");
     expect(config?.description).toBe("Weekly Monday digest");

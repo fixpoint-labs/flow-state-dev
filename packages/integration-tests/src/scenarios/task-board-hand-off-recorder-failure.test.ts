@@ -44,6 +44,8 @@ import { z } from "zod";
 
 const TASK_SOURCE = "task";
 const USER_ID = "u_recorder_failure";
+/** The user's cell in the default org, where every flow keeps their user data. */
+const USER_ID_CELL = `${USER_ID}:~org:${DEFAULT_ORG_ID}`;
 const ANNOUNCE_ERROR = "change announcement blew up";
 const RECORDER_FAILURE_COMPONENT = "task-board-recorder-failure";
 
@@ -62,12 +64,12 @@ async function ageRowToPreProvenance(
   taskId: string
 ): Promise<void> {
   const key = `${kind}-ledger/${taskId}`;
-  const stored = await stores.resourceState.get("user", USER_ID, key);
+  const stored = await stores.resourceState.get("user", USER_ID_CELL, key);
   const row = stored?.state as Record<string, unknown>;
   const { incarnationId: _dropped, ...aged } = row;
   await stores.resourceState.set(
     "user",
-    USER_ID,
+    USER_ID_CELL,
     key,
     aged as never,
     "any" as never
@@ -145,7 +147,7 @@ async function durableRow(
 ): Promise<Task | undefined> {
   const row = await stores.resourceState.get(
     "user",
-    USER_ID,
+    USER_ID_CELL,
     `${kind}-ledger/${taskId}`
   );
   return row?.state as Task | undefined;

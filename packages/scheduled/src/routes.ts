@@ -22,10 +22,15 @@ import { SCHEDULED_TRANSPORT_SOURCE } from "./createScheduledTransportAdapter";
 import { findScheduledRequest } from "./findScheduledRequest";
 import type { IdempotencyCache } from "./idempotency";
 
-// Wider than the static-id pattern in core: dynamic ids can carry `/`
-// and `:` so composite keys like `user/abc/weekly-digest` round-trip.
-// URL-encoded segments are not supported in v1.
-const DYNAMIC_SCHEDULE_ID_RE = /^[a-z0-9][a-z0-9:/_-]{0,127}$/;
+// Wider than the static-id pattern in core. A dynamic id is
+// `<orgId>/<userId>/<key>` with each part URL-encoded (`formatScheduleId`),
+// so after the router's one decode it holds `encodeURIComponent`'s output
+// alphabet, `%` included, plus the `/` separators and the `:` a hand-built id
+// may carry. That admits every org id `isValidOrgId` admits — uppercase, `.`,
+// `/`, `DEFAULT_ORG_ID`'s underscores. No length cap: org, user and key ids
+// have none, so a fixed one here would refuse a valid long id and its
+// schedule would never fire.
+const DYNAMIC_SCHEDULE_ID_RE = /^[A-Za-z0-9\-_.!~*'()%:/]+$/;
 
 interface DispatchBody {
   nominalFireTime?: string;
@@ -99,9 +104,9 @@ export async function handleDispatch(
         gatewayPrincipal,
         request: req,
         stores: host.stores as ScheduleResolutionStores,
-        // The registered instance's pin, so a hired seat's schedules resolve
-        // from the seat's own (org, person) cell (FIX-1538). From the
-        // registry, never the request.
+        // The registered instance's pin, so a hired worker resolves only
+        // schedules in its own org, and a private one only its user's. From
+        // the registry, never the request.
         ownerPin: flow.ownerPin
       });
       schedule = resolved ?? null;

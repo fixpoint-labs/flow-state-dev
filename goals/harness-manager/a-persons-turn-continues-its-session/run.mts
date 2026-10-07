@@ -243,11 +243,8 @@ await runGoal(async () => {
     /** The board row itself, for the run link and the turn counters. */
     const readBoard = async (taskId: string): Promise<BoardRow | undefined> => {
       const key = `${built.collectionId}/${taskId}`;
-      for (const scopeId of [USER_ID, `${USER_ID}:~org:${DEFAULT_ORG_ID}`]) {
-        const found = await runtime.stores.resourceState.get("user", scopeId, key);
-        if (found !== undefined) return found.state as BoardRow;
-      }
-      return undefined;
+      const found = await runtime.stores.resourceState.get("user", `${USER_ID}:~org:${DEFAULT_ORG_ID}`, key);
+      return found?.state as BoardRow | undefined;
     };
 
     const until = async (

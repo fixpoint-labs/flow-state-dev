@@ -48,14 +48,14 @@ const ROOT = process.cwd();
  *   derives      — calls the derivation; `org` says where its organization comes from
  *   consumes     — stores a scopeId it was handed by a `derives` site
  *   session-only — variable scope argument, but only ever session or lineage
- *   harness      — test seeding helpers that build a bare user key themselves
+ *   harness      — test seeding helpers; since the build they seed through the derivation
  */
 const SITES = {
   "packages/engine/src/stores/scope-keys.ts": {
-    derive: 5, store: 0, class: "convergence", org: "takes it as an argument after this change",
+    derive: 5, store: 0, class: "convergence", org: "a required argument; a missing or malformed one throws",
   },
   "packages/engine/src/context/createExecutionContext.ts": {
-    derive: 3, store: 11, class: "derives", org: "the admitted run (options.orgId, required since FIX-1442)",
+    derive: 3, store: 11, class: "derives", org: "the admitted run (options.orgId), equal to the session's",
   },
   "packages/engine/src/resources/internal.ts": {
     derive: 2, store: 4, class: "derives", org: "the stored session (session.orgId)",
@@ -64,7 +64,7 @@ const SITES = {
     derive: 1, store: 1, class: "derives", org: "the stored session (session.orgId)",
   },
   "packages/scheduled/src/createResourceCollectionScheduleResolver.ts": {
-    derive: 1, store: 1, class: "derives", org: "NONE before the read: the schedule id names only the user",
+    derive: 1, store: 1, class: "derives", org: "the dispatch id names it; the row must name the same org",
   },
   "packages/engine/src/context/resource-registry.ts": {
     derive: 0, store: 4, class: "consumes", org: "n/a, handed a derived id",
@@ -73,10 +73,13 @@ const SITES = {
     derive: 0, store: 10, class: "session-only", org: "n/a",
   },
   "packages/testing/src/runtime/createTestContext.ts": {
-    derive: 0, store: 2, class: "harness", org: "options.orgId, optional; seeds the bare user id",
+    derive: 0, store: 2, class: "harness", org: "options.orgId ?? DEFAULT_ORG_ID; seeds through userSeedCell",
   },
   "packages/testing/src/test-utilities/testFlow.ts": {
-    derive: 0, store: 4, class: "harness", org: "options.orgId, optional; seeds the bare user id",
+    derive: 0, store: 4, class: "harness", org: "the seeded org ?? DEFAULT_ORG_ID; seeds through userSeedCell",
+  },
+  "packages/testing/src/internal/user-cell.ts": {
+    derive: 1, store: 0, class: "harness", org: "handed the run's org by both seeders",
   },
 };
 

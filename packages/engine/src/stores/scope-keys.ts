@@ -10,9 +10,9 @@
  *     flag. `resolveUserStorageKey` / `resolveOrgStorageKey` answer this.
  *
  *   - **Resources** (`stores.resourceState` / `stores.content`) key per
- *     resource. Each user/org-scoped resource keys at the bare identity id
- *     when shared (effective `flowIsolation` false) or `${identityId}:${flow.id}`
- *     when isolated (effective `flowIsolation` true) — honoring the
+ *     resource. Each user/org-scoped resource keys at the shared bucket
+ *     when shared (effective `flowIsolation` false) or the bucket plus the
+ *     flow id when isolated (effective `flowIsolation` true) — honoring the
  *     resource-level override the API advertises (FIX-435) rather than a
  *     flow-wide OR. `resolveResourceIsolation` + `resolveResourceScopeId`
  *     answer this per resource; `resourceScopeIds` enumerates the distinct
@@ -39,23 +39,25 @@
  * two different (identity, instance) pairs could name one cell — which is the
  * opposite of what isolation promises.
  *
- * FIX-1538: an **owner-pinned instance** — one registered with an owner pin
- * (`register(flow, { pin })`) — keeps its *shared* user data in one cell per
- * (org, person), `<person>:~org:<org>`, instead of the person's cross-org
- * cell. The org comes from the pin, never from the request; the person is the
- * admitted caller, which admission has already checked against the pin.
- * Without this the person's bare key was the one bucket that followed them
- * between orgs: their instance pinned to Globex read what their instance
- * pinned to Acme saved. Three escaped parts cannot equal the one-part
- * cross-org key or the two-part isolated key, because the encoding is
- * decodable. Unpinned flows, flow-isolated keys and every org key are
- * unchanged. Data a pinned instance saved before this moves only by the
- * operator upgrade step in `apps/docs/docs/persistence/overview.md`; there is
- * deliberately no fallback read of the old cell, because that fallback is the
- * cross-org read this closes.
+ * FIX-1790: every **user** key carries the organization. A user's shared data
+ * lives in one cell per (user, org), `<user>:~org:<org>`, and flow-isolated
+ * data adds the instance, `<user>:~org:<org>:<flow>`. The org is the admitted
+ * run's or the stored session's, never a request field's, and it is a
+ * required argument: a missing or malformed one throws `OrgRequiredError`
+ * rather than build a key that every org would read. The shared form is the
+ * cell FIX-1538 gave owner-pinned instances, so a hired worker's shared data
+ * did not move; it now shares that cell with every other flow in the org, as
+ * any two flows share user data. The pin no longer chooses a key.
+ *
+ * The `~org` marker keeps the new forms apart from each other and from the
+ * one- and two-part user keys older releases wrote, because the encoding is
+ * decodable. Nothing reads an older user key, not even to see whether it
+ * exists: a user starts empty in each org. Org and session keys are unchanged.
  */
 
+import { isValidOrgId } from "@flow-state-dev/core";
 import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
+import { OrgRequiredError } from "../transports/errors";
 import type { RequestRecord, SessionParentage, SessionRecord } from "./types";
 
 /**
@@ -74,12 +76,21 @@ export interface IsolationFlow {
    */
   resources?: Record<string, { scope?: string; flowIsolation?: boolean }>;
   /**
-   * The owner pin of an owner-pinned instance (FIX-1538). Present, its org
-   * keys the flow's shared user data into the (org, person) cell. Absent — an
-   * unpinned flow, or a caller that predates the field — every key is the one
-   * it was before.
+   * The owner pin of an owner-pinned instance. Accepted and ignored: no key
+   * reads it, since every user key takes the org as an argument. Removed with
+   * owner pins (FIX-1798).
    */
   ownerPin?: InstanceOwnerPin;
+}
+
+/**
+ * The identity a user- or org-scoped resource key is built from: the user and
+ * the org of the admitted run or the stored session. An org-scoped key reads
+ * only `orgId`.
+ */
+export interface CellIdentity {
+  userId: string;
+  orgId: string;
 }
 
 /**
@@ -101,7 +112,6 @@ export function toIsolationFlow(flow: {
   isolateUserState?: boolean;
   isolateOrgState?: boolean;
   resources?: unknown;
-  ownerPin?: InstanceOwnerPin;
 }): IsolationFlow {
   return {
     id: flow.id,
@@ -109,11 +119,7 @@ export function toIsolationFlow(flow: {
     isolateOrgState: flow.isolateOrgState ?? false,
     resources: flow.resources as
       | Record<string, { scope?: string; flowIsolation?: boolean }>
-      | undefined,
-    // Forwarded, or a read-side projection of an owner-pinned instance would
-    // resolve the person's cross-org cell instead of the one it wrote
-    // (FIX-1538).
-    ownerPin: flow.ownerPin
+      | undefined
   };
 }
 
@@ -156,37 +162,36 @@ function joinIsolationKey(identityId: string, flowId: string): string {
 }
 
 /**
- * The key a flow's **shared** user data lives at: the person's cross-org cell
- * (the bare, escaped `userId`) for an unpinned flow, or the (org, person) cell
- * `<person>:~org:<org>` for an owner-pinned instance (FIX-1538). One copy,
- * because the scope record and the per-resource buckets must land in the same
- * cell.
+ * The key a user's data lives at in one org: `<user>:~org:<org>`, plus the
+ * instance id when `isolated` (flow-isolated data), each part escaped.
+ * One copy, because the scope record and the per-resource buckets must land in
+ * the same cell, and because it is the one place the org is checked.
+ *
+ * @throws OrgRequiredError when `orgId` is missing, blank or not well-formed.
  */
-function sharedUserKey(userId: string, pin: InstanceOwnerPin | undefined): string {
-  if (pin === undefined) return encodeScopeKeyComponent(userId);
-  return `${encodeScopeKeyComponent(userId)}:~org:${encodeScopeKeyComponent(pin.orgId)}`;
+function userCellKey(userId: string, orgId: string, flowId: string, isolated: boolean): string {
+  if (!isValidOrgId(orgId)) throw new OrgRequiredError(flowId, "A user storage key");
+  const cell = `${encodeScopeKeyComponent(userId)}:~org:${encodeScopeKeyComponent(orgId)}`;
+  return isolated ? `${cell}:${encodeScopeKeyComponent(flowId)}` : cell;
 }
 
 /**
- * Bare `userId` unless the flow isolates the user scope; then
- * `${userId}:${flow.id}`. An owner-pinned instance (a flow carrying
- * `ownerPin`) that does not isolate keys at `${userId}:~org:${pin.orgId}`
- * instead (FIX-1538). Every form runs through
- * {@link encodeScopeKeyComponent}, so the parts are
- * recoverable from the key. Governs the scope *record* (`ctx.user.state`) —
- * resources route per-resource via `resolveResourceScopeId`, and for a shared
- * resource the two agree by construction.
+ * The key a user's scope *record* (`ctx.user.state`) lives at in one org:
+ * `<userId>:~org:<orgId>`, or `<userId>:~org:<orgId>:<flow.id>` when the flow
+ * isolates user state, each part escaped. Resources route per-resource via
+ * `resolveResourceScopeId`; for a shared resource the two agree by
+ * construction.
  *
- * A shape without `ownerPin` gets exactly the key it got before the field
- * existed (BP-030).
+ * @param orgId The admitted run's or the stored session's organization. Never
+ *   defaulted: a missing, blank or malformed one throws `OrgRequiredError`, so
+ *   no call builds a key that every org would read.
  */
 export function resolveUserStorageKey(
   userId: string,
-  flow: Pick<IsolationFlow, "id" | "isolateUserState" | "ownerPin">
+  orgId: string,
+  flow: Pick<IsolationFlow, "id" | "isolateUserState">
 ): string {
-  return flow.isolateUserState
-    ? joinIsolationKey(userId, flow.id)
-    : sharedUserKey(userId, flow.ownerPin);
+  return userCellKey(userId, orgId, flow.id, flow.isolateUserState);
 }
 
 /**
@@ -363,39 +368,38 @@ export function resolveResourceIsolation(
 
 /**
  * The `scopeId` a resource's per-resource storage (`resourceState` / `content`)
- * lives at: `${identityId}:${flow.id}` when isolated — the resolved instance,
- * so two copies of one definition occupy two buckets — and otherwise the
- * shared bucket. At org scope that is the bare `identityId`. At user scope it
- * is the person's cross-org cell for an unpinned flow and the (org, person)
- * cell for an owner-pinned instance (FIX-1538).
+ * lives at. At user scope: the user's cell in the org, plus the resolved
+ * instance when isolated, so two copies of one definition occupy two buckets.
+ * At org scope: the bare org id, or `${orgId}:${flow.id}` when isolated.
  *
- * Takes the flow rather than its id so a caller cannot build a user key
- * without handing over the pin.
+ * @throws OrgRequiredError at user scope when `identity.orgId` is missing,
+ *   blank or not well-formed.
  */
 export function resolveResourceScopeId(
-  identityId: string,
-  flow: Pick<IsolationFlow, "id" | "ownerPin">,
+  identity: CellIdentity,
+  flow: Pick<IsolationFlow, "id">,
   scope: "user" | "org",
   isolated: boolean
 ): string {
-  if (isolated) return joinIsolationKey(identityId, flow.id);
-  return scope === "user"
-    ? sharedUserKey(identityId, flow.ownerPin)
-    : encodeScopeKeyComponent(identityId);
+  if (scope === "user") {
+    return userCellKey(identity.userId, identity.orgId, flow.id, isolated);
+  }
+  return isolated
+    ? joinIsolationKey(identity.orgId, flow.id)
+    : encodeScopeKeyComponent(identity.orgId);
 }
 
 /**
  * The distinct storage `scopeId`s a flow's user/org-scoped resources occupy
- * for a given identity — at most two (the shared bucket — the bare id, or an
- * owner-pinned instance's (org, person) cell — and the instance-namespaced
- * bucket). Read paths consult every returned id and merge, since a flow may
- * declare both shared and isolated resources at one scope.
+ * for a given identity — at most two (the shared bucket and the
+ * instance-namespaced bucket). Read paths consult every returned id and merge,
+ * since a flow may declare both shared and isolated resources at one scope.
  *
  * When the flow declares no resources at the scope, falls back to the
  * scope-record bucket (the flow-flag key) so callers still resolve a key.
  */
 export function resourceScopeIds(
-  identityId: string,
+  identity: CellIdentity,
   flow: IsolationFlow,
   scope: "user" | "org"
 ): string[] {
@@ -404,11 +408,11 @@ export function resourceScopeIds(
   for (const entry of entries) {
     if (entry.scope !== scope) continue;
     const isolated = resolveResourceIsolation(entry.flowIsolation, flow, scope);
-    ids.add(resolveResourceScopeId(identityId, flow, scope, isolated));
+    ids.add(resolveResourceScopeId(identity, flow, scope, isolated));
   }
   if (ids.size === 0) {
     const flowDefault = scope === "user" ? flow.isolateUserState : flow.isolateOrgState;
-    ids.add(resolveResourceScopeId(identityId, flow, scope, flowDefault));
+    ids.add(resolveResourceScopeId(identity, flow, scope, flowDefault));
   }
   return [...ids];
 }

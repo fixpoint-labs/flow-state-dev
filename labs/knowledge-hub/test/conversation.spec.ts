@@ -12,12 +12,15 @@
 // check over the MCP HTTP endpoint.
 
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import knowledgeHubFlow from "../src/flow";
 import type { InboxRecord } from "../src/inbox";
 
 const USER = "owner";
+/** The owner's cell in the default org, where the flow keeps their inbox. */
+const CELL = `${USER}:~org:${DEFAULT_ORG_ID}`;
 type Stores = ReturnType<typeof createInMemoryStores>;
 
 function openConversation(stores: Stores, sessionId: string, description: string) {
@@ -36,7 +39,7 @@ function capture(stores: Stores, sessionId: string, input: Record<string, unknow
 }
 
 async function storedRecords(stores: Stores): Promise<Record<string, InboxRecord>> {
-  return toBareStates<InboxRecord>(await stores.resourceState.getAll("user", USER));
+  return toBareStates<InboxRecord>(await stores.resourceState.getAll("user", CELL));
 }
 
 /** The topic description stashed in a session's state (the conversation record). */
@@ -148,7 +151,7 @@ describe("logActivity conversationId", () => {
     // `conversationId`. It must stay readable — the old text maps forward to
     // `situation` and the row lists as ungrouped `null`, not fail output
     // validation and take the whole inbox down.
-    await stores.resourceState.set("user", USER, "inbox/task/deadbeef", {
+    await stores.resourceState.set("user", CELL, "inbox/task/deadbeef", {
       kind: "task",
       content: "legacy capture",
       context: "before the situation/conversation rename",

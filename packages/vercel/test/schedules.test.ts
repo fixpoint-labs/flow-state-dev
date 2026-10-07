@@ -112,8 +112,9 @@ describe("createScheduleTickHandler", () => {
   }
 
   const ROW: ScheduleIndexRow = {
-    cell: "u1",
+    cell: "u1:~org:acme",
     userId: "u1",
+    orgId: "acme",
     key: "weekly",
     cron: "0 0 * * 0",
     nextFireAt: 1
@@ -146,7 +147,7 @@ describe("createScheduleTickHandler", () => {
   it("dispatches each due row with the correct URL + bearer", async () => {
     const handler = createScheduleTickHandler({
       flowKind: "f",
-      index: fakeIndex([ROW, { ...ROW, cell: "u2", userId: "u2", key: "daily" }]),
+      index: fakeIndex([ROW, { ...ROW, cell: "u2:~org:acme", userId: "u2", key: "daily" }]),
       baseUrl: BASE,
       secret: SECRET
     });
@@ -155,8 +156,8 @@ describe("createScheduleTickHandler", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     const urls = fetchSpy.mock.calls.map((c) => c[0]).sort();
     expect(urls).toEqual([
-      `${BASE}/api/flows/f/schedules/u1/weekly/dispatch`,
-      `${BASE}/api/flows/f/schedules/u2/daily/dispatch`
+      `${BASE}/api/flows/f/schedules/acme%2Fu1%2Fweekly/dispatch`,
+      `${BASE}/api/flows/f/schedules/acme%2Fu2%2Fdaily/dispatch`
     ]);
     for (const call of fetchSpy.mock.calls) {
       expect(call[1].headers.Authorization).toBe(`Bearer ${SECRET}`);

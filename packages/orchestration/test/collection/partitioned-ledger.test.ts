@@ -227,6 +227,27 @@ describe("a partition function", () => {
     }
   });
 
+  it("takes the bare user id from the user scope when the session names none", async () => {
+    // The user identity's `id` is the record's storage key, which carries the
+    // org; `userId` is the user. A partition keyed on the storage key would
+    // split one user's rows by org spelling, and name no user at all.
+    const ctx = {
+      ...ctxFor(),
+      session: { identity: { type: "session", id: "s_1", orgId: "acme" } },
+      user: { identity: { type: "user", id: "alice:~org:acme", userId: "alice" } },
+    };
+    let seen: Record<string, unknown> | undefined;
+    await resolveTaskPartition(
+      LEDGER,
+      (view) => {
+        seen = view as unknown as Record<string, unknown>;
+        return view.userId;
+      },
+      ctx as unknown as BlockContext
+    );
+    expect(seen).toEqual({ sessionId: "s_1", userId: "alice", orgId: "acme" });
+  });
+
   it.each([[""], [undefined], [42]])("refuses a returned %j", async (value) => {
     await expect(
       resolveTaskPartition(LEDGER, () => value as never, ctxFor())

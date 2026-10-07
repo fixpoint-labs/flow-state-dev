@@ -110,19 +110,19 @@ Every session and request records the flow instance that created it, as `flowId`
 
 **Records with no owner.** A session or request whose `flowId` is absent is read as belonging to the one instance of its kind, so a database full of ordinary singleton flows needs nothing done. A collection flow with such history is different: the server cannot tell which copy a bare `review` record belongs to, so it refuses to guess. Any route, resume, or retry that reaches one of those records answers `409 { "error": "migration-required" }` until an operator attributes it. Nothing migrates automatically: attribution is a fact about your deployment, not something the framework can derive from the row.
 
-**What else moves with the owner.** A copy's private user and org data is filed under the copy too, so the same attribution decision covers more than the two record tables. If your collection flow sets `isolateUserState` / `isolateOrgState`, or declares a user- or org-scoped resource with `flowIsolation: true` (see [Sharing state across flows](/docs/advanced/flow-isolation)), then this history moves as well:
+**What else moves with the owner.** A copy's private org data is filed under the copy too, so the same attribution decision covers more than the two record tables. If your collection flow sets `isolateOrgState`, or declares an org-scoped resource with `flowIsolation: true` (see [Sharing state across flows](/docs/advanced/flow-isolation)), then this history moves as well. User data does not move: it is kept per user and organization, and this procedure leaves it alone.
 
 | Cell | Where it lives now | Where it belongs |
 |---|---|---|
-| Isolated user or org scope state | one record keyed `<identity>:<kind>` | one record per copy, keyed `<identity>:<copy id>` |
-| Isolated user or org resource state | `(user\|org, <identity>:<kind>, resource key)` | the same key with the copy's id |
-| Isolated user or org resource content | the same coordinates in the content store | the same key with the copy's id |
+| Isolated org scope state | one record keyed `<orgId>:<kind>` | one record per copy, keyed `<orgId>:<copy id>` |
+| Isolated org resource state | `(org, <orgId>:<kind>, resource key)` | the same key with the copy's id |
+| Isolated org resource content | the same coordinates in the content store | the same key with the copy's id |
 | Deletion markers for those resources | beside the rows they fence | move with them, or the version guarantee is lost |
 | Session-scoped state and content of a re-keyed child session | under the child's old session key | under its new key |
 
 A scope record is one blob, so it moves whole — splitting fields between copies by guesswork is how the "private" data you were protecting gets mixed. And a shared record (an ordinary singleton's, or a resource declaring `flowIsolation: false`) does not move at all: it was never a copy's to begin with.
 
-**Identity ids containing a colon or a backslash move too, whatever your flows do.** A copy id is any string you choose, so the key has to encode the `<identity>:<copy id>` pair rather than run the two strings together — otherwise two different pairs can name one cell, and one account reads another's private data. Ids made of ordinary characters encode to themselves and key exactly as they did before, which is the common case and needs nothing. An id carrying a colon or a backslash picks up a backslash in front of each one — `u:1` is now keyed `u\:1`, shared and isolated cells alike — so inventory those identities with the rest. Some identity providers issue subjects that look like this; if yours does, its old keys were the ambiguous ones, which is why they change.
+**Org ids containing a colon or a backslash move too, whatever your flows do.** A copy id is any string you choose, so the key has to encode the `<orgId>:<copy id>` pair rather than run the two strings together — otherwise two different pairs can name one cell, and one organization reads another's private data. Ids made of ordinary characters encode to themselves and key exactly as they did before, which is the common case and needs nothing. An id carrying a colon or a backslash picks up a backslash in front of each one — `o:1` is now keyed `o\:1`, shared and isolated cells alike — so inventory those organizations with the rest.
 
 The last row only applies if step 3 of the procedure below re-keys any child sessions. If the inventory finds none, note that and leave session-scoped data alone.
 
@@ -131,7 +131,7 @@ The last row only applies if step 3 of the procedure below re-keys any child ses
 1. **Quiesce.** Stop every process that writes to the stores: the web tier, workers, schedulers. A record attributed while a run is still in flight can be re-stamped underneath you. Back the store up, and where the adapter allows it do the work on the copy — the backup is your only rollback, so keep it offline rather than wiring it up as a fallback the running server can read. Write down the copies you actually register, retired kinds included; the mapping below is against that list.
 2. **Inventory.** Count what has no owner, by kind: `SELECT flow_kind, COUNT(*) FROM sessions WHERE flow_id IS NULL GROUP BY flow_kind;` and the same over `requests`. Kinds that are ordinary singletons need nothing. Each collection kind in the list is a mapping decision you have to make: which copy each of those records belongs to (a tenant, a region, a config version, whatever distinguished them when they were written).
 
-   If the kind isolates user or org state, or declares an isolated resource, list its cells from the table above in the same inventory. Read them from the raw rows and files, not through the server's ordinary reads: those hide deletion markers, and a resource with content but no state never shows up in a state listing at all. One line per cell is enough — `user u_12 / kind review / resource notes/a / to review-east / because <your evidence>` — and every cell needs a destination, including ones belonging to identities that no longer appear in any active session. A count of zero is a fine answer once you have looked at the store; it is not an answer you can get from a `get` returning nothing.
+   If the kind isolates org state, or declares an isolated org-scoped resource, list its cells from the table above in the same inventory. Read them from the raw rows and files, not through the server's ordinary reads: those hide deletion markers, and a resource with content but no state never shows up in a state listing at all. One line per cell is enough — `org o_12 / kind review / resource notes/a / to review-east / because <your evidence>` — and every cell needs a destination, including ones belonging to organizations that no longer appear in any active session. A count of zero is a fine answer once you have looked at the store; it is not an answer you can get from a `get` returning nothing.
 3. **Backfill.** Apply the mapping to both places a row keeps its owner, in one statement. The indexed `flow_id` column is what listings filter on; the `data` blob is the record the server reads back, and a later write of the whole record rewrites the column from it, so a column updated on its own reverts to `NULL` the next time the row is saved. SQLite:
 
    ```sql
@@ -166,8 +166,8 @@ The stores need no new columns or directories for this — the copy's id goes in
 | Adapter | What to do |
 |---|---|
 | **In-memory** | Nothing. It starts empty on every restart, so there is no history to attribute. |
-| **Filesystem** | User records are `users/<encoded id>.json`, org records are under `projects/`. Resources are `state/<scope>/<encoded scope id>/<encoded key>.json` and `content/<scope>/<encoded scope id>/<encoded key>.md`, marker files included. Stage a full copy of the directory, move the attributed entries with the same encoding, rewrite the `id` field inside each scope record, and leave every other byte alone. Don't follow symlinks, and stop on a directory you don't recognise. Nothing here is atomic across directories, so keep traffic stopped until the whole replacement is verified. |
-| **SQLite** | `users.id` / `orgs.id` are the keys to rewrite, along with the `id` inside each row's JSON `data`. Resource rows are keyed `(scope_type, scope_id, resource_key)` — move `scope_id`, and keep the resource key, version, lifecycle and content exactly as they are. Do it in a transaction on the backup copy, reading the tables directly rather than through the store API. |
+| **Filesystem** | Org records are under `projects/`. Resources are `state/<scope>/<encoded scope id>/<encoded key>.json` and `content/<scope>/<encoded scope id>/<encoded key>.md`, marker files included. Stage a full copy of the directory, move the attributed entries with the same encoding, rewrite the `id` field inside each scope record, and leave every other byte alone. Don't follow symlinks, and stop on a directory you don't recognise. Nothing here is atomic across directories, so keep traffic stopped until the whole replacement is verified. |
+| **SQLite** | `orgs.id` is the key to rewrite, along with the `id` inside each row's JSON `data`. Resource rows are keyed `(scope_type, scope_id, resource_key)` — move `scope_id`, and keep the resource key, version, lifecycle and content exactly as they are. Do it in a transaction on the backup copy, reading the tables directly rather than through the store API. |
 | **Postgres** | The same keys and the same transaction, on a quiesced database or a staged snapshot, in whichever schema you configured. Scope and resource payloads are JSONB and content is text; preserve them verbatim. |
 | **Custom store** | Use your store's own export and restore, under the same maintenance window and the same checks. A store that can't show you its deletion markers or preserve versions can't be converted safely — that is a `migration-required` stop, not a case for a generic read-everything-and-write-it-back loop. |
 
@@ -235,73 +235,11 @@ A non-zero count on an installation that has ever authenticated its callers is a
 
    The `schedule_index` table carries an `org_id` column, added for you on the next schema init. There is no DDL of your own to write here.
 
-   User-scope storage does not move. A user id is keyed globally, across all organizations, except the data a [hired seat](#upgrading-moving-hired-seats-stored-data) keeps per organization and person.
 4. **Read back.** Re-run the inventory and check the blob agrees with the column, as above with `$.orgId` / `data->>'orgId'`. Every count should be zero, or be a row you deliberately left quarantined. Confirm the reserved-id check is still clean. Then restart the schedulers, bring the writers back, and read a session and an org-scoped resource through each organization before you admit traffic.
 
 Rollback is the backup, and only before the converted store has taken new writes.
 
 **When to stop.** The list under [When to stop](#when-to-stop) applies here unchanged, plus: a record whose organization you cannot defend from your own records stays quarantined. A partially applied mapping is worse than none: it puts one organization's history where another organization can read it.
-
-## Upgrading: moving hired seats' stored data
-
-This section is for apps that ran [hired seats](/docs/workforce/durable-hire) on an earlier release, where a seat stored what it saved for a person under the person's own id. A new install can skip it.
-
-A seat keeps what it saves for a person under a user-scope key for its organization and that person, `<person>:~org:<organization>`. [What a seat saves for a person](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person) describes what a seat keeps there. Data a seat saved before your upgrade is under the person's own id, where your other flows keep theirs. The server does not read it for the seat and does not move it, because only your records say which organization it came from. Until you copy it, each seat starts empty for each person.
-
-Copying is optional and offline, with writers quiesced and a backup taken, as in the [owner attribution procedure](#who-owns-a-record) above. It copies only data you can show a seat wrote.
-
-1. **List the keys.** For each seat kind, the user-scoped resources and collections it declares without `flowIsolation: true`. Strike the keys a flow that is not a hired seat also declares, and the person's `users` row. Those stay where they are, so the seat starts without them. Copy a struck key only if your own records show a seat wrote it.
-2. **List the people and their organizations.** A hired seat's address is `<escaped org>.<seat id>`, or `<escaped org>.~<escaped user>.<seat id>` for a [seat only one member can reach](/docs/workforce/durable-hire#hiring-a-seat-only-one-member-can-reach). Include seats you have since fired. Their addresses remain in `sessions.flow_id`, so a prefix match lists every address used in an organization. Keep the ones that were hired seats.
-
-   1. Build the escaped organization prefix. Lowercase letters, digits and `-` stay as they are. Every other character becomes `%XX`, the uppercase hex of its UTF-8 bytes, so `acme` stays `acme`, `org_pentest_lab` becomes `org%5Fpentest%5Flab` and `Acme.EU` becomes `%41cme%2E%45%55`. Or let `seatAddress` from `@flow-state-dev/workforce` do it: `seatAddress(orgId, "x")` without the trailing `x` is the prefix, ending in `.`.
-   2. In that prefix, escape the characters `LIKE` treats specially: `\` becomes `\\`, `%` becomes `\%` and `_` becomes `\_`.
-   3. Match with `ESCAPE '\'`, which SQLite and Postgres both accept. For `org_pentest_lab`:
-
-      ```sql
-      SELECT DISTINCT flow_id FROM sessions
-      WHERE flow_id LIKE 'org\%5Fpentest\%5Flab.%' ESCAPE '\';
-      ```
-
-      For `acme` nothing needs escaping: `LIKE 'acme.%' ESCAPE '\'`.
-
-   Then count the organizations each person appears in:
-
-   ```sql
-   SELECT user_id, COUNT(DISTINCT org_id) AS orgs, GROUP_CONCAT(DISTINCT org_id) AS which
-   FROM sessions WHERE flow_id IN (/* your hired seat addresses */)
-   GROUP BY user_id;
-   ```
-
-   On Postgres, use `string_agg(DISTINCT org_id, ',')` in place of `GROUP_CONCAT`.
-
-3. **List the rows.** A collection is declared as a pattern such as `notes/*`, but its rows are stored under concrete keys such as `notes/a`. Read the raw rows, not the server's reads, so deletion markers and content-only rows show up. SQLite, for Alice:
-
-   ```sql
-   SELECT resource_key FROM resource_state
-   WHERE scope_type = 'user' AND scope_id = 'alice'
-     AND (resource_key IN (/* single keys */) OR resource_key LIKE 'notes/%')
-   UNION
-   SELECT resource_key FROM resource_content
-   WHERE scope_type = 'user' AND scope_id = 'alice'
-     AND (resource_key IN (/* single keys */) OR resource_key LIKE 'notes/%');
-   ```
-
-4. **Check the destination.** Run the same query with `scope_id = 'alice:~org:acme'`. A seat that ran after the upgrade may already have written there. If any key from step 3 is there, stop for that person, write the keys down, and resolve them by hand. Do not overwrite, and do not merge.
-5. **Copy, for people with one organization and an empty destination.** In one transaction:
-
-   ```sql
-   INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
-   SELECT scope_type, 'alice:~org:acme', resource_key, state, version, lifecycle
-   FROM resource_state
-   WHERE scope_type = 'user' AND scope_id = 'alice' AND resource_key IN (/* step 3 */);
-   ```
-
-   Do the same for `resource_content`, keeping the content as it is. State and content for one key move together, deletion markers included.
-
-   A copied schedule is not in the schedule index yet. Write it once from the seat, for example by re-saving it, so its index row is created under the seat's cell. The original schedule and its index row stay where they were, like every other original.
-6. **Leave everything else.** A person with seats in two or more organizations has one mixed copy of their seats' data. Copying it into either organization would hand that organization what the other one's seats saved, so it stays where it is, and those seats start empty. Note each such person, and each key you struck in step 1, in your record of the upgrade.
-
-Ids containing `:` or `\` are escaped in the new key the same way as in the other keys on this page. The original rows stay. Remove them only for keys no other flow declares, and only after you have read the copies back through a seat.
 
 ## Tenant isolation
 

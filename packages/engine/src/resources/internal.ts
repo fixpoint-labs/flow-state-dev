@@ -12,9 +12,9 @@
  * `unstable_` prefix — they are deliberately not part of the long-term
  * public API surface.
  */
+import { isValidOrgId } from "@flow-state-dev/core";
 import { requireAttributedOrg } from "../context/org-attribution";
 import type {
-  InstanceOwnerPin,
   ProjectedResourceCollectionConfig,
   ProjectedResourceContext,
   JsonObject,
@@ -68,13 +68,8 @@ export type ResourceFlowLike = {
  * decides which copy's data it is about — the type is what stops that, rather
  * than a comment asking callers to remember. Every caller already resolves the
  * owner through `resolveOwnerFlow` / `resolveRecordOwner` before reading.
- *
- * `ownerPin` is the registered instance's pin, present on an owner-pinned
- * instance (FIX-1538). A user-scoped read keys the instance's shared data by
- * it, so the resolved instance — which carries it — is what a caller must
- * pass, not a copy that drops it.
  */
-export type ResourceOwnerFlow = ResourceFlowLike & { id: string; ownerPin?: InstanceOwnerPin };
+export type ResourceOwnerFlow = ResourceFlowLike & { id: string };
 
 /** Context required for persisted-data lookups (mirrors what the route handlers carry). */
 export type ResourcePersistenceContext = {
@@ -228,16 +223,21 @@ export async function getPersistedData(
   }
 
   if (scope === "user") {
-    // FIX-735: read resources by per-resource isolation bucket (bare `{userId}`
-    // when shared, `{userId}:{flow.id}` when isolated — the resolved owning
-    // instance, FIX-1323), keyed off the identity id, not the scope record.
-    // An owner-pinned instance's shared bucket is its (org, person) cell,
-    // keyed by the pin the owning instance carries (FIX-1538) — the same cell
-    // its runs wrote, and never the person's cross-org cell.
+    // FIX-735: read resources by per-resource isolation bucket (the user's
+    // cell when shared, plus the resolved owning instance when isolated,
+    // FIX-1323), keyed off the identity, not the scope record. The cell is
+    // the user's in the session's stored org (FIX-1790) — the cell its runs
+    // wrote. A session with no org reads no user data: there is no cell to
+    // name, and the cross-org one is never the answer.
     // Read every bucket the flow declares and merge; the snapshot/clientData
-    // builders filter to declared configs, so other flows' shared rows under
-    // the bare key never surface.
-    const scopeIds = resourceScopeIds(session.userId, toIsolationFlow(flow), "user");
+    // builders filter to declared configs, so other flows' shared rows in the
+    // cell never surface.
+    if (!isValidOrgId(session.orgId)) return undefined;
+    const scopeIds = resourceScopeIds(
+      { userId: session.userId, orgId: session.orgId },
+      toIsolationFlow(flow),
+      "user"
+    );
     const [resources, content] = await Promise.all([
       mergeScopeReads(
         scopeIds.map((id) => ctx.stores.resourceState.getAll("user", id).then(toBareStates))
@@ -249,7 +249,11 @@ export async function getPersistedData(
 
   // org
   if (!session.orgId) return undefined;
-  const scopeIds = resourceScopeIds(session.orgId, toIsolationFlow(flow), "org");
+  const scopeIds = resourceScopeIds(
+    { userId: session.userId, orgId: session.orgId },
+    toIsolationFlow(flow),
+    "org"
+  );
   const [resources, content] = await Promise.all([
     mergeScopeReads(
       scopeIds.map((id) => ctx.stores.resourceState.getAll("org", id).then(toBareStates))

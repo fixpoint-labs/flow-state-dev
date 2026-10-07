@@ -54,7 +54,7 @@ function board(): TaskCollectionRef {
   });
 }
 
-const as = (userId: string) => ({ user: { identity: { id: userId } } }) as unknown as BlockContext;
+const as = (userId: string) => ({ user: { identity: { id: `${userId}:~org:acme`, userId } } }) as unknown as BlockContext;
 
 async function ownedBy(tasks: TaskCollectionRef, id: string, userId: string) {
   await tasks.addTask({ id, goal: id });
