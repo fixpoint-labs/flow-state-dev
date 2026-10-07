@@ -56,6 +56,12 @@ export {
 } from "./collection";
 
 export {
+  partitionedSkillsCollection,
+  resolveSkillsCollection,
+  type SkillsPartitionFn,
+} from "./partition";
+
+export {
   parseSkillMd,
   serializeSkillMd,
   substitute,

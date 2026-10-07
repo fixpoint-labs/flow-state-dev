@@ -19,6 +19,7 @@
 import { defineResourceCollection } from "@flow-state-dev/core";
 import type { ResourceScope } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { SKILLS_PARTITION_KEY, type SkillsPartitionFn } from "./partition";
 
 /** The Zod schema for a SKILL.md resource's state.
  *
@@ -82,6 +83,14 @@ export interface DefineSkillsCollectionOptions {
    * not lost (BP-030).
    */
   flowIsolation?: boolean;
+  /**
+   * Keep one catalog per partition, named per run by a function of the running
+   * context: one per party that runs through one registered copy of the
+   * declaring flow. See `partition.ts` for the key layout. The value must come
+   * from data only the server writes; `undefined` reads the collection
+   * unpartitioned.
+   */
+  partitionBy?: SkillsPartitionFn;
 }
 
 /**
@@ -107,6 +116,11 @@ export function defineSkillsCollection(
     // here would override a flow that isolates its org state wholesale.
     ...(options.flowIsolation !== undefined
       ? { flowIsolation: options.flowIsolation }
+      : {}),
+    // Carried on the definition, so every reader that resolves the collection
+    // through `resolveSkillsCollection` reaches only its run's partition.
+    ...(options.partitionBy !== undefined
+      ? { [SKILLS_PARTITION_KEY]: options.partitionBy }
       : {}),
     client: {
       // Skills are user-modifiable by design — expose CRUD to the client.
