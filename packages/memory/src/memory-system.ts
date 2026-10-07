@@ -73,10 +73,25 @@ import type { RetrievalStrategy } from './tools/types'
 // Memory system tracking resource
 // ---------------------------------------------------------------------------
 
+/** One session message capture with an evaluator has judged: its item id and timestamp. */
+const readMessageSchema = z.object({ id: z.string(), ts: z.number() })
+
+/** A judged session message, as `readMessages` keeps it. */
+export type ReadMessage = z.infer<typeof readMessageSchema>
+
 /** Schema for the memory system tracking state. */
 export const memorySystemStateSchema = z.object({
   /** Index of the last processed session item. */
   lastProcessedIndex: z.number().default(-1),
+  /**
+   * With an evaluator: the session messages a capture has judged, by item id
+   * and timestamp. Capture with an evaluator reads a message only while it is
+   * missing here, so a capture marks read exactly what it judged, however
+   * overlapping turns land in the log. `null` until such a capture marks
+   * something, and after one without an evaluator: the watermark then says
+   * what is read.
+   */
+  readMessages: z.array(readMessageSchema).nullable().default(null),
   /** Episodic writes since the last consolidation check. */
   episodicWritesSinceLastConsolidation: z.number().default(0),
   /** Persistent/permanent entries evicted since the last consolidation. */
@@ -97,6 +112,7 @@ export const memorySystemResource = defineResource({
   stateSchema: memorySystemStateSchema,
   default: {
     lastProcessedIndex: -1,
+    readMessages: null,
     episodicWritesSinceLastConsolidation: 0,
     evictedPersistentSinceLastConsolidation: 0,
     lastConsolidationTurn: 0,

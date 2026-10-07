@@ -194,6 +194,7 @@ describe('memory/memorySystem', () => {
       expect(memorySystemResource.writable).toBe(true)
       expect(memorySystemResource.default).toEqual({
         lastProcessedIndex: -1,
+        readMessages: null,
         episodicWritesSinceLastConsolidation: 0,
         evictedPersistentSinceLastConsolidation: 0,
         lastConsolidationTurn: 0,

@@ -15,9 +15,12 @@
  *   memory is written as without an evaluator;
  * - an evaluator error fails the capture and never falls back to the
  *   observer; the turn stays unread for the next capture;
+ * - a capture marks read exactly the messages it judged, even when turns
+ *   overlap and land in the log among each other's items (a positional
+ *   watermark there marks a failed turn read, or re-reads a skipped one);
  * - memory reads the choice only, never the confidence.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { boolean, choice, defineFlow, evaluator, handler, sequencer } from '@flow-state-dev/core'
 import type { EvaluationModel } from '@flow-state-dev/core'
@@ -73,6 +76,66 @@ function scriptedModel(steps: Array<{ choice: Answer; confidence?: number } | Er
   return model as unknown as EvaluationModel & { calls: Array<{ state: unknown }> }
 }
 
+/**
+ * An evaluation model for overlapping captures, keyed on the text each call
+ * judges. The first call that judges `hold` waits until `release()` (`held`
+ * resolves once it is waiting); the first call that judges `fail` then throws;
+ * a call that judges `skip` answers skip; every other call answers remember.
+ * `calls` holds each judged window as text.
+ */
+function racingModel(script: { hold: string; fail: string; skip: string }) {
+  let signalHeld!: () => void
+  const held = new Promise<void>((resolve) => { signalHeld = resolve })
+  let release!: () => void
+  const released = new Promise<void>((resolve) => { release = resolve })
+  const calls: string[] = []
+  let holding = false
+  let failed = false
+  const model = {
+    specificationVersion: 'v4',
+    provider: 'mock.evaluation',
+    modelId: 'racing',
+    supportedQuestionTypes: ['choice', 'score', 'boolean'],
+    async doEvaluate(call: { state: unknown }) {
+      const state = String(call.state)
+      calls.push(state)
+      if (!holding && state.includes(script.hold)) {
+        holding = true
+        signalHeld()
+        await released
+      }
+      if (!failed && state.includes(script.fail)) {
+        failed = true
+        throw new Error('evaluation model unavailable')
+      }
+      const choice: Answer = state.includes(script.skip) ? 'skip' : 'remember'
+      return mockEvaluationModel({ answers: { capture: { type: 'choice', choice } } }).doEvaluate(call as never)
+    },
+  }
+  return Object.assign(model as unknown as EvaluationModel, { calls, held, release })
+}
+
+/**
+ * A point a mocked model call waits at: `reached` resolves once a call has
+ * arrived, and `open()` lets it, and every later call, through.
+ */
+function callGate() {
+  let reach!: () => void
+  let open!: () => void
+  const reached = new Promise<void>((resolve) => { reach = resolve })
+  const opened = new Promise<void>((resolve) => { open = resolve })
+  return {
+    reached,
+    open,
+    async pass() {
+      reach()
+      await opened
+    },
+  }
+}
+
+type TestStores = Awaited<ReturnType<typeof createTestContext>>['stores']
+
 type Overrides = Partial<Pick<MemorySystemConfig, 'evaluator' | 'source'>>
 
 /**
@@ -81,9 +144,14 @@ type Overrides = Partial<Pick<MemorySystemConfig, 'evaluator' | 'source'>>
  * fails itself and not the user's turn, and the turn's messages stay in the
  * session log. `say` records the text as the user's message first; `poll`
  * captures with no new message and an empty input, so there is nothing new
- * to read.
+ * to read. Pass another harness's `shared` stores to capture the same session
+ * under a different memory configuration, as an app does when it changes one,
+ * and `historyTurns` to set the flow's history window.
  */
-async function harness(overrides: Overrides = {}) {
+async function harness(
+  overrides: Overrides = {},
+  { shared, historyTurns }: { shared?: TestStores; historyTurns?: number } = {},
+) {
   const mem = system({
     model: 'openai/gpt-5.4-mini',
     working: true,
@@ -112,8 +180,9 @@ async function harness(overrides: Overrides = {}) {
       whisper: { block: hiddenTurn, inputSchema: z.string() },
     },
     resources: { ...mem.sessionResources, ...mem.userResources },
+    ...(historyTurns === undefined ? {} : { session: { historyWindow: { turns: historyTurns } } }),
   } as any)()
-  const { stores } = await createTestContext()
+  const stores = shared ?? (await createTestContext()).stores
   const observer = mockGenerator({
     name: 'memory/observe',
     script: [{ when: () => true, then: { structuredOutput: OBSERVED } }],
@@ -137,6 +206,7 @@ async function harness(overrides: Overrides = {}) {
 
   return {
     observer,
+    shared: stores,
     say: (text: string) => run('say', text),
     poll: () => run('poll', ''),
     whisper: (text: string) => run('whisper', text),
@@ -149,6 +219,7 @@ async function harness(overrides: Overrides = {}) {
         entries: working?.entries ?? [],
         currentTurn: working?.currentTurn ?? 0,
         watermark: system?.lastProcessedIndex ?? -1,
+        readMessages: system?.readMessages ?? null,
         episodes: episodic?.episodes ?? [],
         facts: semantic?.facts ?? [],
       }
@@ -230,6 +301,101 @@ describe('capture with an evaluator', () => {
     expect(polled.status).toBe('completed')
     expect(model.calls).toHaveLength(1)
     expect(h.observer.calls).toHaveLength(0)
+  })
+
+  it('a skip never drops the mark of a turn that finished while it was judging', async () => {
+    // Turns A and C overlap and both are judged "skip"; A marks read first. C
+    // loaded the session's history before A finished, so A is not in C's view
+    // of the session. C's mark keeps A's: the next capture reads only turn D.
+    // Each turn gets its own millisecond, so A's message is older than all of
+    // C's items.
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_700_000_000_000 })
+    try {
+      const gateA = callGate()
+      const gateC = callGate()
+      const calls: string[] = []
+      const model = {
+        specificationVersion: 'v4',
+        provider: 'mock.evaluation',
+        modelId: 'gated',
+        supportedQuestionTypes: ['choice', 'score', 'boolean'],
+        async doEvaluate(call: { state: unknown }) {
+          const state = String(call.state)
+          calls.push(state)
+          if (state.includes('turn A')) await gateA.pass()
+          if (state.includes('turn C')) await gateC.pass()
+          const choice: Answer = state.includes('turn D') ? 'remember' : 'skip'
+          return mockEvaluationModel({ answers: { capture: { type: 'choice', choice } } }).doEvaluate(call as never)
+        },
+      } as unknown as EvaluationModel
+      const h = await harness({ evaluator: captureEvaluator(model) })
+
+      const first = h.say('small talk, turn A')
+      await gateA.reached
+      vi.setSystemTime(Date.now() + 1000)
+      const second = h.say('more small talk, turn C')
+      await gateC.reached
+      gateA.open()
+      expect(captureError((await first).items)).toBeUndefined()
+      gateC.open()
+      expect(captureError((await second).items)).toBeUndefined()
+
+      vi.setSystemTime(Date.now() + 1000)
+      await h.say('I work at Acme, turn D')
+      const lastJudged = calls[calls.length - 1]!
+      expect(lastJudged).toContain('turn D')
+      expect(lastJudged).not.toContain('turn A')
+      expect(lastJudged).not.toContain('turn C')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('an app that adds, drops and re-adds its evaluator reads each message once', async () => {
+    // A session captured before the app had an evaluator holds only the
+    // watermark, and the first capture with one reads past it. Dropping the
+    // evaluator hands the session back to the watermark, and adding it again
+    // picks up from there.
+    const without = await harness()
+    const model = scriptedModel([{ choice: 'remember' }])
+    const withEvaluator = await harness({ evaluator: captureEvaluator(model) }, { shared: without.shared })
+
+    await without.say('My name is Joe, turn A')
+    await withEvaluator.say('I work at Acme, turn B')
+    await withEvaluator.say('I live in Leeds, turn C')
+    expect(model.calls.map((call) => String(call.state))).toEqual([
+      expect.stringMatching(/^(?!.*turn A).*turn B/s),
+      expect.stringMatching(/^(?!.*turn [AB]).*turn C/s),
+    ])
+
+    await without.say('I like tea, turn D')
+    expect(observerInput(without.observer, 1)).toContain('turn D')
+    expect(observerInput(without.observer, 1)).not.toContain('turn C')
+
+    await withEvaluator.say('I cycle to work, turn E')
+    expect(model.calls[2]!.state).toContain('turn E')
+    expect(model.calls[2]!.state).not.toContain('turn D')
+  })
+
+  it('keeps a judged message only while the session history still holds it', async () => {
+    // Capture reads only the history a turn loads, so what it has judged needs
+    // keeping no longer than that; without the bound, the record would grow
+    // by every message the session ever had. Each turn gets its own
+    // millisecond, so the oldest turn is unambiguous.
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_700_000_000_000 })
+    try {
+      const model = scriptedModel([{ choice: 'skip' }])
+      const h = await harness({ evaluator: captureEvaluator(model) }, { historyTurns: 2 })
+      for (const turn of ['A', 'B', 'C', 'D']) {
+        vi.setSystemTime(Date.now() + 1000)
+        await h.say(`small talk, turn ${turn}`)
+      }
+      // Turn D's capture loads turns B and C: turn A is no longer reachable.
+      expect(model.calls).toHaveLength(4)
+      expect((await h.stores()).readMessages).toHaveLength(3)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('skip is final: the next turn\'s evaluator and observer read only the new message', async () => {
@@ -387,44 +553,55 @@ describe('capture with an evaluator', () => {
     // answer arrives late; meanwhile the second fails at the evaluator. The
     // skip may mark read only what it judged, so the failed turn stays unread
     // and the next capture's evaluator sees it again.
-    let started!: () => void
-    const firstStarted = new Promise<void>((resolve) => { started = resolve })
-    let release!: () => void
-    const released = new Promise<void>((resolve) => { release = resolve })
-    const calls: string[] = []
-    const model = {
-      specificationVersion: 'v4',
-      provider: 'mock.evaluation',
-      modelId: 'racing',
-      supportedQuestionTypes: ['choice', 'score', 'boolean'],
-      async doEvaluate(call: { state: unknown }) {
-        const state = String(call.state)
-        calls.push(state)
-        if (state.includes('turn B')) {
-          started()
-          await released
-          return mockEvaluationModel({ answers: { capture: { type: 'choice', choice: 'skip' } } }).doEvaluate(call as never)
-        }
-        if (state.includes('turn C') && calls.filter((c) => c.includes('turn C')).length === 1) {
-          throw new Error('evaluation model unavailable')
-        }
-        return mockEvaluationModel({ answers: { capture: { type: 'choice', choice: 'remember' } } }).doEvaluate(call as never)
-      },
-    } as unknown as EvaluationModel
+    //
+    // The clock is held still, as on a runner fast enough to put both turns in
+    // one millisecond: the session then lists turn C's message among turn B's
+    // items rather than after them, so a cursor taken from B's own position
+    // in the log would cover it.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const model = racingModel({ hold: 'turn B', fail: 'turn C', skip: 'turn B' })
+      const h = await harness({ evaluator: captureEvaluator(model) })
+
+      const first = h.say('small talk, turn B')
+      await model.held
+      const second = await h.say('My name is Joe, turn C')
+      expect(captureError(second.items)?.message).toContain('evaluation model unavailable')
+      model.release()
+      expect(captureError((await first).items)).toBeUndefined()
+
+      const third = await h.say('I work at Acme, turn D')
+      expect(captureError(third.items)).toBeUndefined()
+      const lastJudged = model.calls[model.calls.length - 1]!
+      expect(lastJudged).toContain('turn D')
+      expect(lastJudged).toContain('turn C')
+      expect(lastJudged).not.toContain('turn B')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a skip never marks read a turn that was still running when it judged', async () => {
+    // Turn B starts first and its evaluator call hangs. Turn C starts, is
+    // judged "skip" and finishes; it never saw turn B, which had not finished.
+    // Turn B's call then fails, so B stays unread for the next capture, and C,
+    // which it did judge, stays read.
+    const model = racingModel({ hold: 'turn B', fail: 'turn B', skip: 'turn C' })
     const h = await harness({ evaluator: captureEvaluator(model) })
 
-    const first = h.say('small talk, turn B')
-    await firstStarted
-    const second = await h.say('My name is Joe, turn C')
-    expect(captureError(second.items)?.message).toContain('evaluation model unavailable')
-    release()
-    expect(captureError((await first).items)).toBeUndefined()
+    const running = h.say('My name is Joe, turn B')
+    await model.held
+    const skipped = await h.say('small talk, turn C')
+    expect(captureError(skipped.items)).toBeUndefined()
+    model.release()
+    expect(captureError((await running).items)?.message).toContain('evaluation model unavailable')
 
-    const third = await h.say('I work at Acme, turn D')
-    expect(captureError(third.items)).toBeUndefined()
-    const lastJudged = calls[calls.length - 1]!
+    const next = await h.say('I work at Acme, turn D')
+    expect(captureError(next.items)).toBeUndefined()
+    const lastJudged = model.calls[model.calls.length - 1]!
     expect(lastJudged).toContain('turn D')
-    expect(lastJudged).toContain('turn C')
+    expect(lastJudged).toContain('turn B')
+    expect(lastJudged).not.toContain('turn C')
   })
 
   it('refuses, when built, a block of another kind in the evaluator slot', () => {
