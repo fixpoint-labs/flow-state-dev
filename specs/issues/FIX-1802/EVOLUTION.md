@@ -15,3 +15,17 @@ The epic's D8 is this issue's charter, not a predecessor. FIX-1789's, FIX-1791's
 merged specs each carry a matching post-merge note in their EVOLUTION.md, amended on this PR. Before
 implementation, compare these intents with `main`: none of FIX-1788, FIX-1791 or FIX-1794 has
 shipped as this is written.
+
+<a name="amendment-cross-spec"></a>
+## Amended after merge (cross-spec alignment, 2026-10-07)
+
+**The alignment.** Reading the epic's merged child specs against each other found places where
+siblings read two ways. Each was an engineering call, made under decisions already taken, and
+recorded in the epic's [How it got here](../../epics/FIX-1786/DECISIONS.md#how-it-got-here). This
+spec changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| S2, BR-1, BR-2, BR-5, the sketch, D1's *Locks in* and *decided, not asked*: the grant read from the file's `delegates:` | **Amended**: read per call from the session's current delegates, the list the assignee check reads | Delegates change per conversation (FIX-1791), and the roster is read per call (FIX-1794 T1); D1's own reason, one list with nothing beside it to disagree | No flag; the file's list is where each session starts |
+| S3 and the failure taxonomy: nothing refused at load | **Amended**: FIX-1791 BR-11's refusal reaches every standard worker with `delegates:` (new BR-10a), and delegate state is server-only on every flow that carries it | FIX-1791 BR-11 and epic ER-6 refuse a standard coordinator naming a non-standard delegate | Nothing about the grant refuses a file |
+| BR-6: a delegate list on a session create is ignored, or refused | **Amended**: refused with a 400 naming the field | FIX-1791 BR-8 and FIX-1797's sweep require it | Action and tool input as FIX-1794 BR-8 |

@@ -55,3 +55,18 @@ conversations are dropped, not moved. The sweep PR removes:
 | DOCS, "Upgrading: hired workers become worker rows" on the persistence page | **Removed** | No upgrade page (ER-31) | — |
 | SPEC, the goal's last sentence, the upgrade row, leg c and the sign-off's "every old hire" | **Amended** | They described the step | The before-and-after row now says old hires are dropped |
 
+<a name="amendment-cross-spec"></a>
+## Amended after merge (cross-spec alignment, 2026-10-07)
+
+**The alignment.** Reading the epic's merged child specs against each other found places where
+siblings read two ways. Each was an engineering call, made under decisions already taken, and
+recorded in the epic's [How it got here](../../epics/FIX-1786/DECISIONS.md#how-it-got-here). This
+spec changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| BR-8 and S9: a turn names the collections it wrote | **Amended**: the view reloads after the turn, and no tool name is treated specially | FIX-1761 left no durable record of what a request wrote (`503c9790e`); epic ER-19 now says so | BR-8's ID |
+| S7: the skills library takes its key per run | **Amended**: a function the composing layer supplies, naming no worker; counted as epic D3's sixth mechanism change | Orchestration is Layer 1 (epic D6, D7), so the change needed the epic's count | S7's scope; the stop rule if it needs `core` or `engine` |
+| The guardrail "no Layer 1 change beyond S1" | **Amended**: S1 and S7's per-run key, with orchestration named as Layer 1 | Follows from S7 | — |
+| BR-22a's BP-030 citation | **Amended**: the rule gives its own reason | Epic D9: BP-030 doesn't apply to this epic | The rule: the row is untouched |
+| DOCS, "After a hire, refresh the roster" | **Amended** | Follows from BR-8 | — |

@@ -30,7 +30,7 @@ the list the installation keeps ([Q1](DECISIONS.md#q1)), and for org scope as sh
 | BR-12 | A worker names a flow that isn't registered | Refused, naming it and listing the registered ones, in today's wording | Existing suite |
 | BR-13 | A worker names no flow | It is an `agent` worker. Standard-only is checked after this default | CI |
 | BR-14 | A user's own worker names a standard-only flow, directly or through the default | Refused, naming the flow and saying it is kept for standard workers. A standard worker on it runs | CI · goal leg c |
-| BR-15 | A stored worker of a user's own names a flow that has since become standard-only | Not run at boot, reported as refused with that sentence, and left as it is on disk (BP-030) | CI |
+| BR-15 | A stored worker of a user's own names a flow that has since become standard-only | Not run at boot, reported as refused with that sentence, and left as it is on disk: a flag flip must not lose a user's worker | CI |
 | BR-16 | The installation replaces `agent` with its own flow | The replacement passes the same checks. The installation's standard-only flag on `agent` stays as the installation wrote it | CI |
 
 ## A worker's own state

@@ -135,7 +135,7 @@ No counted fact carries the design, so no checker.
 - Take FIX-1788's shipped names for S1 and the link. If FIX-1789's door can carry a delegated
   post and its answer, use it in S9 instead of a second entry.
 - No org-scoped mailbox or room path landed from FIX-1779 (canceled); rooms are FIX-1793's.
-- Old-term exports left for FIX-1796: `defineMailboxFlow`, `mailboxFlow`, `MAILBOX_KIND`,
+- Old-term exports left for FIX-1792's removals (its S9), not FIX-1796: `defineMailboxFlow`, `mailboxFlow`, `MAILBOX_KIND`,
   `routeByPurpose`, `wakeMemberSeats`, `MAILBOX_ROUTE_COMPONENT`, `MAILBOX_ROUTE_EVALUATOR`,
   `mailboxPostCapability`, `MailboxNotifyInput`.
 

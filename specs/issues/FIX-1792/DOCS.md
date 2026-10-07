@@ -75,8 +75,8 @@ among them; the loader section names `WORKER.md` as the only declaration. `packa
 `packages/harness-manager/README.md`, `packages/react/README.md`: the mailbox examples follow the
 pages above. `packages/shift-manager/README.md`: the DevTeam's coordinators and its two Storefront
 workstreams, led by the EM. `apps/kitchen-sink/README.md`: the help desk's coordinator, and the
-escalation feature's sections removed. A `minor` changeset for `@flow-state-dev/workforce` names the
-removed exports.
+escalation feature's sections removed. No changeset: one would only name the removed exports,
+and there is no consumer to upgrade (epic D9).
 
 ## Publication ownership
 

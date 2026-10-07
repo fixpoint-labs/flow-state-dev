@@ -10,7 +10,7 @@ the shipped names and refusals, and with Q1 and Q2's answers (marked), before pu
 
 | Shipped names | |
 |---|---|
-| **Pinned** ([PLAN.md](PLAN.md#pinned-names--the-only-three)) | `workforce/library/*` · `fromTemplate: { templateId, version, digest }` · `version` · FIX-1788's `createWorkforceClient`, `ensureWorkerSession`, `findWorkerSession` |
+| **Pinned** ([PLAN.md](PLAN.md#pinned-names--the-only-three)) | `workforce/library/[owner]/[template]` · `fromTemplate: { templateId, version, digest }` · `version` · FIX-1788's `createWorkforceClient`, `ensureWorkerSession`, `findWorkerSession` |
 | **Drafts**, reconciled with the shipped code before publishing | `library` on the hire blocks and its `publish`, `add`, `takeUpdate`, `remove`, `list` · the action names · the hire-block factory's name (`createWorkerHireBlocks`, FIX-1788's draft) |
 
 Voice watch for this page: no em-dash as a connector, no "seamless" or "powerful", introduce
@@ -113,8 +113,8 @@ sentence about the library.
 > })
 > ```
 >
-> A turn that publishes, adds, takes an update or removes names the collection it wrote, the
-> library or the roster, so a view that listens for written collections reloads it.
+> A turn that publishes, adds, takes an update or removes changes the library or the roster.
+> Read both again after each turn; you don't need to watch for a tool's name.
 >
 > A worker added from the library is a worker like any other. Talk to it with
 > `createWorkforceClient({ userId, baseUrl }).ensureWorkerSession({ worker: "release-notes" })`.
@@ -134,7 +134,7 @@ memory drawn staying behind.
 > ### The worker library
 >
 > The hire blocks also return `library`: `publish`, `add`, `takeUpdate`, `remove` and `list`
-> blocks over your org's library at `workforce/library/*`. A template is a worker's
+> blocks over your org's library at `workforce/library/<owner>/<template>`. A template is a worker's
 > configuration only, and a new version keeps its flow. Adding one is a hire, through the same
 > checks. A copy never changes unless its owner takes an update. Only a template's publisher
 > changes or removes it. See

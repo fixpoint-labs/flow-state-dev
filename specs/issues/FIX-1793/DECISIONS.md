@@ -198,5 +198,9 @@ their READMEs.
   shared (BR-5), room rows aren't kept for an operator (BR-30), and nothing refuses room calls,
   `mintFor:` or `talk` by name (BR-29, BR-31). Leg d, V7 and the deprecation markers went with
   them. Claims stay until FIX-1792, as build order ([EVOLUTION.md](EVOLUTION.md#amendment-d9)).
+- **Amended after merge (cross-spec alignment, 2026-10-07)** — reading the epic's child specs
+  against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): P3 waits on
+  FIX-1794's P2 and FIX-1802's P1, and carries V6's walk-up leg.
+  ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
 
 **Open: none.**

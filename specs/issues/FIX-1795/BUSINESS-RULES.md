@@ -17,7 +17,7 @@ The cases, written as rules. Alice and Bob are users of org acme; Carol is in or
 | BR-5 | Alice's worker no longer passes the checks a save runs (its flow gone or kept for standard workers, its configuration refused) | Refused with that check's reason. Nothing written | CI |
 | BR-6 | Alice and Bob each publish a template called `researcher` | Two templates, two ids from the server. The listing shows who published each | CI |
 | BR-7 | Bob publishes his copy of Alice's template | A new template of Bob's. Alice's is unchanged | CI |
-| BR-8 | A publish finishes a turn | The turn names the library as a collection it wrote, so a view reloads it. No tool name is special-cased ([ER-19](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)) | CI |
+| BR-8 | A publish finishes a turn | The view reloads after the turn (the existing floor), and no tool name is treated specially ([ER-19](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)) | CI |
 
 ## The library
 
@@ -31,7 +31,7 @@ The cases, written as rules. Alice and Bob are users of org acme; Carol is in or
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-12 | Bob adds Alice's template | A new worker of Bob's from the template's configuration, through [FIX-1788](../FIX-1788/BUSINESS-RULES.md#holding-a-worker)'s hire write and its save check. Its id is the one Bob gives, or the template's name. It records the template and version it came from, and a digest of the configuration as saved. The turn names the roster as written | CI · VG leg a |
+| BR-12 | Bob adds Alice's template | A new worker of Bob's from the template's configuration, through [FIX-1788](../FIX-1788/BUSINESS-RULES.md#holding-a-worker)'s hire write and its save check. Its id is the one Bob gives, or the template's name. It records the template and version it came from, and a digest of the configuration as saved. The view reloads after the turn (BR-8) | CI · VG leg a |
 | BR-13 | Bob's copy runs | As Bob, in sessions he finds or starts with `ensureWorkerSession`, linked to it at create (FIX-1788 BR-10), with his own memory. It reads nothing of Alice's | CI · VG leg a |
 | BR-14 | Bob adds the same template twice | Two workers. The second needs an id not on his roster; a taken id is refused, naming it (FIX-1788 BR-4) | CI |
 | BR-15 | The template's flow is no longer registered, is kept for standard workers ([FIX-1789](../FIX-1789/BUSINESS-RULES.md#naming-a-flow) BR-14), or the flow refuses its configuration | Refused at add, naming the template and the reason. Nothing written | CI · VG leg c |
@@ -62,7 +62,7 @@ The cases, written as rules. Alice and Bob are users of org acme; Carol is in or
 | BR-27 | Bob changes or removes Alice's template, by any path | Refused by that rule (Q1). Who a template names is never what decides ([ER-11](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) | CI · VG leg c |
 | BR-28 | Alice removes her template | It leaves the library. Every copy keeps running, and its mark clears. A copy's record still names where it came from | CI |
 | BR-29 | Alice no longer belongs to acme | Her templates stay. Nobody can change or remove them, short of an operator working on the store (Q1's price) | CI |
-| BR-30 | A change or removal finishes a turn | The turn names the library as written | CI |
+| BR-30 | A change or removal finishes a turn | The view reloads after the turn (the existing floor), and no tool name is treated specially | CI |
 
 ## Failure taxonomy
 

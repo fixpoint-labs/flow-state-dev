@@ -160,5 +160,9 @@ It comes down to new machinery: a mark is one field, a message is a coordinator 
   dropped, since the library is new.
 - **Amendment 1, the gate's answers** — Jake took every recommendation on 2026-10-06: D1 signed,
   Q1 decided as only the publisher, Q2 as a mark on the roster with an edit-aware warning.
+- **Amended after merge (cross-spec alignment, 2026-10-07)** — reading the epic's child specs
+  against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): the library is
+  keyed `workforce/library/[owner]/[template]` with `ownerWrites: { param: "owner" }`; BR-8, BR-12
+  and BR-30 reload the view after the turn; the copy record stands without BP-030.
 
 **Open:** none.

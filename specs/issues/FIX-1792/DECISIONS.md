@@ -116,7 +116,7 @@ on.
   refuses a write that still carries it. The chief of staff loses `post-to-mailbox` and
   `setWorkstreams`.
 - **The DevTeam's `feature` and `release` files become workstreams, not coordinators.**
-  Storefront's seed opens both as the lab's member, each led by the EM, and lists them as entries,
+  Storefront's seed opens both as the lab's second user (`LAB_USERS.member`), each led by the EM, and lists them as entries,
   not as the project's `workstreams` (S10). `triage` and `oncall` are coordinators no project lists,
   as today.
 - **Desks are lab code** (`answersFor:` is read only by lab flows). A converted lab files for the
@@ -206,5 +206,10 @@ on.
   worker has the task tools when one of its delegates can take a task, and the tools are
   orchestration's existing eight, `createTaskToolsCapability(resolver, roster)` and
   `taskToolActions(<board id>, resolver, roster)`.
+- **Amended after merge (cross-spec alignment, 2026-10-07)** — reading the epic's child specs
+  against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): the seed opens
+  Storefront's workstreams as `LAB_USERS.member`, and the closure doesn't rely on them; the sketch
+  reads the session's delegates per call; no changeset; S9's `mailboxes` removal is counted by the
+  epic's D3. ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
 
 **Open: none.**

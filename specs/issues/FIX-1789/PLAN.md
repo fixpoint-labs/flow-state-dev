@@ -73,7 +73,7 @@ Everything else is yours to name, in worker terms: worker flow, never kind or se
 | The resource schema enforces that `writtenBy` is there; S1 checks that schema is the contract's | A helper can be bypassed; a required field can't be skipped, unless it was declared loose (K2) |
 | The helper's stamp reads the session, never input (BP-031) | Attribution a caller supplies is forgery. Flow code can still write its own (K3): say so, and promise nothing more |
 | Nothing at org scope is refused | Q2: the flow's author knows when org data is relevant |
-| Refused stored rows are reported, never rewritten or deleted (BP-030) | A flag flip must not lose a user's worker |
+| Refused stored rows are reported, never rewritten or deleted | A flag flip must not lose a user's worker |
 | Rename only what this issue changes: `kinds` becomes `workerFlows`; `KindRefusedHireError` and `seatDoorOf` are called as they are | One name per thing (Jake, 2026-10-06). FIX-1796 sweeps the rest with the docs |
 
 ## Docs

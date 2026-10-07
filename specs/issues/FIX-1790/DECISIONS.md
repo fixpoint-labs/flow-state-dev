@@ -74,5 +74,9 @@ written is at [the commit before the sweep](https://github.com/fixpoint-labs/flo
 - **Amended after merge, the D9 sweep (2026-10-07)** — [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) withdrew the copy step: D1 and D2,
   BR-15 to BR-20, leg c and its `fallback-read` control, V4, V7 and the upgrade docs. Old records
   are dropped ([EVOLUTION.md](EVOLUTION.md#amendment-d9)).
+- **Amended after merge (cross-spec alignment, 2026-10-07)** — reading the epic's child specs
+  against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): the PLAN
+  guardrail on org and session keys stands without BP-030.
+  ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
 
 **Open: none.**

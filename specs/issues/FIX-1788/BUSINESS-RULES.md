@@ -18,7 +18,7 @@ work.
 | BR-6 | A hire's configuration names a flow that isn't a registered worker flow, or one kept for standard workers ([FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789) BR-14), or fails the flow's schema | Refused when saved, with the flow's own reason. Nothing written | CI |
 | BR-6a | A hire or fork grants a document or collection its flow doesn't declare | Refused when saved, naming it. Only a standard worker, in files, brings a collection its flow declares for it (the concept's "resources are declared on flows") | CI |
 | BR-7 | Alice fires a worker | Its row is deleted. Its sessions stay readable to her, and a new turn on one is refused, naming the worker as fired. Every process sees it on the next turn | CI · two hosts |
-| BR-8 | A hire, fork or fire finishes a turn | The turn names the worker collection it wrote, so a view reloads it ([FIX-1761](https://linear.app/fixpoint-labs/issue/FIX-1761)). No tool name is special-cased | CI |
+| BR-8 | A hire, fork or fire finishes a turn | The view reloads after the turn (the existing floor, [FIX-1761](https://linear.app/fixpoint-labs/issue/FIX-1761)), and no tool name is treated specially | CI |
 | BR-9 | Alice lists her roster | Her own workers and every standard worker, each marked standard or hers and naming the flow it runs on (`flow`). Nothing of Bob's, nothing from another org | CI · VG |
 
 ## A session's worker
@@ -50,7 +50,7 @@ work.
 | BR-20 | Alice edits her worker | Her next turn on any session linked to it runs the edit. No restart | CI · two hosts |
 | ~~BR-21~~ | A stored configuration from an older version loads | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): nothing reads a configuration stored before this release | — |
 | BR-22 | A configuration names a tool, skill or package the installation no longer registers | That turn is refused, naming it. The row is untouched | CI |
-| BR-22a | A user's own worker names a flow that has since become kept for standard workers | That turn is refused with [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789) BR-15's sentence. The row is untouched (BP-030) | CI |
+| BR-22a | A user's own worker names a flow that has since become kept for standard workers | That turn is refused with [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789) BR-15's sentence. The row is untouched: a flag flip must not lose a user's worker | CI |
 | BR-23 | Two of Alice's workers on `agent` keep private notes | Each reads only its own. Same for every flow-isolated resource on every worker flow | CI · VG leg a |
 | BR-24 | A worker's file grants it one document, read-only | Its model reaches that document and no other, and can't write it, on every turn | CI · the grants goal, rewritten |
 | BR-25 | A worker reaches a resource another of Alice's workers wrote at user scope | Allowed: user scope is Alice's, shared by her workers (the concept's memory table) | CI |

@@ -74,6 +74,7 @@ doesn't change when the template does."
 | REMOVE `mailboxes.md`. No upgrading page: there are no consumers to upgrade ([D9](DECISIONS.md#d9)) | FIX-1792 | Its `DOCS.md` |
 | `projects.md` opening above; the room figures removed; `shift-manager/overview.md`'s Project view | FIX-1793 | Its `DOCS.md` |
 | Giving a task to a worker, down the chain | FIX-1794 | Its `DOCS.md` |
+| CREATE `filing-work.md`: any worker files tasks for its delegates, and splits a task down the chain; the coordinators page's filing paragraph points there | FIX-1802 | Its `DOCS.md` |
 | CREATE `library.md`; the library's lines in the overview opening and its figure | FIX-1795, with its build after the MVP | Its `DOCS.md` and the note above |
 | `glossary.md` → the Workforce section, and assignee, defined once in the task-board section with no seat row ([D7](DECISIONS.md#d7)); `orchestration/task-board.md`'s seat, "Seats that hand off" among it, renamed assignee; every remaining retired term | FIX-1796 | Its `DOCS.md` |
 

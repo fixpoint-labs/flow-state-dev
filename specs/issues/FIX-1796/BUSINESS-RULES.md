@@ -42,7 +42,7 @@ from the last PR on.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-17 | A reader opens the glossary's Workforce section | Each term in the [vocabulary](../../epics/FIX-1786/concept/CONCEPT.md#vocabulary) that has shipped is defined once; template and library wait for FIX-1795 | Review against the vocabulary table |
-| BR-18 | A reader looks up "assignee" | The task-board section defines it once: a named entry in a board's `workers` map, which a task's `assignee` picks and which runs the task inline or hands it off. The glossary has no "seat" row ([D1](DECISIONS.md#d1)) | Review · the guard counts a "seat" left in the glossary |
+| BR-18 | A reader looks up "assignee" | The task-board section defines it once: who a task goes to, an entry in the board's `workers` map or a name the board's assignee check accepts (in Workforce, a delegate), which a task's `assignee` names and which runs the task inline or hands it off. The glossary has no "seat" row ([D1](DECISIONS.md#d1)) | Review · the guard counts a "seat" left in the glossary |
 | BR-19 | Two glossary terms would mean one thing | One goes. Words that still mean two things (a board worker and a worker; Workforce's roster and Shift Manager's Roster screen) are listed together | Review |
 | BR-20 | An entry says what a worker or coordinator keeps | It names only memory its flow really keeps (ER-15) | Review against the flow |
 

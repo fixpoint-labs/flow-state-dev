@@ -30,7 +30,7 @@ least one of its `delegates:` takes a task.
 |---|---|
 | **Instead of** | (a) An explicit `filing: true` in the worker's file, beside its delegates · (b) a second list of the workers this worker may file for |
 | **Because** | One answer to "who works for this worker", and it already says whether the worker files: the delegate list, read the same way for a post and a task, through FIX-1791's one roster check and its four actions. A flag beside it could disagree with it, and so could a second list. A routing coordinator whose delegates only take posts gets no task tools; a worker with no delegates gets none. Nothing is refused at load: a file whose delegates nothing uses has nothing to grant |
-| **Locks in** | A worker can't list task-taking delegates and be barred from filing. A later "no filing" mark would cover that if a case ever appears. `delegates` is a key any worker's file may carry; a flow that routes posts posts to them, and a delegate that takes a task gets filed for. A delegate takes a post or a task, so FIX-1791's check widens to "either". **Cross-spec edit:** FIX-1792's conversions list task-taking delegates on each worker that files (the members that file and the EM); no flag to add |
+| **Locks in** | A worker can't list task-taking delegates and be barred from filing. A later "no filing" mark would cover that if a case ever appears. *Amended after merge (cross-spec alignment):* the list is the session's, read per call, the same one the assignee check reads (FIX-1794 T1): it starts as a copy of the file's `delegates:`, an `addDelegate` mid-conversation grants the tools, and removing the last task-taking delegate takes them away. A standard worker naming a non-standard delegate is refused at load (BR-10a), as FIX-1791's coordinator is. `delegates` is a key any worker's file may carry; a flow that routes posts posts to them, and a delegate that takes a task gets filed for. A delegate takes a post or a task, so FIX-1791's check widens to "either". **Cross-spec edit:** FIX-1792's conversions list task-taking delegates on each worker that files (the members that file and the EM); no flag to add |
 
 ![D1: who files, and for whom. Chosen: a worker files for its delegates that take a task, with no flag. Instead of: an explicit filing flag in the file, or a second list of who it files for. Decides it: one answer to who works for this worker, and whether it files, where a flag or a second list can disagree. The price: FIX-1791's check widens to a delegate that takes posts or tasks. A tie: Bob's worker is refused either way. Locks in: a worker that lists task-taking delegates files, and a later no-filing mark would cover an exception. Flips if a worker must list task-taking delegates and never file](figures/d1-grant.svg)
 
@@ -70,9 +70,11 @@ rises, and the docs state the cost per piece.
 - **The board is the session the worker runs in**: a talk session, a delegate's session (a
   workstream lead's included), or a task session. One board per session, in the partition named
   by that session's incarnation (epic D6). Never another session's board.
-- **The grant is read per run, server-side**, from the session's linked worker's file (FIX-1788),
-  never from input. With none, the model gets no task tools and the resolver gives no board, so
-  the app's actions answer the tools' existing `no_delegation_board`.
+- **The grant is read per call, server-side**, from the session's current delegates, the list
+  the assignee check reads (FIX-1794 T1; *amended after merge*, as merged it read the linked
+  worker's file), never from input. With none that takes a task, the model gets no task tools
+  and the resolver gives no board, so the app's actions answer the tools' existing
+  `no_delegation_board`.
 - **Filing from a delegate's session doesn't hold its answer** (FIX-1794: a post is answered, a
   task is worked). The tasks it filed report to that session.
 - **The split is FIX-1794's S8, as written**: park with a server-written parent binding, and a
@@ -131,5 +133,10 @@ rises, and the docs state the cost per piece.
   tools, not new ones: `createTaskFilingCapability()` and its four names are gone, and FIX-1794's
   amendment wires the existing tools. D2: depth fixed at five; the chain cap 100 by default,
   raised by the app. No backwards support anywhere while there are no consumers.
+- **Amended after merge (cross-spec alignment, 2026-10-07)** — reading the epic's child specs
+  against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): the grant reads
+  the session's delegates per call, the list the assignee check reads; FIX-1791 BR-11's refusal
+  reaches every standard worker (BR-10a); a create seeding delegates gets a 400.
+  ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
 
 **Open: none.**

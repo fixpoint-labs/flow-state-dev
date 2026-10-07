@@ -168,3 +168,7 @@ anything rests on.
 - **Terminology** (product owner, 2026-10-07; the epic's
   [D7](../../epics/FIX-1786/DECISIONS.md#d7)) — a task board's seat is now an *assignee*, so
   P3.8's census retires the board's `seat` too.
+- **Amended after merge (cross-spec alignment, 2026-10-07)** — reading the epic's child specs
+  against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): in b5, Alice
+  opens `feature` herself with the EM as lead, and the result is graded at the EM's workstream
+  session and its update to the entry, not at the coordinator conversation.

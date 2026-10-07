@@ -74,7 +74,7 @@ change together and an org or user id containing `/` round-trips.
 | Nothing reads a one-part or two-part user cell, not even to see whether it exists (epic ER-3) | An existence check is a read across orgs, and a store call on every run |
 | Every user-key site passes the org into S1. Re-run `poc/key-sites/check.mjs` and update its table in the same PR (tenet 5) | Nine files touch user keys; one that keeps the old call reopens the leak silently |
 | A missing org throws; it never defaults (ER-13) | A default would be the cross-org cell under a new name |
-| Org and session keys stay byte-identical (BP-030) | They are not this issue's, and every deployment's org data would otherwise move |
+| Org and session keys stay byte-identical | They are not this issue's, and every deployment's org data would otherwise move |
 | Test the second paths (BP-035): a pinned worker, a flow-isolated resource, a cross-flow child, an id with `:`, a session with no org, harness seeding, each schedule producer | Each is where the obvious change passes the happy path and still crosses orgs |
 
 ## Docs
