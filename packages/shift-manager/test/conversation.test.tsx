@@ -3,13 +3,17 @@
  * <Conversation> is the one way a view shows and sends into a conversation with
  * a seat. Drawn here as a view that isn't the Shift Coordinator's: another seat
  * and name, its own test ids, its own rendering of an item. The read and the
- * send are stood in for; what is checked is what the component does with them.
+ * send are stood in for; what is checked is what the component does with them:
+ * the session it reads and sends into, when it lets a line go, the read-back
+ * while a reply is in flight, what a failed line leaves behind, and the retry
+ * landing in the same session.
  */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GAPS } from "../src/gaps";
 import type { Seat } from "../src/lib/reads";
+import { TurnNotDelivered } from "../src/lib/send";
 
 const read = vi.fn();
 const sendTurn = vi.fn();
@@ -24,32 +28,52 @@ import { Conversation } from "../src/components/Conversation";
 const seat = { id: "eng.reviewer", door: "talk" } as unknown as Seat;
 const session = (id: string): SessionSummary => ({ id, flowId: "eng.reviewer", createdAt: 1, parentSessionId: null }) as unknown as SessionSummary;
 const item = (id: string, text: string) => ({ id, requestId: "r", type: "message", role: "assistant", ts: Date.UTC(2026, 9, 7, 17, 34), text });
+const delivered = { requestId: "q", suspended: false, stopped: null };
 
 beforeEach(() => {
   read.mockReset();
   sendTurn.mockReset();
+  lab.refresh.mockReset();
+  read.mockResolvedValue({ items: [], truncated: false });
 });
 afterEach(() => cleanup());
 
-const drawn = (sessions: SessionSummary[], seatOver: Seat = seat) =>
+const drawn = (sessions: SessionSummary[], over: Partial<Parameters<typeof Conversation>[0]> = {}) =>
   render(
     <Conversation
-      seat={seatOver}
+      seat={seat}
       sessions={sessions}
       gaps={GAPS}
       name="Reviewer"
       testId="rev"
       emptyText="Nothing said to the reviewer yet."
       renderItem={(it) => <span data-testid="mine">{(it as unknown as { text: string }).text}</span>}
+      {...over}
     />,
   );
 
-describe("a conversation drawn by a view of its own", () => {
+/** Type a line and press send, once the composer has let go of "Reading the conversation first…". */
+async function send(line: string) {
+  const input = screen.getByTestId("rev-composer-input") as HTMLInputElement;
+  await waitFor(() => expect(input.disabled).toBe(false));
+  fireEvent.change(input, { target: { value: line } });
+  await act(async () => {
+    fireEvent.click(screen.getByTestId("rev-composer-send"));
+  });
+}
+
+describe("what a view of its own draws", () => {
   it("says what it is before a first line, under that view's own ids", () => {
     drawn([]);
     expect(screen.getByTestId("rev-conversation-empty").textContent).toBe("Nothing said to the reviewer yet.");
     expect(screen.getByTestId("rev-composer")).toBeTruthy();
     expect(screen.queryByTestId("cos")).toBeNull();
+  });
+
+  it("keeps its look hooks the same whatever its test id, so one rule styles every conversation", () => {
+    const { container } = drawn([]);
+    expect(container.querySelector('[data-look="conversation-feed"]')).toBeTruthy();
+    expect(container.querySelector('[data-look="rev-feed"]')).toBeNull();
   });
 
   it("reads the seat's session, labels its messages with the view's name, and lets the view draw them", async () => {
@@ -60,22 +84,85 @@ describe("a conversation drawn by a view of its own", () => {
     expect(screen.getAllByText("REVIEWER")).toHaveLength(2);
   });
 
-  it("sends a typed line through the one send path, to the seat's door, once the session is read", async () => {
-    read.mockResolvedValue({ items: [], truncated: false });
-    sendTurn.mockResolvedValue({ requestId: "q", suspended: false, stopped: null });
+  it("says the seat has the line while one from this page is in flight", () => {
+    drawn([], { working: true });
+    expect(screen.getByTestId("rev-working").textContent).toContain("Reviewer is working on it");
+  });
+});
+
+describe("when a line may go", () => {
+  it("holds it until a listed session has been read, then lets it through", async () => {
+    let release!: (v: unknown) => void;
+    read.mockReturnValue(new Promise((resolve) => (release = resolve)));
     drawn([session("s1")]);
-    const input = (await screen.findByTestId("rev-composer-input")) as HTMLInputElement;
-    await act(async () => {});
-    fireEvent.change(input, { target: { value: "ship it?" } });
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("rev-composer-send"));
-    });
+    expect(screen.getByTestId("rev-composer-blocked").textContent).toBe("Reading the conversation first…");
+    await act(async () => release({ items: [], truncated: false }));
+    expect(screen.queryByTestId("rev-composer-blocked")).toBeNull();
+  });
+
+  it("sends nothing to a seat that takes no message, and says why", () => {
+    drawn([], { seat: { id: "eng.reviewer", door: null } as unknown as Seat });
+    expect(screen.getByTestId("rev-composer-blocked").textContent).toContain("eng.reviewer");
+  });
+
+  it("holds it when the conversation failed to load", async () => {
+    read.mockRejectedValue(new Error("down"));
+    drawn([session("s1")]);
+    expect((await screen.findByTestId("rev-composer-blocked")).textContent).toContain("didn't load");
+  });
+});
+
+describe("sending", () => {
+  it("goes through the one send path, to the seat's door, into the session read", async () => {
+    sendTurn.mockResolvedValue(delivered);
+    drawn([session("s1")]);
+    await send("ship it?");
     expect(sendTurn.mock.calls[0]![1]).toEqual({ sessionId: "s1", flowId: "eng.reviewer", door: "talk" });
     expect(sendTurn.mock.calls[0]![2]).toBe("ship it?");
   });
 
-  it("sends nothing to a seat that takes no message, and says why", () => {
-    drawn([], { id: "eng.reviewer", door: null } as unknown as Seat);
-    expect(screen.getByTestId("rev-composer-blocked").textContent).toContain("eng.reviewer");
+  it("reads the session back as soon as it holds the line, while the reply is still in flight", async () => {
+    let finish!: () => void;
+    sendTurn.mockImplementation(async (_c, _t, _m, opts: { onHeld: () => void }) => {
+      opts.onHeld();
+      await new Promise<void>((resolve) => (finish = resolve));
+      return delivered;
+    });
+    drawn([session("s1")]);
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    await send("one more");
+    // The read-back happened with the send still unresolved.
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("rev-composer-status").getAttribute("data-state")).not.toBe("delivered");
+    await act(async () => finish());
+  });
+
+  it("reads the Lab again and shows the reason when the door refuses, keeping the line", async () => {
+    sendTurn.mockRejectedValue(new TurnNotDelivered("refused", "no thanks"));
+    drawn([session("s1")]);
+    await send("nope");
+    expect(lab.refresh).toHaveBeenCalled();
+    expect(screen.getByTestId("rev-composer-error").textContent).toContain("no thanks");
+    expect((screen.getByTestId("rev-composer-input") as HTMLInputElement).value).toBe("nope");
+  });
+
+  it("starts a conversation with a first line, and a retry after it failed lands in the same session", async () => {
+    sendTurn.mockRejectedValueOnce(new TurnNotDelivered("not-sent", "offline")).mockResolvedValue(delivered);
+    drawn([]);
+    await send("hello");
+    await send("hello");
+    const [first, second] = sendTurn.mock.calls.map((call) => (call[1] as { sessionId: string }).sessionId);
+    expect(first).toMatch(/^conv_[0-9a-f]{32}$/);
+    // A new id here would orphan a session the Lab may already have opened.
+    expect(second).toBe(first);
+  });
+
+  it("sends a line handed in from elsewhere once, as if typed", async () => {
+    sendTurn.mockResolvedValue(delivered);
+    const taken = vi.fn();
+    drawn([session("s1")], { autoSend: "from the palette", onAutoSend: taken });
+    await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(1));
+    expect(sendTurn.mock.calls[0]![2]).toBe("from the palette");
+    expect(taken).toHaveBeenCalledTimes(1);
   });
 });
