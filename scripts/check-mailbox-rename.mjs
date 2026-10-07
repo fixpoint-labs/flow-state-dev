@@ -96,7 +96,7 @@ export function groupsFor(published) {
     ["legacy", isLegacyPath],
     // Pending fragments are unreleased notes, so they are in scope.
     ["changesets", (p) => /^\.changeset\/[^/]+\.md$/.test(p) && p !== ".changeset/README.md"],
-    ["history", (p) => /^specs\/|^docs\/internal\/|(^|\/)CHANGELOG\.md$|^\.changeset\/|^pnpm-lock\.yaml$/.test(p)],
+    ["history", (p) => /^specs\/|^\.designs\/|^docs\/internal\/|(^|\/)CHANGELOG\.md$|^\.changeset\/|^pnpm-lock\.yaml$/.test(p)],
     ["process", (p) => /^\.agents\/|^\.omp\/|^\.github\/|^\.claude\/|^CLAUDE\.md$|^AGENTS\.md$|^knip\.json$/.test(p)],
     ["tests", (p) => /^(packages|labs|apps)\/.*(\/(test|tests|e2e)\/|\.(test|spec)(-d)?\.[cm]?tsx?$)/.test(p)],
     ["goals", (p) => /^goals\//.test(p)],
