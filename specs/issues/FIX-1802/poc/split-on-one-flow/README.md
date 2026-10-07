@@ -31,7 +31,7 @@ stubbed.
 
 ## The setup
 
-One flow, `worker-poc`, standing in for any flow that carries the filing capability. It keeps two
+One flow, `worker-poc`, standing in for any flow that carries the task tools. It keeps two
 boards, each handing rows to `work` on the same flow through a per-task target. Two user-scoped
 ledgers stand in for two of D6's partitions (the conversation's and the task session's), since
 the partition isn't on `main`. `work` takes rows `from` a ledger resolver. A top task splits; a

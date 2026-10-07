@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, who files and for whom. Chosen: a grant in the worker&#x27;s file, filing for its own delegates. Instead of: a second list of who it files for. It comes down to the first row: one answer to who works for this worker, where two lists can disagree. The price is the second row: FIX-1791&#x27;s check widens to a delegate that takes posts or tasks. The third row is a tie: Bob&#x27;s worker is refused either way. Locks in: two keys any worker file may carry, and every worker that files says so, coordinators included. Flips if: a worker must file for workers it should never be posted to."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, answered: who files, and for whom. Chosen: a worker files for its delegates that take a task, with no flag. Instead of: an explicit filing flag in the file, or a second list of who it files for. It comes down to the first row: one answer to who works for this worker and whether it files, where a flag or a second list can disagree. The price is the second row: FIX-1791&#x27;s check widens to a delegate that takes posts or tasks. The third row is a tie: Bob&#x27;s worker is refused either way. Locks in: a worker that lists task-taking delegates files; a later no-filing mark would cover an exception. Flips if: a worker must list task-taking delegates and never file."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -34,16 +34,16 @@
   <rect class="bg" x="0" y="0" width="940" height="420"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Who may a worker file for, and how does its file say it files?</text>
+    <text class="t-lbl" x="32" y="32">D1 · ANSWERED · THE PRODUCT OWNER, 2026-10-07</text>
+    <text class="t-q" x="32" y="52">Who may a worker file for, and what in its file says it files?</text>
   </g>
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">filing: true · its own delegates</text>
+    <text class="t-h c-code" x="228" y="112">Delegates that take a task · no flag</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">A second list of who it files for</text>
+    <text class="t-h c-lost" x="592" y="112">An explicit flag · or a second list</text>
   </g>
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
@@ -53,10 +53,10 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">One answer, one list</text>
-    <text class="t-s" x="248" y="179">posts and tasks read the same delegates</text>
+    <text class="t-s" x="248" y="179">the delegates say who works for it and if it files</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Two lists that can drift</text>
-    <text class="t-s" x="612" y="179">a check has to run on both</text>
+    <text class="t-b" x="612" y="161">A flag or a list that can drift</text>
+    <text class="t-s" x="612" y="179">it can disagree with the delegates</text>
   </g>
   <g id="row-2">
     <text class="t-lbl" x="32" y="222">A DELEGATE THAT</text>
@@ -82,13 +82,13 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Two keys any worker file may carry</text>
-    <text class="t-s" x="32" y="389">every filer says filing: true, coordinators too</text>
+    <text class="t-b" x="32" y="371">List a task-taking delegate, and it files</text>
+    <text class="t-s" x="32" y="389">a later no-filing mark covers an exception</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">A worker must file for workers it can&#x27;t post to</text>
-    <text class="t-s" x="494" y="389">then a record gains a tasks-only mark</text>
+    <text class="t-b" x="494" y="371">A worker must list them and never file</text>
+    <text class="t-s" x="494" y="389">then its file gains a no-filing mark</text>
   </g>
 </svg>

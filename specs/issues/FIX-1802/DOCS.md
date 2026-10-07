@@ -22,53 +22,53 @@ Sidebar: `workforce/filing-work`, right after `workforce/coordinators` in `apps/
 > delegate works it in a new session of its own, a **task session**, and the worker that filed
 > it hears how it ended.
 >
-> Any worker can file, if its file says so. Most shouldn't, so none do by default.
+> A worker files when one of its delegates can take a task. There's no switch to flip: who the
+> worker hands work to decides it.
 >
-> ## Giving a worker the filing tools
+> ## Giving a worker the task tools
 >
 > ```md title="workforce/teams/eng/workers/em/WORKER.md"
 > ---
 > description: Leads the feature. Files the work, never does it.
-> filing: true
 > delegates: [eng.coder, eng.reviewer]
 > ---
 > ```
 >
-> `filing: true` gives the worker four tools: `fileTask`, `listTasks`, `reassignTask` and
-> `cancelTask`. Your app can send the same four as actions on any of that worker's sessions. A
-> worker without the line has none of them, and the app's `fileTask` on its session is refused.
-> Coordinators are no exception: a coordinator files only if its file says so.
->
 > `delegates:` is who works for this worker: the list a [coordinator](./coordinators.md) hands
-> posts to, and the list a worker with `filing: true` files for. Each session starts from it, and
-> you change one session's list with `addDelegate` and `removeDelegate`. A delegate has to be on
-> the same user's roster. A file whose `delegates:` nothing uses is refused when the app loads.
+> posts to, and the list the worker files tasks for. Each session starts from it, and you change
+> one session's list with `addDelegate` and `removeDelegate`. A delegate has to be on the same
+> user's roster.
+>
+> When at least one delegate can take a task, the worker gets the [task board](../orchestration/task-board.md)'s
+> eight task tools: `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`,
+> `cancelTask`, `updateTask` and `listTasks`. Your app can send the same eight as actions on any
+> of that worker's sessions. A worker whose delegates only take posts, like a coordinator that
+> routes questions, gets none of them, and the app's `addTask` on its session answers
+> `no_delegation_board`. So does a worker with no delegates.
 >
 > The built-in worker and the coordinator flow carry the tools. On your own flow, give the tools
-> to the block that runs the model, and add the filing entries to the flow:
+> to the block that runs the model, and add their actions and the board's entries to the flow:
 >
 > ```ts
-> import { createTaskFilingCapability, workerConfigSchema } from "@flow-state-dev/workforce"
+> import { createTaskToolsCapability, taskToolActions } from "@flow-state-dev/orchestration"
+> import { workerConfigSchema, sessionBoard, taskDelegates, sessionBoardEntries, files } from "@flow-state-dev/workforce"
 >
-> const filing = createTaskFilingCapability()
->
-> // the block that runs the model: uses: [filing.capability]
+> // the block that runs the model, with the tools only when the worker files:
+> //   uses: [(ctx) => files(ctx) ? [createTaskToolsCapability(sessionBoard.resolve, taskDelegates)] : []]
 > export const em = defineFlow({
 >   kind: "em",
 >   configSchema: workerConfigSchema().extend({ document: z.string() }),
->   actions: { ...filing.actions /* , your own */ },
->   internal: { actions: { ...filing.internal } },
->   task: { actions: { ...filing.task } },
+>   actions: { ...taskToolActions(sessionBoard.id, sessionBoard.resolve, taskDelegates) /* , your own */ },
+>   ...sessionBoardEntries,
 >   // …
 > })
 > ```
 >
-> If a file grants filing and its flow is missing either half, the app refuses to load and says
-> which.
+> A flow that leaves them out gives its workers no task tools, whatever their delegates.
 >
 > ## Where the tasks go
 >
-> Every session a worker runs keeps its own board: a conversation with you, a session another
+> Every session of a worker that files keeps its own board: a conversation with you, a session another
 > worker posted to, or a task session. A worker files onto the board of the session it is in,
 > never another's. Two sessions of one worker never see each other's tasks.
 >
@@ -94,10 +94,14 @@ Sidebar: `workforce/filing-work`, right after `workforce/coordinators` in `apps/
 > ## How far it goes
 >
 > A chain stops at **five boards deep**, counting your conversation's as the first, and at
-> **50 tasks under one top task**, at every depth together, finished ones included. A filing past either is refused,
-> naming the limit, and the worker does the piece itself or tells you. Each task is a session
-> and at least one model turn, so a worker that splits at every level gets expensive fast; the
-> limits are where it stops.
+> **100 tasks under one top task**, at every depth together, finished ones included. A filing
+> past either is refused the way a full board refuses one, with `total_task_cap_exceeded`, and
+> the worker does the piece itself or tells you. Each task is a session and at least one model
+> turn, so a worker that splits at every level gets expensive fast; the limits are where it
+> stops.
+>
+> If your jobs need more than 100 pieces, raise the cap with an option on `hireWorkforce`. The
+> depth doesn't change.
 
 ## UPDATE · `apps/docs/docs/workforce/coordinators.md` · FIX-1794's "Handing out tasks"
 
@@ -105,7 +109,7 @@ Replace its first paragraph and the sentence "The coordinator has the same verbs
 files tasks on its own when you ask it for work" with:
 
 > A post gets an answer. When work has to be done instead, a coordinator can file a **task** for
-> one of its delegates, if its file says `filing: true`. Filing works the same for every worker,
+> one of its delegates that takes tasks. Filing works the same for every worker,
 > so it has [a page of its own](./filing-work.md); what follows is how it looks from a
 > coordinator.
 
@@ -113,23 +117,26 @@ FIX-1794's "Splitting work" subsection is not published there; it is the section
 
 ## UPDATE · `apps/docs/docs/workforce/workers-on-disk.md` · "What a WORKER.md says", after the `packages:` paragraph
 
-> `filing: true` gives the worker the tools to [file tasks](./filing-work.md) for its delegates,
-> and `delegates:` names them. A worker on your own flow also needs the flow to carry the filing
-> capability. Leave both out and the worker files nothing.
+> `delegates:` names the workers this worker hands work to. When one of them takes tasks, the
+> worker gets the tools to [file tasks](./filing-work.md) for them. A worker on your own flow also
+> needs the flow to carry the task tools.
 
 ## UPDATE · `packages/workforce/README.md` · after FIX-1794's paragraph on tasks
 
-> Any worker can file tasks: `filing: true` and `delegates:` in its `WORKER.md`, and
-> `createTaskFilingCapability()` on its flow, the capability on the model's block and the entries
-> in the flow's maps (the built-in `agent` and `coordinator` flows carry it). A task's worker can split it the same way, up to five boards deep and 50
-> tasks under one top task. See [Filing work](../../apps/docs/docs/workforce/filing-work.md).
+> Any worker can file tasks: a delegate that takes tasks in its `WORKER.md`'s `delegates:`, and
+> Orchestration's task tools on its flow, `createTaskToolsCapability` on the model's block and
+> `taskToolActions` in the flow's actions, over the session's board (the built-in `agent` and
+> `coordinator` flows carry them). A task's worker can split it the same way, up to five boards
+> deep and 100 tasks under one top task, a cap the app can raise on `hireWorkforce`. See
+> [Filing work](../../apps/docs/docs/workforce/filing-work.md).
 
 The task session's lookup key is `filingSessionId` everywhere (FIX-1791, FIX-1794 and this spec).
 
 ## Not changed
 
 The task board page (`apps/docs/docs/orchestration/task-board.md`): the board itself doesn't
-change, and FIX-1794's subsection on boards kept per conversation stands.
+change, and FIX-1794's subsection on boards kept per conversation stands. FIX-1794 documents the
+roster `taskToolActions` takes there.
 
 ## Publication ownership
 

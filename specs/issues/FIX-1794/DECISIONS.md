@@ -99,11 +99,17 @@ the docs state the cost per level.
   conversation deleted and created again starts with an empty board; the old rows stay in the
   store, unread (BP-030).
 - **Who may file is FIX-1802's** (*amended after merge*, epic [D8](../../epics/FIX-1786/DECISIONS.md#d8); this line read "a worker that
-  splits its task is a coordinator"). This issue ships the final shape: a board per session and
-  filing as `createTaskFilingCapability()` (S3, S4). Only its answer to "may this session file" is
-  interim, "a coordinator conversation, not a task session";
-  [FIX-1802](../FIX-1802/DECISIONS.md#d1) swaps in a grant in the worker's file. Any worker flow
-  takes tasks.
+  splits its task is a coordinator"). This issue ships the final shape: a board per session, and
+  Orchestration's existing eight task tools wired to it, with the session's board as their
+  resolver and its task-taking delegates as their roster (S3, S4, T1). Only its answer to "may
+  this session file" is interim, "a coordinator conversation, not a task session";
+  [FIX-1802](../FIX-1802/DECISIONS.md#d1) swaps in its delegate rule: a worker files when one of
+  its delegates takes a task. Any worker flow takes tasks.
+- **Reassign and cancel are the task tools' own** (*amended after merge*). FIX-1780's
+  `reassignTask` rules this spec cited (a failed task carried on by a new one, three moves, a
+  running task's cancel refused) are not carried: on this board `assignTask` moves a task no
+  attempt holds, a failed task is filed again with `addTask`, and a cancel of a running task
+  lands while its worker's late result is declined. Stopping a running task stays FIX-1659's.
 - **Mailbox boards stay until FIX-1792**, which moves each onto this shape or a workstream (epic
   [D5](../../epics/FIX-1786/DECISIONS.md#d5)) and deletes `mailboxTaskLists` with them.
 
@@ -197,8 +203,10 @@ left.
   breadth cap named beside D2.
 
 - **Amended after merge (FIX-1802's spec PR #2839)** — epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) brought FIX-1802 into the MVP and made
-  filing a tool any worker can be granted. This issue now ships the board per session and the
-  filing capability, so FIX-1802 only swaps the answer to "may this session file". The split's
-  acceptance (leg b, BR-30 to BR-32, S8, S10, V6) points there; BR-7 is the interim refusal.
+  filing a tool any worker can be granted. This issue now ships the board per session and wires
+  Orchestration's eight task tools to it, so FIX-1802 only swaps the answer to "may this session
+  file". The product owner, 2026-10-07: build on the existing task tools, not new ones; their one
+  extension, T1, is a Layer 1 change for the epic to record. The split's acceptance (leg b,
+  BR-30 to BR-32, S8, S10, V6) points there; BR-7 is the interim refusal.
 
 **Open: none.** [Q](#q) is answered: the split moves to FIX-1802, which is in the MVP (epic D8).

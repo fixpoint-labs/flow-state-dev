@@ -102,8 +102,8 @@ flow one shared copy. The dashed path is open on purpose ([Q2](DECISIONS.md#q2))
 ## What stays as it is
 
 - `workerConfigSchema()` stays the one authority on configuration, with its six keys.
-  *Amended after merge ([FIX-1802 D1](../FIX-1802/DECISIONS.md#d1)):* it gains `filing` and
-  `delegates`, and the coordinator's `delegates` key moves there.
+  *Amended after merge ([FIX-1802 D1](../FIX-1802/DECISIONS.md#d1)):* it gains `delegates`,
+  defined there for every worker flow, the coordinator's included.
 - How a door is found, and the default to `agent` for a worker that names no flow.
 - `KindRefusedHireError` and `seatDoorOf`: this issue calls them and changes neither. FIX-1796
   renames them.

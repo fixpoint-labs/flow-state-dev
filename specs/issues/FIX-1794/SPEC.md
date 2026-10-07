@@ -11,7 +11,7 @@
 | **talks to one coordinator in two conversations** | n/a | Each conversation's board is its own. Running one never takes, shows or waits on the other's tasks |
 | **hands a big task to a worker that splits it** | The pieces go on a board any member can run | The worker files the pieces on its own task session's board, for its own delegates, up to five boards deep. Results come back up board by board. Built by [FIX-1802](../FIX-1802/SPEC.md), in the MVP: epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) reversed [Q](DECISIONS.md#q) after merge |
 | **has a task fail for good, or stop on a question** | Nobody hears unless they open the list | The conversation that filed it is told once, and the coordinator reassigns it, cancels it, or tells the person |
-| **builds an app on Workforce** | Finds a task's run through the board's run link only | Also finds it with `findWorkerSession({ worker, taskId })` plus `filingSessionId`, within the conversation that filed it. *Amended after merge:* FIX-1791's key, renamed from `coordinatorSessionId` by #2839 |
+| **builds an app on Workforce** | Finds a task's run through the board's run link only | Also finds it with `findWorkerSession({ worker, taskId, filingSessionId })`, within the conversation that filed it (*amended after merge*: FIX-1791's key, [#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839)) |
 
 The epic's assignment chain ([FIX-1786](../../epics/FIX-1786/SPEC.md), ER-9), built on private
 workers ([FIX-1788](../FIX-1788/SPEC.md)) and delegates ([FIX-1791](../FIX-1791/SPEC.md)).
@@ -66,24 +66,29 @@ On the left, whoever runs the board decides who the work runs as. On the right, 
 conversation does, and nobody else can run it.
 
 **What an app writes to file a task and follow it**, on a coordinator conversation
-[FIX-1791](../FIX-1791/SPEC.md#what-changes) opens:
+[FIX-1791](../FIX-1791/SPEC.md#what-changes) opens (*amended after merge*,
+[#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839): the actions are Orchestration's
+existing task tools, named `<tool>_<board>` by `taskToolActions`' rule, for the board id drafted
+`tasks`):
 
 ```ts
 const coordinator = createClient({ flowKind: session.flowKind, userId, baseUrl })
-await coordinator.sendAction("fileTask", { goal: "Audit our dependencies' licenses", assignee: "researcher" }, { sessionId: session.id })
-// refused, like a missing worker, unless researcher is one of this conversation's delegates
-await coordinator.sendAction("listTasks", {}, { sessionId: session.id })          // this conversation's board only
-await coordinator.sendAction("reassignTask", { taskId, assignee: "writer" }, { sessionId: session.id })
+await coordinator.sendAction("addTask_tasks", { goal: "Audit our dependencies' licenses", assignee: "researcher" }, { sessionId: session.id })
+// refused (unknown_assignee), like a missing worker, unless researcher is one of this conversation's delegates that takes a task
+await coordinator.sendAction("listTasks_tasks", {}, { sessionId: session.id })          // this conversation's board only
+await coordinator.sendAction("assignTask_tasks", { taskId, assignee: "writer" }, { sessionId: session.id })
 const run = await workforce.findWorkerSession({ worker: "researcher", taskId, filingSessionId: session.id })  // the task's own session, in this conversation
 ```
 
-The coordinator has the same four as tools. No action names a board, a ledger or an owner.
+The coordinator has the same eight as tools, unsuffixed: `addTask`, `assignTask`, `completeTask`,
+`failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks`. No action takes a board, a
+ledger or an owner as input.
 
 ## How a task reaches its worker
 
 ```mermaid
 flowchart LR
-  F["fileTask · app or tool"] --> B["this conversation's board · owner's user scope · its own partition"]
+  F["addTask · app or tool"] --> B["this conversation's board · owner's user scope · its own partition"]
   B -->|"its own request · as the owner"| D["drain"]
   D -->|"hand-off · no lineage needed"| T["task session · new · the owner's · any flow"]
   T -->|"reads and settles the row in that partition"| B

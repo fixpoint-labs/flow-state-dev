@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="Two panels. Today, on the left: only a coordinator's conversation files; it files a task for a delegate, and the delegate's task session that tries to file a piece is refused; a worker on the agent flow or an app flow keeps no board. After, on the right: any worker whose file says filing true keeps a board in each of its sessions, on any flow. Alice's conversation with such a worker files a task; the task session files two pieces on its own board; the task waits parked above and settles from its pieces, up to five boards deep. A worker without the line keeps no board."
+<svg viewBox="0 0 940 400" role="img" aria-label="Two panels. Today, on the left: only a coordinator's conversation files; it files a task for a delegate, and the delegate's task session that tries to file a piece is refused; a worker on the agent flow or an app flow keeps no board. After, on the right: any worker whose file lists a delegate that takes a task keeps a board in each of its sessions, on any flow. Alice's conversation with such a worker files a task; the task session files two pieces on its own board; the task waits parked above and settles from its pieces, up to five boards deep and 100 tasks under one top task, a cap the app can raise. A worker with no task-taking delegate keeps no board."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -53,9 +53,9 @@
 
   <g id="after">
     <rect class="panel" x="452" y="16" width="472" height="368" rx="6"/>
-    <text class="t-lbl" x="468" y="38">AFTER · FILING IS A LINE IN THE WORKER'S FILE</text>
+    <text class="t-lbl" x="468" y="38">AFTER · FILING FOLLOWS FROM THE WORKER'S DELEGATES</text>
     <rect class="new" x="468" y="56" width="200" height="70" rx="5"/>
-    <text class="t-b" x="480" y="76">any worker · filing: true</text>
+    <text class="t-b" x="480" y="76">any worker that files</text>
     <rect class="board" x="480" y="88" width="90" height="24" rx="3"/>
     <text class="t-bd" x="488" y="104">board 1</text>
     <text class="t-s" x="578" y="104">any flow</text>
@@ -79,9 +79,9 @@
     <text class="t-b" x="826" y="204">piece</text>
     <text class="t-s" x="704" y="244">each may split again · board 3 …</text>
     <rect class="no" x="468" y="232" width="200" height="56" rx="5"/>
-    <text class="t-b" x="480" y="254">no filing line</text>
+    <text class="t-b" x="480" y="254">no task-taking delegate</text>
     <text class="t-s" x="480" y="274">no board, no tools</text>
-    <text class="t-s" x="468" y="330">up to five boards deep, 50 tasks under one top task</text>
+    <text class="t-s" x="468" y="330">up to five boards deep, 100 tasks under one top task (the app can raise it)</text>
     <text class="t-s" x="468" y="350">every session is the owner's</text>
   </g>
 </svg>

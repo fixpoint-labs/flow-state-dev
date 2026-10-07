@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, how big one chain can get. Chosen: five boards deep and 50 tasks under one top task. Instead of: five deep, with each board capped alone. It comes down to the first row: a worker that splits at every level stops at 50 tasks, where per-board caps of ten allow 11,110. The price is the second row: a real job that needs a 51st piece is refused. The third row: a count kept per chain, by Workforce, outside the task board. Locks in: two public limits; raising is cheap, lowering breaks chains. Flips if: a real chain needs more than 50 pieces."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, answered: how big one chain can get. Chosen: five boards deep, fixed, and 100 tasks under one top task by default, which the app can raise. Instead of: five deep, with each board capped alone. It comes down to the first row: a worker that splits at every level stops at 100 tasks, where per-board caps of ten allow 11,110. The price is the second row: a job that needs a 101st piece is refused unless the app raises the cap. The third row: a count kept per chain, by Workforce, outside the task board. Locks in: a fixed depth and an app-set cap; raising is cheap, lowering breaks chains. Flips if: most real chains need more than 100 pieces."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -34,13 +34,13 @@
   <rect class="bg" x="0" y="0" width="940" height="420"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-lbl" x="32" y="32">D2 · ANSWERED · THE PRODUCT OWNER, 2026-10-07</text>
     <text class="t-q" x="32" y="52">How big can one chain of tasks get under one ask?</text>
   </g>
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">5 deep · 50 tasks per chain</text>
+    <text class="t-h c-code" x="228" y="112">5 deep · 100 per chain, app can raise</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">5 deep · each board capped alone</text>
@@ -52,18 +52,18 @@
     <text class="t-lbl" x="32" y="169">AT EVERY LEVEL</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Stops at 50 tasks</text>
-    <text class="t-s" x="248" y="179">the refusal names the limit</text>
+    <text class="t-b" x="248" y="161">Stops at 100 tasks</text>
+    <text class="t-s" x="248" y="179">refused as a full board is</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Up to 11,110 tasks</text>
     <text class="t-s" x="612" y="179">at ten a board; each a session and a turn</text>
   </g>
   <g id="row-2">
     <text class="t-lbl" x="32" y="222">A JOB THAT NEEDS</text>
-    <text class="t-lbl" x="32" y="235">A 51ST PIECE</text>
+    <text class="t-lbl" x="32" y="235">A 101ST PIECE</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Refused</text>
-    <text class="t-s" x="248" y="241">the worker does it or tells you</text>
+    <text class="t-b" x="248" y="223">Refused, unless the app raises it</text>
+    <text class="t-s" x="248" y="241">else the worker does it or tells you</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Allowed</text>
     <text class="t-s" x="612" y="241">if each board has room</text>
@@ -82,13 +82,13 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Two public limits</text>
-    <text class="t-s" x="32" y="389">raising is cheap; lowering breaks chains that use them</text>
+    <text class="t-b" x="32" y="371">Depth 5, fixed · chain cap 100, app-set</text>
+    <text class="t-s" x="32" y="389">raising is cheap; lowering breaks chains that use it</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">A real chain needs more than 50 pieces</text>
-    <text class="t-s" x="494" y="389">then the limit rises, with the cost per piece stated</text>
+    <text class="t-b" x="494" y="371">Most real chains need more than 100</text>
+    <text class="t-s" x="494" y="389">then the default rises, with the cost per piece stated</text>
   </g>
 </svg>
