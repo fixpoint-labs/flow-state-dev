@@ -105,11 +105,8 @@ It comes down to who repairs it: nobody under children-only, and the closure may
   set: a step no page covers is a failed step, reason *doc silent*.
 - **Controls reuse the children's names** where a child defined one, as scratch patches. A
   control part 1 fails stands for that child's control in part 3.
-- **The split is graded on the DevTeam as shipped** (b5), not on a goal-local tree, because the
-  product owner asked for it on the real product path. If no worker the EM files for carries the
-  filing grant and delegates of its own, b5 fails as a finding; no scratch patch grants one, since
-  a grant is product configuration. FIX-1802's goal check (P3.10) proves the mechanism on its own
-  trees, and its two controls stand as b5's and b6's, under the part-3 rule above.
+- **The split is graded by FIX-1802's goal check on Shift Manager (P3.10)**, because the DevTeam's
+  coder is a harness-run coding agent that doesn't file. b5 grades the EM's filing on the product path.
 - **A browser check is attempted here first**, and handed to `fsd-qa` over the mailbox only if no
   browser can run.
 
@@ -148,9 +145,14 @@ anything rests on.
   [D8](../../epics/FIX-1786/DECISIONS.md#d8)) — filing became a grant any worker can carry, and the
   split joined the MVP as FIX-1802. The rule that no step needs a delegate to split went, and so did
   b4's "the delegate files nothing". Leg b gained b5 (the EM files from its Storefront workstream on
-  the DevTeam, a piece splits, the result comes back up) and b6 (no grant, no filing tools), each
-  with one of FIX-1802's controls; its restart became b7. FIX-1802's goal check runs as P3.10, and
+  the DevTeam) and b6 (no grant, no filing tools); its restart became b7. FIX-1802's goal check runs as P3.10, and
   FIX-1802 joined QR-1's set. b4's coordinator must carry the grant. a4 grades best fit's own pick,
   since best fit now falls back to the coordinator's judgment turn ([FIX-1791 BR-16](../FIX-1791/BUSINESS-RULES.md)).
   Nothing here used kitchen-sink's escalations or its `no-filing` control, which FIX-1792 removes.
   The milestone is unchanged.
+- **Coordinator call** (2026-10-07) — b5 needs no split on the DevTeam. Its `coder` is a coding
+  agent run through `harnessManager`, so it carries no FSD filing tools, and granting it filing is
+  out of scope. b5 became *the EM files, and the result comes back up*, under FIX-1794's
+  `no-follow-up`. The split is graded by FIX-1802's goal check (P3.10, goal-local workers), which
+  runs its own `no-parent-settle`; b6 still stands in for its `no-grant-check`. The note asking
+  FIX-1792 to grant a worker below the EM went.
