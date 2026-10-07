@@ -10,7 +10,7 @@ import { App } from "../src/App";
 import { Composer } from "../src/surfaces/Stream";
 import type { BoardRow } from "../src/lib/reads";
 import { GAPS } from "../src/gaps";
-import { bootColorScheme } from "../src/lib/color-scheme";
+import { bootTheme } from "../src/lib/theme";
 import { createLabClients } from "../src/lib/connection";
 import { ASKER_GATED_LINE, ASKER_REFUSED_LINE, ASKER_SLOW_LINE, heardLine, holdSlowLines, startProjectLine } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
@@ -33,37 +33,40 @@ async function openApp(path: string, options: Parameters<typeof openAskLab>[0] =
   return { lab, clients };
 }
 
-describe("the sidebar's shift switch", () => {
-  it("shows the shift the page is in, and a click flips the look both ways", async () => {
+describe("the sidebar's mark", () => {
+  it("is the one theme control: it shows the theme the page is in, and each click moves to the next", async () => {
     const lab = await serveLab((await openAskLab()).flowState);
     served.push(lab);
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
-    // An OS that prefers dark and storage that keeps nothing: the page boots on the night shift.
-    const media = { matches: true, addEventListener: () => {}, removeEventListener: () => {} };
-    const look = bootColorScheme(undefined, { matchMedia: () => media, localStorage: { getItem: () => null, setItem: () => {} } } as unknown as Window);
+    // Storage that keeps nothing and a clock at 21:00: the page opens on Night.
+    const look = bootTheme(undefined, { localStorage: { getItem: () => null, setItem: () => {} } } as unknown as Window, document.documentElement, () => new Date(2026, 9, 6, 21, 0));
     try {
       render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} look={look} />);
-      const day = await screen.findByTestId("shift-day");
-      // The sidebar can commit before its passive effects run, and the switch
+      const mark = await screen.findByTestId("theme-mark");
+      // The sidebar can commit before its passive effects run, and the mark
       // subscribes to the look in one. Flush them, so the first click can't
-      // land before the switch is listening.
+      // land before the mark is listening.
       await act(async () => {});
-      const night = screen.getByTestId("shift-night");
-      expect(within(screen.getByTestId("sidebar-footer")).getByTestId("shift-switch")).toBeTruthy();
-      expect([day.textContent, night.textContent]).toEqual(["Day shift", "Night shift"]);
-      expect(night.getAttribute("aria-pressed")).toBe("true");
+      expect(screen.queryByTestId("shift-switch")).toBeNull();
+      expect(document.documentElement.dataset.theme).toBe("night");
       expect(document.documentElement.classList.contains("dark")).toBe(true);
+      expect(mark.getAttribute("title")).toBe("Theme: Night. Click for Day.");
+      expect(screen.getByTestId("sidebar-theme-name").textContent).toMatch(/Night shift$/);
 
-      act(() => fireEvent.click(day));
+      act(() => fireEvent.click(mark));
+      expect(document.documentElement.dataset.theme).toBe("day");
       expect(document.documentElement.classList.contains("dark")).toBe(false);
-      expect(day.getAttribute("aria-pressed")).toBe("true");
-      expect(night.getAttribute("aria-pressed")).toBe("false");
+      expect(screen.getByTestId("sidebar-theme-name").textContent).toMatch(/Day shift$/);
 
-      act(() => fireEvent.click(night));
-      expect(document.documentElement.classList.contains("dark")).toBe(true);
-      expect(night.getAttribute("aria-pressed")).toBe("true");
+      act(() => fireEvent.click(mark));
+      expect(document.documentElement.dataset.theme).toBe("evening");
+      expect(document.documentElement.classList.contains("dark")).toBe(false);
+      expect(mark.getAttribute("data-theme")).toBe("evening");
+      expect(screen.getByTestId("sidebar-theme-name").textContent).toMatch(/Evening shift$/);
     } finally {
-      document.documentElement.classList.remove("dark");
+      look.stop();
+      document.documentElement.classList.remove("dark", "theme-fade");
+      delete document.documentElement.dataset.theme;
     }
   });
 });

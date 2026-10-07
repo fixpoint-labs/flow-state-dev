@@ -1,16 +1,16 @@
 /**
- * Shift Manager's entry: set the look (the shift picked in this browser, else
- * the one it was started on, else the OS's light or dark setting), connect as
+ * Shift Manager's entry: set the theme (the one picked in this browser, else
+ * the one the page was started on, else the one the clock calls for), connect as
  * the page was served, and draw the shell.
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { bootColorScheme, readServedColorScheme } from "./lib/color-scheme";
+import { bootTheme, readServedTheme } from "./lib/theme";
 import { createLabClients, readConnection, readDevtoolUrl } from "./lib/connection";
 import "./styles.css";
 
-const look = bootColorScheme(readServedColorScheme());
+const look = bootTheme(readServedTheme());
 
 const clients = createLabClients(readConnection());
 

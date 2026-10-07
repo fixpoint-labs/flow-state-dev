@@ -1,6 +1,6 @@
 # Design system
 
-The look of Shift Manager, the Labs' app: a light (day) and a dark (night) theme over the tokens FSD's components
+The look of Shift Manager, the Labs' app: three themes (day, evening and night) over the tokens FSD's components
 already read. It holds values only. There are no components here; the app gets those from
 `@flow-state-dev/react` and the `@flow-state-dev/ui` registry, unedited.
 
@@ -8,8 +8,8 @@ already read. It holds values only. There are no components here; the app gets t
 @import "@flow-state-dev/design-system/shift-manager.css";
 ```
 
-Import it after the stylesheet that holds the registry's `tokens` defaults. The light theme
-applies by default. Put `class="dark"` on an ancestor for the dark one. The same stylesheet points
+Import it after the stylesheet that holds the registry's `tokens` defaults. Day applies by default.
+Put `data-theme="evening"` on the root element for evening, or `class="dark"` on an ancestor for night. The same stylesheet points
 the navigator's and panels' `--fsd-nav-*` and `--fsd-panel-*` properties at the tokens, so they
 match the cards.
 

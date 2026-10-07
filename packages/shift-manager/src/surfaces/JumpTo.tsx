@@ -5,9 +5,15 @@
  * so, and a failed read of them says what the Lab answered. Up and Down move
  * the highlight through the results, the pointer highlights what it is over,
  * and Enter opens the highlighted one.
+ *
+ * A query that starts with `> ` is a message instead: the rest is handed to the
+ * Shift Coordinator's own composer, which sends it as if it were typed there.
+ * The palette closes and the Coordinator screen opens. A line that has no one to
+ * go to leaves the palette open with the reason and the draft intact.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { allRows, type LoadedSnapshot } from "../lib/derive";
+import { allRows, chiefOfStaffOf, type LoadedSnapshot } from "../lib/derive";
+import { handToChiefOfStaff } from "../lib/outbox";
 import { navigate, type Route } from "../lib/routes";
 import type { Gaps } from "../gaps";
 
@@ -16,10 +22,15 @@ type Entry = { group: "Views" | "Workstreams" | "Workers" | "Tasks" | "Resources
 /** The most results drawn per group. */
 const PER_GROUP = 8;
 
+/** Typing this first turns the palette into a message to the Shift Coordinator. */
+const MESSAGE_PREFIX = "> ";
+
 export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; gaps: Gaps; onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
+  const [sendFailure, setSendFailure] = useState<string | null>(null);
+  const messaging = query.startsWith(MESSAGE_PREFIX);
   useEffect(() => input.current?.focus(), []);
 
   const index = useMemo<Entry[]>(() => {
@@ -46,6 +57,18 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
     list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
   }, [highlighted]);
 
+  const sendMessage = () => {
+    const message = query.slice(MESSAGE_PREFIX.length).trim();
+    if (message === "") return;
+    if (!snapshot.inventory.ok) return setSendFailure("The Lab's seats didn't load, so there is no one to send this to.");
+    const cos = chiefOfStaffOf(snapshot.inventory.value.seats, snapshot.orgId);
+    if (cos.kind !== "one") return setSendFailure("There isn't exactly one Shift Coordinator to send this to.");
+    if (cos.seat.door === null) return setSendFailure(`${cos.seat.id} ${gaps.turn.noDoor}`);
+    handToChiefOfStaff(message);
+    navigate({ level: "cos" });
+    onClose();
+  };
+
   const go = (entry: Entry) => {
     navigate(entry.to);
     onClose();
@@ -60,9 +83,14 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
           onChange={(e) => {
             setQuery(e.target.value);
             setActive(0);
+            setSendFailure(null);
           }}
           onKeyDown={(e) => {
             if (e.key === "Escape") onClose();
+            if (messaging) {
+              if (e.key === "Enter") sendMessage();
+              return;
+            }
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
               // Keep the caret where it is; the arrows belong to the list here.
               e.preventDefault();
@@ -71,10 +99,21 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
             }
             if (e.key === "Enter" && shown[highlighted] !== undefined) go(shown[highlighted]);
           }}
-          placeholder="Jump to a workstream, worker or task…"
+          placeholder="Jump to a workstream, worker or task… or > to message the Coordinator"
           className="w-full border-b bg-transparent px-4 py-3 text-sm outline-none"
           data-testid="jump-input"
         />
+        {messaging ? (
+          <div className="p-4 text-sm" data-testid="jump-message">
+            <p className="text-xs font-semibold tracking-wider text-muted-foreground">MESSAGE TO SHIFT COORDINATOR</p>
+            <p className="mt-1 text-muted-foreground">Press Enter to send.</p>
+            {sendFailure !== null ? (
+              <p className="mt-2 text-destructive" role="alert" data-testid="jump-message-failure">
+                {sendFailure}
+              </p>
+            ) : null}
+          </div>
+        ) : (
         <div ref={list} role="listbox" aria-label="Results" className="max-h-96 overflow-y-auto p-2">
           {groups.map(([group, entries]) => (
             <section key={group} role="group" aria-label={group} className="mb-2">
@@ -110,6 +149,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
             </p>
           ) : null}
         </div>
+        )}
       </div>
     </div>
   );

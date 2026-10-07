@@ -31,6 +31,7 @@ import { TurnComposer } from "../components/TurnComposer";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { currentConversation, newConversationId, readConversation, sendToChiefOfStaff } from "../lib/cos";
 import { useFollowLatest } from "../lib/follow";
+import { clearHandedLine, useHandedLine } from "../lib/outbox";
 import { chiefOfStaffOf, seatStates, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
@@ -269,6 +270,9 @@ function Talk({
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
   const working = useChiefOfStaffWorking();
+  // A line the palette handed over is sent by this screen's composer, and is dropped if it is never taken.
+  const handed = useHandedLine();
+  useEffect(() => clearHandedLine, []);
   // The feed opens on the summary; from the person's first line it follows the conversation.
   const feed = useFollowLatest({ startAtEnd: false });
 
@@ -306,6 +310,8 @@ function Talk({
       testId="cos-composer"
       scale="cos"
       label={`Message ${NAME}`}
+      autoSend={handed}
+      onAutoSend={clearHandedLine}
       placeholder={`Message ${NAME}…`}
       blocked={blocked}
       suggestions={suggestions}

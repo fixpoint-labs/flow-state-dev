@@ -24,7 +24,7 @@ Without `--config`, it looks for `fsdev.config.ts` (or `.mts`, `.js`, `.mjs`) in
 | `--config <path>` | `fsdev.config.*` in the current directory | The Lab's config. A relative path resolves from where you ran the command. |
 | `--port <n>` | `4300` | `0` picks a free port. |
 | `--host <host>` | `127.0.0.1` | A non-loopback host is refused unless the Lab authenticates requests, and always refused for a Lab that hands its page a bearer token. |
-| `--shift <day\|night>` | `SHIFT_MANAGER_SHIFT`, else unset | Start on the light (`day`) or dark (`night`) look. Unset, the page follows your OS. |
+| `--shift <day\|evening\|night>` | `SHIFT_MANAGER_SHIFT`, else unset | Start on that theme. Unset, the page starts on the theme your clock calls for (see [Themes](#themes)). |
 | `--dev` | off | Restart the Lab when you save one of its files. See below. Loopback only. |
 | `--assets <dir>` | the built pages in the package | Serve a different build of the pages, as it is. |
 | `--no-open` | opens | Don't open the browser. |
@@ -51,6 +51,16 @@ To open another Lab from a checkout, pass its config:
 `devteam` is the team profile in this repository, at `teams/devteam/fsdev.config.mts`. It isn't in the published package, because it builds on the repository's own test Labs.
 
 It's a software team. An EM worker files features as rows on the team's board, a coder worker runs each row as a supervised coding run, and a reviewer worker is declared but never woken. On start the EM asks you to approve one feature, so Inbox has something in it. It also opens with two projects you own: Storefront, which holds a workstream from each of the two teams, and Platform, which holds none yet. The EM answers every line posted in a project's room. Rows run on a scripted harness with no model unless `DEVFORCE_LAB_HARNESS=claude-code` is set. Its tree sits beside the config, in [`teams/devteam/`](teams/devteam/README.md), and the checks behind it are in [`goals/devforce-lab/`](../../goals/devforce-lab/). It keeps what it holds in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite` (or at `DEVTEAM_STORE`), so projects, their rooms and your talk sessions survive a restart. Delete the file to start fresh.
+
+## Themes
+
+Shift Manager has three themes, named for the shift: Day, Evening and Night. Day and Evening are light, Evening a little warmer and darker; Night is dark.
+
+The mark at the top of the sidebar is the control. Click it to step through Day, Evening and Night. The page fades to the new theme in under half a second, and your pick is kept in that browser.
+
+The dot on the dashed arc above the mark shows the time of day: the left end is midnight, the top is noon. It follows your clock but never changes the theme.
+
+Until you pick, the page opens on the theme your clock calls for: Day from 06:00, Evening from 16:00, Night from 19:00. `--shift` (or `SHIFT_MANAGER_SHIFT`) sets the starting theme instead, and a pick you've made wins over both.
 
 ## What a Lab's config provides
 
@@ -303,9 +313,7 @@ Each of these is drawn as a named empty state or a disabled control:
 
 Shift Manager's look comes from the [design-system](../design-system) package, through one import in `src/styles.css`. Remove that import and every screen falls back to the registry's neutral defaults.
 
-The page is on one of two shifts: the day shift is light, the night shift is dark. The switch at the bottom of the sidebar shows which one you're on. Click the other half and the whole page changes on the spot. Your pick is kept in that browser, so it holds through reloads and restarts until you click again. In a browser that blocks site data for the page, the pick lasts until you reload.
-
-Until you pick, the page takes the shift it was started on: `--shift day` or `--shift night`, or `SHIFT_MANAGER_SHIFT` set to either. The flag wins when both are set. Started on neither, it follows your operating system's light or dark setting, and changes with it.
+The page is on one of three themes, Day, Evening or Night, and fades between them. [Themes](#themes) covers how one is chosen. In a browser that blocks site data for the page, a pick lasts until you reload.
 
 The cards in a task's Session, and the ask cards in Inbox and in a workstream's Stream, are Shift Manager's copies of `@flow-state-dev/ui` registry components, kept unedited. The `ui:add` script in `package.json` names what was installed (`chat-assistant`, which brings the message, reasoning, tool, code block, task plan and ask cards with it). `chat-assistant` brings its whole dependency closure, so Shift Manager also holds copies it doesn't draw today (the debate, evented-actors, routed-specialists and audit-annotation containers) and the libraries they need, such as `shiki`, `streamdown` and `motion`. A test checks that the copies are exactly what that list ships, byte for byte.
 

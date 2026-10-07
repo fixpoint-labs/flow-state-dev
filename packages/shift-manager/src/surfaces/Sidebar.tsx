@@ -1,8 +1,8 @@
 /**
  * The sidebar (S5): in order, the organization, Jump to, Shift Coordinator,
  * Inbox, Tasks and Roster with their counts, PROJECTS, TEAMS, and a footer
- * (BR-6) with the on-shift and on-call counts that ends in the Day shift /
- * Night shift switch.
+ * (BR-6) with the on-shift and on-call counts. A header above them all carries
+ * the mark, which changes the theme with a click, and names the theme.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
  * opens always agree; every status and status count from its one
@@ -20,7 +20,7 @@
  * footer ends its counts with the person's initials (v2:52-113, 1173-1188).
  */
 import { useState, useSyncExternalStore, type ReactNode } from "react";
-import type { ColorScheme, ShiftLook } from "../lib/color-scheme";
+import { themeLabel, type ThemeLook } from "../lib/theme";
 import { navigate, NO_PROJECT, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { openRows, projectsOf, seatStates, shiftCounts, streamCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
@@ -28,6 +28,7 @@ import type { Workstream } from "../lib/reads";
 import { initialsOf, streamMark } from "../lib/shell";
 import { useChiefOfStaffWorking } from "../lib/working";
 import { Meta, PartialMark, SectionFailure, ShiftMark, StateSquare } from "../components/ui";
+import { ShiftManagerMark } from "../components/ShiftManagerMark";
 import type { Gaps } from "../gaps";
 
 function NavItem({
@@ -205,30 +206,18 @@ function OrgSwitcher({ orgId, onSwitch }: { orgId: string; onSwitch: () => void 
   );
 }
 
-const SHIFTS: Array<{ scheme: ColorScheme; label: string }> = [
-  { scheme: "light", label: "Day shift" },
-  { scheme: "dark", label: "Night shift" },
-];
-
-/** Day shift / Night shift: shows the look the page is in, and a click switches it. */
-function ShiftSwitch({ look }: { look: ShiftLook }) {
-  const current = useSyncExternalStore(look.subscribe, look.current);
+/** The mark, the app's name, and the theme it's in: `Evening shift`. */
+function SidebarHeader({ look }: { look: ThemeLook }) {
+  const theme = useSyncExternalStore(look.subscribe, look.current);
   return (
-    <div role="group" aria-label="Shift" className="grid grid-cols-2 border border-foreground font-mono text-[11px]" data-testid="shift-switch">
-      {SHIFTS.map(({ scheme, label }, i) => (
-        <button
-          key={scheme}
-          type="button"
-          aria-pressed={current === scheme}
-          onClick={() => look.choose(scheme)}
-          data-testid={`shift-${scheme === "light" ? "day" : "night"}`}
-          className={`py-1 text-center ${i > 0 ? "border-l border-foreground" : ""} ${
-            current === scheme ? "bg-foreground text-background" : "text-foreground"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
+    <div className="flex items-center gap-2.5 border-b px-3.5 pt-3.5 pb-3" data-testid="sidebar-header">
+      <ShiftManagerMark look={look} />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold tracking-tight">Shift Manager</p>
+        <Meta role="label" className="block truncate text-muted-foreground" testId="sidebar-theme-name">
+          {themeLabel(theme)}
+        </Meta>
+      </div>
     </div>
   );
 }
@@ -295,7 +284,7 @@ function ProjectsSection({
   );
 }
 
-export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gaps; onJump: () => void; look?: ShiftLook }) {
+export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gaps; onJump: () => void; look?: ThemeLook }) {
   const { snapshot, refresh, clients } = useLab();
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
   const retry = () => void refresh();
@@ -312,6 +301,7 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
 
   return (
     <nav aria-label="Shift Manager" className="flex h-full w-[248px] shrink-0 flex-col border-r bg-sidebar" data-testid="sidebar">
+      {look === undefined ? null : <SidebarHeader look={look} />}
       <div className="flex-1 overflow-y-auto p-3">
         {loaded === undefined ? null : <OrgSwitcher orgId={loaded.orgId} onSwitch={retry} />}
         <button
@@ -448,7 +438,6 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
             {initialsOf(clients.userId)}
           </span>
         </p>
-        {look === undefined ? null : <ShiftSwitch look={look} />}
       </footer>
     </nav>
   );

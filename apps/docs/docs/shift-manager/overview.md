@@ -28,7 +28,7 @@ Without `--config`, it looks for `fsdev.config.ts` (or `.mts`, `.js`, `.mjs`) in
 | `--config <path>` | `fsdev.config.*` in the current directory | The Lab's config. A relative path resolves from where you ran the command. |
 | `--port <n>` | `4300` | `0` picks a free port. |
 | `--host <host>` | `127.0.0.1` | A non-loopback host is refused unless the Lab authenticates requests, and always refused for a Lab that hands its page a bearer token. |
-| `--shift <day\|night>` | `SHIFT_MANAGER_SHIFT`, else unset | Start on the light (`day`) or dark (`night`) look. Unset, the page follows your OS. |
+| `--shift <day\|evening\|night>` | `SHIFT_MANAGER_SHIFT`, else unset | Start on that theme. Unset, the page starts on the theme your clock calls for (see [Themes](#themes)). |
 | `--dev` | off | Restart the Lab when you save one of its files. See below. Loopback only. |
 | `--assets <dir>` | the built pages in the package | Serve a different build of the pages, as it is. |
 | `--no-open` | opens | Don't open the browser. |
@@ -74,9 +74,17 @@ The sidebar lists the projects with their workstreams under PROJECTS, then the t
 
 A board has five columns: QUEUED, RUNNING, IN REVIEW, NEEDS YOU and DONE. In a workstream's composer, a message that starts with `@` and a worker's name goes to that worker's task in the workstream, not to the mailbox.
 
-The switch at the bottom of the sidebar flips between Day shift (light) and Night shift (dark). Your pick is kept in that browser and wins over `--shift`.
-
 For the components behind screens like these in your own app, see [Workforce components](../workforce/ui.md).
+
+## Themes
+
+Shift Manager has three themes, named for the shift: Day, Evening and Night. Day and Evening are light, Evening a little warmer and darker; Night is dark.
+
+The mark at the top of the sidebar is the control. Click it to step through Day, Evening and Night. The page fades to the new theme in under half a second, and your pick is kept in that browser.
+
+The dot on the dashed arc above the mark shows the time of day: the left end is midnight, the top is noon. It follows your clock but never changes the theme.
+
+Until you pick, the page opens on the theme your clock calls for: Day from 06:00, Evening from 16:00, Night from 19:00. `--shift` (or `SHIFT_MANAGER_SHIFT`) sets the starting theme instead, and a pick you've made wins over both.
 
 ## What a Lab's config provides
 

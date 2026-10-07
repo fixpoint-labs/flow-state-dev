@@ -17,6 +17,9 @@ import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, findThemeValues, luminance,
 const css = readFileSync(SHIFT_MANAGER_CSS, "utf8");
 const light = rule(css, ":root");
 const dark = rule(css, ".dark");
+/** Evening sets only what differs from day; everything else it reads from day. */
+const eveningOverrides = rule(css, ':root[data-theme=evening]');
+const evening = { ...light, ...eveningOverrides };
 
 /** The token names the registry's `tokens` item installs, as custom properties. */
 function registryTokens(): string[] {
@@ -80,6 +83,34 @@ describe("both variants", () => {
   });
 });
 
+describe("evening", () => {
+  it("overrides only tokens day sets, each as a hex colour", () => {
+    expect(Object.keys(eveningOverrides).length).toBeGreaterThan(8);
+    for (const [token, value] of Object.entries(eveningOverrides)) {
+      expect(light[token], `${token} is a day token`).toBeDefined();
+      expect(value, token).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+
+  it("sits between day and night: a darker page than day, a lighter one than night", () => {
+    const page = (variant: Record<string, string>) => luminance(toRgb(variant["--background"]!));
+    expect(page(evening)).toBeLessThan(page(light));
+    expect(page(evening)).toBeGreaterThan(page(dark));
+  });
+
+  it("keeps the ink and the highlighter day's", () => {
+    for (const token of ["--foreground", "--attention", "--info", "--destructive"]) expect(eveningOverrides[token], token).toBeUndefined();
+  });
+
+  it("names each shift's own colour once, the same in every theme", () => {
+    for (const shift of ["day", "evening", "night"]) {
+      expect(light[`--theme-${shift}`], shift).toMatch(/^#[0-9a-f]{6}$/);
+      expect(dark[`--theme-${shift}`], shift).toBeUndefined();
+      expect(eveningOverrides[`--theme-${shift}`], shift).toBeUndefined();
+    }
+  });
+});
+
 describe("the two shell surfaces", () => {
   // Shift Manager's own names for v2's sidebar and inspector surfaces (v2:15-16): not registry
   // tokens, so the registry list above never covers them.
@@ -87,7 +118,7 @@ describe("the two shell surfaces", () => {
   const all = (variant: "light" | "dark") => Object.values(registryTokenDefaults()[variant]).map(toRgb);
 
   it("sets both in light and in dark, each darker than that variant's page", () => {
-    for (const [name, variant] of [["light", light], ["dark", dark]] as const) {
+    for (const [name, variant] of [["light", light], ["evening", evening], ["dark", dark]] as const) {
       const page = luminance(toRgb(variant["--background"]!));
       for (const token of SURFACES) {
         expect(variant[token], `${token} (${name})`).toMatch(/^#[0-9a-f]{6}$/);
@@ -99,7 +130,7 @@ describe("the two shell surfaces", () => {
   it("keeps each clear of every registry default, so the closure's leg c can tell skin from default", () => {
     // Leg c reads painted colours to within 3 per channel; a surface that close to a
     // neutral default would read as the default.
-    for (const [name, variant] of [["light", light], ["dark", dark]] as const) {
+    for (const [name, variant] of [["light", light], ["evening", evening], ["dark", dark]] as const) {
       const defaults = [...all("light"), ...all("dark")];
       expect(defaults.length).toBeGreaterThan(40);
       for (const token of SURFACES) {

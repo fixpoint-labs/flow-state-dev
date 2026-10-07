@@ -39,7 +39,28 @@
     @apply border-border;
   }
 
+  /* Scrollbars take the theme: a thin thumb in the border colour on a clear track. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
   }
+}
+
+/*
+ * A change of theme fades rather than flips. The class is on the root only
+ * while the colours move (`FADE_MS` in `lib/theme.ts`). It carries no
+ * `!important`, so the mark's own inline transform transition still runs.
+ */
+html.theme-fade,
+html.theme-fade * {
+  transition:
+    background-color 320ms linear,
+    color 320ms linear,
+    border-color 320ms linear,
+    fill 320ms linear,
+    stroke 320ms linear;
 }

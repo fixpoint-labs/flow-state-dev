@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from "react";
 import { GAPS, type Gaps } from "./gaps";
-import type { ShiftLook } from "./lib/color-scheme";
+import type { ThemeLook } from "./lib/theme";
 import type { LabClients } from "./lib/connection";
 import type { LoadedSnapshot } from "./lib/derive";
 import { LabProvider, useLab } from "./lib/lab-data";
@@ -33,10 +33,10 @@ import { findWorkstream, WorkstreamPanel, WorkstreamView } from "./surfaces/Work
 /**
  * @param devtoolUrl The devtool a task's trace link opens: the one Shift Manager
  *   serves. Absent: the link is off and says how to turn it on.
- * @param look The page's light or dark look, which the sidebar's shift switch
- *   changes. Absent: the sidebar draws no switch.
+ * @param look The page's theme, which the mark in the sidebar changes. Absent:
+ *   the sidebar draws no mark.
  */
-export function App({ clients, gaps = GAPS, devtoolUrl, look }: { clients: LabClients; gaps?: Gaps; devtoolUrl?: string; look?: ShiftLook }) {
+export function App({ clients, gaps = GAPS, devtoolUrl, look }: { clients: LabClients; gaps?: Gaps; devtoolUrl?: string; look?: ThemeLook }) {
   return (
     <LabProvider clients={clients}>
       <Shell gaps={gaps} devtoolUrl={devtoolUrl} look={look} />
@@ -87,7 +87,7 @@ function Unreachable({ failure, onRetry }: { failure: Failure; onRetry: () => vo
   );
 }
 
-function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ShiftLook | undefined }) {
+function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
   const { snapshot, refresh } = useLab();
   const route = useRoute();
   const [jumping, setJumping] = useState(false);
@@ -139,7 +139,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   );
 }
 
-function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; route: Route; gaps: Gaps; look: ShiftLook | undefined }) {
+function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; route: Route; gaps: Gaps; look: ThemeLook | undefined }) {
   switch (route.level) {
     case "cos":
       return <ChiefOfStaffView snapshot={snapshot} gaps={gaps} />;
