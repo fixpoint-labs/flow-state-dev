@@ -62,21 +62,6 @@ doesn't change when the template does."
 > Progress is computed from the workstreams each time you look, so nothing on the project
 > row drifts from them. An entry nobody has updated for a while shows as stale.
 
-## CREATE · `apps/docs/docs/workforce/upgrading.md` · "From `MAILBOX.md` to `WORKER.md`"
-
-> A file named `MAILBOX.md` is refused at load, with its path and this conversion:
->
-> | `MAILBOX.md` | `WORKER.md` |
-> |---|---|
-> | `description:`, the body | unchanged |
-> | `members:` | `delegates:` |
-> | `routing:`, `flow:` | unchanged; `flow:` names the coordinator flow |
-> | `boards:`, `boardActions:`, `mintFor:` | removed |
->
-> A board on a mailbox becomes a board on the coordinator's session, or, for work people
-> track across conversations, a workstream on a project. A standard coordinator can only name
-> standard workers as delegates.
-
 ## Ownership
 
 | Material | Publisher | Specific draft |
@@ -84,9 +69,9 @@ doesn't change when the template does."
 | The overview opening and its figure | FIX-1796, once the assembled behaviour is verified | This document |
 | Standard and non-standard workers, forking, a session's worker (`workers-on-disk.md`, `durable-hire.md`) | FIX-1788 | Its `DOCS.md` |
 | Which flows can run workers (`built-in-worker.md` → custom worker flows) | FIX-1789 | Its `DOCS.md` |
-| Which org a user's record belongs to (`persistence/overview.md`) | FIX-1790 | Its `DOCS.md`, with the upgrade note |
+| Which org a user's record belongs to (`persistence/overview.md`) | FIX-1790 | Its `DOCS.md` |
 | CREATE `coordinators.md`; the chief of staff page reworded | FIX-1791 | Its `DOCS.md` |
-| REMOVE `mailboxes.md`; CREATE `upgrading.md` above | FIX-1792 | Its `DOCS.md` |
+| REMOVE `mailboxes.md`. No upgrading page: there are no consumers to upgrade ([D9](DECISIONS.md#d9)) | FIX-1792 | Its `DOCS.md` |
 | `projects.md` opening above; the room figures removed; `shift-manager/overview.md`'s Project view | FIX-1793 | Its `DOCS.md` |
 | Giving a task to a worker, down the chain | FIX-1794 | Its `DOCS.md` |
 | CREATE `library.md`; the library's lines in the overview opening and its figure | FIX-1795, with its build after the MVP | Its `DOCS.md` and the note above |

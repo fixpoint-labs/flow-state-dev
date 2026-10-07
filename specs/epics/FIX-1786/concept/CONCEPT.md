@@ -3,7 +3,8 @@
      fetched 2026-10-06 (updated 2026-10-06T01:12Z). Text verbatim except where review amended it: on
      2026-10-06 Jake asked that it say plainly that each worker names its own flow (the roster, Workers,
      Worker flows, the Flow and Worker terms, and the gap table's flow rows). Its six snapshot images are
-     redrawn as SVGs in ../figures/concept-*.svg. This copy is canonical now; edit it, not the source. -->
+     redrawn as SVGs in ../figures/concept-*.svg. On 2026-10-07 the product owner's answers amended
+     the lead's tools (D8) and the old-file rule (D9). This copy is canonical now; edit it, not the source. -->
 
 # Workforce: How It Should Work
 
@@ -11,7 +12,8 @@
 > epic's [decisions](../DECISIONS.md) and [rules](../BUSINESS-RULES.md) settle what it leaves
 > open. One coordinator flow with a routing setting ([D2](../DECISIONS.md#d2)). Where an author
 > declares a worker flow is [Q1](../DECISIONS.md#q1): a list the installation keeps, chosen at FIX-1789's spec gate on a POC of both. The contract's registration checks are the standard configuration, a door and a full `writtenBy` shape on shared writes; privacy is not one of them. The built-in worker flows keep a worker's own state out of org scope, and a custom worker flow's privacy is its author's. Org scope is shared with the org by design, and the framework doesn't refuse a flow's writes there ([ER-2](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), [D3](../DECISIONS.md#d3)). A workstream is a project entry plus its
-> lead's session; `MAILBOX.md` becomes `WORKER.md`; no transcript resource is built, so the
+> lead's session; `MAILBOX.md` becomes `WORKER.md`, and with no consumers yet nothing old is
+> refused by name or carried across ([D9](../DECISIONS.md#d9)); no transcript resource is built, so the
 > `transcript:` key below isn't either ([decided in review](../DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)).
 > The boards are per [D5](../DECISIONS.md#d5) and [ER-9](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt). A worker's
 > configuration is stored data a flow reads per run ([ER-2](../BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
@@ -315,7 +317,7 @@ A task session settles its row on the board that assigned it. Within one flow, t
 
 Everything in Alice's chain is hers. Bob's workers never appear in it: Bob's part of the project is his own workstream.
 
-The lead is any worker given the filing tool, often a coordinator, the flow built for routing; any worker with the tool can split its task and hand pieces on ([D8](../DECISIONS.md#d8)). There's nothing separate for routing work: it's always a worker.
+The lead is any worker whose delegates can take a task, often a coordinator, the flow built for routing. Such a worker has orchestration's task tools, so it can split its task and hand pieces on ([D8](../DECISIONS.md#d8)). There's nothing separate for routing work: it's always a worker.
 
 ## Naming
 
@@ -371,7 +373,7 @@ A mailbox is a coordinator, so it's declared like any other worker: a `WORKER.md
 Two rules come with it:
 
 * **A standard coordinator can only name standard workers as delegates,** since those are the only workers every user is sure to have. A name that isn't one is refused at load. A user adds their own workers as delegates at runtime.
-* **An old** `MAILBOX.md` **is refused at load, by name,** with the conversion above in the message. The framework is pre-1.0, and all 32 files are in this repo's goals, labs and kitchen-sink, so a loud refusal costs less than reading two formats.
+* **Every** `MAILBOX.md` **is converted, and none is refused by name.** All of them are in this repo's goals, labs and kitchen-sink, and there are no consumers yet, so nothing old is carried across ([D9](../DECISIONS.md#d9)).
 
 The hard part is the 14 files with boards. Each one has to say whether its board was really a coordinator's working list (a session board) or shared work people track (a workstream on a project).
 
@@ -443,7 +445,7 @@ These terms are in today's code and docs, and go away in the refactor. Counts ar
 - [X] **How do long-lived sessions manage memory?** Moved to the memory epic, [FIX-1775](https://linear.app/fixpoint-labs/issue/FIX-1775/epic-memory-and-session-context-management), updated with what this doc found: what's kept word for word, when it summarizes, and what moves to the memory layers, configurable per flow and per worker.
 - [ ] **User-to-user communication.** Punted until we know we want it, and whether it belongs to the framework or the app.
 - [ ] **Files as migrations.** Held for later.
-- [ ] **MAILBOX.md becomes WORKER.md with the coordinator flow.** Recommend yes, refusing old files loudly with the conversion in the message.
+- [ ] **MAILBOX.md becomes WORKER.md with the coordinator flow.** Recommend yes. Old files aren't refused by name: there are no consumers yet ([D9](../DECISIONS.md#d9)).
 - [ ] **The 14 mailbox boards.** Each becomes a session board or a workstream. Needs a pass over the goals that use them.
 - [X] **Rooms are removed, and a project coordinator replaces them.** Decided. Their crash-safe answer record is the model for a coordinator's one-answer-per-delegate rule.
 - [ ] **Multi-worker transcripts: copy into the resource, or project from sessions?** Punted. Within one user, projection is safe. Across users, copy, unless a special safety mechanism is built.

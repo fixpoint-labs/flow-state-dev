@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 452" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What&#x27;s in the box. In the box, three groups and a vocabulary. Workers: a worker is a private, user-scoped resource naming the singleton flow that runs it, standard workers projected from files, fork, FIX-1788; the worker contract, FIX-1789; user data per org, FIX-1790; the library of templates copied into a user&#x27;s scope, FIX-1795. Coordinators: delegates in session state, four routing policies, one answer per delegate, a routing record, FIX-1791; declared in WORKER.md, old MAILBOX.md refused, FIX-1792. Projects: private or shared, workstreams with one owner each that the org reads and the owner writes, a project coordinator per user, rooms removed, FIX-1793; tasks down the owner&#x27;s chain, run as the owner, FIX-1794. One vocabulary, FIX-1796. Composed from what ships: private sessions; session, user and org scopes; projected collections; task boards; the admission contract and door; a task&#x27;s named assignee; plus five Layer 1 changes, D3. The app&#x27;s: its standard install, the files every user starts with, and its users and orgs. Owned elsewhere: long-lived session memory, FIX-1775, and the inventory&#x27;s calls, FIX-1787. Not built, below a fence: channels, user-to-user communication, transcript resources, files as migrations, removing flow instances and owner pins, a Layer 1 worker, coordinator, project or workstream, a second worker store or registry, a memory field or graph, a session shared between users.">
+     aria-label="What&#x27;s in the box. In the box, three groups and a vocabulary. Workers: a worker is a private, user-scoped resource naming the singleton flow that runs it, standard workers projected from files, fork, FIX-1788; the worker contract, FIX-1789; user data per org, FIX-1790; the library of templates copied into a user&#x27;s scope, FIX-1795. Coordinators: delegates in session state, four routing policies, one answer per delegate, a routing record, FIX-1791; declared in WORKER.md, every MAILBOX.md converted, FIX-1792. Projects: private or shared, workstreams with one owner each that the org reads and the owner writes, a project coordinator per user, rooms removed, FIX-1793; tasks down the owner&#x27;s chain, run as the owner, FIX-1794, and split by any worker whose delegates take tasks, FIX-1802. One vocabulary, FIX-1796. Composed from what ships: private sessions; session, user and org scopes; projected collections; task boards; the admission contract and door; a task&#x27;s named assignee; plus five Layer 1 changes, D3. The app&#x27;s: its standard install, the files every user starts with, and its users and orgs. Owned elsewhere: long-lived session memory, FIX-1775, and the inventory&#x27;s calls, FIX-1787. Not built, below a fence: channels, user-to-user communication, transcript resources, files as migrations, removing flow instances and owner pins, a Layer 1 worker, coordinator, project or workstream, a second worker store or registry, a memory field or graph, a session shared between users, a migration or upgrade step, D9.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -36,14 +36,14 @@
     <text class="t-s" x="340" y="114">judgment · best fit · round robin · all</text>
     <text class="t-s" x="340" y="130">one answer each · a routing record</text>
     <text class="t-s" x="340" y="146">FIX-1791 · declared in WORKER.md,</text>
-    <text class="t-s" x="340" y="162">MAILBOX.md refused · FIX-1792</text>
+    <text class="t-s" x="340" y="162">every MAILBOX.md converted · FIX-1792</text>
     <rect class="held" x="624" y="56" width="284" height="124" rx="4"/>
     <text class="t-b" x="636" y="78">projects</text>
     <text class="t-s" x="636" y="98">private or shared · one type</text>
     <text class="t-s" x="636" y="114">a workstream: one owner, org reads</text>
     <text class="t-s" x="636" y="130">a project coordinator per user</text>
     <text class="t-s" x="636" y="146">rooms removed · FIX-1793</text>
-    <text class="t-s" x="636" y="162">tasks run as the owner · FIX-1794</text>
+    <text class="t-s" x="636" y="162">run as the owner, split · FIX-1794, 1802</text>
     <rect class="held" x="32" y="190" width="876" height="22" rx="4"/>
     <text class="t-s" x="44" y="205">one vocabulary: worker · coordinator · delegate · roster · workstream · flow · FIX-1796</text>
   </g>
@@ -68,6 +68,6 @@
     <text class="t-non" x="32" y="370">NOT BUILT</text>
     <text class="t-s" x="32" y="392">no channels · no user-to-user communication · no transcript resource · no files as migrations</text>
     <text class="t-s" x="32" y="408">flow instances and owner pins deprecated, not removed · no L1 worker, coordinator, project or workstream</text>
-    <text class="t-s" x="32" y="424">no second worker store or registry · no memory field or graph · no session shared between users</text>
+    <text class="t-s" x="32" y="424">no second worker store or registry · no memory field or graph · no session shared between users · no migration or upgrade step, D9</text>
   </g>
 </svg>

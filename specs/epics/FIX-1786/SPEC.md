@@ -15,9 +15,11 @@
 **Why now.** The model is hard to hold in your head, even for the person who designed it, and
 explaining it better won't fix that ([concept](concept/CONCEPT.md#why-this-doc)). Every child
 built on hires, mailboxes and rooms adds to the bill: four of FIX-1763's children build on
-mailboxes right now, and the inventory found 38 items on the refactor's ground. The framework is pre-1.0 and every `MAILBOX.md` lives in this repo, so a
-loud refusal costs less today than two formats later. The inventory (FIX-1787) runs first, so
-the refactor starts from a known base.
+mailboxes right now, and the inventory found 38 items on the refactor's ground. Nobody outside
+this repo runs Workforce yet, and every `MAILBOX.md` lives in it, so the refactor carries nothing
+across: old data is dropped and every file is converted, with no upgrade path
+([D9](DECISIONS.md#d9)). The inventory (FIX-1787) runs first, so the refactor starts from a known
+base.
 
 ## The goal, and how we'll know it's met
 
@@ -41,7 +43,7 @@ out of it; a custom worker flow's privacy is its author's, not a registration ch
 | **The real need** | Jake's PRD: one rule set, where a worker's own state and user-scoped data are private to one user, while shared resources and org scope, which a flow writes by its author's choice, are shared (Jake, 2026-10-06). The model is the problem, not its docs. Under it sits a hole: an org-locked hire reaches every member |
 | **Smaller, and rejected** | "The terms are renamed." FIX-1796 alone meets it, and the org-locked hire still reaches everyone. Or "workers are private": FIX-1788 alone, while boards and projects stay org rows any member's session drains |
 | **Bigger, and not this epic's** | Channels · user-to-user communication · transcript resources · files as migrations · long-lived session memory (FIX-1775) · removing flow instances and owner pins from the engine ([FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798), after FIX-1788) |
-| **Not done if** | Every child is Done and the closure check hasn't run · it ran with one user · Bob opens, names or writes any of Alice's workers, sessions, boards or workstream sessions · a task in Alice's chain runs as anyone else · one of Alice's boards claims another's rows · a user changes a standard worker · leg b never made a private project · a record stored before FIX-1790 reads in two orgs · a `MAILBOX.md` loads · Workforce still registers a flow instance or sets an owner pin · a retired term is left in an export or a published page ([ER-12](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) · a bug the closure run found is open |
+| **Not done if** | Every child is Done and the closure check hasn't run · it ran with one user · Bob opens, names or writes any of Alice's workers, sessions, boards or workstream sessions · a task in Alice's chain runs as anyone else · one of Alice's boards claims another's rows · a user changes a standard worker · leg b never made a private project · a `MAILBOX.md` is left in the repo · Workforce still registers a flow instance or sets an owner pin · a retired term is left in an export or a published page ([ER-12](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) · a bug the closure run found is open |
 
 ```mermaid
 flowchart LR
@@ -62,7 +64,7 @@ makes leg c's PASS mean something.
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's goal check ([FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797)), in Shift Manager over HTTP and a browser, on one `main` commit after every other child merges ([ER-28](BUSINESS-RULES.md#the-closure)) |
-| **Signal** | Leg a: Alice forks a standard worker and posts to a best-fit coordinator whose delegates she adds; her delegate answers, the routing is recorded, every session is hers. Leg b: Alice and Bob each own a workstream in one shared project; every session in each chain belongs to its owner, two of Alice's boards that hand rows to another flow each drain only their own, and the project view computes both. Leg c: Bob opens Alice's session, names her worker as a delegate, writes her entry, links a session to her worker: each refused. Leg c reaches only for a worker's own state and user-scoped data; a member reading what a worker flow wrote to org scope is not a failure. Alice in a second org sees none of her first org's workers, nor anything stored before FIX-1790. In leg b, Alice also makes a private project, and Bob can't list, open or read it ([Q2](DECISIONS.md#q2)) |
+| **Signal** | Leg a: Alice forks a standard worker and posts to a best-fit coordinator whose delegates she adds; her delegate answers, the routing is recorded, every session is hers. Leg b: Alice and Bob each own a workstream in one shared project; every session in each chain belongs to its owner, two of Alice's boards that hand rows to another flow each drain only their own, and the project view computes both. Leg c: Bob opens Alice's session, names her worker as a delegate, writes her entry, links a session to her worker: each refused. Leg c reaches only for a worker's own state and user-scoped data; a member reading what a worker flow wrote to org scope is not a failure. Alice in a second org sees none of her first org's workers. In leg b, Alice also makes a private project, and Bob can't list, open or read it ([Q2](DECISIONS.md#q2)) |
 | **Input** | Shift Manager (`packages/shift-manager`) on its standard install, converted to `WORKER.md`; two users of one org through the app's sign-in; a real model; a held-out post for the coordinator |
 | **Anti-game** | No asserting on a child's own tests. No worker, project or delegate seeded by a fixture: the users make each one through the app. No run with one user, and no request of Bob's sent under Alice's identity |
 | **Control that must fail** | The worker collection at org scope, which puts a worker itself where every member reads it: leg c must FAIL. Today's `main`: all three legs FAIL |
@@ -86,22 +88,22 @@ blocked by FIX-1787 ([ER-23](BUSINESS-RULES.md#how-the-set-is-run)).
 |---|---|---|---|
 | [FIX-1787](https://linear.app/fixpoint-labs/issue/FIX-1787) · inventory | A merge, close or untouched call for every open PR and active issue in the areas the refactor changes | The refactor starts from its result. Route: inventory, no spec, user-approved outside this gate | In Review · posted 2026-10-06 [on FIX-1786](https://linear.app/fixpoint-labs/issue/FIX-1786#comment-9e837aa5): 38 items, 13 merge first, 13 close, 12 untouched; its two owner calls answered 2026-10-06 ([Q2](DECISIONS.md#q2), [Q3](DECISIONS.md#q3)) |
 | [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789) · worker contract | Registered worker flows on the installation's list, their registration checks, a standard-only flag per entry | A worker's configuration must name a flow the installation registered and checked | Spec merged ([#2811](https://github.com/fixpoint-labs/flow-state-dev/pull/2811)) · [Q1](DECISIONS.md#q1) decided at its gate: the list |
-| [FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790) · user data per org | User-scoped data kept per (user, org), for every flow; records stored before moved to one org or refused | Without it a user's private workers show in every org they belong to | Backlog · spec route |
+| [FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790) · user data per org | User-scoped data kept per (user, org), for every flow; records stored before dropped ([D9](DECISIONS.md#d9)) | Without it a user's private workers show in every org they belong to | Backlog · spec route |
 | [FIX-1788](https://linear.app/fixpoint-labs/issue/FIX-1788) · workers as resources | A worker as a user-scoped resource, run by the singleton flow it names; standard workers projected from files; fork; a session link callers can't seed; instances and pins deprecated | The spine: privacy by construction | Backlog · spec route |
 | [FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791) · coordinator flow | Delegates in session state, four routing policies, one answer per delegate, a routing record | Replaces the mailbox with a worker, and fixes its fixed membership | Backlog · spec route · carries FIX-1774's dogfood legs and *not done if* list, except leg d (FIX-1793's) and leg e (FIX-1794's) |
 | [FIX-1795](https://linear.app/fixpoint-labs/issue/FIX-1795) · worker library | Templates in the org, copied into a user's scope | With hires private, the only way a team shares a worker | In Spec Review ([#2819](https://github.com/fixpoint-labs/flow-state-dev/pull/2819)) · build after the MVP (Jake, 2026-10-06; [Q2](DECISIONS.md#q2)) |
 | [FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793) · projects and workstreams | Private or shared projects; workstream resources an owner writes and the org reads; a project coordinator; rooms removed | Leg b, and the one new engine rule | Spec merged ([#2823](https://github.com/fixpoint-labs/flow-state-dev/pull/2823)) · private and shared projects in, and a shared project's members open its workstreams ([Q2](DECISIONS.md#q2)) |
 | [FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794) · assignment chain | Tasks assigned from delegates, down the owner's boards, run as the owner, and followed through | Today a drain runs as whoever triggers it | Backlog · spec route · carries FIX-1777's "runs as the filer" rule, FIX-1774's leg e and FIX-1780's follow-through |
-| [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802) · filing and the split | Filing as a tool any worker can be granted, opt-in in its `WORKER.md`; a filed task's worker files pieces in turn, under FIX-1794's depth limit | The split is in the MVP, and the DevTeam's workstream is led by an ordinary worker that files ([D8](DECISIONS.md#d8)) | Backlog · joined 2026-10-06 · spec being written, no PR yet |
-| [FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792) · `MAILBOX.md` to `WORKER.md` | 33 charters converted, all 16 boards in 15 files: 13 files keep a session board, the DevTeam's feature becomes a workstream, and kitchen-sink's escalations board goes with its feature, old files refused by name; project claims and a project row's mailbox list removed | One way to declare a worker | Backlog · spec route |
+| [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802) · filing and the split | Orchestration's task tools for any worker whose delegates can take a task; a filed task's worker files pieces in turn, five boards deep and 100 tasks a chain by default | The split is in the MVP, and the DevTeam's workstream is led by an ordinary worker that files ([D8](DECISIONS.md#d8)) | Backlog · joined 2026-10-06 · spec being written, no PR yet |
+| [FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792) · `MAILBOX.md` to `WORKER.md` | 33 charters converted, all 16 boards in 15 files: 13 files keep a session board, the DevTeam's feature becomes a workstream, and kitchen-sink's escalations board goes with its feature, old mailbox data dropped ([D9](DECISIONS.md#d9)); project claims and a project row's mailbox list removed | One way to declare a worker | Backlog · spec route |
 | [FIX-1796](https://linear.app/fixpoint-labs/issue/FIX-1796) · terminology | The retired terms gone from code, docs and the glossary | One term, one thing | Backlog · spec route |
 | [FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797) · closure · **required** | The QA plan, an early leg-c run when FIX-1788 merges, and the runs on one `main` commit | Proves the whole | Backlog · blocked by every other child except FIX-1795, which builds after the MVP ([ER-27](BUSINESS-RULES.md#how-the-set-is-run)) |
 
 The inventory, ten refactor children and a closure (FIX-1802 joined with [D8](DECISIONS.md#d8));
 none of the ten started, and none of the
 inventory's merge-first PRs has landed. Whether nine is really eight: FIX-1790 could ride in
-FIX-1788, but it changes a persisted key every flow uses and moves what was stored before by an
-operator step, so it keeps its own review. The collapse trigger, FIX-1789's contract needing only
+FIX-1788, but it changes a persisted key every flow uses, so it keeps its own review; D9 took
+away its operator step, not the key change. The collapse trigger, FIX-1789's contract needing only
 a registration list, didn't fire: its spec found three checks, attribution and a drawer move
 ([Q1](DECISIONS.md#q1)).
 
@@ -138,7 +140,8 @@ chain and then the split.
 - **Sessions stay private to one user.** The engine's session ownership doesn't change.
 - **Channels** are a later feature, and nothing here renames them
   ([ER-21](BUSINESS-RULES.md#what-no-child-may-do)). They have no paths on `main` to keep: no
-  `flows/channels/` path is tracked, and `CHANNEL.md` is refused by name as a pre-mailbox file.
+  `flows/channels/` path is tracked. Today's refusal of `CHANNEL.md` by name goes with the
+  mailbox code ([D9](DECISIONS.md#d9)).
 - **Task boards** and `sharedToLineage`, consumed as they ship, except one change: a ledger kept
   per conversation at the owner's user scope ([D6](DECISIONS.md#d6)). A board keeps its word
   "seat", a place on a board ([D7](DECISIONS.md#d7)).
@@ -167,8 +170,16 @@ the shared half stays in the MVP.
 gate, no engine rule on org-scope writes. At FIX-1794's, [D6](DECISIONS.md#d6) · a board keeps its
 tasks per conversation, a Layer 1 change in [D3](DECISIONS.md#d3). At FIX-1796's,
 [D7](DECISIONS.md#d7) · discovery's `seats` domain becomes `workers` with no alias, the fifth
-Layer 1 change, and a task board keeps "seat". The product owner, [D8](DECISIONS.md#d8) · filing
-work is a tool any worker can be granted, and the split is in the MVP: FIX-1802 joins the set.
+Layer 1 change, and a task board keeps "seat". The product owner, [D8](DECISIONS.md#d8) · any
+worker can file work, and the split is in the MVP: FIX-1802 joins the set.
+
+**Answered by the product owner, 2026-10-07.** [D8](DECISIONS.md#d8) · a worker gets
+orchestration's existing task tools when one of its delegates can take a task, with no flag; a
+chain goes five boards deep and holds 100 tasks by default, which the app can change.
+[D9](DECISIONS.md#d9) · no backwards support of any kind while there are no consumers: no
+migration, upgrade step, dual-read or refusal by name, and old data is dropped. BP-030 doesn't
+apply to this epic until a consumer exists. FIX-1792's D2 is answered: old data is dropped.
+
 Engineering calls I
 made as EM, for the record: [D2](DECISIONS.md#d2) to [D5](DECISIONS.md#d5). Rules:
 [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).
