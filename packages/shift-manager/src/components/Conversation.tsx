@@ -1,22 +1,14 @@
 /**
- * A conversation with a seat, as one component any view can draw: the seat's
- * session as a feed, and a composer under it that sends into that session.
+ * A conversation with a seat: its session as a feed, and a composer under it
+ * that sends into that session.
  *
  *     <Conversation seat={seat} sessions={snapshot.sessions} gaps={gaps} name="Shift Coordinator" />
  *
- * That is the whole of it: the read, the feed (the registry's renderers, with
- * tool calls as quiet lines), following the latest turn, the working line, the
- * composer, and the one send path. A view varies it by props, never by a fork:
- * the name over the seat's messages, the text for an empty conversation, what
- * sits above the feed (`lead`), a line to hand in (`autoSend`), suggestions,
- * and `renderItem` to draw an item its own way (it is given the item and every
- * stored item, so a view can tell an answered ask from a pending one).
- *
- * It is built from {@link ConversationFeed} (stored items), {@link ConversationComposer}
- * (sends into a {@link SeatConversation}) and {@link ConversationFrame}, the
- * scrolling column with the composer pinned under it. Only the frame is
- * exported, for a screen that shows a named state in the same column; export
- * the others when a view needs them apart.
+ * A view varies it by props: the name over the seat's messages, the text for
+ * an empty conversation, what sits above the feed (`lead`), a line to hand in
+ * (`autoSend`), suggestions, and `renderItem` (the item and every stored item;
+ * return `undefined` to leave it to the registry). {@link ConversationFrame}
+ * is the same column, for a screen that shows a named state in its place.
  */
 import { useMemo, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -27,7 +19,7 @@ import { SessionItemsProvider } from "./flow-state/session-items-context";
 import { shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
 import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
-import { useSeatConversation, type SeatConversation } from "../lib/conversation";
+import { useSeatConversation } from "../lib/conversation";
 import { useFollowLatest } from "../lib/follow";
 import { useLab } from "../lib/lab-data";
 import type { Seat } from "../lib/reads";
@@ -66,31 +58,22 @@ export function ConversationFrame({
 }
 
 /**
- * The stored items, each the registry's own rendering. Around it: a label over
- * each of the seat's messages (its `name` and the time it was written, v2:135),
- * and a run of tool calls as one quiet line. `renderItem` may draw an item its
- * own way, returning `undefined` to leave it to the registry.
+ * The stored items, under {@link FlowProvider} so this can read the registry.
+ * A label over each of the seat's messages (its `name` and the time it was
+ * written, v2:135), and a run of tool calls as one quiet line. `renderItem`
+ * may draw an item its own way, returning `undefined` to leave it to the registry.
  */
-function ConversationFeed({
+function FeedItems({
   stored,
   name,
   renderItem,
-  testId = "conversation",
+  testId,
 }: {
   stored: SessionItems;
-  /** The seat's name over its messages, as the shell calls it. */
   name: string;
   renderItem?: (item: OutputItem, all: readonly OutputItem[]) => ReactNode | undefined;
-  testId?: string;
+  testId: string;
 }) {
-  return (
-    <FlowProvider renderers={shiftManagerRenderers}>
-      <FeedItems stored={stored} name={name} renderItem={renderItem} testId={testId} />
-    </FlowProvider>
-  );
-}
-
-function FeedItems({ stored, name, renderItem, testId }: { stored: SessionItems; name: string; renderItem?: (item: OutputItem, all: readonly OutputItem[]) => ReactNode | undefined; testId: string }) {
   const { renderers } = useFlowContext();
   // A run of tool calls stays one segment: the feed draws it as one quiet line.
   const shown = useMemo(() => buildItemRenderStream(stored.items, renderers), [stored, renderers]);
@@ -146,94 +129,7 @@ function FeedItems({ stored, name, renderItem, testId }: { stored: SessionItems;
   );
 }
 
-/**
- * The composer that sends into a seat's conversation: the one send path, to
- * the door the seat's flow declares. A line shows *delivered* only once the
- * session holds it, then the conversation is read back. Nothing is sent into
- * a conversation the screen hasn't read, or to a seat with no door.
- */
-function ConversationComposer({
-  seat,
-  conversation,
-  gaps,
-  name,
-  follow,
-  startWork,
-  suggestions,
-  autoSend,
-  onAutoSend,
-  testId = "composer",
-  scale = "cos",
-}: {
-  seat: Seat;
-  conversation: SeatConversation;
-  gaps: Gaps;
-  /** The seat's name, for the composer's label and placeholder. */
-  name: string;
-  /** Jump the feed to the end when a line goes out ({@link useFollowLatest}'s `follow`). */
-  follow?: () => void;
-  /** Called as a line goes out; returns the call that says it settled. */
-  startWork?: () => () => void;
-  suggestions?: readonly string[];
-  /** A line handed in from elsewhere (the palette): sent as if typed, once the composer isn't blocked. */
-  autoSend?: string | null;
-  onAutoSend?: () => void;
-  testId?: string;
-  scale?: "default" | "cos";
-}) {
-  const { clients, refresh } = useLab();
-  const { sessionId, opened, read, failure } = conversation;
-  const blocked =
-    seat.door === null
-      ? `${seat.id} ${gaps.turn.noDoor}`
-      : failure !== undefined
-        ? "The conversation didn't load, so nothing can be sent until it does."
-        : sessionId !== null && sessionId !== opened && read === undefined
-          ? "Reading the conversation first…"
-          : null;
-  return (
-    <TurnComposer
-      testId={testId}
-      scale={scale}
-      label={`Message ${name}`}
-      placeholder={`Message ${name}…`}
-      blocked={blocked}
-      suggestions={suggestions}
-      autoSend={autoSend}
-      onAutoSend={onAutoSend}
-      send={async (message, held) => {
-        const target = conversation.target();
-        const settled = startWork?.();
-        follow?.();
-        try {
-          const sent = await sendTurn(clients, { sessionId: target, flowId: seat.id, door: seat.door! }, message, {
-            onHeld: () => {
-              // The session holds the line: read it back now, so it is drawn while the reply is in flight.
-              conversation.hold(target);
-              held();
-            },
-          });
-          // The send's end reads the session once more (below), so this only keeps it as the conversation.
-          conversation.hold(target, false);
-          // Read the Lab again either way. Stopped short, it may have raised an ask Inbox should
-          // list; finished, it may have changed the organization, such as a project it created.
-          void refresh();
-          return sent;
-        } catch (error) {
-          // The Lab may have opened the session before the line failed. The
-          // listing says whether it did; the composer says what failed.
-          void refresh();
-          throw error;
-        } finally {
-          settled?.();
-          conversation.reread();
-        }
-      }}
-    />
-  );
-}
-
-/** A conversation with `seat`: the feed and the composer under it. See the file's header. */
+/** A conversation with `seat`: the feed and the composer under it. */
 export function Conversation({
   seat,
   sessions,
@@ -271,23 +167,55 @@ export function Conversation({
   const conversation = useSeatConversation(seat, sessions);
   // The feed opens where it starts, and follows once the person reaches the end or sends a line.
   const feed = useFollowLatest({ startAtEnd: false });
-  const { sessionId, read, failure, reread } = conversation;
+  const { clients, refresh } = useLab();
+  const { sessionId, opened, read, failure, reread } = conversation;
+  const blocked =
+    seat.door === null
+      ? `${seat.id} ${gaps.turn.noDoor}`
+      : failure !== undefined
+        ? "The conversation didn't load, so nothing can be sent until it does."
+        : sessionId !== null && sessionId !== opened && read === undefined
+          ? "Reading the conversation first…"
+          : null;
   return (
     <ConversationFrame
       testId={testId}
       feed={feed.ref}
       composer={
-        <ConversationComposer
-          seat={seat}
-          conversation={conversation}
-          gaps={gaps}
-          name={name}
-          follow={feed.follow}
-          startWork={startWork}
+        <TurnComposer
+          testId={`${testId}-composer`}
+          scale="cos"
+          label={`Message ${name}`}
+          placeholder={`Message ${name}…`}
+          blocked={blocked}
           suggestions={suggestions}
           autoSend={autoSend}
           onAutoSend={onAutoSend}
-          testId={`${testId}-composer`}
+          send={async (message, held) => {
+            const target = conversation.target();
+            const settled = startWork?.();
+            feed.follow();
+            try {
+              const sent = await sendTurn(clients, { sessionId: target, flowId: seat.id, door: seat.door! }, message, {
+                onHeld: () => {
+                  // The session holds the line: read it back now, so it is drawn while the reply is in flight.
+                  conversation.open(target);
+                  reread();
+                  held();
+                },
+              });
+              // The send's end reads the session once more (below), so this only keeps it as the conversation.
+              conversation.open(target);
+              return sent;
+            } finally {
+              // Read the Lab again either way. Stopped short, it may have raised an ask Inbox should
+              // list; finished, it may have changed the organization, such as a project it created.
+              // A failed send may still have opened the session; the listing says whether it did.
+              void refresh();
+              settled?.();
+              reread();
+            }
+          }}
         />
       }
     >
@@ -310,7 +238,9 @@ export function Conversation({
             Reading the conversation…
           </p>
         ) : (
-          <ConversationFeed stored={read} name={name} renderItem={renderItem} testId={testId} />
+          <FlowProvider renderers={shiftManagerRenderers}>
+            <FeedItems stored={read} name={name} renderItem={renderItem} testId={testId} />
+          </FlowProvider>
         )}
         {working ? (
           // v2's thinking line (v2:167-169), saying only what is true: the seat has the line.

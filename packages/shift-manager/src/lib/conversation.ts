@@ -7,8 +7,7 @@
  * refresh. Nothing is sent into a conversation the screen hasn't read; one a
  * line opened here holds nothing the person hasn't seen.
  *
- * Used by {@link Conversation} (and its feed and composer); a view that wants a
- * conversation with a seat calls this, or just draws that component.
+ * Used by {@link Conversation}.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionSummary } from "@flow-state-dev/client";
@@ -30,8 +29,8 @@ export interface SeatConversation {
   reread(): void;
   /** The session a line goes to: the conversation's, or a fresh id kept until a send opens it. */
   target(): string;
-  /** A line is held by `sessionId`: show it as the conversation, and by default read it back. */
-  hold(sessionId: string, read?: boolean): void;
+  /** Show `sessionId` as the conversation until the snapshot lists it. A read is {@link SeatConversation.reread}. */
+  open(sessionId: string): void;
 }
 
 /** @param seat The seat the conversation is with. @param sessions The snapshot's sessions. */
@@ -66,11 +65,8 @@ export function useSeatConversation(seat: Seat, sessions: readonly SessionSummar
   }, [clients, sessionId, reads]);
 
   const reread = useCallback(() => setReads((n) => n + 1), []);
-  const hold = useCallback((id: string, read = true) => {
-    setOpened(id);
-    if (read) setReads((n) => n + 1);
-  }, []);
+  const open = useCallback((id: string) => setOpened(id), []);
   const target = useCallback(() => sessionId ?? (fresh.current ??= newConversationId()), [sessionId]);
 
-  return { sessionId, opened, read: sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined, failure, reread, target, hold };
+  return { sessionId, opened, read: sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined, failure, reread, target, open };
 }
