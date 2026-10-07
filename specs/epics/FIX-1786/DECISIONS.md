@@ -5,7 +5,8 @@
 The calls above any single issue. D1 is the sign-off surface. This epic runs under `epic-em`:
 D2 to D5 are engineering calls I made and record here, with what would reverse each. D6 is
 FIX-1794's D1, approved at its spec gate and recorded here because it changes the task board. D7
-is FIX-1796's D4, recorded here because it renames a Layer 1 public name. D8 and D9 are the
+is FIX-1796's D4, recorded here because it renames a Layer 1 public name; the product owner
+amended it on 2026-10-07, so a task board's seat becomes assignee too. D8 and D9 are the
 product owner's calls: D8 brings FIX-1802 into the set, and its grant was made exact on
 2026-10-07; D9, the same day, takes backwards support out of every child. Jake
 answered Q1 to Q3 on 2026-10-06, and no child reopens them. All three are decided: Q1's shape,
@@ -21,14 +22,14 @@ flowchart TD
   D1 -.->|"rejected"| X1["rename only · or fix privacy in place"]
   E --> D2["D2 · one coordinator flow, a routing setting"]
   D2 -.->|"rejected"| X2["coordinator and relay"]
-  E --> D3["D3 · five Layer 1 mechanism changes and a rename, the rest Layer 2"]
+  E --> D3["D3 · five Layer 1 mechanism changes and two renames, the rest Layer 2"]
   D3 -.->|"rejected"| X3["an engine rule on org-scope writes"]
   E --> D4["D4 · contract and org keys first, terms last"]
   E --> D5["D5 · a board is a session board unless people track it"]
   E --> D6["D6 · a board's rows at its owner's user scope, one partition per conversation"]
   D6 -.->|"rejected"| X6["one ledger per owner · a claim filter in Workforce"]
-  E --> D7["D7 · the discovery domain seats becomes workers; a board keeps seat"]
-  D7 -.->|"rejected"| X7["seats pinned as a model-facing name · an alias"]
+  E --> D7["D7 · the discovery domain seats becomes workers; a board's seat becomes assignee"]
+  D7 -.->|"rejected"| X7["seats pinned as a model-facing name · an alias · seat kept on the board · route"]
   E --> D8["D8 · a worker whose delegates take tasks gets the task tools · the split is in the MVP"]
   D8 -.->|"reversed"| X8["filing makes a coordinator · the split after the MVP · a filing flag"]
   E --> D9["D9 · no backwards support while there are no consumers"]
@@ -46,12 +47,12 @@ flowchart TD
 |---|---|
 | **Instead of** | Rename only (FIX-1796 alone) · or fix privacy in place: keep hires, mailboxes and rooms, and narrow the org-locked hire and the boards |
 | **Because** | A rename keeps the hole: an org-locked hire still reaches every member, and a drain still runs as whoever triggers it. A fix in place keeps six parts and three meanings of "shared", and each fix is a special case on a part the target model deletes. The inventory comes first because FIX-1763's mailbox children are in flight; starting under them makes each one a rebase |
-| **Locks in** | A refactor across Workforce, the engine, the task board and discovery's domain list (five mechanism changes and one public rename, [D3](#d3)), Shift Manager and the docs. Implementation waits on FIX-1787's merge-first rows. Work built on hires, mailboxes and rooms merges first and is refactored here, or closes. [D8](#d8) later added a tenth refactor child, FIX-1802 |
+| **Locks in** | A refactor across Workforce, the engine, the task board and discovery's domain list (five mechanism changes and two public renames, [D3](#d3)), Shift Manager and the docs. Implementation waits on FIX-1787's merge-first rows. Work built on hires, mailboxes and rooms merges first and is refactored here, or closes. [D8](#d8) later added a tenth refactor child, FIX-1802 |
 
 **What would change my mind:** no app needing a second user or a worker of its own this year.
 Then fix the hole in place and rename later.
 
-![D1: nine children after the inventory, chosen, beside rename only and fixing privacy in place. Decides it: the model a reader learns, one rule against six parts. The price: nine issues, five mechanism changes (the fifth T1, the task tools' roster read per call) and one public rename (D7). Flips if no app needs a second user or its own worker this year](figures/d1-the-set.svg)
+![D1: nine children after the inventory, chosen, beside rename only and fixing privacy in place. Decides it: the model a reader learns, one rule against six parts. The price: nine issues, five mechanism changes (the fifth T1, the task tools' roster read per call) and two public renames (D7). Flips if no app needs a second user or its own worker this year](figures/d1-the-set.svg)
 
 It comes down to the model a reader learns: both cheaper options keep the six parts.
 
@@ -69,13 +70,13 @@ session shape for more than half the flow. Then split it, with the delegate chec
 answer record in one shared module.
 
 <a name="d3"></a>
-## D3 · engineering · Workforce stays Layer 2; Layer 1 changes are five mechanisms and one rename
+## D3 · engineering · Workforce stays Layer 2; Layer 1 changes are five mechanisms and two renames
 
 | | |
 |---|---|
 | **Instead of** | A Layer 1 worker noun with its own store · or per-org user keys faked inside Workforce · or an engine rule refusing a worker flow's writes to org scope (FIX-1789's Q2) |
-| **Because** | Workers, coordinators and workstreams compose what ships: resources, scopes, sessions, projected collections, boards. Five things Workforce cannot fake: a scope key, a row rule, session state a caller can't write, a task ledger kept per conversation ([D6](#d6)), and task tools that read their roster per call, since an action is fixed when it is defined ([D8](#d8), T1). The sixth is a name, not a mechanism: discovery's `seats` domain, a `contracts` constant, becomes `workers` ([D7](#d7)). So `contracts` still names one Workforce domain, as it named `seats` before; whether Layer 1 keeps that closed list is [FIX-1803](https://linear.app/fixpoint-labs/issue/FIX-1803), FIX-1575's open question. [The end-state POC](#what-the-end-state-poc-showed) settled the third: the public create persists a caller's session state, so a link held there accepts the caller's own other worker, and a row only flow code writes outlives a deleted session id. No engine rule on org-scope writes (Jake, 2026-10-06): org scope is shared with the org by design, a worker flow may write there if that is how it is built to work, and the framework can't know when org data is relevant. The built-in worker flows, `agent` and the coordinator, keep a worker's own state out of it; a custom worker flow's privacy is its author's, and the contract doesn't check it ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
-| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change whose old records are dropped, never read in any org ([D9](#d9), [ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session data only the server writes. The worker link takes the form this card's *what would change my mind* anticipated: a server-only field on the session record, set and checked when the session is created, never on a turn; a session's worker can't change, and no action names a worker (Jake, 2026-10-06, on FIX-1788's spec). A coordinator's delegates are held where only the server writes too, and the public create can't seed them. FIX-1788 picks the mechanism and builds it, FIX-1791 consumes it. Flow instances and owner pins stay in the engine untouched, with no deprecation markers, until FIX-1798 removes them ([D9](#d9)). A worker's own key for its private state is Layer 2, FIX-1788's, and so is reading a worker's configuration per run: a generator already resolves its tools per call ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). (4) A task ledger kept per conversation, FIX-1794, a change to the task board that leaves the engine untouched ([D6](#d6)). (5) T1, orchestration's task tools reading their roster per call, FIX-1794 as amended in [#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839): generic, naming no worker or delegate ([D8](#d8)). And one public rename: discovery's `seats` domain becomes `workers` in `MANIFEST_DOMAINS`, FIX-1796, with no alias ([D7](#d7)). Any other Layer 1 change comes back to this epic |
+| **Because** | Workers, coordinators and workstreams compose what ships: resources, scopes, sessions, projected collections, boards. Five things Workforce cannot fake: a scope key, a row rule, session state a caller can't write, a task ledger kept per conversation ([D6](#d6)), and task tools that read their roster per call, since an action is fixed when it is defined ([D8](#d8), T1). The other two are names, not mechanisms ([D7](#d7)): discovery's `seats` domain, a `contracts` constant, becomes `workers`, and a task board's seat, in orchestration's types and the hand-off record core defines, becomes assignee. So `contracts` still names one Workforce domain, as it named `seats` before; whether Layer 1 keeps that closed list is [FIX-1803](https://linear.app/fixpoint-labs/issue/FIX-1803), FIX-1575's open question. [The end-state POC](#what-the-end-state-poc-showed) settled the third: the public create persists a caller's session state, so a link held there accepts the caller's own other worker, and a row only flow code writes outlives a deleted session id. No engine rule on org-scope writes (Jake, 2026-10-06): org scope is shared with the org by design, a worker flow may write there if that is how it is built to work, and the framework can't know when org data is relevant. The built-in worker flows, `agent` and the coordinator, keep a worker's own state out of it; a custom worker flow's privacy is its author's, and the contract doesn't check it ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change whose old records are dropped, never read in any org ([D9](#d9), [ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session data only the server writes. The worker link takes the form this card's *what would change my mind* anticipated: a server-only field on the session record, set and checked when the session is created, never on a turn; a session's worker can't change, and no action names a worker (Jake, 2026-10-06, on FIX-1788's spec). A coordinator's delegates are held where only the server writes too, and the public create can't seed them. FIX-1788 picks the mechanism and builds it, FIX-1791 consumes it. Flow instances and owner pins stay in the engine untouched, with no deprecation markers, until FIX-1798 removes them ([D9](#d9)). A worker's own key for its private state is Layer 2, FIX-1788's, and so is reading a worker's configuration per run: a generator already resolves its tools per call ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). (4) A task ledger kept per conversation, FIX-1794, a change to the task board that leaves the engine untouched ([D6](#d6)). (5) T1, orchestration's task tools reading their roster per call, FIX-1794 as amended in [#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839): generic, naming no worker or delegate ([D8](#d8)). And two public renames, both FIX-1796's, with no alias ([D7](#d7)): discovery's `seats` domain becomes `workers` in `MANIFEST_DOMAINS`, and a task board's seat becomes assignee in orchestration's board types and the hand-off record's field. Any other Layer 1 change comes back to this epic |
 
 **What would change my mind:** a second consumer of a worker outside Workforce. Then a worker
 noun in core earns its place.
@@ -116,22 +117,32 @@ in another session, for its own reasons. Then the board stays in its session, an
 is dropped before it ships.
 
 <a name="d7"></a>
-## D7 · The discovery domain `seats` becomes `workers`; a task board keeps "seat"
+## D7 · The discovery domain `seats` becomes `workers`; a task board's seat becomes assignee
 
 From FIX-1796's spec gate ([#2832](https://github.com/fixpoint-labs/flow-state-dev/pull/2832),
 [its D4](../../issues/FIX-1796/DECISIONS.md#d4)), recorded here because `MANIFEST_DOMAINS` in
 `packages/contracts/src/types/manifest.ts` is a Layer 1 public name, which binds the set only
 once the epic records it ([ER-22](BUSINESS-RULES.md#what-no-child-may-do), [ER-24](BUSINESS-RULES.md#how-the-set-is-run)).
 
+**Amended by the product owner, 2026-10-07.** They wrote: "I'm still not sold on seats for task
+boards. Maybe routes? Similar to router. Any other ideas". Offered assignee, lane, route and
+station, they answered: "Ok let's go with assignee". That flips the card's board half as merged,
+where a task board kept "seat"
+([the card as merged](https://github.com/fixpoint-labs/flow-state-dev/blob/2ab5e6b0bd77c798142a48922131aa52f45f737d/specs/epics/FIX-1786/DECISIONS.md#d7)),
+and [FIX-1796's D1](../../issues/FIX-1796/DECISIONS.md#d1) with it. "Seat" is now retired
+everywhere, with no board exception. Orchestration is Layer 1, so [D3](#d3) counts the board's
+rename as its second public rename.
+
 | | |
 |---|---|
-| **Instead of** | Keeping `seats` as a pinned, model-facing name · or `seats` kept as an alias beside `workers` · or renaming the task board's seat to assignee too · or settling now whether Layer 1 keeps a closed list of discovery domains or each layer registers its own |
-| **Because** | The product owner's rule (2026-10-06): "seat" names a place on a task board only, and Workforce's seat goes everywhere. The `seats` domain lists Workforce's workers, so it goes. It is the one surface a model reads by name, so a pinned `seats` would teach a model the meaning the sweep removes. No alias: an alias is a retired term in an export ([ER-12](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). On a board, "seat" is a fair word for a place, and an assignee is a seat on one task, which is how the set already uses "assignee". The rename adds no coupling: `contracts` already names `seats` and `mailboxes` today. Moving to domains each layer registers is a bigger Layer 1 redesign the MVP doesn't need, so that question stays open for [FIX-1803](https://linear.app/fixpoint-labs/issue/FIX-1803), FIX-1575's open question |
-| **Locks in** | `MANIFEST_DOMAINS`, core's discovery tool and Workforce's `discover:` key say `workers`, built by FIX-1796. A saved prompt, skill or eval that passes `seats` gets the "unknown domain" listing, and a worker file with `discover: [seats]` is refused, listing the known domains. The `mailboxes` domain isn't decided here: FIX-1792 removes it ([#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833) S9, its BR-5a). The task board is not renamed: its types and the hand-off record's `seat` field keep their names, and the glossary defines a seat (a place on a board) and an assignee (a seat on one task) |
+| **Instead of** | Keeping `seats` as a pinned, model-facing name · or `seats` kept as an alias beside `workers` · or keeping "seat" on the board (D7 as merged) · or "route", which the engine's HTTP routes and the router block kind already own · or settling now whether Layer 1 keeps a closed list of discovery domains or each layer registers its own |
+| **Because** | The `seats` domain lists Workforce's workers, so it goes. It is the one surface a model reads by name, so a pinned `seats` would teach a model the meaning the sweep removes. No alias: an alias is a retired term in an export ([ER-12](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). On the board, the product owner wasn't sold on "seat", a word a reader of Workforce learned as a worker. A task already says `assignee` for the board entry it picks, so the entry and the pick take one name, the glossary defines one word, and "seat" names nothing. "Route" would give a word the framework already uses twice a third meaning. The renames add no coupling: `contracts` already names `seats` and `mailboxes` today, and the board's names are orchestration's own. Moving to domains each layer registers is a bigger Layer 1 redesign the MVP doesn't need, so that question stays open for [FIX-1803](https://linear.app/fixpoint-labs/issue/FIX-1803), FIX-1575's open question |
+| **Locks in** | `MANIFEST_DOMAINS`, core's discovery tool and Workforce's `discover:` key say `workers`, built by FIX-1796. A saved prompt, skill or eval that passes `seats` gets the "unknown domain" listing, and a worker file with `discover: [seats]` is refused, listing the known domains. The `mailboxes` domain isn't decided here: FIX-1792 removes it ([#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833) S9, its BR-5a). A task board's types, its docs and the hand-off record take "assignee", built by FIX-1796 with no alias: an assignee is a named entry in a board's `workers` map, a task's `assignee` picks it, and it runs the task inline or hands it off to a dispatch run. The hand-off record's `seat` field becomes `assignee`, and nothing reads the old one ([D9](#d9)). The glossary defines assignee only; it has no seat row. FIX-1796's [PLAN](../../issues/FIX-1796/PLAN.md#pinned-names) pins the names |
 
-**What would change my mind:** readers who still take a board's seat for a worker once
-Workforce's seat is gone, for example on Shift Manager's task screens, where both meet. Then the
-board's word becomes assignee at 1.0, as an amendment here.
+**What would change my mind:** one word for a board's entry and a task's pick reading
+ambiguously in the board's own API, for example a `workers` map keyed by assignee beside a
+task's `assignee` in one signature. Then the entry gets a word of its own, never "seat" again,
+and it comes back here as a question for the product owner.
 
 <a name="d8"></a>
 ## D8 · A worker whose delegates can take a task gets the task tools, and the split is in the MVP
@@ -426,5 +437,9 @@ engine rule. The closure only checks.
   the merged children drop their upgrade paths as [D9](#d9)'s *Reaches* row lists. FIX-1796's D2
   flips on the product owner's answer that the in-repo stores are reset once and stored keys are
   renamed outright. FIX-1795's follow-up for old org-wide hires goes with FIX-1788's D2.
+- **The board's seat becomes assignee (Oct 7)**, in the same amendment PR: the product owner
+  wasn't sold on "seat" for task boards and chose assignee over lane, route and station
+  ([D7](#d7)). D7's board half flips, and FIX-1796's D1 with it. [D3](#d3), ER-22, D1 and the box
+  now count five mechanism changes and two public renames, and "seat" is retired everywhere.
 
 **Open: none.**

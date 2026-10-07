@@ -381,7 +381,7 @@ Held for later: treating the files like migrations, so that everything lives in 
 
 ## Vocabulary
 
-One term, one thing. Retired: person (say user), seat (as a worker; a task board keeps it for a place on a board, [D7](../DECISIONS.md#d7)), hired seat, hired roster (say roster), desk, room, talk session, house, world, space, responsibility, mailbox, mailbox thread, target (say delegate), kind (say flow), and flow instance.
+One term, one thing. Retired: person (say user), seat (say worker; on a task board, say assignee, [D7](../DECISIONS.md#d7)), hired seat, hired roster (say roster), desk, room, talk session, house, world, space, responsibility, mailbox, mailbox thread, target (say delegate), kind (say flow), and flow instance.
 
 | Term | Means | Private or shared |
 | -- | -- | -- |

@@ -26,11 +26,10 @@ behaviour isn't there is held, not published. Watch for: em-dashes as connectors
 
 ## UPDATE · `glossary.md` · task-board table, replacing **Assignee**
 
-A task board keeps "seat" ([D1](DECISIONS.md#d1)). Once Workforce's seat is gone, this is its
-only meaning, so the glossary defines it here and nowhere else, beside the assignee it is part of.
+A task board's seat becomes assignee ([D1](DECISIONS.md#d1)). The glossary defines assignee once,
+here, and has no seat row.
 
-> | **Seat** | orchestration | A place on a task board: a name in its registry that holds a board worker, or a dispatcher that hands the task to another session. See [Task board](./orchestration/task-board.md). | Board worker |
-> | **Assignee** | orchestration | The seat a task names: a seat on one specific task. A task whose assignee has no seat goes to the default worker, or fails. | Seat, task |
+> | **Assignee** | orchestration | A named entry in a task board's workers. A task's `assignee` picks it, and it runs the task inline or hands it off to a dispatch run in another session. A task whose assignee names no entry goes to the default assignee, or fails. See [Task board](./orchestration/task-board.md). | Board worker, task |
 
 ## REPLACE · `glossary.md` · "Workforce: workers, mailboxes, projects"
 
@@ -83,12 +82,21 @@ Template and the worker library are added by FIX-1795 when it ships; not here.
 coordinators and projects" where it says "workers and mailboxes"; `glossary/shift-manager.svg`
 loses its mailbox-board and room cells. Each keeps the projects-plates style ([FIX-1746](https://linear.app/fixpoint-labs/issue/FIX-1746)).
 
-## UPDATE · `apps/docs/docs/orchestration/task-board.md` · only Workforce's lines
+## UPDATE · `apps/docs/docs/orchestration/task-board.md` · the board's seat, and Workforce's lines
 
-The page keeps "seat" and its "Seats that hand off" heading ([D1](DECISIONS.md#d1)). Its section
-"A board a mailbox holds" imports Workforce: it goes with the mailbox (FIX-1792), or, if it is
-still there, moves to the Workforce pages in the new terms. Any other line where a seat means a
-Workforce worker says worker.
+The page's seat becomes assignee ([D1](DECISIONS.md#d1)). "Seats that hand off" becomes
+"Assignees that hand off", anchor `#assignees-that-hand-off`, and every link to
+`#seats-that-hand-off` follows: the page's own, and `server/background-work.md` on `main`. A
+registry seat is an assignee, "Single uniform worker" is one worker for every assignee, and
+`defaultWorker` is the default assignee. Its section "A board a mailbox holds" imports
+Workforce: it goes with the mailbox (FIX-1792), or, if it is still there, moves to the Workforce
+pages in the new terms. Any other line where a seat means a Workforce worker says worker.
+
+The same goes for the board's seat elsewhere: `orchestration/agents.md`'s tool seats are tool
+assignees, `orchestration/configuration.md` names the renamed fence, `skills/delegation.md`'s
+floor is the default assignee in prose, `fundamentals/flows.md`'s "a seat on a task board" is an
+assignee, and the orchestration README's "Handing tasks off through a dispatcher seat" says
+assignee.
 
 ## UPDATE · `apps/docs/docs/orchestration/discovery.md` · description and opening
 
