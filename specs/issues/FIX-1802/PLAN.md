@@ -49,7 +49,7 @@ flowchart TD
 | V3 | S4 | BR-14–BR-19: one piece completed, one errored; a reassign in the woken turn keeps the parent open; a restart between park and the last notice; a kill between settle and clear settles once; a settling turn fails two boards down, and a `listTasks` at the top settles each board once; a cancel from above |
 | V4 | S5 | BR-20 at the sixth board with a forged depth on input ignored; BR-21 at the 101st task across three depths, finished pieces counted, under the default; BR-21a: the app's cap set to 3, refused at the 4th; BR-22: two concurrent filings at 99, one accepted, one refused, 100 recorded; a crash after the reservation and before the add, then the 100th filing refused within the lease and accepted after it, with no read of another board's rows; BR-22a, one top task id in two sessions; the record gone after the top task ends; every refusal answers `total_task_cap_exceeded` |
 | V5 | S6 | P1: no "is this a coordinator" check on the filing path, and a task session's filing still refused. P2: that refusal gone, in the PR that delivers S4 |
-| VG | P3 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/workers/files-and-splits-down-the-chain/run.mts` PASSES, after the same run FAILED leg c under `no-grant-check`, leg a under `no-parent-settle`, and every leg on today's `main` |
+| VG | P3 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/workers/files-and-splits-down-the-chain/run.mts` PASSES, after the same run FAILED leg c under `no-delegate-check`, leg a under `no-parent-settle`, and every leg on today's `main` |
 
 One check per decision: D1 by V1, V2, VG legs b and c; D2 by V4, VG leg d. Second path (BP-035):
 the grant off and lost (V1), a failed turn and a crash (V3, V4), concurrent filings (V4), two
@@ -63,7 +63,7 @@ users (VG), the controls.
 | Actions | The same eight from `taskToolActions`, named `<tool>_<board>` by its rule (`addTask_tasks` for FIX-1794's draft board id) | Existing rule; FIX-1794 P1 fixes the board id |
 | Worker file key | `delegates:`, and no other | Public; FIX-1792 converts files to it |
 | Limits | 5 boards deep, fixed; 100 tasks under one top task by default, an option on `hireWorkforce` (the implementer names it) | Public (D2) |
-| Controls | `GOAL_CONTROL=no-grant-check`, `GOAL_CONTROL=no-parent-settle` | The goal check |
+| Controls | `GOAL_CONTROL=no-delegate-check`, `GOAL_CONTROL=no-parent-settle` | The goal check |
 
 Everything else is yours, in the new terms.
 
