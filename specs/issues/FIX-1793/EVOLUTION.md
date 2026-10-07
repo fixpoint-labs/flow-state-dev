@@ -24,8 +24,7 @@ current code and the other children's shipped answers ([PLAN](PLAN.md#at-impleme
 
 **The decision.** On 2026-10-07 the product owner wrote: "No consumers yet. No need for
 backwards support of any kind." The epic records it as [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) and
-[ER-31](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do). The same day he answered
-that the kitchen-sink app's and the DevTeam lab's stores are reset once when this ships. P1 had
+[ER-31](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do). P1 had
 already merged ([#2827](https://github.com/fixpoint-labs/flow-state-dev/pull/2827)); nothing in
 it was an upgrade path this sweep removes.
 

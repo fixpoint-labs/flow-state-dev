@@ -24,9 +24,7 @@ code before building: the rows cite approved intent, and only the code says what
 **The decision.** On 2026-10-07 the product owner wrote: "No consumers yet. No need for
 backwards support of any kind." The epic records it as [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) and
 [ER-31](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do); ER-3 already says a record
-stored under the cross-org key is dropped, never read in any org and never moved. The same day
-he answered that the kitchen-sink app's and the DevTeam lab's stores are reset once when this
-ships.
+stored under the cross-org key is dropped, never read in any org and never moved.
 
 | What | Treatment | Why | What is retained |
 |---|---|---|---|

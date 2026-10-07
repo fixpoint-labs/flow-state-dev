@@ -23,7 +23,7 @@ building, compare each row with `main`; the other children change most of these 
 
 **The decision.** On 2026-10-07 the product owner wrote: "No consumers yet. No need for
 backwards support of any kind." The epic records it as [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) and
-[ER-31](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do). The same day he answered:
+[ER-31](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do). The same day the product owner answered:
 yes, the kitchen-sink app's and the DevTeam lab's stores are reset once when this ships, and
 stored keys are renamed outright, with no read of the old keys and no copy step.
 

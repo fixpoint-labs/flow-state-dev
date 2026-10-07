@@ -108,7 +108,7 @@ worker there: a user's app, a task, a mailbox post. A session with no worker is 
 flow, and hires without a restart. If wrong: we close the privacy hole and keep a registered
 copy per worker, so a hire still waits for a restart elsewhere.
 
-**This amendment, to approve again** (the set merged in #2812 before it):
+**Still binding from the amendment merged in #2812** (its D1 and D2 are withdrawn, below):
 
 1. **[D4](DECISIONS.md#d4) · A session's worker is named once, when the session is created.** An
    app finds or starts the session with `ensureWorkerSession`; messages never name a worker. If

@@ -39,8 +39,7 @@ lookup.
 
 **The decision.** On 2026-10-07 the product owner wrote: "No consumers yet. No need for
 backwards support of any kind." The epic records it as [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) and
-[ER-31](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do). The same day he answered
-that the kitchen-sink app's and the DevTeam lab's stores are reset once when this ships. Nobody
+[ER-31](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do), with the store reset that goes with it. Nobody
 outside this repo runs Workforce, so a hire made before this release, its memory and its
 conversations are dropped, not moved. The sweep PR removes:
 

@@ -61,7 +61,7 @@ It comes down to who still reads the old names: since D9, nobody.
 reversal applies: the product owner decides what upgrade path that consumer needs.
 
 <a name="d3"></a>
-## D3 · Renamed exports break outright, with a rename table, and no aliases
+## D3 · Renamed exports break outright, with no aliases
 
 | | |
 |---|---|
