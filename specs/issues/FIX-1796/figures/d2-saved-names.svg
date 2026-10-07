@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D2. When saved data's names use a retired word, do we rename the data? Chosen: saved names keep their strings. Instead of: rename saved names too. It comes down to the first row, records saved before: chosen reads them as they are, nothing moves and there is no operator step; instead moves them or reads two names, an operator step per deployment or two read paths for good. Second row, a rename that misses one: chosen cannot happen; instead hides records behind a read path left on the old name. Third row, raw storage views: chosen still show old words such as inventory/seats in the devtool; instead shows one vocabulary down to the raw keys. Locks in: a few storage strings keep old words, each listed in the guard with the code that reads it. Flips if: app builders read those keys as product names, in the devtool or on a published page."
+<svg viewBox="0 0 940 418" role="img" aria-label="D2, flipped by the epic's D9. When saved data's names use a retired word, do we rename the data? Chosen: rename saved names outright, with the in-repo stores reset once. Instead of: saved names keep their strings. It comes down to the first row, records saved before: chosen drops them, because there are no consumers and the kitchen-sink app's and the DevTeam lab's stores are reset once; instead keeps them for a read nothing makes, LEGACY names kept for upgrade reads that D9 removed. Second row, a rename that misses one: chosen is caught by the guard, which keeps no stored-key exception; instead cannot happen, because no saved string changes. Third row, raw storage views: chosen shows one vocabulary down to the raw keys; instead still shows old words such as inventory/seats in the devtool. Locks in: stored keys take the new words, and nothing reads or copies the old ones. Flips if: a consumer outside this repo appears before the closure; then the product owner decides its upgrade path."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -35,17 +35,17 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL · FLIPPED BY THE EPIC'S D9</text>
     <text class="t-q" x="32" y="52">When saved data's names use a retired word, do we rename the data?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Saved names keep their strings</text>
+    <text class="t-h c-code" x="228" y="112">Rename saved names outright</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Rename saved names too</text>
+    <text class="t-h c-lost" x="592" y="112">Saved names keep their strings</text>
   </g>
 
   <g id="row-decides">
@@ -55,48 +55,48 @@
     <text class="t-lbl" x="32" y="169">BEFORE</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Read as they are</text>
-    <text class="t-s" x="248" y="179">nothing moves, no operator step</text>
+    <text class="t-b" x="248" y="161">Dropped: no consumers</text>
+    <text class="t-s" x="248" y="179">two in-repo stores reset once</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Moved, or read twice</text>
-    <text class="t-s" x="612" y="179">a step per deployment, or two reads for good</text>
+    <text class="t-b" x="612" y="161">Kept for a read nothing makes</text>
+    <text class="t-s" x="612" y="179">LEGACY_ names for upgrade reads D9 removed</text>
   </g>
 
   <g id="row-2">
     <text class="t-lbl" x="32" y="222">A RENAME THAT</text>
     <text class="t-lbl" x="32" y="235">MISSES ONE</text>
     <text class="mark plus" x="228" y="224">+</text>
-    <text class="t-b" x="248" y="223">Can't happen</text>
-    <text class="t-s" x="248" y="241">no saved string changes</text>
-    <text class="mark minus" x="592" y="224">−</text>
-    <text class="t-b" x="612" y="223">Hides records</text>
-    <text class="t-s" x="612" y="241">a read path left on the old name</text>
+    <text class="t-b" x="248" y="223">Caught by the guard</text>
+    <text class="t-s" x="248" y="241">no stored-key exception to hide it</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Can't happen</text>
+    <text class="t-s" x="612" y="241">no saved string changes</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
 
   <g id="row-3">
     <text class="t-lbl" x="32" y="280">RAW STORAGE</text>
     <text class="t-lbl" x="32" y="293">VIEWS</text>
-    <text class="mark minus" x="228" y="282">−</text>
-    <text class="t-b" x="248" y="281">Still show old words</text>
-    <text class="t-s" x="248" y="299">e.g. inventory/seats/… in the devtool</text>
-    <text class="mark plus" x="592" y="282">+</text>
-    <text class="t-b" x="612" y="281">One vocabulary</text>
-    <text class="t-s" x="612" y="299">down to the raw keys</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">One vocabulary</text>
+    <text class="t-s" x="248" y="299">down to the raw keys</text>
+    <text class="mark minus" x="592" y="282">−</text>
+    <text class="t-b" x="612" y="281">Still show old words</text>
+    <text class="t-s" x="612" y="299">e.g. inventory/seats/… in the devtool</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">A few storage strings keep old words</text>
-    <text class="t-s" x="32" y="387">each listed in the guard, with the code that reads it</text>
+    <text class="t-b" x="32" y="369">Stored keys take the new words</text>
+    <text class="t-s" x="32" y="387">nothing reads or copies the old ones</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">App builders read those keys as product names</text>
-    <text class="t-s" x="494" y="387">in the devtool or on a published page</text>
+    <text class="t-b" x="494" y="369">A consumer appears before the closure</text>
+    <text class="t-s" x="494" y="387">then the product owner picks its upgrade path</text>
   </g>
 </svg>

@@ -6,7 +6,7 @@ FIX-1790 owns "which org a user's record belongs to" in the epic's ownership tab
 ([epic DOCS.md](../../epics/FIX-1786/DOCS.md#ownership)). Every page below describes user data as
 one record per user per organization, which is now true for every flow, so the hired-worker
 exceptions on these pages go. Voice watch-outs: describe what the framework does, not what it
-used to do, except inside the upgrade section; no sentence opens with "This"; introduce "user
+used to do; no sentence opens with "This"; introduce "user
 scope" and "flow isolation" in plain words where a page meets them first.
 
 ## UPDATE · `apps/docs/docs/fundamentals/state-and-scopes.md` · the scope table, the figure's alt text, and "User"
@@ -66,9 +66,6 @@ becomes:
 > does: one cell for that user in that organization. With flow isolation, it keeps one cell per
 > user per hired worker, still inside the organization. A resource's own `flowIsolation` decides which
 > applies; a resource that doesn't set it follows the flow's `isolateUserState`.
->
-> If you are upgrading an app that already saved user data, see [Upgrading: moving user data into
-> its organization](../persistence/overview.md#upgrading-moving-user-data-into-its-organization).
 
 ## UPDATE · `apps/docs/docs/resources/projected-collections.md` · the first example, and one paragraph after it
 
@@ -114,93 +111,12 @@ guard's paragraph:
 > u_evil saved a schedule there. A row found under one organization that names another is
 > refused too, so an id cannot fire a schedule into an organization its creator didn't choose.
 
-## CREATE · `apps/docs/docs/persistence/overview.md` · "Upgrading: moving user data into its organization", replacing "Upgrading: moving hired seats' stored data"
+## REMOVE · `apps/docs/docs/persistence/overview.md` · "Upgrading: moving hired seats' stored data"
 
-> ## Upgrading: moving user data into its organization
->
-> This section is for apps that saved user data on an earlier release. A new install can skip it.
->
-> User data is kept per user and organization: the user record and every user-scoped resource
-> live under `<user>:~org:<organization>`, and a flow-isolated one under
-> `<user>:~org:<organization>:<flow id>`. An earlier release kept them under the user's id
-> alone, `<user>`, or `<user>:<flow id>` when flow-isolated, one cell across every
-> organization. The server reads none of those older cells, in any organization, and does not
-> move them, because one cell may hold what a user saved in two organizations. Until you copy
-> it, each user starts empty in each organization. Nothing is deleted.
->
-> Hired workers already kept their shared data per organization. Those cells are where they belong
-> and need nothing.
->
-> Copying is offline: stop the writers, schedulers included, before you start the new release,
-> take a backup, and work on the copy, as in [Who owns a record](#who-owns-a-record). A user who
-> writes before you copy leaves data in the destination, and the copy stops for them.
->
-> 1. **List the old cells.** Every user-scope `scope_id` in `resource_state` and
->    `resource_content`, and every `users.id`, that has no `:~org:` in it. A cell with no `:`
->    outside an escape is a user's shared cell; one with exactly one such `:` is
->    `<user>:<flow id>`. Read the raw rows, so deletion markers and content-only rows show up.
-> 2. **Find the organization each cell was written in.** Run [Attributing organizations,
->    once](#which-organization-a-record-belongs-to) first if any session still has no
->    organization. For a shared cell and the user record, every session of that user could have
->    written it. SQLite:
->
->    ```sql
->    SELECT user_id, COUNT(DISTINCT org_id) AS orgs, SUM(org_id IS NULL) AS unknown,
->           MIN(org_id) AS org
->    FROM sessions GROUP BY user_id;
->    ```
->
->    For a flow-isolated cell, only that user's sessions on that flow. If a collection flow
->    still has sessions with no `flow_id`, finish [Attributing owners, once](#who-owns-a-record)
->    first; until you do, the user's isolated cells on that flow are a stop. After it, a
->    session with no `flow_id` is an ordinary single flow's, named by its `flow_kind`:
->
->    ```sql
->    SELECT user_id, COALESCE(flow_id, flow_kind) AS flow, COUNT(DISTINCT org_id) AS orgs,
->           SUM(org_id IS NULL) AS unknown, MIN(org_id) AS org
->    FROM sessions GROUP BY user_id, COALESCE(flow_id, flow_kind);
->    ```
->
->    On Postgres, write `COUNT(*) FILTER (WHERE org_id IS NULL)` for `unknown`. A deleted
->    session leaves no row, so these counts only see the sessions you still have. A cell is
->    attributed when `orgs` is one, `unknown` is zero, and you can vouch for the rest: no
->    session of that user was ever deleted, or your own records never placed them in another
->    organization. Anything else, including a user with no sessions left, is a
->    `migration-required` stop for that cell: write it down and leave it.
-> 3. **Check the destination.** The same raw read at `<user>:~org:<organization>` (and the flow
->    id after it, for an isolated cell). If any key is already there, stop for that user and
->    write the keys down. Do not overwrite, and do not merge.
-> 4. **Copy.** For each attributed cell, in one transaction, copy its rows to the new `scope_id`
->    with the resource key, state, version, lifecycle and content exactly as they are. SQLite,
->    for Alice in Acme:
->
->    ```sql
->    INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
->    SELECT scope_type, 'alice:~org:acme', resource_key, state, version, lifecycle
->    FROM resource_state WHERE scope_type = 'user' AND scope_id = 'alice';
->    ```
->
->    Do the same for `resource_content`, and copy the `users` row with its `id`, and the `id`
->    inside its data, set to the new key. Postgres takes the same statements;
->    [Moving a copy's private data, per adapter](#moving-a-copys-private-data-per-adapter) covers
->    the filesystem store and custom stores.
-> 5. **Rebuild the schedule index** for every user whose cell held schedules: write each copied
->    schedule once from its new cell, and remove the index rows whose cell is an old one, or the
->    schedule fires twice. A schedule in an old cell does not fire until you do. If a cloud
->    scheduler or BullMQ holds a job per schedule, re-register it: the dispatch id now names the
->    organization, `<orgId>/<userId>/<key>`.
-> 6. **Read back, then start the writers.** Every attributed cell has its copy, every stop is
->    written down, and a user's data reads through a flow in the organization it went to and
->    not in another.
->
-> Ids containing `:` or `\` are escaped in every key the same way, a backslash before each. The
-> original cells stay. They are read by nothing, and you can remove them once the copies have
-> read back.
->
-> [When to stop](#when-to-stop) applies here unchanged.
-
-And in "Attributing organizations, once", step 3, the paragraph that begins "User-scope storage
-does not move" is removed: user data now moves with its organization, by the section above.
+The section goes, with nothing in its place: there is no upgrade page ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)). In "Attributing
+organizations, once", step 3, the paragraph that begins "User-scope storage does not move" is
+removed too: it describes the cross-org user key this issue removes, and links to the removed
+section.
 
 ## UPDATE · `packages/engine/README.md` and `packages/scheduled/README.md`
 
@@ -211,6 +127,5 @@ scheduled README's hand-written resolver matches the `scheduled.md` example abov
 
 ## Publication ownership
 
-FIX-1790 publishes all of the above after V7 has walked the step on a SQLite file and on Postgres,
-and VG has passed. Only statements V7 ran are published. The Workforce overview and glossary stay FIX-1796's; FIX-1788 owns the hire pages' move to
+FIX-1790 publishes all of the above after VG has passed. The Workforce overview and glossary stay FIX-1796's; FIX-1788 owns the hire pages' move to
 worker terms, and builds on this section's cell.

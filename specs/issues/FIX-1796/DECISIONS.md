@@ -12,9 +12,9 @@ put to the owner, priced, and a fourth that review found. The owner answered D1 
 flowchart TD
   I["FIX-1796"] --> D1["D1 · only Workforce's seat goes"]
   D1 -.->|"rejected · assignee would name two things"| X1["a task board's seat becomes its assignee"]
-  I --> D2["D2 · saved names keep their strings"]
-  D2 -.->|"rejected · moves or double-reads saved records"| X2["rename saved names too"]
-  I --> D3["D3 · renamed exports break, with a table"]
+  I --> D2["D2 · saved names are renamed, stores reset once"]
+  D2 -.->|"rejected · kept only for reads D9 removed"| X2["saved names keep their strings"]
+  I --> D3["D3 · renamed exports break, no alias"]
   D3 -.->|"rejected · an alias is a retired word in an export"| X3["deprecated aliases for a release"]
   I --> D4["D4 · the discovery domain seats becomes workers"]
   D4 -.->|"rejected · a model would still read seat as a worker"| X4["pin seats as a model-facing name"]
@@ -40,21 +40,25 @@ Workforce's seat is gone, for example on Shift Manager's task screens, where bot
 board's word becomes assignee at 1.0, as an epic decision.
 
 <a name="d2"></a>
-## D2 · Saved names keep their strings; only code and pages change
+## D2 · Saved names are renamed outright; the in-repo stores are reset once
+
+**The product owner, 2026-10-07**, under [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): stored keys are renamed outright, with no read of
+the old keys and no copy step, and the kitchen-sink app's and the DevTeam lab's stores are reset
+once when this ships. It flips this card as merged, which kept saved strings so the other
+children's upgrade reads would find them ([the card as merged](https://github.com/fixpoint-labs/flow-state-dev/blob/2ab5e6b0bd77c798142a48922131aa52f45f737d/specs/issues/FIX-1796/DECISIONS.md#d2)).
 
 | | |
 |---|---|
-| **Instead of** | Renaming stored keys and ids too: moving each record by an operator step, or reading the old and new name for good (BP-030) |
-| **Because** | The strings that survive the other children are names only storage sees: collection patterns such as `inventory/seats/*`, the old roster's `workforce/roster/*` that FIX-1788's upgrade step reads, the room rows FIX-1793 keeps. They are not exports and not on a published page, so ER-12 doesn't reach them. Moving them changes data for a word, and a missed read path hides records. The last rename, FIX-1748, renamed its stored names and refused older stores; this epic reads old data instead (ER-3's operator step, FIX-1788's upgrade step, FIX-1793's kept room rows), and a rename here would break those reads |
-| **Locks in** | A few storage strings keep old words. The code constant that holds each takes the new term (`LEGACY_` for a name only an upgrade reads), and the guard lists each string with the code that reads it |
+| **Instead of** | Keeping the stored strings behind renamed constants, `LEGACY_` for a name only an upgrade reads |
+| **Because** | The reads those strings were kept for are gone: D9 withdrew FIX-1788's upgrade step, FIX-1790's copy step and FIX-1793's kept room rows, and nobody outside this repo has a store to keep reading. A kept string is a retired word the guard has to except, and the devtool's storage view keeps showing it |
+| **Locks in** | Every stored key, collection pattern, id or saved field name that uses a retired word takes the new word, in the PR that renames the code writing it. Nothing reads the old name, and nothing copies a record. A store written before this release loses those records: the kitchen-sink app and the DevTeam lab reset theirs once. The guard keeps no stored-key exception |
 
-![D2: saved names keep their strings, chosen, beside rename saved names too. Decides it: records saved before. Price: raw storage views still show old words. Flips if app builders read those keys as product names](figures/d2-saved-names.svg)
+![D2, flipped by the epic's D9: rename saved names outright, chosen, beside saved names keep their strings. Decides it: records saved before, dropped because there are no consumers and the two in-repo stores are reset once. Price: a store written before this release loses its Workforce records. Flips if a consumer appears before the closure](figures/d2-saved-names.svg)
 
-It comes down to saved records: renaming them moves or double-reads every one, for a word.
+It comes down to who still reads the old names: since D9, nobody.
 
-**What would change my mind:** app builders reading those keys as product names, in the
-devtool's storage view or on a published page. Then the still-written ones get new names with
-the old read alongside, and an only-read one stays.
+**What would change my mind:** a consumer outside this repo before the closure run. Then D9's
+reversal applies: the product owner decides what upgrade path that consumer needs.
 
 <a name="d3"></a>
 ## D3 · Renamed exports break outright, with a rename table, and no aliases
@@ -62,10 +66,10 @@ the old read alongside, and an only-read one stays.
 | | |
 |---|---|
 | **Instead of** | Keeping each old export as a deprecated alias for one release |
-| **Because** | ER-12 forbids a retired term in any package export at the closure, and every alias is one. The epic locks deprecate-then-remove only for flow instances and owner pins. Pre-1.0, a minor release may break (BP-022), and the last rename, FIX-1748, shipped with no aliases. Every in-repo caller moves in the same PR |
-| **Locks in** | An app on the old names edits its imports once, on its first upgrade past this release, from each package's changeset table and the upgrading page. A custom worker flow with a hand-written schema on the old keys is refused at boot, naming the key it lacks |
+| **Because** | ER-12 forbids a retired term in any package export at the closure, and every alias is one. Since [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) the epic deprecates nothing first, not even flow instances and owner pins. Pre-1.0, a minor release may break (BP-022), and the last rename, FIX-1748, shipped with no aliases. Every in-repo caller moves in the same PR |
+| **Locks in** | An app on the old names edits its imports once, on its first upgrade past this release. There is no rename table and no upgrading page ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)). A custom worker flow with a hand-written schema on the old keys is refused at boot, naming the key it lacks |
 
-![D3: rename outright with a table, chosen, beside deprecated aliases for a release. Decides it: the epic's ER-12 at the closure. Price: an app on the old names breaks on upgrade. Release type is a tie](figures/d3-no-aliases.svg)
+![D3: rename outright with no alias, chosen, beside deprecated aliases for a release. Decides it: the epic's ER-12 at the closure. Price: an app on the old names breaks on upgrade. Release type is a tie](figures/d3-no-aliases.svg)
 
 It comes down to ER-12: an alias is a retired word in an export, so the closure fails or waits.
 
@@ -79,7 +83,7 @@ deprecation window. Then alias for one release, and the closure waits for their 
 |---|---|
 | **Instead of** | Keeping `seats` in `MANIFEST_DOMAINS` (`contracts`) as a pinned, model-facing name |
 | **Because** | The domain lists Workforce's workers, so it is Workforce's seat, not the board's, and the owner's rule is seat for boards, not workers. It is the one surface a model reads by name, so a surviving `seats` would teach a model the meaning the sweep removes. D3 rules out an alias |
-| **Locks in** | `MANIFEST_DOMAINS`, core's discovery tool and Workforce's `discover:` key say `workers`. A saved prompt, skill or eval that passes `seats` gets the "unknown domain" listing, and a worker file with `discover: [seats]` is refused when it is minted, listing the known domains. `patch` changesets for `contracts`, `core` and `workforce` name that cost. **Binds once the epic records it** in its next amendment (amend-5): it is a Layer 1 public name (ER-22) |
+| **Locks in** | `MANIFEST_DOMAINS`, core's discovery tool and Workforce's `discover:` key say `workers`. A saved prompt, skill or eval that passes `seats` gets the "unknown domain" listing, and a worker file with `discover: [seats]` is refused when it is minted, listing the known domains. **Binds once the epic records it** in its next amendment (amend-5): it is a Layer 1 public name (ER-22) |
 
 ![D4: seats becomes workers, chosen, beside pin seats as a model-facing name. Decides it: what a model reads by name. Price: saved prompts that pass seats get the unknown-domain listing. Flips if the epic declines the rename](figures/d4-workers-domain.svg)
 
@@ -154,5 +158,10 @@ The `mailboxes` domain is not decided here: FIX-1792 removes it ([its PLAN S9](h
 - **Review round 2** — the board's surface is defined by module, like Workforce's ground, not by
   a closed file list that left about 125 of the board's own lines to rename against D1; the
   hand-off field strips like `TaskSeat`. D4's `seats` value reaches `goals/` too.
+- **Amended after merge, the D9 sweep (2026-10-07)** — [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) and the product owner's answer of
+  the same day flipped D2: stored names are renamed outright, and the kitchen-sink app's and the
+  DevTeam lab's stores are reset once. The `LEGACY_` constants, the upgrading page and its rename
+  table, the changeset rows, V5 and the refusal-module exception (BR-12) went with it
+  ([EVOLUTION.md](EVOLUTION.md#amendment-d9)).
 
 **Open: none.**

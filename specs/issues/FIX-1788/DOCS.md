@@ -11,7 +11,7 @@ worker flow, user.
 | Shipped names | |
 |---|---|
 | **Pinned** ([PLAN.md](PLAN.md#pinned-names)) | `worker` on `createSession` · `worker` on `listSessions` · the roster's `flow` · `createWorkforceClient` and its methods `findWorkerSession` and `ensureWorkerSession` · `workerFlows` (FIX-1789's) |
-| **Drafts**, reconciled with the shipped code before publishing | `createCheck` and its `link` input · `serverOwned` · `createWorkerHireBlocks` · `fork` · the React hook `useWorkforce` · `useFlow`'s `worker` · `fsdev run --worker` · the upgrade command |
+| **Drafts**, reconciled with the shipped code before publishing | `createCheck` and its `link` input · `serverOwned` · `createWorkerHireBlocks` · `fork` · the React hook `useWorkforce` · `useFlow`'s `worker` · `fsdev run --worker` |
 
 ## UPDATE · `apps/docs/docs/configuration/flow.md` · the `session` table, two new rows after `client`
 
@@ -169,31 +169,6 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 > Tasks and messages your other workers hand to this one open sessions the same way, naming the
 > worker when the session is created.
 
-## UPDATE · `apps/docs/docs/persistence/overview.md` · a new section after the existing upgrade section for stored hire data
-
-> ## Upgrading: hired workers become worker rows
->
-> Run this once after deploying a version where workers are stored per user, together with the
-> step in [Which organization a record belongs to](#which-organization-a-record-belongs-to).
-> Until it runs, hires made on the earlier version don't run, and the app's start reports how
-> many are waiting.
->
-> ```bash
-> fsdev workforce upgrade-workers --store "$DATABASE_URL"
-> ```
->
-> - A worker one user hired becomes that user's worker, with its memory and its conversations.
-> - A worker hired for a whole organization becomes a private copy for each member who has a
->   conversation with it, with that member's conversations and a copy of its memory. Members
->   who never used it get none.
->   Each copy then changes on its own.
-> - A worker whose id its new owner already uses comes across under a new id, and the report
->   names both.
-> - A worker whose flow your app no longer runs is reported and left where it is.
->
-> Nothing is deleted. The earlier rows stay, and running the step again changes nothing it
-> already moved.
-
 ## UPDATE · `packages/workforce/README.md`, `packages/engine/README.md`, `packages/client/README.md`
 
 > **workforce:** A worker is a row in its owner's data, run by one shared copy of the flow it
@@ -208,5 +183,5 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 ## Publication ownership
 
 FIX-1788 publishes these with P4, after its checks pass. `built-in-worker.md` is FIX-1789's;
-the overview opening and the glossary are FIX-1796's. FIX-1790 owns the persistence page's org
-section; the new section above sits beside it and links to it.
+the overview opening and the glossary are FIX-1796's. There is no upgrade section: nothing reads
+a hire made before this release ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)).

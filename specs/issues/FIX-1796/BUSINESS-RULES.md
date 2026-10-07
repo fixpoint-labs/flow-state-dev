@@ -17,6 +17,7 @@ from the last PR on.
 | BR-5 | "Person" means a human who isn't the signed-in user: an author, a reviewer, someone a doubtful case goes to | It stays, pinned in the guard by file and phrase; a second "person" on the line still counts | Review of the exception list · a control plant |
 | BR-6 | A message a person or a model reads uses a retired term: a refusal, a tool's description or input values, a UI label, a test that asserts the text | Reworded in the new term; the test follows | The guard · tests |
 | BR-7 | A docs heading is renamed ("Reading one seat's skills") | Every link to its anchor follows, across the site, guides and READMEs | Docs build, no broken-anchor warning |
+| BR-11 | A stored key, collection pattern, id, resource name, or a field name inside a saved record, uses a retired word | It takes the new word, with the code that writes it. Nothing reads the old name and nothing copies a record; the kitchen-sink app and the DevTeam lab reset their stores once ([D2](DECISIONS.md#d2)) | The guard, with no stored-key exception · V3 |
 
 ## What keeps its word
 
@@ -25,17 +26,16 @@ from the last PR on.
 | BR-8 | A file is history: a retained spec, a changelog, a changeset, `docs/internal/`, the dated atlas, a blog post | Unchanged | The guard's areas |
 | BR-9 | A file is in `goals/` | Its identifiers follow renamed exports, and so does a value an export reads: the discovery domain `seats` becomes `workers` there too ([D4](DECISIONS.md#d4)). Its words otherwise stay | Typecheck · V6's goal run |
 | BR-10 | The engine's flow `kind`, `flowKind`, a type's `kind` field, block and item kinds, flow instances and owner pins, the dispatch target | Unchanged ([ER-20](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do), [ER-22](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)) | The guard's exceptions |
-| BR-11 | A stored key, collection pattern, id, resource name, or a field name inside a saved record, uses a retired word | Its string is unchanged; the constant or type that holds it is renamed, `LEGACY_` when only an upgrade reads it, and a renamed type reads the stored field through one mapper ([D2](DECISIONS.md#d2)) | A store written before the sweep reads the same records after it |
-| BR-12 | A refusal must name an old file or input: `MAILBOX.md`, a removed room action | It keeps naming it, with the conversion. Its module and test are listed by path | The guard's exceptions |
+| ~~BR-12~~ | A refusal must name an old file or input: `MAILBOX.md`, a removed room action | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): nothing refuses an old file or input by name (epic ER-6, ER-31), so the guard lists no refusal module | — |
 | BR-13 | Channel paths and `CHANNEL.md`'s `flow:` (ER-20) | None is tracked on `main`, and nothing here adds one, so the guard carries no exception for them | `git ls-files`: no `flows/channels/` path ([settled](DECISIONS.md#settled)) |
 
 ## Exports and upgrades
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-14 | An export is renamed | The old name is gone, with no alias. The package's changeset has a row, old to new, and the upgrading page lists it ([D3](DECISIONS.md#d3)) | Every name removed from a package's index appears in its changeset table |
+| BR-14 | An export is renamed | The old name is gone, with no alias, and every caller in this repo moves in the same PR ([D3](DECISIONS.md#d3)). No rename table and no upgrading page ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)) | Typecheck |
 | BR-15 | A custom worker flow hand-writes the worker configuration keys under the old names | Refused at boot, naming the flow and the key it lacks, as a hand-written schema missing a key is today | CI |
-| BR-16 | A model, a saved prompt, skill or eval, or a worker file's `discover:` names the discovery domain `seats` | `workers` answers what `seats` did. `seats` gets the "unknown domain" listing, and a worker file naming it is refused when it is minted, listing the known domains; no alias ([D4](DECISIONS.md#d4)). `mailboxes` is FIX-1792's | CI · the changeset row names the cost |
+| BR-16 | A model, a saved prompt, skill or eval, or a worker file's `discover:` names the discovery domain `seats` | `workers` answers what `seats` did. `seats` gets the "unknown domain" listing, and a worker file naming it is refused when it is minted, listing the known domains; no alias ([D4](DECISIONS.md#d4)). `mailboxes` is FIX-1792's | CI |
 
 ## The glossary
 
@@ -49,9 +49,8 @@ from the last PR on.
 ## Failure taxonomy
 
 The guard is fatal in CI on any unswept line, any file without an area, any exception that
-strips nothing, and any board file on Workforce's ground. A renamed export with no changeset row fails V5. A
-record saved before the sweep that no longer reads is a bug: D2 promised nothing moves. Nothing
-retries.
+strips nothing, and any board file on Workforce's ground. A stored key left on a retired word fails
+it like any other line. Nothing retries.
 
 ## Acceptance criteria this issue owns
 

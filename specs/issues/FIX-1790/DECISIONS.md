@@ -2,60 +2,27 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Two decisions are the sign-off surface. The calls above them are the epic's: user data is kept
-per (user, org) for every flow, and a record stored before reads in one org at most, moved by an
-operator step and never by a fallback read
+The calls above this issue are the epic's: user data is kept per (user, org) for every flow, and
+a record stored before is dropped, never read in any org and never moved
 ([ER-3](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt),
-[D3](../../epics/FIX-1786/DECISIONS.md#d3)). The epic left this spec one question: how a saved
-record is attributed to an org. These two cards answer it and say what that costs a customer.
-
-## The tree
-
-```mermaid
-flowchart TD
-  I["FIX-1790"] --> D1["D1 · old data is read by nothing<br/>until the operator step copies it"]
-  D1 -.->|"rejected · reads the old cell on every run"| X1["refuse with migration-required at runtime"]
-  D1 -.->|"rejected · guesses the org at the worst moment"| X2["copy on a user's first request"]
-  D1 -.->|"rejected by the epic · the leak"| X3["fall back to the old cell on read"]
-  I --> D2["D2 · a cell moves to the one org<br/>its writers' sessions name"]
-  D2 -.->|"rejected · says where they are, not where they wrote"| X4["the operator's membership records alone"]
-  D2 -.->|"rejected · a guess"| X5["the user's most recent org"]
-  D2 -.->|"rejected by the epic · the leak"| X6["a copy into every org"]
-```
-
-Solid edges are what you're signing. Dashed edges lost, and the label says why.
+[D3](../../epics/FIX-1786/DECISIONS.md#d3), [D9](../../epics/FIX-1786/DECISIONS.md#d9)). The
+two cards here answered how an operator's copy step attributed a saved record to an org. The
+epic's D9 withdrew the step, and the cards with it. What this issue still decides is under
+*Decided, not asked*.
 
 <a name="d1"></a>
-## D1 · Data saved before the upgrade is read by nothing until an operator copies it; until then each user starts empty in each org
+## D1 · Removed by epic D9 · data saved before the upgrade was read by nothing until an operator copied it
 
-| | |
-|---|---|
-| **Instead of** | Refusing a user's requests with `migration-required` while they have uncopied data · copying it automatically on their first request in an org |
-| **Because** | A refusal has to look in the old cell to know there is something to refuse: a read across orgs on every run, the read ER-3 closes, and a store call per request. It would also lock a user who worked in two orgs out of every flow until someone resolves them by hand. An automatic copy picks the org from the first request after the upgrade, and the framework can't tell a one-org user from one whose other org hasn't signed in yet ([FIX-1538 D2](../FIX-1538/DECISIONS.md#d2)). Starting empty is what hired workers have done since FIX-1538 |
-| **Locks in** | Every deployment with saved user data has an operator step at upgrade, with writers stopped. An operator who skips it gets no error: every user's preferences, saved collections and flow-private data look empty. Nothing is lost and the step can run later, but whatever a user writes in between makes the step stop for them. The framework never moves or deletes a record |
-
-![D1, between the upgrade and the copy step: old data read by nothing, chosen, beside a migration-required refusal. Decides it: a user who worked in two orgs works in both instead of being refused on every flow. Price: an operator who skips the step sees no error. Locks in an upgrade step; flips if a deployment can't stop its writers](figures/d1-before-the-step.svg)
-
-It comes down to a user who worked in two orgs: a refusal locks them out of every flow.
-
-**What would change my mind:** a deployment that can't stop its writers for the step. Then a
-shipped copy command earns its place, still offline per user, still never a runtime read.
+Its first half holds as epic ER-3: data saved before this release is read by nothing, and each
+user starts empty in each org. Its second half, the operator's copy, was withdrawn on 2026-10-07
+by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): "No consumers yet. No need for backwards support of any kind." The card as written
+is at [the commit before the sweep](https://github.com/fixpoint-labs/flow-state-dev/blob/2ab5e6b0bd77c798142a48922131aa52f45f737d/specs/issues/FIX-1790/DECISIONS.md#d1).
 
 <a name="d2"></a>
-## D2 · The step copies a saved cell to an org only when every session that could have written it names that org, and the operator vouches none was deleted
+## D2 · Removed by epic D9 · the step copied a saved cell to the one org its writers' sessions named
 
-| | |
-|---|---|
-| **Instead of** | The operator's membership records alone · the user's most recent org · a copy into every org the user belongs to |
-| **Because** | A session is the one record in the store that says which org a run happened in, and it says so per flow. The user's shared cell and user record could have been written by any of their sessions; a flow-isolated cell only by their sessions on that flow, so a hired worker's private data keeps its one org when its user works in two. Membership says where a user is now, not where they wrote: Alice, in Acme until June and in Globex since, would have Acme's data copied into Globex. The most recent org is a guess, and every org is the leak ER-3 closes. A deleted session leaves no trace in the store, so the sessions that remain are evidence only when none of that user's is missing: if Alice's Globex sessions were deleted, the rest name Acme alone and the step would copy Globex data into Acme |
-| **Locks in** | A user whose sessions name two orgs gets their shared data back in neither: it stays put, named in the upgrade record, until someone decides by hand. The step also needs the operator to vouch that none of the user's sessions was deleted, or that their own records never placed the user in another org; membership can veto a copy, never choose its org. Without that, and for a user with no sessions left, it stops the same way. A deployment that only ever ran in one org, which includes every development app on the default org, gets everything back |
-
-![D2, where the step copies a saved cell: the one org its writers' sessions name, chosen, beside membership records. Decides it: Alice, who moved from Acme to Globex, would have Acme's data copied into Globex by membership. Price: a user with any deleted session stops unless the operator's records clear every other org. Locks in: a two-org user's shared data returns nowhere until decided by hand](figures/d2-attribution.svg)
-
-It comes down to a user who changed orgs: membership copies the old org's data into the new one.
-
-**What would change my mind:** an app that records, per write, which org the write happened
-in. That record attributes a cell more finely than sessions do, and the step should prefer it.
+Withdrawn with D1: it decided which org the copy step chose, and the step is gone. The card as
+written is at [the commit before the sweep](https://github.com/fixpoint-labs/flow-state-dev/blob/2ab5e6b0bd77c798142a48922131aa52f45f737d/specs/issues/FIX-1790/DECISIONS.md#d2).
 
 ## Decided, not asked
 
@@ -74,27 +41,24 @@ in. That record attributes a cell more finely than sessions do, and the step sho
   Alice can hold a schedule `daily` in Acme and in Globex. A two-part id names neither, and
   finding it from the index would be a read across orgs.
 - **The harness seeds through the engine's derivation**, with the run's org.
-- **The step is a documented procedure per adapter**, not a command, and **the original cells
-  stay**; removing them after read-back is the operator's call.
-- **No startup warning about uncopied cells**: the stores can't list scope ids. A follow-up.
 - **Old-term exports left in place** for FIX-1796 and FIX-1798: `IsolationFlow.ownerPin`
-  (accepted, ignored, deprecated), `ScheduleResolutionContext.ownerPin`, `InstanceOwnerPin`.
+  (accepted and ignored, with no deprecation marker, per [epic D9](../../epics/FIX-1786/DECISIONS.md#d9)), `ScheduleResolutionContext.ownerPin`, `InstanceOwnerPin`.
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
-| A new cell shape for unpinned flows, hired workers kept apart | Keys on the pin the epic is deprecating, and two cells per user per org isolate nothing |
+| A new cell shape for unpinned flows, hired workers kept apart | Keys on the pin FIX-1798 removes, and two cells per user per org isolate nothing |
 | A deployment-wide "old data belongs to org X" setting | A permanent second read path, wrong for any deployment that ever had two orgs |
-| A shipped migration command now | The stores' normal calls mint versions and drop deletion markers; the per-adapter procedures already have raw access. Revisit on D1's *change my mind* |
-| Move cells instead of copying | Deletes the only record a wrong attribution could be recovered from |
+| A shipped migration command, or moving cells instead of copying them | Withdrawn with the step: since [epic D9](../../epics/FIX-1786/DECISIONS.md#d9), nothing moves or copies an old cell |
 
 ## Settled
 
 - **No new key equals an old one, and no two (user, org, flow) tuples share one** —
   **CONFIRMED** by `poc/key-shape/`: about four million keys from ids over `a : \ ~ o` and `~org`,
   all distinct; the shared key equals FIX-1538's pinned cell every time; without the `~org`
-  marker, 24,964 collisions. An old cell is unreachable by construction, so D1 needs no guard.
+  marker, 24,964 collisions. An old cell is unreachable by construction, so nothing reads it and no
+  guard is needed (epic ER-3).
 - **Every production user key comes from the one derivation; only the schedule resolver lacks an
   org** — **CONFIRMED** at `fbecfe6f2` by `poc/key-sites/`: nine files, planted control failed.
 
@@ -107,5 +71,8 @@ in. That record attributes a cell more finely than sessions do, and the step sho
   deleted session leaves no trace and the ones left could name one org while the deleted ones
   named another (Codex). The step's SQL is walked on Postgres as well as SQLite before it is
   published (second look).
+- **Amended after merge, the D9 sweep (2026-10-07)** — [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) withdrew the copy step: D1 and D2,
+  BR-15 to BR-20, leg c and its `fallback-read` control, V4, V7 and the upgrade docs. Old records
+  are dropped ([EVOLUTION.md](EVOLUTION.md#amendment-d9)).
 
 **Open: none.**

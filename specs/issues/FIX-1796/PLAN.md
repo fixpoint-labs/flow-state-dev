@@ -13,14 +13,14 @@ epic's [order](../../epics/FIX-1786/PLAN.md#what-unblocks-what-from-here)).
 |---|---|---|---|
 | S1 | `orchestration` · Workforce's seat only | The board keeps its seat, its types and `board.handedOff` (D1). Only a line where "seat" means a Workforce worker ("a hired seat", "a workforce seat") says worker | BR-1 BR-3 |
 | S2 | `contracts` + `core` · discovery | `MANIFEST_DOMAINS`' `seats` becomes `workers` (D4), and the discovery tool's description and each domain's say worker. `mailboxes` is FIX-1792's to remove (its PLAN S9); nothing here touches it. The hand-off record's `seat` field is unchanged (D1) | BR-3 BR-6 BR-16 |
-| S3 | Docs for S1–S2 | `discovery.md`'s domains and its seat definition; any orchestration page line where "seat" means a Workforce worker. `patch` changesets for `contracts` and `core` with D4's row and its cost: a saved prompt, skill or eval that passes `seats` gets the "unknown domain" listing | BR-1 BR-3 BR-14 BR-16 |
-| S4 | `workforce` · exports and keys | Every old-term export the children leave ([below](#at-implement-time)) and every one the census finds; the worker configuration's `seat*` keys become `worker*`; its manifest source and `discover:` key follow `workers` (D4, a `patch` changeset row); storage-only strings keep their value behind renamed constants (D2) | BR-1 BR-2 BR-11 BR-14 BR-15 |
+| S3 | Docs for S1–S2 | `discovery.md`'s domains and its seat definition; any orchestration page line where "seat" means a Workforce worker | BR-1 BR-3 BR-16 |
+| S4 | `workforce` · exports and keys | Every old-term export the children leave ([below](#at-implement-time)) and every one the census finds; the worker configuration's `seat*` keys become `worker*`; its manifest source and `discover:` key follow `workers` (D4); stored keys, patterns and ids take the new words, with no read of the old ones (D2) | BR-1 BR-2 BR-11 BR-14 BR-15 |
 | S5 | `react`, `devtool` · Workforce panels and views | Roster and detail panels, the inventory and resources views: names, labels, `data-*` attributes | BR-1 BR-6 |
 | S6 | `shift-manager`, `apps/kitchen-sink`, `labs`, `examples` | Consumers, UI text, team profiles, fixtures under them | BR-1 BR-6 |
-| S7 | Docs for S4–S6 | Package READMEs and the Workforce and Shift Manager pages naming what S4–S6 rename; `minor` changesets per published package; the upgrading page's rename table ([DOCS.md](DOCS.md)) | BR-7 BR-14 |
+| S7 | Docs for S4–S6 | Package READMEs and the Workforce and Shift Manager pages naming what S4–S6 rename ([DOCS.md](DOCS.md)). No changeset rows and no upgrading page: no consumer needs a rename table ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)) | BR-7 |
 | S8 | Prose | "Person" for the user on Workforce's ground (BR-4, BR-5), and every remaining retired word in the docs site, `docs/architecture/`, the root README and figures' text | BR-1 BR-4 BR-5 |
 | S9 | The glossary and the overview | [DOCS.md](DOCS.md): the glossary's opening, seat and assignee in its task-board section, its Workforce and Shift Manager sections, words that mean two things, three figures redrawn; the epic's overview opening, each sentence checked on `main` | BR-17–20 |
-| S10 | The guard | The census becomes `scripts/check-retired-terms.mjs` with a vitest test of its controls, run in CI beside the other repository guards. Ground and the board's seat are scoped by surface (the POC's `onWorkforceGround`, `BOARD_MODULES`, `onBoardSurface`). It also asserts each shipped vocabulary term has exactly one row in the glossary | BR-2 BR-3 BR-5 BR-8 BR-12 BR-17 |
+| S10 | The guard | The census becomes `scripts/check-retired-terms.mjs` with a vitest test of its controls, run in CI beside the other repository guards. Ground and the board's seat are scoped by surface (the POC's `onWorkforceGround`, `BOARD_MODULES`, `onBoardSurface`). It also asserts each shipped vocabulary term has exactly one row in the glossary | BR-2 BR-3 BR-5 BR-8 BR-11 BR-17 |
 | S11 | **Removals** | `scripts/check-mailbox-rename.mjs`, its test, its CI step (S10 replaces it) | — |
 
 ## Sequence
@@ -58,9 +58,9 @@ its own; its few Workforce-meaning lines ride with P1.
 |---|---|---|
 | V1 | S1 S2 | Typecheck; `orchestration` and `core` suites green with no board name changed: the index of `orchestration`, `core` and `contracts` exports the same names before and after (BR-3) |
 | V2 | S3 S7 S9 | The docs build passes with no broken link or anchor warning naming a renamed heading (BR-7) |
-| V3 | S4 | BR-15: a worker flow whose hand-written schema keeps `seatTools` is refused at boot, naming `workerTools`. BR-11: a store written by `main` before the sweep lists and reads the same records after it |
+| V3 | S4 | BR-15: a worker flow whose hand-written schema keeps `seatTools` is refused at boot, naming `workerTools`. BR-11: no stored key, pattern or id keeps a retired word, and the `shift-manager` and `kitchen-sink` suites write and read through the renamed keys on a fresh store |
 | V4 | S5 S6 | `shift-manager`, `kitchen-sink` and `devtool` suites green; `fsdev run` on a kitchen-sink Workforce flow |
-| V5 | S7 | Every name removed from a published package's index between the PR's base and head appears in that package's changeset table (BR-14) |
+| ~~V5~~ | ~~S7~~ | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9), with the changeset rename tables |
 | V6 | S2 S4 | BR-16: `discover({ domain: "workers" })` answers what `seats` did on `main`; `seats` gets the "unknown domain" listing; a worker file with `discover: [seats]` is refused at its mint, naming `workers`. BR-9: `goals/hire-plane/discover-survives-an-unaddressable-row/` passes after its `seats` values become `workers` |
 | VG | S10 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): the guard PASSES on P2's head, rebased on `main`, after it FAILED on `main` before P1 (record both counts), and `--control` refuses every plant. Typecheck, tests and V2 green |
 
@@ -74,7 +74,7 @@ its own; its few Workforce-meaning lines ride with P1.
 | The guard | `scripts/check-retired-terms.mjs` | The closure runs it (FIX-1797) |
 
 Everything else follows the rule: seat to worker, kind to worker flow, hired roster to roster,
-mailbox leftovers to coordinator, a storage-only constant to `LEGACY_…`.
+mailbox leftovers to coordinator.
 
 ## Guardrails
 
@@ -84,10 +84,10 @@ mailbox leftovers to coordinator, a storage-only constant to `LEGACY_…`.
 | Never widen an exception to go green; rename the line | An exception that absorbs a live use is how a guard lies. The census's control plants exactly that |
 | Scope by surface, never by folder | A Workforce consumer sits in many folders (kitchen-sink's seat pane, the React panels). The board's bare "seat" strips on the board's surface: its modules (the task board, the task substrate, the skills delegation surface, core's dispatcher and dispatch types, devtool's dispatch-run views, and their tests, integration scenarios and pages), and any code off Workforce's ground that uses them |
 | Completing the board's module list is not widening an exception | The POC lists the board's modules as it found them. Adding a board module it missed, by module, at build time, is defining the surface D1 keeps. Adding a file to hide a Workforce seat is widening, and a board module on Workforce's ground fails the run |
-| An exception strips a token, never a line; only a refusal module (ER-6) is listed whole, by path | A second retired word on an excepted line must still count |
+| An exception strips a token, never a line | A second retired word on an excepted line must still count |
 | Each PR's pages move with its code | ER-25 |
 | Don't rename what a sibling is about to delete | The epic's sequencing; start from `main` after FIX-1792 and FIX-1794 |
-| No saved string changes | D2; BR-11's check proves it |
+| A stored string changes with the code that writes it, and nothing reads the old one | D2: the in-repo stores are reset once |
 | Leave `goals/` words alone; typecheck carries their identifiers | Scope (DECISIONS → decided, not asked) |
 
 ## Docs
@@ -106,11 +106,14 @@ it names one board file on Workforce's ground (the task-board page's mailbox sec
 
 ## At implement time
 
+- The POC's `stored-key-names` and `mailbox-md-refusal` exceptions, and the control plants that
+  exercise them, don't carry into S10: D2 renames stored names, and nothing is refused by name
+  ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)). The POC stays as evidence.
 - Rebase on `main` and re-run the census; its counts are the sweep's real size. Most of today's
   hits are in code FIX-1788, FIX-1791, FIX-1792 and FIX-1793 rewrite or remove.
 - Each child's list of old exports it left: FIX-1788 [PLAN](../FIX-1788/PLAN.md#at-implement-time)
-  (`hireWorkforce`, `seatDoorOf`, `SeatDoor`, `createSeatHireCapability`, the `seat*` keys,
-  `HIRED_ROSTER_*`); FIX-1789 [PLAN](../FIX-1789/PLAN.md#at-implement-time) (`resolvableKinds`,
+  (`hireWorkforce`, `seatDoorOf`, `SeatDoor`, `createSeatHireCapability`, the `seat*` keys;
+  `HIRED_ROSTER_*` goes with FIX-1788's S14); FIX-1789 [PLAN](../FIX-1789/PLAN.md#at-implement-time) (`resolvableKinds`,
   `missingKindRefusal`, `KindRefusedHireError`; it renamed `kinds` to `workerFlows`); FIX-1791
   [PLAN](../FIX-1791/PLAN.md#at-implement-time) (the mailbox flow's exports, likely gone with
   FIX-1792); FIX-1793 [PLAN](../FIX-1793/PLAN.md#at-implement-time) (the workstream-claim
@@ -122,8 +125,9 @@ it names one board file on Workforce's ground (the task-board page's mailbox sec
 - D4 binds once the epic records it (amend-5). Don't build S2's rename before that amendment merges.
 - FIX-1790's `IsolationFlow.ownerPin`, `ScheduleResolutionContext.ownerPin` and `InstanceOwnerPin`
   are the engine's, for FIX-1798; leave them.
-- If the `CHANNEL.md` refusal still points at mailboxes, it tells a user to adopt a refused
-  format. That is FIX-1792's; flag it to the epic, don't fix it here.
+- Today's `CHANNEL.md` refusal goes with the mailbox code in FIX-1792
+  ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)). If it is still on `main` when this builds,
+  flag it to the epic; don't fix it here.
 - Publish the epic's overview opening with Q2's answer (private projects in) and without the
   library's lines. Use only the public client surface in any example (`createClient`,
   `createWorkforceClient`); never a lab wrapper.
@@ -151,10 +155,10 @@ it names one board file on Workforce's ground (the task-board page's mailbox sec
 - "P1 bundles S2 (gated on amend-5) with S4–S7. If amend-5 is late, S2 and S4's `discover:` values can split off so the rest of P1 isn't held." — spec review round 2 ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2832#pullrequestreview-5435456262))
 
 These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
-discarding one. A note that turns out to reveal a design problem is a spec blind spot: surface
+discarding one. Since the D9 sweep, D2 renames stored strings, so the devtool note's "keep the
+string" and the upgrading page's pinned rows no longer apply ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)). A note that turns out to reveal a design problem is a spec blind spot: surface
 it and fold it back. Plan IDs in the notes are from before round 1, when there were three PRs.
 
 ## Follow-ups
 
 - The words in `goals/` and their folder names (`goals/org-seats/`, `goals/workforce-seats/`).
-- Saved names, if D2 flips.

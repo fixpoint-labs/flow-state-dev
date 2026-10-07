@@ -165,6 +165,14 @@ kind." Recorded here because it binds every child
 | **Not reached** | Removing flow instances and owner pins from the engine stays FIX-1798's scope ([ER-20](BUSINESS-RULES.md#what-no-child-may-do)); with no consumers there is no deprecation phase before it, so FIX-1788 adds no markers and FIX-1798 deletes outright. Project claims stay until FIX-1792 converts the boards that read them, which is build order, not compatibility. ER-21's "files as migrations", a loader that keeps data in line with files, is another thing and stays out |
 | **Reaches** | Merged specs, amended in one sweep PR. **FIX-1788**: the operator step for old hires, their memory and conversations (its D1), reading an older stored configuration (BR-21), the step's rerun rule (BR-32) and its upgrade leg. **FIX-1790**: the operator copy step and its attribution rule (its D1, D2), the upgrade note, and leg c's old record. **FIX-1793**: old project rows read as shared (BR-5), rooms and claims kept for an operator to read, and room calls, `mintFor:` and `talk` refused by name. **FIX-1796**: the `LEGACY_` names kept for an upgrade to read (its D2), and the upgrading page and its rename table. **FIX-1789**: the changeset and README line telling upgraders `kinds` is now `workerFlows` (no consumer, no changeset). **FIX-1788** also drops its deprecation markers on `register(.., { pin })` and collection cardinality (its S2, V2, BR-27). Open specs, folded at their own gates. **FIX-1792** ([#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833)): `MAILBOX.md`, `flows/mailboxes/` and old lines refused by name, the upgrade page, and today's `CHANNEL.md` refusal; its D2 is answered, old data dropped. **FIX-1797** ([#2835](https://github.com/fixpoint-labs/flow-state-dev/pull/2835)): c7's pre-epic store and QR-12, and its `MAILBOX.md`-refusal and `upgrading.md` checks |
 
+**The in-repo stores (the product owner, 2026-10-07):** yes, the kitchen-sink app's and the
+DevTeam lab's stores are reset once when this ships, and stored keys are renamed outright, with no
+read of an old key and no copy step. FIX-1796's D2 flips to match.
+
+**Swept** in the amendment PR [#SWEEP](https://github.com/fixpoint-labs/flow-state-dev/pull/SWEEP):
+every *Reaches* item in FIX-1788, FIX-1789, FIX-1790, FIX-1793 and FIX-1796, each recorded in that
+spec's EVOLUTION. FIX-1793's project claims stay until FIX-1792, as *Not reached* says.
+
 **What would reverse it:** a consumer outside this repo before the closure run. Then the product
 owner decides what upgrade path that consumer needs, as a question here. From the first release
 with a consumer, BP-030 applies again; nothing built here is retro-fitted.
@@ -414,5 +422,9 @@ engine rule. The closure only checks.
   mechanism changes and one public rename. #2839 carries FIX-1794's [D8](#d8) amendment, so the
   D9 sweep leaves FIX-1794 alone. FIX-1792's plan is now four PRs ([#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833)), with no
   refusal PR (D9).
+- **The D9 sweep (Oct 7)**, its own amendment PR ([#SWEEP](https://github.com/fixpoint-labs/flow-state-dev/pull/SWEEP)):
+  the merged children drop their upgrade paths as [D9](#d9)'s *Reaches* row lists. FIX-1796's D2
+  flips on the product owner's answer that the in-repo stores are reset once and stored keys are
+  renamed outright. FIX-1795's follow-up for old org-wide hires goes with FIX-1788's D2.
 
 **Open: none.**

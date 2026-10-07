@@ -15,3 +15,13 @@ The epic's [EVOLUTION](../../epics/FIX-1786/EVOLUTION.md) already records the ma
 ledgers as superseded by FIX-1792; this issue leaves them as they are, since nothing at org scope is
 refused ([Q2](DECISIONS.md#q2)). Compare each prior intent with current code before implementing:
 approved intent is not shipped behaviour.
+
+<a name="amendment-d9"></a>
+## Amended after merge: no upgrade note (epic D9)
+
+On 2026-10-07 the product owner wrote: "No consumers yet. No need for backwards support of any
+kind." The epic records it as [epic D9](../../epics/FIX-1786/DECISIONS.md#d9).
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| PLAN S8's `minor` changeset for `workforce` naming the `kinds` rename, and DOCS's README line that `kinds` is now `workerFlows` | **Removed** | Both tell an upgrader what changed, and there is no consumer to upgrade. No consumer, no changeset (BP-022) | The rename of `kinds` to `workerFlows` (S2), every in-repo caller moved, and S8's README entries for the new export, entry form and helpers |

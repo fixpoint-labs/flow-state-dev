@@ -17,7 +17,7 @@ list; Q2, no engine rule. **Build only once the epic has recorded Q1** (see *At 
 | S5 | `workforce` · shared resources | A helper declaring an org-scoped collection whose entries carry a required `writtenBy`, and a write helper stamping it from the session's user and the worker. The worker is today's per-hire id; FIX-1788 switches it to its session link ([D1](DECISIONS.md#d1)) | BR-20–BR-24 |
 | S6 | `workforce` · the built-in `agent` | Move its skills drawer off org scope, to user scope with the flow's isolation. FIX-1788 re-keys it by worker. Mailbox ledgers are untouched | BR-9 BR-17 BR-18 |
 | S7 | `workforce` · the two-door warning | **Remove** the warn-and-hire-with-no-door path for worker flows: BR-3 and BR-4 refuse instead | BR-3 BR-4 |
-| S8 | Docs | [DOCS.md](DOCS.md)'s operations; README entries for the export, the entry form, the rename and the helpers; a `minor` changeset for `workforce` naming the `kinds` rename | — |
+| S8 | Docs | [DOCS.md](DOCS.md)'s operations; README entries for the export, the entry form and the helpers. No changeset: no consumer needs to know ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)) | — |
 
 ## Sequence
 

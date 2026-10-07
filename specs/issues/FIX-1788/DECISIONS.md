@@ -4,65 +4,36 @@
 
 What the model already decided is the epic's ([ER-1](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt),
 [D3](../../epics/FIX-1786/DECISIONS.md#d3)) and is not reopened here. These are the calls this
-issue makes about the users already using hired workers, about forks, and about where a session
-learns its worker.
+issue makes about forks and about where a session learns its worker. D1 and D2, on hires made
+before this release, were withdrawn by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9).
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-1788"] --> D1["D1 · old hires move in one operator step"]
-  D1 -.->|"rejected · keeps every copy's machinery alive"| X1["read the old shape at run time"]
-  D1 -.->|"rejected · users lose their workers"| X1b["start fresh"]
-  I --> D2["D2 · an org-wide hire goes to each member who used it"]
-  D2 -.->|"rejected · breaks a worker users rely on"| X2["nobody, until an operator names one"]
-  D2 -.->|"rejected · workers nobody asked for"| X2b["every member"]
-  I --> D3["D3 · a fork copies the shared instructions"]
+  I["FIX-1788"] --> D3["D3 · a fork copies the shared instructions"]
   D3 -.->|"rejected · an edit to the files changes your fork"| X3["a fork follows them"]
   I --> D4["D4 · a session's worker is named at create"]
   D4 -.->|"rejected · every message carries the worker"| X4["named on the first turn"]
 ```
 
-Solid edges are what was chosen. D1 and D2 are signed, D3 is decided, and D4 is this amendment's
-ask.
+Solid edges are what was chosen. D3 is decided, and D4 is this amendment's ask. D1 and D2 were
+signed, then withdrawn by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9), so the tree leaves them out.
 
 <a name="d1"></a>
-## D1 · Old hires, their memory and their conversations move to the new shape in one operator step
+## D1 · Removed by epic D9 · old hires, their memory and their conversations moved by one operator step
 
-| | |
-|---|---|
-| **Instead of** | Reading the old rows, cells and sessions at run time beside the new path · or starting fresh |
-| **Because** | A hire's memory sits in its own copy's private cell, and its conversations are recorded against its own copy's address. The shared copy can reach neither unless the per-copy machinery stays alive, and that machinery is what [FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798) removes. The same upgrade already has an operator step ([FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790)), and [FIX-1538 D2](../FIX-1538/DECISIONS.md#d2) moved pinned cells the same way |
-| **Locks in** | Between the deploy and the step, a user's old hires don't run, and the boot says how many wait for it. Every deployment with hires runs one documented step, beside FIX-1790's. Nothing is deleted, and running the step twice changes nothing |
-
-![D1: how hires made before the upgrade come across. One operator step, chosen, beside reading the old shape at run time. Decides it: the shared copy can't reach a copy's cells or conversations without keeping every copy's machinery alive. Price: old hires wait for the operator. Locks in one step beside FIX-1790's; flips if a deployment has no operator](figures/d1-upgrade-step.svg)
-
-It comes down to the old copies: reading them at run time keeps them alive forever.
-
-**What would change my mind:** a hosted deployment with no operator to run a step. Then the move
-runs on a user's first load instead, with the old machinery kept until every user has loaded.
-
-**Signed** by Jake, 2026-10-06.
+Signed by Jake on 2026-10-06; withdrawn on 2026-10-07 by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): "No consumers yet. No need for
+backwards support of any kind." Nothing reads or moves a hire made before this release, its
+private cells or its sessions: they are dropped. The card as signed is at
+[the commit before the sweep](https://github.com/fixpoint-labs/flow-state-dev/blob/2ab5e6b0bd77c798142a48922131aa52f45f737d/specs/issues/FIX-1788/DECISIONS.md#d1).
 
 <a name="d2"></a>
-## D2 · A worker hired for the whole org goes, as a private copy, to each member who talked to it
+## D2 · Removed by epic D9 · a worker hired for the whole org went, as a private copy, to each member who talked to it
 
-| | |
-|---|---|
-| **Instead of** | Nobody's, until an operator names an owner · or a copy for every member of the org |
-| **Because** | An org-wide hire is the hole this epic closes, so it can't stay shared. Each member who talked to it already has conversations and memory with it that only they can read. A private copy each keeps exactly what each user had and gives nobody anything new. Nobody's breaks a worker a team uses daily; every member's adds workers users never asked for |
-| **Locks in** | One worker becomes several independent ones: a change one member makes reaches no other. What the worker remembered for the whole org is copied into each, and every one of them could already read it. A copy whose id the member already uses takes a derived id, reported. The old row stays, reported, so it can become a library template once [FIX-1795](https://linear.app/fixpoint-labs/issue/FIX-1795) ships |
-
-![D2: where a worker hired for the whole org goes. A copy for each member who used it, chosen, beside nobody until an operator names one. Decides it: what each user already had. Price: one worker becomes several that drift apart. Flips if teams relied on one shared memory changing together](figures/d2-org-wide-hire.svg)
-
-It comes down to what each user already had: nobody loses a worker, nobody gains one.
-
-**What would change my mind:** teams that rely on one org-wide worker's memory changing for
-everyone at once. Then the right home is the library or a shared resource, and the step should
-hold the hire for the operator instead. Or: no deployment uses an org-wide hire today beyond the
-chief-of-staff worker. Then nobody's costs no one a worker, and the step only reports them.
-
-**Signed** by Jake, 2026-10-06.
+Signed by Jake on 2026-10-06; withdrawn with D1, by the same call. It decided where the operator
+step put an org-wide hire, and the step is gone. The card as signed is at
+[the commit before the sweep](https://github.com/fixpoint-labs/flow-state-dev/blob/2ab5e6b0bd77c798142a48922131aa52f45f737d/specs/issues/FIX-1788/DECISIONS.md#d2).
 
 <a name="d3"></a><a name="q1"></a>
 ## D3 · A fork copies a standard worker's shared instructions; it doesn't follow them
@@ -126,9 +97,6 @@ What PLAN doesn't hold:
   worker.
 - **Ids.** A worker's id is unique on its owner's roster and can't be a standard worker's id. A
   fork gets a new one.
-- **The upgrade step ships as code the operator runs**, not a SQL procedure like FIX-1538's: it
-  relinks sessions and copies rows per member, which a hand procedure gets wrong. FIX-1538's own
-  *what would change my mind* named this.
 - **Fork and the library's copy share one write path.** FIX-1788 owns it; FIX-1795 calls it
   for a template (the epic's coordination seams). No library work is pulled in here.
 
@@ -163,5 +131,9 @@ What PLAN doesn't hold:
   object (architect). "Decided, not asked" was cut to what PLAN doesn't hold.
 - **Amendment 2, with the epic's gate answers** — the app example passes the same `baseUrl` to
   `createClient` as to `createWorkforceClient`, as FIX-1791's example does; nothing else moved.
+- **Amended after merge, the D9 sweep (2026-10-07)** — [epic D9](../../epics/FIX-1786/DECISIONS.md#d9) took out backwards support: D1 and
+  D2, the upgrade step (S13, P3), reading an older stored configuration (BR-21), the upgrade
+  rules (BR-28 to BR-33a), leg c and V10, the upgrade docs, and the deprecation markers (S2, V2,
+  BR-27). [EVOLUTION.md](EVOLUTION.md#amendment-d9) has each.
 
 **Open:** none.

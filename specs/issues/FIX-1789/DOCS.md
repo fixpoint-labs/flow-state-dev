@@ -106,8 +106,7 @@ implementation ships.
 ## Package README · `packages/workforce/README.md`
 
 One line each for `workerFlowProblems`, `sharedResource`, `writeShared`, and the
-`{ flow, standardOnly }` entry form of `workerFlows`, linking the section above; and one line that
-`kinds` is now `workerFlows`.
+`{ flow, standardOnly }` entry form of `workerFlows`, linking the section above.
 
 Nothing else changes. The concept pages, the overview opening and the glossary are other
 issues' ([epic ownership](../../epics/FIX-1786/DOCS.md#ownership)).

@@ -4,8 +4,8 @@
 
 This issue publishes the glossary and the epic's overview opening, and changes words on every
 page that still uses a retired term. Proposed prose follows the outsider rule
-([`user-docs.md`](../../../docs/contributing/user-docs.md)); only the upgrading page says what
-changed. Each operation below is reconciled against `main` when its PR is built: a row whose
+([`user-docs.md`](../../../docs/contributing/user-docs.md)). There is no upgrading page
+([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)). Each operation below is reconciled against `main` when its PR is built: a row whose
 behaviour isn't there is held, not published. Watch for: em-dashes as connectors, "powerful" and
 "seamless", and a term used before it is introduced.
 
@@ -98,27 +98,6 @@ Workforce worker says worker.
 The **seat** definition goes; a **worker** links to the glossary. The `seats` domain is now
 `workers` ([D4](DECISIONS.md#d4)), in the examples and in `discover:`; the `mailboxes` domain and
 its definition are FIX-1792's. The domain list is read off the tool at publish.
-
-## UPDATE · `apps/docs/docs/workforce/upgrading.md` · new section
-
-> ## Names changed in this release
->
-> Each idea now has one name. The table lists every public name that changed; there are no
-> aliases, so update imports and reads, and the type checker finds the rest.
->
-> | Package | Was | Now |
-> |---|---|---|
-> | `@flow-state-dev/workforce` | `seatId`, `seatSkills`, `seatTools`, `seatPackages` | `workerId`, `workerSkills`, `workerTools`, `workerPackages` |
-> | `@flow-state-dev/contracts`, `core` | the discovery domain `seats` | `workers` |
-> | every package | the rest | the package's changelog for this release |
->
-> A worker flow whose configuration schema composes `workerConfigSchema()` gets the new keys with
-> no change. One that declares them by hand is refused at startup, and the message names the
-> key it is missing. A prompt, skill or eval that asks discovery for `seats` gets the list of
-> known domains instead, and a worker file with `discover: [seats]` is refused when it loads,
-> naming `workers`. Saved data keeps its stored names, so nothing needs moving.
-
-The rows are completed from the changesets when P1 is built; the two above are pinned.
 
 ## PUBLISH · `apps/docs/docs/workforce/overview.md` · the opening
 

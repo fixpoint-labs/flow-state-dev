@@ -48,7 +48,7 @@ work.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-20 | Alice edits her worker | Her next turn on any session linked to it runs the edit. No restart | CI · two hosts |
-| BR-21 | A stored configuration from an older version loads | It reads (BP-030), or the turn is refused naming the field. Never silently dropped | CI |
+| ~~BR-21~~ | A stored configuration from an older version loads | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): nothing reads a configuration stored before this release | — |
 | BR-22 | A configuration names a tool, skill or package the installation no longer registers | That turn is refused, naming it. The row is untouched | CI |
 | BR-22a | A user's own worker names a flow that has since become kept for standard workers | That turn is refused with [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789) BR-15's sentence. The row is untouched (BP-030) | CI |
 | BR-23 | Two of Alice's workers on `agent` keep private notes | Each reads only its own. Same for every flow-isolated resource on every worker flow | CI · VG leg a |
@@ -61,26 +61,28 @@ work.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-26 | The app starts with workers on several flows | Each flow a worker names is registered once. No copy per worker, no owner pin | CI · V0 · VG leg a |
-| BR-27 | Code calls `register(flow, { pin })` or declares collection cardinality | It works as before, with a deprecation note naming FIX-1798 | CI |
+| ~~BR-27~~ | Code calls `register(flow, { pin })` or declares collection cardinality | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): no deprecation note. Both stay in the engine untouched until FIX-1798 deletes them | — |
 
 ## Coming across from today
 
+Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9). Nothing reads or moves a hire made before this release, so
+there is no step for these rules to govern. The IDs stay so a reader who remembers one finds where it went.
+
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-28 | The new code boots on a store with old hires, before the step | Old hires don't run. The boot reports how many wait for the step. Nothing is read across users or orgs | CI · VG leg c |
-| BR-29 | The step meets a hire owned by Alice | It becomes her worker under its id. Its private cells move to the worker's key, and the step sets each of its sessions' link, the one write besides a create | CI · VG leg c |
-| BR-30 | The step meets an org-wide hire | A private copy for each member with a session on it ([D2](DECISIONS.md#d2)), each with that member's sessions and a copy of the hire's memory. Members without one get none | CI · VG leg c |
-| BR-31 | A moved worker's id is already on that member's roster, or is a standard worker's id | It takes a new id, derived the same way on every run, and the report names both. Its sessions and memory move with it. Nothing overwritten, nothing skipped | CI |
-| BR-32 | The step runs twice, or stops halfway | The second run finishes the first and changes nothing done. The old rows stay | CI |
-| BR-33 | An old hire names a flow that's gone | Reported, not moved | CI |
-| BR-33a | An old hire names a flow now kept for standard workers | Moved and reported. Its turns are refused as BR-22a until the installation changes that | CI |
+| ~~BR-28~~ | The new code boots on a store with old hires, before the step | Removed | — |
+| ~~BR-29~~ | The step meets a hire owned by Alice | Removed | — |
+| ~~BR-30~~ | The step meets an org-wide hire | Removed | — |
+| ~~BR-31~~ | A moved worker's id is already on that member's roster, or is a standard worker's id | Removed | — |
+| ~~BR-32~~ | The step runs twice, or stops halfway | Removed | — |
+| ~~BR-33~~ | An old hire names a flow that's gone | Removed | — |
+| ~~BR-33a~~ | An old hire names a flow now kept for standard workers | Removed | — |
 
 ## Failure taxonomy
 
 A refused create, a refused turn and a refused write change nothing and name why. A configuration
-that fails on load refuses that turn only; the row and the session survive for a fix. A missing
-step is not an error: old hires wait, reported. Nothing retries, and nothing is deleted except
-by a fire.
+that fails on load refuses that turn only; the row and the session survive for a fix. Nothing
+retries, and nothing is deleted except by a fire.
 
 ## Acceptance criteria this issue owns
 
