@@ -61,11 +61,11 @@ scoping is keyed per scope:
 | Scope | Key |
 |---|---|
 | `session` | the session id, namespaced to `${tenantId}:${sessionId}` when the request carries a tenant (`resolveSessionStorageKey`) |
-| `user` | `userId` |
+| `user` | `<userId>:~org:<orgId>`, the user's cell in the session's bound org (`resolveUserStorageKey`) |
 | `org` | the session's bound `orgId`, taken from `principal.orgId` at session creation |
 
-User- and org-scoped resources route to a further `${id}:${flow.id}`
-bucket when the resource is flow-isolated — the registered **instance**, so
+User- and org-scoped resources append `:<flow id>` to that key
+(`<userId>:~org:<orgId>:<flow id>`, `<orgId>:<flow id>`) when the resource is flow-isolated — the registered **instance**, so
 two copies of one collection definition isolate from each other too. The
 identity above is still what that bucket is derived from, and an instance id
 is a storage coordinate, never an authorization.

@@ -27,8 +27,10 @@ import type { IdempotencyCache } from "./idempotency";
 // so after the router's one decode it holds `encodeURIComponent`'s output
 // alphabet, `%` included, plus the `/` separators and the `:` a hand-built id
 // may carry. That admits every org id `isValidOrgId` admits — uppercase, `.`,
-// `/`, `DEFAULT_ORG_ID`'s underscores — and the length an org adds.
-const DYNAMIC_SCHEDULE_ID_RE = /^[A-Za-z0-9\-_.!~*'()%:/]{1,1024}$/;
+// `/`, `DEFAULT_ORG_ID`'s underscores. No length cap: org, user and key ids
+// have none, so a fixed one here would refuse a valid long id and its
+// schedule would never fire.
+const DYNAMIC_SCHEDULE_ID_RE = /^[A-Za-z0-9\-_.!~*'()%:/]+$/;
 
 interface DispatchBody {
   nominalFireTime?: string;

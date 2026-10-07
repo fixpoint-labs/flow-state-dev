@@ -218,6 +218,23 @@ describe("a schedule created through the collection fires into the org that save
     }
   );
 
+  // No org id has a length limit, so neither may the route: a long org the
+  // resolver admits must still reach its schedule, or that org's beats are
+  // refused before resolution and never fire.
+  it("fires a schedule saved in an org with a long id", async () => {
+    const orgId = `Acme Corp/${"é".repeat(400)}`;
+    const h = boot();
+    const app = h.register(appKind());
+    try {
+      await h.runPlan(app, "digest", orgId);
+      const response = await h.dispatch("reminders", formatScheduleId(orgId, "alice", "digest"));
+      expect(response.status).toBe(202);
+      expect((await h.fired())?.orgId).toBe(orgId);
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
+
   it("does not fire a row saved in one org under another org's dispatch", async () => {
     const h = boot();
     const app = h.register(appKind());

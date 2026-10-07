@@ -35,7 +35,7 @@ The dispatch URL carries the id:
 POST /api/flows/:flowKind/schedules/:scheduleId/dispatch
 ```
 
-The id format is up to you: up to 1024 characters of letters, digits and
+The id format is up to you: any run of letters, digits and
 `- _ . ! ~ * ' ( ) % : /`, after the URL is decoded. The reference helper uses
 `<orgId>/<userId>/<key>` with each part percent-encoded, so any org, user or
 key fits, and it maps cleanly to a lookup in one user's data in one
