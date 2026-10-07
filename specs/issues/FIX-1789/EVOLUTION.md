@@ -15,3 +15,8 @@ The epic's [EVOLUTION](../../epics/FIX-1786/EVOLUTION.md) already records the ma
 ledgers as superseded by FIX-1792; this issue leaves them as they are, since nothing at org scope is
 refused ([Q2](DECISIONS.md#q2)). Compare each prior intent with current code before implementing:
 approved intent is not shipped behaviour.
+
+Amended after merge (FIX-1802's spec PR #2839): [FIX-1802's D1](../FIX-1802/DECISIONS.md#d1)
+makes `delegates:` the key that decides whether any worker files, so `workerConfigSchema()`
+defines `delegates`, the key FIX-1791 gives the coordinator. There is no `filing` key. Marked in
+SPEC's *What stays as it is*; the three checks and their refusals are unchanged.

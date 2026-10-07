@@ -10,6 +10,25 @@
 | FIX-1774 leg e: a task fails and the coordinator reassigns or cancels it. Spec PR [#2747](https://github.com/fixpoint-labs/flow-state-dev/pull/2747), closed; [`a8e45d6`, `specs/issues/FIX-1774/SPEC.md`](https://github.com/fixpoint-labs/flow-state-dev/blob/a8e45d681a192ac9ca686216e41088a6e5352a49/specs/issues/FIX-1774/SPEC.md) | **Retained** | Carried through FIX-1791's Q1 | Goal leg e | n/a |
 | This issue's PRD: boards below a workstream are session-scoped and shared down their lineage ([Linear](https://linear.app/fixpoint-labs/issue/FIX-1794), Outcome, third point) | **Amended**: the intent (a task session settles its row on the board that filed it) kept, the storage changed | A lineage stops at a flow ([epic POC](../../epics/FIX-1786/poc/singleton-worker-link/README.md) C1), and the epic left how to this issue ([ER-9](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) | [D1](DECISIONS.md#d1) | `sharedToLineage` boards are unchanged; the chain doesn't use them |
 
+Amended after merge (FIX-1802's spec PR): epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) (the product owner, 2026-10-06) reversed
+[Q](DECISIONS.md#q)'s answer. The split ships in the MVP as [FIX-1802](../FIX-1802/SPEC.md), which
+builds right after this issue, and filing is a tool any worker can be granted, not what makes a
+coordinator. Since no implementation had started, this issue ships the final shape: a board per
+session (S3), worked through Orchestration's existing eight task tools (S4). Its one interim part
+is the answer to "may this session file": a coordinator conversation, and never a task session
+(BR-7), until FIX-1802's delegate rule replaces it. The split's acceptance (leg b, BR-30 to BR-32,
+S8, S10, V6) is pointer-only, owned by FIX-1802. Also updated: the people table, the sign-off, Q,
+*decided, not asked*, the follow-ups and the docs draft.
+
+The product owner's sign-off on FIX-1802 (2026-10-07) folds in on the same PR. The four filing
+verbs this spec named (`fileTask`, `reassignTask`, `cancelTask`, `listTasks`) are superseded by
+the task tools' existing eight; never shipped. FIX-1780's `reassignTask` rules, cited by S4
+(its BR-16 to BR-22), are superseded by those tools' own contract on this board (*decided, not
+asked*). The tools gain one extension, T1, a roster read per call and on `taskToolActions`: a
+Layer 1 change the epic records (ER-22). The task session's lookup key is `filingSessionId`,
+renamed from `coordinatorSessionId`; never shipped. No backwards support is added for any of
+these: nothing shipped and there are no consumers.
+
 `sharedToLineage` itself (FIX-1068, and [FIX-1084](../FIX-1084/SPEC.md)'s routing rule) is a
 neighbour, not a predecessor: it keeps working as shipped. The epic's [D5](../../epics/FIX-1786/DECISIONS.md#d5)
 and ER-9 are answered here, not superseded. Before implementation, compare these intents with

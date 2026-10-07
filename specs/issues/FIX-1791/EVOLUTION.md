@@ -27,3 +27,11 @@ reversed that on 2026-10-06 (epic D8): a coordinator is evaluator first, agent a
 
 None of these is wholly superseded until FIX-1792 removes the mailbox flow. Re-check each
 cited intent against `main` before building: FIX-1788 changes how a worker is reached.
+
+Amended after merge (FIX-1802's spec PR #2839): [FIX-1802's D1](../FIX-1802/DECISIONS.md#d1)
+makes the delegate list who works for any worker, and whether it files: a worker files for its
+delegates that take a task, with no other key. BR-1a's actions reach any worker whose file lists
+`delegates:`, and BR-4 accepts a delegate that takes a post or a task, each use checking its own.
+Both rows are marked. The task session's lookup key (the `findWorkerSession` criterion FIX-1788
+S5a carries) is `filingSessionId` in this spec, FIX-1794 and FIX-1802: renamed from
+`coordinatorSessionId`; never shipped.

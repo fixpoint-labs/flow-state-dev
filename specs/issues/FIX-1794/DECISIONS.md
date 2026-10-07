@@ -80,7 +80,7 @@ the docs state the cost per level.
   (FIX-1788 BR-18) and keyed by the task, its worker and the filing conversation's incarnation,
   so a retry re-enters it, a reassign opens a new one, and two conversations that file the same
   task id for the same worker get two sessions. It carries the `taskId` criterion beside
-  FIX-1791's `coordinatorSessionId` ([BR-20a](../FIX-1791/BUSINESS-RULES.md#answers-and-rounds)), which the hand-off
+  FIX-1791's `filingSessionId` ([BR-20a](../FIX-1791/BUSINESS-RULES.md#answers-and-rounds)), which the hand-off
   sets server-side: `findWorkerSession` finds it within its conversation, and
   `ensureWorkerSession` with a `taskId` never creates one.
 - **Every ending is heard, even across a crash.** The write that records a task's ending also
@@ -91,18 +91,25 @@ the docs state the cost per level.
   the same write, and only the board's run clears it. A wake refused or lost to a crash leaves
   it for the next filing or action on the board to retry; with no sweeper, it waits for that
   touch. Filing a still-pending task's id again re-triggers the wake, idempotently.
-- **If the split stays here ([Q](#q)), a waiting task settles through its own board.** Parking
-  it writes a parent binding, server-side and recoverable: the row's partition and its claim
-  ticket. After the `onTaskSettled` turn the last piece's notice woke, that row settles through the
-  board that owns it, with that binding, never with a coordinate a caller or a payload supplies.
-  The last piece's ending writes the settle as owed, and only the settle clears it, so a failed
-  turn leaves it for the next touch of the board, as an owed notice is.
+- **A split task settles through its own board: FIX-1802's** ([Q](#q); *amended after merge*).
+  Its parent binding (the row's partition and claim ticket) and settle-owed marker are carried
+  there as written in S8.
 - **The partition is the conversation's incarnation**: its id plus a value minted at its birth
   that only the server writes, the same incarnation FIX-1791 keys delegate sessions by. A
   conversation deleted and created again starts with an empty board; the old rows stay in the
   store, unread (BP-030).
-- **A worker that splits its task is a coordinator** (epic [D2](../../epics/FIX-1786/DECISIONS.md#d2)).
-  The board and the filing tools are the coordinator flow's; any worker flow takes tasks.
+- **Who may file is FIX-1802's** (*amended after merge*, epic [D8](../../epics/FIX-1786/DECISIONS.md#d8); this line read "a worker that
+  splits its task is a coordinator"). This issue ships the final shape: a board per session, and
+  Orchestration's existing eight task tools wired to it, with the session's board as their
+  resolver and its task-taking delegates as their roster (S3, S4, T1). Only its answer to "may
+  this session file" is interim, "a coordinator conversation, not a task session";
+  [FIX-1802](../FIX-1802/DECISIONS.md#d1) swaps in its delegate rule: a worker files when one of
+  its delegates takes a task. Any worker flow takes tasks.
+- **Reassign and cancel are the task tools' own** (*amended after merge*). FIX-1780's
+  `reassignTask` rules this spec cited (a failed task carried on by a new one, three moves, a
+  running task's cancel refused) are not carried: on this board `assignTask` moves a task no
+  attempt holds, a failed task is filed again with `addTask`, and a cancel of a running task
+  lands while its worker's late result is declined. Stopping a running task stays FIX-1659's.
 - **Mailbox boards stay until FIX-1792**, which moves each onto this shape or a workstream (epic
   [D5](../../epics/FIX-1786/DECISIONS.md#d5)) and deletes `mailboxTaskLists` with them.
 
@@ -122,7 +129,7 @@ the docs state the cost per level.
 <a name="q"></a>
 ### Q · answered · Does the split ship in this issue, or in a follow-up issue?
 
-**Answered (product owner, 2026-10-06): a follow-up issue, [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802).** This issue ships one level, and a task session's filing is refused. Wherever this spec reads "if Q moves the split", that branch holds. D2's limit, the breadth cap, goal leg b, BR-7, BR-30 to BR-32, S8, S10 and V6 are carried to FIX-1802 as written.
+**Answered (product owner, 2026-10-06): a follow-up issue, [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802).** This issue ships one level, and a task session's filing is refused. **Reversed after merge, the same day (epic [D8](../../epics/FIX-1786/DECISIONS.md#d8)):** FIX-1802 is in the MVP and builds right after this issue, so the refusal lasts only until it lands. Wherever this spec reads "if Q moves the split", that branch holds. D2's limit, the breadth cap, goal leg b, BR-7, BR-30 to BR-32, S8, S10 and V6 are carried to FIX-1802 as written.
 
 **The fork.** A worker given a big task can split it: hand the pieces to its own delegates,
 wait for them, and finish from what they return. Build that here, or in a follow-up issue built
@@ -195,4 +202,14 @@ left.
   row like a notice, so a failed turn can't strand it; the wake marker written with the add; a
   breadth cap named beside D2.
 
-**Open: none.** [Q](#q) is answered: the split moves to FIX-1802.
+- **Amended after merge (FIX-1802's spec PR #2839)** — epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) brought FIX-1802 into the MVP and made
+  filing a tool any worker can be granted. This issue now ships the board per session and wires
+  Orchestration's eight task tools to it, so FIX-1802 only swaps the answer to "may this session
+  file". The product owner, 2026-10-07: build on the existing task tools, not new ones; their one
+  extension, T1, is a Layer 1 change for the epic to record. The split's acceptance (leg b,
+  BR-30 to BR-32, S8, S10, V6) points there; BR-7 is the interim refusal.
+- **Terminology** (the product owner, 2026-10-07; epic [D7](../../epics/FIX-1786/DECISIONS.md#d7)) —
+  a board's seat is now an *assignee*, so the plan and the docs draft say "an assignee that hands
+  off" and "the default assignee".
+
+**Open: none.** [Q](#q) is answered: the split moves to FIX-1802, which is in the MVP (epic D8).

@@ -9,9 +9,9 @@
 | **asks their coordinator for work that has to be done, not just answered** | A coordinator can hand a post to a delegate, and files nothing ([FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791) left tasks here) | It files a task for one of its delegates. The task starts at once, in a new session of that delegate's, and nobody runs a list by hand |
 | **works in an org with other users** | A board is an org row. Whoever's request runs it claims its tasks, and the work runs as them | A board belongs to one conversation. Only its owner's requests run it, and every task under it runs as that owner |
 | **talks to one coordinator in two conversations** | n/a | Each conversation's board is its own. Running one never takes, shows or waits on the other's tasks |
-| **hands a big task to a worker that splits it** | The pieces go on a board any member can run | The worker files the pieces on its own task session's board, for its own delegates, up to five boards deep. Results come back up board by board. In the follow-up issue FIX-1802 ([Q](DECISIONS.md#q), answered) |
+| **hands a big task to a worker that splits it** | The pieces go on a board any member can run | The worker files the pieces on its own task session's board, for its own delegates, up to five boards deep. Results come back up board by board. Built by [FIX-1802](../FIX-1802/SPEC.md), in the MVP: epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) reversed [Q](DECISIONS.md#q) after merge |
 | **has a task fail for good, or stop on a question** | Nobody hears unless they open the list | The conversation that filed it is told once, and the coordinator reassigns it, cancels it, or tells the person |
-| **builds an app on Workforce** | Finds a task's run through the board's run link only | Also finds it with `findWorkerSession({ worker, taskId, coordinatorSessionId })`, within the conversation that filed it |
+| **builds an app on Workforce** | Finds a task's run through the board's run link only | Also finds it with `findWorkerSession({ worker, taskId, filingSessionId })`, within the conversation that filed it (*amended after merge*: FIX-1791's key, [#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839)) |
 
 The epic's assignment chain ([FIX-1786](../../epics/FIX-1786/SPEC.md), ER-9), built on private
 workers ([FIX-1788](../FIX-1788/SPEC.md)) and delegates ([FIX-1791](../FIX-1791/SPEC.md)).
@@ -33,11 +33,10 @@ flow. The conversation that filed it hears how it ended and can reassign or canc
 ```mermaid
 flowchart LR
   A["Shift Manager · two users · scripted workers on agent"] --> L1["a · a coordinator files"]
-  A --> L2["b · a delegate splits"]
   A --> L3["c · two conversations · one coordinator"]
   A --> L4["d · Bob reaches in"]
   A --> L5["e · a task fails · real model"]
-  L1 & L2 & L3 & L4 & L5 -->|"stores, sessions and notices match"| P["PASS · the goal is met"]
+  L1 & L3 & L4 & L5 -->|"stores, sessions and notices match"| P["PASS · the goal is met"]
   C["control · one ledger for all of Alice's conversations"] -.-> L3
   L3 -.->|"under the control"| F["must FAIL · a conversation runs the other's task"]
 ```
@@ -48,14 +47,16 @@ the ledger isn't kept per conversation, and leg c must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/coordinators/files-tasks-down-the-owners-chain/` · scripted workers for legs a to d, `openai/gpt-5.4-mini` for leg e · Shift Manager over HTTP, two users · run by the implementer at completion · verdict in the last implementation PR |
-| **Signal** | **a**: Alice's coordinator files a task for her `agent` delegate; within 60 s it is `completed` in a new session that is hers, a child of the conversation, linked to the delegate and found by `findWorkerSession`; one `completed` notice; the filing returned first. **b**: a coordinator delegate splits its task into two pieces for two `agent` delegates; four sessions, all hers; each row on its own board; the top task completes after both pieces. **c**: two conversations each file one task for one delegate; each runs only its own, lists only its own, and its drain returns without waiting on the other's. **d**: Bob opening, posting to or filing on Alice's conversation, and naming her worker on his own, are each refused; none of his runs touch her rows. **e**: a task that fails both attempts gives one `errored` notice; the coordinator reassigns or cancels it, and its reply names the task and the error |
+| **Signal** | **a**: Alice's coordinator files a task for her `agent` delegate; within 60 s it is `completed` in a new session that is hers, a child of the conversation, linked to the delegate and found by `findWorkerSession`; one `completed` notice; the filing returned first. **b**: owned by [FIX-1802](../FIX-1802/SPEC.md); not exercised in this goal. **c**: two conversations each file one task for one delegate; each runs only its own, lists only its own, and its drain returns without waiting on the other's. **d**: Bob opening, posting to or filing on Alice's conversation, and naming her worker on his own, are each refused; none of his runs touch her rows. **e**: a task that fails both attempts gives one `errored` notice; the coordinator reassigns or cancels it, and its reply names the task and the error |
 | **Input** | The DevTeam standard install; two users through sign-in; a goal-local tree with a scripted coordinator delegate and two scripted `agent` workers. Asks held out at run time |
 | **Anti-game** | No drain from the check; no row, notice or session written by a fixture. Counts read again after 5 s. Leg c reads each conversation's own read, not the store |
 | **Control that must fail** | `GOAL_CONTROL=unpartitioned`: leg c FAILS on *each runs only its own*. `GOAL_CONTROL=no-follow-up`: legs a and e FAIL on *one notice*. Today's `main`: every leg FAILS |
 
-Leg b is the split. [Q](DECISIONS.md#q) moved the split to FIX-1802, so leg b and the
-two *not done if* entries about splits and depth move with it, and leg a adds one step: a
-delegate's task session that tries to file a piece is refused.
+Leg b is the split. [Q](DECISIONS.md#q) moved it to FIX-1802, so leg b and the two *not done
+if* entries about splits and depth are FIX-1802's, not exercised here. One interim rule stays: leg
+a adds a step where a delegate's task session that tries to file is refused, until FIX-1802 lands.
+*Amended after merge* (epic [D8](../../epics/FIX-1786/DECISIONS.md#d8)): FIX-1802 is in the MVP,
+built right after this issue.
 
 ## What changes
 
@@ -65,24 +66,29 @@ On the left, whoever runs the board decides who the work runs as. On the right, 
 conversation does, and nobody else can run it.
 
 **What an app writes to file a task and follow it**, on a coordinator conversation
-[FIX-1791](../FIX-1791/SPEC.md#what-changes) opens:
+[FIX-1791](../FIX-1791/SPEC.md#what-changes) opens (*amended after merge*,
+[#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839): the actions are Orchestration's
+existing task tools, named `<tool>_<board>` by `taskToolActions`' rule, for the board id drafted
+`tasks`):
 
 ```ts
 const coordinator = createClient({ flowKind: session.flowKind, userId, baseUrl })
-await coordinator.sendAction("fileTask", { goal: "Audit our dependencies' licenses", assignee: "researcher" }, { sessionId: session.id })
-// refused, like a missing worker, unless researcher is one of this conversation's delegates
-await coordinator.sendAction("listTasks", {}, { sessionId: session.id })          // this conversation's board only
-await coordinator.sendAction("reassignTask", { taskId, assignee: "writer" }, { sessionId: session.id })
-const run = await workforce.findWorkerSession({ worker: "researcher", taskId, coordinatorSessionId: session.id })  // the task's own session, in this conversation
+await coordinator.sendAction("addTask_tasks", { goal: "Audit our dependencies' licenses", assignee: "researcher" }, { sessionId: session.id })
+// refused (unknown_assignee), like a missing worker, unless researcher is one of this conversation's delegates that takes a task
+await coordinator.sendAction("listTasks_tasks", {}, { sessionId: session.id })          // this conversation's board only
+await coordinator.sendAction("assignTask_tasks", { taskId, assignee: "writer" }, { sessionId: session.id })
+const run = await workforce.findWorkerSession({ worker: "researcher", taskId, filingSessionId: session.id })  // the task's own session, in this conversation
 ```
 
-The coordinator has the same four as tools. No action names a board, a ledger or an owner.
+The coordinator has the same eight as tools, unsuffixed: `addTask`, `assignTask`, `completeTask`,
+`failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks`. No action takes a board, a
+ledger or an owner as input.
 
 ## How a task reaches its worker
 
 ```mermaid
 flowchart LR
-  F["fileTask · app or tool"] --> B["this conversation's board · owner's user scope · its own partition"]
+  F["addTask · app or tool"] --> B["this conversation's board · owner's user scope · its own partition"]
   B -->|"its own request · as the owner"| D["drain"]
   D -->|"hand-off · no lineage needed"| T["task session · new · the owner's · any flow"]
   T -->|"reads and settles the row in that partition"| B
@@ -117,7 +123,9 @@ ending heard. If wrong: work runs as the right user while one conversation still
 
 **Answered: [Q](DECISIONS.md#q) · the split ships in a follow-up issue, [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802)** (product owner,
 2026-10-06), as recommended. The epic's MVP check is met at one level, and the split is where review's hardest
-finding landed. If wrong: low and reversible either way. Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
+finding landed. If wrong: low and reversible either way. *Amended after merge:* the product owner
+reversed this the same day (epic [D8](../../epics/FIX-1786/DECISIONS.md#d8)): FIX-1802 ships the split in the MVP, and filing becomes a
+tool any worker can be granted. Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
 Feature · `orchestration`, `workforce`, `shift-manager` · large · 3 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)

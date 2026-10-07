@@ -114,7 +114,7 @@ flowchart LR
 
 The roster check runs on every add and again on every delivery, so a fired worker drops out
 without anyone editing the list. A delivery opens the delegate's session through FIX-1788's
-`ensureWorkerSession({ worker, coordinatorSessionId })`: the delegate is named, so the server
+`ensureWorkerSession({ worker, filingSessionId })`: the delegate is named, so the server
 links the session at create, and the key gives each coordinator conversation its own session per
 delegate. It never posts to a fresh id.
 
