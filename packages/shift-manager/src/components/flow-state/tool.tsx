@@ -3,12 +3,17 @@
 /**
  * Tool call rendering for block_trace and tool_output items.
  *
- * Tool calls are background, not content: each one is a single quiet line
- * ("Used discover ›") that opens to its details, and a run of consecutive
- * calls is one line ("Used 3 tools ›") that opens to one row per call.
+ * Two presentations:
  *
- *  - <Tool> — one call, as a quiet line.
- *  - <ToolGroup> — a run of `tool_output` items, as one quiet line.
+ *  - <Tool> — standalone card used when a single tool call is rendered
+ *    outside the main item stream (e.g. agent response cards).
+ *
+ *  - <ToolGroup> — Claude-Code-style two-level collapsible: a summary row
+ *    labels the batch ("Ran 3 searches, wrote a file") and expands to show
+ *    each individual tool call as its own collapsible detail row.
+ *
+ * Consecutive `tool_output` items in the chat stream are wrapped in a
+ * <ToolGroup>. Singletons use the same wrapper for visual consistency.
  */
 
 import { Fragment, isValidElement, type ComponentProps, type ReactNode } from "react";
@@ -24,7 +29,6 @@ import { cn } from "@/lib/utils";
 import {
   CheckCircleIcon,
   ChevronDownIcon,
-  ChevronRightIcon,
   CircleIcon,
   ClockIcon,
   WrenchIcon,
@@ -32,6 +36,7 @@ import {
 } from "lucide-react";
 
 import { CodeBlock } from "./code-block";
+import { composeToolGroupLabel } from "./tool-grouping";
 
 export {
   composeToolGroupLabel,
@@ -240,53 +245,21 @@ function getToolErrorText(item: ToolItem): string | undefined {
   return raw === undefined ? undefined : String(raw);
 }
 
-/** The input, result and metadata of one call: what a quiet line opens to. */
-function ToolDetails({ item }: { item: ToolItem }) {
-  const args = getToolArgs(item);
-  const output = getToolOutput(item);
-  const errorText = getToolErrorText(item);
-  return (
-    <div className="space-y-3">
-      {args !== undefined && <ToolInput input={args} />}
-      {item.status !== "in_progress" && (output !== undefined || errorText !== undefined) && (
-        <ToolOutput output={output} errorText={errorText} />
-      )}
-      <ToolRowMetadata item={item} />
-    </div>
-  );
-}
-
-/**
- * The quiet line every tool presentation shares: muted text and a chevron,
- * opening to `children`. A call that is running or failed says so in words
- * ("Using discover…", "discover failed"), since there is no badge.
- */
-function QuietToolLine({ label, state, children }: { label: string; state: ToolState; children: ReactNode }) {
-  return (
-    <Collapsible className="group/quiet not-prose w-full" data-testid="tool-group" data-state-kind={state}>
-      <CollapsibleTrigger className="inline-flex max-w-full items-center gap-1 text-left text-sm text-muted-foreground hover:text-foreground">
-        <span className={cn("truncate", state === "error" && "text-destructive")}>{label}</span>
-        <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-data-[state=open]/quiet:rotate-90" />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1.5 ml-1 border-l pl-3 outline-none">{children}</CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-/** "Used discover", "Using discover…" while it runs, "discover failed" when it did. */
-function callLabel(name: string, state: ToolState): string {
-  if (state === "error") return `${name} failed`;
-  if (state === "running" || state === "streaming" || state === "pending") return `Using ${name}…`;
-  return `Used ${name}`;
-}
-
 export function Tool({ item }: { item: BlockTraceItem | ToolOutputItem }) {
   if (!item.toolCall) return null;
   const state = mapToolStatus(item.status);
+  const name = getToolName(item);
+  const args = getToolArgs(item);
   return (
-    <QuietToolLine label={callLabel(getToolName(item), state)} state={state}>
-      <ToolDetails item={item} />
-    </QuietToolLine>
+    <ToolShell>
+      <ToolHeader name={name} state={state} />
+      <ToolContent>
+        <ToolInput input={args} />
+        {item.status !== "in_progress" && (
+          <ToolOutput output={getToolOutput(item)} errorText={getToolErrorText(item)} />
+        )}
+      </ToolContent>
+    </ToolShell>
   );
 }
 
@@ -308,6 +281,16 @@ function aggregateGroupState(items: ToolOutputItem[]): ToolState {
   return "completed";
 }
 
+const groupStateIndicator: Record<ToolState, ReactNode> = {
+  pending: <CircleIcon className="size-4 text-muted-foreground" />,
+  streaming: <ClockIcon className="size-4 animate-pulse text-muted-foreground" />,
+  running: <ClockIcon className="size-4 animate-pulse text-muted-foreground" />,
+  awaiting: <ClockIcon className="size-4 text-attention" />,
+  completed: <CheckCircleIcon className="size-4 text-success" />,
+  error: <XCircleIcon className="size-4 text-destructive" />,
+  denied: <XCircleIcon className="size-4 text-warning" />,
+};
+
 export type ToolGroupProps = {
   items: ToolOutputItem[];
   /** Default-open state. Defaults to false (collapsed). */
@@ -316,32 +299,44 @@ export type ToolGroupProps = {
 };
 
 /**
- * A run of tool calls as one quiet line: the call's own name for one call
- * ("Used discover"), a count for several ("Used 3 tools"). Opens to the
- * call's details, or to one row per call that opens to its own.
+ * Level-1 collapsible group header + Level-2 rows for a batch of tool calls.
+ * Accepts >= 1 item; singletons are wrapped for visual consistency.
  */
-export function ToolGroup({ items }: ToolGroupProps) {
+export function ToolGroup({ items, defaultOpen = false, className }: ToolGroupProps) {
   if (items.length === 0) return null;
-  const state = aggregateGroupState(items);
-  if (items.length === 1) {
-    const item = items[0]!;
-    return (
-      <QuietToolLine label={callLabel(item.toolCall.name, state)} state={state}>
-        <ToolDetails item={item} />
-      </QuietToolLine>
-    );
-  }
-  const label = state === "running" ? `Using ${items.length} tools…` : state === "error" ? `Used ${items.length} tools, one failed` : `Used ${items.length} tools`;
+
+  const label = composeToolGroupLabel(items.map((i) => i.toolCall.name));
+  const aggregateState = aggregateGroupState(items);
+
   return (
-    <QuietToolLine label={label} state={state}>
-      <ul className="space-y-1">
-        {items.map((item) => (
-          <li key={item.id}>
-            <ToolRow item={item} />
-          </li>
-        ))}
-      </ul>
-    </QuietToolLine>
+    <Collapsible
+      defaultOpen={defaultOpen}
+      data-testid="tool-group"
+      className={cn("group not-prose mb-2 w-full rounded-md border bg-card", className)}
+    >
+      <CollapsibleTrigger className="flex w-full items-center justify-between gap-4 p-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <WrenchIcon className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate font-medium text-sm">{label}</span>
+          <span className="shrink-0">{groupStateIndicator[aggregateState]}</span>
+        </div>
+        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent
+        className={cn(
+          "data-[state=closed]:fade-out-0 data-[state=open]:slide-in-from-top-2 border-t outline-none",
+          "data-[state=closed]:animate-out data-[state=open]:animate-in"
+        )}
+      >
+        <ul className="divide-y">
+          {items.map((item) => (
+            <li key={item.id}>
+              <ToolRow item={item} />
+            </li>
+          ))}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -392,7 +387,7 @@ function ToolRowStatus({ state }: { state: ToolState }) {
   );
 }
 
-function ToolRowMetadata({ item }: { item: ToolItem }) {
+function ToolRowMetadata({ item }: { item: ToolOutputItem }) {
   const entries: Array<[string, string]> = [];
   if (item.blockName) entries.push(["Block", item.blockName]);
   entries.push(["Item", item.id]);

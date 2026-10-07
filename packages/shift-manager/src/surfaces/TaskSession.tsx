@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
-import { chatAssistantRenderers } from "../components/flow-state/chat-assistant";
+import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { EmptyState, SectionFailure } from "../components/ui";
 import { readStatus } from "../lib/columns";
@@ -67,7 +67,7 @@ export function TaskSession() {
         );
       case "open":
         return (
-          <FlowProvider renderers={chatAssistantRenderers}>
+          <FlowProvider renderers={shiftManagerRenderers}>
             <RunItems key={`${run.run.flowId}/${run.run.sessionId}/${run.run.requestId}`} run={run.run} />
           </FlowProvider>
         );
