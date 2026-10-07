@@ -473,5 +473,12 @@ engine rule. The closure only checks.
   mechanism changes, and ER-22, D1, the box and the concept match. Rejected: Workforce-only
   document tools (B) and a copy per worker that holds grants (C)
   ([EVOLUTION.md](EVOLUTION.md#amendment-visibility)).
+- **The kill line confirmed (Oct 7)**, in the same amendment PR: the product owner confirmed it.
+  If the FIX-1805 milestone, the early leg-c run on FIX-1788's merge commit, shows that a
+  worker's own state can't be kept per user on shared singleton flows without a Layer 1 change
+  beyond [D3](#d3)'s seven, the epic goes back to the objective gate rather than add the change.
+  It sits in [the goal's *how we verify*](SPEC.md#the-goal-and-how-well-know-its-met), and
+  [ER-22](BUSINESS-RULES.md#what-no-child-may-do) points at it: ER-22 sends any Layer 1 change
+  outside D3 here, and the kill line is the case where the outcome itself needs one.
 
 **Open: none.**

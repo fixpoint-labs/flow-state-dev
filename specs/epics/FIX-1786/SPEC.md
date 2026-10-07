@@ -69,6 +69,7 @@ makes leg c's PASS mean something.
 | **Anti-game** | No asserting on a child's own tests. No worker, project or delegate seeded by a fixture: the users make each one through the app. No run with one user, and no request of Bob's sent under Alice's identity |
 | **Control that must fail** | The worker collection at org scope, which puts a worker itself where every member reads it: leg c must FAIL. Today's `main`: all three legs FAIL |
 | **Milestone** | Leg c's worker steps and the control run early, on the commit FIX-1788 merges on, so the privacy fix is proved before the coordinator builds on it rather than last ([ER-30](BUSINESS-RULES.md#the-closure)) |
+| **Kill line** | Confirmed by the product owner on 2026-10-07. If the [FIX-1805](https://linear.app/fixpoint-labs/issue/FIX-1805) milestone shows that a worker's own state can't be kept per user on shared singleton flows without a Layer 1 change beyond [D3](DECISIONS.md#d3)'s seven, finishing the epic as designed is the wrong call. Go back to the objective gate rather than add the change. [ER-22](BUSINESS-RULES.md#what-no-child-may-do) sends any Layer 1 change outside D3 to this epic; the kill line is the case where that change is needed to deliver the outcome itself |
 
 ## What's in the box
 
@@ -188,7 +189,9 @@ apply to this epic until a consumer exists. FIX-1792's D2 is answered: old data 
 assignee"), [D3](DECISIONS.md#d3)'s second public rename, and "seat" is retired everywhere.
 [D3](DECISIONS.md#d3), amended · option A at FIX-1788's S8: a per-turn resource visibility rule
 in core, so a worker's grants hold through every model-facing tool on one shared copy; D3's
-seventh mechanism change.
+seventh mechanism change. The [kill line](#the-goal-and-how-well-know-its-met) is confirmed: if the
+FIX-1805 milestone needs a Layer 1 change beyond D3's seven to keep a worker's own state per user,
+the epic goes back to the objective gate.
 
 Engineering calls I
 made as EM, for the record: [D2](DECISIONS.md#d2) to [D5](DECISIONS.md#d5). Rules:
