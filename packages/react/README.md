@@ -91,8 +91,12 @@ const flow = useFlow({ autoCreateSession: true });
 // flow.activeSessionId, flow.sessions, flow.createSession(), flow.selectSession()
 ```
 
-On a flow whose sessions each run one worker, pass `worker`: the hook lists only
-that worker's sessions and creates new ones with it.
+A flow can declare a [`session.createCheck`](https://flow-state.dev/docs/fundamentals/state-and-scopes#creating-sessions)
+that accepts or refuses each new session, and `worker` is the value that check
+receives. Pass it and the hook lists only that worker's sessions and creates new
+ones with it. Changing `worker` drops the active session and selects the new
+worker's most recent one. If the check refuses, `createSession` rejects, and
+`autoCreateSession` leaves the hook with no active session.
 
 ```ts
 const flow = useFlow({ flowKind: "agent", worker: "researcher", autoCreateSession: true });

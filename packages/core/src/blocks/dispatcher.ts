@@ -120,7 +120,10 @@ export type DispatchHandle = z.infer<typeof dispatchHandleSchema>;
  * - `key` — a child of the running session, derived from the returned key.
  *   Minted on first use, adopted after: the same key from the same parent lands
  *   on the same child, so a retry re-enters the work it started. Use a value
- *   that names the unit of work — a document id, an issue key.
+ *   that names the unit of work — a document id, an issue key. Add `link` when
+ *   the target flow declares `session.createCheck`: the child is created with
+ *   it, and the target's check accepts or refuses it. A child that already
+ *   exists keeps the link it was created with.
  * - `id` — an existing session. Delivered into it when it exists and belongs
  *   to this principal on this flow; refused by name otherwise. Never created.
  * - `from: true` — the seam-stamped sender. The block names no session id;
@@ -128,7 +131,10 @@ export type DispatchHandle = z.infer<typeof dispatchHandleSchema>;
  *   reply, not `{ id: (input) => input.replyTo }`.
  */
 export type DispatcherSession<TInput> =
-  | { readonly key: (input: TInput, ctx: BlockContext) => string }
+  | {
+      readonly key: (input: TInput, ctx: BlockContext) => string;
+      readonly link?: string | ((input: TInput, ctx: BlockContext) => string);
+    }
   | { readonly id: (input: TInput, ctx: BlockContext) => string }
   | { readonly from: true };
 
@@ -368,7 +374,7 @@ function isTaskSessionPolicy(value: unknown): value is TaskSessionPolicy<any> {
 /**
  * `type` is optional. A task-board session policy (`"per-task"`,
  * `"per-worker"`, or a bare `{ key }` with no internal fields) makes a task
- * dispatcher. Everything else — including `{ key }` plus `inputSchema` / `payload`
+ * dispatcher. Everything else — including `{ key }` plus `link`, `inputSchema` or `payload`
  * — is `internal`.
  */
 function resolveDispatcherType(config: DispatcherConfig): string {
@@ -376,7 +382,7 @@ function resolveDispatcherType(config: DispatcherConfig): string {
   const session = config.session;
   if (session === "per-task" || session === "per-worker") return "task";
   if (typeof session === "object" && session !== null) {
-    if ("id" in session || "from" in session) return "internal";
+    if ("id" in session || "from" in session || "link" in session) return "internal";
     if (typeof (session as { key?: unknown }).key === "function") {
       const keyed = config as InternalDispatcherConfig;
       if (keyed.inputSchema != null || keyed.payload != null) return "internal";
@@ -408,7 +414,15 @@ function resolveSessionTarget<TInput>(
           `The key names the child session; return a value that identifies the unit of work.`
       );
     }
-    return { key };
+    if (session.link === undefined) return { key };
+    const link = typeof session.link === "function" ? session.link(input, ctx) : session.link;
+    if (typeof link !== "string" || link.length === 0) {
+      throw new Error(
+        `[dispatcher] "${blockName}" computed an empty session link (${JSON.stringify(link)}). ` +
+          `The link is what the target flow's create check receives; return the value it expects.`
+      );
+    }
+    return { key, link };
   }
   const id = session.id(input, ctx);
   if (typeof id !== "string" || id.length === 0) {

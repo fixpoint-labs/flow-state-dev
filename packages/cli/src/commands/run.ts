@@ -6,6 +6,7 @@ import {
   ensureSessionRecord,
   ownsRecord,
   refuseServerOwnedState,
+  resolveInitialSessionState,
   SessionCreateRefusedError
 } from "@flow-state-dev/engine";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -396,7 +397,8 @@ export async function executeRunCommand(
             // record it seeded.
             userId: principal.userId,
             orgId: principal.orgId,
-            state: seedData ?? {},
+            // The flow's state defaults under the seed, as an HTTP create gets.
+            state: resolveInitialSessionState(flow, seedData),
             version: 0,
             createdAt: now,
             updatedAt: now,

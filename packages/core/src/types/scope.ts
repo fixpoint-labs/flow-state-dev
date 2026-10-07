@@ -204,6 +204,12 @@ export type SessionScopeHandle<
    * it. `undefined` for a session of a flow that declares no create check.
    */
   readonly link?: string;
+  /**
+   * The lineage id minted when this session's record was created. A session
+   * deleted and created again under the same id gets a new one, so
+   * `identity.id` plus this names one incarnation of the session.
+   */
+  readonly lineageId?: string;
   state: Readonly<TState>;
   metadata: Readonly<SessionMetadata>;
   items: SessionItemViews;

@@ -335,10 +335,10 @@ export type SessionConfig = {
    * Runs before a session of this flow is written, on every path that creates
    * one: the create route, an action sent to a session id that does not exist
    * yet, a webhook delivery, `fsdev run` and a dispatch into a child session.
-   * It receives the verified caller and the create's `link` input, and refuses
-   * the create or returns the value stored as the session's `link`, which
-   * nothing changes afterwards. A create that names no link is refused even if
-   * the check accepts it. A turn on an existing session never calls it.
+   * It receives the verified caller and the create's `link` input, and accepts
+   * or refuses it. An accepted `link` is stored on the session unchanged, and
+   * nothing changes it afterwards. A create that names no link is refused even
+   * if the check accepts it. A turn on an existing session never calls it.
    * Undeclared: sessions are created as they always were, with no link.
    */
   createCheck?: SessionCreateCheck;

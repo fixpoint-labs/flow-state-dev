@@ -97,6 +97,7 @@ the dispatcher's input as-is.
 | `session` | Runs in | When it does not exist |
 |---|---|---|
 | `{ key: (input) => string }` | a session derived from the key, recorded against the running one | created; the next call with the same key from the same conversation adopts it |
+| `{ key, link: (input) => string }` | the same, on a flow whose sessions are each created with a `link` | created with that link, if the target flow's [`createCheck`](../fundamentals/state-and-scopes.md#creating-sessions) accepts it. `link` can also be a fixed string. A run that already exists keeps the link it was created with |
 | `{ id: (input) => string }` | the session with that id | refused. Nothing is created |
 
 A `key` run is a job in every sense on this page: it runs the same flow as the
@@ -120,6 +121,7 @@ A refusal at run time throws `DispatchRefusedError`, with `code:
 | `session-not-found` | An `id` names a session that does not exist, or one that belongs to another user |
 | `session-not-addressable` | An `id` names a session on a flow other than the one addressed |
 | `key-occupied` | The `key` derived a session id already held by a record that is not this conversation's run |
+| `create-refused` | The addressed flow's `session.createCheck` refused to create the run's session: the dispatcher named no `link`, or one the check doesn't accept |
 | `no-dispatch-operation` | This process runs requests but was not set up to dispatch one |
 | `dispatch-rejected` | The entry's `concurrency` policy is `reject` and its key is held |
 | `external-dispatcher` | A delivery into an existing session, by `id` or a `{ from: true }` reply, from a process whose dispatcher hands work to another process and can't hold a session's concurrency policy across processes: a dispatcher passed directly, or a `worker` adapter that doesn't supply one. `bullmqWorker` supplies one, so it doesn't refuse. A reply from a run on a `worker-only` worker goes in process. A `key` dispatch is unaffected |

@@ -2,8 +2,7 @@
  * Test fixture: a flow whose sessions are each created with a link, to test
  * `--worker` and the refusal of a seeded server-owned field.
  *
- * The check accepts a link starting `ok-` and stores it with a `checked:`
- * prefix, so a stored link shows it came from the check.
+ * The check accepts a link starting `ok-`; an accepted link is stored as sent.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -26,7 +25,7 @@ const linkedFlow = defineFlow({
     serverOwned: ["granted"],
     createCheck: ({ link }) =>
       link !== undefined && link.startsWith("ok-")
-        ? { ok: true, link: `checked:${link}` }
+        ? { ok: true }
         : { ok: false, message: "Name a worker to create this session." },
   },
 });

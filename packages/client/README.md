@@ -187,17 +187,18 @@ another principal, organization or tenant are absent either way.
 
 ### Sessions created with a worker
 
-On a flow whose sessions each run one worker, `createSession` takes the worker
-and the server checks it before the session exists. `listSessions` takes the
-same option as a filter.
+A flow can declare a [`session.createCheck`](https://flow-state.dev/docs/fundamentals/state-and-scopes#creating-sessions)
+that accepts or refuses each new session, and `worker` is the value that check
+receives. `listSessions` takes the same option as a filter.
 
 ```ts
 const fresh = await sessions.createSession({ flowKind: "agent", userId, worker: "researcher" });
 const mine = await sessions.listSessions({ flowKind: "agent", userId, worker: "researcher" });
 ```
 
-The worker is sent as the session's `link`, which each returned session carries.
-It is fixed when the session is created.
+Each returned session carries it as `link`. It is set at creation and never
+changes. A refused create rejects with the server's status (400, 403 or 404) and
+its message, and no session is written.
 
 `listChildSessions` asks one session which dispatch runs were started from it.
 

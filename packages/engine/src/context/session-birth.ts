@@ -12,10 +12,27 @@
  * race means (the route answers 409, the action path adopts the winner, the
  * dispatch path adopts a winner that matches its child).
  *
+ * The decisions it carries, and why they are carried once:
+ *
+ * - **Minting** (FIX-1068). A session's `lineageId` is the address its
+ *   `sharedToLineage` resources store under. A creator that omits it leaves the
+ *   session on a value derived from its own key, so a deleted id recreated
+ *   lands on the same address. The birth mints one unless the caller derives it.
+ * - **Racing.** `get`-then-`set` is not create-if-absent: two callers both find
+ *   nothing and the loser overwrites the winner. The write is `"absent"`.
+ * - **Reclaiming** (FIX-1258). A record coming into existence starts a new
+ *   resource-state incarnation, and the previous one's tombstones go with it
+ *   ({@link purgeStaleResourceState}).
+ * - **Checking.** The flow's `createCheck` and `serverOwned` refusal.
+ *
  * The check runs on a miss only. A session that already exists is returned
  * without calling it, so a turn on an existing session costs no check, and a
  * loser of a create race adopts the winner without its own input being checked
  * again: the winner was checked when it was born.
+ *
+ * The link stored is the create's input, unchanged. A check accepts or refuses
+ * it and cannot rewrite it, so the value a caller creates with is the value it
+ * lists and compares by.
  */
 import type {
   FlowInstance,
@@ -26,7 +43,6 @@ import type {
 import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { generateId } from "../utils/generate-id";
-import { purgeStaleResourceState } from "./ensure-session-record";
 import { findResourceConfig, isCollectionConfig, isProjectedResourceCollection } from "../resources/internal";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import {
@@ -35,6 +51,103 @@ import {
   toIsolationFlow
 } from "../stores/scope-keys";
 import { toBareState } from "../stores/resource-state-views";
+
+/**
+ * Release a newborn session from the resource-state tombstones a previous
+ * session under the same id left behind.
+ *
+ * Session ids are caller-supplied, so `chat-42` or a document id can be
+ * deleted and used again — an ordinary pattern, not an exotic one. The two
+ * stores treat that differently on purpose. `SessionStore.delete` is a hard
+ * delete with no tombstone, so the id is genuinely free. `ResourceStateStore`
+ * tombstones instead, and a tombstone refuses a write from a context that
+ * never saw the key live. That refusal is exactly what keeps a delete deleted
+ * while the session is gone — and exactly what would make every **static**
+ * resource of the next session under that id permanently unwritable, since a
+ * static `ResourceRef` has no create-if-absent verb to escape through, unlike
+ * a collection instance.
+ *
+ * So a tombstone belongs to the incarnation that made it, and this is the
+ * moment it stops applying: not when the old session died, but when a new one
+ * was born in its place. That is why the reclamation runs at birth and not in the
+ * delete route — while the session is merely gone, the tombstones are still
+ * doing their job.
+ *
+ * ## Run this BEFORE the create, never after
+ *
+ * There is no transaction across the two stores, so one of them commits first
+ * and the other can fail behind it. That makes the order the whole design, and
+ * only one order has a recoverable failure:
+ *
+ *  - **Create, then reclaim** leaves a committed session record above intact
+ *    tombstones when the reclamation fails or the process dies between the two.
+ *    Nothing downstream retries it — a second create returns 409 before
+ *    reaching here, and an action-driven create adopts the record and skips it
+ *    — so that session's static resources are bricked for its whole life. The
+ *    fix would reproduce the exact bug it exists to close, permanently.
+ *  - **Reclaim, then create** commits nothing until the reclamation has
+ *    succeeded. A failure at either step leaves no record, so the caller's
+ *    retry starts clean, and reclaiming twice is a no-op.
+ *
+ * ## KNOWN LIMIT: the reclamation is unfenced against a concurrent creator
+ *
+ * Reclaiming first means a caller that then LOSES the create has reclaimed
+ * under a session it does not own, and **that can resurrect a deleted
+ * resource**:
+ *
+ *  1. Two creators both read the session id and both find nothing.
+ *  2. The winner creates it; its session runs and deletes resource `R`,
+ *     leaving a tombstone.
+ *  3. The delayed loser reaches the reclamation and removes the winner's
+ *     tombstone.
+ *  4. The loser then loses the session CAS and goes away.
+ *  5. The next ordinary `patchState` on `R` holds no version, so it writes at
+ *     `"absent"`; no row exists any more, so **the write lands and `R` is
+ *     back**.
+ *
+ * State it plainly: step 5 is not a straggler or any other rare actor. Every
+ * fresh request legitimately holds no version, so the exposure is the deleted
+ * resource returning on the next normal write — the very failure this change
+ * exists to close, reached through a different door.
+ *
+ * The birth's existence check is a narrowing, not a fence: it keeps a create
+ * against a session that plainly already exists from reclaiming at all, so
+ * only a genuine create race can reach step 3. It cannot close the race,
+ * because there is no transaction across the two stores. Closing it needs a
+ * **scope generation**, which is tracked and specced as FIX-1000 ("A create
+ * racing session deletion lands in a purged, caller-reusable scope — fence the
+ * scope generation") and deliberately not attempted here. Reach for that, not
+ * for a second primitive: `lineageId` is a lineage address (FIX-1068) and
+ * answers a different question.
+ *
+ * The one thing the narrowing to tombstones does buy: a losing reclaimer can
+ * touch no live row, so it can destroy no data. What it can do is remove a
+ * refusal.
+ *
+ * (An earlier revision of this ran after the create, on the reasoning that a
+ * loser must not touch the winner's scope. That reasoning was written when this
+ * removed every row in the scope, live ones included, where a loser really
+ * could destroy the winner's data. Narrowing it to tombstones retired the
+ * objection, and the ordering it justified with it.)
+ *
+ * Two residuals stay open, both far narrower than the permanent brick this
+ * replaces and neither closable without a scope generation:
+ *
+ *  - A reclaimed key's version restarts at 1, so a straggler from the old
+ *    incarnation holding version N can match a row in the new one.
+ *    `purgeTombstones` in `stores/types.ts` carries this.
+ *  - A reclamation that succeeds while the create then fails leaves the dead
+ *    incarnation's keys with no tombstone and no session, so a straggler can
+ *    write orphan rows under an id nothing owns. That is a leak rather than a
+ *    revival, and the same one `deleteAll` already documents for a create of a
+ *    never-existed key.
+ */
+export async function purgeStaleResourceState(
+  stores: Pick<StoreRegistry, "resourceState">,
+  storageKey: string
+): Promise<void> {
+  await stores.resourceState.purgeTombstones("session", storageKey);
+}
 
 /** The flow fields a birth reads. */
 export type BirthFlow = Pick<FlowInstance, "kind" | "id" | "session" | "resources"> & {
@@ -108,7 +221,8 @@ export function refuseServerOwnedState(
 
 /**
  * Check a create against the flow's declarations, before anything is written.
- * Resolves the link to store, or `undefined` for a flow with no create check.
+ * Resolves the link to store, which is the create's input unchanged, or
+ * `undefined` for a flow with no create check.
  *
  * @throws SessionCreateRefusedError when the create is refused.
  */
@@ -123,9 +237,9 @@ export async function checkSessionCreate(
   if (check === undefined) return undefined;
 
   const verdict = await check({
-    principal: Object.freeze({ ...principal }),
+    principal,
     sessionId,
-    flow: Object.freeze({ kind: flow.kind, id: flow.id }),
+    flow: { kind: flow.kind, id: flow.id },
     link,
     via,
     readCollectionItem: (ref, topic) => readCollectionItemAt(stores, flow, principal, ref, topic)
@@ -143,12 +257,7 @@ export async function checkSessionCreate(
       `Creating a session of flow "${flow.kind}" requires a link.`
     );
   }
-  if (typeof verdict.link !== "string" || verdict.link.length === 0) {
-    throw new Error(
-      `Flow "${flow.kind}" session.createCheck accepted a create without returning a non-empty link.`
-    );
-  }
-  return verdict.link;
+  return link;
 }
 
 /**
@@ -161,7 +270,7 @@ async function readCollectionItemAt(
   flow: BirthFlow,
   principal: SessionCreatePrincipal,
   ref: string,
-  topic: string
+  topic: string | Record<string, string>
 ): Promise<Record<string, unknown> | undefined> {
   const found = findResourceConfig(flow, ref);
   if (
@@ -197,7 +306,7 @@ async function readCollectionItemAt(
 
 /**
  * A session record as a birth's caller builds it: everything but the link,
- * which only the create check decides, and the lineage id, which is minted
+ * which only a checked create sets, and the lineage id, which is minted
  * unless the caller derives it.
  */
 export type SessionRecordSeed = Omit<SessionRecord, "lineageId" | "link"> & {
@@ -223,7 +332,7 @@ export type SessionBirthOutcome =
  * In order: the existing record, if any, is returned unchecked; the create is
  * checked (`checkSessionCreate`); the previous incarnation's tombstones are
  * reclaimed (`purgeStaleResourceState`, which must run before the write); the
- * record is written create-if-absent with the check's link and a lineage id.
+ * record is written create-if-absent with the checked link and a lineage id.
  *
  * @throws SessionCreateRefusedError when the create is refused. Nothing is
  *   written.
@@ -234,6 +343,9 @@ export async function birthSession(
   request: SessionCreateRequest,
   build: () => SessionRecordSeed
 ): Promise<SessionBirthOutcome> {
+  // Often a repeat of a miss the caller just observed (admission and the
+  // execution context each read the record first). Kept: it is what keeps an
+  // existing session off the check and off the tombstone reclamation.
   const existing = await stores.session.get(storageKey);
   if (existing !== undefined) return { born: false, raced: false, record: existing };
 
@@ -283,4 +395,22 @@ export async function ensureSessionRecord(
     );
   }
   return winner;
+}
+
+/**
+ * A new session's initial state: the caller's state parsed through the flow's
+ * session `stateSchema`, so every declared key starts with its default and a
+ * block never reads `undefined` for one. A caller state the schema refuses is
+ * kept as sent (validation happens when an action runs). The create route, a
+ * dispatched child and `fsdev run` all start a session from this.
+ */
+export function resolveInitialSessionState(
+  flow: Pick<BirthFlow, "session">,
+  callerState?: Record<string, unknown>
+): JsonObject {
+  const schema = flow.session?.stateSchema;
+  const raw = (callerState ?? {}) as JsonObject;
+  if (schema === undefined) return raw;
+  const parsed = schema.safeParse(raw);
+  return parsed.success ? (parsed.data as JsonObject) : raw;
 }

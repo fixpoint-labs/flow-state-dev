@@ -605,7 +605,7 @@ describe("seed state", () => {
 });
 
 describe("--worker, on a flow that checks its session creates", () => {
-  it("creates a new session through the flow's check, with what the check stored", async () => {
+  it("creates a new session through the flow's check, storing the --worker it accepted", async () => {
     const stores = createInMemoryStores();
     const result = await executeRunCommand("linked", "who", {
       input: "{}",
@@ -616,8 +616,8 @@ describe("--worker, on a flow that checks its session creates", () => {
       quiet: true,
     });
     expect(result.success).toBe(true);
-    expect(result.output).toEqual({ link: "checked:ok-researcher" });
-    expect((await stores.session.get("w-1"))?.link).toBe("checked:ok-researcher");
+    expect(result.output).toEqual({ link: "ok-researcher" });
+    expect((await stores.session.get("w-1"))?.link).toBe("ok-researcher");
   });
 
   it("refuses a new session without --worker, and writes nothing", async () => {
@@ -628,6 +628,23 @@ describe("--worker, on a flow that checks its session creates", () => {
     expect(await stores.session.get("w-2")).toBeUndefined();
   });
 
+  it("runs again on an existing session with the same --worker", async () => {
+    const stores = createInMemoryStores();
+    const first = { input: "{}", session: "w-6", worker: "ok-a", cwd: fixturesDir, stores, quiet: true };
+    await executeRunCommand("linked", "who", first);
+    const again = await executeRunCommand("linked", "who", first);
+    expect(again.success).toBe(true);
+    expect(again.output).toEqual({ link: "ok-a" });
+  });
+
+  it("starts a seeded session with the flow's state defaults, as an HTTP create does", async () => {
+    const stores = createInMemoryStores();
+    await executeRunCommand("linked", "who", {
+      input: "{}", session: "w-7", worker: "ok-a", seedSession: '{"note": "hi"}', cwd: fixturesDir, stores, quiet: true,
+    });
+    expect((await stores.session.get("w-7"))?.state).toEqual({ note: "hi", granted: [] });
+  });
+
   it("refuses a different --worker on an existing session, which keeps its link", async () => {
     const stores = createInMemoryStores();
     await executeRunCommand("linked", "who", {
@@ -636,7 +653,7 @@ describe("--worker, on a flow that checks its session creates", () => {
     await expect(
       executeRunCommand("linked", "who", { input: "{}", session: "w-3", worker: "ok-b", cwd: fixturesDir, stores, quiet: true }),
     ).rejects.toThrow(/never changes/);
-    expect((await stores.session.get("w-3"))?.link).toBe("checked:ok-a");
+    expect((await stores.session.get("w-3"))?.link).toBe("ok-a");
   });
 
   it("refuses a seeded server-owned field, new session or existing", async () => {
@@ -656,7 +673,7 @@ describe("--worker, on a flow that checks its session creates", () => {
         input: "{}", session: "w-5", seedSession: '{"granted": ["x"]}', cwd: fixturesDir, stores, quiet: true,
       }),
     ).rejects.toThrow(/"granted"/);
-    expect((await stores.session.get("w-5"))?.state).toEqual({ note: "hi" });
+    expect((await stores.session.get("w-5"))?.state).toEqual({ note: "hi", granted: [] });
   });
 });
 

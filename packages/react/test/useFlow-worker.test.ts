@@ -64,3 +64,46 @@ describe("useFlow worker", () => {
     expect(sent.find((r) => r.method === "POST")?.body).not.toHaveProperty("link");
   });
 });
+
+describe("useFlow worker change", () => {
+  /** A server whose listing answers per worker: A has `sA`, B has whatever is given. */
+  function stubListing(bSessions: string[]) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input));
+        const link = url.searchParams.get("link");
+        const ids = url.pathname === "/api/flows/sessions" ? (link === "A" ? ["sA"] : link === "B" ? bSessions : []) : [];
+        const sessions = ids.map((id) => ({ id, flowKind: "agent", userId: "u1", createdAt: 1, updatedAt: 1, link }));
+        return new Response(JSON.stringify({ flows: [], sessions }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      })
+    );
+  }
+
+  it("drops the other worker's session when the new worker has none", async () => {
+    stubListing([]);
+    const { result, rerender } = renderHook(({ worker }) => useFlow({ worker }), {
+      wrapper,
+      initialProps: { worker: "A" }
+    });
+    await waitFor(() => expect(result.current.activeSessionId).toBe("sA"));
+    rerender({ worker: "B" });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await waitFor(() => expect(result.current.sessions).toEqual([]));
+    expect(result.current.activeSessionId).toBeUndefined();
+  });
+
+  it("selects the new worker's session when it has one", async () => {
+    stubListing(["sB"]);
+    const { result, rerender } = renderHook(({ worker }) => useFlow({ worker }), {
+      wrapper,
+      initialProps: { worker: "A" }
+    });
+    await waitFor(() => expect(result.current.activeSessionId).toBe("sA"));
+    rerender({ worker: "B" });
+    await waitFor(() => expect(result.current.activeSessionId).toBe("sB"));
+  });
+});

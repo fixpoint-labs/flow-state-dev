@@ -9,7 +9,11 @@ import type { SessionRecordSeed } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
-import { birthSession, SessionCreateRefusedError } from "../context/session-birth";
+import {
+  birthSession,
+  resolveInitialSessionState,
+  SessionCreateRefusedError
+} from "../context/session-birth";
 import { resolveRecordOwner } from "../context/record-owner";
 import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
 import { isOrgAttributed } from "../context/org-attribution";
@@ -25,7 +29,8 @@ import {
   loadTenantSession,
   unknownSessionResponse,
   parseJsonBody,
-  refuseUnattributedRecord
+  refuseUnattributedRecord,
+  sessionCreateRefusedResponse
 } from "./route-utils";
 import {
   isSameSession,
@@ -186,7 +191,7 @@ export async function handleListSessions(
     // put there on purpose; the include is the only way past it, and it widens
     // parentage alone — never owner, tenant or organization.
     ...(include.parentage === undefined ? {} : { parentage: include.parentage }),
-    // Exact match on the link a flow's create check stored. A narrowing only:
+    // Exact match on the link a flow's create check accepted. A narrowing only:
     // owner, organization and tenant are scoped above whatever it says.
     ...(getString(url.searchParams.get("link")) === undefined
       ? {}
@@ -339,19 +344,10 @@ export async function handleCreateSession(
   //     terminal-status snapshot refresh.
   //  2. Block code that reads `ctx.session.state.foo` before any patch
   //     would observe `undefined` rather than the schema's default.
-  // Caller-supplied `body.state` overrides the defaults.
+  // Caller-supplied `body.state` overrides the defaults. The same rule every
+  // path that starts a session from caller state uses.
   const callerState = asObject(body.state);
-  const stateSchema = flow.session?.stateSchema;
-  let initialState: JsonObject = (callerState ?? {}) as JsonObject;
-  if (stateSchema !== undefined) {
-    const parseResult = stateSchema.safeParse(callerState ?? {});
-    if (parseResult.success) {
-      initialState = parseResult.data as JsonObject;
-    }
-    // On schema-parse failure (caller supplied an invalid override), fall
-    // back to the caller's raw state — preserves prior behavior. Validation
-    // happens at action-execution time, not session-create time.
-  }
+  const initialState = resolveInitialSessionState(flow, callerState);
 
   const orgId = ctx.principal?.orgId ?? DEFAULT_ORG_ID;
   const build = (): SessionRecordSeed => ({
@@ -392,7 +388,7 @@ export async function handleCreateSession(
   });
 
   // `body.link` is the create's input to the flow's `session.createCheck`.
-  // What is stored is what the check returns, never this value as sent.
+  // The check accepts or refuses it; an accepted value is stored unchanged.
   const linkInput = body.link;
   if (linkInput !== undefined && linkInput !== null && typeof linkInput !== "string") {
     return jsonResponse(400, { error: "link must be a string" });
@@ -419,12 +415,7 @@ export async function handleCreateSession(
       build
     );
   } catch (error) {
-    if (error instanceof SessionCreateRefusedError) {
-      return jsonResponse(error.status, {
-        error: error.message,
-        ...(error.field !== undefined ? { field: error.field } : {})
-      });
-    }
+    if (error instanceof SessionCreateRefusedError) return sessionCreateRefusedResponse(error);
     throw error;
   }
   if (!outcome.born) {

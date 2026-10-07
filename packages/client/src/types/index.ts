@@ -171,7 +171,7 @@ export type SessionSummary = {
   /** The entry the run was dispatched for, as `<type>:<target>`. Display only. */
   coordinate?: string;
   /**
-   * The value the flow's create check stored when the session was created (on
+   * The link the flow's create check accepted when the session was created (on
    * a worker flow, the worker's id). Absent on a flow that declares no check.
    * Set once by the server and never changed.
    */

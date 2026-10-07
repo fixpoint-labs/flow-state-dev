@@ -119,8 +119,8 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   coordinate?: string;
   /**
-   * The value the flow's `session.createCheck` returned when this record was
-   * created (`context/session-birth.ts`). Server-written once, at birth, and
+   * The create's link input, as the flow's `session.createCheck` accepted it
+   * when this record was created (`context/session-birth.ts`). Written once, at birth, and
    * never again: no route, action or block writes it, and every later write
    * carries it over unchanged from the record it read. Absent on a session of
    * a flow that declares no create check.

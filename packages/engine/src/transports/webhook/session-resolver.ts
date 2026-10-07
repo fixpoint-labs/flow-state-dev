@@ -53,7 +53,7 @@ export async function ensureSessionForWebhook(args: EnsureWebhookSessionArgs): P
       userId: principal.userId,
       ...(principal.orgId !== undefined ? { orgId: principal.orgId } : {}),
       state: {},
-      version: 1,
+      version: 0,
       createdAt: now,
       updatedAt: now,
       journal: [],

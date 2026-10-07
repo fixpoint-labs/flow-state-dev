@@ -7,9 +7,9 @@
  * run`, and a dispatch into a child session):
  *
  * - `createCheck` runs before the record is written. It sees the verified
- *   caller and the create's `link` input, and either refuses the create or
- *   returns the value the engine stores as the session's `link`. Nothing
- *   changes that value afterwards: no route, no action and no block writes it.
+ *   caller and the create's `link` input, and accepts or refuses it. An
+ *   accepted `link` is stored on the session unchanged. Nothing changes it
+ *   afterwards: no route, no action and no block writes it.
  * - `serverOwned` names session-state fields only the flow's own code writes.
  *   A create that seeds one is refused with a 400 naming the field.
  *
@@ -59,20 +59,25 @@ export type SessionCreateCheckInput = {
    * Read the state of one item of a user- or org-scoped collection this flow
    * declares, at the creating principal's own scope. `ref` is the accessor key
    * in the flow's `resources`; `topic` is the item's key within the
-   * collection. Resolves `undefined` when the item does not exist.
+   * collection: a string for a wildcard pattern (`workers/*`), or the
+   * parameter values for a parameterized one (`[topic]/notes`). Resolves
+   * `undefined` when the item does not exist.
    *
    * Bound to `principal`: there is no way to name another user's or another
    * organization's scope through it.
    *
    * @throws when `ref` is not a user- or org-scoped collection of this flow.
    */
-  readCollectionItem(ref: string, topic: string): Promise<Record<string, unknown> | undefined>;
+  readCollectionItem(
+    ref: string,
+    topic: string | Record<string, string>
+  ): Promise<Record<string, unknown> | undefined>;
 };
 
 /** A create check's answer. */
 export type SessionCreateCheckResult =
-  /** Create the session, storing `link` on it for its whole life. */
-  | { readonly ok: true; readonly link: string }
+  /** Create the session, storing the create's `link` on it unchanged, for its whole life. */
+  | { readonly ok: true }
   /**
    * Refuse the create. Nothing is written. `message` reaches the caller.
    * `status` is the HTTP status the create route answers with (default 400).
@@ -86,27 +91,3 @@ export type SessionCreateCheckResult =
 export type SessionCreateCheck = (
   input: SessionCreateCheckInput
 ) => SessionCreateCheckResult | Promise<SessionCreateCheckResult>;
-
-/**
- * What flow code may read about one of its caller's own sessions by id, through
- * `requireRequestHost(ctx).sessionFacts(sessionId)`. Server-written values only.
- */
-export type SessionFacts = {
-  /** The bare session id. */
-  readonly sessionId: string;
-  /** The flow definition's kind the session belongs to. */
-  readonly flowKind: string;
-  /** The flow instance that owns the session. */
-  readonly flowId: string;
-  /** The value the flow's create check stored, if the flow declares one. */
-  readonly link?: string;
-  /**
-   * The session's minted lineage id. A session deleted and created again under
-   * the same id gets a new one, so `sessionId` plus this names one incarnation.
-   */
-  readonly lineageId: string;
-  /** When the record was created, in epoch milliseconds. */
-  readonly createdAt: number;
-  /** The session a dispatcher was running in when it created this one. */
-  readonly parentSessionId?: string;
-};

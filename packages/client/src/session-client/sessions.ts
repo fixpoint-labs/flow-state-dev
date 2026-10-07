@@ -113,8 +113,9 @@ export type CreateSessionOptions = {
   state?: Record<string, unknown>;
   /**
    * The worker this session runs, on a flow whose sessions each run one
-   * worker. Sent as the create's `link`; the server checks it before the
-   * session exists, stores what its check returns, and never changes it.
+   * worker. Sent as the create's `link`; the flow's create check accepts or
+   * refuses it before the session exists, and an accepted value is stored as
+   * the session's `link`, unchanged and for good.
    * A create on such a flow without it is refused.
    */
   worker?: string;

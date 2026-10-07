@@ -1,7 +1,7 @@
 /**
  * Flow-level hook for session browsing, creation, and auto-creation.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createClient,
   createSessionClient,
@@ -156,9 +156,19 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
   }, [flowKind, flows, userId, sessionClient, workerFilter]);
 
   // Fetch flows + sessions on mount, auto-create if requested and none exist.
+  // The worker the active session was chosen for. When the worker changes, the
+  // old selection is another worker's session: clear it before the new
+  // listing lands, so nothing sends to it in between, and let the listing
+  // below pick from the new worker's sessions (or create one).
+  const selectedForWorker = useRef(worker);
+
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
+    if (selectedForWorker.current !== worker) {
+      selectedForWorker.current = worker;
+      setActiveSessionId(undefined);
+    }
 
     void (async () => {
       try {
@@ -213,6 +223,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
     sessionClient,
     flowKind,
     userId,
+    worker,
     workerFilter,
     options.autoCreateSession,
     options.autoSelectSession,

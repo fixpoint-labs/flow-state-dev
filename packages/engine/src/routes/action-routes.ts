@@ -28,6 +28,7 @@ import {
   jsonResponse,
   parseJsonBody,
   SSE_HEADERS,
+  sessionCreateRefusedResponse,
   unknownSessionResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
@@ -237,9 +238,7 @@ export async function handleExecuteAction(
       // A session this action would have created, refused by the flow's
       // create check: an action names no link, so a flow that links its
       // sessions is created through the session-create route instead.
-      if (error instanceof SessionCreateRefusedError) {
-        return jsonResponse(error.status, { error: error.message });
-      }
+      if (error instanceof SessionCreateRefusedError) return sessionCreateRefusedResponse(error);
       // A request id another principal took between the check above and the
       // dispatch's write. Nothing of theirs was touched, and the same call
       // retried resolves to this caller's own request.

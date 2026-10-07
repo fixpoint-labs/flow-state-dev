@@ -4,13 +4,12 @@
  *
  * The flow under test links each session to a "worker" a user holds in a
  * user-scoped collection, which is the shape Workforce builds on it. The check
- * stores `w:<id>` rather than the id it was given, so every assertion on a
- * stored link proves the value came from the check, not from the caller.
+ * accepts or refuses; an accepted link is stored exactly as the create sent it.
  */
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_ORG_ID, defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, defineResourceCollection, dispatcher, handler } from "@flow-state-dev/core";
 import type {
   FlowInstance,
   SessionCreateCheckInput,
@@ -59,13 +58,13 @@ function flows(): Harness {
     if (row.flow !== input.flow.kind) {
       return { ok: false, message: `Worker "${input.link}" runs on "${String(row.flow)}", not "${input.flow.kind}".` };
     }
-    return { ok: true, link: `w:${input.link}` };
+    return { ok: true };
   };
   const whoAmI = handler({
     name: "whoami",
     inputSchema: z.object({}).passthrough(),
     execute: async (_input, ctx) => {
-      return { link: ctx.session.link ?? null };
+      return { link: ctx.session.link ?? null, lineageId: ctx.session.lineageId ?? null };
     }
   });
   const writeDelegates = handler({
@@ -128,14 +127,14 @@ function create(router: ReturnType<typeof boot>["router"], flowKind: string, bod
 }
 
 describe("the create route", () => {
-  it("stores what the check returns as the session's link, from the caller's own scope", async () => {
+  it("stores the link the check accepted, read from the caller's own scope", async () => {
     const { router, stores, calls } = boot();
     await hold(stores, "alice", "researcher", "linked");
 
     const res = await create(router, "linked", { userId: "alice", sessionId: "s1", link: "researcher" });
     expect(res.status).toBe(201);
-    expect(((await res.json()) as { session: { link?: string } }).session.link).toBe("w:researcher");
-    expect((await stores.session.get("s1"))?.link).toBe("w:researcher");
+    expect(((await res.json()) as { session: { link?: string } }).session.link).toBe("researcher");
+    expect((await stores.session.get("s1"))?.link).toBe("researcher");
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
       principal: { userId: "alice", orgId: ORG },
@@ -173,7 +172,7 @@ describe("the create route", () => {
     registry.register(
       defineFlow({
         kind: "lax",
-        session: { createCheck: () => ({ ok: true, link: "anything" }) },
+        session: { createCheck: () => ({ ok: true }) },
         actions: { run: { inputSchema: z.object({}), block: handler({ name: "lax-run", execute: () => ({}) }) } }
       })({ id: "lax" }) as unknown as FlowInstance
     );
@@ -222,7 +221,7 @@ describe("the create route", () => {
     await create(router, "linked", { userId: "alice", sessionId: "s9", link: "researcher" });
     await stores.session.delete("s9");
     await create(router, "linked", { userId: "alice", sessionId: "s9", link: "editor" });
-    expect((await stores.session.get("s9"))?.link).toBe("w:editor");
+    expect((await stores.session.get("s9"))?.link).toBe("editor");
   });
 
   it("leaves a flow that declares nothing as it was: no check, no link", async () => {
@@ -249,7 +248,7 @@ describe("after create, the link never changes", () => {
       { params: { path: ["sessions", "m1", "metadata"] } }
     );
     expect(patched.status).toBe(200);
-    expect((await stores.session.get("m1"))?.link).toBe("w:researcher");
+    expect((await stores.session.get("m1"))?.link).toBe("researcher");
   });
 
   it("a turn reads it, flow code writes server-owned state, and no turn calls the check", async () => {
@@ -261,7 +260,10 @@ describe("after create, the link never changes", () => {
       flow, actionName: "whoami", input: {}, userId: "alice", orgId: ORG, sessionId: "m2", stores, runtimeConfig: {}
     });
     expect(seen.error).toBeUndefined();
-    expect(seen.output).toMatchObject({ link: "w:researcher" });
+    expect(seen.output).toEqual({
+      link: "researcher",
+      lineageId: (await stores.session.get("m2"))?.lineageId
+    });
 
     const wrote = await runAction({
       flow, actionName: "delegate", input: { to: ["a", "b"] }, userId: "alice", orgId: ORG, sessionId: "m2", stores, runtimeConfig: {}
@@ -269,7 +271,7 @@ describe("after create, the link never changes", () => {
     expect(wrote.error).toBeUndefined();
     const stored = await stores.session.get("m2");
     expect(stored?.state.delegates).toEqual(["a", "b"]);
-    expect(stored?.link).toBe("w:researcher");
+    expect(stored?.link).toBe("researcher");
     expect(calls).toHaveLength(1);
   });
 });
@@ -325,6 +327,21 @@ describe("a webhook delivery for a session that does not exist", () => {
     ).rejects.toBeInstanceOf(SessionCreateRefusedError);
     expect(await stores.session.get("hook-1")).toBeUndefined();
   });
+
+  it("is born at version 0, as a session created any other way is", async () => {
+    const { stores, plain, router } = boot();
+    await ensureSessionForWebhook({
+      stores,
+      sessionId: "hook-2",
+      flow: plain,
+      principal: { userId: "alice", orgId: ORG },
+      provider: "test",
+      eventType: null
+    });
+    await create(router, "plain", { userId: "alice", sessionId: "http-2" });
+    expect((await stores.session.get("hook-2"))?.version).toBe(0);
+    expect((await stores.session.get("http-2"))?.version).toBe(0);
+  });
 });
 
 describe("a dispatch into a key-derived child", () => {
@@ -352,7 +369,7 @@ describe("a dispatch into a key-derived child", () => {
     });
     expect(outcome).toMatchObject({ ok: true, adopted: false });
     const child = await stores.session.get((outcome as { sessionId: string }).sessionId);
-    expect(child?.link).toBe("w:researcher");
+    expect(child?.link).toBe("researcher");
     expect(calls.at(-1)).toMatchObject({ via: "dispatch", principal: { userId: "alice" } });
 
     // The same key again adopts the child without a second check.
@@ -373,6 +390,100 @@ describe("a dispatch into a key-derived child", () => {
   });
 });
 
+describe("a dispatch through the public dispatcher()", () => {
+  function relay(withLink: boolean): FlowInstance {
+    return defineFlow({
+      kind: withLink ? "relay" : "relay-nolink",
+      actions: {
+        send: {
+          block: dispatcher({
+            name: withLink ? "relay-send" : "relay-nolink-send",
+            action: "work",
+            flowKind: "linked",
+            inputSchema: z.object({ worker: z.string() }),
+            session: withLink
+              ? { key: (input: { worker: string }) => `job-${input.worker}`, link: (input: { worker: string }) => input.worker }
+              : { key: (input: { worker: string }) => `job-${input.worker}` },
+            payload: () => ({})
+          })
+        }
+      }
+    })({ id: withLink ? "relay" : "relay-nolink" }) as unknown as FlowInstance;
+  }
+
+  async function send(withLink: boolean) {
+    const h = flows();
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    registry.register(h.flow);
+    const from = relay(withLink);
+    registry.register(from);
+    const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+    await hold(stores, "alice", "researcher", "linked");
+    expect((await create(router, from.id, { userId: "alice", sessionId: "parent" })).status).toBe(201);
+    const res = await router.POST(
+      new Request(`http://localhost/api/flows/${from.id}/parent/actions/send`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: "alice", input: { worker: "researcher" } })
+      }),
+      { params: { path: [from.id, "parent", "actions", "send"] } }
+    );
+    expect(res.status).toBe(202);
+    const deadline = Date.now() + 5_000;
+    while ((await stores.request.list({ sessionId: "parent" })).some((r) => r.status === "in_progress")) {
+      if (Date.now() > deadline) throw new Error("the send never finished");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const [sent] = await stores.request.list({ sessionId: "parent" });
+    const children = await stores.session.list({ parentage: { parentOf: "parent" } });
+    return { sent, children };
+  }
+
+  it("creates the child with the link the dispatcher's own code computed", async () => {
+    const { sent, children } = await send(true);
+    expect(sent?.status).toBe("completed");
+    expect(children.map((c) => c.link)).toEqual(["researcher"]);
+  });
+
+  it("is refused by the target's check when the dispatcher names no link", async () => {
+    const { sent, children } = await send(false);
+    expect(sent?.status).toBe("failed");
+    expect(children).toEqual([]);
+  });
+});
+
+describe("readCollectionItem on a parameterized collection", () => {
+  it("reads the item named by its parameters, and nothing when it is absent", async () => {
+    const rooms = defineResourceCollection({
+      pattern: "[room]/info",
+      scope: "user",
+      stateSchema: z.object({ open: z.boolean() })
+    });
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    registry.register(
+      defineFlow({
+        kind: "rooms",
+        resources: { rooms },
+        session: {
+          createCheck: async ({ link, readCollectionItem }) => {
+            const row = link === undefined ? undefined : await readCollectionItem("rooms", { room: link });
+            return row?.open === true ? { ok: true } : { ok: false, status: 404, message: "No such room." };
+          }
+        },
+        actions: { run: { inputSchema: z.object({}), block: handler({ name: "rooms-run", execute: () => ({}) }) } }
+      })({ id: "rooms" }) as unknown as FlowInstance
+    );
+    const router = createFlowApiRouter({ registry, stores });
+    const cell = resolveUserStorageKey("alice", ORG, { id: "rooms", isolateUserState: false });
+    await stores.resourceState.set("user", cell, "lobby/info", { open: true }, "absent");
+
+    expect((await create(router, "rooms", { userId: "alice", sessionId: "r1", link: "lobby" })).status).toBe(201);
+    expect((await create(router, "rooms", { userId: "alice", sessionId: "r2", link: "attic" })).status).toBe(404);
+  });
+});
+
 describe("the session listing's link filter", () => {
   it("narrows to sessions whose stored link matches, and never past the owner", async () => {
     const { router, stores } = boot();
@@ -388,30 +499,9 @@ describe("the session listing's link filter", () => {
       });
       return ((await res.json()) as { sessions: Array<{ id: string }> }).sessions.map((s) => s.id).sort();
     };
-    expect(await list("userId=alice&link=w%3Aresearcher")).toEqual(["l1"]);
+    expect(await list("userId=alice&link=researcher")).toEqual(["l1"]);
     expect(await list("userId=alice")).toEqual(["l1", "l2", "l3"]);
-    expect(await list("userId=bob&link=w%3Aresearcher")).toEqual([]);
-  });
-});
-
-describe("sessionFacts", () => {
-  it("answers for the caller's own session and reads any other as none", async () => {
-    const { router, stores, flow } = boot();
-    await hold(stores, "alice", "researcher", "linked");
-    await create(router, "linked", { userId: "alice", sessionId: "f1", link: "researcher" });
-    await create(router, "plain", { userId: "bob", sessionId: "f2" });
-    const host = createRequestHost({
-      stores,
-      flow,
-      identity: { userId: "alice", tenantId: undefined, orgId: ORG, sessionId: "f1", lineageId: "x" },
-      dispatchOperation: async () => ({ requestId: "r" }),
-      liveness: { staleThresholdMs: 60_000, heartbeatIntervalMs: 10_000, staleSweepIntervalMs: 30_000 }
-    }).host;
-    const own = await host.sessionFacts("f1");
-    expect(own).toMatchObject({ sessionId: "f1", flowKind: "linked", link: "w:researcher" });
-    expect(own?.lineageId).toBe((await stores.session.get("f1"))?.lineageId);
-    expect(await host.sessionFacts("f2")).toBeUndefined();
-    expect(await host.sessionFacts("missing")).toBeUndefined();
+    expect(await list("userId=bob&link=researcher")).toEqual([]);
   });
 });
 

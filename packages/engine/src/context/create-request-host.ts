@@ -64,7 +64,6 @@ import type {
   FlowInstance,
   LivenessAnswers,
   RequestHost,
-  SessionFacts,
   SettleParentTaskInput,
   SettleParentTaskResult,
 } from "@flow-state-dev/core/types";
@@ -75,13 +74,17 @@ import type { RuntimeConfig } from "../runtime-config";
 import {
   matchesOrgFilter,
   resolveLineageId,
-  resolveSessionStorageKey,
-  tenantMatches
+  resolveSessionStorageKey
 } from "../stores/scope-keys";
 import { deriveDispatchRunSessionId, evaluateAdoption } from "./dispatch-run";
 import { ownsRecord } from "./record-owner";
 import type { DispatchOperation } from "./dispatch-operation";
-import { birthSession, SessionCreateRefusedError, type SessionRecordSeed } from "./session-birth";
+import {
+  birthSession,
+  resolveInitialSessionState,
+  SessionCreateRefusedError,
+  type SessionRecordSeed
+} from "./session-birth";
 import { pinRejectsCaller } from "./instance-pin";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
@@ -332,7 +335,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // parses initial state through the flow's schema precisely so typed
       // block reads never observe missing keys, and execution does not
       // retroactively initialize an existing record.
-      state: resolveSessionStateDefaults(targetFlow) as SessionRecord["state"],
+      state: resolveInitialSessionState(targetFlow),
       version: 0,
       createdAt: ts,
       updatedAt: ts,
@@ -616,33 +619,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     return inputs.parentTask.settle(input);
   };
 
-  // One of the caller's own sessions, by id. Filtered on the closed-over
-  // identity before anything is answered, so another principal's,
-  // organization's or tenant's session reads exactly as no session at all.
-  const sessionFacts = async (sessionId: string): Promise<SessionFacts | undefined> => {
-    if (typeof sessionId !== "string" || sessionId.length === 0) return undefined;
-    const storageKey = resolveSessionStorageKey(sessionId, identity.tenantId);
-    const record = await stores.session.get(storageKey);
-    if (
-      record === undefined ||
-      record.userId !== identity.userId ||
-      !tenantMatches(record.tenantId, identity.tenantId) ||
-      record.orgId !== identity.orgId
-    ) {
-      return undefined;
-    }
-    return Object.freeze({
-      sessionId,
-      flowKind: record.flowKind,
-      flowId: record.flowId ?? record.flowKind,
-      ...(record.link != null ? { link: record.link } : {}),
-      lineageId: resolveLineageId({ id: storageKey, lineageId: record.lineageId }),
-      createdAt: record.createdAt,
-      ...(record.parentSessionId != null ? { parentSessionId: record.parentSessionId } : {})
-    });
-  };
-
-  const host: RequestHost = { parentTask, settleParentTask, sessionFacts };
+  const host: RequestHost = { parentTask, settleParentTask };
 
   if (gate.enabled) {
     const staleThresholdMs = gate.staleThresholdMs;
@@ -701,24 +678,6 @@ function label(
   value: string | undefined
 ): { topic?: string } | { coordinate?: string } {
   return value === undefined || value.length === 0 ? {} : { [field]: value };
-}
-
-/**
- * Flow session-state defaults, applied before the child record is written.
- *
- * The create route parses initial state through the flow's `stateSchema` before
- * persisting, precisely so typed block reads never observe missing keys — and
- * execution does not retroactively initialize an existing record. A child
- * created here bypasses that route, so it must do the same defaulting or the
- * first typed read in the child sees `undefined` where the schema promised a
- * value. A schema that cannot default an empty object yields `{}` rather than
- * failing the spawn; nothing here is a validation gate.
- */
-function resolveSessionStateDefaults(flow: FlowInstance): Record<string, unknown> {
-  const schema = flow.session?.stateSchema;
-  if (schema === undefined) return {};
-  const parsed = schema.safeParse({});
-  return parsed.success ? (parsed.data as Record<string, unknown>) : {};
 }
 
 /**

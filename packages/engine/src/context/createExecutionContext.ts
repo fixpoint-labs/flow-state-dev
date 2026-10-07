@@ -2656,8 +2656,9 @@ export async function createExecutionContext<
         orgId: sessionRef.current.orgId,
         tenantId: options.tenantId
       },
-      // Read off the record, never the request: written once at birth.
+      // Read off the record, never the request: both written once at birth.
       link: sessionRef.current.link ?? undefined,
+      lineageId,
       get metadata() {
         const s = sessionRef.current;
         return {

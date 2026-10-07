@@ -42,8 +42,7 @@ export type {
   SessionCreateCheckInput,
   SessionCreateCheckResult,
   SessionCreatePath,
-  SessionCreatePrincipal,
-  SessionFacts
+  SessionCreatePrincipal
 } from "./session-create";
 
 export type {

@@ -180,7 +180,11 @@ A new session typically starts via `sessions.createSession({...})` on the client
 
 If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through.
 
-A caller can pass initial `state` when it creates a session. That suits preferences and drafts, and it is the wrong place for a value that grants anything: the caller wrote it. A value fixed for the session's life belongs to `createCheck`, which checks it before the session exists and stores what it returns as the session's `link`. Your blocks read it as `ctx.session.link`, and the session listing filters by it. A value your flow changes as it runs belongs in a `serverOwned` field: the create refuses a value for it, and only a block in your flow can set it.
+A caller can pass initial `state` when it creates a session. That suits preferences and drafts, and it is the wrong place for a value that grants anything: the caller wrote it.
+
+Use the session's `link` for a value fixed for the session's whole life, such as which project or worker it belongs to. Declare `session.createCheck`: it runs before the session exists, receives the `link` the create named, and accepts or refuses it. An accepted `link` is stored as sent. Your blocks read it as `ctx.session.link`, and a caller lists the sessions with one value by passing `link` to the session listing (`GET /api/flows/sessions?link=...`).
+
+A value your flow changes as it runs belongs in a field listed in `session.serverOwned`. A create that sets one is refused with a 400 naming the field, and only a block in your flow can write it.
 
 ```ts
 session: {
@@ -191,12 +195,12 @@ session: {
     const project = await lookUpProject(principal.userId, link)
     return project === undefined
       ? { ok: false, status: 404, message: `No project "${link}".` }
-      : { ok: true, link: project.id }
+      : { ok: true }
   },
 },
 ```
 
-Once a flow declares `createCheck`, every session of it is created with a link. An action sent to a session id that doesn't exist yet names none, so it is refused: create the session first, passing `link` in the create request.
+A create that names no link reaches the check with `link: undefined`, as above, so refuse it with your own message. If a check accepts it anyway, the framework refuses it with a 400. Either way the caller gets the refusal's status and a body of `{ error: message }`, and no session is written. An action sent to a session id that doesn't exist yet names no link, so on a flow with a check it is always refused: create the session first. The HTTP create takes `link` in its body; the client's `createSession` sends its `worker` option as `link`. A `dispatcher()` that starts a child session on such a flow names it with `session: { key, link }`.
 
 ## The `client` block: exposing state safely
 

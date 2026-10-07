@@ -656,7 +656,7 @@ Four channels, and none of them is shared session state:
 3. **Provenance labels** — `topic` and `coordinate` on the child session record, and `metadata.dispatch` on the child's request record. Server-assembled, frozen, and display-only.
 4. **`parentTask()` / `settleParentTask()`** — one board row, server-stamped at dispatch and closed over. Deliberately not a cross-session browser: one coordinate, one row.
 
-**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host is closed at five verbs and passes behaviour rather than handles — no type on it names a store, a session record or a task row. The one cross-session read it offers, `sessionFacts(id)`, returns a session's server-written facts (its flow, `link`, lineage id and creation time), never its state, and only for a session of the caller's own principal, organization and tenant.
+**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host is closed at three verbs and passes behaviour rather than handles — no type on it names a store, a session record or a task row.
 
 ### Resources shared to the lineage (FIX-1068)
 
@@ -719,7 +719,7 @@ miss only: a turn on an existing session, and a loser adopting a race's winner,
 never call it. A test in `session-birth.test.ts` fails if any other engine
 source writes a session record at `"absent"`.
 
-The lineage rule still binds a new creator on the child side: **reaching for
+The lineage rule binds a new creator on the child side: **reaching for
 `ensureSessionRecord` there mints a fresh lineage for a session that should
 have inherited one**, which silently splits a child session's shared resources
 away from the conversation that owns them. Pass the inherited `lineageId` in

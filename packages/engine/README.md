@@ -584,21 +584,26 @@ Adapters must implement all four options:
 path that creates one: the create route, an action to a session id that does
 not exist yet, a webhook delivery, `fsdev run`, and a dispatch into a child
 session. It receives the verified caller and the create's `link` input (the
-create body's `link`, `fsdev run --worker`, or the `link` a dispatching block
-puts on a `{ key }` target), and refuses or returns the value stored as the
-record's `link`. Nothing writes that value afterwards, and a turn on an
-existing session never calls the check. `session.serverOwned` names
+create body's `link`, `fsdev run --worker`, or the `link` a `dispatcher()`'s
+`{ key, link }` session computes), and accepts or refuses it. An accepted link
+is stored as the record's `link`, unchanged; nothing writes it afterwards, and a
+turn on an existing session never calls the check. `session.serverOwned` names
 session-state fields a create may not seed; the create route answers 400
 naming the field.
 
-Every new session record goes through one function, `birthSession`
-(`context/session-birth.ts`), which runs the check, reclaims the id's
-resource-state tombstones, and writes create-if-absent. `ensureSessionRecord`
-is its adopt-on-race caller, exported for hosts that create sessions
-themselves. A refused create throws `SessionCreateRefusedError`.
+A host that creates sessions itself calls `ensureSessionRecord(stores, key,
+request, build)`. It runs the flow's `createCheck` and the `serverOwned`
+refusal, then writes the record you build. If another caller created the same
+id first, it returns that caller's record. A refused create throws
+`SessionCreateRefusedError`, which carries the `message` and the HTTP `status`
+to answer with (and `field`, when a server-owned field was the reason).
+`refuseServerOwnedState(flow, sessionId, state)` throws the same error for a
+state seed that sets a server-owned field, for a host that writes seeded state
+into a session that already exists. `resolveInitialSessionState(flow, state)`
+gives a new session's state with the flow's schema defaults under the caller's
+values.
 
-Flow code reads its own session's link as `ctx.session.link`, and another of
-its caller's sessions by id through `requireRequestHost(ctx).sessionFacts(id)`.
+Flow code reads its own session's link as `ctx.session.link`.
 
 ## Session retention policies
 

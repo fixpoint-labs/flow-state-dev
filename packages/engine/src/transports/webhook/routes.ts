@@ -22,6 +22,7 @@ import {
 } from "./createWebhookTransportAdapter";
 import { ensureSessionForWebhook } from "./session-resolver";
 import { SessionCreateRefusedError } from "../../context/session-birth";
+import { sessionCreateRefusedResponse } from "../../routes/route-utils";
 import { jsonResponse } from "../../routes/route-utils";
 
 export async function handleWebhook(
@@ -202,9 +203,7 @@ export async function handleWebhook(
       // The flow refused to create this session (its create check, or a
       // create that names no link where one is required). Not retryable: the
       // same delivery would be refused again.
-      if (err instanceof SessionCreateRefusedError) {
-        return jsonResponse(err.status, { error: "session_create_refused", message: err.message });
-      }
+      if (err instanceof SessionCreateRefusedError) return sessionCreateRefusedResponse(err);
       // The session store is unavailable; the action can't run coherently
       // without its session. A 503 lets the provider retry once the store
       // recovers; the underlying error is logged, not leaked in the body.
