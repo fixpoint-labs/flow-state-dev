@@ -129,8 +129,8 @@ It comes down to the removal: refusing it surprises a user over a setting they n
   answers who is on a coordinator: that read, not `discover` (carried from FIX-1785).
 - **Delivery** goes to the delegate's own conversation, one per coordinator conversation per
   delegate. The first delivery opens it through FIX-1788's
-  `ensureWorkerSession({ worker, coordinatorSessionId })`, with the delegate named, so the server
-  checks and links it at create; it never posts to a fresh id. `coordinatorSessionId` is the
+  `ensureWorkerSession({ worker, filingSessionId })`, with the delegate named, so the server
+  checks and links it at create; it never posts to a fresh id. `filingSessionId` is the
   criteria key FIX-1788 reserved for this spec to name: it enters the derived id and the lookup,
   so two conversations never share a delegate's session. It carries a token the answer hands back, and the round
   comes from the delivery record: the trust rule `seatAuthored` follows today.
@@ -187,7 +187,7 @@ It comes down to the removal: refusing it surprises a user over a setting they n
   set at create, so the four actions work on any coordinator conversation, and the example opens
   the conversation with `ensureWorkerSession` and sends on `session.flowKind`. A delegate's
   session opens through `ensureWorkerSession` with the delegate named and the pinned
-  `coordinatorSessionId` key (BR-20a). Shift Manager's private lab wrapper is gone from every
+  `filingSessionId` key (BR-20a). Shift Manager's private lab wrapper is gone from every
   example.
 - **Amendment 2, the gate's answers** — Jake took Q1's recommendation on 2026-10-06: filing tasks
   for delegates and following them through move to FIX-1794. SPEC, PLAN and EVOLUTION state it as

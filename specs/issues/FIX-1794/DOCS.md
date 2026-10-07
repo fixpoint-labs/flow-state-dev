@@ -58,7 +58,7 @@ The page is FIX-1791's. This section lands after it does.
 > const run = await workforce.findWorkerSession({
 >   worker: "researcher",
 >   taskId,
->   coordinatorSessionId: session.id,
+>   filingSessionId: session.id,
 > })
 > ```
 >
@@ -129,7 +129,7 @@ And in "What the board requires", the `sharedToLineage` bullet becomes:
 > A coordinator conversation also keeps a task board. `fileTask` files a task for one of its
 > delegates, which starts at once in a task session of the delegate's; `listTasks`,
 > `reassignTask` and `cancelTask` follow it, and the conversation hears when each task ends.
-> `findWorkerSession({ worker, taskId, coordinatorSessionId })` finds a task's session. Chains
+> `findWorkerSession({ worker, taskId, filingSessionId })` finds a task's session. Chains
 > stop five boards deep.
 > See [Handing out tasks](../../apps/docs/docs/workforce/coordinators.md#handing-out-tasks).
 

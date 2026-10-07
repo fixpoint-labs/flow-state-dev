@@ -27,4 +27,4 @@ makes the delegate list who works for any worker. BR-1a's actions reach any work
 delegates have a use (a routing flow or the filing grant), and BR-4 accepts a delegate that takes
 a post or a task, each use checking its own. Both rows are marked.
 The task session's lookup key (the `findWorkerSession` criterion FIX-1788 S5a carries) is named
-for the filing session in the new terms, not `coordinatorSessionId`; the name is the implementer's.
+`filingSessionId`, not `coordinatorSessionId`; every use in this spec now reads `filingSessionId`, and FIX-1794 and FIX-1802 use the same name.

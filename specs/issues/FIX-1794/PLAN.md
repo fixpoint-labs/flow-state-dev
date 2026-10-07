@@ -23,7 +23,7 @@ ER-23).
 | S6 | `workforce` · the task entry | `work` (`WORKER_TASK_ENTRY`) on `agent` and the coordinator flow, `from` an S2 resolver over the conversation ledger. The write that records an ending also writes a server-written pending-notice marker on the row; then one notice to the sender through `{ from: true }`, never an address from the row or payload. Only the notice's delivery clears the marker (a refusal under BR-28 clears it too, recorded on the task session). Any run of the board, or action on it, replays an outstanding marker into its own conversation: the row is the outbox | BR-16 BR-22 BR-24 BR-25 BR-26a |
 | S7 | `workforce` · the conversation hears it | `onTaskSettled`, an internal entry on the coordinator flow. Deduped by task, attempt and ending, which absorbs S6's replays. A retried attempt runs the board again, with no turn. An ending wakes the judgment turn, or lands as a line under a fixed policy. Refused when the conversation is gone or its worker fired | BR-22–BR-29 |
 | S8 | `workforce` · the split. *Amended after merge:* owned by [FIX-1802](../FIX-1802/PLAN.md) (its S4); not built here. As written for it: | A coordinator task session that filed pieces parks its own row on the board above, marked as waiting on its pieces; S7 sends no notice for that park. Parking writes a parent binding, server-side and recoverable after a restart: the parked row's partition and its claim ticket, on the row and in the task session's server-written state. The write that records the last open piece's ending also writes a settle-owed marker on that board, naming the parent binding. After the turn that piece's notice woke, if no piece is open, the parent's row settles from its pieces through the owning board, using that binding and fenced by its ticket, never a coordinate a caller or payload supplies; only that settle clears the marker. If the turn fails, any later touch of the board replays the settle, exactly as BR-26a replays a notice. A replay never runs inside a turn, so that turn can still reassign; a reassign that reopens a piece leaves the marker for that piece's next ending. The ticket fences a replay after the settle and before the clear, which then only clears | BR-30–BR-32 |
-| S9 | `workforce` · the criterion | `taskId` on FIX-1788's `findWorkerSession` and `ensureWorkerSession` criteria, through their shared lookup, beside FIX-1791's `coordinatorSessionId` ([BR-20a](../FIX-1791/BUSINESS-RULES.md#answers-and-rounds)): the hand-off sets it server-side to the filing conversation's incarnation, so the task session's criteria are `{ worker, taskId, coordinatorSessionId }` and two conversations filing one task id for one worker get distinct sessions. A lookup that names no `taskId` never returns a task session, per FIX-1788 S5a as amended in [#2831](https://github.com/fixpoint-labs/flow-state-dev/pull/2831), so FIX-1791's `ensureWorkerSession({ worker, coordinatorSessionId })` still delivers a post into the delegate's session. `ensure` with a `taskId` never creates | BR-19 BR-20 |
+| S9 | `workforce` · the criterion | `taskId` on FIX-1788's `findWorkerSession` and `ensureWorkerSession` criteria, through their shared lookup, beside FIX-1791's `filingSessionId` ([BR-20a](../FIX-1791/BUSINESS-RULES.md#answers-and-rounds)): the hand-off sets it server-side to the filing conversation's incarnation, so the task session's criteria are `{ worker, taskId, filingSessionId }` and two conversations filing one task id for one worker get distinct sessions. A lookup that names no `taskId` never returns a task session, per FIX-1788 S5a as amended in [#2831](https://github.com/fixpoint-labs/flow-state-dev/pull/2831), so FIX-1791's `ensureWorkerSession({ worker, filingSessionId })` still delivers a post into the delegate's session. `ensure` with a `taskId` never creates | BR-19 BR-20 |
 | S10 | `workforce` · depth. *Amended after merge:* owned by FIX-1802 (its S5) | Counted from server-written data at each task session's birth (the parent's depth plus one), never from input | BR-7 BR-8 |
 | S11 | `shift-manager` | The chief of staff gains the four tools. Its Board shows the viewer's conversations' `listTasks`. The Lab reloads after each coordinator turn (#2720's floor); no tool name is special-cased (ER-19) | VG |
 | S12 | `goals/coordinators/files-tasks-down-the-owners-chain/` | The goal check and its two controls, per [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met) | goal |
@@ -82,7 +82,7 @@ and a re-file (V4), a duplicate, a late and a crash-lost notice (V5), two users 
 |---|---|---|
 | Actions and tools | `fileTask`, `reassignTask`, `cancelTask`, `listTasks` | Public; an app sends them. Signatures are yours |
 | The criterion | `taskId` | FIX-1788 reserved it for this issue |
-| The task session's lookup key | `coordinatorSessionId`, beside `taskId` and `worker` | FIX-1791's key and value (the filing conversation's incarnation, set server-side), so a task session is found only within the conversation that filed it |
+| The task session's lookup key | `filingSessionId`, beside `taskId` and `worker` | FIX-1791's key and value (the filing conversation's incarnation, set server-side), so a task session is found only within the conversation that filed it |
 | The notice entry | `onTaskSettled` | The goal check reads notices by it, as FIX-1780 pinned |
 | The depth limit | 5 | Public (D2) |
 | Controls | `GOAL_CONTROL=unpartitioned`, `GOAL_CONTROL=no-follow-up` | The goal check |
@@ -122,7 +122,7 @@ fileTask(goal, assignee) in conversation C:
 run my board, in C, as C's owner:
     replay any notice-owed or settle-owed marker; clear any wake-owed one
     claim from C's partition only; hand each row to work on its worker's flow,
-        key (task, worker, coordinatorSessionId = C's incarnation)
+        key (task, worker, filingSessionId = C's incarnation)
 work, in the task session (any flow):
     gate reads the row in the partition the envelope names           ← at the owner's user scope
     run; record the ending + notice-owed, one write; notify { from: true }; clear on delivery
@@ -142,10 +142,10 @@ back across a flow (F1). D1 rests on E1. No counted fact carries the design, so 
 
 - Take the epic's D6 (the partition shape; the option's name stays this issue's), FIX-1788's
   dispatched-child birth input and criteria shape, and FIX-1791's delegate check, incarnation
-  function and `coordinatorSessionId` key. If any differ from this plan, change them there,
+  function and `filingSessionId` key. If any differ from this plan, change them there,
   once.
 - How an app names the conversation in `findWorkerSession({ worker, taskId,
-  coordinatorSessionId })`: adopt FIX-1791's shape for the key. The app passes the conversation's
+  filingSessionId })`: adopt FIX-1791's shape for the key. The app passes the conversation's
   id (SPEC and DOCS pass `session.id`); the server maps it to the incarnation, reading the stamp
   from the conversation's record, never from a caller.
 - Promote the POC's U1 and E1 into `packages/orchestration/test/task-board/hand-off-cross-flow.test.ts`

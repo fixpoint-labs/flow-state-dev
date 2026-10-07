@@ -80,7 +80,7 @@ the docs state the cost per level.
   (FIX-1788 BR-18) and keyed by the task, its worker and the filing conversation's incarnation,
   so a retry re-enters it, a reassign opens a new one, and two conversations that file the same
   task id for the same worker get two sessions. It carries the `taskId` criterion beside
-  FIX-1791's `coordinatorSessionId` ([BR-20a](../FIX-1791/BUSINESS-RULES.md#answers-and-rounds)), which the hand-off
+  FIX-1791's `filingSessionId` ([BR-20a](../FIX-1791/BUSINESS-RULES.md#answers-and-rounds)), which the hand-off
   sets server-side: `findWorkerSession` finds it within its conversation, and
   `ensureWorkerSession` with a `taskId` never creates one.
 - **Every ending is heard, even across a crash.** The write that records a task's ending also
