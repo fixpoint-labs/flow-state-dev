@@ -64,3 +64,20 @@ lead from the owner's roster and said nothing of how the view picked one. P1 had
 | S9, the DevTeam install | **Amended**: adds the standard workstream coordinator, on the coordinator flow, as the worker S8 forks | Neither standard coordinator fits as the seed: the chief of staff hires, fires and opens projects, and the project coordinator hands posts to workstreams | The project coordinator and the chief of staff's tools |
 | Who leads a workstream opened in Shift Manager | **Added**: BR-35 to BR-37, V8a. A workstream's coordinator is kept when it is done | D2; keeping is the smaller rule, and moving a workstream back out of done needs its lead (BR-21a) | BR-7 to BR-17, BR-21a, BR-21b unchanged |
 | The docs | **Amended**: Shift Manager's project screen and its README say each workstream opens with a coordinator of its own | Reader-facing | The Workforce projects page: an app still names the lead |
+
+<a name="amendment-lead-flow"></a>
+## Amended after merge: the lead's flow (2026-10-07)
+
+**The finding.** The amendment above put the standard workstream coordinator on the coordinator
+flow and left one fact to check at implement time: whether that flow takes a delegated post. It
+doesn't. FIX-1791 S9 gives the entry to `agent` and to app flows that declare it, and FIX-1792's
+review refuted "a coordinator can lead a workstream" on the same grounds. The project
+coordinator's delegate record for such a lead would be refused, or accepted with its posts
+skipped (FIX-1802 BR-9), and leg c would fail.
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| S9, the standard workstream coordinator on the coordinator flow | **Amended**: on `agent`, with task-taking standard delegates | `agent` takes a delegated post (FIX-1791 S9) and files for its task-taking delegates (FIX-1802 D1); coordinating is the delegates, not the flow (epic D8) | D2 as decided: each workstream opened in Shift Manager gets its own new coordinator, forked from the standard workstream coordinator |
+| PLAN's implement-time check that the coordinator flow takes a delegated post | **Removed**: settled, it doesn't | The specs on `main` answer it | The check that the DevTeam doesn't keep `agent` for standard workers |
+| V8a | **Amended**: a post handed to the new coordinator lands in its workstream session | It is what failed | Its other legs |
+| DOCS: a workstream session is "usually a coordinator" | **Amended**: usually a worker with delegates it files work for | The same finding | — |

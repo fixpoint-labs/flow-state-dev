@@ -189,6 +189,13 @@ Engineering calls, recorded so nobody re-derives them.
   would break moving the workstream back out of done: restoring the delegate record runs
   FIX-1791's roster check on the lead, and a fired worker's session takes no new turn (FIX-1788
   BR-7). The owner can fire it like any worker.
+- **A workstream's own coordinator runs on `agent`, not the coordinator flow.** A workstream's
+  lead must take the project coordinator's delegated post (S3, FIX-1791 BR-4, FIX-1794 BR-4), and
+  FIX-1791 S9 gives that entry to `agent` and to app flows that declare it, not to the coordinator
+  flow; FIX-1792 found the same and moved the DevTeam's workstreams to the EM. Coordinating is the
+  delegates, not the flow (epic D8): a worker whose `delegates:` take a task files for them
+  (FIX-1802 D1). Making the coordinator flow take a delegated post would be FIX-1791's change, a
+  routing flow answering upstream, and nothing here needs it.
 - **Its id is derived from the workstream's address**, so a repeated or concurrent open forks
   once (BR-36) with no second record of who leads what: the entry's `lead` says it. The
   encoding is the implementer's, if no two of one owner's workstreams share an id.
@@ -245,5 +252,9 @@ their READMEs.
   S8's open forks one through FIX-1788's fork action and names it as the lead; S9 adds the
   standard workstream coordinator it forks; BR-35 to BR-37 and V8a. The framework is unchanged
   ([EVOLUTION.md](EVOLUTION.md#amendment-default-coordinator)).
+- **Amended after merge (the lead's flow, 2026-10-07)** — the coordinator flow takes no delegated
+  post, so the standard workstream coordinator runs on `agent` with task-taking delegates; V8a
+  checks a post reaches it. The `usually a coordinator` docs line follows
+  ([EVOLUTION.md](EVOLUTION.md#amendment-lead-flow)).
 
 **Open: none.**

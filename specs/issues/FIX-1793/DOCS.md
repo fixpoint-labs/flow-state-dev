@@ -74,7 +74,7 @@ example with:
 >
 > A workstream is one area of a project with one owner. It's two things you already have: an
 > **entry** on the project, and its **lead's workstream session**, a lasting session of one of the
-> owner's workers, usually a coordinator, whose board holds the workstream's tasks.
+> owner's workers, usually one with delegates it files work for, whose board holds the workstream's tasks.
 >
 > Open one with `openWorkstream`, naming the project, an id, a title and a lead from your own
 > roster:
