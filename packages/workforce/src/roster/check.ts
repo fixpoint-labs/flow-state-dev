@@ -15,8 +15,8 @@
  *     before anything is minted, so a cut kind is never handed to the hire.
  *   - `refused` — the kind is carried, and the hire refuses the row (most
  *     often, settings the kind's schema no longer accepts; or a flow the
- *     installation now keeps for standard workers, which a stored row, a
- *     user's own, can't run on).
+ *     app now keeps for declared workers, which a stored row, a
+ *     hired worker, can't run on).
  *
  * The detail is the start's own wording, unchanged: the reload prints it after
  * the organization and row, and `brokenSeats` hands it back as `detail`.

@@ -9,6 +9,7 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
+import { workerDoor } from "../../../lib/worker-door.mts";
 
 const inputSchema = z.object({ note: z.string() });
 
@@ -62,27 +63,12 @@ const clientView = {
   }
 };
 
-/** Every worker flow has one door: this fixture's answers by saying what it heard. */
-const door = handler({
-  name: "caller-agent-door",
-  inputSchema: z.object({ message: z.string() }),
-  outputSchema: z.object({ heard: z.string() }),
-  execute: (input, ctx) => {
-    ctx.emit.message(`Heard: ${input.message}`);
-    return { heard: input.message };
-  }
-});
-
 const actions = {
   run: {
     inputSchema,
     block: sequencer({ name: "caller-agent-work", inputSchema }).step(start).tap(recordSettings)
   },
-  message: {
-    inputSchema: z.object({ message: z.string() }),
-    userMessage: (input: { message: string }) => input.message,
-    block: door
-  }
+  ...workerDoor
 };
 
 /** The supported replacement: declared `collection`, as the contract requires. */

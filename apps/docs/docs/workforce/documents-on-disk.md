@@ -202,6 +202,7 @@ import {
   readResourcesDirectory,
   readWorkforceDirectory,
 } from "@flow-state-dev/workforce/loader";
+import { z } from "zod";
 import { answerQuestion } from "./blocks";
 import { ticketResource } from "./resources";
 
@@ -219,7 +220,13 @@ export const supportFlow = defineFlow({
   kind: "support",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
-  actions: { answer: { block: answerQuestion, userMessage: (input) => input.message } },
+  actions: {
+    answer: {
+      inputSchema: z.object({ message: z.string() }),
+      block: answerQuestion,
+      userMessage: (input) => input.message,
+    },
+  },
   resources: { ticket: ticketResource, ...documentMap, ...referenceMap },
 });
 

@@ -250,8 +250,8 @@ for a record:
 | no `flow:` | the built-in worker kind |
 | `flow: agent` | the built-in worker kind — same kind, named explicitly |
 | `flow: <registered>` | that kind, exactly as today |
-| `flow: <not registered>` | **refused by name**, listing the kinds that were passed — today's wording, unchanged |
-| a user's own record naming a flow kept for standard workers (or naming none, when `agent` is kept) | **refused**, naming the flow and saying it is kept for standard workers |
+| `flow: <not registered>` | **refused by name**, listing the worker flows that were passed |
+| a hired record (one carrying an owner pin: a runtime hire or a reloaded roster row) naming a flow kept for declared workers (or naming none, when `agent` is kept) | **refused**, naming the flow and saying it is kept for declared workers |
 | roster passes `workerFlows: { agent: … }` | the app's flow wins; the built-in is merged *underneath* whatever the caller supplied |
 
 The existing refusal for a flow filed under someone else's kind name still applies to the

@@ -1,5 +1,5 @@
 /**
- * The goal's worker flows: five an installation can register, and three that
+ * The goal's worker flows: five an app can register, and three that
  * each break one rule of the worker contract. Every one is a flow an author
  * could write; none is shaped to trip the check.
  */

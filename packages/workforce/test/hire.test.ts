@@ -519,7 +519,7 @@ describe("hireWorkforce", () => {
     expect(message).not.toContain("workerConfigSchema()");
   });
 
-  // A kind with no contract is the installation's problem, not one worker's:
+  // A kind with no contract is the app's problem, not one worker's:
   // it refuses before any record is read, so the roster's own problems wait
   // for the next run.
   it("refuses a flow missing the contract before reading any record", () => {
@@ -612,6 +612,6 @@ describe("hireWorkforce reads `flow:` (one row per value)", () => {
 
   it("does not trim a named kind: a padded name is a kind that was not passed", () => {
     const message = refusalOf([record({ id: "engineering.ghost", declared: { flow: " intake " } })]);
-    expect(message).toContain('names flow kind " intake ", which was not passed to hireWorkforce');
+    expect(message).toContain('names flow " intake ", which is not in the worker flows passed to hireWorkforce');
   });
 });

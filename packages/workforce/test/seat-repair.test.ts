@@ -219,7 +219,7 @@ describe("brokenSeats", () => {
       ["support.lin", "refused", "desk"],
     ]);
     expect(out[0]!.key).toBe("workforce/roster/support.bad");
-    expect(String(out[1]!.detail)).toContain('Kinds passed: "agent", "desk"');
+    expect(String(out[1]!.detail)).toContain('Worker flows passed: "agent", "desk"');
     expect(String(out[2]!.detail)).toMatch(/queue/);
   });
 

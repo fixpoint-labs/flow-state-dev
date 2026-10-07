@@ -1,11 +1,11 @@
 /**
- * Goal check — an installation runs a worker only on a flow it registered as a
+ * Goal check — an app runs a worker only on a flow it registered as a
  * worker flow, and the built-in `agent` keeps a worker's own state off org
  * scope while a shared note names who wrote it.
  *
  * Real path, no model: the roster is read from files, hired through
  * `hireWorkforce`, booted with `createFlowState`, run with `runAction` for two
- * users of one org, and a user's own worker comes back from a stored roster row
+ * users of one org, and a hired worker comes back from a stored roster row
  * through `reloadHiredSeats`. Graded on what boot refuses and what the store
  * holds after each run, never on what the contract check returns.
  *
@@ -56,7 +56,7 @@ stripIntentOverrides();
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 
-/** The installation's worker flows. The coordinator is kept for standard workers. */
+/** The app's worker flows. The coordinator is kept for declared workers. */
 const registered: NonNullable<HireOptions["workerFlows"]> = {
   triage: triageFlow,
   [fixture.keptFlow]: { flow: coordinatorFlow, standardOnly: true },
@@ -64,7 +64,7 @@ const registered: NonNullable<HireOptions["workerFlows"]> = {
   "org-keeper": orgKeeperFlow
 };
 
-/** The same installation with three flows that each break one rule. */
+/** The same app with three flows that each break one rule. */
 const BROKEN = { doorless: doorlessFlow, numbered: numberedFlow, "loose-attribution": looseAttributionFlow };
 
 type Access = { user: string; op: string; scopeType: string; scopeId: string; key: string };
@@ -89,7 +89,7 @@ await runGoal(async () => {
     bootError = error instanceof Error ? error.message : String(error);
   }
   if (brokenSeats !== undefined) {
-    fail("a", `the installation with ${Object.keys(BROKEN).join(", ")} hired ${brokenSeats.length} worker(s)`);
+    fail("a", `the app with ${Object.keys(BROKEN).join(", ")} hired ${brokenSeats.length} worker(s)`);
   } else {
     const named = (flow: string) => bootError.includes(`worker flow "${flow}"`);
     if (!named("doorless") || !bootError.includes("no door")) fail("a", `the boot error does not name the doorless flow: ${bootError}`);
@@ -104,7 +104,7 @@ await runGoal(async () => {
     evidence.push(`a: one boot error named doorless, numbered and loose-attribution and hired nothing`);
   }
 
-  // ---- boot the installation that meets the contract ------------------------
+  // ---- boot the app that meets the contract ------------------------
   const seats = hireWorkforce(workers, { workerFlows: registered });
   const seatById = new Map(seats.map((seat) => [seat.id, seat]));
   const seat = (id: string): FlowInstance => {
@@ -215,7 +215,7 @@ await runGoal(async () => {
       fail("b", `the org-keeper's own org data was not written: ${JSON.stringify(kept.error ?? boardRow)}`);
     }
 
-    // ---- leg c · a user's own worker on a kept flow is refused ------------------
+    // ---- leg c · a hired worker on a kept flow is refused ------------------
     const row = toHiredSeatRow({
       seatId: fixture.bobsOwn.seatId,
       flow: fixture.keptFlow,
@@ -228,18 +228,18 @@ await runGoal(async () => {
     const reload = await reloadHiredSeats({ stores: runtime.stores, orgIds: [fixture.orgId], workerFlows: registered });
     const bobsAddress = seatAddress(fixture.orgId, fixture.bobsOwn.seatId, fixture.bob);
     if (reload.seats.some((s) => s.id === bobsAddress)) {
-      fail("c", `bob's own worker runs on the kept flow "${fixture.keptFlow}"`);
+      fail("c", `bob's hired worker runs on the kept flow "${fixture.keptFlow}"`);
     }
     const problem = reload.problems.join("\n");
-    if (!problem.includes(`"${fixture.keptFlow}"`) || !problem.includes("standard workers")) {
-      fail("c", `the refusal does not name the kept flow and say it is kept for standard workers: ${problem}`);
+    if (!problem.includes(`"${fixture.keptFlow}"`) || !problem.includes("declared workers")) {
+      fail("c", `the refusal does not name the kept flow and say it is kept for declared workers: ${problem}`);
     }
     if (JSON.stringify(await get("org", fixture.orgId, rowKey)) !== before) fail("c", "bob's stored worker was changed by the boot");
     const coord = seat(fixture.coordinator);
     const standardRun = await run(coord, "run", fixture.alice, { message: "who takes this?" });
-    if (standardRun.error !== undefined) fail("c", `the standard worker on "${fixture.keptFlow}" did not run: ${JSON.stringify(standardRun.error)}`);
+    if (standardRun.error !== undefined) fail("c", `the declared worker on "${fixture.keptFlow}" did not run: ${JSON.stringify(standardRun.error)}`);
     if (!reload.seats.some((s) => s.id === bobsAddress) && standardRun.error === undefined) {
-      evidence.push(`c: bob's own worker on "${fixture.keptFlow}" was refused at reload and left as stored; ${coord.id} ran on it`);
+      evidence.push(`c: bob's hired worker on "${fixture.keptFlow}" was refused at reload and left as stored; ${coord.id} ran on it`);
     }
   } finally {
     await state.dispose();

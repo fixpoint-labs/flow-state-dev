@@ -77,8 +77,8 @@ export interface SeatHireCapabilityOptions {
    *
    * Closed over, not copied: a kind registered on this object after the
    * factory runs is hireable. The built-in `agent` kind sits underneath, as
-   * it does for host hire. A worker hired here is a user's own, so a flow the
-   * map keeps for standard workers (`{ flow, standardOnly: true }`) refuses it.
+   * it does for host hire. Every seat hired here is a hired worker (it carries an owner pin), so a flow the
+   * map keeps for declared workers (`{ flow, standardOnly: true }`) refuses it.
    */
   workerFlows?: HireOptions["workerFlows"];
   /**

@@ -44,7 +44,7 @@ import { workerConfigSchema, type MailboxBoardCollection } from "@flow-state-dev
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
 import { pieceInputSchema } from "../piece.mts";
-import { hearingDoor } from "../hearing-door.mts";
+import { hearingDoor } from "../../../../hearing-door.mts";
 
 /** The kind every worker `WORKER.md` names in its `flow:` line. **Pinned** — the basename must match. */
 export const WORKER_KIND = "worker";

@@ -23,14 +23,13 @@
  * author built it to.
  *
  * Admission stays the schema's own: this module reads the flow's refusal and
- * decides nothing about configuration on its own. The reading of that refusal
- * ({@link contractKeysRefused}) is the one the hire step words its mint
- * refusals with, so the two cannot drift.
+ * decides nothing about configuration on its own. A refusal it can't read is a
+ * problem, not a pass, so a change to core's wording refuses loudly.
  */
 import type { FlowType } from "@flow-state-dev/core/types";
 import { seatDoorOf } from "./seat-door";
 import { workerConfigSchema } from "./worker-config";
-import { WRITTEN_BY_KEY } from "./shared-resource";
+import { WRITTEN_BY_KEY, declaredWrittenByFields, isSharedWrittenBy } from "./shared-resource";
 
 /** Any flow definition, whatever it declares. */
 export type WorkerFlowDefinition = FlowType<any, any, any, any, any, any, any>;
@@ -73,34 +72,85 @@ export type ContractRefusal = {
   undeclared: string[];
   /** Contract keys whose value the refusal names as wrong, in contract order. */
   wrongValue: string[];
+  /**
+   * The refusal, or a part of it, is in no shape this reader knows. The
+   * caller refuses the flow rather than reading it as a pass.
+   */
+  unread: boolean;
 };
+
+// The shapes of core's mint refusals (`normalizeInstanceConfig`,
+// `describeFlowConfigMismatch`). Each carries the issues as
+// `describeFlowConfigIssues` renders them, or the paths a block would change.
+const NO_CONFIG_SCHEMA =
+  /^Flow "[^"]*" instance "[^"]*" was created with a config bag, but the flow declares no configSchema\./;
+const INVALID_BAG = /^Flow "[^"]*" instance "[^"]*" has an invalid config bag: (.*)\.$/s;
+const BLOCK_CANNOT_READ =
+  /^Flow "[^"]*" instance "[^"]*" has a config bag that block "[^"]*" cannot read: (.*)\. That block declares `flowConfigSchema`; /s;
+const BLOCK_WOULD_CHANGE =
+  /^Flow "[^"]*" instance "[^"]*": block "[^"]*" declares a flowConfigSchema that would change the bag at ((?:"[^"]*"(?:, )?)+) — /s;
+// One issue: undeclared keys (`"a", "b" is not a declared setting`, then
+// ` of "path"` when nested), or a value (`"path": message`).
+const UNDECLARED_ISSUE = /^((?:"[^"]*"(?:, )?)+) is not a declared setting( of "[^"]*")?$/s;
+const VALUE_ISSUE = /^"([^"]*)": .+$/s;
+
+function quoted(list: string): string[] {
+  return [...list.matchAll(/"([^"]*)"/g)].map((match) => match[1]!);
+}
+
+/** The contract key a path starts at (`seatSkills.0.name`, `seatSkills[0]`), if any. */
+function contractKeyAt(path: string): string | undefined {
+  const top = path.split(/[.[]/, 1)[0]!;
+  return CONTRACT_KEYS.includes(top) ? top : undefined;
+}
 
 /**
  * Read a flow's refusal for what it says about the contract's keys.
  *
- * The one reading of that refusal. Reads core's own wording
- * (`describeFlowConfigIssues`): an undeclared TOP-LEVEL key is rendered
- * `"x" is not a declared setting`, a value is rendered `"x": message` or
+ * Reads core's own wording. An undeclared TOP-LEVEL key is
+ * `"x" is not a declared setting`; a value is `"x": message` or
  * `"x.0.name": message`. A key inside one of the flow's own nested objects is
- * `… is not a declared setting of "path"`, and a nested path is `"own.x"`, so
- * neither matches a contract key. Anything this cannot interpret reads as
- * naming no key.
+ * `… is not a declared setting of "path"` and a nested path is `"own.x"`, so
+ * neither names a contract key: the flow's own settings are its business,
+ * since every worker supplies them and no probe can. Anything in no shape this
+ * knows sets `unread`, so a change to that wording can't pass a flow.
  *
  * @param refusal The flow's own refusal message.
  */
 export function contractKeysRefused(refusal: string): ContractRefusal {
-  if (refusal.includes("declares no configSchema")) {
-    return { noConfigSchema: true, undeclared: [], wrongValue: [] };
+  const none: ContractRefusal = { noConfigSchema: false, undeclared: [], wrongValue: [], unread: false };
+  if (NO_CONFIG_SCHEMA.test(refusal)) return { ...none, noConfigSchema: true };
+  const changed = BLOCK_WOULD_CHANGE.exec(refusal);
+  if (changed !== null) {
+    const keys = quoted(changed[1]!).map(contractKeyAt);
+    return { ...none, wrongValue: CONTRACT_KEYS.filter((key) => keys.includes(key)) };
   }
-  const segments = refusal.replace(/\.$/, "").split("; ");
-  const undeclared = CONTRACT_KEYS.filter((key) =>
-    segments.some((segment) => segment.endsWith("is not a declared setting") && segment.includes(`"${key}"`))
-  );
-  const wrongValue = CONTRACT_KEYS.filter((key) => {
-    const at = new RegExp(`"${key}(\\.[^"]*)?": `);
-    return segments.some((segment) => at.test(segment));
-  });
-  return { noConfigSchema: false, undeclared, wrongValue };
+  const issues = (INVALID_BAG.exec(refusal) ?? BLOCK_CANNOT_READ.exec(refusal))?.[1];
+  if (issues === undefined) return { ...none, unread: true };
+  const undeclared = new Set<string>();
+  const wrongValue = new Set<string>();
+  let unread = false;
+  for (const issue of issues.split("; ")) {
+    const notDeclared = UNDECLARED_ISSUE.exec(issue);
+    if (notDeclared !== null) {
+      // Nested (` of "path"`): a key inside the flow's own object, never a contract key.
+      if (notDeclared[2] === undefined) quoted(notDeclared[1]!).forEach((key) => undeclared.add(key));
+      continue;
+    }
+    const value = VALUE_ISSUE.exec(issue);
+    if (value !== null) {
+      const key = contractKeyAt(value[1]!);
+      if (key !== undefined) wrongValue.add(key);
+      continue;
+    }
+    unread = true;
+  }
+  return {
+    noConfigSchema: false,
+    undeclared: CONTRACT_KEYS.filter((key) => undeclared.has(key)),
+    wrongValue: CONTRACT_KEYS.filter((key) => wrongValue.has(key)),
+    unread
+  };
 }
 
 function messageOf(error: unknown): string {
@@ -114,6 +164,7 @@ function listed(keys: readonly string[]): string {
 /** Check 1: the flow's own refusal of a full bag, read for the contract's keys. */
 function configurationProblem(name: string, flow: WorkerFlowDefinition): string | undefined {
   let refused: ContractRefusal;
+  let refusal: string;
   try {
     (flow as unknown as (options: { id: string; config: Record<string, unknown> }) => unknown)({
       id: `${flow.kind}::worker-contract-probe`,
@@ -121,7 +172,8 @@ function configurationProblem(name: string, flow: WorkerFlowDefinition): string 
     });
     return undefined;
   } catch (error) {
-    refused = contractKeysRefused(messageOf(error));
+    refusal = messageOf(error);
+    refused = contractKeysRefused(refusal);
   }
   const fix = `Compose it: \`configSchema: workerConfigSchema().extend({ ...its own settings })\`.`;
   if (refused.noConfigSchema) {
@@ -134,8 +186,14 @@ function configurationProblem(name: string, flow: WorkerFlowDefinition): string 
   if (refused.undeclared.length > 0) parts.push(`doesn't accept ${listed(refused.undeclared)}`);
   const wrong = refused.wrongValue.filter((key) => !refused.undeclared.includes(key));
   if (wrong.length > 0) parts.push(`refuses the value a worker's hire supplies for ${listed(wrong)}`);
-  if (parts.length === 0) return undefined;
-  return `worker flow "${name}" ${parts.join(", and ")}. ${fix}`;
+  if (parts.length > 0) return `worker flow "${name}" ${parts.join(", and ")}. ${fix}`;
+  if (refused.unread) {
+    return (
+      `worker flow "${name}" refused the configuration a worker's hire supplies, for a reason this ` +
+      `check can't read, so it can't tell whether the flow takes a worker's configuration: ${refusal}`
+    );
+  }
+  return undefined;
 }
 
 type ActionMap = Readonly<Record<string, unknown>>;
@@ -161,27 +219,11 @@ function doorProblem(name: string, flow: WorkerFlowDefinition): string | undefin
   );
 }
 
-/** What the contract's `writtenBy` must take, and what it must refuse. */
-const WRITTEN_BY_ACCEPTS: readonly unknown[] = [{ userId: "alice" }, { userId: "alice", workerId: "researcher" }];
-const WRITTEN_BY_REFUSES: readonly unknown[] = [
-  undefined,
-  null,
-  {},
-  "alice",
-  { workerId: "researcher" },
-  { userId: "" },
-  { userId: 7 },
-  { userId: "alice", workerId: 7 },
-  { userId: "alice", workerId: "" }
-];
-
-type SafeParser = { safeParse: (value: unknown) => { success: boolean } };
-
 type DeclaredResourceLike = {
   scope?: unknown;
   pattern?: unknown;
   ref?: unknown;
-  stateSchema?: { shape?: Record<string, SafeParser> };
+  stateSchema?: unknown;
 };
 
 /** Check 3: every declared `writtenBy` is the contract's whole field, at any scope. */
@@ -190,13 +232,7 @@ function attributionProblems(name: string, flow: WorkerFlowDefinition): string[]
   const resources = (flow.resources ?? {}) as Readonly<Record<string, DeclaredResourceLike>>;
   for (const accessor of Object.keys(resources).sort()) {
     const resource = resources[accessor];
-    const shape = resource?.stateSchema?.shape;
-    if (shape === undefined || !Object.hasOwn(shape, WRITTEN_BY_KEY)) continue;
-    const field = shape[WRITTEN_BY_KEY]!;
-    const whole =
-      WRITTEN_BY_ACCEPTS.every((value) => field.safeParse(value).success) &&
-      WRITTEN_BY_REFUSES.every((value) => !field.safeParse(value).success);
-    if (whole) continue;
+    if (declaredWrittenByFields(resource?.stateSchema).every(isSharedWrittenBy)) continue;
     const where = String(resource?.pattern ?? resource?.ref ?? accessor);
     problems.push(
       `worker flow "${name}" declares \`${WRITTEN_BY_KEY}\` on "${accessor}" (${where}) in another shape ` +
@@ -213,7 +249,7 @@ function attributionProblems(name: string, flow: WorkerFlowDefinition): string[]
  *
  * The check a hire runs once per flow, before any worker runs, and exported so
  * a library of worker flows can call it in its own tests without an
- * installation: `expect(workerFlowProblems("triage", triageFlow)).toEqual([])`.
+ * app: `expect(workerFlowProblems("triage", triageFlow)).toEqual([])`.
  *
  * Reads the definition only; it runs no block and writes nothing.
  *
@@ -222,13 +258,15 @@ function attributionProblems(name: string, flow: WorkerFlowDefinition): string[]
  * @returns One sentence per problem, each naming the flow.
  */
 export function workerFlowProblems(name: string, flow: WorkerFlowDefinition): string[] {
-  if (flow.kind !== name) {
-    return [
-      `worker flow "${name}" is passed under that name, but its kind is "${String(flow.kind)}": a worker ` +
-        `naming "${name}" would run a different flow's graph. Pass each flow under its own kind.`
-    ];
-  }
-  return [configurationProblem(name, flow), doorProblem(name, flow), ...attributionProblems(name, flow)].filter(
-    (problem): problem is string => problem !== undefined
-  );
+  const misnamed =
+    flow.kind === name
+      ? undefined
+      : `worker flow "${name}" is passed under that name, but its kind is "${String(flow.kind)}": a worker ` +
+        `naming "${name}" would run a different flow's graph. Pass each flow under its own kind.`;
+  return [
+    misnamed,
+    configurationProblem(name, flow),
+    doorProblem(name, flow),
+    ...attributionProblems(name, flow)
+  ].filter((problem): problem is string => problem !== undefined);
 }

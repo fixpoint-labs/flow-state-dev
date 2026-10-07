@@ -360,24 +360,29 @@ Settings are spelled the way the flow declares them.
 
 ### Which flows can run workers
 
-A worker runs on a flow. Not every flow can run one: your installation says which flows are
-worker flows, and checks each one when it starts, before any worker runs. A worker that names a
-flow your installation didn't register is refused, by name.
+A worker runs on a flow. The flows you pass in `workerFlows`, with the built-in `agent`
+underneath, are your app's worker flows. `hireWorkforce` checks each one before it hires anyone,
+and a worker that names a flow your app didn't pass is refused, by name.
 
-A worker flow does three things:
+A worker flow must:
 
-- **It takes the standard configuration.** Its `configSchema` composes `workerConfigSchema()`,
-  as [above](#the-flow-decides-what-a-worker-may-declare). If you declare the keys yourself, each
-  must accept the value a worker brings: `seatId` is a string, for instance.
-- **It has a door.** Exactly one public action declares `userMessage` and takes `{ message }`,
-  so an app can talk to any worker without knowing which flow it runs on.
-- **What it shares names who wrote it.** A shared resource makes the writer a required field on
-  every entry. The startup check refuses a resource that declares that field some other way, such
-  as optional.
+- **Take the standard configuration.** Compose `workerConfigSchema()` into its `configSchema`, as
+  [above](#the-flow-decides-what-a-worker-may-declare). If you declare the keys yourself, each must
+  accept the value a worker brings: `seatId` is a string, for instance.
+- **Have one door.** Exactly one public action declares `userMessage` and takes `{ message }`, so
+  an app can talk to any worker without knowing which flow it runs on.
+- **Declare `writtenBy` in the shared-resource shape, if it declares it at all.** If a resource
+  declares `writtenBy`, it uses the shape a [shared resource](#sharing-something-from-a-worker)
+  does: a required `{ userId, workerId? }`, each a non-empty string. An optional or looser field is
+  refused.
 
-The flows you pass in `workerFlows` are your installation's worker flows, with the built-in
-`agent` underneath. To keep a flow for the workers your installation's files define, so that a
-user can't put a worker of their own on it, mark the entry:
+A worker is either **declared** or **hired**. A declared worker is one a `WORKER.md` file defines.
+A hired worker is one hired while the app runs, through the [`hire` handler or tool](./durable-hire.md)
+or a hire you write yourself, and every worker `reloadHiredSeats` brings back from the stored
+roster, whether it is visible to the whole organization or to one member. To `hireWorkforce`, a
+hired worker is a record that carries an owner pin.
+
+To keep a flow for declared workers, so that no hired worker runs on it, mark the entry:
 
 ```ts
 const workforce = hireWorkforce(workers, {
@@ -388,11 +393,16 @@ const workforce = hireWorkforce(workers, {
 });
 ```
 
-A worker that names no flow runs on `agent`, and the mark is checked after that. So if you keep
-`agent` for standard workers, a user's own worker that names no flow is refused, and the message
-names `agent`. Replacing `agent` with a flow of your own keeps the mark you wrote.
+A worker that names no flow runs on `agent`, and the mark is checked after that. To keep `agent`
+for declared workers, pass it with the mark, either the built-in or your replacement:
 
-Writing a library of worker flows? Check each one in your own tests, without an installation:
+```ts
+workerFlows: { agent: { flow: defineAgentWorkerFlow(), standardOnly: true } }
+```
+
+A hired worker that names no flow is then refused, and the message names `agent`.
+
+Writing a library of worker flows? Check each one in your own tests, without an app:
 
 ```ts
 import { workerFlowProblems } from "@flow-state-dev/workforce";
@@ -404,8 +414,7 @@ expect(workerFlowProblems("triage", triageFlow)).toEqual([]);
 
 Session, request and user state belong to one user. Org scope is shared with every member of the
 org: anything a flow writes there, every member's runs can read. A worker flow can write there
-when that is what it's built to do. Nothing stops it, because only the flow's author knows when
-org data is relevant.
+when that is what it's built to do, and nothing stops it.
 
 The built-in `agent` keeps its own working state, such as its skills, in its user's scope. Write
 your own worker flows the same way, and put what you mean to share in a shared resource.
@@ -425,15 +434,14 @@ await writeShared(ctx, "notes", "launch", { text: "Launch moved to Friday." });
 // stored: { text: "Launch moved to Friday.", writtenBy: { userId: "alice", workerId: "research.scout" } }
 ```
 
-`writeShared` takes `writtenBy` from the session, never from its input, so whoever calls your
-flow can't sign as someone else. It records what your flow's code wrote: a block that writes the
-resource directly can set its own value. So `writtenBy` is as trustworthy as the worker flows your
-installation registers. An entry written without it is refused by the resource's own schema. A
-second write to the same key replaces the entry, which then names whoever wrote it last. Who may
-change an entry after it is written is not decided here; every member can read it.
+`writeShared` sets `writtenBy` from the session and ignores any `writtenBy` in its input, so
+whoever calls your flow can't sign as someone else. A block that writes the resource directly can
+set any value, so trust `writtenBy` as far as you trust your worker flows' code. An entry written
+without it is refused by the resource's own schema. A second write to the same key replaces the
+entry, `writtenBy` included. Every member can read an entry.
 
-`writtenBy` is for display and audit. The framework never uses it to decide who may write an
-entry: that comes from the resource's scope and its ownership rules, never from this field.
+Use `writtenBy` for display and audit, not to decide who may write. Who may write an entry comes
+from the resource's scope and its ownership rules.
 
 ### The body arrives as `instructions`
 
@@ -522,9 +530,8 @@ Every problem here is a startup misconfiguration, so every problem throws. They 
 A record is refused when it:
 
 - declares a `flow` that is present but empty, or only whitespace — that names no kind. Leave the key out entirely to get the built-in `agent` kind;
-- names a kind that was not passed in `workerFlows`; the message lists the kinds that were, including `agent`;
+- names a flow that was not passed in `workerFlows`; the message lists the worker flows that were, including `agent`;
 - declares a setting its flow never declared, or omits one its flow requires;
-- names a flow kind whose schema will not take what hiring imposes, leaving it nowhere to receive a seat's skills and instructions — composing `workerConfigSchema()` is the fix. That one refuses the whole roster, not just this record;
 - declares `instructions:` and carries a body;
 - declares `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` or `teamInstructions:`, none of which is a setting a worker declares;
 - declares a `packages:` line the hire step cannot resolve, or holds a package whose blocks clash with another tool it can call. [Packages on disk](./packages-on-disk.md#when-a-file-is-wrong) lists each case;
@@ -533,16 +540,17 @@ A record is refused when it:
 - reaches a reference it did not name, the same way a document can come back through one of its kind's blocks;
 - declares a `resources:` list the hire step cannot resolve: a `resources:` that is not a list at all, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this worker's kind, a mode that is neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind does declare at flow level while what it holds there is not that document, or the key at all when no `documents` were passed;
 - reaches a document it never named, because one of its kind's blocks declares that document and a block's declaration merges back in after the worker's narrowed list is applied. Keep the document at flow level and let the block reach it there, or grant it to the worker deliberately;
-- shares an id with another record in the same call, which is two workers claiming one address.
+- shares an id with another record in the same call, which is two workers claiming one address;
+- is a hired worker naming a flow kept for declared workers, or naming no flow when `agent` is
+  kept.
 
-`workerFlows` itself is checked too, once per flow, when the installation starts. A flow is
-refused when it is passed under a key that is not its own `kind`, has no door or more than one,
-doesn't accept a worker's configuration, or declares `writtenBy` some other way than a shared
-resource does. One run names every problem with every flow, and nothing is hired.
+`hireWorkforce` checks each flow in `workerFlows` too, before it hires anyone. A flow is refused
+when it is passed under a key that is not its own `kind`, has no door or more than one, doesn't
+accept a worker's configuration, or declares `writtenBy` some other way than a shared resource
+does. One run names every problem with every flow, and nothing is hired.
 
-A worker is refused when it names a flow kept for standard workers and isn't one. A stored
-worker refused this way is skipped at startup and reported; it stays as it is, and runs again if
-the mark is removed.
+A stored worker refused at startup is handled by `reloadHiredSeats`, not thrown: see
+[Reading the roster back at the next start](./durable-hire.md#reading-the-roster-back-at-the-next-start).
 
 ## When a worker needs more than settings
 

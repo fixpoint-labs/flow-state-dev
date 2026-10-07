@@ -15,23 +15,7 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
-
-/** Every worker flow has one door: this fixture's answers by saying what it heard. */
-const workerDoor = {
-  message: {
-    inputSchema: z.object({ message: z.string() }),
-    userMessage: (input: { message: string }) => input.message,
-    block: handler({
-      name: "fixture-door",
-      inputSchema: z.object({ message: z.string() }),
-      outputSchema: z.object({ heard: z.string() }),
-      execute: (input, ctx) => {
-        ctx.emit.message(`Heard: ${input.message}`);
-        return { heard: input.message };
-      },
-    }),
-  },
-};
+import { workerDoor } from "../../../lib/worker-door.mts";
 
 export const TRIAGE_KIND = "request-triage";
 

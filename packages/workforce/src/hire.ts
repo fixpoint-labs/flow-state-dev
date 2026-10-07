@@ -15,12 +15,12 @@
  * loudly, for the whole roster, at boot — and composing `workerConfigSchema()`
  * is how a kind makes sure it can.
  *
- * **Before any record, the flows themselves.** The installation's worker
+ * **Before any record, the flows themselves.** The app's worker
  * flows, the built-in `agent` among them, are checked against the worker
  * contract (`worker-flow-contract.ts`) once per flow, and any problem refuses
  * the whole call: no flow is registered and no worker is hired over one. A
  * worker then resolves to a registered flow — `agent` when it names none —
- * and a flow the installation keeps for standard workers refuses a user's own.
+ * and a flow the app keeps for declared workers refuses a hired worker.
  */
 
 import type {
@@ -102,7 +102,7 @@ const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType
 
 /**
  * One entry of {@link HireOptions.workerFlows}: a flow, or a flow and whether
- * this installation keeps it for standard workers.
+ * this app keeps it for declared workers.
  */
 export type WorkerFlowEntry = AnyFlowType | { flow: AnyFlowType; standardOnly?: boolean };
 
@@ -111,7 +111,7 @@ export type ResolvedWorkerFlow = { flow: AnyFlowType; standardOnly: boolean };
 
 /**
  * The worker flows a hire resolves a `flow:` against: the built-in `agent`
- * underneath the installation's map, so the installation's own `agent` wins,
+ * underneath the app's map, so the app's own `agent` wins,
  * each entry read as a flow and its standard-only flag.
  *
  * Unchecked: {@link hireWorkforce} checks every one before any worker runs.
@@ -179,19 +179,19 @@ function availableKinds(kindNames: readonly string[]): string {
 }
 
 function missingKindReason(kind: string, available: string): string {
-  return `names flow kind "${kind}", which was not passed to hireWorkforce. Kinds passed: ${available}`;
+  return `names flow "${kind}", which is not in the worker flows passed to hireWorkforce. Worker flows passed: ${available}`;
 }
 
 /**
- * Why a user's own worker can't run on `kind`: the installation keeps it for
+ * Why a hired worker can't run on `kind`: the app keeps it for
  * the workers its files define. `defaulted` when the worker named no flow and
  * `agent` is the default it fell to.
  */
 function standardOnlyReason(kind: string, defaulted: boolean): string {
   return (
     `${defaulted ? `names no flow, so it runs on "${kind}"` : `names flow "${kind}"`}, which this ` +
-    `installation keeps for standard workers, the ones its files define. A worker of a user's own ` +
-    `can't run on it`
+    `app keeps for declared workers, the ones its WORKER.md files define. A hired worker can't run ` +
+    `on it`
   );
 }
 
@@ -220,7 +220,7 @@ function hireRefusalMessage(refused: number, total: number, problems: readonly s
  *
  * @param manifestId The record's id (a hired worker's address).
  * @param kind The flow it names.
- * @param workerFlows The installation's worker flows, as passed to `hireWorkforce`.
+ * @param workerFlows The app's worker flows, as passed to `hireWorkforce`.
  */
 export function missingWorkerFlowRefusal(
   manifestId: string,
@@ -233,9 +233,9 @@ export function missingWorkerFlowRefusal(
 
 export interface HireOptions {
   /**
-   * The installation's worker flows, by kind — `defineFlow(...)` results,
+   * The app's worker flows, by kind — `defineFlow(...)` results,
    * passed directly, or `{ flow, standardOnly: true }` for a flow kept for the
-   * workers the installation's files define. A record's `flow` names one, and
+   * workers the app's WORKER.md files define. A record's `flow` names one, and
    * it is called once per worker to mint that worker's copy.
    *
    * Every flow here, and the built-in `agent` under them, is checked against
@@ -248,10 +248,10 @@ export interface HireOptions {
    * under `agent` replaces the built-in for every worker, and its
    * `standardOnly` is the entry's.
    *
-   * Standard-only is checked after the `agent` default: a worker of a user's
-   * own (a runtime hire, or a stored roster row: any record carrying an owner
-   * pin) that names no flow is refused when `agent` is kept for standard
-   * workers.
+   * Standard-only is checked after the `agent` default: a hired worker (a
+   * runtime hire or a stored roster row, org-visible or private: any record
+   * carrying an owner pin) that names no flow is refused when `agent` is kept
+   * for declared workers.
    */
   workerFlows?: Record<string, WorkerFlowEntry>;
 
@@ -488,7 +488,7 @@ function resolveDeclaredTools(
  * hire would not be a refusal.
  *
  * @param manifests The roster — from the loader, or hand-built.
- * @param options   `workerFlows`: the worker flows the installation defined.
+ * @param options   `workerFlows`: the worker flows the app defined.
  *                  Optional — the built-in `agent` flow is always available
  *                  underneath, and a flow passed under `agent` replaces it for
  *                  every seat.
@@ -510,7 +510,7 @@ export function hireWorkforce(
   const flows = resolveWorkerFlows(options.workerFlows);
 
   // The flows before any record: a worker flow that misses the contract is
-  // the installation's problem, not one worker's, so it refuses the call
+  // the app's problem, not one worker's, so it refuses the call
   // whatever the roster holds — an empty one included.
   checkWorkerFlows(flows);
 
@@ -684,7 +684,7 @@ export function hireWorkforce(
     }
 
     // Standard-only, AFTER the default above: a worker naming no flow is an
-    // `agent` worker, and it is refused here when `agent` is kept. A user's own
+    // `agent` worker, and it is refused here when `agent` is kept. A hired
     // worker is one with an owner pin — a runtime hire or a stored roster row,
     // which a `WORKER.md` never sets — so every path that runs a worker meets
     // this one check.

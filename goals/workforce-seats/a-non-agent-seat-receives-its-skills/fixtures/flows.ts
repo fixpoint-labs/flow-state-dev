@@ -16,6 +16,7 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
+import { workerDoor } from "../../../lib/worker-door.mts";
 
 export const TRIAGE_KIND = "request-triage";
 export const NO_CONTRACT_KIND = "request-triage-legacy";
@@ -121,28 +122,13 @@ const recordDesk = handler({
   }
 });
 
-/** Every worker flow has one door: this fixture's answers by saying what it heard. */
-const door = {
-  inputSchema: z.object({ message: z.string() }),
-  userMessage: (input: { message: string }) => input.message,
-  block: handler({
-    name: "triage-door",
-    inputSchema: z.object({ message: z.string() }),
-    outputSchema: z.object({ heard: z.string() }),
-    execute: (input, ctx) => {
-      ctx.emit.message("Heard: " + input.message);
-      return { heard: input.message };
-    }
-  })
-};
-
 /** The delivery claim's action set — reads the admitted `seatSkills`. */
 const actions = {
   run: {
     inputSchema,
     block: sequencer({ name: "triage-work", inputSchema }).tap(start).tap(recordSkills)
   },
-  message: door
+  ...workerDoor
 };
 
 /**
@@ -156,7 +142,7 @@ const controlActions = {
     inputSchema,
     block: sequencer({ name: "triage-control-work", inputSchema }).tap(start).tap(recordDesk)
   },
-  message: door
+  ...workerDoor
 };
 
 /** Composes the contract. No model, no generator — handlers only. */

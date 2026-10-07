@@ -231,12 +231,12 @@ Body.
 
       // An author who put code in a worker slot has a route, and the refusal is
       // the only place they are standing. It has to carry all three steps —
-      // define the flow, pass it in `kinds`, name it in `flow:` — because each
+      // define the flow, pass it in `workerFlows`, name it in `flow:` — because each
       // one alone leaves them guessing at the next.
       const { message } = errors[0]!.error;
       expect(message).toMatch(/has no WORKER\.md/);
       expect(message).toContain("hireWorkforce");
-      expect(message).toContain("kinds");
+      expect(message).toContain("`workerFlows`");
       expect(message).toContain("flow:");
     });
 

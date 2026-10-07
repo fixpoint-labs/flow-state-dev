@@ -185,7 +185,7 @@ Pulling an edit through is a separate, explicit act — `refreshSeededSkills` fr
 
 ### Custom worker kinds
 
-Skills reach every hireable kind the same way, this one included: they arrive in the settings bag as `seatSkills`, because the kind's `configSchema` composed `workerConfigSchema()`. The built-in is built that way, and so is [a kind you define yourself](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare). That page has the contract and what it holds. Your flow is free to ignore the skills it receives. What it can't skip are the three things every worker flow does: [which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers).
+Skills reach every hireable kind the same way, this one included: they arrive in the settings bag as `seatSkills`, because the kind's `configSchema` composed `workerConfigSchema()`. The built-in is built that way, and so is [a kind you define yourself](./workers-on-disk.md#the-flow-decides-what-a-worker-may-declare). That page has the contract and what it holds. Your flow is free to ignore the skills it receives. It can't skip the rest of the [worker flow contract](./workers-on-disk.md#which-flows-can-run-workers).
 
 ## Giving workers memory
 

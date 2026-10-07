@@ -4,7 +4,7 @@
  *
  * `hireWorkforce` checks every worker flow once, before any worker is hired,
  * and then resolves each worker: `agent` when it names no flow, and a flow the
- * installation keeps for standard workers refuses a user's own. A user's own
+ * app keeps for declared workers refuses a hired worker. A hired
  * worker is a record with an owner pin, as a runtime hire and a stored roster
  * row always are and a `WORKER.md` never is.
  */
@@ -49,12 +49,12 @@ const numbered = workerFlow("numbered", {
 });
 const twoDoors = workerFlow("two-doors", { actions: { ask: door, say: door } });
 
-/** A standard worker: one the installation's files define. */
+/** A declared worker: one the app's WORKER.md files define. */
 function standard(id: string, flow?: string): WorkerManifest {
   return { id, declared: flow === undefined ? {} : { flow }, body: "" };
 }
 
-/** A user's own worker: a runtime hire or a stored row, so it carries an owner pin. */
+/** A hired worker: a runtime hire or a stored row, so it carries an owner pin. */
 function own(id: string, flow?: string): WorkerManifest {
   return {
     id: `acme.~bob.${id}`,
@@ -113,7 +113,7 @@ describe("registering worker flows (V2)", () => {
     expect(seats.map((seat) => seat.kind)).toEqual(["org-keeper"]);
   });
 
-  it("BR-10 · with no flows of its own, the installation registers the built-in agent, which passes", () => {
+  it("BR-10 · with no flows of its own, the app registers the built-in agent, which passes", () => {
     expect(hireWorkforce([standard("support.ada")]).map((seat) => seat.kind)).toEqual(["agent"]);
     expect(hireWorkforce([standard("support.ada")], { workerFlows: {} }).map((seat) => seat.kind)).toEqual(["agent"]);
   });
@@ -134,15 +134,15 @@ describe("which workers may run on a flow (V3)", () => {
     ]);
   });
 
-  it("BR-14 · refuses a user's own worker naming a standard-only flow, and a standard worker on it runs", () => {
+  it("BR-14 · refuses a hired worker naming a standard-only flow, and a declared worker on it runs", () => {
     const message = refusalOf(() => hireWorkforce([own("coord", "coordinator")], { workerFlows: kept }));
     expect(message).toContain('"coordinator"');
-    expect(message).toContain("standard workers");
+    expect(message).toContain("declared workers");
     const seats = hireWorkforce([standard("ops.coord", "coordinator")], { workerFlows: kept });
     expect(seats.map((seat) => seat.kind)).toEqual(["coordinator"]);
   });
 
-  it("a user's own worker runs on a flow that isn't kept", () => {
+  it("a hired worker runs on a flow that isn't kept", () => {
     expect(hireWorkforce([own("tri", "triage")], { workerFlows: kept }).map((s) => s.kind)).toEqual(["triage"]);
   });
 
@@ -150,19 +150,19 @@ describe("which workers may run on a flow (V3)", () => {
     const agentKept: HireOptions["workerFlows"] = { agent: { flow: defineAgentWorkerFlow() as never, standardOnly: true } };
     const message = refusalOf(() => hireWorkforce([own("helper")], { workerFlows: agentKept }));
     expect(message).toContain('"agent"');
-    expect(message).toContain("standard workers");
+    expect(message).toContain("declared workers");
     // Named directly, the same refusal.
     expect(refusalOf(() => hireWorkforce([own("helper", "agent")], { workerFlows: agentKept }))).toContain(
-      "standard workers"
+      "declared workers"
     );
-    // A standard worker naming no flow still runs on it.
+    // A declared worker naming no flow still runs on it.
     expect(hireWorkforce([standard("support.ada")], { workerFlows: agentKept }).map((s) => s.kind)).toEqual(["agent"]);
   });
 
-  it("BR-16 · a replacement agent passes the same checks, and keeps the installation's flag", () => {
+  it("BR-16 · a replacement agent passes the same checks, and keeps the app's flag", () => {
     const replacement = workerFlow("agent");
     const replaced: HireOptions["workerFlows"] = { agent: { flow: replacement, standardOnly: true } };
-    expect(refusalOf(() => hireWorkforce([own("helper")], { workerFlows: replaced }))).toContain("standard workers");
+    expect(refusalOf(() => hireWorkforce([own("helper")], { workerFlows: replaced }))).toContain("declared workers");
     const seats = hireWorkforce([standard("support.ada")], { workerFlows: replaced });
     expect(seats[0]!.kind).toBe("agent");
     expect(seats[0]!.actions).toHaveProperty("run");
@@ -175,7 +175,7 @@ describe("which workers may run on a flow (V3)", () => {
 });
 
 describe("a runtime hire on a standard-only flow (S3, every path)", () => {
-  it("BR-14 · refuses a user's own hire, writes no roster row, and registers nothing", async () => {
+  it("BR-14 · refuses a hired worker's hire, writes no roster row, and registers nothing", async () => {
     const registered: string[] = [];
     const { hire } = createSeatHireBlocks({
       workerFlows: { coordinator: { flow: coordinator, standardOnly: true } },
@@ -191,7 +191,7 @@ describe("a runtime hire on a standard-only flow (S3, every path)", () => {
       }
     });
     const result = await executeBlock({ block: hire, input: { seatId: "coord", flow: "coordinator" }, ctx });
-    expect(String(result.error?.message ?? result.error)).toContain("standard workers");
+    expect(String(result.error?.message ?? result.error)).toContain("declared workers");
     const roster = await (ctx.resources as Record<string, { list(): Promise<unknown[]> }>)[HIRED_ROSTER_RESOURCE]!.list();
     expect(roster).toEqual([]);
     expect(registered).toEqual([]);
@@ -215,7 +215,7 @@ describe("a stored worker on a flow that became standard-only (V4)", () => {
     expect(checked.ok).toBe(false);
     if (!checked.ok) {
       expect(checked.reason).toBe("refused");
-      expect(checked.detail).toContain("standard workers");
+      expect(checked.detail).toContain("declared workers");
     }
     // The same row runs once the mark is removed.
     expect(checkHiredSeatRow("acme", row, { coordinator }).ok).toBe(true);
@@ -234,7 +234,7 @@ describe("a stored worker on a flow that became standard-only (V4)", () => {
     });
     expect(reload.seats).toEqual([]);
     expect(reload.problems).toHaveLength(1);
-    expect(JSON.stringify(reload.problems[0])).toContain("standard workers");
+    expect(JSON.stringify(reload.problems[0])).toContain("declared workers");
     expect(JSON.stringify(await stores.resourceState.get("org", "acme", key))).toBe(before);
   });
 });

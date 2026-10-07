@@ -241,8 +241,8 @@ async function readWorkerSlot(
     throw new Error(
       `Worker folder "${workerName}" has no ${WORKER_MD}. A worker folder describes a ` +
         `seat, and every seat is a ${WORKER_MD}. A worker whose behavior differs is a ` +
-        `different flow kind: define the flow in your app, pass it to hireWorkforce in ` +
-        `\`kinds\`, and name it in this worker's \`flow:\`.`,
+        `different worker flow: define the flow in your app, pass it to hireWorkforce in ` +
+        `\`workerFlows\`, and name it in this worker's \`flow:\`.`,
     );
   }
 

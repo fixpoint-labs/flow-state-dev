@@ -381,12 +381,15 @@ declaration is all `wakeMemberSeats` looks for.
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
 import { mailboxNotifyInputSchema, workerConfigSchema } from "@flow-state-dev/workforce";
+import { z } from "zod";
 
 export const triager = defineFlow({
   kind: "triager",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
-  actions: { run: { block: triage, userMessage: (input) => input.message } },
+  actions: {
+    run: { inputSchema: z.object({ message: z.string() }), block: triage, userMessage: (input) => input.message },
+  },
   internal: {
     actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: triageFromPost } },
   },

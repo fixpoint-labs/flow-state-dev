@@ -39,6 +39,93 @@ export const writtenBySchema = z
 export type WrittenBy = z.infer<typeof writtenBySchema>;
 
 /**
+ * What {@link writtenBySchema} accepts and refuses, as values: the rule a
+ * declared `writtenBy` is judged by. Kept beside the schema, and a test runs
+ * the schema itself through {@link isSharedWrittenBy}, so the two can't drift.
+ */
+const WRITTEN_BY_SAMPLES: { readonly accepts: readonly unknown[]; readonly refuses: readonly unknown[] } = {
+  accepts: [{ userId: "alice" }, { userId: "alice", workerId: "researcher" }],
+  refuses: [
+    undefined,
+    null,
+    {},
+    "alice",
+    { workerId: "researcher" },
+    { userId: "" },
+    { userId: 7 },
+    { userId: "alice", workerId: 7 },
+    { userId: "alice", workerId: "" }
+  ]
+};
+
+/** Anything that parses values the way a zod schema does. */
+export type SafeParser = { safeParse: (value: unknown) => { success: boolean; data?: unknown } };
+
+/** The same attribution: the same keys, each the same value. */
+function sameAttribution(parsed: unknown, sample: unknown): boolean {
+  if (parsed === null || typeof parsed !== "object" || sample === null || typeof sample !== "object") return false;
+  const a = parsed as Record<string, unknown>;
+  const b = sample as Record<string, unknown>;
+  const keys = Object.keys(b);
+  return Object.keys(a).length === keys.length && keys.every((key) => Object.hasOwn(a, key) && a[key] === b[key]);
+}
+
+/**
+ * Whether `field` takes `writtenBy` the way a shared resource does: it accepts
+ * what {@link writtenBySchema} accepts, keeping each value as given, and
+ * refuses what it refuses. Judged on values, so a field declared some other way
+ * but behaving the same passes, and an optional, looser or rewriting one (a
+ * transform that drops `workerId`) fails.
+ *
+ * @param field A resource's declared `writtenBy` schema.
+ */
+export function isSharedWrittenBy(field: SafeParser): boolean {
+  return (
+    WRITTEN_BY_SAMPLES.accepts.every((value) => {
+      const parsed = field.safeParse(value);
+      return parsed.success && sameAttribution(parsed.data, value);
+    }) && WRITTEN_BY_SAMPLES.refuses.every((value) => !field.safeParse(value).success)
+  );
+}
+
+type ZodDefLike = { typeName?: unknown; [key: string]: unknown };
+
+/** The object shapes a schema stands for, through zod's wrappers and composites. */
+function objectShapesOf(schema: unknown, seen: Set<unknown>): Record<string, unknown>[] {
+  if (schema === null || typeof schema !== "object" || seen.has(schema)) return [];
+  seen.add(schema);
+  const shape = (schema as { shape?: unknown }).shape;
+  if (shape !== null && typeof shape === "object") return [shape as Record<string, unknown>];
+  const def = (schema as { _def?: ZodDefLike })._def;
+  if (def === undefined) return [];
+  const inner: unknown[] = [
+    def.schema, // refine, superRefine, transform, preprocess
+    def.innerType, // optional, nullable, default, catch, readonly
+    def.in, // pipe
+    def.out,
+    def.left, // intersection
+    def.right,
+    ...(Array.isArray(def.options) ? def.options : []), // union, discriminated union
+    def.typeName === "ZodBranded" ? def.type : undefined,
+    def.typeName === "ZodLazy" && typeof def.getter === "function" ? (def.getter as () => unknown)() : undefined
+  ];
+  return inner.flatMap((member) => objectShapesOf(member, seen));
+}
+
+/**
+ * Every `writtenBy` field a resource's schema declares, wherever zod's
+ * wrappers put it: inside a `.refine()` or `.transform()`, either side of a
+ * `.pipe()` or an intersection, any member of a union.
+ *
+ * @param stateSchema A resource's declared `stateSchema`.
+ */
+export function declaredWrittenByFields(stateSchema: unknown): SafeParser[] {
+  return objectShapesOf(stateSchema, new Set())
+    .filter((shape) => Object.hasOwn(shape, WRITTEN_BY_KEY))
+    .map((shape) => shape[WRITTEN_BY_KEY] as SafeParser);
+}
+
+/**
  * Declare a shared resource: an org-scoped collection whose every entry names
  * who wrote it.
  *

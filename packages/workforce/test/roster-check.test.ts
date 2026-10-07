@@ -60,7 +60,7 @@ describe("checkHiredSeatRow", () => {
     hires.calls.length = 0;
     const checked = checkHiredSeatRow("acme", stored({ seatId: "support.joe", flow: "desk-clerk" }), kinds);
     expect(checked).toMatchObject({ ok: false, reason: "kind-gone", row: { seatId: "support.joe", flow: "desk-clerk" } });
-    if (!checked.ok) expect(checked.detail).toContain('Kinds passed: "agent", "desk"');
+    if (!checked.ok) expect(checked.detail).toContain('Worker flows passed: "agent", "desk"');
     expect(hires.calls, "the hire was asked about a cut kind").toEqual([]);
   });
 

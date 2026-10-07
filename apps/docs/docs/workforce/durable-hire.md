@@ -233,7 +233,7 @@ export default workforceAdmin();
 
 | Option | What it's for |
 | --- | --- |
-| `workerFlows` | The worker flows a hire may name, the same map you pass to `hireWorkforce` and `reloadHiredSeats`. The built-in `agent` kind is always hireable too, unless `allowKinds` leaves it out. |
+| `workerFlows` | The worker flows a hire may name, the same map you pass to `hireWorkforce` and `reloadHiredSeats`. The built-in `agent` kind is always hireable too, unless `allowKinds` leaves it out. A flow marked `standardOnly` is kept for declared workers, so a hire onto it is refused. |
 | `register(seat, pin)` | Puts a minted seat on the air. `pin` is `{ orgId, userId? }` for the organization the hire ran under. |
 | `unregister(address)` | Releases an address in this process and returns whether anything held it. |
 | `kindAt?(address)` | The kind serving an address right now, if any. Lets `hire` refuse an address that is already served, or a seat id a declared seat answers on, before writing anything, and lets `fire` leave an address registered when a different kind holds it. |
@@ -276,7 +276,7 @@ It returns the seat id and the address the seat answers on:
 
 A hire runs in this order:
 
-1. It refuses a kind that isn't in `workerFlows`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served, an address a seat declared in a worker file has an inventory row at, and a seat id `kindAt` reports a declared seat under: `"chief-of-staff" is the id of a seat this app declares (kind "agent"). Hire under another id.` With `refuseRosterAdmin: true`, it also refuses settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`.
+1. It refuses a kind that isn't in `workerFlows`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses a kind marked `standardOnly` in `workerFlows`, since every seat it hires is a [hired worker](./workers-on-disk.md#which-flows-can-run-workers). It refuses an address `kindAt` reports as already served, an address a seat declared in a worker file has an inventory row at, and a seat id `kindAt` reports a declared seat under: `"chief-of-staff" is the id of a seat this app declares (kind "agent"). Hire under another id.` With `refuseRosterAdmin: true`, it also refuses settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`.
 2. It mints the seat, which runs the kind's settings schema. If the schema refuses the seat, nothing is written and the hire fails with a message that quotes the kind's own refusal. For a kind `coder` whose schema requires `document: z.string().min(1)`, hired as `coder-2` in organization `acme` with no settings, the message is below. The kind's own refusal is quoted after `refused it:`.
 
    ```text
@@ -367,7 +367,7 @@ for (const seat of seats) {
 
 Which organizations a start reloads is your app's policy, so you pass them in.
 
-`problems` is a list of strings, one per row that did not become a seat, each naming the organization, the row key and the reason. Handle it rather than logging it: the number of rows in the roster and the number of seats answering are two different numbers, and a warning on stderr is not a report.
+`problems` is a list of strings, one per row that did not become a seat, each naming the organization, the row key and the reason. A stored seat on a flow marked `standardOnly` is one of them: it is not hired, its reason names the flow and says it is kept for declared workers, and its row is left as stored. Remove the mark and it comes back at the next start. Handle it rather than logging it: the number of rows in the roster and the number of seats answering are two different numbers, and a warning on stderr is not a report.
 
 One way to handle it is to put it on screen. `Roster` from `@flow-state-dev/react` lists the seats and takes `problems` alongside them, so both numbers are visible in the same place:
 
@@ -418,7 +418,7 @@ It answers with one entry per seat, `{ seatId, key, owner, kind, reason, detail 
 
 ```json
 [{ "seatId": "support.joe", "key": "workforce/roster/support.joe", "owner": "organization", "kind": "desk-clerk", "reason": "kind-gone",
-   "detail": "hireWorkforce refused 1 of 1 worker; nothing was hired:\n  - worker \"acme.support.joe\" — names flow kind \"desk-clerk\", which was not passed to hireWorkforce. Kinds passed: \"agent\"" }]
+   "detail": "hireWorkforce refused 1 of 1 worker; nothing was hired:\n  - worker \"acme.support.joe\" — names flow \"desk-clerk\", which is not in the worker flows passed to hireWorkforce. Worker flows passed: \"agent\"" }]
 ```
 
 Each entry has one of three reasons:
