@@ -44,6 +44,13 @@ export type ListSessionsOptions = {
    * started it.
    */
   include?: "dispatch-runs";
+  /**
+   * Only the sessions whose readonly state fields hold these values: a field
+   * the flow's session `stateSchema` declares `.readonly()`, set when the
+   * session was created. Needs `flowKind` or `flowId`; the server refuses a
+   * field that isn't readonly on that flow.
+   */
+  state?: Readonly<Record<string, string>>;
 };
 
 /**
@@ -197,7 +204,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
         baseUrl: options.baseUrl,
         apiPath: options.apiPath,
         path: "/api/flows/sessions",
-        query: asQuery(listOptions)
+        query: asSessionListQuery(listOptions)
       })
     });
 
@@ -523,6 +530,17 @@ function requireId(value: string, name: string): string {
   }
 
   return trimmed;
+}
+
+/** The listing's query string: each `state` entry goes on the wire as `state.<field>`. */
+function asSessionListQuery(
+  value: ListSessionsOptions | undefined
+): Record<string, QueryValue> | undefined {
+  if (value === undefined) return undefined;
+  const { state, ...rest } = value;
+  const stateQuery: Record<string, QueryValue> = {};
+  for (const [field, fieldValue] of Object.entries(state ?? {})) stateQuery[`state.${field}`] = fieldValue;
+  return asQuery({ ...rest, ...stateQuery });
 }
 
 function asQuery(

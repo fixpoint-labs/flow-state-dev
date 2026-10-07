@@ -28,6 +28,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import { principalOwnsRequest } from "../context/request-principal";
+import type { SessionCreateRefusedError } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
 import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
 import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
@@ -120,6 +121,19 @@ export async function loadTenantSession(
  */
 export function unknownSessionResponse(sessionId: string): Response {
   return jsonResponse(404, { error: `Unknown session "${sessionId}"` });
+}
+
+/**
+ * What a route answers for a session create the flow refused: the status the
+ * refusal carries, its message, and the state field when one was the reason.
+ * One copy for the create, action and webhook routes, so a caller sees the
+ * same refusal whichever way it tried to create the session.
+ */
+export function sessionCreateRefusedResponse(error: SessionCreateRefusedError): Response {
+  return jsonResponse(error.status, {
+    error: error.message,
+    ...(error.field !== undefined ? { field: error.field } : {})
+  });
 }
 
 /**

@@ -76,6 +76,15 @@ describe("createSessionClient", () => {
     );
   });
 
+  it("sends a listing's state filter as one state.<field> parameter per field", async () => {
+    const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse({ sessions: [] }));
+    const client = createSessionClient({ fetcher });
+    await client.listSessions({ flowKind: "agent", userId: "devuser", state: { workerId: "researcher" } });
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "/api/flows/sessions?flowKind=agent&userId=devuser&state.workerId=researcher"
+    );
+  });
+
   it("creates and deletes sessions", async () => {
     const fetcher = vi
       .fn<ClientFetch>()

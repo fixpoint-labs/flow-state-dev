@@ -116,6 +116,19 @@ export type TaskFlowTarget = (
 ) => string | undefined | Promise<string | undefined>;
 
 /**
+ * A `task` dispatcher's child-session initial state, looked up per task: what
+ * the target flow's `stateSchema` parses and its `session.createCheck` judges
+ * when the task's child session is created. Handed the same server-derived
+ * task a per-task flow target is (assignee, id, input), because the state
+ * names who runs the row. Resolved once per dispatch, before anything is
+ * dispatched.
+ */
+export type TaskStateTarget = (
+  task: TaskTargetQuery,
+  ctx: BlockContext
+) => Readonly<Record<string, unknown>> | Promise<Readonly<Record<string, unknown>>>;
+
+/**
  * Where a dispatcher sends. `(type, action)` is static by construction: it is
  * what the block declares, so its reachable entries are declared rather than
  * computed at run time. An action chosen from data is a router over declared
@@ -164,6 +177,12 @@ export type DispatchAddress =
        * per task (see {@link TaskFlowTarget}) and is always cross-flow.
        */
       readonly flowKind?: string | TaskFlowTarget;
+      /**
+       * The initial state each task's child session is created with: a fixed
+       * object, or looked up per task (see {@link TaskStateTarget}). A child
+       * that already exists keeps its own.
+       */
+      readonly state?: Readonly<Record<string, unknown>> | TaskStateTarget;
     };
 
 /**
@@ -286,7 +305,17 @@ export function taskSessionKeyFor(
  *   that was not dispatched has no sender (`no-sender`).
  */
 export type SessionTarget =
-  | { readonly key: string }
+  | {
+      readonly key: string;
+      /**
+       * The child's initial session state, read only when the child is
+       * created: a child that already exists keeps its own. The target flow's
+       * `stateSchema` parses it and its `session.createCheck` judges it.
+       * Computed by the dispatching block's own code, never taken from a
+       * caller's input.
+       */
+      readonly state?: Readonly<Record<string, unknown>>;
+    }
   | { readonly id: string }
   | { readonly from: true };
 
@@ -332,6 +361,8 @@ export type DispatchRefusal =
   | "session-not-addressable"
   /** A `key` target derived a child id already held by a record that is not this request's child. */
   | "key-occupied"
+  /** The target flow's `session.createCheck` refused to create the child session. */
+  | "create-refused"
   /** This process executes requests but was not wired to dispatch one. */
   | "no-dispatch-operation"
   /** The host refused before starting — a `reject` concurrency policy whose key is held. */
@@ -416,6 +447,31 @@ export class DispatchRefusedError extends Error {
     );
     this.name = "DispatchRefusedError";
   }
+}
+
+/**
+ * The initial state a `task` dispatch creates its child session with: the
+ * address's object as declared, or its per-task target's answer for this task.
+ * `undefined` when the address declares none.
+ *
+ * @throws when the answer is not a plain object.
+ */
+export async function resolveTaskState(
+  blockName: string,
+  address: Extract<DispatchAddress, { type: "task" }>,
+  task: TaskTargetQuery,
+  ctx: BlockContext
+): Promise<Readonly<Record<string, unknown>> | undefined> {
+  const state = address.state;
+  if (state === undefined) return undefined;
+  const resolved = typeof state === "function" ? await state(task, ctx) : state;
+  if (typeof resolved !== "object" || resolved === null || Array.isArray(resolved)) {
+    throw new Error(
+      `[dispatcher] "${blockName}" computed a child session state for task "${task.taskId}" that ` +
+        `is not an object (${JSON.stringify(resolved)}).`
+    );
+  }
+  return resolved;
 }
 
 /**

@@ -198,6 +198,12 @@ export type SessionScopeHandle<
   TState extends object = Record<string, unknown>
 > = {
   identity: ScopeIdentity;
+  /**
+   * The lineage id minted when this session's record was created. A session
+   * deleted and created again under the same id gets a new one, so
+   * `identity.id` plus this names one incarnation of the session.
+   */
+  readonly lineageId?: string;
   state: Readonly<TState>;
   metadata: Readonly<SessionMetadata>;
   items: SessionItemViews;

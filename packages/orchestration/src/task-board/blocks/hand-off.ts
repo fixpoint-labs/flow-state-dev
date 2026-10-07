@@ -56,6 +56,7 @@ import {
   dispatchThroughSeam,
   markDispatcher,
   resolveTaskFlowKind,
+  resolveTaskState,
   taskSessionKeyFor,
 } from "@flow-state-dev/core/types";
 import type { BlockDefinition, TaskBinding, TaskDispatchInput } from "@flow-state-dev/core/types";
@@ -180,13 +181,27 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
         ctx
       );
 
+      // The child's initial state, when the seat names one: looked up now,
+      // like the flow, so a bad answer refuses with the claim still held.
+      const initialState = await resolveTaskState(
+        name,
+        address,
+        {
+          assignee,
+          taskId: claim.taskId,
+          input: snapshot,
+          ...(claim.createdBy !== undefined ? { filedBy: claim.createdBy } : {}),
+        },
+        ctx
+      );
+
       // Release BEFORE the point of no return — see the file header.
       await ctx.sequencer!.patchState({ currentClaim: undefined });
 
       const outcome = await dispatchThroughSeam(ctx, {
         type: "task",
         action: address.action,
-        session: { key },
+        session: initialState === undefined ? { key } : { key, state: initialState },
         payload: envelope,
         from: name,
         // Stamped onto the dispatched REQUEST record, so a run can be correlated

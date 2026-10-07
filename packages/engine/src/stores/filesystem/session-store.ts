@@ -12,6 +12,7 @@ import {
 import {
   matchesOrgFilter,
   matchesParentageFilter,
+  matchesStateFilter,
   matchesTenantFilter
 } from "../scope-keys";
 import { compareSessionsForListing } from "../list-order";
@@ -62,6 +63,10 @@ export class FilesystemSessionStore implements SessionStore {
         }
 
         if (!matchesParentageFilter(listOptions, record.parentSessionId)) {
+          return false;
+        }
+
+        if (!matchesStateFilter(listOptions?.state, record.state)) {
           return false;
         }
 

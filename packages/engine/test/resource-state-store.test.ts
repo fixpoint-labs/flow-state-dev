@@ -507,7 +507,7 @@ describe("FilesystemResourceStateStore on-disk record", () => {
 /**
  * The nested-map bucketing FIX-1323 introduced retains a `Map` per
  * `(scopeType, scopeId)` — the flat map it replaced held nothing per scope.
- * `ensure-session-record.ts` purges tombstones when a deleted session id is
+ * `session-birth.ts` purges tombstones when a deleted session id is
  * recreated, so a long-running in-memory deployment would otherwise grow one
  * unreachable bucket per id it has ever seen. Reaching into the private map is
  * the only way to see this: an empty bucket and an absent one read identically

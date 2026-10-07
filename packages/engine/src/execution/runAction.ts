@@ -2,6 +2,7 @@
  * Action-level orchestration runtime for request lifecycle, observers, persistence, and terminal errors.
  */
 import type { ErrorItem, ItemProvenance, MessageItem, OutputItem, StatusItem } from "@flow-state-dev/core/items";
+import { checkSessionCreate } from "../context/session-birth";
 import { isEphemeralContent } from "@flow-state-dev/core/items";
 import type {
   ActionCore,
@@ -1156,6 +1157,25 @@ async function runActionAttempt<
       sessionId: options.sessionId,
       userId: options.userId,
       tenantId: options.tenantId
+    });
+  }
+  // A session this run would bring into existence, on a flow that checks its
+  // creates: refused here, at the door, with nothing registered or written.
+  // Two layers on purpose, so neither can be optimized away: this refuses
+  // before anything is registered; the birth in
+  // `createExecutionContext` runs the same check again only if the session is
+  // still absent when the context is built (deleted in between).
+  if (admittedSession === undefined && options.flow.session?.createCheck !== undefined) {
+    await checkSessionCreate(options.stores, {
+      flow: options.flow,
+      sessionId: options.sessionId ?? "",
+      principal: {
+        userId: options.userId,
+        orgId: options.orgId,
+        ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {})
+      },
+      fromCaller: true,
+      via: "action"
     });
   }
   if (admittedRequest !== undefined && !ownsRecord(options.flow, admittedRequest)) {

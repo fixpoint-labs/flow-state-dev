@@ -385,6 +385,17 @@ implement: dispatcher({
 }),
 ```
 
+When the flow a seat hands off to needs state in each new session, such as a required readonly field, give the dispatcher a `state` beside `session`: a fixed object, or `(task) => object`, which receives the row's `assignee`, `taskId` and `input`. It works with every `session` policy, the presets included. Each new run is created with it, and the target flow's [`stateSchema` and `createCheck`](../fundamentals/state-and-scopes.md#creating-sessions) accept or refuse it. A run that already exists keeps its own state. Without one, a flow that needs it refuses every new run, and the task fails with `create-refused`.
+
+```ts
+implement: dispatcher({
+  name: "hand-off-implement",
+  action: "implement",
+  session: "per-task",
+  state: (task) => ({ issueKey: (task.input as { issueKey: string }).issueKey }),
+}),
+```
+
 A run that handles several tasks does so under its entry's `concurrency` policy. The entry a `per-worker` or `key` seat hands off to defaults to `"queue"`, so those tasks run one at a time; a `per-task` seat's entry keeps the flow's default. An explicit `concurrency` on the entry wins:
 
 ```ts

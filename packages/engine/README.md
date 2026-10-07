@@ -575,6 +575,45 @@ Adapters must implement all four options:
 - Both types accept `orgId`, with the same present-vs-absent NULL-safe matching
   as `tenantId`: an absent key filters nothing, a present key (including an
   explicit `undefined`) exact-matches.
+- `SessionListOptions.state` exact-matches top-level session-state fields: a
+  record matches when each named field holds that string. Absent filters
+  nothing. Filter in the query (the SQL adapters bind the field path), never
+  after it.
+
+## Checking a session at create
+
+Every path that creates a session (the create route, an action to a session
+id that does not exist yet, a webhook delivery, `fsdev run`, and a dispatch
+into a child session) creates it from an initial state: the create body's
+`state`, `fsdev run --seed-session`, or the `state` a `dispatcher()`'s
+`{ key, state }` session names. The flow's session `stateSchema` parses it. A
+flow that binds its sessions (a top-level `.readonly()` field or a
+`createCheck`) refuses a state the schema refuses; any other flow keeps it as
+sent, for its actions to validate when they run. `session.serverOwned`
+names fields a caller may not seed. Most flows need nothing more. The optional
+`session.createCheck` is for a rule that depends on who is creating the session
+or on what exists in the store: it receives the verified caller and the parsed
+state, and accepts or refuses the create. A turn on an existing session never
+calls it.
+
+A top-level `stateSchema` field declared `.readonly()` is set when the session
+is created and never changes: a run's write that changes it throws
+`ReadonlySessionStateError` and writes nothing, and `fsdev run --seed-session`
+refuses the same change. Only readonly
+fields are filterable on the list route (`?state.<field>=<value>`, with
+`flowKind` or `flowId`).
+
+A host that creates sessions itself calls `ensureSessionRecord(stores, key,
+request, build)`. It parses the request's `state`, runs the `serverOwned`
+refusal and the flow's `createCheck`, then writes the record you build with
+that state. If another caller created the same id first, it returns that
+caller's record. A refused create throws `SessionCreateRefusedError`, which
+carries the `message` and the HTTP `status` to answer with (and `field`, when
+one field was the reason). For a host that writes seeded state into a session
+that already exists, `refuseServerOwnedState(flow, sessionId, state)` throws the
+same error for a server-owned field, and `refuseReadonlyStateChange(flowKind,
+sessionId, readonlyFields, createdWith, next)` throws
+`ReadonlySessionStateError` for a changed readonly field.
 
 ## Session retention policies
 

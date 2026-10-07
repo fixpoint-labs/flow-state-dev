@@ -404,6 +404,14 @@ export type SessionListOptions = {
    */
   parentage?: SessionParentage;
   /**
+   * Exact-match filter on top-level session-state fields: a record matches
+   * when, for every entry, its `state[field]` is that string. Absent applies
+   * no filter. The list route admits only the flow's readonly state fields,
+   * which are fixed for a session's life; an adapter filters in its query,
+   * never after it. Field names are plain identifiers.
+   */
+  state?: Readonly<Record<string, string>>;
+  /**
    * Sort key for the returned (and limited) set, descending (FIX-1010).
    *
    * - `"updatedAt"` (default) — today's behaviour, byte for byte.

@@ -71,6 +71,8 @@ await sessions.deleteSession(created.id);
 
 `updateSessionMetadata` changes only the fields you pass. `title`, `description` and `tags` are each replaced whole, so the call above leaves the session with the one tag `planning`. `metadata` is merged key by key: the keys you send are written over the stored ones, and the rest stay. [Session management](/docs/client/overview#session-management) covers the errors it throws.
 
+`createSession` also takes `state`, the new session's initial state. The flow's `stateSchema` parses it. On a flow with a readonly field or a `session.createCheck`, a state that doesn't fit the schema, or that the check refuses, fails the create. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
+
 ### `sessions.listSessions(options?)`
 
 List a flow's sessions.
@@ -91,6 +93,7 @@ const withRuns = await sessions.listSessions({
 | `userId` | `string` | Filter to one user. An authenticated caller always gets their own sessions only. |
 | `limit` / `offset` | `number` | Paging. |
 | `include` | `"dispatch-runs"` | Also return the sessions dispatchers ran work in. |
+| `state` | `Record<string, string>` | Only sessions whose readonly state fields hold these values. Needs `flowKind` or `flowId`; a field that isn't readonly on that flow is refused. Sent as `state.<field>=<value>`. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project). |
 
 Without `include`, the response holds the sessions a person started. With it, a
 row a dispatcher started carries `parentSessionId` — the session it was started

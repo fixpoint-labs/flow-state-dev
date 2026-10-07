@@ -21,6 +21,7 @@ import type { CASOptions } from "./state";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
+import type { SessionCreateCheck } from "./session-create";
 
 /** Legacy scope-keyed config alias preserved for type-internal usage. */
 export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
@@ -311,6 +312,14 @@ export type RetentionPolicy = {
  */
 export type SessionConfig = {
   metadata?: ZodTypeAny;
+  /**
+   * The session state's shape. A top-level field declared `.readonly()`
+   * (`z.object({ projectId: z.string().readonly() })`) is set when the session
+   * is created and never changes: a write that would change it is refused,
+   * whoever writes it. Readonly fields are also the only state fields the
+   * session listing filters by (`listSessions({ state: { ... } })`). Only a
+   * plain `z.object` at the top is read for them.
+   */
   stateSchema?: ZodTypeAny;
   cas?: CASOptions;
   /**
@@ -330,6 +339,22 @@ export type SessionConfig = {
    * integer; `0` or negative disables cross-turn history entirely.
    */
   historyWindow?: { turns: number };
+  /**
+   * Runs before a session of this flow is written, on every path that creates
+   * one: the create route, an action sent to a session id that does not exist
+   * yet, a webhook delivery, `fsdev run` and a dispatch into a child session.
+   * It receives the verified caller and the session's initial state, parsed
+   * through `stateSchema`, and accepts or refuses the create. A turn on an
+   * existing session never calls it.
+   */
+  createCheck?: SessionCreateCheck;
+  /**
+   * Session-state fields only this flow's code writes. A create that seeds one
+   * (the create route's `state`, `fsdev run --seed-session`) is refused with a
+   * 400 naming the field, and nothing is written. Blocks write them as any
+   * other session state.
+   */
+  serverOwned?: readonly string[];
 };
 
 export type RequestConfig = {

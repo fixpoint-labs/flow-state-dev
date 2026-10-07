@@ -92,11 +92,13 @@ import {
   dispatchThroughSeam,
   markDispatcher,
   resolveTaskFlowKind,
+  resolveTaskState,
   taskDispatchInputSchema,
   taskSessionKeyFor,
   type DispatchAddress,
   type SessionTarget,
   type TaskFlowTarget,
+  type TaskStateTarget,
   type TaskSessionPolicy
 } from "../types/dispatch";
 import { handler } from "./handler";
@@ -120,7 +122,10 @@ export type DispatchHandle = z.infer<typeof dispatchHandleSchema>;
  * - `key` — a child of the running session, derived from the returned key.
  *   Minted on first use, adopted after: the same key from the same parent lands
  *   on the same child, so a retry re-enters the work it started. Use a value
- *   that names the unit of work — a document id, an issue key.
+ *   that names the unit of work — a document id, an issue key. Add `state` for
+ *   the child's initial session state: the target flow's `stateSchema` parses
+ *   it and its `session.createCheck` judges it. A child that already exists
+ *   keeps its own.
  * - `id` — an existing session. Delivered into it when it exists and belongs
  *   to this principal on this flow; refused by name otherwise. Never created.
  * - `from: true` — the seam-stamped sender. The block names no session id;
@@ -128,7 +133,12 @@ export type DispatchHandle = z.infer<typeof dispatchHandleSchema>;
  *   reply, not `{ id: (input) => input.replyTo }`.
  */
 export type DispatcherSession<TInput> =
-  | { readonly key: (input: TInput, ctx: BlockContext) => string }
+  | {
+      readonly key: (input: TInput, ctx: BlockContext) => string;
+      readonly state?:
+        | Readonly<Record<string, unknown>>
+        | ((input: TInput, ctx: BlockContext) => Readonly<Record<string, unknown>>);
+    }
   | { readonly id: (input: TInput, ctx: BlockContext) => string }
   | { readonly from: true };
 
@@ -210,6 +220,14 @@ export interface TaskDispatcherConfig<TPayload = unknown> {
   flowKind?: string | TaskFlowTarget;
   /** Which child session each row runs in. See {@link TaskSessionPolicy}. */
   session: TaskSessionPolicy<TPayload>;
+  /**
+   * The initial session state each row's child session is created with: a
+   * fixed object, or `(task, ctx) => object`, looked up per task and handed
+   * the row's assignee, id and input. The target flow's `stateSchema` parses
+   * it and its `session.createCheck` judges it. A child that already exists
+   * keeps its own. See {@link TaskStateTarget}.
+   */
+  state?: Readonly<Record<string, unknown>> | TaskStateTarget;
   /** Hide this block's trace from clients. Default: false. */
   transient?: boolean;
 }
@@ -219,7 +237,18 @@ export type DispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny, TPayl
   | InternalDispatcherConfig<TInputSchema>
   | TaskDispatcherConfig<TPayload>;
 
-/** Build a dispatcher block. See the module header. */
+/**
+ * Build a dispatcher block. See the module header.
+ *
+ * The first signature takes an `internal` dispatcher that declares its
+ * `inputSchema`, ahead of the task one, so the session callbacks (`key`,
+ * `state`, `id`) are typed with that schema's input. TypeScript types a
+ * callback against the first signature it tries, and a task config's
+ * `(task: unknown)` would otherwise stick.
+ */
+export function dispatcher<TInputSchema extends ZodTypeAny>(
+  config: InternalDispatcherConfig<TInputSchema> & { inputSchema: TInputSchema }
+): BlockDefinition<TInputSchema, typeof dispatchHandleSchema>;
 export function dispatcher<TPayload = unknown>(
   config: TaskDispatcherConfig<TPayload>
 ): BlockDefinition<typeof taskDispatchInputSchema, typeof dispatchHandleSchema>;
@@ -286,11 +315,13 @@ export function dispatcher(
           `target hands each task over in a session of its own: declare \`session: "per-task"\`.`
       );
     }
+    const childState = (config as TaskDispatcherConfig).state;
     const address: DispatchAddress = {
       type: "task",
       action,
       session,
-      ...(flowKind !== undefined ? { flowKind } : {})
+      ...(flowKind !== undefined ? { flowKind } : {}),
+      ...(childState !== undefined ? { state: childState } : {})
     };
     const block = handler({
       ...common,
@@ -298,16 +329,14 @@ export function dispatcher(
       outputSchema: dispatchHandleSchema,
       execute: async (envelope, ctx): Promise<DispatchHandle> => {
         const key = taskSessionKeyFor(name, session, envelope, ctx);
-        const target = await resolveTaskFlowKind(
-          name,
-          address as Extract<DispatchAddress, { type: "task" }>,
-          { assignee: envelope.seat, taskId: envelope.taskId, input: envelope.payload },
-          ctx
-        );
+        const task = { assignee: envelope.seat, taskId: envelope.taskId, input: envelope.payload };
+        const taskAddress = address as Extract<DispatchAddress, { type: "task" }>;
+        const target = await resolveTaskFlowKind(name, taskAddress, task, ctx);
+        const initialState = await resolveTaskState(name, taskAddress, task, ctx);
         const outcome = await dispatchThroughSeam(ctx, {
           type: "task",
           action,
-          session: { key },
+          session: initialState === undefined ? { key } : { key, state: initialState },
           payload: envelope,
           from: name,
           provenance: { taskId: envelope.taskId },
@@ -368,7 +397,7 @@ function isTaskSessionPolicy(value: unknown): value is TaskSessionPolicy<any> {
 /**
  * `type` is optional. A task-board session policy (`"per-task"`,
  * `"per-worker"`, or a bare `{ key }` with no internal fields) makes a task
- * dispatcher. Everything else — including `{ key }` plus `inputSchema` / `payload`
+ * dispatcher. Everything else — including `{ key }` plus `state`, `inputSchema` or `payload`
  * — is `internal`.
  */
 function resolveDispatcherType(config: DispatcherConfig): string {
@@ -376,7 +405,7 @@ function resolveDispatcherType(config: DispatcherConfig): string {
   const session = config.session;
   if (session === "per-task" || session === "per-worker") return "task";
   if (typeof session === "object" && session !== null) {
-    if ("id" in session || "from" in session) return "internal";
+    if ("id" in session || "from" in session || "state" in session) return "internal";
     if (typeof (session as { key?: unknown }).key === "function") {
       const keyed = config as InternalDispatcherConfig;
       if (keyed.inputSchema != null || keyed.payload != null) return "internal";
@@ -408,7 +437,15 @@ function resolveSessionTarget<TInput>(
           `The key names the child session; return a value that identifies the unit of work.`
       );
     }
-    return { key };
+    if (session.state === undefined) return { key };
+    const state = typeof session.state === "function" ? session.state(input, ctx) : session.state;
+    if (typeof state !== "object" || state === null || Array.isArray(state)) {
+      throw new Error(
+        `[dispatcher] "${blockName}" computed a child session state that is not an object ` +
+          `(${JSON.stringify(state)}).`
+      );
+    }
+    return { key, state };
   }
   const id = session.id(input, ctx);
   if (typeof id !== "string" || id.length === 0) {

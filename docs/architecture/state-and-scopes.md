@@ -697,29 +697,48 @@ address again; and `get`-then-`set` lets a concurrent first action's loser
 overwrite the winner with a *different* id, stranding its shared writes at an
 address nothing reads.
 
-`ensureSessionRecord` (`context/ensure-session-record.ts`) is how a creator that
-**mints** satisfies both at once — it generates the id and writes `"absent"`, so
-the caller describes the record it wants, chooses neither the id nor the write
-predicate, and must use the record that comes back (on a lost race, the
-winner's, not its own). `createExecutionContext`, the CLI's `run`, and the
-webhook session resolver all go through it.
+Every creator goes through one function, `birthSession`
+(`context/session-birth.ts`). It parses the session's initial state through the
+flow's session `stateSchema` (on a flow that binds its sessions, with a
+`.readonly()` field or a `createCheck`, a state the schema refuses is refused;
+any other flow keeps it as sent, because the workforce mailbox creates
+sessions half-filled on purpose), runs the `serverOwned` refusal for caller-seeded state and the
+flow's `session.createCheck` on the parsed state, reclaims the id's resource-state tombstones (FIX-1258),
+mints the lineage id unless the caller derives one, and writes `"absent"`. The
+caller describes the record it wants and chooses only what a lost race means:
 
-Two creators satisfy the invariants without it, and neither is an oversight:
+- **`routes/session-routes.ts`** (the public create-session route) answers
+  `409`, because it owes the caller that answer rather than an adoption.
+- **`ensureSessionRecord`** (the action path in `createExecutionContext`, the
+  CLI's `run`, and the webhook session resolver) adopts the winner and must use
+  the record that comes back, not its own.
+- **`context/create-request-host.ts`** (the child-session path) supplies the
+  child's lineage itself, because a same-flow child inherits its parent's
+  **verbatim** rather than minting one, and runs `evaluateAdoption` on an
+  existing or racing record.
 
-- **`routes/session-routes.ts`** (the public create-session route) mints inline
-  and writes `"absent"` itself, because it owes the caller a `409` naming the
-  conflict rather than the helper's adopt-the-winner return.
-- **`context/create-request-host.ts`** (the child-session path) *cannot* use it.
-  `SessionRecordSeed` is `Omit<SessionRecord, "lineageId">`, so a caller is
-  structurally forbidden from supplying an id — and a child must inherit its
-  parent's **verbatim**, not mint a new one. It also runs `evaluateAdoption` on
-  a conflict, which the helper has no notion of.
+A check wired per call site would be open at the next path someone adds, so the
+check lives in the birth and the callers cannot skip it. The check runs on a
+miss only: a turn on an existing session, and a loser adopting a race's winner,
+never call it. A test in `session-birth.test.ts` fails if any other engine
+source writes a session record at `"absent"`.
 
-So the rule a third creator has to follow is the pair of invariants, not the
-helper. **A new creator on the child side that reaches for `ensureSessionRecord`
-mints a fresh lineage for a session that should have inherited one** — which
-silently splits a child session's shared resources away from the conversation
-that owns them.
+The lineage rule binds a new creator on the child side: **reaching for
+`ensureSessionRecord` there mints a fresh lineage for a session that should
+have inherited one**, which silently splits a child session's shared resources
+away from the conversation that owns them. Pass the inherited `lineageId` in
+the seed instead.
+
+**What a session is born with, it keeps, for its readonly fields.** A top-level
+session `stateSchema` field declared `.readonly()` (`getReadonlyStateKeys` in
+core's `helpers/zod-introspect.ts`, which reads zod 3 and zod 4 alike and finds
+none under a root that isn't a plain object) is fixed at birth. The session's
+state operations in `createExecutionContext` carry a guard that refuses any
+mutation changing one (`ReadonlySessionStateError`), so every block write path
+goes through it; `fsdev run --seed-session` refuses the same change before it
+writes. Because these fields cannot move, they are the only ones the list
+route filters on (`?state.<field>=<value>`), and each store filters in its
+query.
 
 **The testing helpers are outside this contract, and that costs coverage rather
 than correctness.** `createTestContext` and `testFlow` seed a session record

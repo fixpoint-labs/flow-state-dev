@@ -27,6 +27,7 @@ export {
   getZodObjectShape,
   getZodArrayElement,
   getZodInnerType,
+  getReadonlyStateKeys,
   compareZodSchemasStructurally,
   type ZodSchemaCompareResult,
 } from "./zod-introspect";

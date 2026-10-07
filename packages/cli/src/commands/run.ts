@@ -1,7 +1,17 @@
 /**
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
-import { createFlowRegistry, ensureSessionRecord, ownsRecord } from "@flow-state-dev/engine";
+import {
+  createFlowRegistry,
+  ensureSessionRecord,
+  ownsRecord,
+  ReadonlySessionStateError,
+  refuseReadonlyStateChange,
+  refuseServerOwnedState,
+  SessionCreateRefusedError,
+  type SessionRecord
+} from "@flow-state-dev/engine";
+import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
@@ -312,46 +322,100 @@ export async function executeRunCommand(
       options.seedSession !== undefined
         ? (parseSeedArg(options.seedSession, "session") as JsonObject)
         : undefined;
-    const existing = options.session !== undefined ? await stores.session.get(sessionId) : undefined;
-    if (existing !== undefined) {
-      if (!ownsRecord(flow, existing)) {
+    // A session this run did not create — found here, or created by another
+    // run between this one's read and its write — is checked the same way
+    // before anything runs on it: this flow's, this principal's, and, when a
+    // seed is given, one the seed may be written into (no server-owned field,
+    // no change to a readonly one).
+    const checkHeldSession = (held: SessionRecord): void => {
+      if (!ownsRecord(flow, held)) {
         throw new CliError(
-          `Session "${sessionId}" belongs to flow instance "${existing.flowId ?? existing.flowKind}", ` +
+          `Session "${sessionId}" belongs to flow instance "${held.flowId ?? held.flowKind}", ` +
             `not "${flow.id}"; nothing was written`,
           EXIT_INVALID_ARGS,
         );
       }
-      const refusal = checkSessionOwner(existing, sessionId, principal);
+      const refusal = checkSessionOwner(held, sessionId, principal);
       if (refusal !== undefined) throw new CliError(refusal, EXIT_INVALID_ARGS);
-    }
+      if (seedData === undefined) return;
+      try {
+        refuseServerOwnedState(flow, sessionId, seedData);
+        refuseReadonlyStateChange(
+          flow.kind,
+          sessionId,
+          getReadonlyStateKeys(flow.session?.stateSchema),
+          held.state,
+          { ...held.state, ...seedData },
+        );
+      } catch (err) {
+        if (err instanceof SessionCreateRefusedError || err instanceof ReadonlySessionStateError) {
+          throw new CliError(`${err.message} Nothing was written`, EXIT_INVALID_ARGS);
+        }
+        throw err;
+      }
+    };
+    const existing = options.session !== undefined ? await stores.session.get(sessionId) : undefined;
+    if (existing !== undefined) checkHeldSession(existing);
 
     if (!options.quiet) process.stderr.write(describePrincipal(principal, { org: options.org, user: options.user }) + "\n");
 
-    if (seedData !== undefined) {
-      if (existing !== undefined) {
+    if (existing !== undefined) {
+      if (seedData !== undefined) {
         await stores.session.set(sessionId, {
           ...existing,
           state: { ...existing.state, ...seedData },
           updatedAt: Date.now(),
         }, "any");
-      } else {
-        // One creation path (FIX-1068) — it mints the lineage id, which a
-        // seeded CLI session needs as much as any other.
-        await ensureSessionRecord(stores, sessionId, () => ({
-          id: sessionId,
-          flowKind: flow.kind,
-          flowId: flow.id,
-          // The identity the run below executes under, so the run accepts the
-          // record it seeded.
-          userId: principal.userId,
-          orgId: principal.orgId,
-          state: seedData,
-          version: 0,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          journal: [],
-        }));
       }
+    } else if (seedData !== undefined || flow.session?.createCheck !== undefined) {
+      // The one birth function: it parses the seed through the flow's state
+      // schema, refuses a seeded server-owned field, runs the flow's create
+      // check on what it parsed, and mints the lineage id (FIX-1068), which a
+      // seeded CLI session needs as much as any other. A flow that checks its
+      // creates is born here rather than by the run, so a refusal is this
+      // command's error, not a failed run.
+      const now = Date.now();
+      let held: SessionRecord;
+      try {
+        held = await ensureSessionRecord(
+          stores,
+          sessionId,
+          {
+            flow,
+            sessionId,
+            principal: { userId: principal.userId, orgId: principal.orgId },
+            ...(seedData !== undefined ? { state: seedData } : {}),
+            fromCaller: true,
+            via: "cli",
+          },
+          () => ({
+            id: sessionId,
+            flowKind: flow.kind,
+            flowId: flow.id,
+            // The identity the run below executes under, so the run accepts the
+            // record it seeded.
+            userId: principal.userId,
+            orgId: principal.orgId,
+            version: 0,
+            createdAt: now,
+            updatedAt: now,
+            journal: [],
+          }),
+        );
+      } catch (err) {
+        if (err instanceof SessionCreateRefusedError) {
+          const hint =
+            flow.session?.createCheck !== undefined && seedData === undefined
+              ? " Pass the session's initial state with --seed-session."
+              : "";
+          throw new CliError(`${err.message}${hint} Nothing was written`, EXIT_INVALID_ARGS);
+        }
+        throw err;
+      }
+      // A lost race returns the winner's record, which this run never
+      // checked: it may be another principal's, or created with another value
+      // for a readonly field than this run's seed.
+      checkHeldSession(held);
     }
 
     // 6. Resolve the effective model resolver. With a config, `--model` wraps

@@ -76,6 +76,23 @@ function request(id: string, overrides: Partial<RequestRecord> = {}): RequestRec
 }
 
 describe("SQLite list-option widenings", () => {
+  it("session state filter matches top-level string fields exactly, in the query", async () => {
+    const s = fresh();
+    await s.session.set("w1", session("w1", { state: { workerId: "researcher", n: 1 } }), "any");
+    await s.session.set("w2", session("w2", { state: { workerId: "editor" } }), "any");
+    await s.session.set("num", session("num", { state: { workerId: 7 } }), "any");
+    await s.session.set("none", session("none"), "any");
+
+    expect((await s.session.list({ state: { workerId: "researcher" } })).map((r) => r.id)).toEqual(["w1"]);
+    expect((await s.session.list({ state: { workerId: "7" } })).map((r) => r.id)).toEqual([]);
+    expect((await s.session.list({ state: { workerId: "nobody" } })).map((r) => r.id)).toEqual([]);
+    expect((await s.session.list({ userId: "alice" })).map((r) => r.id).sort()).toEqual([
+      "none",
+      "num",
+      "w1",
+      "w2"
+    ]);
+  });
   it("flowId filters sessions and requests to the exact owner, and a legacy NULL never matches", async () => {
     const s = fresh();
     await s.session.set("east", session("east", { flowKind: "review", flowId: "review-east" }), "any");

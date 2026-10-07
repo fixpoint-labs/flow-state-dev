@@ -38,6 +38,14 @@ export type {
 export { NoRequestHostError, requireRequestHost } from "./request-host";
 
 export type {
+  SessionCreateCheck,
+  SessionCreateCheckInput,
+  SessionCreateCheckResult,
+  SessionCreatePath,
+  SessionCreatePrincipal
+} from "./session-create";
+
+export type {
   BlockDispatchType,
   DispatchAddress,
   DispatchOutcome,
@@ -51,6 +59,7 @@ export type {
   TaskDispatchInput,
   TaskEntry,
   TaskFlowTarget,
+  TaskStateTarget,
   TaskSessionPolicy,
   TaskTargetQuery
 } from "./dispatch";
@@ -67,6 +76,7 @@ export {
   framed,
   readFramed,
   resolveTaskFlowKind,
+  resolveTaskState,
   taskDispatchInputSchema,
   taskSessionKeyFor
 } from "./dispatch";

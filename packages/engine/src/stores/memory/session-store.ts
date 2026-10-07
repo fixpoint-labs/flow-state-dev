@@ -17,6 +17,7 @@ import {
 import {
   matchesOrgFilter,
   matchesParentageFilter,
+  matchesStateFilter,
   matchesTenantFilter
 } from "../scope-keys";
 import { compareSessionsForListing } from "../list-order";
@@ -103,6 +104,10 @@ export class InMemorySessionStore implements SessionStore {
       }
 
       if (!matchesParentageFilter(options, record.parentSessionId)) {
+        return false;
+      }
+
+      if (!matchesStateFilter(options?.state, record.state)) {
         return false;
       }
 

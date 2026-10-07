@@ -73,6 +73,16 @@ export function createPostgresSessionStore(executor: QueryExecutor): SessionStor
       }
       // `"all"` emits no clause at all — today's unrestricted query, unchanged.
 
+      // State filter: an equality per readonly state field, read out of the
+      // stored JSONB in the query. The query is already narrowed by the
+      // indexed owner columns. The path is a bound parameter, so a field name
+      // can't change the statement.
+      for (const [field, value] of Object.entries(options?.state ?? {})) {
+        parts.push(`jsonb_typeof(data #> $${p}::text[]) = 'string' AND data #>> $${p}::text[] = $${p + 1}`);
+        params.push(["state", field], value);
+        p += 2;
+      }
+
       return { clause: parts.join(" AND "), params };
     },
     // FIX-1010: `createdAt` orders on two immutable columns so a session

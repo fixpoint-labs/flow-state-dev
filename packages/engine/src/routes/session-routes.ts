@@ -5,10 +5,12 @@ import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestActionResult, RequestRecord, SessionParentage, SessionRecord, StoreRegistry } from "../stores/types";
+import type { SessionRecordSeed } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
-import { purgeStaleResourceState } from "../context/ensure-session-record";
+import { birthSession, SessionCreateRefusedError } from "../context/session-birth";
+import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { resolveRecordOwner } from "../context/record-owner";
 import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
 import { isOrgAttributed } from "../context/org-attribution";
@@ -24,7 +26,8 @@ import {
   loadTenantSession,
   unknownSessionResponse,
   parseJsonBody,
-  refuseUnattributedRecord
+  refuseUnattributedRecord,
+  sessionCreateRefusedResponse
 } from "./route-utils";
 import {
   isSameSession,
@@ -138,6 +141,50 @@ async function ownResolverNamesAnotherCaller(
   return false;
 }
 
+/** The query parameters that filter the listing by session state. */
+const STATE_FILTER_PREFIX = "state.";
+
+/**
+ * Read `?state.<field>=<value>` off a listing request.
+ *
+ * Only a flow's readonly state fields are filterable: they are set when a
+ * session is created and never change, so a filter on one names sessions by
+ * something a run can't move. The flow is the one `flowId` or `flowKind`
+ * names; a state filter without one, or on any other field, is refused with
+ * a 400 rather than ignored, which would answer with the unfiltered list.
+ */
+function resolveStateFilter(
+  url: URL,
+  registry: FlowRegistry
+): { state?: Record<string, string> } | { error: string } {
+  const entries = [...url.searchParams.entries()].filter(([name]) => name.startsWith(STATE_FILTER_PREFIX));
+  if (entries.length === 0) return {};
+  const address = getString(url.searchParams.get("flowId")) ?? getString(url.searchParams.get("flowKind"));
+  const flow = address === undefined ? undefined : registry.get(address);
+  if (flow === undefined) {
+    return {
+      error:
+        "A state filter needs the flow whose readonly state fields it names: pass flowId, or " +
+        "the flowKind of a registered flow."
+    };
+  }
+  const readonly = new Set(getReadonlyStateKeys(flow.session?.stateSchema));
+  const state: Record<string, string> = {};
+  for (const [name, value] of entries) {
+    const field = name.slice(STATE_FILTER_PREFIX.length);
+    if (!readonly.has(field)) {
+      return {
+        error:
+          `Sessions of flow "${flow.kind}" can't be filtered by state field "${field}": only ` +
+          `readonly state fields are filterable` +
+          (readonly.size === 0 ? ", and this flow declares none." : ` (${[...readonly].join(", ")}).`)
+      };
+    }
+    state[field] = value;
+  }
+  return { state };
+}
+
 export async function handleListSessions(
   request: Request,
   _route: Extract<ParsedFlowRoute, { kind: "list_sessions" }>,
@@ -155,6 +202,8 @@ export async function handleListSessions(
     principal !== undefined && !(await ownResolverNamesAnotherCaller(ctx, principal))
       ? principal
       : undefined;
+  const stateFilter = resolveStateFilter(url, ctx.registry);
+  if ("error" in stateFilter) return jsonResponse(400, { error: stateFilter.error });
   const sessions = await ctx.stores.session.list({
     flowKind: getString(url.searchParams.get("flowKind")),
     // Exact owner: one instance of a collection flow. A record with no owner
@@ -185,6 +234,10 @@ export async function handleListSessions(
     // put there on purpose; the include is the only way past it, and it widens
     // parentage alone — never owner, tenant or organization.
     ...(include.parentage === undefined ? {} : { parentage: include.parentage }),
+    // Exact match on the flow's readonly state fields (`?state.<field>=`),
+    // taken as sent, never trimmed. A narrowing only: owner, organization and
+    // tenant are scoped above whatever it says.
+    ...(stateFilter.state === undefined ? {} : { state: stateFilter.state }),
     limit: getPositiveInteger(url.searchParams.get("limit")),
     offset: getPositiveInteger(url.searchParams.get("offset"))
   });
@@ -333,21 +386,13 @@ export async function handleCreateSession(
   //     terminal-status snapshot refresh.
   //  2. Block code that reads `ctx.session.state.foo` before any patch
   //     would observe `undefined` rather than the schema's default.
-  // Caller-supplied `body.state` overrides the defaults.
+  // Caller-supplied `body.state` overrides the defaults. The birth parses it;
+  // on a flow that binds its sessions it refuses one the schema refuses, and
+  // any other flow keeps it as sent.
   const callerState = asObject(body.state);
-  const stateSchema = flow.session?.stateSchema;
-  let initialState: JsonObject = (callerState ?? {}) as JsonObject;
-  if (stateSchema !== undefined) {
-    const parseResult = stateSchema.safeParse(callerState ?? {});
-    if (parseResult.success) {
-      initialState = parseResult.data as JsonObject;
-    }
-    // On schema-parse failure (caller supplied an invalid override), fall
-    // back to the caller's raw state — preserves prior behavior. Validation
-    // happens at action-execution time, not session-create time.
-  }
 
-  const record: SessionRecord = {
+  const orgId = ctx.principal?.orgId ?? DEFAULT_ORG_ID;
+  const build = (): SessionRecordSeed => ({
     // `id` is the tenant-namespaced storage key (FIX-682), consistent with the
     // session record created in `createExecutionContext`. The response surfaces
     // the bare id below.
@@ -367,55 +412,54 @@ export async function handleCreateSession(
     // which is the same condition that puts the whole app on `DEFAULT_ORG_ID` —
     // so that is what the session binds to, rather than binding to nothing and
     // becoming a record the reads then have to refuse.
-    orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID,
+    orgId,
     tenantId: ctx.tenantId,
     title: getString(body.title),
     description: getString(body.description),
     tags: asStringArray(body.tags),
     metadata: asObject(body.metadata),
-    state: initialState,
-    // Minted per record. Recreating a deleted id therefore yields a NEW
-    // lineage, which is what makes a surviving descendant of the old one keep
-    // its own address with nothing conjoined in to keep them apart (FIX-1068).
-    lineageId: generateId("lin"),
+    // `lineageId` is minted per record by the birth. Recreating a deleted id
+    // therefore yields a NEW lineage, which is what makes a surviving
+    // descendant of the old one keep its own address with nothing conjoined
+    // in to keep them apart (FIX-1068).
     version: 0,
     createdAt: now,
     updatedAt: now,
     journal: []
-  };
+  });
 
-  // This route does not go through `ensureSessionRecord` — it owes the caller a
-  // 409 on a lost race, which that helper resolves into an adoption instead —
-  // so it makes the same reclamation decision explicitly. `sessionId` is
-  // caller-supplied, so this may be the second session to live under it, and
-  // the first one's resource-state tombstones would otherwise brick every
-  // static resource here (FIX-1258).
-  //
-  // This read does NOT decide the create race — `"absent"` below still does,
-  // for the reason it always did: two requests can both pass an existence check
-  // and both write, and the loser would silently overwrite the winner. What it
-  // decides is whether to reclaim at all. A retried create against a session
-  // that plainly already exists must not reclaim that live session's
-  // tombstones, and answering 409 here keeps it from reaching one.
-  if ((await ctx.stores.session.get(record.id)) !== undefined) {
-    return jsonResponse(409, {
-      error: `Session "${sessionId}" already exists`
-    });
+  // Through the one birth function every new session record takes: it checks
+  // the create, reclaims the id's resource-state tombstones (FIX-1258) and
+  // writes create-if-absent. This route keeps one choice of its own: an id
+  // that already exists, or that another create took first, answers 409
+  // rather than adopting — it owes the caller that answer.
+  let outcome: Awaited<ReturnType<typeof birthSession>>;
+  try {
+    outcome = await birthSession(
+      ctx.stores,
+      sessionKey,
+      {
+        flow,
+        sessionId,
+        principal: { userId, orgId, ...(ctx.tenantId !== undefined ? { tenantId: ctx.tenantId } : {}) },
+        ...(callerState !== undefined ? { state: callerState } : {}),
+        fromCaller: true,
+        via: "create"
+      },
+      build
+    );
+  } catch (error) {
+    if (error instanceof SessionCreateRefusedError) return sessionCreateRefusedResponse(error);
+    throw error;
   }
-
-  // Before the create, so a failure leaves nothing committed for a retry to
-  // trip over. See `purgeStaleResourceState` for why this order and no other.
-  await purgeStaleResourceState(ctx.stores, record.id);
-
-  const created = await ctx.stores.session.set(record.id, record, "absent");
-  if (!created.ok) {
+  if (!outcome.born) {
     return jsonResponse(409, {
       error: `Session "${sessionId}" already exists`
     });
   }
 
   return jsonResponse(201, {
-    session: { ...record, id: sessionId }
+    session: { ...outcome.record, id: sessionId }
   });
 }
 

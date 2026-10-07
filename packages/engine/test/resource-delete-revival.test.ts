@@ -24,7 +24,7 @@ import {
   defineResourceCollection,
   handler
 } from "@flow-state-dev/core";
-import { ensureSessionRecord } from "../src/context/ensure-session-record";
+import { ensureSessionRecord } from "../src/context/session-birth";
 import { dispatchableFlow, spawnChild as dispatchChild } from "./context/seam-harness";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import {
@@ -297,7 +297,17 @@ describe("FIX-1258: a write after a delete does not revive the resource", () => 
     };
 
     await expect(
-      ensureSessionRecord(failing, "sess_ordering", () => ({
+      ensureSessionRecord(
+        failing,
+        "sess_ordering",
+        {
+          flow: { kind: "fix1258-revival", id: "fix1258-revival" },
+          sessionId: "sess_ordering",
+          principal: { userId: "user_1", orgId: DEFAULT_ORG_ID },
+          fromCaller: false,
+          via: "action"
+        },
+        () => ({
     orgId: DEFAULT_ORG_ID,
         id: "sess_ordering",
         flowKind: "fix1258-revival",
