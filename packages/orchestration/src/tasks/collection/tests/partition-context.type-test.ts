@@ -22,17 +22,17 @@ const tenantId: string | undefined = view.tenantId;
 
 // ── What it must not carry ──────────────────────────────────────────────────
 // @ts-expect-error — the parent block's input is caller input.
-view.parent;
+void view.parent;
 // @ts-expect-error — the sequencer's state ref carries `.input`.
-view.sequencer;
+void view.sequencer;
 // @ts-expect-error — the block's own state ref carries `.input`.
-view.self;
+void view.self;
 // @ts-expect-error — a target's state ref carries `.input`.
-view.getTarget;
+void view.getTarget;
 // @ts-expect-error — request state.
-view.request;
+void view.request;
 // @ts-expect-error — session state, which the public create persists from a caller.
-view.session;
+void view.session;
 
 // A partition function gets only this view.
 const byConversation: TaskPartitionFn = (ctx) => `${ctx.userId}/${ctx.sessionId}`;
