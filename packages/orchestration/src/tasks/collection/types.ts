@@ -446,6 +446,17 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   collectionId: string;
 
   /**
+   * The partition this ref reads and writes, on a ledger declared with
+   * `partitionBy`; absent on every other ledger.
+   *
+   * A ref over a partitioned ledger reaches only its partition's rows, for
+   * every operation. Exposed so a claim made through the ref can name the
+   * partition it was made in: a board's hand-off puts it on the dispatch, and
+   * the receiving gate reads the row there.
+   */
+  readonly partition?: string;
+
+  /**
    * The clock this collection stamps and judges leases against (FIX-1005).
    *
    * **Exposed because a lease is a comparison, and a comparison needs one

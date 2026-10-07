@@ -783,6 +783,7 @@ export function taskBoard<
     capability,
     backing,
     collectionDeclaration,
+    collectionInPartition,
     drainUses,
   } = binding;
 
@@ -899,6 +900,7 @@ export function taskBoard<
       name,
       boardId,
       collection: collectionFactory,
+      ...(collectionInPartition !== undefined ? { collectionInPartition } : {}),
       // The board's failure policy decides the child's outcome exactly as it
       // decides the drain's, so it is threaded rather than re-chosen.
       onError,
@@ -1027,7 +1029,13 @@ export function taskBoard<
         // guard compares against the ref's. Minting from the wrong one refuses
         // every write-back the board makes, so the board never drains.
         const boardCollection = await collectionFactory(ctx);
-        const ticket = ticketForClaim(boardCollection.collectionId, task);
+        // On a partitioned ledger the ticket names the partition the claim was
+        // taken in, so a hand-off can put it on the dispatch.
+        const ticket = ticketForClaim(
+          boardCollection.collectionId,
+          task,
+          boardCollection.partition
+        );
         // Stamped onto the body state so both recorders can scope their
         // write-back to the claim that produced it (FIX-951, retargeted by
         // FIX-981): a displaced attempt declines, and so does a write aimed at
@@ -1436,6 +1444,15 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
    * a handed-off board on them is already refused on `backing`.
    */
   collectionDeclaration?: DefinedTaskCollection;
+  /**
+   * Resolve the ledger at a named partition, for a ledger declared with
+   * `partitionBy`. The claim gate reads a dispatch's row through it, at the
+   * partition the dispatch names, never the one the child's own context would.
+   */
+  collectionInPartition?: (
+    ctx: BlockContext,
+    partition: string
+  ) => Promise<TaskCollectionRef<TInput, TOutput>>;
   drainUses?: readonly DefinedCapability[];
 }
 
@@ -1501,11 +1518,24 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
         collectionId,
         ledger: definedCollection,
       });
+    const partitioned = definedCollection.__taskCollection.partitionBy !== undefined;
     return {
       collectionFactory,
       collectionId,
       backing: "resource",
       collectionDeclaration: definedCollection,
+      ...(partitioned
+        ? {
+            collectionInPartition: (ctx: BlockContext, partition: string) =>
+              resolveResourceTaskCollection<TInput, TOutput>(ctx, {
+                boardName,
+                resourceKey,
+                collectionId,
+                ledger: definedCollection,
+                partition,
+              }),
+          }
+        : {}),
       capability: createTaskBoardCapability<TInput, TOutput, TName>({
         backing: "resource",
         boardName,

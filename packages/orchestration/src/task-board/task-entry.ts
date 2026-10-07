@@ -102,7 +102,7 @@ import {
   type TaskWorkerInput,
 } from "../tasks";
 
-/** The `task` envelope, re-exported from core: `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, payload }`. */
+/** The `task` envelope, re-exported from core: `{ boardId, seat, taskId, attempt, createdAt, incarnationId?, partition?, payload }`. */
 export { taskDispatchInputSchema };
 export type { TaskDispatchInput };
 
@@ -145,6 +145,14 @@ export interface TaskGateOptions {
    */
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   /**
+   * Resolve this board's ledger at a named partition, present exactly when the
+   * ledger keeps one set of rows per partition (`partitionBy`). The gate then
+   * reads each dispatch's row at the partition the dispatch names, the one the
+   * board claimed it in, and never calls `collection`: the child's own context
+   * names the child's partition, not the board's.
+   */
+  collectionInPartition?: (ctx: BlockContext, partition: string) => Promise<TaskCollectionRef>;
+  /**
    * The board's own resource declarations — the same `uses` the drain carries.
    * The entry is a second action root, not a step under the drain: a `task`
    * dispatch enters here directly, so nothing the drain installed is in scope.
@@ -170,13 +178,19 @@ export interface TaskGateOptions {
  * entry's own execution policy (`concurrency`, hooks) rides through untouched.
  */
 export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
-  const { boardId, collection } = options;
+  const { boardId, collection, collectionInPartition } = options;
   return buildTaskGate({
     ...options,
     // One board, one ledger: every dispatch this entry accepts names this
     // board (the input schema below refuses any other before the tap reads),
-    // so the ledger does not depend on the dispatch.
-    ledger: { kind: "board", boardId, collection },
+    // so the ledger does not depend on the dispatch, except for the partition
+    // a partitioned ledger was claimed in.
+    ledger: {
+      kind: "board",
+      boardId,
+      collection,
+      ...(collectionInPartition !== undefined ? { collectionInPartition } : {}),
+    },
   });
 }
 
@@ -192,8 +206,18 @@ export interface TaskLedgersOptions {
    * answer only for ledgers the running context may read: resolve against
    * `ctx`, never a process-wide map of every ledger. The row re-read on the
    * returned ledger is what authorizes the run, exactly as on a board's gate.
+   *
+   * `partition` is the partition the dispatch names, present when the sending
+   * board's ledger keeps one set of rows per partition (`partitionBy`): resolve
+   * the ledger at it (`getOrCreateTaskCollection({ ..., partition })`). It is
+   * read at the running user's scope, so it reaches only that user's rows, and
+   * a ledger resolved at any other partition is refused before a row is read.
    */
-  resolve: (ledgerId: string, ctx: BlockContext) => Promise<TaskCollectionRef | undefined>;
+  resolve: (
+    ledgerId: string,
+    ctx: BlockContext,
+    partition: string | undefined
+  ) => Promise<TaskCollectionRef | undefined>;
   /** Declarations the resolved ledgers need in scope (their resources). */
   uses?: readonly DefinedCapability[];
   /** The worker-failure policy, as on a board. Default `"skip"`. */
@@ -239,7 +263,12 @@ export function taskLedgers(options: TaskLedgersOptions): TaskBinding {
 
 /** Where a gate reads each dispatch's row: one board's ledger, or one resolved per dispatch. */
 type GateLedger =
-  | { kind: "board"; boardId: string; collection: (ctx: BlockContext) => Promise<TaskCollectionRef> }
+  | {
+      kind: "board";
+      boardId: string;
+      collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
+      collectionInPartition?: (ctx: BlockContext, partition: string) => Promise<TaskCollectionRef>;
+    }
   | { kind: "by-id"; resolve: TaskLedgersOptions["resolve"] };
 
 /**
@@ -256,31 +285,82 @@ function buildTaskGate(options: {
 }): TaskBinding["gate"] {
   const { name, boardId, ledger, uses, onError } = options;
 
+  // A board's ledger, at the partition the claim was taken in when it keeps
+  // one per partition. A partition named for a ledger that keeps none, or
+  // missing for one that does, is a dispatch this board's claim never made.
+  const boardLedgerAt = async (
+    board: Extract<GateLedger, { kind: "board" }>,
+    ctx: BlockContext,
+    taskId: string,
+    partition: string | undefined
+  ): Promise<TaskCollectionRef> => {
+    if (board.collectionInPartition === undefined) {
+      if (partition !== undefined) {
+        throw new StaleTaskClaimError(
+          taskId,
+          `it names partition "${partition}", but board "${boardId}" keeps no partitions`
+        );
+      }
+      return board.collection(ctx);
+    }
+    if (partition === undefined) {
+      throw new StaleTaskClaimError(
+        taskId,
+        `board "${boardId}" keeps its rows per partition, and the dispatch names none`
+      );
+    }
+    return board.collectionInPartition(ctx, partition);
+  };
+
   // The ledger a dispatch's row lives on. A resolver that does not answer is
   // a refusal decided before any row is read.
   const ledgerFor = async (ctx: BlockContext, dispatch: TaskDispatchInput): Promise<TaskCollectionRef> => {
-    if (ledger.kind === "board") return ledger.collection(ctx);
-    const resolved = await ledger.resolve(dispatch.boardId, ctx);
+    if (ledger.kind === "board") return boardLedgerAt(ledger, ctx, dispatch.taskId, dispatch.partition);
+    const resolved = await ledger.resolve(dispatch.boardId, ctx, dispatch.partition);
     if (resolved === undefined) {
       throw new UnknownTaskLedgerError(name, dispatch.taskId, dispatch.boardId);
+    }
+    return inPartition(resolved, dispatch.taskId, dispatch.boardId, dispatch.partition);
+  };
+
+  // The row read and settled is the one the hand-off named: a resolver that
+  // answered with another partition (or with a whole partitioned ledger) is
+  // refused before the read, and again before the recorders write.
+  const inPartition = (
+    resolved: TaskCollectionRef,
+    taskId: string,
+    ledgerId: string,
+    partition: string | undefined
+  ): TaskCollectionRef => {
+    if (resolved.partition !== partition) {
+      throw new StaleTaskClaimError(
+        taskId,
+        `it names partition ${JSON.stringify(partition ?? null)} of ledger "${ledgerId}", ` +
+          `and the resolver answered with ${JSON.stringify(resolved.partition ?? null)}`
+      );
     }
     return resolved;
   };
 
   // The recorders run after the tap, inside the same gate, and settle the
-  // claim the tap put on state. A board's ledger is constant; a resolved one is
-  // re-resolved from the ledger id the tap recorded beside the claim.
+  // claim the tap put on state. A board's ledger is constant up to the
+  // partition the claim names; a resolved one is re-resolved from the ledger
+  // id the tap recorded beside the claim.
   const collectionFactory = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
-    if (ledger.kind === "board") return ledger.collection(ctx);
+    const claim = ctx.sequencer!.state.currentClaim as TaskClaimTicket | undefined;
+    if (ledger.kind === "board") {
+      return boardLedgerAt(ledger, ctx, claim?.taskId ?? "(no claim)", claim?.partition);
+    }
     const ledgerId = ctx.sequencer!.state.currentLedger as string | undefined;
-    const resolved = ledgerId === undefined ? undefined : await ledger.resolve(ledgerId, ctx);
+    const resolved =
+      ledgerId === undefined ? undefined : await ledger.resolve(ledgerId, ctx, claim?.partition);
     if (resolved === undefined) {
       throw new Error(
         `[task-board] "${name}" cannot settle its claim: the ledger it was read from ` +
           `(${ledgerId === undefined ? "none recorded" : `"${ledgerId}"`}) no longer resolves.`
       );
     }
-    return resolved;
+    return inPartition(resolved, claim?.taskId ?? "(no claim)", ledgerId!, claim?.partition);
   };
 
   // The same recorders the inline drain composes, bound to this board's
@@ -393,7 +473,9 @@ function buildTaskGate(options: {
           // authority for it. It rides the state under the SAME key the drain's
           // worker body uses, so the shipped recorders settle this row without a
           // second implementation of the fence.
-          const ticket = ticketForClaim(board.collectionId, held);
+          // On a partitioned ledger it names the partition the row was read
+          // in, which is where the recorders below settle it.
+          const ticket = ticketForClaim(board.collectionId, held, board.partition);
 
           // THE RUN LINK (FIX-1668): this run names itself on the row. Only
           // the run knows which session it landed in, so the coordinate comes
@@ -529,7 +611,7 @@ async function adoptLapsedLease(
     row.id,
     board.now() + span,
     {
-      claim: ticketForClaim(board.collectionId, row),
+      claim: ticketForClaim(board.collectionId, row, board.partition),
       adoptLapsedLease: true,
     }
   );

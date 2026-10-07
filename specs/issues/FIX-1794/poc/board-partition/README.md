@@ -4,6 +4,12 @@ An experiment retained as evidence for [FIX-1794](../../SPEC.md)'s
 [D1](../../DECISIONS.md#d1). Not production code: nothing imports it, it has no package manifest,
 and it is outside default build, test, lint and knip discovery ([specs/README.md](../../../../README.md)).
 
+**Promoted.** The partitioned ledger D1 asked for shipped in FIX-1794's first PR, and U1, E1
+and X1 run against it in default CI as
+`packages/orchestration/test/task-board/hand-off-cross-flow.test.ts` ("a ledger kept per
+conversation"), with U1 green and E1's read and wake closed. This POC stays as the record of
+the unpartitioned behaviour that motivated it.
+
 ## The question
 
 A lineage stops at a flow (the [epic POC](../../../../epics/FIX-1786/poc/singleton-worker-link/README.md),

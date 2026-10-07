@@ -78,6 +78,30 @@ pass, such as `ctx.sequencer` for one board invocation. `backing: "resource"` ou
 request: a user's queue, an org work pool, declared with `defineTaskCollection`. Every
 mutation that changes a field emits a `task-change` component item.
 
+**A ledger per partition.** A `user`-scoped collection can take a `partitionBy`
+function, keeping one set of rows per partition at the user's scope:
+
+```ts
+const work = defineTaskCollection({
+  id: "work",
+  scope: "user",
+  partitionBy: ({ sessionId }) => conversationKey(sessionId), // from data only the server writes
+});
+```
+
+A board over it resolved in one session reads, claims, waits on and settles only the
+partition that session's context names, and so do its task tools. That is how each
+conversation keeps a board of its own whose rows a task entry on another flow still
+works: the user scope crosses the flow, and a board's hand-off puts the partition on
+the dispatch, so the receiving gate reads the row there (a `taskLedgers` resolver gets
+it as its third argument; pass it to `getOrCreateTaskCollection({ partition })`).
+Return a value no caller can set, and one minted per owner: a session id alone is
+reused when a session is deleted and created again. The function gets only the
+running session's server-set identity (`{ sessionId, userId, orgId?, tenantId? }`),
+nothing a caller supplies; it may be async, to look up a value the server keeps by
+that id. Task ids on a partitioned ledger are one
+path segment, and `maxInstances` is refused, since it would count every partition.
+
 **Server-only task fields.** A `task-change` item carries the whole post-mutation
 row, and that stream is client-visible. A few fields on `Task` are substrate
 bookkeeping that must not reach a browser — `claimedBy`, the execution coordinate a
@@ -471,9 +495,13 @@ Each entry carries `kind` (`"named"` or `"floor"`) to branch on; `label` is for 
 **An entry served by many boards.** `taskLedgers({ name, resolve, uses?, onError?,
 allowSessionState? })` returns a `TaskBinding` to pass as a task entry's `from`.
 The entry then needs no board in its flow, and takes tasks from any board whose
-ledger `resolve(ledgerId, ctx)` returns (`Promise<TaskCollectionRef | undefined>`).
+ledger `resolve(ledgerId, ctx, partition)` returns (`Promise<TaskCollectionRef | undefined>`).
 The ledger id is the `boardId` the sending board hands off under, so a board over a
-shared ledger sets `boardId` to the ledger's id. An id `resolve` doesn't answer for
+shared ledger sets `boardId` to the ledger's id. `partition` is the partition the
+dispatch names when the sender's ledger keeps one per partition (`partitionBy`), and
+`undefined` otherwise. Pass it through to `getOrCreateTaskCollection({ partition })`:
+the gate refuses a ledger resolved at any other partition, both before it reads the
+row and again before its recorders settle it. An id `resolve` doesn't answer for
 throws `UnknownTaskLedgerError` (`code: "unknown-task-ledger"`, carrying `entry`,
 `taskId`, `ledgerId`) before any row is read; otherwise every check below runs on
 that ledger. The id arrives on the dispatch, so resolve it against `ctx`, never from
@@ -487,11 +515,18 @@ task: {
       block: review,
       from: taskLedgers({
         name: "review-queues",
-        resolve: async (ledgerId, ctx) => {
+        resolve: async (ledgerId, ctx, partition) => {
           const collection = resolveResourceCollection(ctx, ledgerId);
           return collection === undefined
             ? undefined
-            : getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: ledgerId, collection });
+            : getOrCreateTaskCollection({
+                ctx,
+                backing: "resource",
+                collectionId: ledgerId,
+                collection,
+                // Present for a partitioned sender; read at the running user's scope.
+                ...(partition !== undefined ? { partition } : {}),
+              });
         },
       }),
     },
@@ -500,7 +535,7 @@ task: {
 ```
 
 The `task` dispatch carries the claim's identity (`boardId`, `taskId`, `attempt`,
-`createdAt`, `incarnationId`) and the worker input the drain packed at claim time —
+`createdAt`, `incarnationId`, and `partition` on a partitioned ledger) and the worker input the drain packed at claim time —
 `taskDispatchInputSchema` / `TaskDispatchInput`. That input has to be
 JSON-serializable; a payload that is not fails the row in the drain. When the dispatch
 arrives, the entry re-reads the row and runs the worker only if the claim is still
@@ -530,7 +565,9 @@ board and the fix:
   request that claimed it.
 - **A session-scoped collection declares `sharedToLineage: true`**, or the child
   would resolve an empty ledger and never find its row. `user` and `org` scope need
-  nothing extra; they already span every session the principal touches.
+  nothing extra; they already span every session the principal touches. To hand
+  rows to another flow and still keep a board per session, use a partitioned
+  `user`-scoped collection (`partitionBy`, above).
 
 `defineFlow` adds one more: **no handed-off entry block declares
 `sessionStateSchema`**, at its root or in a composed child. Keep the block's

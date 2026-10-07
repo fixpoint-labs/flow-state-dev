@@ -192,6 +192,12 @@ export const taskDispatchInputSchema = z.object({
    * sides carry one (BP-030).
    */
   incarnationId: z.string().optional(),
+  /**
+   * The partition the claim was taken in, when the board's ledger keeps one
+   * set of rows per partition. The gate reads the row there, at the running
+   * user's scope; absent for every other ledger.
+   */
+  partition: z.string().min(1).optional(),
   /** The materialized worker input, packed at claim time. */
   payload: z.unknown()
 });

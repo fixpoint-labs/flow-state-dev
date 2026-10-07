@@ -30,6 +30,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import { taskSchema } from "../schema/task";
+import type { TaskPartitionFn } from "./partition";
 import { assertSafeCollectionId } from "./safe-key";
 
 /**
@@ -48,7 +49,11 @@ export function taskEnvelopeSchema(inputSchema: ZodTypeAny): ZodTypeAny {
  * literal id.
  */
 export type DefinedTaskCollection = DefinedResourceCollection & {
-  readonly __taskCollection: { readonly id: string };
+  readonly __taskCollection: {
+    readonly id: string;
+    /** Present when the ledger keeps one set of rows per partition. */
+    readonly partitionBy?: TaskPartitionFn;
+  };
 };
 
 export interface DefineTaskCollectionOptions<
@@ -74,6 +79,22 @@ export interface DefineTaskCollectionOptions<
    */
   sharedToLineage?: boolean;
   /**
+   * Keep one set of rows per partition, at the owner's user scope: a ref
+   * resolved in a running context reads and writes only the partition this
+   * function names for it. Use it for a board kept per conversation whose rows
+   * a task entry on another flow works: the user scope crosses the flow, and
+   * the partition keeps each conversation's board its own. A board's hand-off
+   * carries the partition it claimed in, so the receiving entry reads the row
+   * there and never calls this function itself.
+   *
+   * Return a non-empty string from data only the server writes. The function
+   * gets the running session's server-set identity (`sessionId`, `userId`,
+   * `orgId`, `tenantId`) and nothing a caller supplies. `user` scope
+   * only, and not with `maxInstances`, whose cap would count every partition's
+   * rows. A partitioned ledger's task ids are one path segment (no `/`).
+   */
+  partitionBy?: TaskPartitionFn;
+  /**
    * Schema for each task's `input` payload. Optional; defaults to
    * `z.unknown()`. This is the typed payload a worker receives, not the whole
    * task — the rest of the `Task` envelope is validated automatically.
@@ -92,6 +113,7 @@ export function defineTaskCollection<
   options: DefineTaskCollectionOptions<TInputSchema>
 ): DefinedTaskCollection {
   assertSafeCollectionId(options.id);
+  if (options.partitionBy !== undefined) assertPartitionable(options);
 
   // Type the envelope as a bare `ZodTypeAny` before handing it to
   // `defineResourceCollection` so the extended `taskSchema` doesn't inflate the
@@ -118,8 +140,38 @@ export function defineTaskCollection<
   });
 
   return Object.assign(collection, {
-    __taskCollection: { id: options.id },
+    __taskCollection: {
+      id: options.id,
+      ...(options.partitionBy !== undefined ? { partitionBy: options.partitionBy } : {}),
+    },
   }) as unknown as DefinedTaskCollection;
+}
+
+/**
+ * Refuse a `partitionBy` the ledger cannot honour, at definition.
+ *
+ * `user` scope only: that is the scope that crosses a flow and holds one
+ * owner's rows, which is what a partition narrows. `maxInstances` is refused
+ * because the resource layer counts it across the whole namespace, so one
+ * partition's add would be refused, or would evict a row, by another's.
+ */
+function assertPartitionable(options: DefineTaskCollectionOptions): void {
+  const where = `[tasks] defineTaskCollection "${options.id}"`;
+  if (typeof options.partitionBy !== "function") {
+    throw new Error(`${where}: partitionBy must be a function of the running context`);
+  }
+  if (options.scope !== "user") {
+    throw new Error(
+      `${where}: partitionBy keeps one set of rows per partition at the owner's user scope, ` +
+        `so the collection must be scope: "user" (got "${options.scope}").`
+    );
+  }
+  if (options.maxInstances !== undefined) {
+    throw new Error(
+      `${where}: partitionBy cannot be combined with maxInstances, which counts every ` +
+        `partition's rows, so one partition's add would be refused or evict a row by another's.`
+    );
+  }
 }
 
 /**
