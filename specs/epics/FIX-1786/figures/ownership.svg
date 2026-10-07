@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 528" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: twelve cross-cutting rules by the nine refactor children and the closure, each rule with exactly one decides or builds cell. ER-1, a worker is a user-scoped resource: FIX-1788 decides; FIX-1791 consumes; FIX-1795 consumes; FIX-1792 consumes; FIX-1797 checks. ER-2, only registered worker flows run workers: FIX-1789 decides; FIX-1788 consumes; FIX-1791 consumes; FIX-1797 checks. ER-3, user data kept per (user, org): FIX-1790 builds; FIX-1788 consumes; FIX-1793 consumes; FIX-1797 checks. ER-4, delegates: session state, same roster: FIX-1791 decides; FIX-1793 consumes; FIX-1794 consumes; FIX-1792 consumes; FIX-1797 checks. ER-5, no re-route loops · one answer · a record: FIX-1791 builds; FIX-1797 checks. ER-6, WORKER.md only; MAILBOX.md refused: FIX-1792 decides; FIX-1796 consumes. ER-7, projects private or shared; owner writes: FIX-1793 decides; FIX-1794 consumes; FIX-1797 checks. ER-8, a project coordinator per user; no rooms: FIX-1793 builds; FIX-1797 checks. ER-9, a chain runs as the owner of the work: FIX-1794 decides; FIX-1793 consumes; FIX-1792 consumes; FIX-1797 checks. ER-10, a library copy never changes under you: FIX-1795 decides. ER-11, shared writes name user and worker: FIX-1789 decides; FIX-1793 consumes; FIX-1795 consumes. ER-12, no retired term left: FIX-1796 builds; FIX-1797 checks. ER-13 onward are fences and process that bind every child alike, outside the matrix.">
+     aria-label="Who owns what: twelve cross-cutting rules by the nine refactor children and the closure, each rule with exactly one decides or builds cell. ER-1, a worker is a user-scoped resource: FIX-1788 decides; FIX-1791 consumes; FIX-1795 consumes; FIX-1792 consumes; FIX-1797 checks. ER-2, only registered worker flows run workers: FIX-1789 decides; FIX-1788 consumes; FIX-1791 consumes; FIX-1797 checks. ER-3, user data kept per (user, org): FIX-1790 builds; FIX-1788 consumes; FIX-1793 consumes; FIX-1797 checks. ER-4, delegates: session state, same roster: FIX-1791 decides; FIX-1793 consumes; FIX-1794 consumes; FIX-1792 consumes; FIX-1797 checks. ER-5, no re-route loops · one answer · a record: FIX-1791 builds; FIX-1797 checks. ER-6, WORKER.md only; every file converted: FIX-1792 decides; FIX-1796 consumes. ER-7, projects private or shared; owner writes: FIX-1793 decides; FIX-1794 consumes; FIX-1797 checks. ER-8, a project coordinator per user; no rooms: FIX-1793 builds; FIX-1797 checks. ER-9, a chain runs as the owner of the work: FIX-1794 decides; FIX-1793 consumes; FIX-1792 consumes; FIX-1797 checks. ER-10, a library copy never changes under you: FIX-1795 decides. ER-11, shared writes name user and worker: FIX-1789 decides; FIX-1793 consumes; FIX-1795 consumes. ER-12, no retired term left: FIX-1796 builds; FIX-1797 checks. ER-13 onward are fences and process that bind every child alike, outside the matrix.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -92,7 +92,7 @@
   <g id="er-6">
     <line class="row" x1="16" y1="244" x2="924" y2="244"/>
     <text class="t-id" x="16" y="265">ER-6</text>
-    <text class="t-r" x="60" y="265">WORKER.md only; MAILBOX.md refused</text>
+    <text class="t-r" x="60" y="265">WORKER.md only; every file converted</text>
     <rect class="own" x="753" y="251" width="53" height="20" rx="3"/><text class="t-own" x="779.5" y="265" text-anchor="middle">decides</text>
     <rect class="use" x="810" y="251" width="53" height="20" rx="3"/><text class="t-use" x="836.5" y="265" text-anchor="middle">consumes</text>
   </g>
@@ -143,6 +143,6 @@
   </g>
   <g id="footer">
     <line class="row" x1="16" y1="482" x2="924" y2="482"/>
-    <text class="t-lbl" x="16" y="506">solid green: decides or builds · blue: consumes, never re-decides · dashed: checks · ER-13 to ER-29 bind every child, outside the matrix</text>
+    <text class="t-lbl" x="16" y="506">solid green: decides or builds · blue: consumes, never re-decides · dashed: checks · ER-13 onward bind every child, outside the matrix</text>
   </g>
 </svg>

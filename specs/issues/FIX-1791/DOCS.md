@@ -31,7 +31,8 @@ It is the second worker flow a reader meets. Front matter `sidebar_label: Coordi
 > | `everyone` | Every delegate |
 >
 > With `best-fit`, set a `fallback:` delegate for a post the call can't place. If there is none,
-> the post isn't handed to anyone, and the conversation says so.
+> the coordinator reads the post and decides itself, as under `judgment`. Only if that fails too
+> is the post handed to no one, and the conversation says so.
 >
 > ```md title="workforce/teams/support/workers/help/WORKER.md"
 > ---
@@ -70,8 +71,9 @@ It is the second worker flow a reader meets. Front matter `sidebar_label: Coordi
 > coordinator who its delegates are and it reads the list; it doesn't guess.
 >
 > Removing a delegate doesn't take back what it was already handed, and you can remove one
-> even after it was fired. If you remove the `fallback:` delegate, best fit has no fallback in
-> that conversation until you set one with `setFallback`, which takes any delegate on the list.
+> even after it was fired. If you remove the `fallback:` delegate, best fit falls back to the
+> coordinator's own judgment in that conversation until you set one with `setFallback`, which
+> takes any delegate on the list.
 >
 > ## Letting delegates answer each other
 >

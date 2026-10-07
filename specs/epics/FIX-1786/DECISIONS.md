@@ -4,7 +4,10 @@
 
 The calls above any single issue. D1 is the sign-off surface. This epic runs under `epic-em`:
 D2 to D5 are engineering calls I made and record here, with what would reverse each. D6 is
-FIX-1794's D1, approved at its spec gate and recorded here because it changes the task board. Jake
+FIX-1794's D1, approved at its spec gate and recorded here because it changes the task board. D7
+is FIX-1796's D4, recorded here because it renames a Layer 1 public name. D8 and D9 are the
+product owner's calls: D8 brings FIX-1802 into the set, and its grant was made exact on
+2026-10-07; D9, the same day, takes backwards support out of every child. Jake
 answered Q1 to Q3 on 2026-10-06, and no child reopens them. All three are decided: Q1's shape,
 the list, was chosen at FIX-1789's spec gate on its POC and is recorded here. The
 model itself (workers as resources, delegates in session state, rooms removed, the vocabulary)
@@ -18,12 +21,18 @@ flowchart TD
   D1 -.->|"rejected"| X1["rename only · or fix privacy in place"]
   E --> D2["D2 · one coordinator flow, a routing setting"]
   D2 -.->|"rejected"| X2["coordinator and relay"]
-  E --> D3["D3 · four Layer 1 changes, the rest Layer 2"]
+  E --> D3["D3 · five Layer 1 mechanism changes and a rename, the rest Layer 2"]
   D3 -.->|"rejected"| X3["an engine rule on org-scope writes"]
   E --> D4["D4 · contract and org keys first, terms last"]
   E --> D5["D5 · a board is a session board unless people track it"]
   E --> D6["D6 · a board's rows at its owner's user scope, one partition per conversation"]
   D6 -.->|"rejected"| X6["one ledger per owner · a claim filter in Workforce"]
+  E --> D7["D7 · the discovery domain seats becomes workers; a board keeps seat"]
+  D7 -.->|"rejected"| X7["seats pinned as a model-facing name · an alias"]
+  E --> D8["D8 · a worker whose delegates take tasks gets the task tools · the split is in the MVP"]
+  D8 -.->|"reversed"| X8["filing makes a coordinator · the split after the MVP · a filing flag"]
+  E --> D9["D9 · no backwards support while there are no consumers"]
+  D9 -.->|"rejected"| X9["operator steps · dual-reads · refusals by name · upgrade pages"]
   E --> Q1["Q1 · decided · the list the installation keeps"]
   Q1 -.->|"rejected"| XQ1["a defineWorkerFlow wrapper"]
   E --> Q2["Q2 · decided · private projects are in"]
@@ -37,12 +46,12 @@ flowchart TD
 |---|---|
 | **Instead of** | Rename only (FIX-1796 alone) · or fix privacy in place: keep hires, mailboxes and rooms, and narrow the org-locked hire and the boards |
 | **Because** | A rename keeps the hole: an org-locked hire still reaches every member, and a drain still runs as whoever triggers it. A fix in place keeps six parts and three meanings of "shared", and each fix is a special case on a part the target model deletes. The inventory comes first because FIX-1763's mailbox children are in flight; starting under them makes each one a rebase |
-| **Locks in** | A refactor across Workforce, the engine and the task board (four changes, [D3](#d3)), Shift Manager and the docs. Implementation waits on FIX-1787's merge-first rows. Work built on hires, mailboxes and rooms merges first and is refactored here, or closes |
+| **Locks in** | A refactor across Workforce, the engine, the task board and discovery's domain list (five mechanism changes and one public rename, [D3](#d3)), Shift Manager and the docs. Implementation waits on FIX-1787's merge-first rows. Work built on hires, mailboxes and rooms merges first and is refactored here, or closes. [D8](#d8) later added a tenth refactor child, FIX-1802 |
 
 **What would change my mind:** no app needing a second user or a worker of its own this year.
 Then fix the hole in place and rename later.
 
-![D1: nine children after the inventory, chosen, beside rename only and fixing privacy in place. Decides it: the model a reader learns, one rule against six parts. The price: nine issues and four Layer 1 changes. Flips if no app needs a second user or its own worker this year](figures/d1-the-set.svg)
+![D1: nine children after the inventory, chosen, beside rename only and fixing privacy in place. Decides it: the model a reader learns, one rule against six parts. The price: nine issues, five mechanism changes (the fifth T1, the task tools' roster read per call) and one public rename (D7). Flips if no app needs a second user or its own worker this year](figures/d1-the-set.svg)
 
 It comes down to the model a reader learns: both cheaper options keep the six parts.
 
@@ -60,13 +69,13 @@ session shape for more than half the flow. Then split it, with the delegate chec
 answer record in one shared module.
 
 <a name="d3"></a>
-## D3 · engineering · Workforce stays Layer 2; Layer 1 changes are four
+## D3 · engineering · Workforce stays Layer 2; Layer 1 changes are five mechanisms and one rename
 
 | | |
 |---|---|
 | **Instead of** | A Layer 1 worker noun with its own store · or per-org user keys faked inside Workforce · or an engine rule refusing a worker flow's writes to org scope (FIX-1789's Q2) |
-| **Because** | Workers, coordinators and workstreams compose what ships: resources, scopes, sessions, projected collections, boards. Four things Workforce cannot fake: a scope key, a row rule, session state a caller can't write, and a task ledger kept per conversation ([D6](#d6)). [The end-state POC](#what-the-end-state-poc-showed) settled the third: the public create persists a caller's session state, so a link held there accepts the caller's own other worker, and a row only flow code writes outlives a deleted session id. No engine rule on org-scope writes (Jake, 2026-10-06): org scope is shared with the org by design, a worker flow may write there if that is how it is built to work, and the framework can't know when org data is relevant. The built-in worker flows, `agent` and the coordinator, keep a worker's own state out of it; a custom worker flow's privacy is its author's, and the contract doesn't check it ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
-| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change whose old records move to one org by an operator step, never read in two ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session data only the server writes. The worker link takes the form this card's *what would change my mind* anticipated: a server-only field on the session record, set and checked when the session is created, never on a turn; a session's worker can't change, and no action names a worker (Jake, 2026-10-06, on FIX-1788's spec). A coordinator's delegates are held where only the server writes too, and the public create can't seed them. FIX-1788 picks the mechanism and builds it, FIX-1791 consumes it. Flow instances and owner pins get deprecation markers, nothing more. A worker's own key for its private state is Layer 2, FIX-1788's, and so is reading a worker's configuration per run: a generator already resolves its tools per call ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). (4) A task ledger kept per conversation, FIX-1794, a change to the task board that leaves the engine untouched ([D6](#d6)). Any other Layer 1 change comes back to this epic |
+| **Because** | Workers, coordinators and workstreams compose what ships: resources, scopes, sessions, projected collections, boards. Five things Workforce cannot fake: a scope key, a row rule, session state a caller can't write, a task ledger kept per conversation ([D6](#d6)), and task tools that read their roster per call, since an action is fixed when it is defined ([D8](#d8), T1). The sixth is a name, not a mechanism: discovery's `seats` domain, a `contracts` constant, becomes `workers` ([D7](#d7)). So `contracts` still names one Workforce domain, as it named `seats` before; whether Layer 1 keeps that closed list is [FIX-1803](https://linear.app/fixpoint-labs/issue/FIX-1803), FIX-1575's open question. [The end-state POC](#what-the-end-state-poc-showed) settled the third: the public create persists a caller's session state, so a link held there accepts the caller's own other worker, and a row only flow code writes outlives a deleted session id. No engine rule on org-scope writes (Jake, 2026-10-06): org scope is shared with the org by design, a worker flow may write there if that is how it is built to work, and the framework can't know when org data is relevant. The built-in worker flows, `agent` and the coordinator, keep a worker's own state out of it; a custom worker flow's privacy is its author's, and the contract doesn't check it ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Locks in** | (1) user data keyed per (user, org) for every flow, FIX-1790, a persisted key change whose old records are dropped, never read in any org ([D9](#d9), [ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); (2) "owner writes, org reads" on a row, FIX-1793, new work the 2026-09-23 security lock left for later; (3) session data only the server writes. The worker link takes the form this card's *what would change my mind* anticipated: a server-only field on the session record, set and checked when the session is created, never on a turn; a session's worker can't change, and no action names a worker (Jake, 2026-10-06, on FIX-1788's spec). A coordinator's delegates are held where only the server writes too, and the public create can't seed them. FIX-1788 picks the mechanism and builds it, FIX-1791 consumes it. Flow instances and owner pins stay in the engine untouched, with no deprecation markers, until FIX-1798 removes them ([D9](#d9)). A worker's own key for its private state is Layer 2, FIX-1788's, and so is reading a worker's configuration per run: a generator already resolves its tools per call ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). (4) A task ledger kept per conversation, FIX-1794, a change to the task board that leaves the engine untouched ([D6](#d6)). (5) T1, orchestration's task tools reading their roster per call, FIX-1794 as amended in [#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839): generic, naming no worker or delegate ([D8](#d8)). And one public rename: discovery's `seats` domain becomes `workers` in `MANIFEST_DOMAINS`, FIX-1796, with no alias ([D7](#d7)). Any other Layer 1 change comes back to this epic |
 
 **What would change my mind:** a second consumer of a worker outside Workforce. Then a worker
 noun in core earns its place.
@@ -87,7 +96,7 @@ noun in core earns its place.
 |---|---|
 | **Instead of** | One rule per file type (every lab board a workstream) · or keeping an org-scoped board as a third shape |
 | **Because** | An org-scoped board is the shape this epic removes: any member's session drains it, and the session's user doesn't narrow it. A session board is private and needs no project; a workstream costs a project. So FIX-1792 asks one question per board: does the work outlive one conversation, and does a person track it? Yes makes it a workstream; otherwise, and when unclear, a session board. Goal fixtures that test board mechanics become session boards |
-| **Locks in** | FIX-1792 waits on FIX-1793 for the workstream option. The per-board table is FIX-1792's spec. A session board that hands rows to a delegate on another flow can't be shared down the lineage, which stops at a flow, and still stays its own board: never one ledger for all its owner's sessions. [D6](#d6) is how ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Locks in** | FIX-1792 waits on FIX-1793 for the workstream option and on FIX-1802 ([D8](#d8)). The per-board table is FIX-1792's spec; the DevTeam's feature board is a workstream on storefront, led by its EM, an ordinary worker whose delegates take tasks, so it has the task tools ([D8](#d8)). A session board that hands rows to a delegate on another flow can't be shared down the lineage, which stops at a flow, and still stays its own board: never one ledger for all its owner's sessions. [D6](#d6) is how ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 <a name="d6"></a>
 ## D6 · A board keeps its tasks at its owner's user scope, in a partition only its own conversation reaches
@@ -105,6 +114,60 @@ board ([ER-22](BUSINESS-RULES.md#what-no-child-may-do), [ER-24](BUSINESS-RULES.m
 **What would change my mind:** the engine gaining a seam that settles, renews and parks one row
 in another session, for its own reasons. Then the board stays in its session, and the partition
 is dropped before it ships.
+
+<a name="d7"></a>
+## D7 · The discovery domain `seats` becomes `workers`; a task board keeps "seat"
+
+From FIX-1796's spec gate ([#2832](https://github.com/fixpoint-labs/flow-state-dev/pull/2832),
+[its D4](../../issues/FIX-1796/DECISIONS.md#d4)), recorded here because `MANIFEST_DOMAINS` in
+`packages/contracts/src/types/manifest.ts` is a Layer 1 public name, which binds the set only
+once the epic records it ([ER-22](BUSINESS-RULES.md#what-no-child-may-do), [ER-24](BUSINESS-RULES.md#how-the-set-is-run)).
+
+| | |
+|---|---|
+| **Instead of** | Keeping `seats` as a pinned, model-facing name · or `seats` kept as an alias beside `workers` · or renaming the task board's seat to assignee too · or settling now whether Layer 1 keeps a closed list of discovery domains or each layer registers its own |
+| **Because** | The product owner's rule (2026-10-06): "seat" names a place on a task board only, and Workforce's seat goes everywhere. The `seats` domain lists Workforce's workers, so it goes. It is the one surface a model reads by name, so a pinned `seats` would teach a model the meaning the sweep removes. No alias: an alias is a retired term in an export ([ER-12](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). On a board, "seat" is a fair word for a place, and an assignee is a seat on one task, which is how the set already uses "assignee". The rename adds no coupling: `contracts` already names `seats` and `mailboxes` today. Moving to domains each layer registers is a bigger Layer 1 redesign the MVP doesn't need, so that question stays open for [FIX-1803](https://linear.app/fixpoint-labs/issue/FIX-1803), FIX-1575's open question |
+| **Locks in** | `MANIFEST_DOMAINS`, core's discovery tool and Workforce's `discover:` key say `workers`, built by FIX-1796. A saved prompt, skill or eval that passes `seats` gets the "unknown domain" listing, and a worker file with `discover: [seats]` is refused, listing the known domains. The `mailboxes` domain isn't decided here: FIX-1792 removes it ([#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833) S9, its BR-5a). The task board is not renamed: its types and the hand-off record's `seat` field keep their names, and the glossary defines a seat (a place on a board) and an assignee (a seat on one task) |
+
+**What would change my mind:** readers who still take a board's seat for a worker once
+Workforce's seat is gone, for example on Shift Manager's task screens, where both meet. Then the
+board's word becomes assignee at 1.0, as an amendment here.
+
+<a name="d8"></a>
+## D8 · A worker whose delegates can take a task gets the task tools, and the split is in the MVP
+
+The product owner's call (2026-10-06), with its grant made exact on 2026-10-07. It reverses
+FIX-1794's answer to its [Q](../../issues/FIX-1794/DECISIONS.md#q), which put the split in a
+follow-up, by bringing that follow-up, [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802),
+into the set.
+
+| | |
+|---|---|
+| **Instead of** | Filing as what makes a coordinator, one level deep: a task session refuses to file, and the split waits for FIX-1802 after the MVP (FIX-1794's Q, as answered) · or a `filing: true` flag in a worker's file that grants it (FIX-1802's draft, [#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839)) |
+| **Because** | Filing work is a capability, not a kind of worker. A worker whose delegates can take a task has someone to file for, and one without has nobody, so the delegates already say it; a flag would say it twice. The tools already ship: orchestration's `taskTools`, the board's eight tools a skill's delegation surface installs today. A worker with them files onto its own conversation's board, and a filed task's worker can file pieces in turn: the split. A coordinator is the flow built for routing work: an evaluator classifies first, and the flow acts as an agent only when no obvious path exists. It isn't the only thing that coordinates |
+| **Locks in** | No flag. A worker gets the task tools when at least one of its `delegates:` can take a task: delegates are the grant, and "can take a task" is FIX-1794's check (its S4: the delegate's flow takes tasks). The tools are `createTaskToolsCapability(resolver, roster)` and `taskToolActions(<board id>, resolver, roster)` in `packages/orchestration/src/skills/task-tools-capability.ts`; the resolver is the session's own board, and the roster its task-taking delegates, read per call (T1). The coordinator is one such worker, so it files with the same tools, and FIX-1794's filing actions (its S4) are these tools, not a set of their own. [#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839) amends FIX-1794 to say so (its S4, S11, sketch, DOCS and EVOLUTION), so S4 is rewritten once, and the [D9](#d9) sweep leaves FIX-1794 alone. A worker keeps the flow it names (the DevTeam's EM keeps `flow: em`). The split ships in the MVP as FIX-1802. A chain goes at most five boards deep ([FIX-1794's D2](../../issues/FIX-1794/DECISIONS.md#d2)) and holds at most 100 tasks by default, a cap the app can configure (the product owner, 2026-10-07). It builds after FIX-1794 and before FIX-1792's P2 and P3 and the closure, which it blocks ([ER-27](BUSINESS-RULES.md#how-the-set-is-run)). FIX-1791's best fit falls back to the coordinator's own judgment turn when no fallback delegate is set, and a configured fallback delegate still wins ([its D2](../../issues/FIX-1791/DECISIONS.md#d2), amended with this record). The DevTeam's feature board is a workstream on storefront, led by its EM, an ordinary worker whose delegates take tasks ([D5](#d5)). One Layer 1 change comes with it, **T1**, built by FIX-1794 as amended in [#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839) (its PLAN): `createTaskToolsCapability`'s roster may be read per call, a function of the running context, not only fixed at build; and `taskToolActions` takes a roster too, so an app's `addTask` is checked against the session's current delegates. T1 is an orchestration change, generic: it names no worker or delegate. Why: a session's delegates change mid-session, and today the actions don't check the assignee. Existing callers pass what they pass today. [D3](#d3) counts it as the fifth mechanism change ([ER-22](BUSINESS-RULES.md#what-no-child-may-do)) |
+
+**What would reverse it:** the product owner, if FIX-1802's spec prices the split well past the
+other children. That comes back here as a question, not a child's call.
+
+<a name="d9"></a>
+## D9 · No backwards support of any kind while there are no consumers
+
+The product owner's call (2026-10-07): "No consumers yet. No need for backwards support of any
+kind." Recorded here because it binds every child
+([ER-24](BUSINESS-RULES.md#how-the-set-is-run)).
+
+| | |
+|---|---|
+| **Instead of** | Carrying what was there before into the new shape: operator steps that move old user records to one org (FIX-1790) and old hires to their owners (FIX-1788), old rows read in the new shape, old files and removed calls refused by name with the conversion, an upgrading page |
+| **Because** | Nobody runs Workforce outside this repo, so each of those paths protects data and files that don't exist, and each costs a step, a test leg and a page. Every `MAILBOX.md` is in this repo, and FIX-1792 converts them all |
+| **Locks in** | No child builds a migration, an operator upgrade step, a dual-read, an alias, an upgrade page, or a refusal of an old shape by name ([ER-31](BUSINESS-RULES.md#what-no-child-may-do)). Old data is dropped: nothing reads or moves a record, row, cell, room line or board stored in a shape this epic replaces. A file in an old format is just not loaded. [BP-030](../../../docs/contributing/best-practices.md#bp-030-tolerate-the-old-shape-when-you-change-a-persisted-or-in-flight-field) says to tolerate the old shape of a persisted field; it conflicts with this, and D9 wins as the product owner's later and more specific call. BP-030 doesn't apply to this epic while there are no consumers |
+| **Not reached** | Removing flow instances and owner pins from the engine stays FIX-1798's scope ([ER-20](BUSINESS-RULES.md#what-no-child-may-do)); with no consumers there is no deprecation phase before it, so FIX-1788 adds no markers and FIX-1798 deletes outright. Project claims stay until FIX-1792 converts the boards that read them, which is build order, not compatibility. ER-21's "files as migrations", a loader that keeps data in line with files, is another thing and stays out |
+| **Reaches** | Merged specs, amended in one sweep PR. **FIX-1788**: the operator step for old hires, their memory and conversations (its D1), reading an older stored configuration (BR-21), the step's rerun rule (BR-32) and its upgrade leg. **FIX-1790**: the operator copy step and its attribution rule (its D1, D2), the upgrade note, and leg c's old record. **FIX-1793**: old project rows read as shared (BR-5), rooms and claims kept for an operator to read, and room calls, `mintFor:` and `talk` refused by name. **FIX-1796**: the `LEGACY_` names kept for an upgrade to read (its D2), and the upgrading page and its rename table. **FIX-1789**: the changeset and README line telling upgraders `kinds` is now `workerFlows` (no consumer, no changeset). **FIX-1788** also drops its deprecation markers on `register(.., { pin })` and collection cardinality (its S2, V2, BR-27). Open specs, folded at their own gates. **FIX-1792** ([#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833)): `MAILBOX.md`, `flows/mailboxes/` and old lines refused by name, the upgrade page, and today's `CHANNEL.md` refusal; its D2 is answered, old data dropped. **FIX-1797** ([#2835](https://github.com/fixpoint-labs/flow-state-dev/pull/2835)): c7's pre-epic store and QR-12, and its `MAILBOX.md`-refusal and `upgrading.md` checks |
+
+**What would reverse it:** a consumer outside this repo before the closure run. Then the product
+owner decides what upgrade path that consumer needs, as a question here. From the first release
+with a consumer, BP-030 applies again; nothing built here is retro-fitted.
 
 <a name="q1"></a>
 ## Q1 · decided · An author says "this flow runs workers" in a list the installation keeps, not a `defineWorkerFlow()` wrapper
@@ -195,20 +258,24 @@ engine rule. The closure only checks.
 - **A workstream is a project entry plus its lead's workstream session**, stored at
   `workstreams/<project>/<workstream>`, with project progress computed. The PRD's
   recommendation, adopted.
-- **`MAILBOX.md` becomes `WORKER.md`, and old files are refused loudly** with the conversion in
-  the message. The PRD's recommendation, adopted.
+- **`MAILBOX.md` becomes `WORKER.md`, and every file is converted.** The PRD's recommendation,
+  adopted. Its loud refusal of old files was withdrawn by [D9](#d9): no old file is refused by
+  name.
 - **No transcript resource is built.** It is out of scope in the PRD; copy or projection stays
   punted. The coordinator's routing record is built.
-- **FIX-1796 leaves channel-kind paths alone**: `workforce/flows/channels/<kind>.ts` and
-  `CHANNEL.md`'s `flow:`. Channels are out of scope; nothing renames them silently.
+- **FIX-1796 renames nothing for channels.** Channels are out of scope, and they have no paths to
+  rename: no `flows/channels/` path is tracked on `main`, and `CHANNEL.md` is refused by name, as
+  a file from before channels were renamed to mailboxes (FIX-1748). Corrected in the seventh
+  follow-up PR, which checked `main` with `git ls-files`; the draft named paths that don't exist.
+  That refusal goes with the mailbox code ([D9](#d9)).
 - **Model variants carry into forks and the library.** Codex, Claude and Cursor variants are
   separate workers sharing core instructions (the 2026-10-04 lock). That lock's ownership half
   is superseded: workers are private, and standard workers are read-only projections.
-- **Per-org user data does not dual-read.** A record stored before under the cross-org key would
-  read in every org its user belongs to, the leak FIX-1790 exists to close, and the owner-pinned
-  cell already refuses that fallback. It moves to the one org it can be attributed to by an
-  operator step, or stops with `migration-required`; nothing is deleted ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
-  Reversed in review (Jake, Codex) from a dual-read.
+- **Per-org user data does not dual-read, and old records are dropped.** A record stored before
+  under the cross-org key would read in every org its user belongs to, the leak FIX-1790 exists to
+  close, and the owner-pinned cell already refuses that fallback. Reversed in review (Jake, Codex)
+  from a dual-read. The operator step that then moved each record to one org was withdrawn by
+  [D9](#d9): nothing reads or moves them ([ER-3](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
 - **The privacy spine is proved when it merges**, not only at the end: leg c's worker steps and
   the control run on FIX-1788's merge commit, and a failure holds the coordinator and the
   library from merging ([ER-30](BUSINESS-RULES.md#the-closure)). From review (Jake).
@@ -251,10 +318,11 @@ engine rule. The closure only checks.
   files no task until FIX-1794 ships. FIX-1774's leg d (opening a workstream from the
   coordinator) goes to FIX-1793, whose project coordinator does it. FIX-1791 keeps posts and delegates. Jake, 2026-10-06, at
   FIX-1791's spec gate ([its Q1](../../issues/FIX-1791/DECISIONS.md#q1)), bound to the set by
-  this record ([ER-24](BUSINESS-RULES.md#how-the-set-is-run)).
+  this record ([ER-24](BUSINESS-RULES.md#how-the-set-is-run)). [D8](#d8) later put filing by any
+  worker given the tool, and the split, in the MVP as FIX-1802.
 - **Checked against `main` at `74f9a4f68`:** a project room and the mailbox boards are as
   [EVOLUTION.md](EVOLUTION.md#where-todays-code-differs-checked-against-main) states; 33
-  `MAILBOX.md` files, 15 with boards (the concept's 32 and 14 predate a FIX-1778 fixture).
+  `MAILBOX.md` files, 16 boards in 15 of them (the concept's 32 and 14 predate a FIX-1778 fixture).
 
 ## What the end-state POC showed
 
@@ -269,8 +337,9 @@ engine rule. The closure only checks.
   through the public create, and a flow-owned row outlives a deleted session id. A user's
   workers share every `flowIsolation` cell. A lineage board can't reach a worker on another flow.
 - **Changed:** [D3](#d3)'s third Layer 1 change is definite, as server-owned session state.
-  FIX-1788 also keys a worker's private state by the worker and moves today's per-worker cells
-  ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). A board whose rows cross a flow
+  FIX-1788 also keys a worker's private state by the worker
+  ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); today's per-worker cells were
+  to move, and since [D9](#d9) are dropped. A board whose rows cross a flow
   can't use its lineage ([ER-9](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), FIX-1794;
   [D5](#d5)); the POC's answer, one ledger at the owner's user scope, was struck in review round 2,
   and [D6](#d6) keeps that scope with a partition per conversation. The FIX-1788
@@ -321,5 +390,29 @@ engine rule. The closure only checks.
 - **FIX-1794's gate (Oct 6)**, in a sixth follow-up PR: a board keeps its tasks at its owner's
   user scope, one partition per conversation ([D6](#d6)), on FIX-1794's POC (#2828). It is the
   fourth Layer 1 change ([D3](#d3)), and ER-9 now states it.
+- **FIX-1796's gate (Oct 6)**, in a seventh follow-up PR: discovery's `seats` domain becomes
+  `workers` ([D7](#d7)), on the product owner's rule that "seat" names a place on a task board
+  only (#2832). It is [D3](#d3)'s one public rename; the board keeps its word, and the
+  glossary defines it. The channel-kind paths the draft kept don't exist on `main`, so the spec
+  stops naming them. The plan gives FIX-1792 five PRs, ties them to FIX-1791's P2, and notes
+  FIX-1797's milestone hold.
+- **The product owner's direction (Oct 6)**, in the same follow-up PR: filing work is a tool any
+  worker can be granted, and the split is in the MVP ([D8](#d8)), so FIX-1802 joins the set
+  before FIX-1792's P2 and P3 and the closure, reversing FIX-1794's answer to its Q. FIX-1791's best fit
+  now falls back to the coordinator's judgment when no fallback delegate is set (its D2, amended
+  here). The DevTeam's feature board is a workstream again, so D5's wait on FIX-1793 holds, now
+  with FIX-1802. Two of Cursor's review notes on the D1 figure were folded.
+- **The product owner's sign-off answers (Oct 7)**, in the same follow-up PR: D8's grant is a
+  worker's delegates, not a `filing: true` flag, and the tools are orchestration's `taskTools`; a
+  chain goes five boards deep and holds 100 tasks by default, which the app can change. [D9](#d9):
+  no backwards support of any kind while there are no consumers, so ER-1, ER-3 and ER-6 drop their
+  upgrade paths, ER-31 forbids them, and FIX-1792's D2 is answered: old data is dropped. The
+  merged children's specs follow in a sweep PR.
+- **T1 recorded (Oct 7)**, in the same follow-up PR: FIX-1802's spec ([#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839)) wires
+  orchestration's existing `taskTools` and needs one extension, T1, built by FIX-1794 as amended
+  there: the roster read per call, and a roster on `taskToolActions`. [D3](#d3) now counts five
+  mechanism changes and one public rename. #2839 carries FIX-1794's [D8](#d8) amendment, so the
+  D9 sweep leaves FIX-1794 alone. FIX-1792's plan is now four PRs ([#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833)), with no
+  refusal PR (D9).
 
 **Open: none.**
