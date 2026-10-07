@@ -2,16 +2,15 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-What was chosen, what lost, and what each choice locks in. Two decisions are the sign-off surface.
-The counts here are the checker's ([poc/inventory](poc/inventory/README.md)), not a hand count.
+What was chosen, what lost, and what each choice locks in. One decision is the sign-off surface,
+D2. D1 is decided, not asked. The counts here are the checker's ([poc/inventory](poc/inventory/README.md)),
+not a hand count.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-1792"] --> D1["D1 · 13 session boards · 1 workstream · escalations removed"]
-  D1 -.->|"rejected"| X1["every board people look at is a workstream<br/>a project per lab for lists nobody follows"]
-  I --> D2["D2 · old mailbox data left unread"]
+  I["FIX-1792"] --> D2["D2 · old mailbox data left unread"]
   D2 -.->|"rejected"| X2["move pending rows onto a conversation<br/>an org row has no one user to give it to"]
   D2 -.->|"rejected"| X3["stop the boot until the store is reset<br/>loses every project for rows nobody can place"]
 ```
@@ -19,45 +18,39 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · The DevTeam's feature becomes a Storefront workstream the EM leads; 13 other board files keep a session board; kitchen-sink's escalations goes with its feature
+## D1 · Where each board goes: now decided, not asked
 
-| | |
-|---|---|
-| **Instead of** | Every board a lab's people look at becomes a workstream: Shift Manager's `desk.front` and `eng.desk` labs as well as the DevTeam's feature |
-| **Because** | The epic's question, per board ([D5](../../epics/FIX-1786/DECISIONS.md#d5)): does the work outlive one conversation, and does a person track it? Only the DevTeam's feature does both: its project lists it today, people follow it for days, and its coding runs find the project through it. Its lead is the EM, an ordinary worker: it takes Storefront's project coordinator's delegated post (FIX-1791 S9) and files the coder's tasks itself with FIX-1802's filing tools. A coordinator can't lead a workstream ([Settled](#settled)). The rest are a coordinator's working list or fixtures that test board mechanics, which D5 sends to a session board. Kitchen-sink's escalations had been the close call; the product owner removed the escalation feature (2026-10-06), so its board goes and nothing replaces it. Unclear goes to a session board |
-| **Locks in** | Every converted board belongs to one user, in the partition only its session reaches (epic [D6](../../epics/FIX-1786/DECISIONS.md#d6)). A coordinator files with FIX-1794's actions; any other worker only when its `WORKER.md` grants FIX-1802's filing tools. In the DevTeam, the storefront project's feature and release work are two workstreams the lab's member opens, both led by the EM; other members see each entry, not its tasks. No file declares a board any more: a lab that wants one people track opens a workstream |
-
-![D1, where a mailbox's board goes. Chosen: 13 session boards and 1 workstream, with kitchen-sink's escalations removed. Instead of: every board a lab's people look at becomes a workstream. It comes down to the first row: a board nobody follows stays a session's list with nothing new to set up, where the other way gives each lab a project and a workstream it never uses. Kitchen-sink's escalations is gone either way, with the feature it served. The DevTeam's feature is a workstream either way, led by the EM, which files its own tasks. Locks in: every converted board belongs to one user, and no file declares a board. Flips if: a Shift Manager lab's board is meant to list work across a person's conversations](figures/d1-boards.svg)
-
-It comes down to boards nobody follows: as workstreams, each lab grows a project it never uses.
+[Decided, not asked](#decided-not-asked) records it. The table stays here, because the plan and
+the checker cite it.
 
 ### The table
 
 | Tree · coordinator | Board | What it is used for | Becomes |
 |---|---|---|---|
-| kitchen-sink · `support.help` | `escalations` | A specialist files a case that needs a person; nobody works it; the team panel lists it | **Removed** with the escalation feature (product owner, 2026-10-06). `support.help` is a best-fit coordinator with no board |
-| `mailbox-boards` hire goal · `ops.desk` | `work` | A coordinator hires a worker and files it a task by name | Conversation board; the coordinator files with FIX-1794's actions |
-| `mailbox-boards` row goal · `eng.feature` | `triage`, `parked` | One worker files a row and another's board runs it; nobody drains `parked` | The filer's own session board, filed with FIX-1802's filing tools; `parked` goes |
-| `manager-queue-lab` · `eng.queue` (lab and two refusal trees) | `work` | The manager files a row per desk; each desk's worker takes its own | The manager's own session board, filed with FIX-1802's filing tools; a row names its delegate |
-| Shift Manager chief-of-staff goal · `desk.front` (two labs) | `work` | The landing summary counts what waits and what runs | Conversation board |
-| Shift Manager look goal · `desk.front` | `work` | Every screen draws the board's rows | Conversation board |
-| Shift Manager roster goal · `eng.desk` | `work` | The roster shows each worker's tasks; the lead drains it | Conversation board |
-| `task-run-link` · `lab.desk` | `work` | Each handed-off row links its run | Conversation board |
-| Shift Manager test labs · `ops.desk`, `eng.queue`, `lab.desk` | `work` | Tasks, asks, parked rows and runs in Shift Manager's tests | Conversation board; multi-seat-collab's planner (`eng.queue`) files on its own session board with FIX-1802's filing tools |
-| **DevTeam · `eng.feature`** | `work` | The team builds a feature; the storefront project lists it; its coding runs find the project through the claim | **Workstream** on storefront, led by the EM, which files the coder's tasks with FIX-1802's filing tools |
+| kitchen-sink · `support.help` | `escalations` | A specialist files a case that needs a person; nobody works it; the team panel lists it | **Removed** with the escalation feature (product owner, 2026-10-06). `support.help` is a best-fit coordinator with no board, so no grant |
+| `mailbox-boards` hire goal · `ops.desk` | `work` | A coordinator hires a worker and files it a task by name | Conversation board, granted |
+| `mailbox-boards` row goal · `eng.feature` | `triage`, `parked` | One worker files a row and another's board runs it; nobody drains `parked` | The filer's own session board; the filer is granted. `parked` goes |
+| `manager-queue-lab` · `eng.queue` (lab and two refusal trees) | `work` | The manager files a row per desk; each desk's worker takes its own | The manager's own session board; the manager is granted, and a row names its delegate |
+| Shift Manager chief-of-staff goal · `desk.front` (two labs) | `work` | The landing summary counts what waits and what runs | Conversation board, granted |
+| Shift Manager look goal · `desk.front` | `work` | Every screen draws the board's rows | Conversation board, granted |
+| Shift Manager roster goal · `eng.desk` | `work` | The roster shows each worker's tasks; the lead drains it | Conversation board, granted |
+| `task-run-link` · `lab.desk` | `work` | Each handed-off row links its run | Conversation board, granted |
+| Shift Manager test labs · `ops.desk`, `eng.queue`, `lab.desk` | `work` | Tasks, asks, parked rows and runs in Shift Manager's tests | Conversation board, granted; multi-seat-collab's planner (`eng.queue`) is granted too and files on its own session board |
+| **DevTeam · `eng.feature`** | `work` | The team builds a feature; the storefront project lists it; its coding runs find the project through the claim | **Workstream** on storefront, led by the EM, which is granted and files the coder's tasks |
 | DevTeam · `ops.release` | none | Storefront lists it beside `eng.feature` | **Workstream** on storefront, led by the EM |
 
 Every file, with or without a board, is a row in the checker; [PLAN](PLAN.md#the-files) lists the
 other 18.
 
-**Where a member filed on the board when a post reached it** (manager-queue-lab's manager,
-multi-seat-collab's planner, the row goal's filer, the DevTeam's EM), that worker files itself:
-its `WORKER.md` grants FIX-1802's filing tools, and its rows land on its own session's board. No
-coordinator files for a member, and no coordinator needs `rounds:`. Every other board is filed by
-the app, a test, or the coordinator's own action.
-
-**What would change my mind:** a Shift Manager lab's board being meant to list work across all of
-a person's conversations. Then that lab opens a workstream on a project, as the DevTeam does.
+**Granted** means the worker's `WORKER.md` says `filing: true` (FIX-1802 D1). Every worker that
+files is granted, coordinators included, and files through `createTaskFilingCapability()`. The
+built-in `agent` and coordinator flows carry it. An app flow adds it in two parts: the capability
+on its worker's generator block's `uses`, and the entries it spreads into the flow's own
+`internal` and `task` maps (the EM keeps `flow: em`). That is each converted coordinator that
+keeps a conversation board, the chief of staff (FIX-1802 S7), the members that filed on a mailbox's board when a post reached it (manager-queue-lab's manager,
+multi-seat-collab's planner, the row goal's filer) and the DevTeam's EM. A member lists who it
+files for in `delegates:`, and its rows land on its own session's board. A coordinator converted
+with no board gets no grant. No coordinator files for a member, and no coordinator needs `rounds:`.
 
 <a name="d2"></a>
 ## D2 · Old mailbox data stays in the store, unread; no pending task carries over
@@ -78,6 +71,10 @@ converted coordinator's conversation as the user you name, and nothing reads old
 
 ## Decided, not asked
 
+- **D1 · Where each board goes ([the table](#the-table)): the DevTeam's feature becomes a
+  Storefront workstream the EM leads, 13 other board files keep a session board, and kitchen-sink's
+  escalations goes with its feature.** Its only close call was that escalations board, and the
+  product owner answered it by removing the escalation feature (2026-10-06).
 - **The conversion, key by key.** `description:` and the body unchanged; `flow: coordinator`
   added; `members:` → `delegates:`; `routing: { fallback: x }` → `routing: best-fit` and
   `fallback: x`; no `routing:` → `routing: everyone`. FIX-1791's default for a missing
@@ -115,12 +112,12 @@ converted coordinator's conversation as the user you name, and nothing reads old
 - **Desks are lab code** (`answersFor:` is read only by lab flows). A converted lab files for the
   delegate, through the worker that filed today. A step that can't hold on a session board is
   retired under BR-24 with its reason; none waits on another issue.
-- **Filing is a granted tool** (product owner, 2026-10-06). A coordinator files with FIX-1794's
-  actions. Any other worker files only when its `WORKER.md` grants FIX-1802's filing tools, which
-  also let a filed task's worker file pieces in turn. The members that filed on a mailbox board when
-  a post reached it (manager-queue-lab's manager, multi-seat-collab's planner, the row goal's
-  filer, the DevTeam's EM) get them, and file on their own session's board. No coordinator files
-  for a member, and nothing here needs `rounds:`.
+- **Filing is a granted tool** (product owner, 2026-10-06; FIX-1802 D1). Every worker that files
+  is granted with `filing: true` in its `WORKER.md`, coordinators included, and files through
+  `createTaskFilingCapability()`; [the table](#the-table) names who. A converted file lists who a
+  worker files for in `delegates:`, a key of the worker contract (FIX-1802 S2). The same grant lets
+  a filed task's worker file pieces in turn. A coordinator converted with no board gets no grant,
+  and no coordinator files for a member.
 - **Kitchen-sink's escalation feature is removed, not replaced** (product owner, 2026-10-06): the
   `escalate` tool, its test and `no-filing` control, the escalations board and panel, and the
   specialists' instruction to escalate. Shift Manager is where Workforce is proved now. The help
@@ -146,6 +143,7 @@ converted coordinator's conversation as the user you name, and nothing reads old
 | A loader that reads `MAILBOX.md` as a coordinator | The FIX-1367 lock: one way to declare a worker, and old files refused loudly |
 | Converting files at boot | The same lock; every file is in this repo |
 | Keeping org-scoped boards as a third shape | The epic's [D5](../../epics/FIX-1786/DECISIONS.md#d5): the shape this epic removes |
+| Every board a lab's people look at becomes a workstream: Shift Manager's `desk.front` and `eng.desk` labs too | Each lab grows a project and a workstream nobody follows, where D5 sends a working list to a session board. It flips if a Shift Manager lab's board is meant to list work across a person's conversations; that lab then opens a workstream, as the DevTeam does |
 | Retiring every goal that ran on a mailbox | Kitchen-sink and the goals are the proof spine; the Architect's lock keeps them passing |
 
 ## Settled
@@ -181,5 +179,8 @@ converted coordinator's conversation as the user you name, and nothing reads old
   granted, with multi-level delegation in the MVP (FIX-1802), and kitchen-sink's escalation
   feature was removed. The DevTeam's feature is a Storefront workstream again, led by the EM, which
   files its own tasks; members that filed file themselves; `rounds:` and the `Escalate:` line went.
+- **Aligned with FIX-1802** (2026-10-07) — took its pinned names. Every worker that files is
+  granted, coordinators included, through `createTaskFilingCapability()`, and lists who it files
+  for in `delegates:`. D1 moved to decided, not asked, so D2 is the one sign-off item.
 
 **Open: none.**

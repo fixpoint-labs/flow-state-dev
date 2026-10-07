@@ -182,7 +182,7 @@ const FILES = {
   "goals/mailbox-boards/it-hands-a-task-to-a-fresh-hire/fixtures/workforce/teams/ops/mailboxes/desk/MAILBOX.md":
     { target: "session", boards: ["work"], use: "a coordinator hires a worker and files it a task by name" },
   "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/fixtures/workforce/teams/eng/mailboxes/feature/MAILBOX.md":
-    { target: "session", boards: ["triage", "parked"], use: "one worker files a row and another's board runs it; the filer files with FIX-1802's filing tools; parked is drained by nobody and goes" },
+    { target: "session", boards: ["triage", "parked"], use: "one worker files a row and another's board runs it; the filer is granted `filing: true` and files on its own session board; parked is drained by nobody and goes" },
   "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/fixtures/workforce/teams/eng/mailboxes/notices/MAILBOX.md":
     { target: "removed", boards: [], use: "a mailbox on a kind of its own (digest), kept only for the retired a-mailbox-holds-the-work goal" },
   "goals/manager-queue-lab/lab/refusal-trees/board-in-a-seat-folder-corrected/teams/eng/mailboxes/queue/MAILBOX.md":
@@ -364,7 +364,7 @@ const FILE_CLASS = {
   "packages/shift-manager/teams/devteam/notify.mts": "C · S7 · the mailbox wake goes",
   "packages/shift-manager/teams/devteam/phase.mts": "E · S7 · a comment hands the mailbox its charter",
   "packages/shift-manager/teams/devteam/workforce/flows/workers/coder.mts": "C · S7 · reads its workstream, not a mailbox board",
-  "packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts": "C · S7 · leads the workstreams; files with FIX-1802's filing tools",
+  "packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts": "C · S7 · leads the workstreams; granted `filing: true`; the generator block takes createTaskFilingCapability()'s capability, the flow spreads its internal and task entries",
   "packages/shift-manager/teams/devteam/workforce/org/workers/chief-of-staff/WORKER.md": "C · S7 · post-to-mailbox and setWorkstreams leave its tools",
   "packages/shift-manager/test/build-inputs.test.ts": "E · S8 · tests",
   "packages/shift-manager/test/chief-of-staff.test.ts": "E · S8 · workstreams as mailboxes in a fixture",
@@ -491,7 +491,7 @@ const GOALS = {
   "goals/devforce-lab/it-codes-in-the-projects-repository": "CONVERT · the run finds its project through the feature workstream",
   "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board": "REWRITE · the org sees the workstream's entry; only its owner sees the rows (epic ER-7)",
   "goals/devforce-lab/it-ships-an-artifact-a-person-can-open": "CONVERT · posts to the feature workstream",
-  "goals/devforce-lab/it-waits-for-a-person-before-it-files": "CONVERT · the EM asks before it files with FIX-1802's filing tools",
+  "goals/devforce-lab/it-waits-for-a-person-before-it-files": "CONVERT · the EM asks before it files, granted `filing: true`",
   "goals/devforce-lab/it-wakes-the-seat-a-file-declared": "CONVERT · a filed row wakes the delegate it names",
   "goals/devtool-workforce-visibility/the-checklist-rows": "REWRITE · row 5 reads every worker and a coordinator's delegates",
   "goals/devtool-workforce-visibility/works-a-task-from-its-row": "CONVERT · the task is on a conversation's board",
@@ -504,11 +504,11 @@ const GOALS = {
   "goals/kitchen-sink-talk/lists-a-filed-case-without-a-reload": "RETIRE · the escalation feature is removed (product owner, 2026-10-06); nothing files a case (BR-24)",
   "goals/kitchen-sink-talk/shows-the-reply-without-a-reload": "CONVERT · the help coordinator",
   "goals/mailbox-boards/it-hands-a-task-to-a-fresh-hire": "CONVERT · hire, add as a delegate, file",
-  "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds": "CONVERT · a worker with FIX-1802's filing tools files a row that its board runs; the FIX-1611 extras go",
-  "goals/manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name": "REWRITE · the manager files with FIX-1802's filing tools; a row names its delegate, not a desk",
+  "goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds": "CONVERT · a worker granted `filing: true` files a row that its board runs; the FIX-1611 extras go",
+  "goals/manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name": "REWRITE · the manager, granted `filing: true`, files for its delegates; a row names its delegate, not a desk",
   "goals/manager-queue-lab/it-stands-the-team-and-its-board-up-from-files": "REWRITE · a WORKER.md declaring boards: is refused by name",
   "goals/manager-queue-lab/lab": "REWRITE · the lab both manager-queue goals share",
-  "goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view": "REWRITE · the planner files with FIX-1802's filing tools, for delegates, not desks",
+  "goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view": "REWRITE · the planner, granted `filing: true`, files for its delegates, not desks",
   "goals/multi-seat-collab/run-scenario.mts": "REWRITE · the scenario that goal runs",
   "goals/org-seats/cos-changes-the-roster": "REWRITE · who is on a coordinator is its delegate read, not discover",
   "goals/pentest-lab/a-post-reaches-both-declared-seats": "REWRITE · BR-10's unknown member is refused at load, not skipped",

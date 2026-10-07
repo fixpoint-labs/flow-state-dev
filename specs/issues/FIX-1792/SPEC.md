@@ -15,8 +15,8 @@
 
 The epic's one way to declare a worker ([FIX-1786](../../epics/FIX-1786/SPEC.md), ER-6, D5), on
 the coordinator flow ([FIX-1791](../FIX-1791/SPEC.md)), conversation boards
-([FIX-1794](../FIX-1794/SPEC.md)), workstreams ([FIX-1793](../FIX-1793/SPEC.md)) and the filing
-tools any worker can be granted ([FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802)).
+([FIX-1794](../FIX-1794/SPEC.md)), workstreams ([FIX-1793](../FIX-1793/SPEC.md)) and filing,
+which any worker's file grants with `filing: true` ([FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802)).
 
 ## The goal, and how we'll know it's met
 
@@ -98,13 +98,13 @@ flowchart LR
 ```
 
 The epic's question ([D5](../../epics/FIX-1786/DECISIONS.md#d5)), asked board by board; the
-table is [D1](DECISIONS.md#d1).
+table is [D1's](DECISIONS.md#the-table).
 
 ## What stays as it is
 
 - The coordinator flow and its keys ([FIX-1791](../FIX-1791/SPEC.md)), conversation boards
-  ([FIX-1794](../FIX-1794/SPEC.md)), workstreams ([FIX-1793](../FIX-1793/SPEC.md)) and the filing
-  tools a worker can be granted (FIX-1802). This issue converts onto them and builds none.
+  ([FIX-1794](../FIX-1794/SPEC.md)), workstreams ([FIX-1793](../FIX-1793/SPEC.md)) and filing
+  as a grant, `createTaskFilingCapability()` (FIX-1802). This issue converts onto them and builds none.
 - A `WORKER.md` that isn't a coordinator keeps the flow it names; nothing moves onto `agent`.
 - Stored data: nothing is deleted or rewritten.
 - The pre-rename `CHANNEL.md` refusal, until 1.0. Channels themselves aren't built.
@@ -116,12 +116,12 @@ table is [D1](DECISIONS.md#d1).
 board converted, old files refused by name, and the goals still green. If wrong: we delete a
 loader and call it a conversion while half the proof spine stops running.
 
-1. **[D1](DECISIONS.md#d1) · The DevTeam's feature becomes a Storefront workstream the EM leads;
-   13 other board files keep a session board; kitchen-sink's escalations goes with its feature.**
-   The one to weigh. If wrong: work people follow is hidden in one session, or a fixture grows a
-   project it never uses.
-2. **[D2](DECISIONS.md#d2) · Old mailbox data stays in the store, unread; no pending task carries
+1. **[D2](DECISIONS.md#d2) · Old mailbox data stays in the store, unread; no pending task carries
    over.** If wrong: someone's waiting task drops out of view on upgrade.
+
+**Decided, not asked:** [D1](DECISIONS.md#d1), where each board goes. Its only close call,
+kitchen-sink's escalations board, went with the escalation feature the product owner removed
+(2026-10-06).
 
 **Open: none.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).

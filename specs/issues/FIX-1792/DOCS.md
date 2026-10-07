@@ -34,7 +34,7 @@ the Workforce category of `sidebars.ts`, after `workforce/ui`, replacing `workfo
 > | `members:` | `delegates:`, in the same order |
 > | `routing:` with a `fallback:` | `routing: best-fit` and `fallback:` on its own line |
 > | no `routing:` | `routing: everyone` |
-> | `boards:`, `boardActions:` | Removed. See [where the board goes](#where-the-board-goes) |
+> | `boards:`, `boardActions:` | Removed. To keep a board, add `filing: true`. See [where the board goes](#where-the-board-goes) |
 > | `flow:` naming a kind of your own | No conversion. See [a kind of your own](#a-kind-of-your-own) |
 >
 > ```diff
@@ -48,11 +48,14 @@ the Workforce category of `sidebars.ts`, after `workforce/ui`, replacing `workfo
 > + delegates: [support.devices, support.accounts]
 > + routing: best-fit
 > + fallback: support.accounts
+> + filing: true
 >   description: Ask the support team anything.
 > ```
 >
 > Write `routing: everyone` when the old file had no `routing:` line. Left out, a coordinator
 > routes by its default policy, which calls a model on every post.
+>
+> Leave out `filing: true` if no one files tasks on the coordinator.
 >
 > Renaming the file isn't enough. A `WORKER.md` that still declares `members:`, `boards:` or
 > `boardActions:` is refused, and the message names each line and what replaced it.
@@ -63,12 +66,21 @@ the Workforce category of `sidebars.ts`, after `workforce/ui`, replacing `workfo
 >
 > ## Where the board goes
 >
-> No file declares a board. Each conversation with a coordinator keeps a board of its own, owned
-> by the person in that conversation: file a task on it and the coordinator hands it to a
-> delegate ([Coordinators](./coordinators.md)). Work that people track across conversations
-> belongs to a workstream on a [project](./projects.md), led by one of your workers; the lead's
-> workstream session keeps the board. A worker that isn't a coordinator files tasks only if its
-> `WORKER.md` grants it the filing tools, and its tasks go on its own session's board.
+> No file declares a board. A worker keeps a board, and files tasks on it, when its `WORKER.md`
+> says `filing: true`. That goes for coordinators too. Its turn then has `fileTask`, `listTasks`,
+> `reassignTask` and `cancelTask`. The board belongs to the session the worker runs in: for a
+> coordinator, each conversation with it, owned by the person in that conversation
+> ([Coordinators](./coordinators.md)). A coordinator files for its delegates. Any other worker
+> lists the workers it files for in `delegates:`.
+>
+> The built-in `agent` and coordinator flows can file as they are. A worker on a flow of your own
+> app also needs that flow to add `createTaskFilingCapability()`. It gives you two things: a
+> capability for the `uses` of the worker's generator block, and entries the flow spreads into its
+> own `internal` and `task` maps.
+>
+> Work that people track across conversations belongs to a workstream on a
+> [project](./projects.md), led by one of your workers. The lead's workstream session keeps the
+> board, so the lead needs `filing: true` too.
 >
 > ## A kind of your own
 >
