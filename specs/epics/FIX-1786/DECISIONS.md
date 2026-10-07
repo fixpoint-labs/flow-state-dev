@@ -169,7 +169,7 @@ kind." Recorded here because it binds every child
 DevTeam lab's stores are reset once when this ships, and stored keys are renamed outright, with no
 read of an old key and no copy step. FIX-1796's D2 flips to match.
 
-**Swept** in the amendment PR [#SWEEP](https://github.com/fixpoint-labs/flow-state-dev/pull/SWEEP):
+**Swept** in the amendment PR [#2841](https://github.com/fixpoint-labs/flow-state-dev/pull/2841):
 every *Reaches* item in FIX-1788, FIX-1789, FIX-1790, FIX-1793 and FIX-1796, each recorded in that
 spec's EVOLUTION. FIX-1793's project claims stay until FIX-1792, as *Not reached* says.
 
@@ -422,7 +422,7 @@ engine rule. The closure only checks.
   mechanism changes and one public rename. #2839 carries FIX-1794's [D8](#d8) amendment, so the
   D9 sweep leaves FIX-1794 alone. FIX-1792's plan is now four PRs ([#2833](https://github.com/fixpoint-labs/flow-state-dev/pull/2833)), with no
   refusal PR (D9).
-- **The D9 sweep (Oct 7)**, its own amendment PR ([#SWEEP](https://github.com/fixpoint-labs/flow-state-dev/pull/SWEEP)):
+- **The D9 sweep (Oct 7)**, its own amendment PR ([#2841](https://github.com/fixpoint-labs/flow-state-dev/pull/2841)):
   the merged children drop their upgrade paths as [D9](#d9)'s *Reaches* row lists. FIX-1796's D2
   flips on the product owner's answer that the in-repo stores are reset once and stored keys are
   renamed outright. FIX-1795's follow-up for old org-wide hires goes with FIX-1788's D2.
