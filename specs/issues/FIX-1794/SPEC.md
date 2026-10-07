@@ -9,7 +9,7 @@
 | **asks their coordinator for work that has to be done, not just answered** | A coordinator can hand a post to a delegate, and files nothing ([FIX-1791](https://linear.app/fixpoint-labs/issue/FIX-1791) left tasks here) | It files a task for one of its delegates. The task starts at once, in a new session of that delegate's, and nobody runs a list by hand |
 | **works in an org with other users** | A board is an org row. Whoever's request runs it claims its tasks, and the work runs as them | A board belongs to one conversation. Only its owner's requests run it, and every task under it runs as that owner |
 | **talks to one coordinator in two conversations** | n/a | Each conversation's board is its own. Running one never takes, shows or waits on the other's tasks |
-| **hands a big task to a worker that splits it** | The pieces go on a board any member can run | The worker files the pieces on its own task session's board, for its own delegates, up to five boards deep. Results come back up board by board. In the follow-up issue FIX-1802 ([Q](DECISIONS.md#q), answered) |
+| **hands a big task to a worker that splits it** | The pieces go on a board any member can run | The worker files the pieces on its own task session's board, for its own delegates, up to five boards deep. Results come back up board by board. Built by [FIX-1802](../FIX-1802/SPEC.md), in the MVP: epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) reversed [Q](DECISIONS.md#q) after merge |
 | **has a task fail for good, or stop on a question** | Nobody hears unless they open the list | The conversation that filed it is told once, and the coordinator reassigns it, cancels it, or tells the person |
 | **builds an app on Workforce** | Finds a task's run through the board's run link only | Also finds it with `findWorkerSession({ worker, taskId, coordinatorSessionId })`, within the conversation that filed it |
 
@@ -55,7 +55,9 @@ the ledger isn't kept per conversation, and leg c must fail.
 
 Leg b is the split. [Q](DECISIONS.md#q) moved the split to FIX-1802, so leg b and the
 two *not done if* entries about splits and depth move with it, and leg a adds one step: a
-delegate's task session that tries to file a piece is refused.
+delegate's task session that tries to file a piece is refused. *Amended after merge:* epic
+[D8](../../epics/FIX-1786/DECISIONS.md#d8) puts FIX-1802 in the MVP, built right after this issue, and its grant replaces that refusal
+([FIX-1802](../FIX-1802/SPEC.md)).
 
 ## What changes
 
@@ -117,7 +119,9 @@ ending heard. If wrong: work runs as the right user while one conversation still
 
 **Answered: [Q](DECISIONS.md#q) · the split ships in a follow-up issue, [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802)** (product owner,
 2026-10-06), as recommended. The epic's MVP check is met at one level, and the split is where review's hardest
-finding landed. If wrong: low and reversible either way. Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
+finding landed. If wrong: low and reversible either way. *Amended after merge:* the product owner
+reversed this the same day (epic [D8](../../epics/FIX-1786/DECISIONS.md#d8)): FIX-1802 ships the split in the MVP, and filing becomes a
+tool any worker can be granted. Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
 Feature · `orchestration`, `workforce`, `shift-manager` · large · 3 PRs · epic [FIX-1786](../../epics/FIX-1786/SPEC.md)

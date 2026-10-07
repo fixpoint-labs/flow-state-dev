@@ -1,0 +1,87 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Two panels. Today, on the left: only a coordinator's conversation keeps a board; it files a task for a delegate, and the delegate's task session that tries to file a piece is refused; a worker on the agent flow or an app flow keeps no board. After, on the right: any worker whose file says filing true keeps a board in each of its sessions, on any flow. Alice's conversation with such a worker files a task; the task session files two pieces on its own board; the task waits parked above and settles from its pieces, up to five boards deep. A worker without the line keeps no board."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .board { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .no    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arr   { stroke:var(--ink-2); stroke-width:1.4; fill:none; }
+    .up    { stroke:var(--code); stroke-width:1.4; fill:none; stroke-dasharray:4 3; }
+    .x     { stroke:var(--gone); stroke-width:2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-bd  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .ah    { fill:var(--ink-2); }
+    .uh    { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="420" height="368" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · FILING IS A KIND OF WORKER</text>
+    <rect class="box" x="32" y="56" width="180" height="70" rx="5"/>
+    <text class="t-b" x="44" y="76">coordinator conversation</text>
+    <rect class="board" x="44" y="88" width="90" height="24" rx="3"/>
+    <text class="t-bd" x="52" y="104">board 1</text>
+    <path class="arr" d="M212,100 L262,100"/>
+    <path class="ah" d="M262.0,100.0 L255.0,103.5 L255.0,96.5 z"/>
+    <rect class="box" x="264" y="56" width="156" height="70" rx="5"/>
+    <text class="t-b" x="276" y="76">task session</text>
+    <text class="t-s" x="276" y="96">works the task alone</text>
+    <path class="arr" d="M342,126 L342,168"/>
+    <path class="ah" d="M342.0,168.0 L338.5,161.0 L345.5,161.0 z"/>
+    <line class="x" x1="332" y1="140" x2="352" y2="156"/>
+    <line class="x" x1="352" y1="140" x2="332" y2="156"/>
+    <text class="t-g" x="276" y="186">filing a piece: refused</text>
+    <rect class="no" x="32" y="232" width="388" height="56" rx="5"/>
+    <text class="t-b" x="44" y="254">a worker on agent, or on an app flow (em)</text>
+    <text class="t-s" x="44" y="274">no board, no filing tools</text>
+    <text class="t-s" x="32" y="330">one level deep</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="452" y="16" width="472" height="368" rx="6"/>
+    <text class="t-lbl" x="468" y="38">AFTER · FILING IS A LINE IN THE WORKER'S FILE</text>
+    <rect class="new" x="468" y="56" width="200" height="70" rx="5"/>
+    <text class="t-b" x="480" y="76">any worker · filing: true</text>
+    <rect class="board" x="480" y="88" width="90" height="24" rx="3"/>
+    <text class="t-bd" x="488" y="104">board 1</text>
+    <text class="t-s" x="578" y="104">any flow</text>
+    <path class="arr" d="M668,92 L726,92"/>
+    <path class="ah" d="M726.0,92.0 L719.0,95.5 L719.0,88.5 z"/>
+    <rect class="new" x="728" y="56" width="180" height="70" rx="5"/>
+    <text class="t-b" x="740" y="76">task session · parked</text>
+    <rect class="board" x="740" y="88" width="90" height="24" rx="3"/>
+    <text class="t-bd" x="748" y="104">board 2</text>
+    <path class="up" d="M728,116 L670,116"/>
+    <path class="uh" d="M670.0,116.0 L677.0,112.5 L677.0,119.5 z"/>
+    <text class="t-c" x="676" y="140">settles from</text>
+    <text class="t-c" x="676" y="154">its pieces</text>
+    <path class="arr" d="M790,126 L760,176"/>
+    <path class="ah" d="M760.0,176.0 L760.6,168.2 L766.6,171.8 z"/>
+    <path class="arr" d="M846,126 L870,176"/>
+    <path class="ah" d="M870.0,176.0 L863.8,171.2 L870.1,168.2 z"/>
+    <rect class="new" x="704" y="178" width="100" height="44" rx="5"/>
+    <text class="t-b" x="714" y="204">piece</text>
+    <rect class="new" x="816" y="178" width="100" height="44" rx="5"/>
+    <text class="t-b" x="826" y="204">piece</text>
+    <text class="t-s" x="704" y="244">each may split again · board 3 …</text>
+    <rect class="no" x="468" y="232" width="200" height="56" rx="5"/>
+    <text class="t-b" x="480" y="254">no filing line</text>
+    <text class="t-s" x="480" y="274">no board, no tools</text>
+    <text class="t-s" x="468" y="330">up to five boards deep, 50 tasks under one top task</text>
+    <text class="t-s" x="468" y="350">every session is the owner's</text>
+  </g>
+</svg>

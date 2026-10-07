@@ -101,8 +101,10 @@ the docs state the cost per level.
   that only the server writes, the same incarnation FIX-1791 keys delegate sessions by. A
   conversation deleted and created again starts with an empty board; the old rows stay in the
   store, unread (BP-030).
-- **A worker that splits its task is a coordinator** (epic [D2](../../epics/FIX-1786/DECISIONS.md#d2)).
-  The board and the filing tools are the coordinator flow's; any worker flow takes tasks.
+- **Who may file is FIX-1802's** (*amended after merge*, epic [D8](../../epics/FIX-1786/DECISIONS.md#d8); this line read "a worker that
+  splits its task is a coordinator"). This issue files from coordinator conversations, through one
+  module that asks "may this session file"; [FIX-1802](../FIX-1802/DECISIONS.md#d1) replaces the
+  answer with a grant in the worker's file, on any worker flow. Any worker flow takes tasks.
 - **Mailbox boards stay until FIX-1792**, which moves each onto this shape or a workstream (epic
   [D5](../../epics/FIX-1786/DECISIONS.md#d5)) and deletes `mailboxTaskLists` with them.
 
@@ -122,7 +124,7 @@ the docs state the cost per level.
 <a name="q"></a>
 ### Q · answered · Does the split ship in this issue, or in a follow-up issue?
 
-**Answered (product owner, 2026-10-06): a follow-up issue, [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802).** This issue ships one level, and a task session's filing is refused. Wherever this spec reads "if Q moves the split", that branch holds. D2's limit, the breadth cap, goal leg b, BR-7, BR-30 to BR-32, S8, S10 and V6 are carried to FIX-1802 as written.
+**Answered (product owner, 2026-10-06): a follow-up issue, [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802).** This issue ships one level, and a task session's filing is refused. **Reversed after merge, the same day (epic [D8](../../epics/FIX-1786/DECISIONS.md#d8)):** FIX-1802 is in the MVP and builds right after this issue, so the refusal lasts only until it lands. Wherever this spec reads "if Q moves the split", that branch holds. D2's limit, the breadth cap, goal leg b, BR-7, BR-30 to BR-32, S8, S10 and V6 are carried to FIX-1802 as written.
 
 **The fork.** A worker given a big task can split it: hand the pieces to its own delegates,
 wait for them, and finish from what they return. Build that here, or in a follow-up issue built
@@ -195,4 +197,8 @@ left.
   row like a notice, so a failed turn can't strand it; the wake marker written with the add; a
   breadth cap named beside D2.
 
-**Open: none.** [Q](#q) is answered: the split moves to FIX-1802.
+- **Amended after merge (FIX-1802's spec PR)** — epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) brought FIX-1802 into the MVP and made
+  filing a tool any worker can be granted. Q's card, *decided, not asked*, S4, BR-7, the chain's
+  rules and the docs draft now point there; nothing this issue builds changes.
+
+**Open: none.** [Q](#q) is answered: the split moves to FIX-1802, which is in the MVP (epic D8).

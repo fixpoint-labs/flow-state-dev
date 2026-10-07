@@ -68,7 +68,8 @@ The page is FIX-1791's. This section lands after it does.
 > ### Splitting work
 >
 > *(Published only if the split ships in this issue, [Q](DECISIONS.md#q); otherwise the
-> follow-up publishes it.)*
+> follow-up publishes it. Amended after merge: [FIX-1802](../FIX-1802/DOCS.md) publishes it, for
+> any worker granted filing, not only a coordinator.)*
 >
 > A delegate that is itself a coordinator can split its task. It files the pieces on its own task
 > session's board, for its own delegates, and its task waits until the last piece ends. Then it

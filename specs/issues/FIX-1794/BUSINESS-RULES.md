@@ -16,7 +16,7 @@ is the session a task runs in. The *proved by* column is the check the plan runs
 | BR-4 | The delegate record carries a target (a FIX-1793 workstream) | Refused, saying a workstream takes posts, not tasks | CI |
 | BR-5 | The task names no assignee, and the conversation has exactly one delegate | It goes to that delegate | CI |
 | BR-6 | The task names no assignee, and the conversation has none or several | Stored, pending, and the filing's answer says to assign it. No order picks one | CI |
-| BR-7 | A filing would put a task more than five boards below the top of its chain ([D2](DECISIONS.md#d2)). Moves with the split if [Q](DECISIONS.md#q) moves it; this issue then refuses any filing from a task session, saying it can't split yet | Refused, naming the limit. Nothing stored | CI |
+| BR-7 | A filing would put a task more than five boards below the top of its chain ([D2](DECISIONS.md#d2)). Moves with the split if [Q](DECISIONS.md#q) moves it; this issue then refuses any filing from a task session, saying it can't split yet, until [FIX-1802](../FIX-1802/BUSINESS-RULES.md)'s grant replaces the refusal (epic D8, amended after merge) | Refused, naming the limit. Nothing stored | CI |
 | BR-8 | A filing carries a board, a ledger, an owner, a depth or a partition | Ignored, or refused where the schema names it. Each comes from the conversation's server-written data | CI |
 | BR-9 | The same task is filed twice, by id | The second adds nothing. If the row is still pending, it triggers the board's run again, which is idempotent; otherwise it starts nothing | CI |
 
@@ -66,7 +66,8 @@ check. A reassigned task runs at once.
 ## The chain
 
 BR-30 to BR-32 are the split, and ship here only if [Q](DECISIONS.md#q) keeps it; otherwise
-they move to its follow-up with goal leg b, and BR-33 holds at one level.
+they move to its follow-up with goal leg b, and BR-33 holds at one level. *Amended after merge:*
+Q moved them, and that follow-up, [FIX-1802](../FIX-1802/BUSINESS-RULES.md), is in the MVP (epic D8).
 
 | # | When | Then | Proved by |
 |---|---|---|---|

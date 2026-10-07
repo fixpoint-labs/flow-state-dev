@@ -10,6 +10,15 @@
 | FIX-1774 leg e: a task fails and the coordinator reassigns or cancels it. Spec PR [#2747](https://github.com/fixpoint-labs/flow-state-dev/pull/2747), closed; [`a8e45d6`, `specs/issues/FIX-1774/SPEC.md`](https://github.com/fixpoint-labs/flow-state-dev/blob/a8e45d681a192ac9ca686216e41088a6e5352a49/specs/issues/FIX-1774/SPEC.md) | **Retained** | Carried through FIX-1791's Q1 | Goal leg e | n/a |
 | This issue's PRD: boards below a workstream are session-scoped and shared down their lineage ([Linear](https://linear.app/fixpoint-labs/issue/FIX-1794), Outcome, third point) | **Amended**: the intent (a task session settles its row on the board that filed it) kept, the storage changed | A lineage stops at a flow ([epic POC](../../epics/FIX-1786/poc/singleton-worker-link/README.md) C1), and the epic left how to this issue ([ER-9](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) | [D1](DECISIONS.md#d1) | `sharedToLineage` boards are unchanged; the chain doesn't use them |
 
+Amended after merge (FIX-1802's spec PR): epic [D8](../../epics/FIX-1786/DECISIONS.md#d8) (the product owner, 2026-10-06) reversed
+[Q](DECISIONS.md#q)'s answer. The split ships in the MVP as [FIX-1802](../FIX-1802/SPEC.md), which
+builds right after this issue, and filing is a tool any worker can be granted, not what makes a
+coordinator. The places that said only a coordinator files, that a task session refuses to file, or
+that the split waits for a later issue now point there: SPEC (the people table, leg b's note, the
+sign-off), DECISIONS (Q, *decided, not asked*), BR-7 and the chain's rules, S4, the follow-ups and
+the docs draft. What this issue builds is unchanged: until FIX-1802 lands, coordinator
+conversations file and a task session's filing is refused.
+
 `sharedToLineage` itself (FIX-1068, and [FIX-1084](../FIX-1084/SPEC.md)'s routing rule) is a
 neighbour, not a predecessor: it keeps working as shipped. The epic's [D5](../../epics/FIX-1786/DECISIONS.md#d5)
 and ER-9 are answered here, not superseded. Before implementation, compare these intents with
