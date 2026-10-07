@@ -40,7 +40,7 @@ the build keeps it in server-written session state.
 
 ## What was observed
 
-One test, four legs, **passed**.
+Against `main` at `ce06cb5c7`: one test, four legs, **passed**.
 
 | Leg | Question | Observed |
 |---|---|---|
