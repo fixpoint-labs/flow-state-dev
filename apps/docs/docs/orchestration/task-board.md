@@ -375,8 +375,6 @@ export default defineFlow({
 
 The two presets fold `boardId` into the key, so two boards' `per-task` runs stay apart even when their task ids coincide. A custom `key` is used as returned: two seats, or two boards, that return the same string share one session. The sharing is scoped to the conversation dispatching them — the same key from another conversation is a different run — and to the instance a cross-flow seat names. A `key` function that returns an empty string fails that task.
 
-When the flow a seat hands off to needs state in each new session, such as a required readonly field its [`createCheck`](../fundamentals/state-and-scopes.md#creating-sessions) confirms, give the dispatcher a `state`: a fixed object, or `(task) => object`, which receives the row's `assignee`, `taskId` and `input`. Each new run is created with it, and the target flow accepts or refuses it. A run that already exists keeps its own state. Without one, that flow refuses every new run, and the task fails with `create-refused`.
-
 ```ts
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 
@@ -384,6 +382,17 @@ implement: dispatcher({
   name: "hand-off-implement",
   action: "implement",
   session: { key: (task: TaskWorkerInput) => (task.input as { issueKey: string }).issueKey },
+}),
+```
+
+When the flow a seat hands off to needs state in each new session, such as a required readonly field, give the dispatcher a `state` beside `session`: a fixed object, or `(task) => object`, which receives the row's `assignee`, `taskId` and `input`. It works with every `session` policy, the presets included. Each new run is created with it, and the target flow's [`stateSchema` and `createCheck`](../fundamentals/state-and-scopes.md#creating-sessions) accept or refuse it. A run that already exists keeps its own state. Without one, a flow that needs it refuses every new run, and the task fails with `create-refused`.
+
+```ts
+implement: dispatcher({
+  name: "hand-off-implement",
+  action: "implement",
+  session: "per-task",
+  state: (task) => ({ issueKey: (task.input as { issueKey: string }).issueKey }),
 }),
 ```
 

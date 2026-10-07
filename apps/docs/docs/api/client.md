@@ -71,7 +71,7 @@ await sessions.deleteSession(created.id);
 
 `updateSessionMetadata` changes only the fields you pass. `title`, `description` and `tags` are each replaced whole, so the call above leaves the session with the one tag `planning`. `metadata` is merged key by key: the keys you send are written over the stored ones, and the rest stay. [Session management](/docs/client/overview#session-management) covers the errors it throws.
 
-`state` is the new session's initial state. The flow's `stateSchema` parses it and its `session.createCheck`, if it declares one, can refuse it. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
+`createSession` also takes `state`, the new session's initial state. The flow's `stateSchema` parses it. On a flow with a readonly field or a `session.createCheck`, a state that doesn't fit the schema, or that the check refuses, fails the create. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project).
 
 ### `sessions.listSessions(options?)`
 
