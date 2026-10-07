@@ -142,7 +142,7 @@ stands for that child's control and is not run again.
 | ID | Check | Controls still run here | Covered by part 1 |
 |---|---|---|---|
 | P3.1 | FIX-1789 · `goals/worker-contract/runs-workers-only-on-registered-flows/` | its own | — |
-| P3.2 | FIX-1790 · `goals/user-scope/keeps-a-users-data-in-the-org-it-was-saved-in/` | `cross-org-key`, `fallback-read` | — |
+| P3.2 | FIX-1790 · `goals/user-scope/keeps-a-users-data-in-the-org-it-was-saved-in/` | `cross-org-key` | — |
 | P3.3 | FIX-1788 · `goals/workers-as-resources/keeps-each-users-workers-their-own/` | `caller-link` | `org-scoped-workers` (c2) |
 | P3.4 | FIX-1791 · `goals/coordinators/hands-each-post-to-its-delegates/` | `no-round-limit`, `no-delegate-read` | `no-roster-check` (c4) |
 | P3.5 | FIX-1793 · `goals/projects/a-shared-project-has-one-owner-per-workstream/` | `no-owner-rule`, `all-entries-delegate` | — |
@@ -239,9 +239,9 @@ No reader-facing change. [DOCS.md](DOCS.md) lists the pages J1 follows.
   `delegates:` can take a task. The chain cap is 100 by default and app-configurable, depth stays
   at five; no step here reaches either.
 - **No backwards support while there are no consumers** (same sign-off): nothing here proves an
-  old shape is refused, migrated, upgraded or dual-read. Read P3.2's controls off FIX-1790's
-  merged spec: its `fallback-read` grades an old marker, and if that leg is retired there, it is
-  not run here.
+  old shape is refused, migrated, upgraded or dual-read. FIX-1790's `fallback-read` control and
+  its leg c are retired by the D9 sweep ([#2841](https://github.com/fixpoint-labs/flow-state-dev/pull/2841)),
+  so P3.2 runs `cross-org-key` only.
 - Kitchen-sink's escalation feature is removed by FIX-1792 (the `escalate` tool, the escalations
   board and panel, and the `no-filing` control). No step here used it; P3.9 expects that PR's
   retirement line for `lists-a-filed-case-without-a-reload` and its rewrites of the talk goals.
