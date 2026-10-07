@@ -87,8 +87,8 @@ export interface DefineSkillsCollectionOptions {
    * Keep one catalog per partition, named per run by a function of the running
    * context: one per party that runs through one registered copy of the
    * declaring flow. See `partition.ts` for the key layout. The value must come
-   * from data only the server writes; `undefined` reads the collection
-   * unpartitioned.
+   * from data only the server writes; `undefined` reads no partition's skills
+   * and writes none.
    */
   partitionBy?: SkillsPartitionFn;
 }

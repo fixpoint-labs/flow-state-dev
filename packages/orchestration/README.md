@@ -638,13 +638,21 @@ too, so follow-ups like "yes, do that" can match.
 `initialSkills` also takes a **function of the execution**, for a catalog that
 belongs to the flow copy rather than to the definition — two registered copies
 then seed two different sets. Pair it with `collectionConfig: { flowIsolation: true }`
-so each copy reads its own storage. When several parties run through **one** copy, pass
-`partitionBy: (ctx) => string | undefined` instead: a function of the running context, from data
-only the server writes, naming the party; each partition keeps its own catalog in the collection's
-one bucket, and `undefined` reads it whole. The resolver runs before every step of every
+so each copy reads its own storage. The resolver runs before every step of every
 turn, so keep it to an O(1) read of something already resolved; and because there
 is no build-time catalog under one, binding a skill by name (`active` / `allowed`)
 is refused rather than left unvalidated.
+
+### Partitioning a library
+
+When many users or workers share one copy, use `partitionBy` instead of `flowIsolation`. It
+returns the partition for the running context, and each partition gets its own catalog. Derive it
+from server-written data, such as session state, never from input. A run it returns `undefined`
+for reads no partition's skills: its catalog is empty, and a write to it is refused.
+
+```ts
+createSkillsLibrary({ scope: "user", partitionBy: (ctx) => ctx.session.state.workerId });
+```
 
 Seeding writes a **copy**, so a later edit to the source does not reach a catalog
 that already holds the skill. `refreshSeededSkills(collection, sources)` is the

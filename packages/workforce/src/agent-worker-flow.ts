@@ -118,7 +118,6 @@ import {
 } from "./seat-capabilities";
 import { SEAT_DISCOVER_KEY } from "./seat-discovery";
 import { seatSkillSchema, workerConfigSchema } from "./worker-config";
-import { WORKER_ID_STATE_KEY } from "./workers/keys";
 
 /**
  * The kind name the hire step resolves a record to when it names none, and the
@@ -824,15 +823,6 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     // switched on re-seeds from the new key; the old rows are orphaned, not
     // lost — BP-030.)
     collectionConfig: { flowIsolation: true },
-    // And one drawer per worker on a copy several workers share: a session's
-    // worker is the readonly `workerId` its create named, which a worker
-    // flow's create check confirms, so each worker reads and writes its own
-    // catalog in the user's cell (FIX-1788 BR-23). A session with no worker
-    // reads the copy's drawer whole, as a copy minted per worker does.
-    partitionBy: (ctx) => {
-      const workerId = (ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY];
-      return typeof workerId === "string" && workerId.length > 0 ? workerId : undefined;
-    },
     // The second half of the `tools:` fence. A skill a seat merely HOLDS can
     // declare `agents:`, and the delegation surface would otherwise seat board
     // workers — separate generators the `tools:` mapping below never sees —

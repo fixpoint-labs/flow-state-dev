@@ -123,7 +123,8 @@ export interface SkillsLibraryOptions {
   /**
    * Keep one catalog per partition, named per run: a function of the running
    * context the composing layer supplies, returning a value derived from data
-   * only the server writes (or `undefined` for none). Use it when several
+   * only the server writes. A run it returns `undefined` for reads no
+   * partition's skills and writes none. Use it when several
    * parties run through one registered copy of the declaring flow and each
    * must hold its own catalog; `flowIsolation` separates copies, not parties.
    */

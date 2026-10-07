@@ -240,6 +240,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   /**
    * What `hireWorkforce` would refuse this worker for, or the instance it
    * would mint. Nothing is registered: the instance is read and dropped.
+   *
+   * Reusing the hire on every turn is deliberate: one path decides what a
+   * worker runs with, so a save, a hire and a turn refuse the same things in
+   * the same words. It costs about 0.13 ms a turn against about 10 ms for a
+   * turn with no model (in-memory stores), so it isn't cached.
    */
   const mint = (
     manifest: WorkerManifest
@@ -283,6 +288,31 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         packages: [...(options.packages ?? [])]
       }
     };
+  };
+
+  /**
+   * Which worker an id names, from its stored row (read at the caller's own
+   * scope) or the standard workers: the caller's own row first, since a hire
+   * can't take a standard worker's id. The create check and a turn word what
+   * they find differently, so each keeps its own refusals.
+   */
+  const lookupWorker = (
+    workerId: string,
+    stored: unknown
+  ):
+    | { found: "own"; row: WorkerRow; flow: string; standardOnly: boolean }
+    | { found: "standard"; manifest: WorkerManifest; flow: string }
+    | { found: "unreadable"; problem: string }
+    | { found: "none" } => {
+    if (stored !== undefined) {
+      const parsed = parseWorkerRow(stored);
+      if ("problem" in parsed) return { found: "unreadable", problem: parsed.problem };
+      const flow = parsed.row.flow;
+      return { found: "own", row: parsed.row, flow, standardOnly: workerFlows()[flow]?.standardOnly === true };
+    }
+    const file = standard.get(workerId);
+    if (file === undefined) return { found: "none" };
+    return { found: "standard", manifest: file, flow: standardWorkerFlow(file, AGENT_KIND)! };
   };
 
   const configurationProblems = (id: string, row: WorkerRow): string[] => {
@@ -331,30 +361,19 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     // The caller's own worker, read at their scope: another user's row is
     // simply not there, so it is refused exactly as a worker that doesn't
     // exist is.
-    const stored = await input.readCollectionItem(WORKERS_RESOURCE, workerId);
-    let flow: string | undefined;
-    let own = false;
-    if (stored !== undefined) {
-      const parsed = parseWorkerRow(stored);
-      if ("problem" in parsed) {
-        return { ok: false, message: `Worker "${workerId}" can't be used: ${parsed.problem}.` };
-      }
-      flow = parsed.row.flow;
-      own = true;
-    } else {
-      const file = standard.get(workerId);
-      if (file !== undefined) flow = standardWorkerFlow(file, AGENT_KIND);
+    const found = lookupWorker(workerId, await input.readCollectionItem(WORKERS_RESOURCE, workerId));
+    if (found.found === "none") return { ok: false, status: 404, message: `No worker "${workerId}".` };
+    if (found.found === "unreadable") {
+      return { ok: false, message: `Worker "${workerId}" can't be used: ${found.problem}.` };
     }
-    if (flow === undefined) return { ok: false, status: 404, message: `No worker "${workerId}".` };
-
-    if (flow !== input.flow.kind) {
+    if (found.flow !== input.flow.kind) {
       return {
         ok: false,
-        message: `Worker "${workerId}" runs on flow "${flow}", not "${input.flow.kind}". Create its session on "${flow}".`
+        message: `Worker "${workerId}" runs on flow "${found.flow}", not "${input.flow.kind}". Create its session on "${found.flow}".`
       };
     }
-    if (own && workerFlows()[flow]?.standardOnly === true) {
-      return { ok: false, message: `Worker "${workerId}" ${standardOnlyReason(flow, false)}.` };
+    if (found.found === "own" && found.standardOnly) {
+      return { ok: false, message: `Worker "${workerId}" ${standardOnlyReason(found.flow, false)}.` };
     }
     return { ok: true };
   };
@@ -385,40 +404,30 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
           `on the block that calls it.`
       );
     }
-    const stored = await collection.getOptional(workerId);
+    const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
+    if (found.found === "none") {
+      refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
+    }
+    if (found.found === "unreadable") refuse(`Worker "${workerId}" can't run: ${found.problem}.`);
+    const worker = found as Exclude<typeof found, { found: "none" } | { found: "unreadable" }>;
+    const flow = worker.flow;
+    if (flow !== flowKind) {
+      refuse(
+        `Worker "${workerId}" now runs on flow "${flow}", and this session runs on "${flowKind}". ` +
+          `A session stays on the flow it was created on: start a new session to talk to it on "${flow}".`
+      );
+    }
 
     let manifest: WorkerManifest;
-    let isStandard: boolean;
-    let flow: string;
     let description: string | null;
-    if (stored !== undefined) {
-      const parsed = parseWorkerRow(stored.state);
-      if ("problem" in parsed) refuse(`Worker "${workerId}" can't run: ${(parsed as { problem: string }).problem}.`);
-      const row = (parsed as { row: WorkerRow }).row;
-      flow = row.flow;
-      if (flow !== flowKind) {
-        refuse(
-          `Worker "${workerId}" now runs on flow "${flow}", and this session runs on "${flowKind}". ` +
-            `A session stays on the flow it was created on: start a new session to talk to it on "${flow}".`
-        );
-      }
-      if (flows[flow]?.standardOnly === true) refuse(`Worker "${workerId}" ${standardOnlyReason(flow, false)}.`);
-      const built = manifestOfRow(workerId, row);
+    if (worker.found === "own") {
+      if (worker.standardOnly) refuse(`Worker "${workerId}" ${standardOnlyReason(flow, false)}.`);
+      const built = manifestOfRow(workerId, worker.row);
       if (!built.ok) refuse(`Worker "${workerId}" can't run: ${built.problems.join("; ")}.`);
       manifest = (built as { manifest: WorkerManifest }).manifest;
-      isStandard = false;
-      description = row.description;
+      description = worker.row.description;
     } else {
-      const file = standard.get(workerId);
-      if (file === undefined) {
-        refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
-      }
-      manifest = file!;
-      isStandard = true;
-      flow = standardWorkerFlow(manifest, AGENT_KIND)!;
-      if (flow !== flowKind) {
-        refuse(`Worker "${workerId}" runs on flow "${flow}", and this session runs on "${flowKind}".`);
-      }
+      manifest = worker.manifest;
       const declaredDescription = manifest.declared.description;
       description = typeof declaredDescription === "string" ? declaredDescription : null;
     }
@@ -431,7 +440,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     markVerifiedWorker(ctx.session as object, workerId);
     return {
       id: workerId,
-      standard: isStandard,
+      standard: worker.found === "standard",
       flow,
       description,
       config: seat.config as Readonly<Record<string, unknown>>,

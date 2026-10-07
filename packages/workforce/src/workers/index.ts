@@ -9,7 +9,8 @@
  * - `createWorkerHireBlocks`: hire, fork, edit and fire, as writes to the
  *   caller's roster.
  * - `defineWorkerRosterFlow`: the flow a client reads a roster through.
- * - `createWorkforceClient`: find or start a session with a worker.
+ * - `createWorkforceClient`: find or start a session with a worker. Exported
+ *   from `./browser` only: it is an app's, and the server never calls it.
  */
 export {
   DERIVED_WORKER_SESSION_PREFIX,
@@ -39,9 +40,3 @@ export {
 } from "./installation";
 export { createWorkerHireBlocks, type WorkerHireBlocks } from "./hire-blocks";
 export { defineWorkerRosterFlow } from "./roster-flow";
-export {
-  createWorkforceClient,
-  type RosterEntry,
-  type WorkforceClient,
-  type WorkforceClientOptions
-} from "./client";

@@ -128,8 +128,8 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     return items;
   };
 
-  const readRoster = async (): Promise<RosterEntry[]> => {
-    const { id } = await roster();
+  /** The roster as it is now: read on every call, since a hire changes it. */
+  const readRoster = async (id: string): Promise<RosterEntry[]> => {
     const [own, standard] = await Promise.all([listAll(id, WORKERS_RESOURCE), listAll(id, STANDARD_WORKERS_RESOURCE)]);
     const entry = (item: { topic: string; clientData?: unknown }, isStandard: boolean): RosterEntry => {
       const data = (item.clientData ?? {}) as { flow?: unknown; description?: unknown };
@@ -144,10 +144,8 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     return [...own.map((item) => entry(item, false)), ...standard.map((item) => entry(item, true))];
   };
 
-  const flowOf = async (worker: string): Promise<string> => {
-    // The user's own worker first: a hire can't take a standard worker's id,
-    // so two entries under one id never both run.
-    const entries = await readRoster();
+  /** The worker's flow on the roster: the user's own worker first, since a hire can't take a standard id. */
+  const flowOf = (entries: readonly RosterEntry[], worker: string): string => {
     const found =
       entries.find((entry) => entry.id === worker && !entry.standard) ?? entries.find((entry) => entry.id === worker);
     if (found === undefined) throw new Error(`No worker "${worker}" on your roster.`);
@@ -169,13 +167,18 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
   };
 
   return {
-    roster: readRoster,
-    findWorkerSession: async (criteria) => find(criteria, await flowOf(criteria.worker)),
+    roster: async () => readRoster((await roster()).id),
+    findWorkerSession: async (criteria) => {
+      const { id } = await roster();
+      return find(criteria, flowOf(await readRoster(id), criteria.worker));
+    },
     ensureWorkerSession: async (criteria) => {
-      const flow = await flowOf(criteria.worker);
+      // One roster read per call, and the roster session's organization from
+      // the same lookup.
+      const { id, orgId } = await roster();
+      const flow = flowOf(await readRoster(id), criteria.worker);
       const existing = await find(criteria, flow);
       if (existing !== undefined) return existing;
-      const { orgId } = await roster();
       const sessionId = await deriveWorkerSessionId({ userId, orgId, flow, criteria });
       try {
         return await sessions.createSession({

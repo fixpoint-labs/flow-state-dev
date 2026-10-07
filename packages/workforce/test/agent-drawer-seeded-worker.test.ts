@@ -1,11 +1,15 @@
 /**
- * The built-in `agent` keeps one skills drawer per worker on a copy several
- * workers share (FIX-1788 BR-23, the Workforce half of S7): the skills
- * library takes its partition per run, and Workforce supplies the session's
- * worker.
+ * A `workerId` a caller seeds into a session of a flow that doesn't bind it
+ * reaches no data partition (FIX-1788, BP-031).
  *
- * One registered `agent` copy, two sessions of one user, each created naming
- * a different worker. Graded on the store after real runs: every drawer write
+ * The built-in `agent` copy minted per worker declares no readonly `workerId`
+ * and no create check, so a `workerId` in its session state is whatever the
+ * caller wrote. Its skills drawer must not be split by it: the drawer is kept
+ * per worker only once `agent` runs on the worker model, with its session
+ * declared by the installation (P4).
+ *
+ * One registered `agent` copy, sessions of one user created with and without a
+ * seeded `workerId`. Graded on the store after real runs: every drawer write
  * is recorded with the key it landed at.
  */
 import { describe, expect, it } from "vitest";
@@ -70,17 +74,9 @@ async function drawerKeys(workers: ReadonlyArray<string | undefined>): Promise<s
   return [...new Set(keys)].sort();
 }
 
-describe("the built-in agent's drawer, per worker", () => {
-  it("gives two workers on one copy two drawers in the user's cell", async () => {
-    const keys = await drawerKeys(["scribe", "researcher"]);
-    expect(keys.filter((key) => key.endsWith("SKILL.md"))).toEqual([
-      "skills/researcher/refunds/SKILL.md",
-      "skills/scribe/refunds/SKILL.md"
-    ]);
-  });
-
-  it("reads the copy's drawer whole for a session that names no worker, as a copy minted per worker does", async () => {
-    const keys = await drawerKeys([undefined]);
+describe("a caller-seeded workerId on a flow that doesn't bind it", () => {
+  it("doesn't partition the agent's drawer: every session of the copy reads the copy's one drawer", async () => {
+    const keys = await drawerKeys(["scribe", "researcher", undefined]);
     expect(keys.filter((key) => key.endsWith("SKILL.md"))).toEqual(["skills/refunds/SKILL.md"]);
   });
 });

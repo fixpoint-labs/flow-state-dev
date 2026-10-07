@@ -2218,10 +2218,12 @@ A session names its worker once, when it is created, and each turn loads it. Thi
 `hireWorkforce`: nothing here mints a copy or sets a pin.
 
 ```ts
+import { defineFlow } from "@flow-state-dev/core";
 import {
   createWorkerHireBlocks,
   createWorkerInstallation,
   defineWorkerRosterFlow,
+  workerConfigSchema,
 } from "@flow-state-dev/workforce";
 
 const installation = createWorkerInstallation({
@@ -2246,31 +2248,74 @@ const { hire, fork, edit, fire } = createWorkerHireBlocks(installation);
 const rosterFlow = defineWorkerRosterFlow(installation, {
   hire: { inputSchema: hire.inputSchema, block: hire },
   fork: { inputSchema: fork.inputSchema, block: fork },
+  edit: { inputSchema: edit.inputSchema, block: edit },
+  fire: { inputSchema: fire.inputSchema, block: fire },
 });
 ```
 
-- **The create check.** A session of a worker flow is created with `state: { workerId }`. The check
-  reads the creating user's own worker, at their scope, or a standard one; a worker that isn't
-  theirs gets the answer one that doesn't exist gets (404). A worker on another flow is refused,
-  naming both flows. A session with no worker is refused, by the create and by an action on an
-  unused id. `workerId` is readonly: nothing changes it after the create.
-- **Each turn.** `resolveWorker(ctx, flowKind)` loads the session's worker, resolves its tools,
-  skills and packages against what the installation registers, and refuses the turn
-  (`WorkerTurnRefusedError`) when the worker was fired, now runs on another flow, names something
-  the installation doesn't register, or runs on a flow since kept for standard workers. The row
-  and the session are left for a fix. Read the worker's settings from `worker.config`, never
-  `ctx.flow.config`, which the shared copy holds once.
-- **The roster.** `workforce/workers/<id>` in the user's scope, one row per worker, per
-  organization. `hire`, `fork`, `edit` and `fire` each check the write as a turn would and refuse
-  a standard worker's id, suggesting a fork. A fork copies the standard worker's configuration and
-  shared instructions; a later edit to the files doesn't reach it.
-- **From an app.** `createWorkforceClient({ userId, baseUrl })` takes the transport options
-  `createSessionClient` takes. `roster()` lists the user's workers and the standard ones, each with
-  its `flow`; `ensureWorkerSession({ worker })` returns the user's most recent session with the
-  worker or creates one, at an id derived from the user, organization, flow and worker, so two
-  calls at once get one session; `findWorkerSession` only looks. It reads the roster through a
-  session of the roster flow, one per user, so register `defineWorkerRosterFlow(installation)`,
-  and leave the `workforce-roster` kind out of a listing of every flow's sessions.
+Register `researchFlow()` and `rosterFlow()`.
+
+- **Creating a session.** A session of a worker flow is created with `state: { workerId }`. The
+  worker must be the creating user's own or a standard one. Asking for another user's worker
+  returns the same 404 as asking for one that doesn't exist. A worker on another flow is refused
+  with a 400 naming both flows. A session created with no worker is refused, and so is an action
+  sent to a session id that doesn't exist yet. `workerId` is readonly: nothing changes it after the
+  create.
+- **Each turn.** `resolveWorker(ctx, flowKind)` loads the session's worker and resolves its tools,
+  skills and packages against what the installation registers. Read the worker's settings from
+  `worker.config`: `ctx.flow.config` is the flow's own config, the same for every worker on it.
+  When the turn can't run, `resolveWorker` throws `WorkerTurnRefusedError` and nothing is written:
+  - the worker was fired: its sessions stay readable; start a session with another worker;
+  - the worker now runs on another flow: call `ensureWorkerSession` again, which starts a session
+    on the new flow;
+  - it names a tool, skill or package this installation doesn't register: `edit` the worker to drop
+    or replace the name, or register it; the next turn reads the change;
+  - it is one of the user's own workers on a flow marked `standardOnly`: `edit` it onto another
+    flow.
+- **A worker's own data.** Data a flow keeps per user is shared by all of that user's workers on
+  the flow, and never reaches another user. Keeping one worker's data apart from the user's other
+  workers is the flow author's job: key a collection by the session's readonly `workerId`, or use a
+  skills library with `partitionBy` reading it
+  ([Partitioning a library](../orchestration/README.md#partitioning-a-library)). The framework
+  neither refuses nor partitions it for you.
+- **The roster.** Each worker the user hires or forks is a row at `workforce/workers/<id>` in their
+  user scope, one roster per organization. Every write is checked the way a turn would check it,
+  and a standard worker's id is refused with a suggestion to fork it:
+  - `hire({ id, flow?, description?, instructions?, skills?, settings? })` returns `{ id, flow }`;
+    `flow` defaults to `agent`, and `settings` takes the keys a `WORKER.md` frontmatter accepts;
+  - `fork({ from, id })` returns `{ id, flow }`, copying a standard worker's, or one of the user's
+    own, configuration and shared instructions; a later edit to the files doesn't reach the fork;
+  - `edit({ id, flow?, description?, instructions?, skills?, settings? })` returns `{ id, flow }`,
+    replacing each field given;
+  - `fire({ id })` returns `{ id }` and deletes the row.
+- **From an app.** `createWorkforceClient`, from `@flow-state-dev/workforce/browser`, takes the
+  transport options `createSessionClient` takes:
+
+  ```ts
+  import { createClient } from "@flow-state-dev/client";
+  import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+
+  const workforce = createWorkforceClient({ userId, baseUrl });
+
+  const roster = await workforce.roster();
+  // [{ id: "scribe", flow: "research", standard: false, description: "Takes notes." },
+  //  { id: "researcher", flow: "research", standard: true, description: "Finds things out." }]
+
+  const session = await workforce.ensureWorkerSession({ worker: roster[0].id });
+  // { id: "wks_…", flowKind: "research", userId, createdAt, updatedAt, … }
+
+  const research = createClient({ flowKind: session.flowKind, userId, baseUrl });
+  const { requestId } = await research.sendAction("run", { message: "Summarize the launch notes." }, {
+    sessionId: session.id,
+  });
+  ```
+
+  `ensureWorkerSession` returns the user's most recent session with the worker, or creates one.
+  Two calls at once get the same session. `findWorkerSession` takes the same argument and returns
+  the session or `undefined`, creating nothing. The roster flow keeps one session per user, of the
+  kind `workforce-roster`; if you list every flow's sessions, filter out
+  `flowKind === "workforce-roster"`. Two first calls at once may create two roster sessions, which
+  is harmless: the roster lives in the user's scope, not in either session.
 
 ## Importing from a browser component
 
@@ -2320,7 +2365,7 @@ before fire removed inventory rows is left out that way.
 | `createWorkerInstallation({ standardWorkers?, workerFlows?, seatBlocks?, packageBlocks?, documents?, references?, skills?, packages? })` | The worker model's one module (see [Workers as data](#workers-as-data)). Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
 | `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |
 | `defineWorkerRosterFlow(installation, actions?)` | The roster flow (`workforce-roster`), which declares the two worker collections so a client reads a user's roster through one session of it. Mount the hire blocks on it as actions. |
-| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession({ worker })` and `ensureWorkerSession({ worker })`, over the session and resource clients. Also from `./browser`. |
+| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession({ worker })` and `ensureWorkerSession({ worker })`, over the session and resource clients. From `./browser` only. |
 | `deriveWorkerSessionId({ userId, orgId, flow, criteria })` / `isDerivedWorkerSessionId(id)` | The id `ensureWorkerSession` creates a session at, and the shape a worker flow's create check reserves for the user it derives to. |
 | `WorkerTurnRefusedError` | What `resolveWorker` throws when a turn can't run as the session's worker; nothing is written. |
 | `defineWorkerCollection()` / `workerRowSchema` / `parseWorkerRow(value)` | The user's worker collection at `workforce/workers/*`, user scope, and its row. |

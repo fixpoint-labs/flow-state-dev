@@ -39,10 +39,25 @@ function drawerFlow(partitioned: boolean): FlowInstance {
       return { held: (await skills.list()).map((ref) => ref.state.name).sort() };
     }
   });
+  const look = handler({
+    name: "look",
+    inputSchema: z.object({ note: z.string() }),
+    resources: { skills },
+    execute: async (_input, ctx) => {
+      const view = resolveSkillsCollection(ctx, "skills")!;
+      return {
+        held: (await view.list()).map((ref) => ref.state.name).sort(),
+        found: (await view.getOptional("alpha/SKILL.md")) !== undefined
+      };
+    }
+  });
   return defineFlow({
     kind: "drawer",
-    session: { stateSchema: z.object({ party: z.string().readonly() }) },
-    actions: { keep: { inputSchema: z.object({ note: z.string() }), block: keep } }
+    session: { stateSchema: z.object({ party: z.string().readonly().optional() }) },
+    actions: {
+      keep: { inputSchema: z.object({ note: z.string() }), block: keep },
+      look: { inputSchema: z.object({ note: z.string() }), block: look }
+    }
   })({ id: "drawer" }) as unknown as FlowInstance;
 }
 
@@ -52,25 +67,27 @@ async function boot(partitioned: boolean) {
   const stores = createInMemoryStores();
   registry.register(flow);
   const router = createFlowApiRouter({ registry, stores });
-  for (const [sessionId, party] of [["s-a", "worker-a"], ["s-b", "worker-b"]]) {
+  for (const [sessionId, party] of [["s-a", "worker-a"], ["s-b", "worker-b"], ["s-none", undefined]]) {
     const res = await router.POST(
       new Request("http://localhost/api/flows/drawer/sessions", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "alice", sessionId, state: { party } })
+        body: JSON.stringify({ userId: "alice", sessionId, ...(party !== undefined ? { state: { party } } : {}) })
       }),
       { params: { path: ["drawer", "sessions"] } }
     );
     expect(res.status).toBe(201);
   }
-  const keep = async (sessionId: string, note: string) => {
-    const result = await runAction({
-      flow, actionName: "keep", input: { note }, userId: "alice", orgId: DEFAULT_ORG_ID, sessionId, stores, runtimeConfig: {}
+  const run = (sessionId: string, actionName: "keep" | "look", note: string) =>
+    runAction({
+      flow, actionName, input: { note }, userId: "alice", orgId: DEFAULT_ORG_ID, sessionId, stores, runtimeConfig: {}
     });
+  const keep = async (sessionId: string, note: string) => {
+    const result = await run(sessionId, "keep", note);
     expect(result.error).toBeUndefined();
     return (result.output as { held: string[] }).held;
   };
-  return { stores, keep };
+  return { stores, keep, run };
 }
 
 async function storedKeys(stores: StoreRegistry): Promise<string[]> {
@@ -89,6 +106,17 @@ describe("a skills library kept per partition", () => {
       "skills/worker-a/gamma/SKILL.md",
       "skills/worker-b/beta/SKILL.md"
     ]);
+  });
+
+  it("gives a run with no partition no party's skills, and refuses its writes", async () => {
+    const { keep, run } = await boot(true);
+    await keep("s-a", "alpha");
+    await keep("s-b", "beta");
+    const looked = await run("s-none", "look", "");
+    expect(looked.error).toBeUndefined();
+    expect(looked.output).toEqual({ held: [], found: false });
+    const wrote = await run("s-none", "keep", "gamma");
+    expect(String((wrote.error as { message?: string } | undefined)?.message ?? wrote.error)).toMatch(/names none/);
   });
 
   it("is one shared catalog without a partition, which is what the option exists to split", async () => {
