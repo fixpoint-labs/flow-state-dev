@@ -1,0 +1,106 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D2: what counts as a user doing something through the app? Chosen: the screen where Shift Manager draws one, else a coordinator turn, else the app's own action as that user. Instead of: browser only, or HTTP only. It comes down to the first row, which screens the children promised: the chosen rule grades those and calls an unpromised one an observation; browser only makes every unpromised screen a finding; HTTP only grades none. Second row: what a person sees is graded by the chosen rule and by browser only, not by HTTP only. Third row, the price: the chosen rule lets a step skip a screen a person might look for. Locks in a surface named per step, tagged in the report. Flips if the owner wants forking and coordinator setup as screens in the MVP." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 &#183; THE CALL</text>
+    <text class="t-q" x="32" y="52">What counts as a user doing something "through the app"?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="226" y="112">Screen, turn, or action</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="466" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="466" y="112">Browser only</text>
+    <rect class="lost" x="692" y="76" width="232" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="706" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="706" y="112">HTTP only</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">SCREENS THE</text>
+    <text class="t-lbl" x="32" y="169">CHILDREN PROMISED</text>
+    <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
+    <text class="mark plus" x="226" y="162">+</text>
+    <text class="t-b" x="244" y="161">Graded; others noted</text>
+    <text class="t-s" x="244" y="179">roster, delegates, projects</text>
+    <text class="mark minus" x="466" y="162">&#8722;</text>
+    <text class="t-b" x="484" y="161">Every missing one fails</text>
+    <text class="t-s" x="484" y="179">a UI backlog nobody scoped</text>
+    <text class="mark minus" x="706" y="162">&#8722;</text>
+    <text class="t-b" x="724" y="161">None graded</text>
+    <text class="t-s" x="724" y="179">a broken screen passes</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="224">WHAT A</text>
+    <text class="t-lbl" x="32" y="237">PERSON SEES</text>
+    <text class="mark plus" x="226" y="227">+</text>
+    <text class="t-b" x="244" y="226">On every promised screen</text>
+    <text class="t-s" x="244" y="244">read against the store by id</text>
+    <text class="mark tie" x="466" y="227">=</text>
+    <text class="t-b" x="484" y="226">On every step</text>
+    <text class="t-s" x="484" y="244">where a screen exists</text>
+    <text class="mark minus" x="706" y="227">&#8722;</text>
+    <text class="t-b" x="724" y="226">Never</text>
+    <text class="t-s" x="724" y="244">the children's checks do this</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="282">WHAT IT</text>
+    <text class="t-lbl" x="32" y="295">COSTS</text>
+    <text class="mark minus" x="226" y="285">&#8722;</text>
+    <text class="t-b" x="244" y="284">An unpromised screen</text>
+    <text class="t-s" x="244" y="302">reported, not blocking</text>
+    <text class="mark minus" x="466" y="285">&#8722;</text>
+    <text class="t-b" x="484" y="284">Fork, coordinator screens</text>
+    <text class="t-s" x="484" y="302">built before the wrap</text>
+    <text class="mark plus" x="706" y="285">+</text>
+    <text class="t-b" x="724" y="284">Fast and steady</text>
+    <text class="t-s" x="724" y="302">no browser at all</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">A surface named per step, tagged in the report</text>
+    <text class="t-s" x="32" y="389">leg c's forged requests go over HTTP as Bob</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">The owner wants fork and coordinator screens</text>
+    <text class="t-s" x="494" y="389">in the MVP; each missing one is then a finding</text>
+  </g>
+</svg>
