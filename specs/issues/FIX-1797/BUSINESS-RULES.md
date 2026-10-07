@@ -23,11 +23,11 @@ step or report line that shows the rule held.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | QR-7 | A leg runs | Against a production build of Shift Manager from that commit on its DevTeam install, served by its own command, as Alice (the owner) and Bob (the second member), each in a browser context and a route client carrying only their own verified bearer | The build step; each context's user |
-| QR-8 | A run starts | It owns its store files, each created fresh: one for legs a and b across their restarts, one for leg c, one per control, one for c7's old store, one for J1. No step reads another's file. All are deleted when the run ends | The report names each file and its steps |
+| QR-8 | A run starts | It owns its store files, each created fresh: one for legs a and b across their restarts, one for leg c, one per control, one for J1. No step reads another's file. All are deleted when the run ends | The report names each file and its steps |
 | QR-9 | A step makes a change | Through the app ([D2](DECISIONS.md#d2)): the screen, else a coordinator turn, else the app's own action as that user. Never a store write, a fixture or a block the check calls | The report tags each step's surface |
 | QR-10 | A model turn is graded | Once. A miss is a finding, quoting the turn's tool calls and results by item id. A provider error re-runs that one turn and is reported | Report |
 | QR-11 | A control runs | On its own scratch patch over a copy of the commit, over a fresh store. The pre-epic baseline control is its own checkout and build of the commit before the first child's implementation merged, which the run resolves and records; it has its own expectation ([PLAN → Controls](PLAN.md#controls)) | Each patch in full, each SHA, the baseline's resolved SHA |
-| QR-12 | c7 runs | On a store the pre-epic baseline wrote with Alice's records in it, upgraded only by the steps the published docs give | The steps, quoted from the page |
+| QR-12 | — | Retired (2026-10-07): c7 is gone, since nothing is upgraded while there are no consumers | — |
 
 ## What happens to a finding
 

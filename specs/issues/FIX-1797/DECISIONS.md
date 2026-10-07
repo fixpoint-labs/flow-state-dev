@@ -94,13 +94,13 @@ It comes down to who repairs it: nobody under children-only, and the closure may
 - **The pre-epic baseline is a role, not a pinned SHA:** the commit before the first child's
   implementation merged. The run resolves it (the first parent of the earliest merge on `main`
   of a FIX-1786 child's implementation PR) and records the resolved SHA in the report. It is the
-  "before" for c7's old store, the baseline control, P3.9's union and part 4's diff, and the
-  FIX-1796 census's own "before" too.
+  "before" for the baseline control, P3.9's union and part 4's diff, and the FIX-1796 census's
+  own "before" too.
 - **The baseline control keeps its own expectation**, not the scratch-patch rule: each leg must
   fail where the baseline lacks the epic's work, c2 on its merits ([PLAN → Controls](PLAN.md#controls)).
   Kept rather than dropped, because the epic's goal names it and no named control touches leg a.
-- **c7 runs on a store the pre-epic baseline wrote**, upgraded by the published operator steps (FIX-1790,
-  FIX-1788's upgrade). It is also the only place an operator's upgrade is walked end to end.
+- **No old store is walked.** c7 and m6 are retired, since nothing is upgraded while there are no
+  consumers (the product owner's sign-off, 2026-10-07).
 - **The app-builder journey is a docs-only writer**, as [FIX-1720's D3](../FIX-1720/DECISIONS.md#d3)
   set: a step no page covers is a failed step, reason *doc silent*.
 - **Controls reuse the children's names** where a child defined one, as scratch patches. A
@@ -156,3 +156,12 @@ anything rests on.
   `no-follow-up`. The split is graded by FIX-1802's goal check (P3.10, goal-local workers), which
   runs its own `no-parent-settle`; b6 still stands in for its `no-grant-check`. The note asking
   FIX-1792 to grant a worker below the EM went.
+- **Sign-off** (product owner, 2026-10-07; FIX-1802 and FIX-1792 fold the same answers) — there
+  is no `filing: true` flag: a worker gets the task tools when one of its `delegates:` takes a
+  task. b6 became *no task-taking delegate, no task tools*, and its control `no-grant-check`
+  became `no-delegate-check`. The tools are orchestration's existing `taskTools`, so b5 checks the
+  EM adds the coder's tasks with `addTask`, and b4 names a coordinator with a task-taking
+  delegate. No backwards support while there are no consumers: c7, m6 and QR-12 retired (no old
+  store is upgraded), part 4 checks no refusal of a `MAILBOX.md` and no upgrade page, and P3.7
+  no longer names the refuse-by-name check FIX-1792's P4a carried. The chain cap (100, was 50)
+  touches no step here.
