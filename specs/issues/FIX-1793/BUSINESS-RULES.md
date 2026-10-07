@@ -13,7 +13,7 @@ each to its run. A refusal writes nothing and names its reason.
 | BR-2 | A create names no visibility | A shared project, as today | CI |
 | BR-3 | A private create lists other members | Refused, `private-has-members` | CI |
 | BR-4 | Alice has a private `apollo` and the org a shared one | Both exist; each is addressed by its visibility and id | CI |
-| ~~BR-5~~ | A project row written before this is read | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): nothing reads a row written before this release | — |
+| ~~BR-5~~ | A project row written before this is read | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): no rule, test or code keeps old rows readable. Shared projects keep the `projects/*` collection, so an old row that still fits the schema would list as shared; the kitchen-sink app's and the DevTeam lab's stores are reset once when this ships ([FIX-1796 D2](../FIX-1796/DECISIONS.md#d2)), and that reset is what leaves none | — |
 | BR-6 | Anyone in the org reads a shared project | They see its row, its repository included, and every workstream's entry (BR-12): shared means the whole org reads it, and members decide who opens workstreams (BR-8). A private project's row, repository and files are its owner's alone | CI |
 
 ## Workstreams and the owner rule
