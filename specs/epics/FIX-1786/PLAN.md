@@ -22,7 +22,7 @@ builds after the MVP (Q2). The privacy fix is checked when workers merges, not o
 | **FIX-1787** inventory | inventory, no spec | Every open PR and active issue in the areas | 38 calls: 13 merge first, 13 close, 12 untouched | Every refactor child | Done as a table; its merges are the work |
 | **FIX-1789** contract | spec → impl PR | `workerConfigSchema()`, the door · Q1, decided at its spec gate on its POC of both shapes: the list | Worker flows on the installation's list, checked at registration by exported checks (configuration by value, a door, a full `writtenBy` shape); standard-only per entry, attribution; a worker's configuration as stored data read per run (ER-2, ER-11) | FIX-1788 | Small, plus the two-shape POC |
 | **FIX-1790** per-org data | spec → impl PR | The engine's user key | User data per (user, org); old records dropped, never read in any org (ER-3, D9) | FIX-1788 | Medium: a persisted key every flow uses |
-| **FIX-1788** workers | spec → impl PRs | ER-2 · ER-3 · projected collections · Q1's list | Worker resources on singleton flows, standard projection, fork, deprecations; the session link, set and checked at create where only the server writes (D3's third change); a worker's own key for its private state; today's per-worker cells and old hires dropped (ER-1, D9) | FIX-1791 · FIX-1795 | Large |
+| **FIX-1788** workers | spec → impl PRs | ER-2 · ER-3 · projected collections · Q1's list | Worker resources on singleton flows, standard projection, fork, Workforce off instances and pins; the session link, set and checked at create where only the server writes (D3's third change); a worker's own key for its private state; today's per-worker cells and old hires dropped (ER-1, D9) | FIX-1791 · FIX-1795 | Large |
 | **FIX-1791** coordinator | spec → impl PRs | ER-1 · FIX-1779's join and leave · FIX-1774's legs a to c · Q1's list | The coordinator flow, delegates, four policies, the records (ER-4, ER-5); the chief of staff as a standard coordinator | FIX-1793 · FIX-1794 · FIX-1792 | Medium to large |
 | **FIX-1795** library | spec now → impl PR after the MVP | ER-1's write path | Templates and copies, model variants (ER-10) | Nothing in the MVP; it builds once the closure run passes | Medium |
 | **FIX-1793** projects | spec → impl PRs | ER-4 · ER-3 · FIX-1762's locks · Q2 · FIX-1774's leg d | Private and shared projects (Q2); workstream resources, the row rule, the project coordinator; rooms and Shift Manager's Stream tab removed (ER-7, ER-8) | FIX-1792 | Large: about 2,200 lines out, one engine rule in |
@@ -95,7 +95,7 @@ FIX-1763 and its children, whose org-level project fence Q2 lifted · FIX-1650 a
 first and get an evolution note · FIX-1775, long-lived memory · FIX-1778, consumed · FIX-1762's
 stack, merged and consumed · FIX-1765 and FIX-1764, specced after FIX-1791 · FIX-1745, obsolete when rooms
 go · FIX-1766, FIX-1767 and FIX-1768, carried into FIX-1793's spec · FIX-1798, which removes flow
-instances and owner pins from the engine; FIX-1788 blocks it, and each deprecation marker names it.
+instances and owner pins from the engine; FIX-1788 blocks it, and it deletes them outright, with no deprecation phase first (D9).
 
 ## Wrap
 

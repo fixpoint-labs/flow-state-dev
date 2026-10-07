@@ -67,7 +67,7 @@
     <rect class="fence" x="16" y="350" width="908" height="84" rx="5"/>
     <text class="t-non" x="32" y="370">NOT BUILT</text>
     <text class="t-s" x="32" y="392">no channels · no user-to-user communication · no transcript resource · no files as migrations</text>
-    <text class="t-s" x="32" y="408">flow instances and owner pins deprecated, not removed · no L1 worker, coordinator, project or workstream</text>
+    <text class="t-s" x="32" y="408">flow instances and owner pins left in place, removed by FIX-1798 · no L1 worker, coordinator, project or workstream</text>
     <text class="t-s" x="32" y="424">no second worker store or registry · no memory field or graph · no session shared between users · no migration or upgrade step, D9</text>
   </g>
 </svg>
