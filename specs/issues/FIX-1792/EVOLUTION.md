@@ -22,3 +22,17 @@ level; FIX-1791's covers routing and the wake. This is the file, the board and t
 
 None of these is wholly gone until P4. Re-check each against `main` before building: FIX-1791,
 FIX-1793 and FIX-1794 change the parts this issue converts onto.
+
+<a name="amendment-cross-spec"></a>
+## Amended after merge (cross-spec alignment, 2026-10-07)
+
+**The alignment.** Reading the epic's merged child specs against each other found places where
+siblings read two ways. Each was an engineering call, made under decisions already taken, and
+recorded in the epic's [How it got here](../../epics/FIX-1786/DECISIONS.md#how-it-got-here). This
+spec changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| BR-15, S7 and D1's note: the seed opens Storefront's workstreams as "the lab's member" | **Amended**: as `LAB_USERS.member`, not the owner, and the closure doesn't rely on them | FIX-1797's owner opens her own `feature` (its b5); her coordinator hands work only to her own workstreams (FIX-1793 BR-25) | The seed itself |
+| The sketch: the task tools come from the file's delegates | **Amended**: from the session's delegates, read per call | The grant reads the list the assignee check reads (FIX-1802 S2, FIX-1794 T1) | — |
+| S9: discovery's `mailboxes` domain removed | **Retained**, now counted | A Layer 1 public removal; epic D3 counts it (ER-22) | S9 as written |

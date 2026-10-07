@@ -35,3 +35,14 @@ stored under the cross-org key is dropped, never read in any org and never moved
 | The follow-ups: a startup warning about uncopied cells and a shipped copy command | **Removed** | Nothing to copy | — |
 | `cells.svg`'s operator step | **Amended**: the old cell is dropped, and nothing copies it | Follows from D1 | The fence |
 
+<a name="amendment-cross-spec"></a>
+## Amended after merge (cross-spec alignment, 2026-10-07)
+
+**The alignment.** Reading the epic's merged child specs against each other found places where
+siblings read two ways. Each was an engineering call, made under decisions already taken, and
+recorded in the epic's [How it got here](../../epics/FIX-1786/DECISIONS.md#how-it-got-here). This
+spec changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| The PLAN guardrail's BP-030 citation on org and session keys | **Amended**: the rule gives its own reason | Epic D9: BP-030 doesn't apply to this epic | The rule: those keys stay byte-identical |

@@ -195,3 +195,7 @@ Settled by [the POC](poc/two-shapes/README.md); resolved, don't reopen:
 - **Amended after merge, the D9 sweep (2026-10-07)** — [epic D9](../../epics/FIX-1786/DECISIONS.md#d9): no changeset and no README line
   telling upgraders that `kinds` is now `workerFlows`. The rename itself stands
   ([EVOLUTION.md](EVOLUTION.md#amendment-d9)).
+- **Amended after merge (cross-spec alignment, 2026-10-07)** — reading the epic's child specs
+  against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): BR-15 and the
+  PLAN guardrail stand on their own reason, without BP-030.
+  ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))

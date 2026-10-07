@@ -74,9 +74,10 @@ makes leg c's PASS mean something.
 
 ![What's in the box: workers, coordinators and projects, each private to one user; composed from what ships; the app's own standard install and users; below a fence, what is not built, from channels to a session shared between users](figures/end-state.svg)
 
-Everything in the box composes what ships, plus five Layer 1 mechanism changes and two public
-renames ([D3](DECISIONS.md#d3)). The fifth mechanism change is T1, the task tools' roster read per
-call, built by FIX-1794 (amended) ([D8](DECISIONS.md#d8)). The fence is the PRD's out-of-scope list and the locks the Architect
+Everything in the box composes what ships, plus six Layer 1 mechanism changes, two public
+renames and one public removal ([D3](DECISIONS.md#d3)). The fifth mechanism change is T1, the task tools' roster read per
+call, built by FIX-1794 (amended) ([D8](DECISIONS.md#d8)); the sixth is the skills library taking
+its key per run, built by FIX-1788; the removal is discovery's `mailboxes` domain, FIX-1792's. The fence is the PRD's out-of-scope list and the locks the Architect
 carried: what would turn a privacy refactor into a collaboration product. The library in the
 box builds after the MVP.
 
@@ -96,7 +97,7 @@ blocked by FIX-1787 ([ER-23](BUSINESS-RULES.md#how-the-set-is-run)).
 | [FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793) · projects and workstreams | Private or shared projects; workstream resources an owner writes and the org reads; a project coordinator; rooms removed | Leg b, and the one new engine rule | Spec merged ([#2823](https://github.com/fixpoint-labs/flow-state-dev/pull/2823)) · private and shared projects in, and a shared project's members open its workstreams ([Q2](DECISIONS.md#q2)) |
 | [FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794) · assignment chain | Tasks assigned from delegates, down the owner's boards, run as the owner, and followed through; T1, the task tools' roster read per call, amended in [#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839) ([D8](DECISIONS.md#d8)) | Today a drain runs as whoever triggers it | Backlog · spec route · carries FIX-1777's "runs as the filer" rule, FIX-1774's leg e and FIX-1780's follow-through |
 | [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802) · filing and the split | Orchestration's task tools for any worker whose delegates can take a task; a filed task's worker files pieces in turn, five boards deep and 100 tasks a chain by default | The split is in the MVP, and the DevTeam's workstream is led by an ordinary worker that files ([D8](DECISIONS.md#d8)) | Backlog · joined 2026-10-06 · spec being written, no PR yet |
-| [FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792) · `MAILBOX.md` to `WORKER.md` | 33 charters converted, all 16 boards in 15 files: 13 files keep a session board, the DevTeam's feature becomes a workstream, and kitchen-sink's escalations board goes with its feature, old mailbox data dropped ([D9](DECISIONS.md#d9)); project claims and a project row's mailbox list removed | One way to declare a worker | Backlog · spec route |
+| [FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792) · `MAILBOX.md` to `WORKER.md` | 33 charters converted, all 16 boards in 15 files: 11 files keep a session board, the DevTeam's feature becomes a workstream, kitchen-sink's escalations board goes with its feature, and manager-queue-lab's two board-in-a-seat-folder trees go with the leg they served, old mailbox data dropped ([D9](DECISIONS.md#d9)); project claims and a project row's mailbox list removed | One way to declare a worker | Backlog · spec route |
 | [FIX-1796](https://linear.app/fixpoint-labs/issue/FIX-1796) · terminology | The retired terms gone from code, docs and the glossary, a task board's seat renamed assignee among them ([D7](DECISIONS.md#d7)) | One term, one thing | Backlog · spec route |
 | [FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797) · closure · **required** | The QA plan, an early leg-c run when FIX-1788 merges, and the runs on one `main` commit | Proves the whole | Backlog · blocked by every other child except FIX-1795, which builds after the MVP ([ER-27](BUSINESS-RULES.md#how-the-set-is-run)) |
 

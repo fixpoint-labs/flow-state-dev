@@ -2,9 +2,10 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-The cases, written as rules. Alice and Bob are two users of one org. A worker *files* when its
-file's `delegates:` lists at least one worker whose flow takes a task; that is the whole grant
-([D1](DECISIONS.md#d1)). Its *session* is the one it runs in: a talk session, a delegate's
+The cases, written as rules. Alice and Bob are two users of one org. A worker *files* in a
+session when that session's delegate list holds at least one worker whose flow takes a task; that
+is the whole grant ([D1](DECISIONS.md#d1)). The list starts as a copy of the file's `delegates:`
+(FIX-1791 BR-1), and it is the one the assignee check reads, per call (FIX-1794 T1). Its *session* is the one it runs in: a talk session, a delegate's
 session or a task session. Its *board* is the one that session keeps. A *coordinator* is the flow
 built for routing posts (epic D8), not a kind that files. FIX-1794's rules hold on
 every board here unchanged ([its BR-1 to BR-29](../FIX-1794/BUSINESS-RULES.md)), with "the
@@ -14,12 +15,12 @@ conversation" read as "the session". The *proved by* column is the check the pla
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | A worker's file lists a delegate that takes a task, and its flow carries the task tools | Its turn has Orchestration's eight task tools over its session's board, and the app's actions of those names (`<tool>_<board>`) work on its sessions | CI · VG legs a, b |
-| BR-2 | A worker's file lists no delegate that takes a task: none at all, or only ones that take posts (a routing coordinator) | Its turn has none of the eight. Its session keeps no board, so the app's `addTask` action on it answers `no_delegation_board`. Nothing stored | CI · VG leg c |
+| BR-1 | A session's delegate list holds a delegate that takes a task, from the file or added since, and its flow carries the task tools | Its turn has Orchestration's eight task tools over its session's board, and the app's actions of those names (`<tool>_<board>`) work on that session. The list grants no access ([epic ER-17](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)): it decides which tools a turn carries, and every task's assignee is checked against the user's roster and FIX-1788's links when filed and again when delivered | CI · VG legs a, b |
+| BR-2 | A session's delegate list holds no delegate that takes a task: none at all, or only ones that take posts (a routing coordinator) | Its turn has none of the eight. Its session keeps no board, so the app's `addTask` action on it answers `no_delegation_board`. Nothing stored | CI · VG leg c |
 | BR-3 | A worker's file lists a task-taking delegate, and its flow doesn't carry the task tools | Its turn has none, and its flow has no such actions. Nothing is refused at load | CI |
 | BR-4 | A file lists delegates and nothing uses them: its flow routes no posts, and none takes a task | Accepted at load. Nothing files and nothing posts | CI |
-| BR-5 | A worker's file gains its first, or loses its last, task-taking delegate while a session is open | The next run reads it. A session that lost it adds and changes nothing more (`no_delegation_board`); its rows still run, settle and notify | CI |
-| BR-6 | A caller's input or a session create carries a delegate list, a board, a depth or a chain | Ignored, or refused where the schema names it | CI |
+| BR-5 | A session gains its first, or loses its last, task-taking delegate mid-conversation, through `addDelegate` or `removeDelegate` | The next call reads it: an add shows the tools and opens the actions, and removing the last hides them. A session that lost it adds and changes nothing more (`no_delegation_board`); its rows still run, settle and notify. A change to the file reaches only sessions whose list is copied after it (FIX-1791 BR-1) | CI |
+| BR-6 | A session create carries delegates, a depth or a chain in its state | Refused with a 400 naming the field: each is server-written state (FIX-1788 S1, FIX-1791 BR-8). An action's or a tool's input that carries a delegate list, a board, a depth or a chain is ignored, or refused where the schema names it (FIX-1794 BR-8) | CI |
 
 ## Who it files for
 
@@ -29,6 +30,7 @@ conversation" read as "the session". The *proved by* column is the check the pla
 | BR-8 | It adds or assigns a task for a worker that isn't on its session's list, is Bob's, or doesn't exist | One answer for all three, the tools' roster refusal (`unknown_assignee`), naming the worker and the delegates it can file for (FIX-1794 BR-2). Nothing stored | CI · VG leg a |
 | BR-9 | A delegate is added whose flow takes tasks but no delegated post | Accepted: a delegate takes a post or a task. A post to it is skipped and recorded, as an unreachable delegate is; a task for it runs | CI |
 | BR-10 | It files for a delegate whose flow takes no task | Refused as BR-8: the roster holds only delegates that take a task, and the answer lists them (FIX-1794 BR-3) | CI |
+| BR-10a | A standard worker's `delegates:` names a worker that isn't standard, on any flow | Refused at load, naming it: FIX-1791 BR-11's rule, carried to every standard worker that lists delegates (epic ER-6) | CI |
 
 ## Which board
 
@@ -62,8 +64,8 @@ conversation" read as "the session". The *proved by* column is the check the pla
 
 ## Failure taxonomy
 
-A refused filing writes nothing and says why, in the task tools' existing answers. Nothing here
-refuses a file at load. A piece fails and retries as FIX-1794 says. A
+A refused filing writes nothing and says why, in the task tools' existing answers. Nothing about
+the grant refuses a file at load; the one load refusal is BR-10a's, carried from FIX-1791. A piece fails and retries as FIX-1794 says. A
 lost parent settle stays owed on its row (BR-17). Nothing here deletes a row, session or notice.
 
 ## Acceptance criteria this issue owns

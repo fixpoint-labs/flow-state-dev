@@ -4,8 +4,10 @@
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
 (BR-n) and [DECISIONS.md](DECISIONS.md). `tdd`. Four PRs, a GitHub stack (epic ER-26). P1 starts
-once FIX-1787's merge-first rows land (ER-23); P2 waits on FIX-1790 and FIX-1788, P3 on FIX-1791
-(epic PLAN step 4).
+once FIX-1787's merge-first rows land (ER-23); P2 waits on FIX-1790 and FIX-1788, P3 on FIX-1791,
+FIX-1794's P2 and FIX-1802's P1 (epic PLAN step 4). P3's Board and S6's walk-up test need a
+lead's session board (FIX-1794's P2) and the task tools for a lead on `em` or `agent`
+(FIX-1802's P1). *Amended after merge: the cross-spec alignment.*
 
 ## Surfaces
 
@@ -29,7 +31,7 @@ once FIX-1787's merge-first rows land (ER-23); P2 waits on FIX-1790 and FIX-1788
 |---|---|---|
 | P1 · the owner rule | S1, proved on a fixture collection | — |
 | P2 · projects and workstreams | S2, S3, S4, S6 | P1, FIX-1790 and FIX-1788 merged |
-| P3 · the coordinator, rooms out, Shift Manager | S5, S7, S8, S9 | P2, FIX-1791 merged |
+| P3 · the coordinator, rooms out, Shift Manager | S5, S7, S8, S9; V6's walk-up leg | P2, FIX-1791 merged, FIX-1794's P2 and FIX-1802's P1 merged |
 | P4 · the goal and the docs | S10, S11, VG | P3 |
 
 ```mermaid
@@ -58,7 +60,7 @@ Rooms come out only once the coordinator that replaces them is in (P3).
 | V3 | S3 | BR-7–BR-17; BR-11 through the action, a tool and a flow writing the collection; BR-14 with two opens in flight; BR-16a on the owner's write and the lead's; BR-21a and BR-21b, with two workstreams led by one worker as two records |
 | V4 | S4 | BR-18–BR-20, counting store reads: one per view |
 | V5 | S5 | BR-21–BR-23, BR-26, BR-27 on a scripted model, counting store reads: at most one entry prefix list per coordinator turn, shared by routing and the read-project tool |
-| V6 | S6 | BR-33, BR-34 on both visibilities; BR-32's claim path on a mailbox board |
+| V6 | S6 | BR-33, BR-34 on both visibilities; BR-32's claim path on a mailbox board. Its walk-up leg, a run in a task session filed from the workstream session, runs in P3, once a lead files (FIX-1794's P2, FIX-1802's P1) |
 | ~~V7~~ | ~~S7~~ | Removed by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9), with BR-29 to BR-31. V9's inventory rerun shows the room code is gone |
 | V8 | S8 | BR-12, BR-18, BR-28 in Shift Manager's tests: a project view's open reads the row and one prefix, and its Board reads only the viewer's own workstream sessions |
 | V9 | S10 | Rerun [`poc/removal-inventory/`](poc/removal-inventory/README.md): every match classified, every file it removes reported deleted |

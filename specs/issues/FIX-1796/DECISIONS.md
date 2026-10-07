@@ -36,7 +36,7 @@ as merged, which kept "seat" on the board ([the card as merged](https://github.c
 |---|---|
 | **Instead of** | Only Workforce's seat going, while a task board keeps "seat" for a place on a board (D1 as merged) · or route, lane or station, the other words offered. "Route" is already the engine's HTTP routes and the router block kind |
 | **Because** | A reader who learned Workforce's seat as a worker would meet the same word on the board, for example on Shift Manager's task screens, where both meet: the case the merged card named as what would change its mind. A task already says `assignee` for the board entry it picks, so the entry and the pick take one name and one glossary row. "Seat" is then a fully retired word, and the guard needs no board exception. It changes a Layer 1 name, so it binds only through the epic, which records it as [D7](../../epics/FIX-1786/DECISIONS.md#d7) and counts it in its D3 (ER-22) |
-| **Locks in** | An assignee is a named entry in a board's `workers` map; a task's `assignee` picks it, and it runs the task inline or hands it off to a dispatch run. The board's types, its docs and the hand-off record's `seat` field take the word, with no alias ([D3](#d3)), under the names [PLAN.md](PLAN.md#pinned-names) pins; nothing reads the old field ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)). `defaultWorker`, "the floor", is the default assignee in prose; whether its `kind: "floor"` and `label: "floor"` values change is the implementer's call. The discovery tool's `seats` domain is Workforce's seat, and is [D4](#d4)'s. The guard keeps no board-seat exception: "seat" counts on every line in scope, a board's included |
+| **Locks in** | An assignee is who a task goes to: an entry in the board's `workers` map, or a name the board's assignee check accepts (in Workforce, a delegate; *amended after merge*, the cross-spec alignment). A task's `assignee` names it, and it runs the task inline or hands it off to a dispatch run. The board's types, its docs and the hand-off record's `seat` field take the word, with no alias ([D3](#d3)), under the names [PLAN.md](PLAN.md#pinned-names) pins; nothing reads the old field ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)). `defaultWorker`, "the floor", is the default assignee in prose; whether its `kind: "floor"` and `label: "floor"` values change is the implementer's call. The discovery tool's `seats` domain is Workforce's seat, and is [D4](#d4)'s. The guard keeps no board-seat exception: "seat" counts on every line in scope, a board's included |
 
 ![D1, flipped by the epic's D7: a task board's seat becomes assignee, chosen, beside the board keeps seat. Decides it: what a reader meets on a board, one word defined once. Price: the board's names change, the epic's second Layer 1 rename. Flips if one word for a board's entry and a task's pick reads ambiguously in the board's API](figures/d1-seat-becomes-assignee.svg)
 
@@ -177,5 +177,9 @@ The `mailboxes` domain is not decided here: FIX-1792 removes it ([its PLAN S9](h
   board's types, its docs and the hand-off record are renamed, the glossary defines assignee only,
   and the guard's board-seat exceptions and board surface went
   ([EVOLUTION.md](EVOLUTION.md#amendment-d9)).
+- **Amended after merge (cross-spec alignment, 2026-10-07)** — reading the epic's child specs
+  against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): an assignee is
+  who a task goes to: an entry in the board's `workers` map, or a name the board's assignee check
+  accepts (in Workforce, a delegate). ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
 
 **Open: none.**

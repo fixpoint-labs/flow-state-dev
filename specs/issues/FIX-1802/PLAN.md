@@ -11,8 +11,8 @@ FIX-1794's. P1 starts after FIX-1794, FIX-1788, FIX-1789 and FIX-1791 merge (epi
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
 | S1 | `workforce` · the task tools on any flow | Orchestration's eight task tools as FIX-1794 wires them (amended on this PR): `createTaskToolsCapability(resolver, roster)` on the model's block and `taskToolActions(<board id>, resolver, roster)` in the flow's actions, with the board's entries (its run, its task entry, its notice entry). The resolver is the session's own board, its D6 partition; the roster is the session's delegates that take a task. The `agent` flow composes them, as the coordinator flow does; so does an app flow. No new tool, no core change | BR-1 BR-11 BR-13 |
-| S2 | `workforce` · the grant | `delegates` is defined in `workerConfigSchema()` (FIX-1789's contract), so every flow that composes it reads it; there is no `filing` key. FIX-1794's question, "may this session file", is answered from the linked worker's file, per run, server-side: yes when one of its `delegates:` takes a task. On a no, the model's block gets no task tools (a `uses` entry read per run) and the resolver gives no board, so the actions answer `no_delegation_board`. No load check | BR-1–BR-6 |
-| S3 | `workforce` · delegates on any worker | FIX-1791's delegate module (its S2), and the roster S1 reads from it; its four actions work on any worker's session whose file lists `delegates:` (FIX-1791 BR-1a). Its check widens to a post **or** a task; posting skips one that takes no post, filing refuses one that takes no task. The module and its actions lose "coordinator" from their names | BR-7–BR-10 |
+| S2 | `workforce` · the grant | `delegates` is defined in `workerConfigSchema()` (FIX-1789's contract), so every flow that composes it reads it; there is no `filing` key. FIX-1794's question, "may this session file", is answered per call, server-side, from the same live list the assignee check reads (FIX-1794 T1): the session's current delegates that take a task, which start as a copy of the file's `delegates:` (FIX-1791 BR-1). Yes when that list isn't empty: an `addDelegate` mid-conversation shows the tools, and removing the last task-taking delegate hides them. On a no, the model's block gets no task tools (a `uses` entry read per call) and the resolver gives no board, so the actions answer `no_delegation_board`. One list, so the grant and the assignee check can't disagree (D1). No load check for the grant | BR-1–BR-6 |
+| S3 | `workforce` · delegates on any worker | FIX-1791's delegate module (its S2), and the roster S1 reads from it; its four actions work on any worker's session whose file lists `delegates:` (FIX-1791 BR-1a). Its check widens to a post **or** a task; posting skips one that takes no post, filing refuses one that takes no task. The module and its actions lose "coordinator" from their names. FIX-1791 BR-11's load refusal reaches every standard worker that lists `delegates:` (BR-10a), and every flow that carries delegate state declares it server-only through FIX-1788 S1, so a create that seeds it is refused with a 400 naming the field (BR-6) | BR-6 BR-7–BR-10a |
 | S4 | `workforce` · the split | FIX-1794's S8 as written: park with the server-written binding, no notice for it, settle-owed written with the last piece's ending, the settle fenced by the ticket after the turn, never inside it, through the partitioned ref. A touch of any board replays owed settles down the chain: it dispatches "run my board" into each parked row's task session, which replays its own board's markers. Each session reads only its own partition, never a child's board from above | BR-14–BR-19 |
 | S5 | `workforce` · depth and the chain | FIX-1794's S10 (depth, the parent's plus one) and the chain's top (the top board's partition and the top task id), both server-written at each task session's birth. Both limits refuse in the ref the resolver returns, by throwing the existing `TaskCapExceededError`, which the tools answer as `total_task_cap_exceeded`: no task-tool change. Depth is fixed at 5. The chain cap is 100 unless the app sets an option on `hireWorkforce` (the implementer names it). One versioned chain record at the owner's user scope, keyed by the top board's server-written partition and the top task id: the id of every piece filed under it, any state, each *reserved* or *added*, with the time it was reserved. A filing reserves its id before the add, idempotent by id, so nothing is given back; once its add commits, the filer marks it *added* in its own request. At the cap, drop *reserved* ids older than the lease, then check again. Never read rows on another board. The lease is the implementer's choice, at least one minute and comfortably longer than one add (a few minutes). Deleted when the top task ends | BR-20–BR-22a |
 | S6 | `workforce` · the grant replaces FIX-1794's interim answer | P1: talk and delegate sessions file on the delegate rule; a task session is still refused. P2 lifts that refusal with S4, so a task never completes before its pieces | BR-1 BR-14 |
@@ -44,8 +44,8 @@ flowchart TD
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S2 | BR-1–BR-6 on `agent`, the coordinator and a fixture app flow: tools with a task-taking delegate, and with none (posts-only delegates; no delegates); the app action answering `no_delegation_board` without one; a file with unused delegates and a flow without the tools both load; the last task-taking delegate removed from the file mid-session; a forged delegate list on input |
-| V2 | S1 S3 | BR-7–BR-13: an `agent` worker files for an `agent` delegate; a tasks-only delegate is filed for and skipped by a post; two sessions of one worker; a workstream session files and hears |
+| V1 | S2 | BR-1–BR-6 on `agent`, the coordinator and a fixture app flow: tools with a task-taking delegate, and with none (posts-only delegates; no delegates); the app action answering `no_delegation_board` without one; a file with unused delegates and a flow without the tools both load; a task-taking delegate added mid-session (the tools appear on the next call) and the last one removed (they go); a create seeding delegates answered 400 naming the field; a forged delegate list on input |
+| V2 | S1 S3 | BR-7–BR-13, with BR-10a on a standard worker naming a non-standard delegate: an `agent` worker files for an `agent` delegate; a tasks-only delegate is filed for and skipped by a post; two sessions of one worker; a workstream session files and hears |
 | V3 | S4 | BR-14–BR-19: one piece completed, one errored; a reassign in the woken turn keeps the parent open; a restart between park and the last notice; a kill between settle and clear settles once; a settling turn fails two boards down, and a `listTasks` at the top settles each board once; a cancel from above |
 | V4 | S5 | BR-20 at the sixth board with a forged depth on input ignored; BR-21 at the 101st task across three depths, finished pieces counted, under the default; BR-21a: the app's cap set to 3, refused at the 4th; BR-22: two concurrent filings at 99, one accepted, one refused, 100 recorded; a crash after the reservation and before the add, then the 100th filing refused within the lease and accepted after it, with no read of another board's rows; BR-22a, one top task id in two sessions; the record gone after the top task ends; every refusal answers `total_task_cap_exceeded` |
 | V5 | S6 | P1: no "is this a coordinator" check on the filing path, and a task session's filing still refused. P2: that refusal gone, in the PR that delivers S4 |
@@ -71,7 +71,7 @@ Everything else is yours, in the new terms.
 
 | Rule | Because |
 |---|---|
-| The grant, the depth and the chain come from the worker's file or server-written birth data, never input (BP-031, ER-17) | Each decides whether, and how far, work multiplies |
+| The grant, the depth and the chain come from the session's server-written delegate list or birth data, never input (BP-031, ER-17) | Each decides whether, and how far, work multiplies |
 | Every filing path, app or tool, on every flow, asks the same one question and the same one delegate check (tenet 5) | A grant checked on the tool alone is open through the app |
 | Every board operation, the parent's settle included, goes through D6's partitioned ref | Any other way is the cross-session write D6 rules out |
 | Every owed settle is a marker on the row, written with the ending that owes it | A failed turn otherwise strands a parent |
@@ -81,7 +81,9 @@ Everything else is yours, in the new terms.
 
 **Filing kit.** A worker files with three: a delegate that takes a task in its `delegates:`, the
 task tools on its model block, and their actions and the board's entries on its flow. The `agent`
-and coordinator flows carry the last two. Nothing refuses a file at load (BR-3, BR-4).
+and coordinator flows carry the last two. Nothing about the grant refuses a file at load (BR-3,
+BR-4); a standard worker naming a non-standard delegate is refused, as FIX-1791's coordinator is
+(BR-10a).
 
 ## Docs
 
@@ -91,7 +93,7 @@ Reconcile and publish [DOCS.md](DOCS.md) in P3, after V1 to V5 pass, against the
 
 ```
 on any addTask (tool or app action) in session S:
-    resolver: worker ← S's linked worker; grant ← one of its file's delegates takes a task, read now   ← never input
+    resolver: grant ← one of S's current delegates takes a task, read now (the list the roster reads)   ← never input
               no grant → no board → the tools answer no_delegation_board
     roster:   S's delegates that take a task (FIX-1791's one check) → else unknown_assignee     ← the tools' own check
     the ref:  depth ← S's depth + 1; top ← S's top (board partition, task id), or (S's partition, this task) if S is no task session

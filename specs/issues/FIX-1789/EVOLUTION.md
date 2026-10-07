@@ -29,4 +29,16 @@ kind." The epic records it as [epic D9](../../epics/FIX-1786/DECISIONS.md#d9).
 
 | What | Treatment | Why | What is retained |
 |---|---|---|---|
-| PLAN S8's `minor` changeset for `workforce` naming the `kinds` rename, and DOCS's README line that `kinds` is now `workerFlows` | **Removed** | Both tell an upgrader what changed, and there is no consumer to upgrade. No consumer, no changeset (BP-022) | The rename of `kinds` to `workerFlows` (S2), every in-repo caller moved, and S8's README entries for the new export, entry form and helpers |
+| DOCS's README line that `kinds` is now `workerFlows` | **Removed** | It told an upgrader what changed, and there is no consumer to upgrade | The rename itself, and S8's `minor` changeset as one sentence (restored by the cross-spec alignment: a changeset is release bookkeeping, epic D9's changeset policy) |
+
+<a name="amendment-cross-spec"></a>
+## Amended after merge (cross-spec alignment, 2026-10-07)
+
+**The alignment.** Reading the epic's merged child specs against each other found places where
+siblings read two ways. Each was an engineering call, made under decisions already taken, and
+recorded in the epic's [How it got here](../../epics/FIX-1786/DECISIONS.md#how-it-got-here). This
+spec changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| BR-15 and the PLAN guardrail's BP-030 citations | **Amended**: each gives its own reason | Epic D9: BP-030 doesn't apply to this epic | Both rules: a refused row is reported and left as it is |

@@ -38,3 +38,15 @@ records it as an amendment to [epic D7](../../epics/FIX-1786/DECISIONS.md#d7); t
 | DOCS's upgrading page section and its rename table; BR-14's, S3's, S7's and D4's changeset rows; V5 | **Removed** | No consumer needs a rename table. No consumer, no changeset (BP-022), as for FIX-1789 | No aliases (D3), and every in-repo caller moves in the same PR |
 | `what-changes.svg`'s "saved key strings (D2)" under *kept by design*, and `d3-no-aliases.svg`'s table | **Amended** | Follow from D2 and the removed tables | — |
 | [D1](DECISIONS.md#d1), a task board keeps "seat"; with it BR-3, BR-18, S1, S3, S9, S10, V1, the guard's board-seat exceptions and board surface, the pinned names, `what-changes.svg`'s kept board seat, and `d4-workers-domain.svg`'s "seat means only a board's place" | **Flipped**: a task board's seat becomes assignee and "seat" is retired everywhere. The card links its merged text, and its figure is redrawn as `d1-seat-becomes-assignee.svg` | The product owner, 2026-10-07 ([epic D7](../../epics/FIX-1786/DECISIONS.md#d7)) | BR-3's and BR-18's IDs |
+
+<a name="amendment-cross-spec"></a>
+## Amended after merge (cross-spec alignment, 2026-10-07)
+
+**The alignment.** Reading the epic's merged child specs against each other found places where
+siblings read two ways. Each was an engineering call, made under decisions already taken, and
+recorded in the epic's [How it got here](../../epics/FIX-1786/DECISIONS.md#how-it-got-here). This
+spec changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| BR-18, D1's *Locks in* and the glossary row: an assignee is "a named entry in a board's `workers` map" | **Amended**: who a task goes to, an entry in that map or a name the board's assignee check accepts (in Workforce, a delegate) | Workforce boards route every row through one `defaultWorker`, and the assignee is a delegate name (FIX-1794, FIX-1802); epic D7 matches | The word, assignee (the product owner, 2026-10-07) |

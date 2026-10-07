@@ -104,7 +104,7 @@ It comes down to the post: with judgment behind the evaluator, a miss still gets
   user's posts: an answer routed again between rounds makes its one evaluator call.
 - **Best fit's ladder is extracted, not copied.** Hold, one call, fallback, and now `unplaced`
   become one shared helper that the mailbox's route and this policy both call, so a fix reaches
-  both. FIX-1796's sweep removes the mailbox caller. Where the helper finds no taker, the
+  both. FIX-1792's removals (its S9) take the mailbox caller. Where the helper finds no taker, the
   coordinator runs its judgment turn before `unplaced` ([D2](#d2)); the mailbox's route keeps its end.
 - **Delegates live in server-written session state** (FIX-1788 S1 and BR-18a; epic
   [D3](../../epics/FIX-1786/DECISIONS.md#d3) *Locks in* (3)), copied from the configuration's
@@ -168,7 +168,7 @@ It comes down to the post: with judgment behind the evaluator, a miss still gets
 | In a round, every answer to every other delegate | Turns grow as delegates to the power of rounds; one delivery per delegate per round grows in a line |
 | A transcript resource | Out of scope (the PRD); the conversation's own items are the transcript |
 | A delivery ledger local to the coordinator | A third copy after `room-deliveries` and the mailbox's, and FIX-1793 needs the same one |
-| Port `routeByPurpose`'s ladder as a copy | A fix in one copy misses the other until FIX-1796 |
+| Port `routeByPurpose`'s ladder as a copy | A fix in one copy misses the other until FIX-1792 |
 | One `delegates` action with a mode | Four named actions read as the typed client's methods, and the fallback gets its own |
 | Under judgment, each answer wakes the coordinator | Each wake can hand off to every delegate, so turns grow as delegates to the power of rounds |
 
@@ -197,5 +197,9 @@ It comes down to the post: with judgment behind the evaluator, a miss still gets
   [D8](../../epics/FIX-1786/DECISIONS.md#d8)): a coordinator is evaluator first, its own judgment
   as the fallback. D2 now sends a best-fit miss with no fallback delegate to the judgment turn
   (BR-16, BR-16a); a configured fallback delegate still wins.
+- **Amended after merge (cross-spec alignment, 2026-10-07)** — reading the epic's child specs
+  against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): the mailbox's
+  call to the best-fit helper, and its exports, go with FIX-1792's S9, not FIX-1796.
+  ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
 
 **Open: none.** No claim is settled or in flight.

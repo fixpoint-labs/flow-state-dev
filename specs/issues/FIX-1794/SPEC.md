@@ -21,7 +21,7 @@ workers ([FIX-1788](../FIX-1788/SPEC.md)) and delegates ([FIX-1791](../FIX-1791/
 **Every task a user's coordinator files for one of its delegates, and every piece a delegate
 splits it into, runs in a new session that belongs to that user and acts as them. Only the
 board that filed a task claims, wakes on or settles it, even when its worker runs on another
-flow. The conversation that filed it hears how it ended and can reassign or cancel it.**
+flow. The conversation that filed it hears how it ended and can file it again.**
 
 | Is it the right goal? | |
 |---|---|
@@ -47,7 +47,7 @@ the ledger isn't kept per conversation, and leg c must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/coordinators/files-tasks-down-the-owners-chain/` · scripted workers for legs a to d, `openai/gpt-5.4-mini` for leg e · Shift Manager over HTTP, two users · run by the implementer at completion · verdict in the last implementation PR |
-| **Signal** | **a**: Alice's coordinator files a task for her `agent` delegate; within 60 s it is `completed` in a new session that is hers, a child of the conversation, linked to the delegate and found by `findWorkerSession`; one `completed` notice; the filing returned first. **b**: owned by [FIX-1802](../FIX-1802/SPEC.md); not exercised in this goal. **c**: two conversations each file one task for one delegate; each runs only its own, lists only its own, and its drain returns without waiting on the other's. **d**: Bob opening, posting to or filing on Alice's conversation, and naming her worker on his own, are each refused; none of his runs touch her rows. **e**: a task that fails both attempts gives one `errored` notice; the coordinator reassigns or cancels it, and its reply names the task and the error |
+| **Signal** | **a**: Alice's coordinator files a task for her `agent` delegate; within 60 s it is `completed` in a new session that is hers, a child of the conversation, linked to the delegate and found by `findWorkerSession`; one `completed` notice; the filing returned first. **b**: owned by [FIX-1802](../FIX-1802/SPEC.md); not exercised in this goal. **c**: two conversations each file one task for one delegate; each runs only its own, lists only its own, and its drain returns without waiting on the other's. **d**: Bob opening, posting to or filing on Alice's conversation, and naming her worker on his own, are each refused; none of his runs touch her rows. **e**: a task that fails both attempts gives one `errored` notice; the coordinator files it again with `addTask` (a finished task can't be reassigned or cancelled; the tools answer `terminal_task_write_declined`), and its reply names the task and the error |
 | **Input** | The DevTeam standard install; two users through sign-in; a goal-local tree with a scripted coordinator delegate and two scripted `agent` workers. Asks held out at run time |
 | **Anti-game** | No drain from the check; no row, notice or session written by a fixture. Counts read again after 5 s. Leg c reads each conversation's own read, not the store |
 | **Control that must fail** | `GOAL_CONTROL=unpartitioned`: leg c FAILS on *each runs only its own*. `GOAL_CONTROL=no-follow-up`: legs a and e FAIL on *one notice*. Today's `main`: every leg FAILS |

@@ -29,7 +29,7 @@ behaviour isn't there is held, not published. Watch for: em-dashes as connectors
 A task board's seat becomes assignee ([D1](DECISIONS.md#d1)). The glossary defines assignee once,
 here, and has no seat row.
 
-> | **Assignee** | orchestration | A named entry in a task board's workers. A task's `assignee` picks it, and it runs the task inline or hands it off to a dispatch run in another session. A task whose assignee names no entry goes to the default assignee, or fails. See [Task board](./orchestration/task-board.md). | Board worker, task |
+> | **Assignee** | orchestration | Who a task goes to: an entry in a task board's workers, or a name the board's assignee check accepts, such as one of a Workforce worker's delegates. A task's `assignee` names it, and it runs the task inline or hands it off to a dispatch run in another session. A task whose assignee names no entry goes to the default assignee, or fails. See [Task board](./orchestration/task-board.md). | Board worker, task |
 
 ## REPLACE · `glossary.md` · "Workforce: workers, mailboxes, projects"
 

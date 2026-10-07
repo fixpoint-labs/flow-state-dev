@@ -68,9 +68,9 @@ the docs state the cost per level.
   row ([POC](poc/board-partition/README.md) F1).
 - **Three endings are heard** (FIX-1780 D3): completed, failed for good, parked. A failed attempt
   with attempts left re-runs the board with no coordinator turn. A cancel or a relabel is silent.
-- **Reassign and cancel are FIX-1780's rules** (its BR-16 to BR-22): a waiting task moves in
-  place; a failed one is carried on by a new task; a running one is refused; three moves per
-  piece of work.
+- **Reassign and cancel: the task tools' own contract** (*amended after merge*; as merged, this
+  line carried FIX-1780's BR-16 to BR-22). See *Reassign and cancel are the task tools' own*,
+  below.
 - **An assignee is one of this conversation's delegates**, checked by FIX-1791's one check at
   filing and again at hand-over. FIX-1778's lookup still resolves the name to a flow; it never
   authorizes. A delegate record with a target (FIX-1793's workstreams) takes posts, not tasks.
@@ -97,7 +97,7 @@ the docs state the cost per level.
 - **The partition is the conversation's incarnation**: its id plus a value minted at its birth
   that only the server writes, the same incarnation FIX-1791 keys delegate sessions by. A
   conversation deleted and created again starts with an empty board; the old rows stay in the
-  store, unread (BP-030).
+  store, unread, because no other incarnation's partition reaches them.
 - **Who may file is FIX-1802's** (*amended after merge*, epic [D8](../../epics/FIX-1786/DECISIONS.md#d8); this line read "a worker that
   splits its task is a coordinator"). This issue ships the final shape: a board per session, and
   Orchestration's existing eight task tools wired to it, with the session's board as their
@@ -109,7 +109,9 @@ the docs state the cost per level.
   `reassignTask` rules this spec cited (a failed task carried on by a new one, three moves, a
   running task's cancel refused) are not carried: on this board `assignTask` moves a task no
   attempt holds, a failed task is filed again with `addTask`, and a cancel of a running task
-  lands while its worker's late result is declined. Stopping a running task stays FIX-1659's.
+  lands while its worker's late result is declined. A cancel of a split task cascades to its open
+  pieces, down the chain ([FIX-1802 BR-19](../FIX-1802/BUSINESS-RULES.md#the-split)). Nothing
+  limits how many times a task moves. Stopping a running task stays FIX-1659's.
 - **Mailbox boards stay until FIX-1792**, which moves each onto this shape or a workstream (epic
   [D5](../../epics/FIX-1786/DECISIONS.md#d5)) and deletes `mailboxTaskLists` with them.
 
@@ -211,5 +213,10 @@ left.
 - **Terminology** (the product owner, 2026-10-07; epic [D7](../../epics/FIX-1786/DECISIONS.md#d7)) —
   a board's seat is now an *assignee*, so the plan and the docs draft say "an assignee that hands
   off" and "the default assignee".
+- **Amended after merge (cross-spec alignment, 2026-10-07)** — reading the epic's child specs
+  against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): reassign and
+  cancel are the task tools' own everywhere, a cancel cascading as FIX-1802 BR-19 says; T1 is D3's
+  fifth of six; the incarnation line stands without BP-030.
+  ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
 
 **Open: none.** [Q](#q) is answered: the split moves to FIX-1802, which is in the MVP (epic D8).

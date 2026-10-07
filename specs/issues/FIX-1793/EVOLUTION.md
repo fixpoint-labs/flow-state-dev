@@ -37,3 +37,14 @@ it was an upgrade path this sweep removes.
 | S7's deprecation markers on claims, `setWorkstreams` and a row's mailbox list | **Removed** | No consumer to warn | Claims and the mailbox list themselves, until FIX-1792 converts the boards that read them: build order, not compatibility |
 | `what-changes.svg`'s "kept, unread" room rows | **Amended** to dropped | Follows from BR-30 | — |
 
+<a name="amendment-cross-spec"></a>
+## Amended after merge (cross-spec alignment, 2026-10-07)
+
+**The alignment.** Reading the epic's merged child specs against each other found places where
+siblings read two ways. Each was an engineering call, made under decisions already taken, and
+recorded in the epic's [How it got here](../../epics/FIX-1786/DECISIONS.md#how-it-got-here). This
+spec changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| The PR plan: P3 waits on FIX-1791 | **Amended**: P3 also waits on FIX-1794's P2 and FIX-1802's P1, and carries V6's walk-up leg | The Board view and the walk-up test need a lead's session board and a lead that files | P1 and P2 as written |

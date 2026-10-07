@@ -17,7 +17,7 @@ list; Q2, no engine rule. **Build only once the epic has recorded Q1** (see *At 
 | S5 | `workforce` · shared resources | A helper declaring an org-scoped collection whose entries carry a required `writtenBy`, and a write helper stamping it from the session's user and the worker. The worker is today's per-hire id; FIX-1788 switches it to its session link ([D1](DECISIONS.md#d1)) | BR-20–BR-24 |
 | S6 | `workforce` · the built-in `agent` | Move its skills drawer off org scope, to user scope with the flow's isolation. FIX-1788 re-keys it by worker. Mailbox ledgers are untouched | BR-9 BR-17 BR-18 |
 | S7 | `workforce` · the two-door warning | **Remove** the warn-and-hire-with-no-door path for worker flows: BR-3 and BR-4 refuse instead | BR-3 BR-4 |
-| S8 | Docs | [DOCS.md](DOCS.md)'s operations; README entries for the export, the entry form and the helpers. No changeset: no consumer needs to know ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)) | — |
+| S8 | Docs | [DOCS.md](DOCS.md)'s operations; README entries for the export, the entry form and the helpers. A `minor` changeset for `workforce`: one sentence naming the rename, no upgrade steps ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)'s changeset policy) | — |
 
 ## Sequence
 
@@ -73,7 +73,7 @@ Everything else is yours to name, in worker terms: worker flow, never kind or se
 | The resource schema enforces that `writtenBy` is there; S1 checks that schema is the contract's | A helper can be bypassed; a required field can't be skipped, unless it was declared loose (K2) |
 | The helper's stamp reads the session, never input (BP-031) | Attribution a caller supplies is forgery. Flow code can still write its own (K3): say so, and promise nothing more |
 | Nothing at org scope is refused | Q2: the flow's author knows when org data is relevant |
-| Refused stored rows are reported, never rewritten or deleted (BP-030) | A flag flip must not lose a user's worker |
+| Refused stored rows are reported, never rewritten or deleted | A flag flip must not lose a user's worker |
 | Rename only what this issue changes: `kinds` becomes `workerFlows`; `KindRefusedHireError` and `seatDoorOf` are called as they are | One name per thing (Jake, 2026-10-06). FIX-1796 sweeps the rest with the docs |
 
 ## Docs

@@ -39,12 +39,13 @@ Sidebar: `workforce/filing-work`, right after `workforce/coordinators` in `apps/
 > one session's list with `addDelegate` and `removeDelegate`. A delegate has to be on the same
 > user's roster.
 >
-> When at least one delegate can take a task, the worker gets the [task board](../orchestration/task-board.md)'s
-> eight task tools: `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`,
+> When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s
+> eight task tools in that session: `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`,
 > `cancelTask`, `updateTask` and `listTasks`. Your app can send the same eight as actions on any
 > of that worker's sessions. A worker whose delegates only take posts, like a coordinator that
 > routes questions, gets none of them, and the app's `addTask` on its session answers
-> `no_delegation_board`. So does a worker with no delegates.
+> `no_delegation_board`. So does a worker with no delegates. Add a delegate that takes tasks
+> mid-conversation and the tools appear on the next call; remove the last one and they go.
 >
 > The built-in worker and the coordinator flow carry the tools. On your own flow, give the tools
 > to the block that runs the model, and add their actions and the board's entries to the flow:

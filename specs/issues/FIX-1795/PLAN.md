@@ -11,7 +11,7 @@ owner rule is on a PR this one can stack on (epic ER-16, D4).
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the library collection | Org scope, one row per template: name, description, version, and the configuration in FIX-1788's stored shape (names, flow-owned settings), minus the worker row's owner and copy record. It declares whatever owner field FIX-1793's rule reads, set from the session user at publish. Declared with FIX-1789's shared-resource helper, so `writtenBy` is required, and it names; it never decides. No client write config: only S2, S5 and S6 write it. The collection is new, so there is no older shape to read; BP-030 applies from its first schema change | BR-1 BR-6 BR-9–11 |
+| S1 | `workforce` · the library collection | Org scope, one row per template: name, description, version, and the configuration in FIX-1788's stored shape (names, flow-owned settings), minus the worker row's owner and copy record. Keyed `workforce/library/[owner]/[template]` and declared with FIX-1793's rule, `ownerWrites: { param: "owner" }`, which reads the owner off the key, never from state; the owner segment is the session user at publish. Declared with FIX-1789's shared-resource helper, so `writtenBy` is required, and it names; it never decides. No client write config: only S2, S5 and S6 write it. The collection is new, so there is no older shape to read; BP-030 applies from its first schema change | BR-1 BR-6 BR-9–11 |
 | S2 | `workforce` · publish | Reads the session user's own worker at their scope (FIX-1788's roster read); refuses a standard worker or a missing one; runs FIX-1788's save check on the configuration; writes a new template, or the next version of one the user owns and names, through FIX-1789's stamping write. A worker on a flow other than the named template's makes a new template (BR-19a). Copies names only: no session, memory or drawer read | BR-1–8 BR-19 BR-19a BR-25 |
 | S3 | `workforce` · add | Reads a template at org scope; builds a hire from it; calls FIX-1788's one hire write (no second save path); sets the copy record on the new row, with the digest of the configuration as saved | BR-12–18 |
 | S4 | `workforce` · the update mark | The roster listing (FIX-1788 BR-9) gains, per copy, whether a newer version exists and whether the copy was edited since it was taken. One filtered read of the template ids the roster's copies name (BP-033), at list time, never at run time. The digest covers BR-1's configuration fields only, as the save check stored them, on both sides, so a save that normalizes an unedited copy reads as unedited. Kept in `workforce` beside the listing, not in Shift Manager, so every view reads one mark | BR-18 BR-20 BR-28 |
@@ -66,8 +66,8 @@ every mark (V4).
 
 | Where | Name | Why pinned |
 |---|---|---|
-| The library collection | `workforce/library/*`, org scope | Persisted; FIX-1797's closure and Shift Manager read it |
-| The copy record on a worker row | `fromTemplate: { templateId, version, digest }` | Persisted on FIX-1788's row (an additive field, BP-030); `digest` is the configuration as saved at add or take, which the edited flag compares |
+| The library collection | `workforce/library/[owner]/[template]`, org scope, `ownerWrites: { param: "owner" }` | Persisted; FIX-1797's closure and Shift Manager read it; the owner segment is what FIX-1793's rule reads |
+| The copy record on a worker row | `fromTemplate: { templateId, version, digest }` | Persisted on FIX-1788's row, an additive field: a row without it is not a copy; `digest` is the configuration as saved at add or take, which the edited flag compares |
 | A template's version | `version`, a whole number from 1 | Persisted; the mark compares it |
 
 Everything else is yours to name, in the new terms: template, worker library, worker, roster.

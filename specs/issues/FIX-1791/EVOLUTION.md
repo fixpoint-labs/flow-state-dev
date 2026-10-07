@@ -35,3 +35,15 @@ delegates that take a task, with no other key. BR-1a's actions reach any worker 
 Both rows are marked. The task session's lookup key (the `findWorkerSession` criterion FIX-1788
 S5a carries) is `filingSessionId` in this spec, FIX-1794 and FIX-1802: renamed from
 `coordinatorSessionId`; never shipped.
+
+<a name="amendment-cross-spec"></a>
+## Amended after merge (cross-spec alignment, 2026-10-07)
+
+**The alignment.** Reading the epic's merged child specs against each other found places where
+siblings read two ways. Each was an engineering call, made under decisions already taken, and
+recorded in the epic's [How it got here](../../epics/FIX-1786/DECISIONS.md#how-it-got-here). This
+spec changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| DECISIONS and PLAN: FIX-1796's sweep removes the mailbox's call to the best-fit helper, and the mailbox exports | **Corrected**: FIX-1792's removals (its S9) take them | FIX-1792's S9 and its checker's `REMOVED_EXPORTS` list them | The helper both flows call until then |

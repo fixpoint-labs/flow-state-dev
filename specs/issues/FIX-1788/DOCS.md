@@ -94,8 +94,8 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 >
 > ## After a hire, refresh the roster
 >
-> A turn that hires, forks or fires names the roster as a collection it wrote, so a view that
-> listens for written collections reloads it. You don't need to watch for a tool's name.
+> Read the roster again after each turn. A turn that hires, forks or fires changes it, and
+> nothing tells you which tool ran, so you don't need to watch for a tool's name.
 
 ## UPDATE · `apps/docs/docs/workforce/workers-on-disk.md` · "Hiring the roster", opening paragraphs
 

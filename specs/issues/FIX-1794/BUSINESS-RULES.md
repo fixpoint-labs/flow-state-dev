@@ -59,9 +59,13 @@ is the session a task runs in. The *proved by* column is the check the plan runs
 
 ## Reassign and cancel
 
-FIX-1780's [BR-16 to BR-22](../FIX-1780/BUSINESS-RULES.md#reassign-and-cancel), unchanged except
-where they name a worker: the new worker is one of this conversation's delegates, through BR-2's
-check. A reassigned task runs at once.
+*Amended after merge:* the task tools' own contract on this board, not FIX-1780's
+[BR-16 to BR-22](../FIX-1780/BUSINESS-RULES.md#reassign-and-cancel). `assignTask` moves a task no
+attempt holds to one of this conversation's delegates, through BR-2's check, and a reassigned task
+runs at once; one an attempt holds is declined. A failed task is filed again with `addTask`. A
+cancel of a running task lands, and its worker's late result is declined; on a split task it
+cancels the open pieces too, down the chain ([FIX-1802 BR-19](../FIX-1802/BUSINESS-RULES.md#the-split)).
+Nothing limits how many times a task moves.
 
 ## The chain
 

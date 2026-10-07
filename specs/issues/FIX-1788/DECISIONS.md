@@ -135,5 +135,10 @@ What PLAN doesn't hold:
   D2, the upgrade step (S13, P3), reading an older stored configuration (BR-21), the upgrade
   rules (BR-28 to BR-33a), leg c and V10, the upgrade docs, and the deprecation markers (S2, V2,
   BR-27). [EVOLUTION.md](EVOLUTION.md#amendment-d9) has each.
+- **Amended after merge (cross-spec alignment, 2026-10-07)** — reading the epic's child specs
+  against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): BR-8 and S9
+  reload the view after every turn instead of naming written collections; S7's per-run key is a
+  function the composing layer supplies, and the epic's D3 counts it; the Layer 1 guardrail names
+  orchestration; BR-22a stands without BP-030. ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
 
 **Open:** none.
