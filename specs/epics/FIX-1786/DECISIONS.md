@@ -442,7 +442,7 @@ engine rule. The closure only checks.
   wasn't sold on "seat" for task boards and chose assignee over lane, route and station
   ([D7](#d7)). D7's board half flips, and FIX-1796's D1 with it. [D3](#d3), ER-22, D1 and the box
   now count five mechanism changes and two public renames, and "seat" is retired everywhere.
-- **Amended after merge, the cross-spec alignment (Oct 7)**, its own amendment PR: reading the
+- **Amended after merge, the cross-spec alignment (Oct 7)**, its own amendment PR ([#2843](https://github.com/fixpoint-labs/flow-state-dev/pull/2843)): reading the
   children's merged specs against each other found nine places they disagreed, each an
   engineering call. [D3](#d3) now counts six mechanism changes (the sixth, FIX-1788's skills
   library taking its key per run), two public renames and one public removal (FIX-1792's
