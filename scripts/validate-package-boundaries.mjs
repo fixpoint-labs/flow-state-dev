@@ -79,10 +79,13 @@ const packageRules = {
     deny: new Set(["engine", "client", "react", "workforce"])
   },
   // Layer 2 on orchestration — may import orchestration, never patterns.
+  // `client` is allowed for `createWorkforceClient`, which finds and starts a
+  // worker's sessions over the session client (FIX-1788). The client is
+  // isomorphic and imports only core and contracts, so this adds no cycle.
   workforce: {
-    allow: new Set(["contracts", "core", "orchestration"]),
+    allow: new Set(["contracts", "core", "orchestration", "client"]),
     typeOnly: new Set([]),
-    deny: new Set(["engine", "client", "react", "patterns"])
+    deny: new Set(["engine", "react", "patterns"])
   }
 };
 

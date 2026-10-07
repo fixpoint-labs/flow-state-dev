@@ -1,18 +1,26 @@
 /**
- * Shared resources name who wrote each entry (FIX-1789 V5: BR-20 to BR-24).
+ * Shared resources name who wrote each entry (FIX-1789 V5: BR-20 to BR-24),
+ * the worker taken from the session's worker (FIX-1788 BR-25a).
  *
- * Every leg runs on the real engine — `createFlowState`, in-memory stores,
- * `runAction` for two users of one org — and reads what the store holds after
- * the run, never what the helper returned.
+ * Every leg runs on the real engine — in-memory stores, `runAction` for two
+ * users of one org — and reads what the store holds after the run, never what
+ * the helper returned. A worker's legs run on the worker model: a session
+ * created with its worker, which the turn resolves before it writes.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { hireWorkforce } from "../src/hire";
+import {
+  createFlowState,
+  createInMemoryStores,
+  inMemoryStores,
+  runAction,
+  type StoreRegistry
+} from "@flow-state-dev/engine";
 import { sharedResource, writeShared } from "../src/shared-resource";
 import { workerConfigSchema } from "../src/worker-config";
+import { bootHost, FIXTURE, ORG as HARNESS_ORG } from "./worker-model-harness";
 
 const ORG = "acme";
 const notes = sharedResource("team-notes/*", { text: z.string() });
@@ -118,34 +126,99 @@ async function withRuntime(
   }
 }
 
-function hireSharer(): FlowInstance {
-  return hireWorkforce([{ id: "research.scout", declared: { flow: "sharer" }, body: "" }], {
-    workerFlows: { sharer: sharerFlow }
-  })[0]!;
+/** A worker's turn writing through the helper, on the worker model's fixture flow. */
+async function workerShares(
+  host: ReturnType<typeof bootHost>,
+  stores: StoreRegistry,
+  userId: string,
+  workerId: string,
+  key: string
+): Promise<unknown> {
+  const created = await host.create(userId, FIXTURE, { state: { workerId } });
+  expect(created.status).toBe(201);
+  expect((await host.turn(userId, created.body.session!.id, `share:${key}`)).error).toBeUndefined();
+  return ((await stores.resourceState.get("org", HARNESS_ORG, `team-notes/${key}`)) as { state?: unknown } | undefined)
+    ?.state;
 }
 
 describe("a shared resource", () => {
   it("BR-20 · an entry a worker writes through the helper names the session's user and the worker", async () => {
-    const seat = hireSharer();
-    await withRuntime([seat], async (run, read) => {
-      expect((await run(seat, "run", "alice", { message: "Launch moved to Friday.", key: "launch" })).error).toBeUndefined();
-      expect(await read("launch")).toEqual({
-        text: "Launch moved to Friday.",
-        writtenBy: { userId: "alice", workerId: "research.scout" }
-      });
+    const stores = createInMemoryStores();
+    const host = bootHost(stores);
+    expect(await workerShares(host, stores, "alice", "researcher", "launch")).toEqual({
+      text: "share:launch",
+      writtenBy: { userId: "alice", workerId: "researcher" }
     });
   });
 
+  it("FIX-1788 BR-25a · two of a user's workers on one flow sign as two workers, each from its session", async () => {
+    const stores = createInMemoryStores();
+    const host = bootHost(stores);
+    await host.rosterAction("alice", "hire", { id: "scribe", flow: FIXTURE });
+    expect(await workerShares(host, stores, "alice", "scribe", "one")).toEqual({
+      text: "share:one",
+      writtenBy: { userId: "alice", workerId: "scribe" }
+    });
+    expect(await workerShares(host, stores, "alice", "researcher", "two")).toEqual({
+      text: "share:two",
+      writtenBy: { userId: "alice", workerId: "researcher" }
+    });
+  });
+
+  it("FIX-1788 · a flow that isn't a worker flow names no worker, whatever its settings or a caller's state say", async () => {
+    // A `seatId` setting and a `workerId` the caller seeded: neither is a
+    // worker the turn resolved, so neither signs the entry.
+    const seatIdFlow = defineFlow({
+      kind: "seat-id-app",
+      configSchema: z.object({ seatId: z.string() }),
+      session: { stateSchema: z.object({ workerId: z.string().optional() }) },
+      actions: { share: { inputSchema: writeInput, block: share } }
+    })({ id: "seat-id-app", config: { seatId: "research.scout" } });
+    const state = createFlowState({
+      flows: { "seat-id-app": seatIdFlow },
+      stores: { default: { primary: inMemoryStores() } }
+    });
+    try {
+      const runtime = await state.getRuntime();
+      const router = await state.getRouter();
+      const created = await router.POST(
+        new Request("http://localhost/api/flows/seat-id-app/sessions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId: "alice", sessionId: "seeded", state: { workerId: "research.scout" } })
+        }),
+        { params: { path: ["seat-id-app", "sessions"] } }
+      );
+      expect(created.status).toBe(201);
+      expect((await runtime.stores.session.get("seeded"))?.state).toEqual({ workerId: "research.scout" });
+      const ran = await runAction({
+        orgId: DEFAULT_ORG_ID,
+        flow: seatIdFlow,
+        actionName: "share",
+        input: { message: "no worker", key: "nw" },
+        userId: "alice",
+        sessionId: "seeded",
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig }
+      });
+      expect(ran.error).toBeUndefined();
+      const stored = (await runtime.stores.resourceState.get("org", DEFAULT_ORG_ID, "team-notes/nw")) as { state?: unknown } | undefined;
+      expect(stored?.state).toEqual({ text: "no worker", writtenBy: { userId: "alice" } });
+    } finally {
+      await state.dispose();
+    }
+  });
+
   it("BR-22 · a `writtenBy` in the caller's input is ignored: the name comes from the session", async () => {
-    const seat = hireSharer();
+    const seat = sharerFlow({ id: "sharer", config: {} });
     await withRuntime([seat], async (run, read) => {
       await run(seat, "run", "alice", { message: "forged", key: "forged", writtenBy: { userId: "mallory", workerId: "x" } });
-      expect(await read("forged")).toEqual({ text: "forged", writtenBy: { userId: "alice", workerId: "research.scout" } });
+      expect(await read("forged")).toEqual({ text: "forged", writtenBy: { userId: "alice" } });
     });
   });
 
   it("BR-21 · an entry written without `writtenBy` is refused by the resource's own schema", async () => {
-    const seat = hireSharer();
+    const seat = sharerFlow({ id: "sharer", config: {} });
     await withRuntime([seat], async (run, read) => {
       const { error } = await run(seat, "unsigned", "alice", { message: "anonymous", key: "anonymous" });
       expect(error).toBeDefined();
@@ -162,7 +235,7 @@ describe("a shared resource", () => {
   });
 
   it("BR-24 · another user of the org reads the entry, with who wrote it", async () => {
-    const seat = hireSharer();
+    const seat = sharerFlow({ id: "sharer", config: {} });
     const reader = handler({
       name: "read-note",
       inputSchema: writeInput,
@@ -182,13 +255,13 @@ describe("a shared resource", () => {
       expect(read.error).toBeUndefined();
       expect(JSON.parse((read.output as { message: string }).message)).toEqual({
         text: "for everyone",
-        writtenBy: { userId: "alice", workerId: "research.scout" }
+        writtenBy: { userId: "alice" }
       });
     });
   });
 
   it("K3 · flow code that writes the resource directly can set its own `writtenBy`, which is why it is only as trustworthy as the flow", async () => {
-    const seat = hireSharer();
+    const seat = sharerFlow({ id: "sharer", config: {} });
     await withRuntime([seat], async (run, read) => {
       await run(seat, "selfSigned", "alice", { message: "signed as bob", key: "k3" });
       expect(await read("k3")).toEqual({ text: "signed as bob", writtenBy: { userId: "bob" } });

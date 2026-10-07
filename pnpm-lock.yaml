@@ -1869,6 +1869,9 @@ importers:
 
   packages/workforce:
     dependencies:
+      '@flow-state-dev/client':
+        specifier: workspace:*
+        version: link:../client
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core

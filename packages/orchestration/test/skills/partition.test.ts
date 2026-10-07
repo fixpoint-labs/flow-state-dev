@@ -3,9 +3,9 @@
  * several parties run through ONE registered copy of a flow, and each reads
  * and writes only its own catalog.
  *
- * On the real engine. The party is the session's `link`, which only the
- * server writes, so the test reads what a run sees and what the store holds,
- * never a key it computed itself.
+ * On the real engine. The party is a readonly session-state field, set when
+ * the session is created and never changed, so the test reads what a run sees
+ * and what the store holds, never a key it computed itself.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
@@ -19,18 +19,20 @@ import {
   type StoreRegistry
 } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { createSkillsLibrary } from "../../src/skills/library";
+import { defineSkillsCollection } from "../../src/skills/collection";
 import { resolveSkillsCollection } from "../../src/skills/partition";
 
 function drawerFlow(partitioned: boolean): FlowInstance {
-  const library = createSkillsLibrary({
+  // The collection the library declares, on its own: a handler can't take
+  // the library's context presets, and the partition lives on the collection.
+  const skills = defineSkillsCollection({
     scope: "user",
-    ...(partitioned ? { partitionBy: (ctx: BlockContext) => ctx.session.link } : {})
+    ...(partitioned ? { partitionBy: (ctx: BlockContext) => (ctx.session.state as { party?: string }).party } : {})
   });
   const keep = handler({
     name: "keep",
     inputSchema: z.object({ note: z.string() }),
-    uses: [library],
+    resources: { skills },
     execute: async (input, ctx) => {
       const skills = resolveSkillsCollection(ctx, "skills")!;
       await skills.create(`${input.note}/SKILL.md`, { name: input.note, description: input.note });
@@ -39,7 +41,7 @@ function drawerFlow(partitioned: boolean): FlowInstance {
   });
   return defineFlow({
     kind: "drawer",
-    session: { createCheck: () => ({ ok: true }) },
+    session: { stateSchema: z.object({ party: z.string().readonly() }) },
     actions: { keep: { inputSchema: z.object({ note: z.string() }), block: keep } }
   })({ id: "drawer" }) as unknown as FlowInstance;
 }
@@ -50,12 +52,12 @@ async function boot(partitioned: boolean) {
   const stores = createInMemoryStores();
   registry.register(flow);
   const router = createFlowApiRouter({ registry, stores });
-  for (const [sessionId, link] of [["s-a", "worker-a"], ["s-b", "worker-b"]]) {
+  for (const [sessionId, party] of [["s-a", "worker-a"], ["s-b", "worker-b"]]) {
     const res = await router.POST(
       new Request("http://localhost/api/flows/drawer/sessions", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: "alice", sessionId, link })
+        body: JSON.stringify({ userId: "alice", sessionId, state: { party } })
       }),
       { params: { path: ["drawer", "sessions"] } }
     );

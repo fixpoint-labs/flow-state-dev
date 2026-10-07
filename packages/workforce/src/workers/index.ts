@@ -1,0 +1,46 @@
+/**
+ * The worker model: a worker is a row its owner holds, or a standard worker
+ * the installation's files declare, run by one shared copy of the flow it
+ * names. A session names its worker once, when it is created, and loads it on
+ * every turn.
+ *
+ * - `createWorkerInstallation`: the create check, `resolveWorker`, and the
+ *   session declaration and collections a worker flow spreads in.
+ * - `createWorkerHireBlocks`: hire, fork, edit and fire, as writes to the
+ *   caller's roster.
+ * - `defineWorkerRosterFlow`: the flow a client reads a roster through.
+ * - `createWorkforceClient`: find or start a session with a worker.
+ */
+export {
+  DERIVED_WORKER_SESSION_PREFIX,
+  ROSTER_FLOW_KIND,
+  STANDARD_WORKERS_PATTERN,
+  STANDARD_WORKERS_RESOURCE,
+  WORKERS_PATTERN,
+  WORKERS_RESOURCE,
+  WORKER_ID_STATE_KEY
+} from "./keys";
+export {
+  deriveWorkerSessionId,
+  isDerivedWorkerSessionId,
+  type DeriveWorkerSessionIdInput,
+  type WorkerSessionCriteria
+} from "./derive-session-id";
+export { defineWorkerCollection, parseWorkerRow, workerRowSchema, type WorkerRow } from "./worker-row";
+export { defineStandardWorkerCollection, standardWorkerRowSchema, type StandardWorkerRow } from "./standard-workers";
+export {
+  createWorkerInstallation,
+  verifiedWorkerOf,
+  WorkerTurnRefusedError,
+  type ResolvedWorker,
+  type WorkerInstallation,
+  type WorkerInstallationOptions
+} from "./installation";
+export { createWorkerHireBlocks, type WorkerHireBlocks } from "./hire-blocks";
+export { defineWorkerRosterFlow } from "./roster-flow";
+export {
+  createWorkforceClient,
+  type RosterEntry,
+  type WorkforceClient,
+  type WorkforceClientOptions
+} from "./client";
