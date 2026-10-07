@@ -173,7 +173,7 @@ describe("a shared resource", () => {
       configSchema: z.object({ seatId: z.string() }),
       session: { stateSchema: z.object({ workerId: z.string().optional() }) },
       actions: { share: { inputSchema: writeInput, block: share } }
-    })({ id: "seat-id-app", config: { seatId: "research.scout" } });
+    })({ id: "seat-id-app", config: { seatId: "research.scout" } }) as unknown as FlowInstance;
     const state = createFlowState({
       flows: { "seat-id-app": seatIdFlow },
       stores: { default: { primary: inMemoryStores() } }

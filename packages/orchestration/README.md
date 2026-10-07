@@ -638,7 +638,10 @@ too, so follow-ups like "yes, do that" can match.
 `initialSkills` also takes a **function of the execution**, for a catalog that
 belongs to the flow copy rather than to the definition — two registered copies
 then seed two different sets. Pair it with `collectionConfig: { flowIsolation: true }`
-so each copy reads its own storage. The resolver runs before every step of every
+so each copy reads its own storage. When several parties run through **one** copy, pass
+`partitionBy: (ctx) => string | undefined` instead: a function of the running context, from data
+only the server writes, naming the party; each partition keeps its own catalog in the collection's
+one bucket, and `undefined` reads it whole. The resolver runs before every step of every
 turn, so keep it to an O(1) read of something already resolved; and because there
 is no build-time catalog under one, binding a skill by name (`active` / `allowed`)
 is refused rather than left unvalidated.

@@ -21,7 +21,6 @@
  */
 import type { InitialSkill } from "@flow-state-dev/core";
 import type {
-  BlockContext,
   FlowInstance,
   ResourceCollectionRef,
   SessionCreateCheck,
@@ -79,6 +78,16 @@ export interface WorkerInstallationOptions {
   /** The packages a user's own worker may hold by name (the org's library). */
   packages?: readonly PackageManifest[];
 }
+
+/**
+ * The slice of a block's context a turn's worker is loaded from: the
+ * session's state, and the resources the block declares. Any block's context
+ * satisfies it.
+ */
+export type WorkerTurnContext = {
+  readonly session: { readonly state: unknown };
+  readonly resources: unknown;
+};
 
 /** The worker a turn runs as, with what it runs with. */
 export interface ResolvedWorker {
@@ -162,7 +171,7 @@ export interface WorkerInstallation {
    * @param flowKind The running flow's kind.
    * @throws WorkerTurnRefusedError when the turn can't run as the worker.
    */
-  resolveWorker(ctx: BlockContext, flowKind: string): Promise<ResolvedWorker>;
+  resolveWorker(ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker>;
   /** A standard worker by id, or `undefined`. */
   standardWorker(id: string): WorkerManifest | undefined;
   /** The worker flows, resolved: each one's flow and whether it is kept for standard workers. */
@@ -350,7 +359,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     return { ok: true };
   };
 
-  const resolveWorker = async (ctx: BlockContext, flowKind: string): Promise<ResolvedWorker> => {
+  const resolveWorker = async (ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker> => {
     const workerId = (ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY];
     if (typeof workerId !== "string" || workerId.length === 0) {
       throw new WorkerTurnRefusedError(

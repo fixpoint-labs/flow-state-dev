@@ -423,7 +423,8 @@ your own worker flows the same way, and put what you mean to share in a shared r
 #### Sharing something from a worker
 
 To let a worker write something every member can read, declare a shared resource and write
-through the helper. The entry records the user, and the worker that wrote it:
+through the helper. The entry records the user, and the worker the session runs, once the turn has
+loaded it with `resolveWorker`:
 
 ```ts
 import { sharedResource, writeShared } from "@flow-state-dev/workforce";
@@ -432,11 +433,13 @@ const notes = sharedResource("team-notes/*", { text: z.string() });
 
 // inside a block that declares `resources: { notes }`
 await writeShared(ctx, "notes", "launch", { text: "Launch moved to Friday." });
-// stored: { text: "Launch moved to Friday.", writtenBy: { userId: "alice", workerId: "research.scout" } }
+// stored: { text: "Launch moved to Friday.", writtenBy: { userId: "alice", workerId: "researcher" } }
 ```
 
 `writeShared` sets `writtenBy` from the session and ignores any `writtenBy` in its input, so
-whoever calls your flow can't sign as someone else. A block that writes the resource directly can
+whoever calls your flow can't sign as someone else. The worker is the one the session was created
+with, as the turn loaded it, never a setting or a value in the session's state; a turn that loaded
+no worker records the user alone. A block that writes the resource directly can
 set any value, so trust `writtenBy` as far as you trust your worker flows' code. An entry written
 without it is refused by the resource's own schema. A second write to the same key replaces the
 entry, `writtenBy` included. Every member can read an entry.

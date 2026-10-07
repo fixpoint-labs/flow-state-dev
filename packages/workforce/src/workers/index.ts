@@ -34,7 +34,8 @@ export {
   WorkerTurnRefusedError,
   type ResolvedWorker,
   type WorkerInstallation,
-  type WorkerInstallationOptions
+  type WorkerInstallationOptions,
+  type WorkerTurnContext
 } from "./installation";
 export { createWorkerHireBlocks, type WorkerHireBlocks } from "./hire-blocks";
 export { defineWorkerRosterFlow } from "./roster-flow";

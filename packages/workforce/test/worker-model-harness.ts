@@ -147,7 +147,7 @@ function workerFlow(kind: string, installation: WorkerInstallation) {
     },
     // The gate lets every task through: what is under test is the child's
     // birth, which happens before any gate runs.
-    task: { actions: { work: { block: work, from: { boardId: "board", gate: (entry: unknown) => entry } } } }
+    task: { actions: { work: { block: work, from: { boardId: "board", gate: (entry) => entry } } } }
   });
 }
 

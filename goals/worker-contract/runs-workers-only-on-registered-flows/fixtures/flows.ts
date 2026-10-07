@@ -5,7 +5,12 @@
  */
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
-import { sharedResource, workerConfigSchema, writeShared } from "@flow-state-dev/workforce";
+import {
+  sharedResource,
+  workerConfigSchema,
+  writeShared,
+  type WorkerInstallation
+} from "@flow-state-dev/workforce";
 
 const message = z.object({ message: z.string() });
 
@@ -61,28 +66,37 @@ export const coordinatorFlow = defineFlow({
 const noteInput = z.object({ key: z.string(), text: z.string() });
 const notes = sharedResource("team-notes/*", { text: z.string() });
 
-/** A flow that writes a shared resource through the helper. */
-export const sharerFlow = defineFlow({
-  kind: "sharer",
-  cardinality: "collection",
-  configSchema: workerConfigSchema(),
-  actions: {
-    run: hearing("sharer"),
-    share: {
-      inputSchema: noteInput,
-      block: handler({
-        name: "sharer-share",
+/**
+ * A flow that writes a shared resource through the helper, as the worker its
+ * session was created with: the turn loads the worker, and the helper names
+ * the worker the turn loaded (FIX-1788).
+ */
+export function defineSharerFlow(workers: WorkerInstallation) {
+  return defineFlow({
+    kind: "sharer",
+    cardinality: "collection",
+    configSchema: workerConfigSchema(),
+    session: workers.session(),
+    resources: { ...workers.resources },
+    actions: {
+      run: hearing("sharer"),
+      share: {
         inputSchema: noteInput,
-        outputSchema: z.object({ shared: z.string() }),
-        resources: { notes },
-        execute: async (input, ctx) => {
-          await writeShared(ctx, "notes", input.key, { text: input.text });
-          return { shared: input.key };
-        }
-      })
+        block: handler({
+          name: "sharer-share",
+          inputSchema: noteInput,
+          outputSchema: z.object({ shared: z.string() }),
+          resources: { notes, ...workers.resources },
+          execute: async (input, ctx) => {
+            await workers.resolveWorker(ctx, "sharer");
+            await writeShared(ctx, "notes", input.key, { text: input.text });
+            return { shared: input.key };
+          }
+        })
+      }
     }
-  }
-});
+  });
+}
 
 const board = defineResourceCollection({
   pattern: "team-board/*",
