@@ -83,7 +83,7 @@ if (errors.length || packageErrors.length) {
   throw new Error(`workforce failed to load:\n${reported.join("\n")}`);
 }
 
-const seats = hireWorkforce(workers, { kinds, seatBlocks, packageBlocks });
+const seats = hireWorkforce(workers, { workerFlows: kinds, seatBlocks, packageBlocks });
 ```
 
 Leave `packageBlocks` out and a held package brings its instructions and no tools.

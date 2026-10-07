@@ -106,7 +106,7 @@ await runGoal(async () => {
   const dbFile = join(dir, "goal.db");
 
   const roster = records();
-  const seats = hireWorkforce(roster, { kinds: { [AGENT_KIND]: callerAgentFlow } });
+  const seats = hireWorkforce(roster, { workerFlows: { [AGENT_KIND]: callerAgentFlow } });
 
   // ---- (a) EVERY seat resolved to the caller's flow ----------------------
   {
@@ -188,7 +188,7 @@ await runGoal(async () => {
     const controlStores = createSQLiteStores({ filename: join(dir, "control.db") }) as unknown as StoreRegistry;
     let controlSeats: FlowInstance[] | undefined;
     try {
-      controlSeats = hireWorkforce(roster, { kinds: { [AGENT_KIND]: callerAgentSingleton } });
+      controlSeats = hireWorkforce(roster, { workerFlows: { [AGENT_KIND]: callerAgentSingleton } });
     } catch (error) {
       failures.push(
         `the control roster was refused at the HIRE (${messageOf(error)}) — it is supposed to mint and fail later, so this leg no longer proves registration is the gate`

@@ -15,6 +15,7 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
+import { workerDoor } from "../../../lib/worker-door.mts";
 
 export const TRIAGE_KIND = "request-triage";
 
@@ -117,7 +118,7 @@ export const triageFlow = defineFlow({
   kind: TRIAGE_KIND,
   cardinality: "collection",
   configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-  actions: {
+  actions: { ...workerDoor,
     run: {
       inputSchema,
       block: sequencer({ name: "triage-work", inputSchema }).tap(start).tap(recordLayers)

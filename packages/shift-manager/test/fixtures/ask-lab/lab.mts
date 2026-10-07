@@ -139,7 +139,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
   const tree = await readAskLabTree();
   if (options.chiefOfStaff === true) tree.workers.push(...(await readAskLabTree(CHIEF_OF_STAFF_TREE)).workers);
   const seats = hireWorkforce(tree.workers, {
-    kinds: { [ASKER_KIND]: defineAskerFlow(resourcesFromDocs(tree.documents), { projects: options.seatsStartProjects }) as never },
+    workerFlows: { [ASKER_KIND]: defineAskerFlow(resourcesFromDocs(tree.documents), { projects: options.seatsStartProjects }) as never },
     mailboxBoards: mailboxBoardIds(tree.mailboxes),
   });
   const declared = options.inventoryDeclared !== false;

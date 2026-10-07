@@ -16,6 +16,7 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
+import { workerDoor } from "../../../lib/worker-door.mts";
 
 export const TRIAGE_KIND = "request-triage";
 export const NO_CONTRACT_KIND = "request-triage-legacy";
@@ -126,7 +127,8 @@ const actions = {
   run: {
     inputSchema,
     block: sequencer({ name: "triage-work", inputSchema }).tap(start).tap(recordSkills)
-  }
+  },
+  ...workerDoor
 };
 
 /**
@@ -139,7 +141,8 @@ const controlActions = {
   run: {
     inputSchema,
     block: sequencer({ name: "triage-control-work", inputSchema }).tap(start).tap(recordDesk)
-  }
+  },
+  ...workerDoor
 };
 
 /** Composes the contract. No model, no generator — handlers only. */
@@ -178,6 +181,8 @@ export const noContractFlow = defineFlow({
     // Declared so `seatSkills` stays the SINGLE missing key: the contract grew a
     // fourth, and a control that omitted two would no longer isolate one cause.
     seatTools: z.array(z.any()).default([]),
+    // The packages a seat holds, checked at boot like every other key.
+    seatPackages: z.array(z.any()).optional(),
     // The sixth, imposed on every seat: its own id.
     seatId: z.string().optional(),
     // `seatSkills` omitted — the single reason the imposed bag is refused.
@@ -208,6 +213,7 @@ export const handRolledFlow = defineFlow({
     // contract grows — which is the cost this fixture exists to show, not a
     // reason to stop hand-rolling.
     seatTools: z.array(z.any()).default([]),
+    seatPackages: z.array(z.any()).optional(),
     // The sixth, imposed on every seat: its own id.
     seatId: z.string().optional(),
     desk: z.string().default("front")

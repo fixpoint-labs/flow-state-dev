@@ -4,12 +4,14 @@
  * An app sends a person's line into a seat's session through the door the
  * seat's inventory row names, without knowing the seat's kind. So the hire
  * reads it off the kind once: the one public action with `userMessage` and a
- * `{ message }` input. None is `null`; two is a reported problem and also
- * `null`, never a guess.
+ * `{ message }` input.
+ *
+ * A worker flow with none, or with two, is refused when it is registered
+ * (FIX-1789), so every hired seat has exactly one.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { __resetDeprecationWarningsForTests, defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
 import { hireWorkforce } from "../src/hire";
 import { openInventory } from "../src/inventory/open-inventory";
 import type { WorkerManifest } from "../src/manifest";
@@ -48,7 +50,18 @@ const twoDoorKind = defineFlow({
   },
 });
 
-const kinds = { quiet: quietKind, "two-door": twoDoorKind };
+/** A kind with one door, under a name other than the built-in's. */
+const deskKind = defineFlow({
+  kind: "desk",
+  cardinality: "collection",
+  configSchema: workerConfigSchema(),
+  actions: {
+    run: { inputSchema: note, block: work },
+    ask: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message },
+  },
+});
+
+const kinds = { desk: deskKind };
 
 function record(id: string, flow?: string): WorkerManifest {
   return { id, declared: { description: id, ...(flow === undefined ? {} : { flow }) }, body: "" };
@@ -56,60 +69,45 @@ function record(id: string, flow?: string): WorkerManifest {
 
 afterEach(() => vi.restoreAllMocks());
 
-// The two-doors warning prints once per process, so each test starts as a
-// fresh process would.
-beforeEach(() => {
-  __resetDeprecationWarningsForTests();
-});
+function refusalOf(run: () => unknown): string {
+  try {
+    run();
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return "";
+}
 
 describe("a seat's door (BR-1, BR-2)", () => {
   it("is the built-in agent kind's `run`", () => {
-    const [seat] = hireWorkforce([record("eng.lead")], { kinds });
+    const [seat] = hireWorkforce([record("eng.lead")], { workerFlows: kinds });
     expect(seat!.kind).toBe("agent");
     expect(seatDoorOf(seat!)).toEqual({ door: "run" });
   });
 
-  it("is null for a kind with no action that takes a person's message", () => {
-    const [seat] = hireWorkforce([record("eng.quiet", "quiet")], { kinds });
-    expect(seatDoorOf(seat!)).toEqual({ door: null });
+  it("is the one public action a kind declares for a person's message", () => {
+    const [seat] = hireWorkforce([record("eng.desk", "desk")], { workerFlows: kinds });
+    expect(seatDoorOf(seat!)).toEqual({ door: "ask" });
   });
 
-  it("is a problem naming both for a kind with two, and the seat is still hired with none", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const seats = hireWorkforce([record("eng.chatty", "two-door")], { kinds });
-    expect(seats.map((s) => s.id)).toEqual(["eng.chatty"]);
-    const found = seatDoorOf(seats[0]!);
-    expect(found.door).toBeNull();
-    expect(found.problem).toContain('("message", "say")');
-    expect(found.problem).toContain("eng.chatty");
-    // The hire reported it.
-    expect(warn.mock.calls.map((c) => String(c[0])).some((line) => line.includes('"message", "say"'))).toBe(true);
+  it("refuses a kind with no door when it is registered, and hires nothing", () => {
+    const message = refusalOf(() => hireWorkforce([record("eng.quiet", "quiet")], { workerFlows: { quiet: quietKind } }));
+    expect(message).toContain('worker flow "quiet" has no door');
+    expect(message).toContain("nothing was hired");
   });
 
-  it("is reported once per process, not once per hire, and a different seat's problem is still said", () => {
-    // `next dev` re-runs an app's module-scope hire on every hot reload. The
-    // same two-door seat is still two-door after an edit, and the sentence
-    // repeated on every save hides a fresh problem among the repeats. So a
-    // repeat is silent, but another seat with two doors must still be named.
+  it("refuses a kind with two doors when it is registered, naming both, and prints no warning", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const doorLines = () =>
-      warn.mock.calls.map((c) => String(c[0])).filter((line) => line.includes('"message", "say"'));
-
-    hireWorkforce([record("eng.chatty", "two-door")], { kinds });
-    hireWorkforce([record("eng.chatty", "two-door")], { kinds });
-    hireWorkforce([record("eng.chatty", "two-door")], { kinds });
-    expect(doorLines()).toHaveLength(1);
-    expect(doorLines()[0]).toContain("eng.chatty");
-
-    hireWorkforce([record("eng.chatty", "two-door"), record("eng.loud", "two-door")], { kinds });
-    expect(doorLines()).toHaveLength(2);
-    expect(doorLines()[1]).toContain("eng.loud");
+    const message = refusalOf(() =>
+      hireWorkforce([record("eng.chatty", "two-door")], { workerFlows: { "two-door": twoDoorKind } }),
+    );
+    expect(message).toContain('worker flow "two-door" has 2 doors ("message", "say")');
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("is written on the seat's inventory row at boot", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    const seats = hireWorkforce([record("eng.lead"), record("eng.quiet", "quiet"), record("eng.chatty", "two-door")], {
-      kinds,
+    const seats = hireWorkforce([record("eng.lead"), record("eng.desk", "desk")], {
+      workerFlows: kinds,
     });
     const sent: unknown[] = [];
     await openInventory(
@@ -124,9 +122,8 @@ describe("a seat's door (BR-1, BR-2)", () => {
     expect(sent).toEqual([
       {
         seats: [
-          { id: "eng.chatty", kind: "two-door", door: null, hired: false, incarnation: null },
+          { id: "eng.desk", kind: "desk", door: "ask", hired: false, incarnation: null },
           { id: "eng.lead", kind: "agent", door: "run", hired: false, incarnation: null },
-          { id: "eng.quiet", kind: "quiet", door: null, hired: false, incarnation: null },
         ],
       },
     ]);
@@ -139,7 +136,7 @@ describe("a seat's origin on its inventory row", () => {
     // `org.lead` below is a declared team `org` in organization `org`.
     const seats = hireWorkforce(
       [{ ...record("org.support.ada"), seatId: "support.ada" }, record("org.lead")],
-      { kinds },
+      { workerFlows: kinds },
     );
     const sent: Array<{ seats: Array<{ id: string; hired: boolean | null }> }> = [];
     await openInventory(

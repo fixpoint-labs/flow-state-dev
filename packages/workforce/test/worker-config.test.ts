@@ -15,6 +15,7 @@ import { hireWorkforce } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { INSTRUCTIONS_KEY, SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, TEAM_INSTRUCTIONS_KEY } from "../src/manifest";
 import { workerConfigSchema, type WorkerConfig } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 const inputSchema = z.object({ note: z.string() });
 
@@ -31,7 +32,7 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
 
 function refusalOf(manifests: WorkerManifest[], kinds: Record<string, never>): string {
   try {
-    hireWorkforce(manifests, { kinds });
+    hireWorkforce(manifests, { workerFlows: kinds });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -94,7 +95,7 @@ describe("workerConfigSchema — what composing it buys a kind", () => {
     kind: "contract-triage",
     cardinality: "collection",
     configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-    actions: { run: { inputSchema, block: work } }
+    actions: { ...workerDoor, run: { inputSchema, block: work } }
   });
 
   /** The same, but its own setting is REQUIRED — a kind's call to make. */
@@ -102,7 +103,7 @@ describe("workerConfigSchema — what composing it buys a kind", () => {
     kind: "contract-triage-strict",
     cardinality: "collection",
     configSchema: workerConfigSchema().extend({ desk: z.string() }),
-    actions: { run: { inputSchema, block: work } }
+    actions: { ...workerDoor, run: { inputSchema, block: work } }
   });
 
   const kinds = { "contract-triage": triage, "contract-triage-strict": strictTriage } as never;
@@ -110,7 +111,7 @@ describe("workerConfigSchema — what composing it buys a kind", () => {
   it("hires a seat and hands it both its own setting and the contract's", () => {
     const [seat] = hireWorkforce(
       [record({ id: "support.desk", declared: { flow: "contract-triage", desk: "mezzanine" } })],
-      { kinds }
+      { workerFlows: kinds }
     );
     expect(seat!.config).toMatchObject({ desk: "mezzanine", [SEAT_SKILLS_KEY]: [] });
   });

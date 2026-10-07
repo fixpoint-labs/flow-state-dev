@@ -33,6 +33,7 @@ import { createSeatHireBlocks } from "../src/seat-hire-blocks";
 import { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "../src/seat-hire-capability";
 import { workerConfigSchema } from "../src/worker-config";
 import { postedLines } from "./mailbox-post-lines";
+import { workerDoor } from "./worker-door";
 
 const inputSchema = z.object({ note: z.string() });
 const work = handler({
@@ -46,7 +47,7 @@ const deskClerk = defineFlow({
   kind: "desk-clerk",
   cardinality: "collection",
   configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-  actions: { answer: { inputSchema, block: work } },
+  actions: { ...workerDoor, answer: { inputSchema, block: work } },
 });
 const kinds = { "desk-clerk": deskClerk };
 
@@ -56,7 +57,7 @@ function record(id: string, declared: Record<string, unknown> = {}): WorkerManif
 
 function refusalOf(manifests: WorkerManifest[]): string {
   try {
-    hireWorkforce(manifests, { kinds });
+    hireWorkforce(manifests, { workerFlows: kinds });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -70,7 +71,7 @@ describe("every hired seat carries its own id as `seatId`", () => {
   });
 
   it("from files: each seat's `seatId` is its own record id, not a sibling's", () => {
-    const seats = hireWorkforce([record("support.ada"), record("support.grace")], { kinds });
+    const seats = hireWorkforce([record("support.ada"), record("support.grace")], { workerFlows: kinds });
     expect(seats.map((seat) => [seat.id, seat.config[SEAT_ID_KEY]])).toEqual([
       ["support.ada", "support.ada"],
       ["support.grace", "support.grace"],
@@ -80,7 +81,7 @@ describe("every hired seat carries its own id as `seatId`", () => {
   it("from the runtime `hire` tool: the seat it registers carries its record id", async () => {
     const registered: FlowInstance[] = [];
     const { hire } = createSeatHireBlocks({
-      kinds,
+      workerFlows: kinds,
       register: (seat) => {
         registered.push(seat);
       },
@@ -120,7 +121,7 @@ describe("every hired seat carries its own id as `seatId`", () => {
         },
       },
     };
-    const { seats, problems } = await reloadHiredSeats({ stores, orgIds: ["acme"], kinds });
+    const { seats, problems } = await reloadHiredSeats({ stores, orgIds: ["acme"], workerFlows: kinds });
     expect(problems).toEqual([]);
     expect(seats.map((seat) => [seat.id, seat.config[SEAT_ID_KEY]])).toEqual([
       ["acme.support.ada", "support.ada"],
@@ -179,7 +180,7 @@ describe("a runtime-hired seat signs as the member its mailbox lists", () => {
   it("posts to a mailbox that lists it, signed with its `seatId`", async () => {
     const registered: FlowInstance[] = [];
     const { hire } = createSeatHireBlocks({
-      kinds,
+      workerFlows: kinds,
       register: (seat) => {
         registered.push(seat);
       },
@@ -233,7 +234,7 @@ describe("a runtime-hired seat signs as the member its mailbox lists", () => {
 describe("a record may not author `seatId`", () => {
   it("is refused by name at the hire, even though every composed kind declares the key", () => {
     // Control: the same record without the key hires.
-    expect(hireWorkforce([record("support.ada")], { kinds })).toHaveLength(1);
+    expect(hireWorkforce([record("support.ada")], { workerFlows: kinds })).toHaveLength(1);
 
     const message = refusalOf([record("support.ada", { seatId: "support.grace" })]);
     expect(message).toContain('worker "support.ada"');
@@ -259,7 +260,7 @@ describe("a record may not author `seatId`", () => {
 });
 
 describe("a hand-written kind schema that omits `seatId`", () => {
-  it("refuses at the hire, naming the key", () => {
+  it("refuses when the flow is registered, naming the key", () => {
     const handWritten = defineFlow({
       kind: "hand-written",
       cardinality: "collection",
@@ -275,12 +276,11 @@ describe("a hand-written kind schema that omits `seatId`", () => {
     let message = "";
     try {
       hireWorkforce([{ id: "support.ada", declared: { flow: "hand-written" }, body: "" }], {
-        kinds: { "hand-written": handWritten as never },
+        workerFlows: { "hand-written": handWritten as never },
       });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
-    expect(message).toContain('"seatId" is not a declared setting');
-    expect(message).toContain("`seatId`");
+    expect(message).toContain('worker flow "hand-written" doesn\'t accept `seatId`');
   });
 });

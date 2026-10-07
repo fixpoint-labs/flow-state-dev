@@ -149,7 +149,7 @@ async function main(): Promise<void> {
       : capabilities;
 
   const agent = defineAgentWorkerFlow({ uses: installed as never });
-  const seats = hireWorkforce(workers, { kinds: { agent } });
+  const seats = hireWorkforce(workers, { workerFlows: { agent } });
   out.seatIds = seats.map((s) => s.id);
 
   // ---- register and ask, over the real route ------------------------------

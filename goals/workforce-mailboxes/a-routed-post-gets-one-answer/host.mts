@@ -140,7 +140,7 @@ export async function startRoutedHost(tree: string, seams: HostSeams = {}): Prom
   const mailboxes = seams.adaptMailboxes?.(read.mailboxes) ?? read.mailboxes;
 
   // Hire first: the wake and the route reach these seats, never a mailbox's stored members.
-  const seats = hireWorkforce(workers, seams.kinds === undefined ? {} : { kinds: seams.kinds as never });
+  const seats = hireWorkforce(workers, seams.kinds === undefined ? {} : { workerFlows: seams.kinds as never });
   const wake = wakeMemberSeats(seats);
   const mailboxFlows = mailboxInstances(mailboxes, {
     kinds: {

@@ -66,6 +66,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { hearingDoor } from "../hearing-door.mts";
 
 /** The tree this Lab reads. */
 const RUN_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
@@ -247,7 +248,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { [ledger.id]: ledger },
-    actions: { drain: { block: leadBoard.drain } },
+    actions: { drain: { block: leadBoard.drain }, ...hearingDoor },
     task: { actions: { [ENTRY]: { block: scriptedRun } } },
   } as never);
   // A seat on a flow of its own gates its entry with the same logical board,
@@ -269,16 +270,16 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
             cardinality: "collection",
             configSchema: seatConfig,
             resources: { [ledger.id]: ledger, [OBSERVED_PLAN]: observedPlanCollection, [OBSERVED_FILE_OPS]: observedFileOpsCollection },
-            actions: { drain: { block: board.drain } },
+            actions: { drain: { block: board.drain }, ...hearingDoor },
             task: { actions: { [ENTRY]: { block: scriptedRun } } },
           } as never),
         ];
       }),
   );
-  const passiveKind = defineFlow({ kind: PASSIVE_KIND, cardinality: "collection", configSchema: seatConfig, actions: {} } as never);
+  const passiveKind = defineFlow({ kind: PASSIVE_KIND, cardinality: "collection", configSchema: seatConfig, actions: { ...hearingDoor } } as never);
 
   const hired = hireWorkforce(tree.workers, {
-    kinds: {
+    workerFlows: {
       [drainer.declared.flow as string]: leadKind as never,
       [PASSIVE_KIND]: passiveKind as never,
       ...(ownKinds as Record<string, never>),

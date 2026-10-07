@@ -53,6 +53,7 @@ import {
 import { z } from "zod";
 import { ledgerOf, rowsOf } from "../../../ledger.mts";
 import { queueView, type HiredSeat, type QueueView } from "../../../queue.mts";
+import { workerDoor } from "../../../../../lib/worker-door.mts";
 
 /** The kind id the manager's `WORKER.md` names. **Pinned** — the basename must match. */
 export const COORDINATOR_KIND = "coordinator";
@@ -307,7 +308,7 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
     kind: COORDINATOR_KIND,
     cardinality: "collection",
     configSchema: coordinatorSettingsSchema(),
-    actions: {
+    actions: { ...workerDoor,
       [INTAKE_ENTRY]: { block: intake, description: "Take work in and file it onto the board." },
       [QUEUE_ENTRY]: { block: readQueue, description: "Read the queue. Writes nothing." },
       [ROWS_ENTRY]: { block: readRows, description: "Read the ledger's rows whole. Writes nothing." },

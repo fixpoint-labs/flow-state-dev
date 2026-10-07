@@ -23,11 +23,10 @@ The two facts it was written against, and where each landed:
   The kind now declares `flowIsolation`, and each seat is seeded from its own resolved union (C3).
 
 One property of that second fix is worth carrying forward, because it reaches callers: the
-collection is still **org-scoped**. The organization is the one already on the principal. A
-request to a built-in worker sends `userId` and does not carry an organization id; the seat's
-skills resolve in that organization. An app that configures no resolver runs in the framework
-development organization. The kind does not invent an organization, and it does not read one
-off the request.
+collection is **user-scoped** (FIX-1789; it was org-scoped before). A worker's skills drawer is its
+own working state, and org scope is shared with every member of the org, so the built-in keeps it
+in the scope of the user the worker runs for, isolated per seat. A request to a built-in worker
+sends `userId`; the seat's skills resolve for that user. Two people never share one seat's drawer.
 
 Related, and deliberately not restated here:
 
@@ -79,7 +78,7 @@ the grant shapes and the refusals.
 
 **`tools` is reserved across hireable kinds, for one meaning: the names of tools this seat may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that seat (for a team seat, its own `blocks/` folder and then its team's; for every seat, the blocks of the packages it holds; a name none of those register goes on to the kind's catalog). An org seat has no `blocks/` folder at either level. A package's block never shadows a catalog tool: a name that is both a held package's block and a key in the built-in `agent` kind's catalog is refused at the mint, naming the package and the catalog. The names that resolved to the seat's own folders or its packages are moved onto `seatTools` as live blocks. The hire step also keeps whether the file wrote a `tools:` line at all, decided before that split: the key reaches the kind only when a line was written, and stays present even when every name was the seat's own and the list emptied. An omitted line is never filled in as `[]`, so a kind can tell a written list from an omitted one; the built-in `agent` kind reads an unset `tools` (omitted, or a hand-built key with no value) as no line, at startup and on every turn, and grants it the tools of the capability presets the seat picked and the blocks of the packages it holds, and a written one exactly its names. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
 
-The reservation is written down rather than enforced, and it is not new: the pentest lab's `probe` kind re-implemented this fence from its description alone (`goals/pentest-lab/lab/workforce/flows/workers/probe.mts`) and arrived at the same meaning, which is what a real convention looks like before anyone states it. Stating it is cheaper than the alternative — probing each kind to decide whether to resolve its `tools` would put the behaviour behind a guess, and this step removed kind-probing after a probe produced a false accusation (`admissionHint`, `packages/workforce/src/hire.ts`).
+The reservation is written down rather than enforced, and it is not new: the pentest lab's `probe` kind re-implemented this fence from its description alone (`goals/pentest-lab/lab/workforce/flows/workers/probe.mts`) and arrived at the same meaning, which is what a real convention looks like before anyone states it. Stating it is cheaper than the alternative — probing each kind to decide whether to resolve its `tools` would put the behaviour behind a guess, and this step removed kind-probing after a probe produced a false accusation (the reading is now `contractKeysRefused`, `packages/workforce/src/worker-flow-contract.ts`).
 
 It declares **no memory switch** — per C5 memory is composed into a kind at definition time, not
 turned on here. `instructions` is the worker file's body arriving as one setting — the hire step
@@ -235,19 +234,30 @@ Stated because the drift audit found this inverted in the reference app — whic
 ## C2 — Admission has exactly one gate
 
 `hireWorkforce` is it (tenet 5: fix at the owning layer). A second check anywhere downstream is
-how "absent means default" and "wrong means error" drift apart. The complete rule:
+how "absent means default" and "wrong means error" drift apart.
+
+Before any record, the gate checks the flows themselves (FIX-1789): every entry of `workerFlows`,
+and the built-in under them, must meet the worker contract (`worker-flow-contract.ts`) — take the
+configuration a hire supplies by key and by value, have exactly one door, and declare any
+resource with `writtenBy` through `sharedResource()`, which owns the field (judged by provenance, a
+mark only the helper's output carries, not by sampling what the schema accepts). One problem refuses the whole call, once per flow, so the
+refusal does not depend on a worker naming the flow. Then each record resolves: the `agent` default
+first, then standard-only (an entry `{ flow, standardOnly: true }` refuses a record carrying an
+owner pin, which every runtime hire and stored row does and no `WORKER.md` does). The complete rule
+for a record:
 
 | Worker file says | Result |
 |---|---|
 | no `flow:` | the built-in worker kind |
 | `flow: agent` | the built-in worker kind — same kind, named explicitly |
 | `flow: <registered>` | that kind, exactly as today |
-| `flow: <not registered>` | **refused by name**, listing the kinds that were passed — today's wording, unchanged |
-| roster passes `kinds: { agent: … }` | the app's flow wins; the built-in is merged *underneath* whatever the caller supplied |
+| `flow: <not registered>` | **refused by name**, listing the worker flows that were passed |
+| a hired record (one carrying an owner pin: a runtime hire or a reloaded roster row) naming a flow kept for declared workers (or naming none, when `agent` is kept) | **refused**, naming the flow and saying it is kept for declared workers |
+| roster passes `workerFlows: { agent: … }` | the app's flow wins; the built-in is merged *underneath* whatever the caller supplied |
 
 The existing refusal for a flow filed under someone else's kind name still applies to the
-built-in: a replacement must declare `kind: "agent"` (`packages/workforce/src/hire.ts`,
-the `factory.kind !== kind` check). **Adding an implicit default must not weaken any existing
+built-in: a replacement must declare `kind: "agent"` (`workerFlowProblems`, run at registration
+since FIX-1789, which names the flow rather than a worker). **Adding an implicit default must not weaken any existing
 refusal** — that is the loud-fail obligation the epic assigned here.
 
 ### A replacement must also declare `cardinality: "collection"`
@@ -473,7 +483,7 @@ them.
 The contract's falsifiable half, written as assertions a caller can watch happen. Each is
 **assigned**, not pooled.
 
-1. A worker file carrying only a description and a body hires, with no `kinds` entry supplied.
+1. A worker file carrying only a description and a body hires, with no `workerFlows` entry supplied.
 2. That seat answers a turn using its body as its instructions.
 3. A worker file naming an unregistered kind refuses by name, listing the kinds that were
    passed, and nothing in the roster hires.

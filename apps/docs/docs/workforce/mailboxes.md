@@ -317,7 +317,7 @@ import {
   wakeMemberSeats,
 } from "@flow-state-dev/workforce";
 
-const seats = hireWorkforce(workers, { kinds });   // hire first: the wake reaches these seats
+const seats = hireWorkforce(workers, { workerFlows: kinds });   // hire first: the wake reaches these seats
 const mailboxFlows = mailboxInstances(mailboxes, {
   kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) },
 });
@@ -381,12 +381,15 @@ declaration is all `wakeMemberSeats` looks for.
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
 import { mailboxNotifyInputSchema, workerConfigSchema } from "@flow-state-dev/workforce";
+import { z } from "zod";
 
 export const triager = defineFlow({
   kind: "triager",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
-  actions: { run: { block: triage } },
+  actions: {
+    run: { inputSchema: z.object({ message: z.string() }), block: triage, userMessage: (input) => input.message },
+  },
   internal: {
     actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: triageFromPost } },
   },
@@ -801,7 +804,7 @@ The rows themselves are [task substrate](../orchestration/task-substrate.md) row
 
 A board's `workers` map fixes its names when you write it. To let a row name any of your workers instead, including one hired a minute ago, the worker has to be able to take a task, and the board has to ask who a name means when it hands the row over.
 
-The built-in `agent` kind takes tasks from the boards you pass it as `taskLists`, and from none without them, which includes the copy you get when you pass no `kinds`. Build it with every board your mailboxes hold, hire, and build the **worker lookup** over the live registry:
+The built-in `agent` kind takes tasks from the boards you pass it as `taskLists`, and from none without them, which includes the copy you get when you pass no `workerFlows`. Build it with every board your mailboxes hold, hire, and build the **worker lookup** over the live registry:
 
 ```ts
 import {
@@ -821,7 +824,7 @@ const { mailboxes } = await readMailboxesDirectory("./workforce");
 const boardIds = mailboxBoardIds(mailboxes);
 
 const hired = hireWorkforce(workers, {
-  kinds: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) },
+  workerFlows: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) },
   mailboxBoards: boardIds,
 });
 

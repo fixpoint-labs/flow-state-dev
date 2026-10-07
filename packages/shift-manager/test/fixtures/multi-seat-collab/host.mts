@@ -151,7 +151,7 @@ export function hireLab(options: HireLabOptions): Record<string, FlowInstance> {
   const { tree } = options;
   const board = mailboxBoard(tree.mailbox.id, tree.boardName);
   const seats = hireWorkforce(tree.roster.workers, {
-    kinds: {
+    workerFlows: {
       [WORKER_KIND]: defineWorkerFlow({
         board,
         routes: options.routes,

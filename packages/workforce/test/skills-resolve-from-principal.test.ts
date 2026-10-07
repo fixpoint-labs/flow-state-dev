@@ -100,7 +100,7 @@ async function ask(seat: FlowInstance, sessionId: string): Promise<Turn> {
 
 function hireSeat(authentication?: FlowInstance["authentication"]): FlowInstance {
   const kind = defineAgentWorkerFlow();
-  const [seat] = hireWorkforce([record()], { kinds: { [AGENT_KIND]: kind } });
+  const [seat] = hireWorkforce([record()], { workerFlows: { [AGENT_KIND]: kind } });
   if (authentication !== undefined) {
     Object.assign(seat!, { authentication });
   }

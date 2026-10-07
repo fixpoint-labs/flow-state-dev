@@ -31,7 +31,7 @@ import {
   workerConfigSchema,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
-import { loadFixture, runGoal, stripIntentOverrides } from "../../lib/index.mts";
+import { loadFixture, runGoal, stripIntentOverrides, workerDoor } from "../../lib/index.mts";
 
 type Fixture = {
   ownerOrg: string;
@@ -142,7 +142,7 @@ const seatKind = defineFlow({
   configSchema: workerConfigSchema(),
   resources: { notes, seen },
   user: { stateSchema: z.object({ marker: z.string().nullable().default(null) }) },
-  actions: {
+  actions: { ...workerDoor,
     save: { inputSchema: saveInput, block: save },
     read: { inputSchema: tagInput, block: read },
     // The seat's own board binds the claim gate on `work`; it holds no rows.
@@ -322,7 +322,7 @@ await runGoal(async () => {
   const reloaded = await reloadHiredSeats({
     stores: runtime.stores,
     orgIds: [fixture.ownerOrg, fixture.otherOrg],
-    kinds: { research: seatKind },
+    workerFlows: { research: seatKind },
   });
   if (reloaded.problems.length > 0) fail("setup", `reload problems: ${reloaded.problems.join("; ")}`);
   for (const seat of reloaded.seats) {

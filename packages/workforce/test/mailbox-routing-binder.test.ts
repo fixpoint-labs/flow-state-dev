@@ -29,13 +29,14 @@ import {
   type MailboxManifest
 } from "../src/index";
 import { hireWorkforce } from "../src/hire";
+import { workerDoor } from "./worker-door";
 
 /** A kind of the app's own that takes notes when asked and hears no posts. */
 const note = defineFlow({
   kind: "note",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
-  actions: { take: { block: handler({ name: "note-take", execute: () => ({}) }) } }
+  actions: { ...workerDoor, take: { block: handler({ name: "note-take", execute: () => ({}) }) } }
 } as never);
 
 const seats = hireWorkforce(
@@ -44,7 +45,7 @@ const seats = hireWorkforce(
     { id: "support.general", declared: { description: "Anything that fits no one else." }, body: "General." },
     { id: "support.notes", declared: { description: "Takes notes.", flow: "note" }, body: "Notes." }
   ],
-  { kinds: { note: note as never } }
+  { workerFlows: { note: note as never } }
 );
 
 const route = routeByPurpose(seats, { model: mockEvaluationModel() });

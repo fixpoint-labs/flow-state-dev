@@ -27,6 +27,7 @@ import { defineHiredRosterCollection } from "../src/roster/collections";
 import { defineSeatInventoryCollection } from "../src/inventory/collections";
 import { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "../src/seat-hire-keys";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 // Lets one case make `hireWorkforce` mint nothing without throwing: a mint
 // fault that is not the kind's refusal, which no real kind produces on demand.
@@ -55,13 +56,13 @@ const coder = defineFlow({
   kind: "coder",
   cardinality: "collection",
   configSchema: workerConfigSchema().extend({ document: z.string().min(1) }),
-  actions: { run: { inputSchema: z.object({}), block: noop } },
+  actions: { ...workerDoor, run: { inputSchema: z.object({}), block: noop } },
 });
 
 async function hireTool() {
   const registered: FlowInstance[] = [];
   const { hire } = createSeatHireBlocks({
-    kinds: { coder } as never,
+    workerFlows: { coder } as never,
     register: (seat) => {
       registered.push(seat);
     },

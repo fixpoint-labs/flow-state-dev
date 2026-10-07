@@ -746,7 +746,7 @@ function catalogDeclaredResources(
  *
  * Called with no arguments this returns the built-in — the kind a worker file
  * that names no `flow:` is hired into. Called with arguments it returns a
- * configured one; register it as `kinds: { agent: defineAgentWorkerFlow({ ... }) }`
+ * configured one; register it as `workerFlows: { agent: defineAgentWorkerFlow({ ... }) }`
  * and it wins for every seat on the roster.
  *
  * Define once, hire many: call this at module scope or app bootstrap, never
@@ -805,11 +805,13 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   // `tools:` setting. That registration path stays off; the generator's own
   // `tools:` slot below, fenced at the mint by the `tools` schema, is the
   // only stock tool-registration path.
-  // Organization scope, the library default. The organization is the
-  // principal's. A request sends `userId` and does not carry an org id.
+  // User scope, not the library's org default: the drawer is the worker's own
+  // working state, and org scope is shared with every member of the org. With
+  // the flow's isolation below, each worker's drawer is its user's alone.
   const skills = createSkillsLibrary({
     catalog,
     registerCatalogTools: false,
+    scope: "user",
     // Per-execution rather than a fixed array: the catalog is the SEAT's, and
     // a block deliberately cannot see which instance it is, so the seat's own
     // set has to arrive on its config and be read from there.

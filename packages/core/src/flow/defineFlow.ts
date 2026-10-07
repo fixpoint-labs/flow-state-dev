@@ -41,6 +41,9 @@ import {
   describeFlowConfigIssues,
   describeFlowConfigMismatch,
   findFlowConfigMismatch,
+  flowConfigIssuesOf,
+  flowConfigMismatchIssues,
+  FlowConfigRefusalError,
   type FlowConfigRequirement,
 } from "../helpers/flow-config";
 import type { ZodError, ZodObject, ZodRawShape, ZodTypeAny } from "zod";
@@ -317,17 +320,19 @@ function normalizeInstanceConfig(
   let parsed: Record<string, unknown>;
   if (supplied !== undefined) {
     if (declared === undefined) {
-      throw new Error(
+      throw new FlowConfigRefusalError(
         `Flow "${flowKind}" instance "${instanceId}" was created with a config bag, but the flow ` +
         `declares no configSchema. A copy may only carry settings the definition declared — add ` +
-        `\`configSchema: z.object({ ... })\` to defineFlow(...), or drop the bag.`
+        `\`configSchema: z.object({ ... })\` to defineFlow(...), or drop the bag.`,
+        [{ path: [], code: "no_config_schema", message: "the flow declares no configSchema" }]
       );
     }
     const result = closeConfigSchema(flowKind, declared).safeParse(supplied);
     if (!result.success) {
-      throw new Error(
+      throw new FlowConfigRefusalError(
         `Flow "${flowKind}" instance "${instanceId}" has an invalid config bag: ` +
-        `${describeFlowConfigIssues(result.error)}.`
+        `${describeFlowConfigIssues(result.error)}.`,
+        flowConfigIssuesOf(result.error)
       );
     }
     parsed = result.data as Record<string, unknown>;
@@ -337,10 +342,11 @@ function normalizeInstanceConfig(
     // as an agent that quietly ran on the wrong model.
     const result = closeConfigSchema(flowKind, declared).safeParse({});
     if (!result.success) {
-      throw new Error(
+      throw new FlowConfigRefusalError(
         `Flow "${flowKind}" instance "${instanceId}" was created without a config bag, and the ` +
         `flow's configSchema cannot be satisfied by an empty one: ` +
-        `${describeFlowConfigIssues(result.error)}. Call the factory with { config: { ... } }.`
+        `${describeFlowConfigIssues(result.error)}. Call the factory with { config: { ... } }.`,
+        flowConfigIssuesOf(result.error)
       );
     }
     parsed = result.data as Record<string, unknown>;
@@ -350,8 +356,9 @@ function normalizeInstanceConfig(
 
   const mismatch = findFlowConfigMismatch(parsed, required);
   if (mismatch !== undefined) {
-    throw new Error(
-      describeFlowConfigMismatch(`Flow "${flowKind}" instance "${instanceId}"`, mismatch)
+    throw new FlowConfigRefusalError(
+      describeFlowConfigMismatch(`Flow "${flowKind}" instance "${instanceId}"`, mismatch),
+      flowConfigMismatchIssues(mismatch)
     );
   }
   return Object.freeze(parsed);

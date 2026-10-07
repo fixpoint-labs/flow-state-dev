@@ -45,6 +45,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { workerDoor } from "../../../lib/worker-door.mts";
 
 /** The tree this Lab reads. */
 const SHIFT_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
@@ -171,18 +172,18 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { [ledger.id]: ledger },
-    actions: { drain: { block: leadBoard.drain } },
+    actions: { drain: { block: leadBoard.drain }, ...workerDoor },
     task: { actions: { [ENTRY]: { block: scriptedRun } } },
   } as never);
   const seatKind = defineFlow({
     kind: SEAT_KIND,
     cardinality: "collection",
     configSchema: workerConfigSchema().extend({ handoff: z.enum(["per-task", "per-worker"]).optional() }),
-    actions: { ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
+    actions: { ...workerDoor, ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
   } as never);
 
   const hired = hireWorkforce(tree.workers, {
-    kinds: { [drainer.declared.flow as string]: leadKind as never, [SEAT_KIND]: seatKind as never },
+    workerFlows: { [drainer.declared.flow as string]: leadKind as never, [SEAT_KIND]: seatKind as never },
     mailboxBoards: mailboxBoardIds(tree.mailboxes),
   });
   const instances = mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: defineMailboxFlow({ inventory: true }) as never } });

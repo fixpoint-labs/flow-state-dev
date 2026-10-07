@@ -144,7 +144,7 @@ async function route(blankPurposes: boolean): Promise<{
     body: fx.orchestrator.instructions,
   };
   const [coordinator] = hireWorkforce([coordinatorRecord], {
-    kinds: { agent: kind as never },
+    workerFlows: { agent: kind as never },
   });
   if (!coordinator) return { assigned, prompt: "", error: "the coordinator was not hired" };
 

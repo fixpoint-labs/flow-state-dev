@@ -65,6 +65,7 @@ import { workerConfigSchema, type MailboxBoardCollection } from "@flow-state-dev
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
 import { ledgerOf } from "../../../ledger.mts";
+import { workerDoor } from "../../../../../lib/worker-door.mts";
 
 /** The kind id every builder `WORKER.md` names. **Pinned** — the basename must match. */
 export const BUILDER_KIND = "builder";
@@ -279,7 +280,7 @@ export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
     kind: BUILDER_KIND,
     cardinality: "collection",
     configSchema: builderSettingsSchema(),
-    actions: {
+    actions: { ...workerDoor,
       [DRAIN_ENTRY]: {
         block: board.drain,
         description: "Work this seat's share of the mailbox's board.",

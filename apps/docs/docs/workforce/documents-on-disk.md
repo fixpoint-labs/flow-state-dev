@@ -196,12 +196,13 @@ A reported file is a document your app was supposed to have. Log a warning and c
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { hireWorkforce, referencesFromDocs, resourcesFromDocs } from "@flow-state-dev/workforce";
+import { hireWorkforce, referencesFromDocs, resourcesFromDocs, workerConfigSchema } from "@flow-state-dev/workforce";
 import {
   readReferencesDirectory,
   readResourcesDirectory,
   readWorkforceDirectory,
 } from "@flow-state-dev/workforce/loader";
+import { z } from "zod";
 import { answerQuestion } from "./blocks";
 import { ticketResource } from "./resources";
 
@@ -217,12 +218,20 @@ const referenceMap = referencesFromDocs(references.documents);
 
 export const supportFlow = defineFlow({
   kind: "support",
-  actions: { answer: { block: answerQuestion } },
+  cardinality: "collection",
+  configSchema: workerConfigSchema(),
+  actions: {
+    answer: {
+      inputSchema: z.object({ message: z.string() }),
+      block: answerQuestion,
+      userMessage: (input) => input.message,
+    },
+  },
   resources: { ticket: ticketResource, ...documentMap, ...referenceMap },
 });
 
 export const seats = hireWorkforce(roster.workers, {
-  kinds: { support: supportFlow },
+  workerFlows: { support: supportFlow },
   documents: documentMap,
   references: referenceMap,
 });

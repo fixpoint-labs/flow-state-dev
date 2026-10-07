@@ -9,6 +9,7 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
+import { workerDoor } from "../../../lib/worker-door.mts";
 
 const inputSchema = z.object({ note: z.string() });
 
@@ -66,7 +67,8 @@ const actions = {
   run: {
     inputSchema,
     block: sequencer({ name: "caller-agent-work", inputSchema }).step(start).tap(recordSettings)
-  }
+  },
+  ...workerDoor
 };
 
 /** The supported replacement: declared `collection`, as the contract requires. */

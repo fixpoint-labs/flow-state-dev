@@ -1,0 +1,14 @@
+{
+  "orgId": "acme",
+  "alice": "alice",
+  "bob": "bob",
+  "helper": "support.helper",
+  "scout": "support.scout",
+  "keeper": "support.keeper",
+  "coordinator": "support.coord",
+  "keptFlow": "coordinator",
+  "bobsOwn": { "seatId": "bobs-coordinator" },
+  "note": { "key": "launch", "text": "Launch moved to Friday." },
+  "board": { "key": "standup", "text": "Standup is at nine." },
+  "question": "How long does a refund take?"
+}

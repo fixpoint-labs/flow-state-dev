@@ -206,6 +206,8 @@ export { resolveTracingLevel } from "./helpers/tracing-level";
 export type { TracingLevel } from "./helpers/tracing-level";
 export { transientSlot } from "./helpers/transient-slot";
 export { firstInProcess } from "./helpers/once-per-process";
+export { FlowConfigRefusalError } from "./helpers/flow-config";
+export type { FlowConfigIssue, FlowConfigPath } from "./helpers/flow-config";
 export {
   warnOnceDev,
   __resetDeprecationWarningsForTests,

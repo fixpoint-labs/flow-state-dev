@@ -20,6 +20,7 @@ import { hireWorkforce, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -29,13 +30,13 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
   return { declared: {}, body: "", ...over };
 }
 
-function hire(manifests: WorkerManifest[], kinds: HireOptions["kinds"] = {}): FlowInstance[] {
-  return hireWorkforce(manifests, { kinds });
+function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): FlowInstance[] {
+  return hireWorkforce(manifests, { workerFlows: kinds });
 }
 
-function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["kinds"] = {}): string {
+function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): string {
   try {
-    hireWorkforce(manifests, { kinds });
+    hireWorkforce(manifests, { workerFlows: kinds });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -171,7 +172,7 @@ describe("a seat's skills at the mint", () => {
       kind: "request-triage",
       cardinality: "collection",
       configSchema: z.object({ desk: z.string().default("front") }),
-      actions: {
+      actions: { ...workerDoor,
         run: {
           inputSchema: z.object({ message: z.string() }),
           block: handler({
@@ -198,8 +199,8 @@ describe("a seat's skills at the mint", () => {
       { "request-triage": triage as never },
     );
 
-    // Named: which worker, and the door its kind has to open.
-    expect(message).toContain('worker "ops.router"');
+    // Named: which flow, and the contract it has to compose.
+    expect(message).toContain('worker flow "request-triage"');
     expect(message).toContain("workerConfigSchema()");
     // Nothing was hired — not even the seat whose own kind was fine. A refusal
     // that hired half a roster would leave an app half-configured at boot.
@@ -214,7 +215,7 @@ describe("a seat's skills at the mint", () => {
       kind: "request-triage",
       cardinality: "collection",
       configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-      actions: {
+      actions: { ...workerDoor,
         run: {
           inputSchema: z.object({ message: z.string() }),
           block: handler({

@@ -73,16 +73,21 @@ stripIntentOverrides();
 const fixture = loadFixture<Fixture>(import.meta.url);
 const { lead, intake } = fixture.roster;
 
-const kinds: HireOptions["kinds"] = {
+const kinds: HireOptions["workerFlows"] = {
   [CUSTOM_AGENT_KIND]: customAgentFlow,
   [INTAKE_KIND]: intakeFlow,
-  // Passed so the refusal it earns is about a bag its schema cannot take, and
-  // not about a kind the app forgot to register — two different failures.
-  [NO_CONTRACT_KIND]: noContractFlow,
-  // The positive control for the same rule: a hand-written schema that accepts
-  // the imposed bag, which hires exactly like a composed one.
+  // The positive control for the structural rule: a hand-written schema that
+  // accepts the imposed bag, which hires exactly like a composed one.
   [HAND_ROLLED_KIND]: handRolledFlow
 };
+
+/**
+ * The same flows with the control added. Passed so the refusal it earns is
+ * about a bag its schema cannot take, and not about a kind the app forgot to
+ * register — two different failures. Kept off `kinds`: a worker flow that
+ * misses the contract refuses the whole installation at boot.
+ */
+const withNoContract: HireOptions["workerFlows"] = { ...kinds, [NO_CONTRACT_KIND]: noContractFlow };
 
 // ---------------------------------------------------------------------------
 // Where the records come from. The selector is mechanical — the presence of the
@@ -311,7 +316,7 @@ await runGoal(async () => {
   const records = await roster("teams");
   // Hired once. Registering the same copies in each host is the shape an app
   // has anyway — one hire at boot, whatever is built around it afterwards.
-  const seats = hireWorkforce(records, { kinds });
+  const seats = hireWorkforce(records, { workerFlows: kinds });
 
   // ---- (0) the two roster sources still say the same thing ---------------
   {
@@ -450,11 +455,13 @@ await runGoal(async () => {
       {
         what: "a record naming a kind the app did not define",
         records: [...records, ...(await roster(fixture.refusals.unknownKind.dir))],
+        flows: kinds,
         names: [fixture.refusals.unknownKind.id, fixture.refusals.unknownKind.flow]
       },
       {
         what: "a record declaring a setting its flow never offered",
         records: [...records, ...(await roster(fixture.refusals.undeclaredSetting.dir))],
+        flows: kinds,
         names: [fixture.refusals.undeclaredSetting.id, fixture.refusals.undeclaredSetting.key!]
       },
       {
@@ -462,12 +469,14 @@ await runGoal(async () => {
         // Graded on the STRUCTURAL rule. The kind declares `instructions` and
         // `teamInstructions` but not `seatSkills`, so the refusal can only be
         // about the bag it cannot take — it is not merely a kind that skipped
-        // the helper, which leg (f) shows hires fine.
+        // the helper, which leg (f) shows hires fine. Refused when the flows are
+        // registered, before any worker, so it names the flow, not the worker.
         records: [
           records.find((r) => r.id === lead.id)!,
           ...(await roster(fixture.refusals.noContract.dir))
         ],
-        names: [fixture.refusals.noContract.id, "seatSkills"]
+        flows: withNoContract,
+        names: [`worker flow "${NO_CONTRACT_KIND}"`, "seatSkills"]
       }
     ];
 
@@ -475,7 +484,7 @@ await runGoal(async () => {
       let hired: FlowInstance[] | undefined;
       let refusal = "";
       try {
-        hired = hireWorkforce(testCase.records, { kinds });
+        hired = hireWorkforce(testCase.records, { workerFlows: testCase.flows });
       } catch (error) {
         refusal = messageOf(error);
       }
@@ -497,7 +506,7 @@ await runGoal(async () => {
       }
     }
     evidence.push(
-      "an unknown kind, an undeclared setting and a kind whose schema cannot accept the imposed bag each refuse at the hire, naming the worker, with nothing hired and nothing registered"
+      "an unknown kind and an undeclared setting each refuse at the hire, naming the worker, and a kind whose schema cannot accept the imposed bag refuses at boot, naming the flow, each with nothing hired and nothing registered"
     );
   }
 
@@ -516,7 +525,7 @@ await runGoal(async () => {
     let hired: FlowInstance[] | undefined;
     let refusal = "";
     try {
-      hired = hireWorkforce(bodied, { kinds });
+      hired = hireWorkforce(bodied, { workerFlows: kinds });
     } catch (error) {
       refusal = messageOf(error);
     }
@@ -561,7 +570,7 @@ await runGoal(async () => {
     let hired: FlowInstance[] | undefined;
     let refusal = "";
     try {
-      hired = hireWorkforce([...records, handRolled], { kinds });
+      hired = hireWorkforce([...records, handRolled], { workerFlows: kinds });
     } catch (error) {
       refusal = messageOf(error);
     }

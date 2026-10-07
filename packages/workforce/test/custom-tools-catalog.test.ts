@@ -32,8 +32,8 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
   return { declared: {}, body: "", ...over };
 }
 
-function hire(manifests: WorkerManifest[], kinds: HireOptions["kinds"]): FlowInstance[] {
-  return hireWorkforce(manifests, { kinds });
+function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"]): FlowInstance[] {
+  return hireWorkforce(manifests, { workerFlows: kinds });
 }
 
 /** A model script that "calls" a tool by name. */

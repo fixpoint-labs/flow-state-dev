@@ -161,7 +161,7 @@ async function mailboxRequests(runtime: FlowStateRuntime, sessionId: string, cou
 
 describe("post-to-mailbox", () => {
   it("lands one line in a mailbox the seat belongs to, under the seat's own id (BR-1, BR-3)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { kinds: { agent } });
+    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -186,7 +186,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("wakes no co-member when the seat posts through the tool, and still wakes them on a public claim of that seat", async () => {
-    const [otto, iris] = hireWorkforce([seat("support.otto"), seat("support.iris", undefined)], { kinds: { agent } });
+    const [otto, iris] = hireWorkforce([seat("support.otto"), seat("support.iris", undefined)], { workerFlows: { agent } });
     const mailbox = defineMailboxFlow({ notify: wakeMemberSeats([otto!, iris!]) })();
     const state = createFlowState({
       flows: { [MAILBOX_KIND]: mailbox, [otto!.id]: otto!, [iris!.id]: iris! },
@@ -233,7 +233,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("refuses an author from the model, and any other key; nothing is posted (BR-4)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { kinds: { agent } });
+    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -253,7 +253,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("is refused by the mailbox when the seat is not a member; the turn completes and nothing is written (BR-5)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { kinds: { agent } });
+    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -273,7 +273,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("fails the call by name for an id nobody opened, and for a session of another kind; nothing is written (BR-6)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { kinds: { agent } });
+    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -293,7 +293,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("offers nothing to a seat whose tools: does not name it (BR-7)", async () => {
-    const [iris] = hireWorkforce([seat("support.iris", [])], { kinds: { agent } });
+    const [iris] = hireWorkforce([seat("support.iris", [])], { workerFlows: { agent } });
     const state = host([iris!]);
     try {
       const runtime = await state.getRuntime();
@@ -309,7 +309,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("refuses an empty body at the tool's input (BR-8)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { kinds: { agent } });
+    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -330,7 +330,7 @@ describe("post-to-mailbox", () => {
       toHiredSeatRow({ seatId: "support.pat", flow: "agent", settings: { tools: [POST_TO_MAILBOX_TOOL] } }),
     );
     if (!("manifest" in hired)) throw new Error(hired.problem);
-    const [pat] = hireWorkforce([hired.manifest], { kinds: { agent } });
+    const [pat] = hireWorkforce([hired.manifest], { workerFlows: { agent } });
     expect(pat!.id).not.toBe("support.pat");
     const state = host([pat!]);
     try {
@@ -386,7 +386,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("fails the call naming the external dispatcher; nothing is written (BR-19)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { kinds: { agent } });
+    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!], { external: true });
     try {
       const runtime = await state.getRuntime();

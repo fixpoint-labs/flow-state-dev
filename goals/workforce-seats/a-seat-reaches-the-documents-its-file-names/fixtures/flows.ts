@@ -17,6 +17,7 @@ import type { DeclaredResources } from "@flow-state-dev/core";
 import type { ResourceDoc } from "@flow-state-dev/workforce";
 import { resourcesFromDocs, workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
+import { workerDoor } from "../../../lib/worker-door.mts";
 
 export const DESK_KIND = "desk";
 
@@ -122,7 +123,7 @@ export function buildDesk(documents: ResourceDoc[]): {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { ...catalog, [STORE]: auditLog } as DeclaredResources,
-    actions: {
+    actions: { ...workerDoor,
       run: {
         inputSchema,
         block: sequencer({ name: "desk-work", inputSchema }).tap(start).tap(probe(probedKeys))

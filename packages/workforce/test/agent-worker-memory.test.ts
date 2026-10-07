@@ -43,8 +43,8 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
   return { declared: {}, body: "", ...over };
 }
 
-function hire(manifests: WorkerManifest[], kinds: HireOptions["kinds"] = {}): FlowInstance[] {
-  return hireWorkforce(manifests, { kinds });
+function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): FlowInstance[] {
+  return hireWorkforce(manifests, { workerFlows: kinds });
 }
 
 /** The write-side entry point — `createMemoryCapability` would be read-only. */

@@ -65,7 +65,7 @@ import {
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
-import { goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
+import { goalTmpDir, runGoal, silentLogger, workerDoor } from "../../lib/index.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_task_run_link";
@@ -228,7 +228,7 @@ await runGoal(async () => {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { [ledger.id]: ledger },
-    actions: { drain: { block: leadBoard.drain } },
+    actions: { drain: { block: leadBoard.drain }, ...workerDoor },
     task: { actions: { [ENTRY]: { block: work } } }
   } as never);
 
@@ -249,7 +249,7 @@ await runGoal(async () => {
           cardinality: "collection",
           configSchema: seatConfig,
           resources: { [ledger.id]: ledger },
-          actions: { drain: { block: board.drain } },
+          actions: { drain: { block: board.drain }, ...workerDoor },
           task: { actions: { [ENTRY]: { block: work } } }
         } as never)
       ];
@@ -260,12 +260,12 @@ await runGoal(async () => {
     kind: PASSIVE_KIND,
     cardinality: "collection",
     configSchema: seatConfig,
-    actions: {}
+    actions: { ...workerDoor,}
   } as never);
 
   const instances = mailboxInstances(mailboxes);
   const hired = hireWorkforce(workers, {
-    kinds: {
+    workerFlows: {
       [drainer.declared.flow as string]: leadKind as never,
       [PASSIVE_KIND]: passiveKind as never,
       ...(otherKinds as Record<string, never>)

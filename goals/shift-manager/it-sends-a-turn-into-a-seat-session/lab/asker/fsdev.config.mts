@@ -30,7 +30,7 @@ const tree = await readDeclaredRoster(fileURLToPath(new URL("./workforce", impor
 if (tree.problems.length > 0) throw new Error(`the asker tree did not load: ${tree.problems.map((p) => p.error.message).join("; ")}`);
 
 const seats = hireWorkforce(tree.workers, {
-  kinds: { [ASKER_KIND]: defineAskerFlow() as never },
+  workerFlows: { [ASKER_KIND]: defineAskerFlow() as never },
   mailboxBoards: mailboxBoardIds(tree.mailboxes),
 });
 const mailboxKind = defineMailboxFlow({ inventory: true });

@@ -50,7 +50,7 @@ import {
   type MailboxManifest,
 } from "@flow-state-dev/workforce";
 import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
-import { KITCHEN_SINK, REPO_ROOT, repoPath, runGoal, runHarness } from "../../lib/index.mts";
+import { KITCHEN_SINK, REPO_ROOT, repoPath, runGoal, runHarness, workerDoor } from "../../lib/index.mts";
 
 const WORKFORCE = join(KITCHEN_SINK, "workforce");
 const GEN_MODULE = join(WORKFORCE, "workforce.gen.ts");
@@ -612,7 +612,7 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
     kind: "em",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: {
+    actions: { ...workerDoor,
       idle: {
         block: handler({
           name: "fixture-em-idle",
@@ -628,7 +628,7 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { [attendedBoard.id]: attendedBoard },
-    actions: { drain: { block: board.drain } },
+    actions: { ...workerDoor, drain: { block: board.drain } },
   } as never);
 
   // ---- V9's attended half: warned about the board nobody drains, only -----
@@ -640,7 +640,7 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
   let seats;
   try {
     seats = hireWorkforce(roster.workers, {
-      kinds: { em: emKind as never, coder: coderKind as never },
+      workerFlows: { em: emKind as never, coder: coderKind as never },
       mailboxBoards: mailboxBoardIds(mailboxes),
     });
   } finally {

@@ -368,7 +368,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // worker. Nothing is returned partially, so a refusal cannot leave a short
   // roster running — which is where BR-3's seat-folder board lands.
   const hired = hireWorkforce(workers, {
-    kinds: {
+    workerFlows: {
       [COORDINATOR_KIND]: coordinator.kind as never,
       [BUILDER_KIND]: builderKind as never,
     },

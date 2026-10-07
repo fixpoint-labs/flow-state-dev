@@ -111,7 +111,7 @@ async function lab(script: Array<Record<string, unknown>>) {
 
   const [seat] = hireWorkforce(
     [{ id: "eng.coder", declared: { flow: AGENT_KIND, tools: [] }, body: "Coder." }],
-    { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [mailboxBoardTaskTools(triage)] }) } }
+    { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [mailboxBoardTaskTools(triage)] }) } }
   );
 
   const state = createFlowState({
@@ -246,7 +246,7 @@ describe("a seat holding two boards", () => {
     const [seat] = hireWorkforce(
       [{ id: "eng.coder", declared: { flow: AGENT_KIND, tools: [] }, body: "Coder." }],
       {
-        kinds: {
+        workerFlows: {
           [AGENT_KIND]: defineAgentWorkerFlow({
             uses: [mailboxBoardTaskTools(triage), mailboxBoardTaskTools(review)]
           })
@@ -337,7 +337,7 @@ describe("the seat's `tools:` fence", () => {
     const [seat] = hireWorkforce(
       [{ id: "eng.fenced", declared: { flow: AGENT_KIND, tools: [] }, body: "Fenced." }],
       {
-        kinds: {
+        workerFlows: {
           [AGENT_KIND]: defineAgentWorkerFlow({
             uses: [mailboxBoardTaskTools(mailboxBoard("eng.fenced-mailbox", "triage"))]
           })
@@ -486,7 +486,7 @@ describe("a mailbox-board tool colocated in a seat's own folder", () => {
     let message = "";
     try {
       hireWorkforce([{ id: "eng.colo", declared: { flow: AGENT_KIND }, body: "Colo." }], {
-        kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
         seatBlocks: { "eng.colo": { "file-triage": colocated } }
       });
     } catch (error) {

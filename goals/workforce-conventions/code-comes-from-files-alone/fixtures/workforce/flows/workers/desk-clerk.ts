@@ -14,6 +14,7 @@
 import { defineFlow, handler, type BlockContext } from "@flow-state-dev/core";
 import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
+import { workerDoor } from "../../../../../../lib/worker-door.mts";
 
 /** The seat contract plus this kind's own key, which a `WORKER.md` sets at its top level. */
 const settings = workerConfigSchema().extend({
@@ -34,5 +35,5 @@ export default defineFlow({
   kind: "desk-clerk",
   cardinality: "collection",
   configSchema: settings,
-  actions: { answer: { block: answer } },
+  actions: { ...workerDoor, answer: { block: answer } },
 } as never);

@@ -78,7 +78,7 @@ const catalog = escalateControl(blocks) ?? blocks;
  * The goal check's `no-landing` control swaps the kind for one that answers
  * with the same tools and lands no text answer, in test mode only.
  */
-export const kitchenSinkKinds: NonNullable<HireOptions["kinds"]> = {
+export const kitchenSinkKinds: NonNullable<HireOptions["workerFlows"]> = {
   ...kinds,
   agent: mailboxLandingControl(catalog, mailboxPost) ?? defineAgentWorkerFlow({ uses: [mailboxPost], catalog }),
 };
@@ -185,7 +185,7 @@ export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
   // seats: its addresses are the seats hired here, never a mailbox's stored
   // members.
   const seats = hireWorkforce(workers, {
-    kinds: kitchenSinkKinds,
+    workerFlows: kitchenSinkKinds,
     seatBlocks,
     packageBlocks,
     mailboxBoards: mailboxBoardIds(mailboxes),

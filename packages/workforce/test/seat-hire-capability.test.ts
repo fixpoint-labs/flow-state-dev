@@ -125,9 +125,9 @@ function kindWithHire(
   live: ReturnType<typeof liveRoster>,
   over: Partial<Parameters<typeof createSeatHireCapability>[0]> = {},
 ) {
-  const kinds: NonNullable<HireOptions["kinds"]> = {};
+  const kinds: NonNullable<HireOptions["workerFlows"]> = {};
   const seatHire = createSeatHireCapability({
-    kinds,
+    workerFlows: kinds,
     register: live.register,
     unregister: live.unregister,
     kindAt: live.kindAt,
@@ -150,7 +150,7 @@ describe("the tools fence on seat-hire", () => {
 
     const [manager] = hireWorkforce(
       [record({ id: "eng.manager", body: "Expands the roster." })],
-      { kinds },
+      { workerFlows: kinds },
     );
 
     const { result } = await runSeat(manager!, [
@@ -169,7 +169,7 @@ describe("the tools fence on seat-hire", () => {
 
     const [manager] = hireWorkforce(
       [record({ id: "eng.manager", declared: { tools: ["hire"] }, body: "Expands the roster." })],
-      { kinds },
+      { workerFlows: kinds },
     );
 
     const { result, ctx } = await runSeat(manager!, [
@@ -200,7 +200,7 @@ describe("the tools fence on seat-hire", () => {
 
     const [manager] = hireWorkforce(
       [record({ id: "eng.manager", declared: { tools: ["hire"] }, body: "Expands the roster." })],
-      { kinds },
+      { workerFlows: kinds },
     );
 
     const { result, ctx } = await runSeat(manager!, [
@@ -220,7 +220,7 @@ describe("the tools fence on seat-hire", () => {
 
     const [manager] = hireWorkforce(
       [record({ id: "eng.manager", declared: { tools: ["hire"] }, body: "Expands the roster." })],
-      { kinds },
+      { workerFlows: kinds },
     );
 
     const { result, ctx } = await runSeat(manager!, [
@@ -238,7 +238,7 @@ describe("the tools fence on seat-hire", () => {
     expect(() =>
       hireWorkforce(
         [record({ id: "eng.manager", declared: { tools: ["hire"] }, body: "No grant." })],
-        { kinds: { agent: defineAgentWorkerFlow() } },
+        { workerFlows: { agent: defineAgentWorkerFlow() } },
       ),
     ).toThrow(/hire/);
   });
@@ -249,7 +249,7 @@ describe("the tools fence on seat-hire", () => {
 
     const [manager] = hireWorkforce(
       [record({ id: "eng.manager", declared: { tools: ["hire"] }, body: "Expands the roster." })],
-      { kinds },
+      { workerFlows: kinds },
     );
 
     const { ctx } = await runSeat(manager!, [
@@ -280,7 +280,7 @@ describe("fire", () => {
 
     const [manager] = hireWorkforce(
       [record({ id: "eng.manager", declared: { tools: ["hire", "fire"] }, body: "Expands the roster." })],
-      { kinds },
+      { workerFlows: kinds },
     );
 
     const { ctx } = await runSeat(manager!, [
@@ -303,7 +303,7 @@ describe("fire", () => {
         record({ id: "eng.manager", declared: { tools: ["fire"] }, body: "Expands the roster." }),
         record({ id: "acme.eng.file", body: "Declared on disk." }),
       ],
-      { kinds },
+      { workerFlows: kinds },
     );
     const manager = seats.find((seat) => seat.id === "eng.manager");
     const fileSeat = seats.find((seat) => seat.id === "acme.eng.file");
@@ -321,9 +321,9 @@ describe("fire", () => {
 
 describe("Discover sees a runtime hire", () => {
   function kindThatCanHireAndDiscover(live: ReturnType<typeof liveRoster>) {
-    const kinds: NonNullable<HireOptions["kinds"]> = {};
+    const kinds: NonNullable<HireOptions["workerFlows"]> = {};
     const seatHire = createSeatHireCapability({
-      kinds,
+      workerFlows: kinds,
       register: live.register,
       unregister: live.unregister,
       kindAt: live.kindAt,
@@ -342,7 +342,7 @@ describe("Discover sees a runtime hire", () => {
     const kinds = kindThatCanHireAndDiscover(live);
     const [manager] = hireWorkforce(
       [record({ id: "eng.manager", declared: { tools: ["hire"] }, body: "Expands the roster." })],
-      { kinds },
+      { workerFlows: kinds },
     );
 
     const { result, ctx } = await runSeat(manager!, [
@@ -367,7 +367,7 @@ describe("Discover sees a runtime hire", () => {
     const kinds = kindThatCanHireAndDiscover(live);
     const [manager] = hireWorkforce(
       [record({ id: "eng.manager", declared: { tools: ["hire", "fire"] }, body: "Expands the roster." })],
-      { kinds },
+      { workerFlows: kinds },
     );
 
     const { ctx } = await runSeat(manager!, [
@@ -404,7 +404,7 @@ describe("FIX-1529 owner pin", () => {
     });
     const [manager] = hireWorkforce(
       [record({ id: "eng.manager", declared: { tools: ["hire"] }, body: "Expands the roster." })],
-      { kinds },
+      { workerFlows: kinds },
     );
     const { result } = await runSeat(manager!, [
       { toolCalls: [callTool("hire", { seatId: "eng.ada", flow: "agent" })] },
@@ -424,7 +424,7 @@ describe("unattended boards stay a warning", () => {
 
     const [manager] = hireWorkforce(
       [record({ id: "eng.manager", declared: { tools: ["hire"] }, body: "Expands the roster." })],
-      { kinds },
+      { workerFlows: kinds },
     );
 
     const { result } = await runSeat(manager!, [

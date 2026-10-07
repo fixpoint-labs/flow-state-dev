@@ -46,6 +46,7 @@ import {
 } from "../src/roster";
 import { hireWorkforce } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 const inputSchema = z.object({ note: z.string() });
 
@@ -66,7 +67,7 @@ const deskClerk = defineFlow({
   kind: "desk-clerk",
   cardinality: "collection",
   configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-  actions: { answer: { inputSchema, block: work } },
+  actions: { ...workerDoor, answer: { inputSchema, block: work } },
 });
 
 const kinds = { "desk-clerk": deskClerk };
@@ -180,7 +181,7 @@ describe("V3 · a row round-trips to a record and back", () => {
     expect(record.manifest.declared.flow).toBe("desk-clerk");
 
     // …and the seat that actually mints is the row's kind, not the bag's.
-    const [seat] = hireWorkforce([record.manifest], { kinds });
+    const [seat] = hireWorkforce([record.manifest], { workerFlows: kinds });
     expect(seat!.kind).toBe("desk-clerk");
     expect(seat!.id).toBe("acme.support.ada");
   });
@@ -278,7 +279,7 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
       },
     });
 
-    const { seats, problems } = await reloadHiredSeats({ stores, orgIds: ["acme"], kinds });
+    const { seats, problems } = await reloadHiredSeats({ stores, orgIds: ["acme"], workerFlows: kinds });
 
     expect(seats.map((seat) => seat.id)).toEqual(["acme.support.ada"]);
     expect(seats[0]!.config).toMatchObject({ desk: "front", instructions: "Front desk." });
@@ -311,7 +312,7 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
       },
     });
 
-    const { seats, problems } = await reloadHiredSeats({ stores, orgIds: ["acme"], kinds });
+    const { seats, problems } = await reloadHiredSeats({ stores, orgIds: ["acme"], workerFlows: kinds });
 
     expect(seats.map((seat) => seat.id)).toEqual(["acme.support.ada"]);
     expect(problems).toHaveLength(1);
@@ -320,7 +321,7 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
 
   it("registers nothing for an org with no rows, and reports no problem", async () => {
     const stores = storeHolding({ acme: {} });
-    const { seats, problems } = await reloadHiredSeats({ stores, orgIds: ["acme"], kinds });
+    const { seats, problems } = await reloadHiredSeats({ stores, orgIds: ["acme"], workerFlows: kinds });
     expect(seats).toEqual([]);
     expect(problems).toEqual([]);
   });
@@ -335,7 +336,7 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
     const { seats, problems } = await reloadHiredSeats({
       stores,
       orgIds: ["acme", "bravo"],
-      kinds,
+      workerFlows: kinds,
     });
 
     expect(problems).toEqual([]);
@@ -368,7 +369,7 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
     const { seats, problems } = await reloadHiredSeats({
       stores,
       orgIds: [DEFAULT_ORG_ID, "acme"],
-      kinds,
+      workerFlows: kinds,
     });
 
     expect(seats.map((seat) => seat.id)).toEqual([seatAddress(DEFAULT_ORG_ID, "lead"), "acme.support.ada"]);
@@ -393,7 +394,7 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
     const { seats, problems } = await reloadHiredSeats({
       stores,
       orgIds: ["acme", DEFAULT_ORG_ID],
-      kinds,
+      workerFlows: kinds,
     });
 
     expect(seats).toEqual([]);
@@ -413,7 +414,7 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
         },
       },
     };
-    await reloadHiredSeats({ stores, orgIds: ["acme"], kinds });
+    await reloadHiredSeats({ stores, orgIds: ["acme"], workerFlows: kinds });
     expect(seen).toEqual(["workforce/roster/"]);
     expect(HIRED_ROSTER_PREFIX).toBe("workforce/roster/");
   });
@@ -438,7 +439,7 @@ describe("the reload, partitioned by organization", () => {
     const { byOrg } = await reloadHiredSeats({
       stores: stores(),
       orgIds: ["acme", "beta", "quiet"],
-      kinds,
+      workerFlows: kinds,
     });
 
     // An org with nothing to report still gets an entry. Leaving it out is how
@@ -451,7 +452,7 @@ describe("the reload, partitioned by organization", () => {
     const { byOrg, seats, problems } = await reloadHiredSeats({
       stores: stores(),
       orgIds: ["acme", "beta", "quiet"],
-      kinds,
+      workerFlows: kinds,
     });
     const [acme, beta] = byOrg;
 
@@ -476,7 +477,7 @@ describe("the reload, partitioned by organization", () => {
         acme: { stray: { seatId: "stray", flow: "desk-clerk", settings: {}, owningOrgId: "globex" } },
       }),
       orgIds: ["acme"],
-      kinds,
+      workerFlows: kinds,
     });
 
     expect(byOrg[0]!.problems).toHaveLength(1);
@@ -501,7 +502,7 @@ describe("a row read under an empty organization id", () => {
         acme: { "support.ada": good },
       }),
       orgIds: ["", "acme"],
-      kinds,
+      workerFlows: kinds,
     });
 
     expect(seats.map((seat) => seat.id)).toEqual(["acme.support.ada"]);
@@ -530,7 +531,7 @@ describe("V6 · a store that never answers fails the boot inside its bound", () 
       const reload = reloadHiredSeats({
         stores,
         orgIds: ["acme"],
-        kinds,
+        workerFlows: kinds,
         timeoutMs: 250,
       });
       // Attached before the timers advance, so the rejection is never
@@ -574,7 +575,7 @@ describe("V6 · a store that never answers fails the boot inside its bound", () 
       const reload = reloadHiredSeats({
         stores,
         orgIds: ["acme", "bravo", "charlie"],
-        kinds,
+        workerFlows: kinds,
         timeoutMs: 250,
       });
       const settled = expect(reload).rejects.toThrow(/timed out/i);
@@ -585,7 +586,7 @@ describe("V6 · a store that never answers fails the boot inside its bound", () 
       const again = reloadHiredSeats({
         stores,
         orgIds: ["acme", "bravo", "charlie"],
-        kinds,
+        workerFlows: kinds,
         timeoutMs: 250,
       });
       const captured = again.catch((error: unknown) =>
@@ -613,7 +614,7 @@ describe("V6 · a store that never answers fails the boot inside its bound", () 
         getByPrefix: () => Promise.reject(new Error("connection pool is closed")),
       },
     };
-    await expect(reloadHiredSeats({ stores, orgIds: ["acme"], kinds })).rejects.toThrow(
+    await expect(reloadHiredSeats({ stores, orgIds: ["acme"], workerFlows: kinds })).rejects.toThrow(
       /connection pool is closed/
     );
   });
@@ -630,7 +631,7 @@ describe("V7 · more orgs than the cap refuses rather than truncating", () => {
     const stores = storeHolding({ a: {}, b: {}, c: {} });
 
     await expect(
-      reloadHiredSeats({ stores, orgIds: ["a", "b", "c"], kinds, maxOrgs: 2 })
+      reloadHiredSeats({ stores, orgIds: ["a", "b", "c"], workerFlows: kinds, maxOrgs: 2 })
     ).rejects.toThrow(/3 organizations and its cap is 2/);
 
     // The assertion the slicing implementation fails: a truncating reload
@@ -643,7 +644,7 @@ describe("V7 · more orgs than the cap refuses rather than truncating", () => {
     const { seats, problems } = await reloadHiredSeats({
       stores,
       orgIds: ["a", "b"],
-      kinds,
+      workerFlows: kinds,
       maxOrgs: 2,
     });
     expect(seats).toEqual([]);

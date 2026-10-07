@@ -102,14 +102,14 @@ export interface ReloadHiredSeatsOptions {
   orgIds: readonly string[];
 
   /**
-   * The flow kinds a stored `flow` may name — the SAME map passed to
+   * The worker flows a stored `flow` may name — the SAME map passed to
    * `hireWorkforce` for the file-declared roster.
    *
    * Passing a different map is how a reloaded seat ends up carrying a
    * different tool catalog from its file-declared neighbours for no stated
    * reason, so export the app's one map and hand it to both.
    */
-  kinds?: HireOptions["kinds"];
+  workerFlows?: HireOptions["workerFlows"];
 
   /** Most orgs to reload before refusing. @default {@link DEFAULT_MAX_RELOAD_ORGS} */
   maxOrgs?: number;
@@ -160,8 +160,8 @@ export interface HiredRosterOrgReload {
 /**
  * Read each organization's stored roster and hire what it names.
  *
- * @param options `stores` / `orgIds`: where to read and for whom. `kinds`: the
- *   app's kind map. `maxOrgs` / `timeoutMs`: the two bounds.
+ * @param options `stores` / `orgIds`: where to read and for whom. `workerFlows`: the
+ *   app's worker flows. `maxOrgs` / `timeoutMs`: the two bounds.
  * @returns the hired seats and one named problem per row that could not
  *   become one. **The caller registers the seats.**
  * @throws when there are more organizations than the cap, or when the read
@@ -218,7 +218,7 @@ export async function reloadHiredSeats(
       // through, so the list a person repairs from is this list. A row it
       // refuses is left on disk exactly as it is: a boot that repaired a row
       // it did not understand would destroy the evidence of why it did not.
-      const checked = checkHiredSeatRow(orgId, stored.state, options.kinds, key);
+      const checked = checkHiredSeatRow(orgId, stored.state, options.workerFlows, key);
       if (checked.ok) {
         org.seats.push(checked.seat);
       } else {

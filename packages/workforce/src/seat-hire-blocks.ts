@@ -77,9 +77,10 @@ export interface SeatHireCapabilityOptions {
    *
    * Closed over, not copied: a kind registered on this object after the
    * factory runs is hireable. The built-in `agent` kind sits underneath, as
-   * it does for host hire.
+   * it does for host hire. Every seat hired here is a hired worker (it carries an owner pin), so a flow the
+   * map keeps for declared workers (`{ flow, standardOnly: true }`) refuses it.
    */
-  kinds?: HireOptions["kinds"];
+  workerFlows?: HireOptions["workerFlows"];
   /**
    * Admit a minted seat at its address, with the owner pin from the hire
    * row's roster owner. Hire refuses rather than call this without a pin.
@@ -117,7 +118,7 @@ export interface SeatHireCapabilityOptions {
    */
   refuseRosterAdmin?: boolean;
   /**
-   * Kinds this tool may mint, as a subset of {@link SeatHireCapabilityOptions.kinds}.
+   * Kinds this tool may mint, as a subset of {@link SeatHireCapabilityOptions.workerFlows}.
    * Omitted, every kind on the map (plus the built-in `agent`) is hireable.
    */
   allowKinds?: readonly string[];
@@ -459,11 +460,11 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
   blocks: SeatHireBlocks;
   verbs: SeatHireVerbs;
 } {
-  const kinds = options.kinds ?? {};
+  const workerFlows = options.workerFlows ?? {};
   const allow = options.allowKinds === undefined ? undefined : new Set(options.allowKinds);
 
   const hireableKindNames = (): string[] => {
-    const names = new Set<string>(["agent", ...Object.keys(kinds)]);
+    const names = new Set<string>(["agent", ...Object.keys(workerFlows)]);
     if (allow !== undefined) {
       return [...names].filter((name) => allow.has(name)).sort();
     }
@@ -476,7 +477,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
     if (allow !== undefined && !allow.has(flow)) {
       throw new Error(`This seat may not ${verb} kind "${flow}". It may hire: ${listed(available)}.`);
     }
-    if (!Object.hasOwn(kinds, flow) && flow !== "agent") {
+    if (!Object.hasOwn(workerFlows, flow) && flow !== "agent") {
       throw new Error(`This app carries no flow kind "${flow}". It carries: ${listed(available)}.`);
     }
   };
@@ -500,7 +501,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       throw new Error(`"${address}" could not be hired: ${record.problem}.`);
     }
     const [seat] = hireWorkforce([record.manifest], {
-      kinds,
+      workerFlows,
       mailboxBoards: options.mailboxBoards,
     });
     if (seat === undefined) {
@@ -569,10 +570,8 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
         code: "concurrent_modification",
       });
     }
-    const warnings = [
-      ...unattendedBoardWarnings(options.mailboxBoards ?? [], [seat]),
-      ...(door.problem === undefined ? [] : [door.problem]),
-    ];
+    // No door warning: the hire already refused a worker flow with none or two.
+    const warnings = unattendedBoardWarnings(options.mailboxBoards ?? [], [seat]);
     return warnings.length > 0 ? { warning: warnings.join("\n") } : {};
   };
 
@@ -814,7 +813,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       const address = seatAddress(orgId, input.seatId, located.ownerUserId);
       const existing = await located.roster.getOptional(located.key);
       if (existing !== undefined) {
-        const checked = checkHiredSeatRow(orgId, existing.state, kinds);
+        const checked = checkHiredSeatRow(orgId, existing.state, workerFlows);
         return { kind: checked.row?.flow ?? null, owner: located.ownerUserId, incarnation: incarnationOfRow(existing.state) };
       }
       // What `removeHiredSeat` does with no row: a hired seat's leftover
@@ -838,7 +837,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       if (approved !== undefined) {
         const now = await located.roster.getOptional(located.key);
         if (now !== undefined) {
-          const kind = checkHiredSeatRow(orgId, now.state, kinds).row?.flow ?? null;
+          const kind = checkHiredSeatRow(orgId, now.state, workerFlows).row?.flow ?? null;
           refuseIfReplaced(
             "fire",
             seatAddress(orgId, input.seatId, located.ownerUserId),
@@ -922,7 +921,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       ];
       const broken: Array<z.infer<typeof brokenSeatOutput>> = [];
       for (const { ref, owner } of rows) {
-        const checked = checkHiredSeatRow(orgId, ref.state, kinds, ref.path);
+        const checked = checkHiredSeatRow(orgId, ref.state, workerFlows, ref.path);
         if (checked.ok) continue;
         // The id `fire` takes: the key's last segment (`~<user>/<seat>` for a
         // user-owned row, which `fire` finds by the caller).
@@ -965,7 +964,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
 
     const before = existing.state as JsonObject;
     const target = { kind: input.flow, owner: located.ownerUserId, incarnation: incarnationOfRow(before) };
-    const checked = checkHiredSeatRow(orgId, before, kinds, input.seatId);
+    const checked = checkHiredSeatRow(orgId, before, workerFlows, input.seatId);
     if (!checked.ok && (checked.reason === "unreadable" || checked.row === undefined)) {
       throw new Error(`"${input.seatId}" is a row that can't be read (${checked.detail}). Fire it to retire it.`);
     }

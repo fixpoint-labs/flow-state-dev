@@ -44,6 +44,7 @@ import {
   parseSeatResources
 } from "../src/seat-resources";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 const ORG = "org_fix1381";
 const USER = "user_fix1381";
@@ -113,7 +114,7 @@ const deskFlow = defineFlow({
   cardinality: "collection",
   configSchema: workerConfigSchema(),
   resources: { ...CATALOG, "audit-log": auditLog } as DeclaredResources,
-  actions: { run: { inputSchema: z.object({}), block: work } }
+  actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
 });
 
 const COLLIDING_KIND = "colliding-desk";
@@ -131,6 +132,7 @@ const collidingFlow = defineFlow({
   // holds; the handbook is not, and the block has taken its name.
   resources: { [PAYROLL]: CATALOG[PAYROLL]!, "audit-log": auditLog } as DeclaredResources,
   actions: {
+    ...workerDoor,
     run: {
       inputSchema: z.object({}),
       block: handler({
@@ -151,7 +153,7 @@ function seat(id: string, declared: Record<string, unknown> = {}): WorkerManifes
 
 function hire(manifests: WorkerManifest[], options: Partial<HireOptions> = {}): FlowInstance[] {
   return hireWorkforce(manifests, {
-    kinds: { [DESK_KIND]: deskFlow as never },
+    workerFlows: { [DESK_KIND]: deskFlow as never },
     documents: CATALOG,
     ...options
   });
@@ -387,7 +389,7 @@ describe("V5 · the second path — a seat that declares nothing is untouched (B
   });
 
   it("hires with no `documents` passed at all, the way every caller before this did", () => {
-    const seats = hireWorkforce([seat("eng.unrestricted")], { kinds: { [DESK_KIND]: deskFlow as never } });
+    const seats = hireWorkforce([seat("eng.unrestricted")], { workerFlows: { [DESK_KIND]: deskFlow as never } });
 
     expect(seats).toHaveLength(1);
     expect([...seats[0]!.flowLevelResourceKeys].sort()).toEqual(
@@ -424,7 +426,7 @@ describe("V6 · the kind's own machinery is never what a grant governs (BR-7, BR
             body: ""
           }
         ],
-        { kinds: { [COLLIDING_KIND]: collidingFlow as never }, documents: CATALOG }
+        { workerFlows: { [COLLIDING_KIND]: collidingFlow as never }, documents: CATALOG }
       )
     ).toThrow(new RegExp(`eng\\.lead[\\s\\S]*${COLLIDING_KIND}`));
   });
@@ -440,7 +442,7 @@ describe("V6 · the kind's own machinery is never what a grant governs (BR-7, BR
           body: ""
         }
       ],
-      { kinds: { [COLLIDING_KIND]: collidingFlow as never }, documents: CATALOG }
+      { workerFlows: { [COLLIDING_KIND]: collidingFlow as never }, documents: CATALOG }
     );
     const ctx = await contextFor(byId(seats, "eng.lead"), "sess_v6_control_ok");
 
@@ -509,12 +511,12 @@ describe("V8 · a grant never widens, and never resolves against nothing", () =>
       configSchema: workerConfigSchema(),
       // Only the handbook. Payroll is in the catalog and not on this kind.
       resources: { [HANDBOOK]: CATALOG[HANDBOOK]!, "audit-log": auditLog } as DeclaredResources,
-      actions: { run: { inputSchema: z.object({}), block: work } }
+      actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
     });
     const hireFiltered = (refs: unknown) =>
       hireWorkforce(
         [{ id: "eng.lead", declared: { flow: "filtered-desk", description: "d", [SEAT_RESOURCES_KEY]: refs }, body: "" }],
-        { kinds: { "filtered-desk": filteredFlow as never }, documents: CATALOG }
+        { workerFlows: { "filtered-desk": filteredFlow as never }, documents: CATALOG }
       );
 
     expect(() => hireFiltered([PAYROLL])).toThrow(/did not install on the `filtered-desk` kind/);
@@ -526,7 +528,7 @@ describe("V8 · a grant never widens, and never resolves against nothing", () =>
   it("a seat declaring `resources:` with no documents supplied refuses, naming what is missing (BR-18)", () => {
     expect(() =>
       hireWorkforce([seat("eng.lead", { [SEAT_RESOURCES_KEY]: [HANDBOOK] })], {
-        kinds: { [DESK_KIND]: deskFlow as never }
+        workerFlows: { [DESK_KIND]: deskFlow as never }
       })
     ).toThrow(/no documents to resolve it against/);
   });
@@ -552,7 +554,7 @@ describe("V9 · the narrowing is checked on the seat that was BUILT", () => {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: { ...CATALOG, "audit-log": auditLog } as DeclaredResources,
-    actions: {
+    actions: { ...workerDoor,
       run: {
         inputSchema: z.object({}),
         block: handler({
@@ -570,7 +572,7 @@ describe("V9 · the narrowing is checked on the seat that was BUILT", () => {
   const hireRestoring = (refs: unknown) =>
     hireWorkforce(
       [{ id: "eng.lead", declared: { flow: "restoring-desk", description: "d", [SEAT_RESOURCES_KEY]: refs }, body: "" }],
-      { kinds: { "restoring-desk": restoringFlow as never }, documents: CATALOG }
+      { workerFlows: { "restoring-desk": restoringFlow as never }, documents: CATALOG }
     );
 
   it("a document a block re-declares does not come back for a seat that was denied it", () => {
@@ -612,12 +614,12 @@ describe("V9 · the narrowing is checked on the seat that was BUILT", () => {
         handbookAlias: CATALOG[HANDBOOK]!,
         "audit-log": auditLog
       } as DeclaredResources,
-      actions: { run: { inputSchema: z.object({}), block: work } }
+      actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
     });
 
     const [lead] = hireWorkforce(
       [{ id: "eng.lead", declared: { flow: "aliased-desk", description: "d", [SEAT_RESOURCES_KEY]: [] }, body: "" }],
-      { kinds: { "aliased-desk": aliasedFlow as never }, documents: CATALOG }
+      { workerFlows: { "aliased-desk": aliasedFlow as never }, documents: CATALOG }
     );
 
     const ctx = await contextFor(lead!, "sess_alias");
@@ -638,12 +640,12 @@ describe("a document's ref must hold that document on the kind", () => {
       configSchema: workerConfigSchema(),
       // `PAYROLL` is a document's ref, and what sits there is the app's store.
       resources: { [HANDBOOK]: CATALOG[HANDBOOK]!, [PAYROLL]: auditLog } as DeclaredResources,
-      actions: { run: { inputSchema: z.object({}), block: work } }
+      actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
     });
     const hireImpostor = (refs: unknown) =>
       hireWorkforce(
         [{ id: "eng.lead", declared: { flow: "impostor-desk", description: "d", [SEAT_RESOURCES_KEY]: refs }, body: "" }],
-        { kinds: { "impostor-desk": impostorFlow as never }, documents: CATALOG }
+        { workerFlows: { "impostor-desk": impostorFlow as never }, documents: CATALOG }
       );
 
     // Even the empty list, because the subtraction is what would drop the store.
@@ -658,11 +660,11 @@ describe("a document's ref must hold that document on the kind", () => {
       cardinality: "collection",
       configSchema: workerConfigSchema(),
       resources: { [HANDBOOK]: CATALOG[HANDBOOK]!, [PAYROLL]: CATALOG[PAYROLL]!, "audit-log": auditLog } as DeclaredResources,
-      actions: { run: { inputSchema: z.object({}), block: work } }
+      actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
     });
     const [lead] = hireWorkforce(
       [{ id: "eng.lead", declared: { flow: "honest-desk", description: "d", [SEAT_RESOURCES_KEY]: [HANDBOOK] }, body: "" }],
-      { kinds: { "honest-desk": honestFlow as never }, documents: CATALOG }
+      { workerFlows: { "honest-desk": honestFlow as never }, documents: CATALOG }
     );
 
     const ctx = await contextFor(lead!, "sess_honest");

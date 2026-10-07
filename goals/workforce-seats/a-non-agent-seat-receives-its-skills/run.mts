@@ -51,14 +51,19 @@ stripIntentOverrides();
 const fixture = loadFixture<Fixture>(import.meta.url);
 const { support, billing } = fixture.seats;
 
-const kinds: HireOptions["kinds"] = {
+const kinds: HireOptions["workerFlows"] = {
   [TRIAGE_KIND]: triageFlow as never,
-  // Registered so the control's refusal is about the contract it never
-  // composed, not about a kind the app forgot to pass.
-  [NO_CONTRACT_KIND]: noContractFlow as never,
-  // The positive half of the same rule: hand-written, accepts the bag, hires.
+  // The positive half of the structural rule: hand-written, accepts the bag, hires.
   [HAND_ROLLED_KIND]: handRolledFlow as never
 };
+
+/**
+ * The same flows with the control registered, so its refusal is about the
+ * contract it never composed, not about a kind the app forgot to pass. Kept
+ * off `kinds`: a worker flow that misses the contract refuses the whole
+ * installation at boot.
+ */
+const withNoContract: HireOptions["workerFlows"] = { ...kinds, [NO_CONTRACT_KIND]: noContractFlow as never };
 
 const tree = (name: string): string => join(fixtureDir(import.meta.url), name);
 
@@ -118,7 +123,7 @@ await runGoal(async () => {
   if (skillErrors.length > 0) failures.push(`the loader reported skill errors: ${JSON.stringify(skillErrors)}`);
   if (workers.length !== 2) failures.push(`the tree produced ${workers.length} record(s), wanted 2`);
 
-  const seats = hireWorkforce(workers, { kinds });
+  const seats = hireWorkforce(workers, { workerFlows: kinds });
   if (seats.length !== 2) failures.push(`hired ${seats.length} seat(s), wanted 2`);
   evidence.push(
     "the real loader read the tree and one hireWorkforce call turned both records into seats of a kind with no model in it"
@@ -218,14 +223,14 @@ await runGoal(async () => {
       let hired: FlowInstance[] | undefined;
       let refusal = "";
       try {
-        hired = hireWorkforce([...workers, ...legacy], { kinds });
+        hired = hireWorkforce([...workers, ...legacy], { workerFlows: withNoContract });
       } catch (error) {
         refusal = messageOf(error);
       }
       if (hired !== undefined) {
         failures.push(`the kind with no contract hired ${hired.length} seat(s) instead of refusing`);
       } else {
-        for (const name of [fixture.control.id, "seatSkills"]) {
+        for (const name of [`worker flow "${NO_CONTRACT_KIND}"`, "seatSkills"]) {
           if (!refusal.includes(name)) {
             failures.push(`the refusal does not name "${name}": ${refusal}`);
           }
@@ -239,7 +244,7 @@ await runGoal(async () => {
         }
       }
       evidence.push(
-        "a kind whose schema omits seatSkills refuses the whole roster at the hire, naming the worker and the missing key, and nothing is registered"
+        "a kind whose schema omits seatSkills refuses the whole roster at boot, naming the flow and the missing key, and nothing is registered"
       );
     }
 
@@ -262,7 +267,7 @@ await runGoal(async () => {
               body: "You hold the hand-rolled desk."
             }
           ],
-          { kinds }
+          { workerFlows: kinds }
         );
       } catch (error) {
         refusal = messageOf(error);

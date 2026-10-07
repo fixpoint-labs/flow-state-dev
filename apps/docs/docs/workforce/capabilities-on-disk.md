@@ -80,7 +80,7 @@ const { capabilities, resources } = splitResourceModules(resourceModules);
 const agent = defineAgentWorkerFlow({ uses: capabilities });
 
 const { workers } = await readWorkforce("./workforce");
-const seats = hireWorkforce(workers, { kinds: { agent } });
+const seats = hireWorkforce(workers, { workerFlows: { agent } });
 ```
 
 `capabilities` goes to the worker kind's `uses`, which is the same option you would pass a hand-written capability to. `resources` merges into the flow's resource map beside the Markdown documents:

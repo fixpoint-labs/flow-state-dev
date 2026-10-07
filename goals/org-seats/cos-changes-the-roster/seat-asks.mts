@@ -44,6 +44,7 @@ import {
 } from "@flow-state-dev/workforce";
 import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
+import { workerDoor } from "../../lib/worker-door.mts";
 
 const ORG = "seat-asks";
 const USER = "u_seat_asks";
@@ -89,7 +90,7 @@ const requester = defineFlow({
   kind: "requester",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
-  actions: {
+  actions: { ...workerDoor,
     start: {
       inputSchema: z.object({}).strict(),
       block: sequencer({ name: "requester-start", inputSchema: z.object({}).strict() })
@@ -189,15 +190,15 @@ export async function runSeatAsks(requested: string, dropDelivery: boolean, scra
 
   const log: Delivery[] = [];
   let registrar: { register(seat: never, options: { pin: unknown }): void; unregister(id: string): boolean } | undefined;
-  const kinds: NonNullable<HireOptions["kinds"]> = { requester: requester as never };
+  const kinds: NonNullable<HireOptions["workerFlows"]> = { requester: requester as never };
   const seatHire = createSeatHireCapability({
-    kinds,
+    workerFlows: kinds,
     register: (seat, pin) => registrar!.register(seat as never, { pin }),
     unregister: (id) => registrar!.unregister(id),
     allowKinds: ["agent"],
   });
   kinds.agent = defineAgentWorkerFlow({ uses: [seatHire] }) as never;
-  const seats = hireWorkforce(workers, { kinds });
+  const seats = hireWorkforce(workers, { workerFlows: kinds });
   const mailboxFlows = mailboxInstances(mailboxes, {
     kinds: { [MAILBOX_KIND]: defineMailboxFlow({ notify: notifyCos(log, dropDelivery) as never }) as never },
   });

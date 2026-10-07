@@ -12,6 +12,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { MAILBOX_KIND, workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import type { PieceInput } from "../piece.mts";
+import { hearingDoor } from "../../../../hearing-door.mts";
 
 /** The kind the planner's `WORKER.md` names in its `flow:` line. **Pinned** — the basename must match. */
 export const PLANNER_KIND = "planner";
@@ -48,6 +49,7 @@ export function definePlannerFlow(options: PlannerFlowOptions) {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: {
+      ...hearingDoor,
       [FILE_ENTRY]: {
         block: dispatcher({
           name: "planner-file-row",

@@ -20,7 +20,7 @@ import {
   workerConfigSchema,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
-import { loadFixture, runGoal } from "../../lib/index.mts";
+import { loadFixture, runGoal, workerDoor } from "../../lib/index.mts";
 
 type Fixture = {
   namedOrg: string;
@@ -97,7 +97,7 @@ const clerk = defineFlow({
   kind: "clerk",
   cardinality: "collection",
   configSchema: workerConfigSchema(),
-  actions: { answer: { inputSchema: tagInput, block: answer } },
+  actions: { ...workerDoor, answer: { inputSchema: tagInput, block: answer } },
 });
 const kinds = { clerk };
 
@@ -234,7 +234,7 @@ await runGoal(async () => {
     reload = await reloadHiredSeats({
       stores: restartedRuntime.stores,
       orgIds: [DEFAULT_ORG_ID, fixture.namedOrg],
-      kinds,
+      workerFlows: kinds,
     });
   } catch (error) {
     fail("c", `reload rejected, so no org's seats came back: ${(error as Error).message}`);

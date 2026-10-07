@@ -16,11 +16,11 @@
 - **continued**: the harness's own record on disk has a next attempt on that row. Its prompt holds the token, and its resume id equals the coding session the previous attempt named.
 - **standing**: once the next attempt is claimed, the stored row's retry standing is unchanged (`attempts − abandonments − turnReentries`).
 - **picker**: `@coder` asks which of the coder's two running tasks the line is for. The line reaches the chosen task, not the other.
-- **no door**: on DevTeam's EM ask, Inbox's reply box is disabled. Its line names the seat.
+- **em door**: on DevTeam's EM ask, Inbox's reply is a user item in the EM's own session, and the EM answers there. The line names no feature, so the answer says nothing was filed. (Every worker flow has a door since FIX-1789, the EM's included; before it, this leg graded a disabled reply.)
 - **heard**: on the fixture seat's ask, Inbox's reply is a user item in the ask's own session, the seat says *Heard: <token>* there, and Inbox then draws the reply under the ask as the person's own, read back from that session.
 - **reach**: the pages throw nothing.
 
-Routes: **task composer** (the first row, reached from Tasks by clicking), **@coder** (the second row, chosen from the picker in the feature workstream), **Inbox, no door** and **Inbox reply**.
+Routes: **task composer** (the first row, reached from Tasks by clicking), **@coder** (the second row, chosen from the picker in the feature workstream), **Inbox, EM door** and **Inbox reply**.
 
 **Anti-game:** the check never reads Shift Manager's state.
 - Its oracles are the stores and the harness's record:

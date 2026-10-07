@@ -26,6 +26,7 @@ import { reloadHiredSeats } from "../src/roster/reload";
 import { encodeUserSegment, toHiredSeatRow } from "../src/roster/rows";
 import { listedSeatRows } from "../src/inventory/listed-seats";
 import { workerConfigSchema } from "../src/worker-config";
+import { workerDoor } from "./worker-door";
 
 const ROSTER = "workforce/roster/";
 const SEATS = "inventory/seats/";
@@ -41,7 +42,7 @@ const desk = defineFlow({
   kind: "desk",
   cardinality: "collection",
   configSchema: workerConfigSchema().extend({ queue: z.string() }),
-  actions: { run: { inputSchema: z.object({}), block: noop } },
+  actions: { ...workerDoor, run: { inputSchema: z.object({}), block: noop } },
 });
 
 /** The kinds the app carries now. `desk-clerk` is gone. */
@@ -67,7 +68,7 @@ function liveRegistry() {
 async function harness(over: Partial<SeatHireCapabilityOptions> = {}, mount: { userOwned?: boolean } = {}) {
   const live = liveRegistry();
   const blocks = createSeatHireBlocks({
-    kinds,
+    workerFlows: kinds,
     register: live.register,
     unregister: live.unregister,
     kindAt: live.kindAt,
@@ -130,7 +131,7 @@ async function harness(over: Partial<SeatHireCapabilityOptions> = {}, mount: { u
         (value as { version: number }).version,
       ]),
     );
-  const reload = (orgIds = ["acme"]) => reloadHiredSeats({ stores, orgIds, kinds });
+  const reload = (orgIds = ["acme"]) => reloadHiredSeats({ stores, orgIds, workerFlows: kinds });
 
   /** Every org row as it stands: what a process that died now leaves on disk. */
   const snapshot = async (orgId = "acme") =>
@@ -218,7 +219,7 @@ describe("brokenSeats", () => {
       ["support.lin", "refused", "desk"],
     ]);
     expect(out[0]!.key).toBe("workforce/roster/support.bad");
-    expect(String(out[1]!.detail)).toContain('Kinds passed: "agent", "desk"');
+    expect(String(out[1]!.detail)).toContain('Worker flows passed: "agent", "desk"');
     expect(String(out[2]!.detail)).toMatch(/queue/);
   });
 
@@ -1003,7 +1004,7 @@ describe("an approved fire, when the caller gains a seat of their own under the 
   it("fires the organization's row the person approved, and leaves the caller's new one alone", async () => {
     const live = liveRegistry();
     const { verbs } = buildSeatHire({
-      kinds,
+      workerFlows: kinds,
       register: live.register,
       unregister: live.unregister,
       kindAt: live.kindAt,

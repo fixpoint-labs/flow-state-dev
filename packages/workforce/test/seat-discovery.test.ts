@@ -151,7 +151,7 @@ describe("the `discover:` worker-file key", () => {
 
   function hire(manifests: WorkerManifest[]) {
     const kind = defineAgentWorkerFlow({ uses: [capabilityWithThreeDomains()] });
-    return hireWorkforce(manifests, { kinds: { agent: kind as never } });
+    return hireWorkforce(manifests, { workerFlows: { agent: kind as never } });
   }
 
   it("carries a seat's list onto its settings", () => {

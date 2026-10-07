@@ -67,7 +67,7 @@ import seatblock_engineering__triage__page_oncall from "./teams/engineering/work
 
 export const kinds = {
   "request-triage": worker_request_triage,
-} satisfies NonNullable<HireOptions["kinds"]>;
+} satisfies NonNullable<HireOptions["workerFlows"]>;
 
 export const mailboxKinds = {
   "standup": mailbox_standup,
@@ -97,7 +97,7 @@ Each export feeds a parameter that already exists:
 
 | Export | Goes to |
 | --- | --- |
-| `kinds` | `hireWorkforce` |
+| `kinds` | `hireWorkforce`'s `workerFlows` |
 | `mailboxKinds` | `mailboxInstances` |
 | `blocks` | a task board's `workers`, or a worker kind's [tool catalog](./built-in-worker.md#tools) |
 | `seatBlocks` | `hireWorkforce` again |
@@ -108,7 +108,7 @@ Each export feeds a parameter that already exists:
 import { hireWorkforce } from "@flow-state-dev/workforce";
 import { kinds, seatBlocks } from "./workforce/workforce.gen";
 
-const seats = hireWorkforce(workers, { kinds, seatBlocks });
+const seats = hireWorkforce(workers, { workerFlows: kinds, seatBlocks });
 ```
 
 The startup line names no kinds. Adding one means adding a file.
@@ -169,7 +169,7 @@ import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce"
 import { blocks, kinds, seatBlocks } from "./workforce/workforce.gen";
 
 const agent = defineAgentWorkerFlow({ catalog: blocks });
-const seats = hireWorkforce(workers, { kinds: { ...kinds, agent }, seatBlocks });
+const seats = hireWorkforce(workers, { workerFlows: { ...kinds, agent }, seatBlocks });
 ```
 
 The other two ride `seatBlocks`, which needs no option on the kind: a worker's registered blocks are that worker's, so they travel with the rest of what the hire step already gives one seat at a time.
@@ -190,7 +190,7 @@ Two rules are checked before any worker runs:
 
 ## A hand-written map
 
-Passing `kinds` yourself works, and an app that never runs `fsdev gen` needs nothing from this page. You can also do both: compose a generated map with a hand-written one and pass the result. Nothing is told which came from where, and there is no precedence rule to learn.
+Passing `workerFlows` yourself works, and an app that never runs `fsdev gen` needs nothing from this page. You can also do both: compose a generated map with a hand-written one and pass the result. Nothing is told which came from where, and there is no precedence rule to learn.
 
 ## Related pages
 

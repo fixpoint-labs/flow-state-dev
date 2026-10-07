@@ -48,7 +48,7 @@ import {
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
-import { goalTmpDir, runGoal } from "../../lib/index.mts";
+import { goalTmpDir, runGoal, workerDoor } from "../../lib/index.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const USER_ID = "u_mailbox_boards";
@@ -119,7 +119,7 @@ await runGoal(async () => {
     kind: "em",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: {
+    actions: { ...workerDoor,
       file: {
         // The EM has no board, no collection and no drain — the one line that
         // reaches the work is a dispatch into the mailbox's own session.
@@ -171,7 +171,7 @@ await runGoal(async () => {
     configSchema: workerConfigSchema(),
     // The whole of what a seat declares to reach the mailbox's ledger.
     resources: { [seatBoard.id]: seatBoard },
-    actions: { drain: { block: board.drain } }
+    actions: { ...workerDoor, drain: { block: board.drain } }
   } as never);
 
   // The generated module carries the tree's own mailbox kind, which the other
@@ -181,7 +181,7 @@ await runGoal(async () => {
   };
   const instances = mailboxInstances(mailboxes, { kinds: generated.mailboxKinds });
   const seats = hireWorkforce(workers, {
-    kinds: { em: emKind as never, coder: coderKind as never },
+    workerFlows: { em: emKind as never, coder: coderKind as never },
     // One warning on stderr is expected, naming the board nobody drains. A
     // warning naming the coder's board would mean its declaration missed.
     mailboxBoards: mailboxBoardIds(mailboxes)

@@ -13,7 +13,7 @@
 - **live**: the next item the request stores for the task is drawn within 2 s, with no reload.
 - **the request reads aborted first**: after Interrupt, once the view reads `aborted`, the request record read through its own flow already reads `aborted`, and the view's word is *interrupted*. The row's run link is unchanged afterwards.
 - **inspector**: the worker equals the tree's member the row is assigned to. The start time equals the row's. The plan steps and file paths equal what the run recorded under its request id, or the inspector says the harness records none. The trace link is the address of the devtool Shift Manager serves with `?session=` the run's session, and the session id is shown beside it. Clicking it opens a page where the devtool has the run's session open.
-- **gaps**: Hand off, reassign and Open PR, the composer and *also post* are disabled; the composer because no kind in this Lab takes a message, saying so. Each of the others, the Diff and Checks tabs, the Brief's missing fields and acceptance, and the inspector's harness, acceptance and reviewer lines carry a gap line that names its owner or says *not planned in the first cut*.
+- **gaps**: Hand off, reassign, Open PR and *also post* are disabled. The composer takes a message on a running task, since every worker flow has a door (FIX-1789), and on the finished task it is disabled, saying a finished task takes no message. Each of the others, the Diff and Checks tabs, the Brief's missing fields and acceptance, and the inspector's harness, acceptance and reviewer lines carry a gap line that names its owner or says *not planned in the first cut*.
 - **no run**: the unclaimed row says no run has started, and Interrupt is disabled.
 - **reach**: the page throws nothing.
 

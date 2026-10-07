@@ -85,7 +85,7 @@ describe("a seat's own blocks are registered, not granted", () => {
     const [seat] = hireWorkforce(
       [record({ id: "support.clerk", declared: { tools: ["check-inventory"] }, body: "Clerk." })],
       {
-        kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
         seatBlocks: { "support.clerk": { "check-inventory": check } },
       },
     );
@@ -105,7 +105,7 @@ describe("a seat's own blocks are registered, not granted", () => {
   it("does NOT let a seat call a registered block its `tools:` never named", async () => {
     const check = countingBlock("check-inventory");
     const [seat] = hireWorkforce([record({ id: "support.quiet", body: "Quiet." })], {
-      kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
       seatBlocks: { "support.quiet": { "check-inventory": check } },
     });
 
@@ -121,7 +121,7 @@ describe("a seat's own blocks are registered, not granted", () => {
     const [seat] = hireWorkforce(
       [record({ id: "support.empty", declared: { tools: [] }, body: "Empty." })],
       {
-        kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
         seatBlocks: { "support.empty": { "check-inventory": check } },
       },
     );
@@ -152,7 +152,7 @@ describe("a seat's own blocks are registered, not granted", () => {
         record({ id: "support.beta", declared: { tools: ["summarize"] }, body: "B." }),
       ],
       {
-        kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
         seatBlocks: {
           "support.alpha": { summarize: mine },
           "support.beta": { summarize: yours },
@@ -184,7 +184,7 @@ describe("a seat's own blocks are registered, not granted", () => {
     const [seat] = hireWorkforce(
       [record({ id: "support.desk", declared: { tools: ["desk-note"] }, body: "Desk." })],
       {
-        kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { "desk-note": app } }) },
+        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { "desk-note": app } }) },
         seatBlocks: { "support.desk": { "desk-note": own } },
       },
     );
@@ -198,7 +198,7 @@ describe("a seat's own blocks are registered, not granted", () => {
   // keeping the catalog refusal it already has.
   it("changes nothing for a seat with no folder", () => {
     const [seat] = hireWorkforce([record({ id: "support.plain", body: "Plain." })], {
-      kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
     });
     expect(seat!.config).toMatchObject({ seatTools: [] });
     // No `tools:` line stays no line: an omitted list is never rewritten to `[]`,
@@ -209,7 +209,7 @@ describe("a seat's own blocks are registered, not granted", () => {
   it("still refuses a `tools:` name that resolves nowhere, naming both doors", () => {
     const message = refusalOf(
       [record({ id: "support.lost", declared: { tools: ["nowhere"] }, body: "Lost." })],
-      { kinds: { [AGENT_KIND]: defineAgentWorkerFlow() }, seatBlocks: {} },
+      { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() }, seatBlocks: {} },
     );
     expect(message).toContain('"nowhere"');
     expect(message).toContain("defineAgentWorkerFlow");
@@ -228,7 +228,7 @@ describe("what a seat's own map is refused for", () => {
     }) as BlockDefinition;
 
     const message = refusalOf([record({ id: "support.clerk", body: "Clerk." })], {
-      kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
       seatBlocks: { "support.clerk": { "check-inventory": mismatched } },
     });
 
@@ -242,7 +242,7 @@ describe("what a seat's own map is refused for", () => {
   it("does not refuse when the key and the block's name agree", () => {
     expect(() =>
       hireWorkforce([record({ id: "support.clerk", body: "Clerk." })], {
-        kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
         seatBlocks: { "support.clerk": { "check-inventory": countingBlock("check-inventory") } },
       }),
     ).not.toThrow();
@@ -267,7 +267,7 @@ describe("what a seat's own map is refused for", () => {
     expect(needsAStore.declaredResources?.ledger).toBe(ledger);
 
     const message = refusalOf([record({ id: "support.ledger", body: "Ledger." })], {
-      kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
       seatBlocks: { "support.ledger": { "read-ledger": needsAStore } },
     });
 
@@ -311,7 +311,7 @@ describe("what a seat's own map is refused for", () => {
     });
     const [seat] = hireWorkforce(
       [record({ id: "support.reader", declared: { tools: ["read-shared"] }, body: "Reader." })],
-      { kinds: { [AGENT_KIND]: kind }, seatBlocks: { "support.reader": { "read-shared": reads } } },
+      { workerFlows: { [AGENT_KIND]: kind }, seatBlocks: { "support.reader": { "read-shared": reads } } },
     );
 
     const result = await runSeat(seat!, "read-shared");
@@ -322,7 +322,7 @@ describe("what a seat's own map is refused for", () => {
   it("refuses a worker file that writes `seatTools:` itself", () => {
     const message = refusalOf(
       [record({ id: "support.sneaky", declared: { seatTools: [] }, body: "Sneaky." })],
-      { kinds: { [AGENT_KIND]: defineAgentWorkerFlow() } },
+      { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() } },
     );
     expect(message).toContain('worker "support.sneaky"');
     expect(message).toContain("seatTools");
@@ -345,7 +345,7 @@ describe("what a seat's own map is refused for", () => {
     const [seat] = hireWorkforce(
       [record({ id: "support.clerk", declared: { tools: ["check-inventory"] }, body: "Clerk." })],
       {
-        kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
         seatBlocks: {
           "support.clerk": { "check-inventory": countingBlock("check-inventory") },
           // Not on this roster — a sibling that failed to load, or a
@@ -376,7 +376,7 @@ describe("what a seat's own map is refused for", () => {
     }) as BlockDefinition;
 
     const message = refusalOf([record({ id: "support.clerk", body: "Clerk." })], {
-      kinds: { [AGENT_KIND]: defineAgentWorkerFlow() },
+      workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
       seatBlocks: {
         "support.clerk": { "read-ledger": needsAStore },
         "support.absent": { "read-ledger": needsAStore },
@@ -404,7 +404,7 @@ describe("a colocated tool does not travel through delegation", () => {
         }),
       ],
       {
-        kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { "desk-note": app } }) },
+        workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { "desk-note": app } }) },
         seatBlocks: { "support.clerk": { "check-inventory": own } },
       },
     );
