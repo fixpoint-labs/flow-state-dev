@@ -95,7 +95,7 @@ Everything else is yours to name, in the new terms (delegate, roster, flow; not 
 | The round, the author and the token come from the delivery record, and a judgment hand-off's round from its wake (BP-031, ER-17) | An answer or hand-off that names its own round can loop forever |
 | Best fit's ladder and the delivery ledger are shared modules, not copies | A fix in one copy misses the other |
 | No task filing or follow-through in this issue | [Q1](DECISIONS.md#q1) moved them to FIX-1794 (Jake, 2026-10-06) |
-| The delegate list grants nothing; delivery re-reads the roster and FIX-1788 links | Access is the user's resource, never session state |
+| The delegate list grants no access (it decides only which task tools a turn carries, FIX-1802 BR-1); delivery re-reads the roster and FIX-1788 links | Access is the user's resource, never session state |
 | No Layer 1 change; server-written state is FIX-1788's (ER-22) | If S2 or S5 needs one, stop and take it to the epic |
 | Nothing new builds on the mailbox flow | FIX-1792's conversion must not grow |
 

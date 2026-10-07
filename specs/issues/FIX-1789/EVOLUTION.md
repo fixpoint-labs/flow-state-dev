@@ -29,7 +29,7 @@ kind." The epic records it as [epic D9](../../epics/FIX-1786/DECISIONS.md#d9).
 
 | What | Treatment | Why | What is retained |
 |---|---|---|---|
-| PLAN S8's `minor` changeset for `workforce` naming the `kinds` rename, and DOCS's README line that `kinds` is now `workerFlows` | **Removed** | Both tell an upgrader what changed, and there is no consumer to upgrade. No consumer, no changeset (BP-022) | The rename of `kinds` to `workerFlows` (S2), every in-repo caller moved, and S8's README entries for the new export, entry form and helpers |
+| DOCS's README line that `kinds` is now `workerFlows` | **Removed** | It told an upgrader what changed, and there is no consumer to upgrade | The rename itself, and S8's `minor` changeset as one sentence (restored by the cross-spec alignment: a changeset is release bookkeeping, epic D9's changeset policy) |
 
 <a name="amendment-cross-spec"></a>
 ## Amended after merge (cross-spec alignment, 2026-10-07)
