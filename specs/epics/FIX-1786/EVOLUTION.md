@@ -4,7 +4,8 @@
 
 Lineage that spans more than one child. Two predecessor epics are superseded in part, one
 lock is amended, and today's code differs from the target in the ways the second table checks.
-This epic's own D3 was amended after merge, as [the last section](#amendment-binding) records.
+This epic's own D3 was amended after merge twice, as [the binding section](#amendment-binding) and
+[the visibility section](#amendment-visibility) record.
 Child-specific lineage belongs in each child's own evolution record.
 
 ## Predecessor designs
@@ -94,3 +95,42 @@ changes before this epic recorded them. ER-22 asks for an escalation before such
 one came after, as the product owner's approval on 2026-10-07. Widening the schema refusal to every
 flow, FIX-1788's follow-up once FIX-1792 removes the mailbox, is the same refusal reaching further,
 not a seventh change. Any other engine change on this path comes back to this epic first.
+
+<a name="amendment-visibility"></a>
+## Amended after merge: one view of a shared copy's resources per turn (2026-10-07)
+
+**The problem.** After FIX-1788's P4, every worker runs on one shared copy of the flow it names
+(its S10). That copy has to declare every document any worker on it might be granted. Core's
+document tools (list, read, write, search, and the path lookup in
+`packages/core/src/tools/resource-tools.ts`) enumerate the copy's whole resource registry, and
+nothing in core lets a turn narrow it. Under a copy per worker, each copy held only that worker's
+granted documents, so a grant held for every tool, an app's own included. FIX-1788's S8 stopped
+at its guardrail ("if S8 needs one, stop and take it to the epic"), and the product owner chose
+option A on 2026-10-07. FIX-1788 records it as its [D7](../../issues/FIX-1788/DECISIONS.md#d7),
+with the issue-level detail in [its evolution record](../../issues/FIX-1788/EVOLUTION.md#amendment-visibility).
+Original epic review: [#2795](https://github.com/fixpoint-labs/flow-state-dev/pull/2795).
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| [D3](DECISIONS.md#d3): six mechanism changes, in its title, *Because* and *Locks in* | **Amended** to seven. *Because* gains the seventh thing Workforce cannot fake, one view of a shared copy's resources per turn; *Locks in* gains item (7) | A Workforce-only check leaves core's own tools seeing every document on the copy. A rule core honours is the one place every model-facing path passes | D3's call: no worker noun in Layer 1, and the rule names no worker. "Any other Layer 1 change comes back to this epic" stands |
+| The count elsewhere: [D1](DECISIONS.md#d1)'s *Locks in* and its figure, the tree, the box's text and figure, [ER-22](BUSINESS-RULES.md#what-no-child-may-do), the set table's and the plan's FIX-1788 rows, and the concept's cost of declaring resources on flows | **Amended** to seven, or to name the rule | One count across the set. ER-22 is what a child checks before a Layer 1 change | The two public renames and the one public removal |
+| The binding section's "not a seventh change", above | **Kept as written** | It records the count that day. Widening FIX-1788's schema refusal to every flow is still the third change reaching further, not an eighth | The section as merged |
+| The *How it got here* entries that count six | **Kept as written** | They record what was decided then | A new *How it got here* entry |
+
+**The rule, as the product owner approved it.** Optional, per turn and generic: it names no
+worker. Every model-facing listing and lookup in core honours it, and a hidden resource answers
+exactly as a missing one does. With no rule, everything is visible, as before. Workforce supplies
+it from the worker verified on the turn. It governs what the model reaches through tools and
+context; it does not filter app code that reads a resource directly by reference. That code is
+its author's, as FIX-1788's D6 has it for a custom worker flow. FIX-1788's P4 builds it, and the
+option's name is FIX-1788's.
+
+**Rejected.** B, Workforce-only document tools that check grants: an app tool or capability
+built on core's document tools would still see every document on the copy, a silent breach no
+test catches. C, a copy per worker for workers holding grants: it contradicts FIX-1788's S10, one
+copy per flow, and keeps the per-worker minting P4 removes.
+
+**A section of its own, not an extension of the binding section.** That section recorded engine
+changes that build D3's third mechanism and kept the count at six. This one adds a mechanism and
+moves the count, with its own alternatives. Folding it in would blur which amendment changed
+what. No stored data changes.

@@ -4,8 +4,8 @@
 
 What the model already decided is the epic's ([ER-1](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt),
 [D3](../../epics/FIX-1786/DECISIONS.md#d3)) and is not reopened here. These are the calls this
-issue makes about forks, about where a session learns its worker, and about how private a
-custom worker flow is. D1 and D2, on hires made before this release, were withdrawn by
+issue makes about forks, about where a session learns its worker, about how private a
+custom worker flow is, and about how a worker's grants hold on a shared copy. D1 and D2, on hires made before this release, were withdrawn by
 [epic D9](../../epics/FIX-1786/DECISIONS.md#d9).
 
 ## The tree
@@ -20,11 +20,14 @@ flowchart TD
   D5 -.->|"rejected · a second name for what state can carry"| X5["a separate server-only link"]
   I --> D6["D6 · a custom worker flow's per-worker privacy is its author's"]
   D6 -.->|"rejected · repeats FIX-1789's introspection holes"| X6["refuse at hire"]
-  D6 -.->|"rejected · an engine change beyond the epic's six"| X7["the engine partitions"]
+  D6 -.->|"rejected · an engine change beyond the epic's seven"| X7["the engine partitions"]
+  I --> D7["D7 · core narrows what each turn's model reaches"]
+  D7 -.->|"rejected · app tools see every document, or S10 breaks"| X8["Workforce-only tools · a copy per worker"]
 ```
 
 Solid edges are what was chosen. D3 and D4 are decided. D5 and D6 were approved by the product
-owner on 2026-10-07 and recorded after merge ([EVOLUTION.md](EVOLUTION.md#amendment-binding)).
+owner on 2026-10-07 and recorded after merge ([EVOLUTION.md](EVOLUTION.md#amendment-binding)), and
+so was D7, the same day, at S8's guardrail ([EVOLUTION.md](EVOLUTION.md#amendment-visibility)).
 D1 and D2 were signed, then withdrawn by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9), so the
 tree leaves them out.
 
@@ -120,16 +123,36 @@ Answered A by the product owner on 2026-10-07. Recorded after merge.
 | | |
 |---|---|
 | **Instead of** | B: refuse at hire a custom worker flow that keeps data per user without keying it by worker · C: the engine keeps every flow-isolated resource on a worker flow apart per worker, by itself |
-| **Because** | The risk stays inside one user. Two of Alice's workers on one custom flow can read what it stores for her; nothing reaches Bob, whose data is keyed apart ([FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790)). The epic already says a custom worker flow's privacy is its author's, not a registration check ([epic SPEC](../../epics/FIX-1786/SPEC.md), [ER-2](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). B repeats [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789)'s schema-introspection holes: a check that reads a flow's declarations can't see what its code writes. C is an engine change beyond the epic's six ([epic D3](../../epics/FIX-1786/DECISIONS.md#d3)) |
+| **Because** | The risk stays inside one user. Two of Alice's workers on one custom flow can read what it stores for her; nothing reaches Bob, whose data is keyed apart ([FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790)). The epic already says a custom worker flow's privacy is its author's, not a registration check ([epic SPEC](../../epics/FIX-1786/SPEC.md), [ER-2](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). B repeats [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789)'s schema-introspection holes: a check that reads a flow's declarations can't see what its code writes. C is an engine change beyond the epic's seven ([epic D3](../../epics/FIX-1786/DECISIONS.md#d3)) |
 | **Locks in** | BR-23 covers the built-in worker flows: `agent`'s skills drawer is kept per worker from P4, through the skills library's per-run key (S7), which fails closed when a run names no worker. Data a custom worker flow keeps per user is shared by that user's workers on it, and never crosses users. The docs show an author how to keep it per worker ([DOCS.md](DOCS.md)) |
 
-![D6: on a custom worker flow, who keeps one user's workers apart. The flow's author, chosen, beside refusing at hire and the engine partitioning. Decides it: what it costs to build, a docs section, against a check with FIX-1789's holes, and an engine change beyond the epic's six. Price: two of one user's workers share what the flow stores, unless its author keys it. Tie: another user is never reached. Locks in BR-23 on the built-in flows; flips if one user's workers must never mix and authors won't key it themselves](figures/d6-custom-flow-privacy.svg)
+![D6: on a custom worker flow, who keeps one user's workers apart. The flow's author, chosen, beside refusing at hire and the engine partitioning. Decides it: what it costs to build, a docs section, against a check with FIX-1789's holes, and an engine change beyond the epic's seven. Price: two of one user's workers share what the flow stores, unless its author keys it. Tie: another user is never reached. Locks in BR-23 on the built-in flows; flips if one user's workers must never mix and authors won't key it themselves](figures/d6-custom-flow-privacy.svg)
 
 It comes down to cost: the other two each buy a check the epic already declined.
 
 **What would change my mind:** custom worker flows whose workers of one user must never see each
 other, such as one worker per client of a consultant, built by authors who won't key it
 themselves. Then B or C earns its cost.
+
+<a name="d7"></a>
+## D7 · A worker's grants hold through every model-facing tool on one shared copy, by a per-turn visibility rule in core
+
+Option A at S8's guardrail, chosen by the product owner on 2026-10-07. Recorded after merge. The
+epic counts it as [D3](../../epics/FIX-1786/DECISIONS.md#d3)'s seventh Layer 1 mechanism change.
+
+| | |
+|---|---|
+| **Instead of** | B: Workforce's own document tools, which check grants · C: a copy per worker for the workers that hold grants |
+| **Because** | After P4, every worker runs on one shared copy of the flow it names (S10), and that copy declares every document any worker on it might be granted. Core's document tools (list, read, write, search, and the path lookup in `packages/core/src/tools/resource-tools.ts`) enumerate the copy's whole resource registry, and nothing in core lets a turn narrow it. Under a copy per worker, each copy held only its worker's granted documents, so a grant held for every tool, an app's own included. B leaves an app tool or capability built on core's document tools seeing every document on the copy: a silent breach no test catches. C contradicts S10, one copy per flow, and keeps the per-worker minting P4 removes |
+| **Locks in** | Core gains an optional per-turn resource visibility rule. It is generic and names no worker. Every model-facing listing and lookup in core honours it, and a hidden resource answers exactly as a missing one does. With no rule, everything is visible, as today. Workforce supplies the rule from the worker verified on the turn, its `reaches` check. It governs what the model reaches through tools and context; app code that reads a resource directly by reference is the author's, as in [D6](#d6). P4 builds it (S8); the option's name is the implementer's. BR-24 holds on one shared copy, through every model-facing tool, and V7 grades it |
+
+![D7: on one shared copy, how a worker's document grant holds for every tool. A visibility rule in core, chosen, beside Workforce's own tools and a copy per worker. Decides it: a grant on one shared copy holds for every tool, an app's own included, against Workforce's tools only, and against no shared copy. Price: a seventh Layer 1 mechanism change. App code reading by reference stays unfiltered, as in D6. Locks in every model-facing lookup in core honouring the rule; flips if core can't honour it without knowing what a worker is](figures/d7-resource-visibility.svg)
+
+It comes down to an app's own tools: under B they see every document on the copy.
+
+**What would change my mind:** a model-facing path in core that can't honour the rule without
+knowing what a worker is. Then the rule is the wrong seam for Layer 1, and it goes back to the
+epic.
 
 ## Decided, not asked
 
@@ -172,7 +195,8 @@ BR-10 to BR-19c rule the sessions. What PLAN doesn't hold:
 | A server-only field on the session record, beside its state | [D5](#d5): a second name for a value state can carry. It was D4's mechanism as signed |
 | A `getWorkerSession` helper returning a session-bound handle | Today's client already creates, lists and sends; two lookup helpers are all an app needs (Jake, #2812) |
 | A worker noun in the engine | No consumer outside Workforce (epic [D3](../../epics/FIX-1786/DECISIONS.md#d3)); the worker is a readonly state field, which the engine knows only as readonly |
-| On a custom worker flow, refuse at hire · or partition in the engine | [D6](#d6): the first repeats FIX-1789's introspection holes, the second is an engine change beyond the epic's six |
+| On a custom worker flow, refuse at hire · or partition in the engine | [D6](#d6): the first repeats FIX-1789's introspection holes, the second is an engine change beyond the epic's seven |
+| On one shared copy, Workforce's own document tools check grants · or a copy per worker that holds grants | [D7](#d7): the first leaves an app tool on core's document tools seeing every document; the second contradicts S10 |
 
 ## Settled
 
@@ -208,5 +232,10 @@ BR-10 to BR-19c rule the sessions. What PLAN doesn't hold:
   checked at create ([D5](#d5)). The product owner answered Q6 as A: on a custom worker flow,
   keeping one user's workers apart is its author's job ([D6](#d6)). P1 shipped three engine changes
   beyond the epic's D3 item (3) as written. ([EVOLUTION.md](EVOLUTION.md#amendment-binding))
+- **Amended after merge, grants on a shared copy (2026-10-07)** — S8 stopped at its guardrail:
+  on one shared copy, core's document tools list every document any worker on it may be granted.
+  The product owner chose option A, a per-turn resource visibility rule in core that Workforce
+  supplies ([D7](#d7)), the epic's seventh Layer 1 mechanism change. S8, BR-24, V7 and the
+  guardrail say so. ([EVOLUTION.md](EVOLUTION.md#amendment-visibility))
 
 **Open:** none.

@@ -153,7 +153,7 @@ Today each worker is its own flow instance, registered in every process, with a 
 What it costs, and how each cost is handled:
 
 * **Configuration becomes stored data.** Today it's deliberately never stored. Standard workers stay read from the files through a projected collection, so a deploy can't leave them stale. Only non-standard workers are stored, and their configuration has to tolerate old shapes, like any stored record.
-* **Resources are declared on flows.** A resource collection is what defines a schema, so it's declared statically. Only standard workers, in files, can bring a resource with a new schema, and those are known at startup, so their flows declare them. A non-standard worker can only use collections its flow already has.
+* **Resources are declared on flows.** A resource collection is what defines a schema, so it's declared statically. Only standard workers, in files, can bring a resource with a new schema, and those are known at startup, so their flows declare them. A non-standard worker can only use collections its flow already has. One copy of a flow then declares every document any of its workers may be granted, so core narrows what each turn's model reaches to the running worker's grants, through every tool and its context ([D3](../DECISIONS.md#d3)'s seventh change).
 * **Validation moves.** Today a bad configuration fails at startup. A non-standard worker's configuration is checked when it's saved, and again when a session loads it.
 
 The server checks a session's worker when the session is created, and it can't change after. The worker resource is also user-scoped, so the check accepts only the caller's own workers or a standard one, and refuses a forged value.

@@ -32,7 +32,7 @@ ER-23).
 **T1 · the one extension to the task tools.** *Amended after merge
 ([#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839)).* A **Layer 1 change** to
 Orchestration's `taskTools` (`packages/orchestration/src/skills/task-tools-capability.ts`),
-outside the epic's D3 as it stood (four), so the epic records it (ER-22), now the fifth of D3's six mechanism changes: the roster may be read per call from
+outside the epic's D3 as it stood (four), so the epic records it (ER-22), now the fifth of D3's seven mechanism changes: the roster may be read per call from
 the running context, as the board is (`(ctx) => Promise<WorkerRoster>` beside today's fixed
 `WorkerRoster`), and `taskToolActions` takes a roster too, as `createTaskToolsCapability` does.
 Why: a conversation's delegates are its own and change mid-conversation, and the app's actions

@@ -125,3 +125,32 @@ is one collection row at the creating caller's own scope; `session.serverOwned`;
 child `state`; and `ensureSessionRecord` taking the create request. The epic's D3 card text may
 need a matching amendment. That is the epic's to make, and this amendment leaves
 `specs/epics/FIX-1786/` untouched.
+
+<a name="amendment-visibility"></a>
+## Amended after merge: a worker's grants on one shared copy (2026-10-07)
+
+**The problem.** S8 said a worker's grants narrow what its model reaches on each turn, and its
+guardrail said: if S8 needs a Layer 1 change, stop and take it to the epic. It did need one. On
+one shared copy (S10), the copy declares every document any worker on it might be granted, and
+core's document tools (list, read, write, search, and the path lookup in
+`packages/core/src/tools/resource-tools.ts`) enumerate that whole registry; nothing in core lets a
+turn narrow it. P2 ([#2856](https://github.com/fixpoint-labs/flow-state-dev/pull/2856)) shipped
+Workforce's half, `reaches(accessor)`, and left wiring it into `agent`'s tools and context to P4.
+Under a copy per worker, each copy held only its granted documents, so the grant held for every
+tool, an app's own included. The product owner chose option A on 2026-10-07. The epic records it
+as D3's seventh mechanism change ([its evolution record](../../epics/FIX-1786/EVOLUTION.md#amendment-visibility)).
+Original review: [#2812](https://github.com/fixpoint-labs/flow-state-dev/pull/2812).
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| S8: grants narrow tools and context per turn, in `workforce` | **Amended**: `core` + `workforce`. P4 adds core's per-turn resource visibility rule, and Workforce supplies it through `reaches` | A check in Workforce alone leaves core's own tools, and any app tool built on them, seeing every document on the copy | The grants and reference wall, and `reaches` as P2 shipped it |
+| The guardrail "if S8 needs one, stop and take it to the epic" | **Amended**: it records that S8 did, and which rule the epic counted ([D7](DECISIONS.md#d7)) | It was taken to the epic, and the product owner answered | The stop rule for anything beyond the rule |
+| BR-24 | **Amended**: on one shared copy, through every model-facing tool, an app's own included; a hidden document answers as a missing one | That is what a copy per worker gave for free | Read-only grants; app code reading by reference stays the app's (D6) |
+| V7 | **Amended**: graded on one shared copy holding two workers with different grants, with a control that must fail | The old shape had one worker per copy, so it could not see the leak | The grants goal, rewritten |
+| D6's "an engine change beyond the epic's six", in its card, figure, tree and dropped table | **Amended** to seven | One count across the set | D6's call |
+| P4 | **Amended**: it builds the rule | The product owner's call | P2, merged as it was |
+
+**Rejected.** B, Workforce-only document tools that check grants: an app tool or capability
+built on core's document tools would still see every document on the copy, a silent breach no
+test catches. C, a copy per worker for the workers that hold grants: it contradicts S10, one copy
+per flow, and keeps the per-worker minting P4 removes.
