@@ -13,10 +13,13 @@ import {
   DEFAULT_ORG_ID,
   defineFlow,
   defineResource,
+  defineResourceCollection,
   handler,
 } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowInstance, ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { createInMemoryStores } from "@flow-state-dev/engine";
 import { createTestContext, testFlow } from "../src";
+import { userSeedCell } from "../src/internal/user-cell";
 
 describe("createTestContext seeds user data where the run reads it (BR-13)", () => {
   it.each([undefined, "acme"])("seeds user state and a user resource with orgId %j", async (orgId) => {
@@ -77,6 +80,60 @@ const readFlow = defineFlow({
   user: { stateSchema: z.object({ marker: z.string().nullable().default(null) }) },
   org: { stateSchema: z.object({}).passthrough() },
   actions: { read: { inputSchema: z.object({}), block: readBack } },
+});
+
+/**
+ * Parity with the engine's routing: for each declaration shape, the cell the
+ * harness seeds is the cell a real run writes. An alias (`ref`), collection
+ * instances whose `flowIsolation` differs from the flow's default, and a
+ * nested prefix inside another collection are the cases a lookup by the
+ * concrete storage key gets wrong.
+ */
+describe("userSeedCell agrees with the engine's routing", () => {
+  const row = z.object({ v: z.string() });
+  const storageKeys = ["plain", "shared", "private", "profile", "notes/a", "notes/deep/b"];
+
+  it.each([false, true])("on a flow with isolateUserState %s", async (isolateUserState) => {
+    const resources = {
+      plain: defineResource({ scope: "user", stateSchema: row }),
+      shared: defineResource({ scope: "user", flowIsolation: false, stateSchema: row }),
+      private: defineResource({ scope: "user", flowIsolation: true, stateSchema: row }),
+      me: defineResource({ ref: "profile", scope: "user", flowIsolation: !isolateUserState, stateSchema: row }),
+      notes: defineResourceCollection({ pattern: "notes/*", scope: "user", flowIsolation: !isolateUserState, stateSchema: row }),
+      deep: defineResourceCollection({ pattern: "notes/deep/*", scope: "user", flowIsolation: isolateUserState, stateSchema: row }),
+    };
+    const write = handler({
+      name: "write",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      resources,
+      execute: async (_input, ctx) => {
+        const r = ctx.resources as unknown as Record<string, { patchState(s: object): Promise<void> }> &
+          Record<"notes" | "deep", ResourceCollectionRef>;
+        await r.plain!.patchState({ v: "x" });
+        await r.shared!.patchState({ v: "x" });
+        await r.private!.patchState({ v: "x" });
+        await r.me!.patchState({ v: "x" });
+        await r.notes.create("a", { v: "x" });
+        await r.deep.create("b", { v: "x" });
+        return { ok: true };
+      },
+    });
+    const flow = defineFlow({
+      kind: "parity",
+      isolateUserState,
+      resources,
+      actions: { write: { inputSchema: z.object({}), block: write } },
+    })() as unknown as FlowInstance;
+    const stores = createInMemoryStores();
+    const result = await testFlow({ flow, action: "write", input: {}, userId: "alice", stores });
+    expect(result.error).toBeUndefined();
+
+    for (const key of storageKeys) {
+      const cell = userSeedCell(flow, "alice", DEFAULT_ORG_ID, key);
+      expect(await stores.resourceState.get("user", cell, key), `${key} at ${cell}`).toBeDefined();
+    }
+  });
 });
 
 describe("testFlow seeds user data where the run reads it (BR-13)", () => {

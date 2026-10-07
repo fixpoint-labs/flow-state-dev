@@ -806,13 +806,13 @@ export async function createExecutionContext<
   // in the cell it would have keyed.
   let userRecord = loadedUser;
   if (userRecord === undefined) {
-    // `id` is the storage key: the user's cell in the session's org,
-    // namespaced when isolated. It is the key `loadedUser` was read under,
-    // since the run's org equals the session's here. `userId` stays as the
-    // bare identity so listing and cross-reference by userId work across every
-    // record shape.
+    // `id` is the storage key `loadedUser` was read under. The org check
+    // above refused any run whose org is not the session's (attributed, so
+    // valid), so `userKey` is defined here and names the session's cell.
+    // `userId` stays as the bare identity so listing and cross-reference by
+    // userId work across every record shape.
     userRecord = {
-      id: resolveUserStorageKey(userId, sessionOrgId, flow),
+      id: userKey!,
       userId,
       state: (options.userState ?? {}) as TUserState,
       resources: normalizeScopeResources(userResourceConfigs, undefined),

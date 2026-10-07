@@ -152,10 +152,8 @@ CREATE INDEX IF NOT EXISTS idx_schedule_index_next_fire_at
 ### Upgrading an existing table
 
 Schema init converts a `schedule_index` keyed by `(user_id, key)` on its
-own: every existing row is assigned the person's own cell, so the
-table loads. Those rows point at storage no flow reads any more, so
-their dispatches find no schedule and return 404. If you run with `skipSchemaInit: true`, apply the same change out
-of band.
+own: every existing row is assigned the person's own cell. If you run
+with `skipSchemaInit: true`, apply the same change out of band.
 
 Postgres:
 

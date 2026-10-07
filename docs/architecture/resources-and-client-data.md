@@ -59,8 +59,8 @@ User- and org-scoped resources default to **shared** storage across every flow t
 | `scope` | `flowIsolation` | Storage key |
 | -- | -- | -- |
 | `session` | (n/a) | `(sessionId, ref)` |
-| `user` | `false` (default) | `(userId, ref)`; on an owner-pinned instance `(userId:~org:orgId, ref)` |
-| `user` | `true` | `(userId, flowInstanceId, ref)` |
+| `user` | `false` (default) | `(userId:~org:orgId, ref)` |
+| `user` | `true` | `(userId:~org:orgId, flowInstanceId, ref)` |
 | `org` | `false` (default) | `(orgId, ref)` |
 | `org` | `true` | `(orgId, flowInstanceId, ref)` |
 

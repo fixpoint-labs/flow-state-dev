@@ -35,11 +35,13 @@ The dispatch URL carries the id:
 POST /api/flows/:flowKind/schedules/:scheduleId/dispatch
 ```
 
-The id format is up to you, within URL-safe characters and a
-1024-character limit. The reference helper uses `<orgId>/<userId>/<key>`,
-each part URL-encoded, because that maps cleanly to a lookup in one
-user's data in one organization; custom resolvers pick whatever scheme
-fits the underlying store.
+The id format is up to you: up to 1024 characters of letters, digits and
+`- _ . ! ~ * ' ( ) % : /`, after the URL is decoded. The reference helper uses
+`<orgId>/<userId>/<key>` with each part percent-encoded, so any org, user or
+key fits, and it maps cleanly to a lookup in one user's data in one
+organization; custom resolvers pick whatever scheme fits the underlying
+store. Encode the whole id as one path segment:
+`encodeURIComponent(formatScheduleId(orgId, userId, key))`.
 
 Whatever the resolver returns is validated at dispatch time —
 malformed cron, unknown action, or invalid principal returns 400
@@ -131,7 +133,7 @@ user-scope `schedules/weekly-digest` resource. The host scheduler
 (see below) discovers it on its next pass and POSTs to:
 
 ```
-/api/flows/reminders/schedules/<orgId>/<userId>/weekly-digest/dispatch
+/api/flows/reminders/schedules/<orgId>%2F<userId>%2Fweekly-digest/dispatch
 ```
 
 The resolver parses the id, reads the resource, and returns the
@@ -175,8 +177,8 @@ recipes cover most setups.
 
 A small in-process worker scans an index on an interval and POSTs
 to the dispatch endpoint when due. The framework only does per-user
-reads, so the host maintains a separate index keyed on `(userId,
-key)` that scans by `nextFireAt`. The schedule resource collection is
+reads, so the host maintains a separate index, one row per stored
+schedule, scanned by `nextFireAt`. The schedule resource collection is
 the source of truth; the index is a derived read-model the tick
 scans.
 
@@ -303,12 +305,15 @@ provider.
 ```ts
 import { CloudSchedulerClient } from "@google-cloud/scheduler";
 
+// Job ids allow only letters, digits, `-` and `_`; hex keeps each part distinct.
+const jobPart = (value: string) => Buffer.from(value).toString("hex");
+
 async function registerCloudJob(orgId, userId, key, cron, baseUrl) {
   const client = new CloudSchedulerClient();
   await client.createJob({
     parent: `projects/${PROJECT}/locations/${REGION}`,
     job: {
-      name: `projects/${PROJECT}/locations/${REGION}/jobs/${userId}-${key}`,
+      name: `projects/${PROJECT}/locations/${REGION}/jobs/${jobPart(orgId)}-${jobPart(userId)}-${jobPart(key)}`,
       schedule: cron,
       timeZone: "UTC",
       httpTarget: {

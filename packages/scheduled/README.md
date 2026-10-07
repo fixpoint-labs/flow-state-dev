@@ -95,10 +95,10 @@ defineFlow({
 });
 ```
 
-The default id is `<orgId>/<userId>/<collectionKey>`, each part URL-encoded;
+The default id is `<orgId>/<userId>/<collectionKey>`.
 `formatScheduleId(orgId, userId, key)` builds one and `defaultParseScheduleId`
-reads one back, keeping a key that contains `/` whole. Put it on a dispatch URL
-as one encoded path segment: `encodeURIComponent(formatScheduleId(...))`.
+reads one back, keeping a key that contains `/` whole. Encode the whole id as
+one path segment: `encodeURIComponent(formatScheduleId(orgId, userId, key))`.
 Override with `parseId` for richer compositions. A row whose `kind` isn't in
 the `blocks` map resolves to `null` (404).
 

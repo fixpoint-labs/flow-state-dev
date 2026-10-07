@@ -648,11 +648,11 @@ The roster is not the [inventory](./inventory.md). An inventory row means *was r
 
 ### What a seat saves for a person
 
-![Where a hired worker keeps what it learns about alice. Inside the acme organization: one cell for alice in acme, holding her user record and her shared user-scoped resources, which every flow in acme uses, hired workers included; and one cell per hired worker for flow-isolated data, such as alice in acme for acme.support.ada. In globex, alice has a separate cell of her own, which nothing in acme reads. A projected resource is stored by your own hooks, so key its rows by the organization too.](./seat-person-data.svg)
+![Where a hired seat keeps what it learns about alice. Inside the acme organization: one cell for alice in acme, holding her user record and her shared user-scoped resources, which every flow in acme uses, hired seats included; and one cell per seat for flow-isolated data, such as alice in acme for acme.support.ada. In globex, alice has a separate cell of her own, which nothing in acme reads. A projected resource is stored by your own hooks, so key its rows by the organization too.](./seat-person-data.svg)
 
-A hired worker keeps what it learns about a user in the same place every flow in the organization does: one cell for that user in that organization. With flow isolation, it keeps one cell per user per hired worker, still inside the organization. A resource's own `flowIsolation` decides which applies; a resource that doesn't set it follows the flow's `isolateUserState`.
+A seat keeps what it learns about a person in the same place every flow in the organization does: one cell for that person in that organization. With flow isolation, it keeps one cell per person per seat, still inside the organization. A resource's own `flowIsolation` decides which applies; a resource that doesn't set it follows the flow's `isolateUserState`.
 
-A user resource backed by your own hooks (a projected resource) is stored by your app, not the framework. Its hooks receive the user's id and the organization, so key its rows by `orgId` as well, or a user sees in one organization what they saved in another.
+A user resource backed by your own hooks (a projected resource) is stored by your app, not the framework. Its hooks receive the person's id and the organization, so key its rows by `orgId` as well, or a person sees in one organization what they saved in another.
 
 ## Limits
 

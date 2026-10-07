@@ -152,8 +152,9 @@ write the resolver directly.
 
 A schedule saved in a user-scoped collection belongs to a user inside one
 organization. Use `createResourceCollectionScheduleResolver` there. Its schedule
-id names the organization, the user and the key, `<orgId>/<userId>/<key>`, each
-part URL-encoded; `formatScheduleId(orgId, userId, key)` builds one. It reads the
+id names the organization, the user and the key, `<orgId>/<userId>/<key>`, and
+`formatScheduleId(orgId, userId, key)` builds one. Encode the whole id as one
+path segment: `encodeURIComponent(formatScheduleId(orgId, userId, key))`. It reads the
 row from that user's data in that organization, and returns `null` when the id
 names no organization or the row names a different one. On a hired worker only
 one member can reach, it also returns `null` for an id naming another user.
@@ -288,13 +289,11 @@ curl -X POST https://app.example.com/api/flows/billing/schedules/monthly-invoice
 ```
 
 For a dynamic schedule the URL carries the resolver-defined id. The
-default resource-collection helper uses `<orgId>/<userId>/<key>`, each part
-URL-encoded. The router decodes each path segment once, so put the id on the
-URL as one more encoded segment, `encodeURIComponent(formatScheduleId(...))`,
-whenever a part can contain `/`:
+default resource-collection helper uses `<orgId>/<userId>/<key>`. Encode the
+whole id as one path segment: `encodeURIComponent(formatScheduleId(orgId, userId, key))`.
 
 ```bash
-curl -X POST https://app.example.com/api/flows/reminders/schedules/acme/u_abc/weekly-digest/dispatch \
+curl -X POST https://app.example.com/api/flows/reminders/schedules/acme%2Fu_abc%2Fweekly-digest/dispatch \
   -H "Authorization: Bearer ${FSDEV_SCHEDULER_SECRET}" \
   -H "Content-Type: application/json" \
   -d '{"nominalFireTime":"2026-06-01T09:00:00Z"}'

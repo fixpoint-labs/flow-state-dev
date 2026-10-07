@@ -375,8 +375,8 @@ exception: an id already in use answers `409`, whoever holds it. Endpoints that 
 results to the caller. Reached without one, they return rows from flows with no
 resolver of their own to any caller. Either way, a row owned by a flow instance
 with its own resolver is listed only when that resolver identifies the caller
-as the row's owner (and, for an instance registered with an owner `pin`, the
-pin admits them). A caller a configured host-level fallback rejects
+as the row's owner (and, for an instance registered with an owner `pin`,
+`{ orgId, userId? }`, only callers in that org, and that user when set). A caller a configured host-level fallback rejects
 gets `401` from both.
 
 When no resolver is configured, a flow runs on the framework default that
@@ -724,7 +724,7 @@ resolveOrgStorageKey(orgId, { id: flow.id, isolateOrgState: true });            
 
 A `FlowInstance` satisfies the flow argument as-is. Each part is escaped, so ids containing `:` or `\` never share a key. Attributing an existing collection deployment's stored cells to the copy that owns them is one offline procedure — see [Persistence](https://flow-state.dev/docs/persistence/overview#who-owns-a-record); there is no runtime fallback to the old kind-keyed cell.
 
-**User data is kept per organization.** Every flow keeps a user's data, the user record and every user-scoped resource, in that user's cell in the organization the run was admitted under, hired workers included. Inside one organization the flows share that cell; Alice in another organization has a cell of her own. `resolveUserStorageKey` throws `OrgRequiredError` when `orgId` is missing, blank or not well-formed, so no call builds a key every organization would read.
+**User data is kept per organization.** Every flow keeps a user's data, the user record and every user-scoped resource, in that user's cell in the organization the run was admitted under, hired workers included. Inside one organization the flows share that cell; Alice in another organization has a cell of her own. `resolveUserStorageKey` throws `OrgRequiredError` when `orgId` is missing, blank or not well-formed.
 
 See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and the [state and scopes reference](https://flow-state.dev/docs/fundamentals/state-and-scopes) for the full model.
 

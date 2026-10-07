@@ -528,12 +528,10 @@ To "move" a session to a different user or org, create a new session.
 ## Cross-flow schema compatibility
 
 User and org records are shared across every flow registered on the same
-server by default. A chat flow that writes `user.preferences.theme` and
-an admin flow that reads it touch the same `UserRecord`. That's usually
-what you want — preferences, profile fields, org settings belong to the
-user or the org, not to one flow. A seat hired at runtime is the exception: it
-keeps a person's data per organization, apart from your other flows (see
-[What a seat saves for a person](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person)).
+server by default, a user's within one organization. A chat flow that writes
+`user.preferences.theme` and an admin flow that reads it touch the same
+`UserRecord`. That's usually what you want — preferences, profile fields, org
+settings belong to the user or the org, not to one flow.
 
 For shared-by-default to be safe, the framework checks at startup that
 every flow's `user.stateSchema` and `org.stateSchema` are structurally

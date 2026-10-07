@@ -14,7 +14,7 @@ This page covers how that sharing works, the guardrail that catches conflicts, a
 
 Every flow you register on a server reads from and writes to the same `UserRecord` for a given user in a given organization. Same for org. Sessions and requests are different: those carry the flow's identity and stay separate per flow.
 
-The organization is part of the user's key. What a flow saves for Alice while she works in Acme is not what any flow reads for her in Globex. Inside one organization, a [hired worker](/docs/workforce/durable-hire) shares Alice's record with your other flows, like any two flows do.
+The organization is part of the user's key. What a flow saves for Alice while she works in Acme is not what any flow reads for her in Globex.
 
 So if two flows declare a `user.stateSchema`, they're declaring it over the *same* underlying record. That's powerful when the schemas agree, and it would be a silent data-loss bug if they didn't.
 

@@ -18,6 +18,7 @@
 
 import { timingSafeEqual } from "node:crypto";
 import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
+import { dynamicScheduleId } from "./schedule-id";
 
 /** Options for `createGetToPostCronShim`. */
 export interface CreateGetToPostCronShimOptions {
@@ -198,16 +199,6 @@ function resolveBaseUrl(baseUrl: string | undefined): string | null {
   const v = baseUrl ?? process.env.NEXT_PUBLIC_BASE_URL;
   if (v === undefined || v.length === 0) return null;
   return v;
-}
-
-/**
- * A dynamic schedule's dispatch id, `<orgId>/<userId>/<key>` with each part
- * URL-encoded: `formatScheduleId` from `@flow-state-dev/scheduled`, kept
- * here so this module stays free of runtime imports. The scheduled package's
- * default parser is its inverse; the tests hold the two together.
- */
-function dynamicScheduleId(orgId: string, userId: string, key: string): string {
-  return [orgId, userId, key].map(encodeURIComponent).join("/");
 }
 
 function trimTrailingSlash(url: string): string {
