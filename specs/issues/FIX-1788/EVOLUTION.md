@@ -34,6 +34,9 @@ the session layer of the same isolation the epic's D6 gives the task ledger: D6 
 conversation's rows from another's board, and this keeps one purpose's session from another's
 lookup.
 
+Amended after merge (FIX-1802's spec PR #2839): the criteria key FIX-1791 names is `filingSessionId`
+(renamed from `coordinatorSessionId`; never shipped). V4 and the follow-up note read the new name.
+
 <a name="amendment-d9"></a>
 ## Amended after merge: no upgrade path (epic D9)
 

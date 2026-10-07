@@ -10,7 +10,9 @@ numbers under `apps/docs/`, and no em-dash as a connector.
 
 ## UPDATE · `apps/docs/docs/workforce/coordinators.md` · a section after "What it records"
 
-The page is FIX-1791's. This section lands after it does.
+The page is FIX-1791's. This section lands after it does. *Amended after merge*
+([#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839)): the verbs are Orchestration's
+existing task tools, and the actions are named for the board id, drafted `tasks`.
 
 > ## Handing out tasks
 >
@@ -21,18 +23,20 @@ The page is FIX-1791's. This section lands after it does.
 > ```ts
 > const coordinator = createClient({ flowKind: session.flowKind, userId, baseUrl })
 > await coordinator.sendAction(
->   "fileTask",
+>   "addTask_tasks",
 >   { goal: "Audit our dependencies' licenses", assignee: "researcher" },
 >   { sessionId: session.id },
 > )
 > ```
 >
-> The coordinator has the same verbs as tools, so it files tasks on its own when you ask it for
-> work. Either way the assignee has to be one of this conversation's delegates. Anyone else is
-> refused with the same answer as a worker that doesn't exist. A task with no assignee goes to
+> These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions. The
+> coordinator has the same eight as tools (`addTask`, `assignTask`, `listTasks` and the rest), so
+> it files tasks on its own when you ask it for work. Either way the assignee has to be one of
+> this conversation's delegates that takes tasks. Anyone else is refused with the same answer as
+> a worker that doesn't exist, `unknown_assignee`. A task with no assignee goes to
 > the conversation's only delegate; with several, it waits until you assign it.
 >
-> The task starts as soon as it is filed. `fileTask` returns first, and the delegate works the
+> The task starts as soon as it is filed. `addTask` returns first, and the delegate works the
 > task in a new conversation of its own, its **task session**, which belongs to you like every
 > other session your workers run. The delegate can run on any flow.
 >
@@ -45,12 +49,13 @@ The page is FIX-1791's. This section lands after it does.
 >
 > | Action | What it does |
 > |---|---|
-> | `listTasks` | This conversation's tasks, and nobody else's |
-> | `reassignTask` | Gives a task that isn't running to another delegate. A waiting task moves and keeps its id; a failed one is carried on by a new task. It starts at once |
-> | `cancelTask` | Cancels a task that isn't running |
+> | `listTasks_tasks` | This conversation's tasks, and nobody else's |
+> | `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id and starts at once |
+> | `cancelTask_tasks` | Cancels a task that hasn't finished |
 >
-> A running task can't be reassigned or cancelled. A piece of work can be reassigned three
-> times; after that the coordinator has to tell you.
+> A running task can't be moved to another delegate. Cancelling one stops its result from
+> landing: when the delegate finishes, its answer is turned away. A task that failed for good
+> stays failed; to have someone else take it on, file it again.
 >
 > To open the session working a task, look it up with the task's id:
 >
@@ -58,7 +63,7 @@ The page is FIX-1791's. This section lands after it does.
 > const run = await workforce.findWorkerSession({
 >   worker: "researcher",
 >   taskId,
->   coordinatorSessionId: session.id,
+>   filingSessionId: session.id,
 > })
 > ```
 >
@@ -68,7 +73,8 @@ The page is FIX-1791's. This section lands after it does.
 > ### Splitting work
 >
 > *(Published only if the split ships in this issue, [Q](DECISIONS.md#q); otherwise the
-> follow-up publishes it.)*
+> follow-up publishes it. Amended after merge: [FIX-1802](../FIX-1802/DOCS.md) publishes it, for
+> any worker with a delegate that takes tasks, not only a coordinator.)*
 >
 > A delegate that is itself a coordinator can split its task. It files the pieces on its own task
 > session's board, for its own delegates, and its task waits until the last piece ends. Then it
@@ -105,7 +111,7 @@ The page is FIX-1791's. This section lands after it does.
 >
 > Rows are stored at the user's scope, under the partition the running session's context
 > returns. A board resolved in one session reads, claims, waits on and settles only its own
-> partition, and so do its task tools. A seat that hands off puts the partition on the dispatch,
+> partition, and so do its task tools. An assignee that hands off puts the partition on the dispatch,
 > and the run on the other flow reads its one row there, with every check a board's entry runs.
 > Declare the same collection on the receiving flow and serve its task entry with `taskLedgers`;
 > the ledger's `resolve` gets the partition with the ledger id.
@@ -118,24 +124,35 @@ The page is FIX-1791's. This section lands after it does.
 
 And in "What the board requires", the `sharedToLineage` bullet becomes:
 
-> - **A `session`-scoped collection declares `sharedToLineage: true`**, and its seats hand off
+> - **A `session`-scoped collection declares `sharedToLineage: true`**, and its assignees hand off
 >   within this flow. To hand rows to another flow, use a partitioned `user`-scoped collection
 >   ([A board per conversation](#a-board-per-conversation-worked-on-another-flow)). `org` scope
 >   needs nothing extra.
 
 ## UPDATE · `packages/workforce/README.md` · the "Coordinators" section FIX-1791 adds, one paragraph after it
 
-> A coordinator conversation also keeps a task board. `fileTask` files a task for one of its
-> delegates, which starts at once in a task session of the delegate's; `listTasks`,
-> `reassignTask` and `cancelTask` follow it, and the conversation hears when each task ends.
-> `findWorkerSession({ worker, taskId, coordinatorSessionId })` finds a task's session. Chains
+> A coordinator conversation also keeps a task board, worked through Orchestration's task tools
+> (`createTaskToolsCapability` and `taskToolActions`, with the conversation's board and its
+> task-taking delegates). `addTask` files a task for one of its delegates, which starts at once in
+> a task session of the delegate's; `listTasks`, `assignTask` and `cancelTask` follow it, and the
+> conversation hears when each task ends.
+> `findWorkerSession({ worker, taskId, filingSessionId })` finds a task's session. Chains
 > stop five boards deep.
 > See [Handing out tasks](../../apps/docs/docs/workforce/coordinators.md#handing-out-tasks).
+
+## UPDATE · `apps/docs/docs/orchestration/task-board.md` · "Changing tasks from outside a run", after the paragraph on the action names
+
+*Amended after merge* ([#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839)), for T1:
+
+> `taskToolActions` checks assignees the way the model's tools do when you pass it a roster:
+> `taskToolActions(board, roster)`, or `taskToolActions(collectionId, resolve, roster)`. The
+> roster can be a function of the running context, so a board whose team changes per session
+> checks each call against the current team. Without one, any assignee is accepted.
 
 ## UPDATE · `packages/orchestration/README.md` · "Task board", after the durable-collection paragraph
 
 > A `user`-scoped collection can take a `partitionBy` function, keeping one set of rows per
-> partition, so each conversation has its own board that a seat can still hand off to another
+> partition, so each conversation has its own board that an assignee can still hand off to another
 > flow. See the task-board guide's "A board per conversation, worked on another flow".
 
 ## Not changed
