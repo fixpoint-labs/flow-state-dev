@@ -223,7 +223,8 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
  * unpartitioned one is never addressed by a partition.
  */
 function checkedPartition(options: ResourceBackingSpec): string | undefined {
-  const declared = options.collection.config as unknown;
+  // The engine hands back the declaration itself as the handle's config.
+  const declared = options.collection.config;
   const partitioned =
     isDefinedTaskCollection(declared) && declared.__taskCollection.partitionBy !== undefined;
   const where = `[tasks] getOrCreateTaskCollection("${options.collectionId}")`;

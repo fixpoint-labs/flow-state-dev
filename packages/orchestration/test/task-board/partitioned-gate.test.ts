@@ -153,6 +153,30 @@ describe("a task entry served by a partitioned ledger (taskLedgers)", () => {
   });
 });
 
+describe("settling through a taskLedgers resolver", () => {
+  it("refuses a re-resolution at another partition before the recorders write", async () => {
+    const h = await harness();
+    // Right at admission, then ignores the partition it is handed: the settle
+    // path's re-resolution lands on conv-b's row of the same task id.
+    let calls = 0;
+    const flow = h.flowFor(
+      taskLedgers({
+        name: "door",
+        resolve: async (_id, ctx, partition) => h.at(calls++ === 0 ? partition : "conv-b", ctx),
+      }).gate
+    );
+    const result = await h.run(flow, "conv-a", "conv-a");
+    expect(calls).toBeGreaterThan(1);
+    const cause = (result.error as { cause?: { code?: string; message?: string } } | undefined)?.cause;
+    expect(cause?.code).toBe("stale-task-claim");
+    expect(cause?.message).toMatch(/resolver answered with "conv-b"/);
+    // Nothing was settled on the other conversation's row.
+    const other = await h.row("conv-b");
+    expect(other.status).toBe("in_progress");
+    expect(other.output).toBeUndefined();
+  });
+});
+
 describe("a board's own gate over a partitioned ledger", () => {
   const boardGate = (h: Awaited<ReturnType<typeof harness>>, partitioned: boolean) =>
     h.flowFor(

@@ -33,11 +33,27 @@ import type {
 import { encodeUserSegment, getPatternPrefix } from "@flow-state-dev/core/types";
 
 /**
- * What a partition function sees: the running block context, without the
- * parent block's input. A partition read off input would let any caller name
- * another partition, so there is no input to read.
+ * What a partition function sees: the running session's server-set identity,
+ * and nothing else (BP-031).
+ *
+ * Purpose-built rather than a trimmed block context, because a block context
+ * carries request input through more than one handle (the parent's `input`,
+ * and the `.input` on the sequencer's, the block's own and every target's
+ * state ref). A partition read off any of them would let a caller name
+ * another conversation's partition. A value the server keeps elsewhere (a
+ * session's incarnation) is looked up from these ids; the function may be
+ * async.
  */
-export type TaskPartitionContext = Omit<BlockContext, "parent">;
+export interface TaskPartitionContext {
+  /** The running session's id. */
+  readonly sessionId: string;
+  /** The user the session belongs to, whose scope holds the rows. */
+  readonly userId: string;
+  /** The organization the request runs in, when it has one. */
+  readonly orgId?: string;
+  /** The tenant the request runs under, when the app is multi-tenant. */
+  readonly tenantId?: string;
+}
 
 /**
  * Names the partition the running context reads and writes. Must return a
@@ -59,7 +75,7 @@ export async function resolveTaskPartition(
   partitionBy: TaskPartitionFn,
   ctx: BlockContext
 ): Promise<string> {
-  const value: unknown = await partitionBy(withoutParent(ctx));
+  const value: unknown = await partitionBy(partitionContextOf(collectionId, ctx));
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(
       `[tasks] ledger "${collectionId}" keeps its rows per partition, and its partitionBy ` +
@@ -70,11 +86,24 @@ export async function resolveTaskPartition(
   return value;
 }
 
-/** The context with `parent` (and so the parent's input) hidden. */
-function withoutParent(ctx: BlockContext): TaskPartitionContext {
-  return new Proxy(ctx, {
-    get: (target, prop) => (prop === "parent" ? undefined : Reflect.get(target, prop, target)),
-    has: (target, prop) => prop !== "parent" && Reflect.has(target, prop),
+/**
+ * Copy the server-set identity off the running context into a fresh, frozen
+ * object: no reference to the context, or to any handle on it, survives.
+ */
+function partitionContextOf(collectionId: string, ctx: BlockContext): TaskPartitionContext {
+  const identity = ctx.session?.identity;
+  const userId = identity?.userId ?? ctx.user?.identity?.id;
+  if (identity?.id === undefined || userId === undefined) {
+    throw new Error(
+      `[tasks] ledger "${collectionId}" keeps its rows per partition, and this context has no ` +
+        `session or user to partition by.`
+    );
+  }
+  return Object.freeze({
+    sessionId: identity.id,
+    userId,
+    ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
+    ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
   });
 }
 

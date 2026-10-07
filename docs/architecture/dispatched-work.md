@@ -46,8 +46,9 @@ What crosses, exactly:
 
 - **The payload.** A `dispatcher()` sends its `payload`; a board's dispatcher sends the
   `TaskDispatchInput` envelope — `{ boardId, seat, taskId, attempt, createdAt,
-  incarnationId?, payload }`, where `payload` is the worker input the drain
-  packed at claim time. The hand-off round-trips it through JSON before
+  incarnationId?, partition?, payload }`, where `payload` is the worker input the drain
+  packed at claim time, and `partition` is present when the board's ledger keeps
+  one set of rows per partition (see below). The hand-off round-trips it through JSON before
   sending, so the in-process and queued paths see the same value and a payload
   that cannot serialize fails the row in the drain rather than in the child.
 - **Identity, server-derived.** The envelope's `source` is the dispatch type
@@ -217,9 +218,10 @@ state belongs on the task, not on a session that may run many of them.
 
 **An entry may name where its tasks come from instead of being reached by one
 board.** `task: { actions: { work: { block, from } } }`, where `from` is a
-binding `taskLedgers({ name, resolve })` builds: `resolve(ledgerId, ctx)` maps
-the id a dispatch carries (the sending board's `boardId`) to that ledger, or
-to nothing. It is the same gate with a second ledger source: the board-bound
+binding `taskLedgers({ name, resolve })` builds: `resolve(ledgerId, ctx,
+partition)` maps the id a dispatch carries (the sending board's `boardId`) to
+that ledger, or to nothing. `partition` is the envelope's, `undefined` for an
+unpartitioned sender. It is the same gate with a second ledger source: the board-bound
 gate reads its one ledger, this one reads the ledger the dispatch names. An id
 `resolve` does not answer for is refused (`UnknownTaskLedgerError`) before any
 row is read, which keeps what the board-scoped input schema protects; then the
@@ -234,6 +236,19 @@ board also hands off to is refused, since one entry runs behind one gate.
 Because the sender picks the session policy, such an entry may opt out of the
 `sessionStateSchema` refusal (`allowSessionState`) when its session state is
 its own and the same shape for every task.
+
+**A partitioned ledger crosses a flow and stays one conversation's.** A
+`user`-scoped `defineTaskCollection({ partitionBy })` keeps one set of rows per
+partition, and a board resolved in a session reads and writes only the
+partition `partitionBy` names from that session's server-set identity. The
+drain's claim ticket names that partition and the hand-off puts it on the
+envelope, so the child, on this flow or another, reads and settles the row
+there and never computes a partition from its own context: a board's gate
+resolves its ledger at the envelope's partition, and a `taskLedgers` resolver
+gets it as its third argument. The gate refuses a ledger resolved at any other
+partition, before the row is read and again before the recorders settle it,
+and the read is at the running user's scope, so it reaches only that user's
+rows.
 
 **The gate re-reads the row and runs the worker only if the claim is still
 current** — the row exists, `attempts` matches, `createdAt` and

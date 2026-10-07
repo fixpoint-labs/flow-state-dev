@@ -216,8 +216,8 @@ const BOB = "bob";
  * births so it can delete and recreate a conversation (BR-14).
  */
 const births = new Map<string, number>();
-const conversationKey = (ctx: { session: { identity: { id: string } } }): string =>
-  `${ctx.session.identity.id}#${births.get(ctx.session.identity.id) ?? 0}`;
+const conversationKey = ({ sessionId }: { sessionId: string }): string =>
+  `${sessionId}#${births.get(sessionId) ?? 0}`;
 
 const partitionedLedger = defineTaskCollection({
   id: PARTITION_LEDGER,

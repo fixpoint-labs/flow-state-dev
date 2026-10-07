@@ -320,15 +320,23 @@ function buildTaskGate(options: {
     if (resolved === undefined) {
       throw new UnknownTaskLedgerError(name, dispatch.taskId, dispatch.boardId);
     }
-    // The row read is the one the hand-off named: a resolver that answered
-    // with another partition (or with a whole partitioned ledger) is refused
-    // before the read.
-    if (resolved.partition !== dispatch.partition) {
+    return inPartition(resolved, dispatch.taskId, dispatch.boardId, dispatch.partition);
+  };
+
+  // The row read and settled is the one the hand-off named: a resolver that
+  // answered with another partition (or with a whole partitioned ledger) is
+  // refused before the read, and again before the recorders write.
+  const inPartition = (
+    resolved: TaskCollectionRef,
+    taskId: string,
+    ledgerId: string,
+    partition: string | undefined
+  ): TaskCollectionRef => {
+    if (resolved.partition !== partition) {
       throw new StaleTaskClaimError(
-        dispatch.taskId,
-        `it names partition ${JSON.stringify(dispatch.partition ?? null)} of ledger ` +
-          `"${dispatch.boardId}", and the resolver answered with ` +
-          `${JSON.stringify(resolved.partition ?? null)}`
+        taskId,
+        `it names partition ${JSON.stringify(partition ?? null)} of ledger "${ledgerId}", ` +
+          `and the resolver answered with ${JSON.stringify(resolved.partition ?? null)}`
       );
     }
     return resolved;
@@ -352,7 +360,7 @@ function buildTaskGate(options: {
           `(${ledgerId === undefined ? "none recorded" : `"${ledgerId}"`}) no longer resolves.`
       );
     }
-    return resolved;
+    return inPartition(resolved, claim?.taskId ?? "(no claim)", ledgerId!, claim?.partition);
   };
 
   // The same recorders the inline drain composes, bound to this board's

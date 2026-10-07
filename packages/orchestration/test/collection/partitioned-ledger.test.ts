@@ -13,6 +13,8 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
+  taskClaimTicketSchema,
+  ticketForClaim,
   type DefinedTaskCollection,
   type Task,
   type TaskCollectionRef,
@@ -95,6 +97,14 @@ describe("resolving a partitioned ledger", () => {
 
   it("reports the partition it was resolved at", async () => {
     expect((await at(storeFor(partitioned()), "conv-a")).partition).toBe("conv-a");
+  });
+
+  it("names its partition on a claim ticket, which, like the dispatch, holds no empty partition", async () => {
+    const ref = await at(storeFor(partitioned()), "conv-a");
+    await ref.addTask({ id: "t1", goal: "g" });
+    const ticket = ticketForClaim(ref.collectionId, (await ref.claim("w"))!, ref.partition);
+    expect(taskClaimTicketSchema.parse(ticket).partition).toBe("conv-a");
+    expect(taskClaimTicketSchema.safeParse({ ...ticket, partition: "" }).success).toBe(false);
   });
 });
 
@@ -186,19 +196,35 @@ describe("a ref resolved at one partition", () => {
 });
 
 describe("a partition function", () => {
-  it("runs with no parent block, so it has no input to read", async () => {
-    const ctx = { ...ctxFor(), parent: { name: "caller", kind: "handler", input: { partition: "theirs" } } };
-    const seen: unknown[] = [];
+  it("sees only the server-set identity, never a handle that carries request input", async () => {
+    // Every handle a block context carries input through: the parent block's
+    // input, and the `.input` on the sequencer's, the block's own and any
+    // target's state ref, plus request state.
+    const input = { partition: "theirs" };
+    const ctx = {
+      ...ctxFor(),
+      session: { identity: { type: "session", id: "s_1", userId: "alice", orgId: "o_1" } },
+      parent: { name: "caller", kind: "handler", input },
+      sequencer: { input, state: {} },
+      self: { input, state: {} },
+      getTarget: () => ({ input, state: {} }),
+      request: { identity: { type: "request", id: "r_1" }, state: input },
+    };
+    let seen: Record<string, unknown> | undefined;
     const partition = await resolveTaskPartition(
       LEDGER,
       (view) => {
-        seen.push((view as { parent?: unknown }).parent, "parent" in view);
-        return view.session.identity.id;
+        seen = view as unknown as Record<string, unknown>;
+        return view.sessionId;
       },
       ctx as unknown as BlockContext
     );
     expect(partition).toBe("s_1");
-    expect(seen).toEqual([undefined, false]);
+    expect(seen).toEqual({ sessionId: "s_1", userId: "alice", orgId: "o_1" });
+    expect(Object.isFrozen(seen)).toBe(true);
+    for (const handle of ["parent", "sequencer", "self", "getTarget", "request", "session", "input"]) {
+      expect(handle in seen!).toBe(false);
+    }
   });
 
   it.each([[""], [undefined], [42]])("refuses a returned %j", async (value) => {

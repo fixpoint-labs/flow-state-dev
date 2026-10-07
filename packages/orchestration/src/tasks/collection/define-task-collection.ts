@@ -88,7 +88,8 @@ export interface DefineTaskCollectionOptions<
    * there and never calls this function itself.
    *
    * Return a non-empty string from data only the server writes. The function
-   * gets the running context without the parent block's input. `user` scope
+   * gets the running session's server-set identity (`sessionId`, `userId`,
+   * `orgId`, `tenantId`) and nothing a caller supplies. `user` scope
    * only, and not with `maxInstances`, whose cap would count every partition's
    * rows. A partitioned ledger's task ids are one path segment (no `/`).
    */

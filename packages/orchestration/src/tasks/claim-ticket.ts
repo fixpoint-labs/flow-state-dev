@@ -112,7 +112,8 @@ export const taskClaimTicketSchema = z.object({
   /** The claimed row's filer, when recorded. See {@link TaskClaimTicket.createdBy}. */
   createdBy: z.string().optional(),
   /** The partition the claim was taken in. See {@link TaskClaimTicket.partition}. */
-  partition: z.string().optional(),
+  // Non-empty when present, as on the dispatch envelope it is copied to.
+  partition: z.string().min(1).optional(),
 });
 
 /**
