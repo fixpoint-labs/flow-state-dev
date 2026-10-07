@@ -64,6 +64,7 @@ import type {
   FlowInstance,
   LivenessAnswers,
   RequestHost,
+  SessionFacts,
   SettleParentTaskInput,
   SettleParentTaskResult,
 } from "@flow-state-dev/core/types";
@@ -74,12 +75,13 @@ import type { RuntimeConfig } from "../runtime-config";
 import {
   matchesOrgFilter,
   resolveLineageId,
-  resolveSessionStorageKey
+  resolveSessionStorageKey,
+  tenantMatches
 } from "../stores/scope-keys";
 import { deriveDispatchRunSessionId, evaluateAdoption } from "./dispatch-run";
 import { ownsRecord } from "./record-owner";
 import type { DispatchOperation } from "./dispatch-operation";
-import { purgeStaleResourceState } from "./ensure-session-record";
+import { birthSession, SessionCreateRefusedError, type SessionRecordSeed } from "./session-birth";
 import { pinRejectsCaller } from "./instance-pin";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
@@ -91,8 +93,9 @@ export type ParentTaskBinding = {
 };
 
 export type RequestHostInputs = {
-  // `resourceState` is here only for the tombstone reclamation a newly created
-  // child owes itself — see the `purgeStaleResourceState` call below.
+  // `resourceState` is here for the birth of a newly created child: the
+  // tombstone reclamation it owes itself and its flow's create check — see the
+  // `birthSession` call below.
   stores: Pick<StoreRegistry, "session" | "activeRequests" | "resourceState">;
   flow: FlowInstance;
   /** Server-derived identity of the running request. Never caller-supplied. */
@@ -272,6 +275,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
    */
   const resolveDispatchRunSession = async (
     key: string,
+    link: string | undefined,
     address: { type: string; action: string },
     targetFlow: FlowInstance
   ): Promise<ResolvedSession> => {
@@ -321,22 +325,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       lineageId: childLineageId
     };
 
-    const existing = await stores.session.get(storageKey);
-    if (existing !== undefined) {
-      // Adoption validates the record's whole identity, not just the key — the
-      // seam is not the only writer at this id (see `evaluateAdoption`).
-      const verdict = evaluateAdoption(existing, expected);
-      if (!verdict.adoptable) {
-        return refuse(
-          "key-occupied",
-          `the derived child key is held by a record whose ${verdict.mismatch} does not match this request`
-        );
-      }
-      return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: true, delivery: "child" };
-    }
-
     const ts = nowMs();
-    const record: SessionRecord = {
+    const build = (): SessionRecordSeed => ({
       id: storageKey,
       // Session-state defaults, applied before the write — the create route
       // parses initial state through the flow's schema precisely so typed
@@ -365,33 +355,59 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // fields the children listing reads.
       ...label("topic", key),
       ...label("coordinate", `${address.type}:${address.action}`)
-    };
+    });
 
-    // Reclaim the id's resource-state tombstones before the create (FIX-1258).
-    // A child's id is DERIVED from its key, so the same key always lands on
-    // the same id and reuse is the norm; without this a child whose session
-    // was deleted comes back with every static resource permanently
-    // unwritable. Before the create, so nothing commits ahead of it.
-    await purgeStaleResourceState(stores, storageKey);
-
-    // Create-if-absent: this is how a caller wins or loses a create race,
+    // Through the one birth function every new session record takes: it runs
+    // the target flow's create check with the link the dispatching block's
+    // code named, reclaims the id's resource-state tombstones (FIX-1258) — a
+    // child's id is DERIVED from its key, so reuse is the norm — and writes
+    // create-if-absent, which is how a caller wins or loses a create race
     // rather than silently overwriting a concurrent adopter's child.
-    const result = await stores.session.set(storageKey, record, "absent");
-    if (!result.ok) {
-      // An undefined `currentValue` means the row is TOMBSTONED, which the
-      // store contract requires a caller to treat as deleted and stop on. So it
-      // refuses exactly like a mismatched record does; only a present, adoptable
-      // child is adopted.
-      const current = result.conflict.currentValue;
-      if (current === undefined || !evaluateAdoption(current, expected).adoptable) {
-        return refuse(
-          "key-occupied",
-          "the derived child key was taken by a non-matching record during this call"
-        );
+    let outcome: Awaited<ReturnType<typeof birthSession>>;
+    try {
+      outcome = await birthSession(
+        stores,
+        storageKey,
+        {
+          flow: targetFlow,
+          sessionId: childId,
+          principal: {
+            userId: identity.userId,
+            orgId: identity.orgId,
+            ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {})
+          },
+          link,
+          via: "dispatch"
+        },
+        build
+      );
+    } catch (error) {
+      if (error instanceof SessionCreateRefusedError) {
+        return refuse("create-refused", error.message);
       }
-      return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: true, delivery: "child" };
+      throw error;
     }
-    return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: false, delivery: "child" };
+    if (outcome.born) {
+      return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: false, delivery: "child" };
+    }
+    // Existing, or taken by a racing creator. Adoption validates the record's
+    // whole identity, not just the key — the seam is not the only writer at
+    // this id (see `evaluateAdoption`). An undefined record means the row is
+    // TOMBSTONED, which the store contract requires a caller to treat as
+    // deleted and stop on. So it refuses exactly like a mismatched record
+    // does; only a present, adoptable child is adopted. The winner is adopted
+    // without checking this call's link: it was checked when it was born.
+    const current = outcome.record;
+    const verdict = current === undefined ? undefined : evaluateAdoption(current, expected);
+    if (verdict === undefined || !verdict.adoptable) {
+      return refuse(
+        "key-occupied",
+        outcome.raced || verdict === undefined
+          ? "the derived child key was taken by a non-matching record during this call"
+          : `the derived child key is held by a record whose ${verdict.mismatch} does not match this request`
+      );
+    }
+    return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: true, delivery: "child" };
   };
 
   /**
@@ -431,7 +447,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     if ("id" in spec.session) {
       return resolveExistingSession(spec.session.id, targetFlow);
     }
-    return resolveDispatchRunSession(spec.session.key, spec, targetFlow);
+    return resolveDispatchRunSession(spec.session.key, spec.session.link, spec, targetFlow);
   };
 
   const crossInstance = (targetFlow: FlowInstance): boolean => targetFlow.id !== flow.id;
@@ -600,7 +616,33 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     return inputs.parentTask.settle(input);
   };
 
-  const host: RequestHost = { parentTask, settleParentTask };
+  // One of the caller's own sessions, by id. Filtered on the closed-over
+  // identity before anything is answered, so another principal's,
+  // organization's or tenant's session reads exactly as no session at all.
+  const sessionFacts = async (sessionId: string): Promise<SessionFacts | undefined> => {
+    if (typeof sessionId !== "string" || sessionId.length === 0) return undefined;
+    const storageKey = resolveSessionStorageKey(sessionId, identity.tenantId);
+    const record = await stores.session.get(storageKey);
+    if (
+      record === undefined ||
+      record.userId !== identity.userId ||
+      !tenantMatches(record.tenantId, identity.tenantId) ||
+      record.orgId !== identity.orgId
+    ) {
+      return undefined;
+    }
+    return Object.freeze({
+      sessionId,
+      flowKind: record.flowKind,
+      flowId: record.flowId ?? record.flowKind,
+      ...(record.link != null ? { link: record.link } : {}),
+      lineageId: resolveLineageId({ id: storageKey, lineageId: record.lineageId }),
+      createdAt: record.createdAt,
+      ...(record.parentSessionId != null ? { parentSessionId: record.parentSessionId } : {})
+    });
+  };
+
+  const host: RequestHost = { parentTask, settleParentTask, sessionFacts };
 
   if (gate.enabled) {
     const staleThresholdMs = gate.staleThresholdMs;

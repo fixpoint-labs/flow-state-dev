@@ -180,6 +180,24 @@ A new session typically starts via `sessions.createSession({...})` on the client
 
 If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through.
 
+A caller can pass initial `state` when it creates a session. That suits preferences and drafts, and it is the wrong place for a value that grants anything: the caller wrote it. A value fixed for the session's life belongs to `createCheck`, which checks it before the session exists and stores what it returns as the session's `link`. Your blocks read it as `ctx.session.link`, and the session listing filters by it. A value your flow changes as it runs belongs in a `serverOwned` field: the create refuses a value for it, and only a block in your flow can set it.
+
+```ts
+session: {
+  stateSchema: z.object({ delegates: z.array(z.string()).default([]) }),
+  serverOwned: ["delegates"],
+  createCheck: async ({ link, principal }) => {
+    if (link === undefined) return { ok: false, message: "Name the project to open." }
+    const project = await lookUpProject(principal.userId, link)
+    return project === undefined
+      ? { ok: false, status: 404, message: `No project "${link}".` }
+      : { ok: true, link: project.id }
+  },
+},
+```
+
+Once a flow declares `createCheck`, every session of it is created with a link. An action sent to a session id that doesn't exist yet names none, so it is refused: create the session first, passing `link` in the create request.
+
 ## The `client` block: exposing state safely
 
 Raw state never reaches the client. Session, user, and org each take a `client` block that declares the slice of state that crosses to the browser. Anything not in `client` stays on the server.

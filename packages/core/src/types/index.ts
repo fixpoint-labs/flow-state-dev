@@ -38,6 +38,15 @@ export type {
 export { NoRequestHostError, requireRequestHost } from "./request-host";
 
 export type {
+  SessionCreateCheck,
+  SessionCreateCheckInput,
+  SessionCreateCheckResult,
+  SessionCreatePath,
+  SessionCreatePrincipal,
+  SessionFacts
+} from "./session-create";
+
+export type {
   BlockDispatchType,
   DispatchAddress,
   DispatchOutcome,

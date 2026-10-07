@@ -575,6 +575,30 @@ Adapters must implement all four options:
 - Both types accept `orgId`, with the same present-vs-absent NULL-safe matching
   as `tenantId`: an absent key filters nothing, a present key (including an
   explicit `undefined`) exact-matches.
+- `SessionListOptions.link` exact-matches the record's `link`. Absent filters
+  nothing; a record with no link never matches a present one.
+
+## Checking a session at create
+
+`session.createCheck` runs before a session of the flow is written, on every
+path that creates one: the create route, an action to a session id that does
+not exist yet, a webhook delivery, `fsdev run`, and a dispatch into a child
+session. It receives the verified caller and the create's `link` input (the
+create body's `link`, `fsdev run --worker`, or the `link` a dispatching block
+puts on a `{ key }` target), and refuses or returns the value stored as the
+record's `link`. Nothing writes that value afterwards, and a turn on an
+existing session never calls the check. `session.serverOwned` names
+session-state fields a create may not seed; the create route answers 400
+naming the field.
+
+Every new session record goes through one function, `birthSession`
+(`context/session-birth.ts`), which runs the check, reclaims the id's
+resource-state tombstones, and writes create-if-absent. `ensureSessionRecord`
+is its adopt-on-race caller, exported for hosts that create sessions
+themselves. A refused create throws `SessionCreateRefusedError`.
+
+Flow code reads its own session's link as `ctx.session.link`, and another of
+its caller's sessions by id through `requireRequestHost(ctx).sessionFacts(id)`.
 
 ## Session retention policies
 

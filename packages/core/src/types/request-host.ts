@@ -25,9 +25,14 @@
  * parent session. Another user's session is not a value a capability can produce,
  * and neither is another parent session's child.
  *
- * The seam is **closed at four verbs**. Adding a fifth is a decision someone
- * reviews, not a surface that grows by transitivity.
+ * The seam is **closed at five verbs**. Adding a sixth is a decision someone
+ * reviews, not a surface that grows by transitivity. The fifth,
+ * `sessionFacts`, takes a session id as the *target* of a read, as `livenessOf`
+ * takes request ids: the answer is filtered by the closed-over identity, so the
+ * id selects among the caller's own sessions and never widens past them.
  */
+
+import type { SessionFacts } from "./session-create";
 
 /** How a parent-board row is being settled. */
 export type ParentTaskOutcome = "complete" | "fail";
@@ -116,6 +121,18 @@ export interface RequestHost {
    * See {@link LivenessAnswers} for what a `false` answer does and does not mean.
    */
   livenessOf?(requestIds: readonly string[]): Promise<LivenessAnswers>;
+
+  /**
+   * Read the server-written facts of one of this caller's own sessions, by id:
+   * its flow, the `link` its create check stored, its lineage id and when it
+   * was created. A session id names one incarnation together with its
+   * `lineageId`.
+   *
+   * Answers only for a session of this request's principal, organization and
+   * tenant, on any flow. Any other id, including one with no session behind
+   * it, resolves `undefined`, and the two are indistinguishable.
+   */
+  sessionFacts(sessionId: string): Promise<SessionFacts | undefined>;
 }
 
 /**

@@ -21,6 +21,7 @@ import type { CASOptions } from "./state";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
+import type { SessionCreateCheck } from "./session-create";
 
 /** Legacy scope-keyed config alias preserved for type-internal usage. */
 export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
@@ -330,6 +331,24 @@ export type SessionConfig = {
    * integer; `0` or negative disables cross-turn history entirely.
    */
   historyWindow?: { turns: number };
+  /**
+   * Runs before a session of this flow is written, on every path that creates
+   * one: the create route, an action sent to a session id that does not exist
+   * yet, a webhook delivery, `fsdev run` and a dispatch into a child session.
+   * It receives the verified caller and the create's `link` input, and refuses
+   * the create or returns the value stored as the session's `link`, which
+   * nothing changes afterwards. A create that names no link is refused even if
+   * the check accepts it. A turn on an existing session never calls it.
+   * Undeclared: sessions are created as they always were, with no link.
+   */
+  createCheck?: SessionCreateCheck;
+  /**
+   * Session-state fields only this flow's code writes. A create that seeds one
+   * (the create route's `state`, `fsdev run --seed-session`) is refused with a
+   * 400 naming the field, and nothing is written. Blocks write them as any
+   * other session state.
+   */
+  serverOwned?: readonly string[];
 };
 
 export type RequestConfig = {

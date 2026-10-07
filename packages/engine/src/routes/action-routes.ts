@@ -7,6 +7,7 @@
  * resolution context, SSE response shaping) only.
  */
 import type { FlowRegistry } from "../registry/flow-registry";
+import { SessionCreateRefusedError } from "../context/session-birth";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost } from "../transports/types";
 import { OrgRequiredError, PrincipalResolutionError } from "../transports/errors";
@@ -232,6 +233,12 @@ export async function handleExecuteAction(
       // organization, nor the session's existence reaches the caller.
       if (error instanceof UserBindingMismatchError || error instanceof OrgBindingMismatchError) {
         return unknownSessionResponse(error.sessionId);
+      }
+      // A session this action would have created, refused by the flow's
+      // create check: an action names no link, so a flow that links its
+      // sessions is created through the session-create route instead.
+      if (error instanceof SessionCreateRefusedError) {
+        return jsonResponse(error.status, { error: error.message });
       }
       // A request id another principal took between the check above and the
       // dispatch's write. Nothing of theirs was touched, and the same call

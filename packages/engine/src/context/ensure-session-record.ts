@@ -1,5 +1,7 @@
 /**
- * The one path that brings a session record into existence (FIX-1068).
+ * Why a session record has one path into existence (FIX-1068), and the
+ * resource-state reclamation that path performs (FIX-1258). The path itself is
+ * `birthSession` in `session-birth.ts`.
  *
  * Every creator used to do this itself, and they disagreed in two ways that
  * only show up later:
@@ -16,22 +18,16 @@
  *   nothing reads again.
  *
  * Both are the same underlying mistake: re-deriving a decision at each call site
- * instead of carrying one answer. So this carries it — callers describe the
- * record they want and never choose the id or the write predicate.
+ * instead of carrying one answer. So one function carries it, `birthSession`
+ * (`session-birth.ts`) — callers describe the record they want and never choose
+ * the id or the write predicate.
  *
  * A third decision joined them for the same reason (FIX-1258): **a session
  * record coming into existence is what starts a resource-state incarnation**,
  * and the previous one's tombstones have to go with it. See
  * {@link purgeStaleResourceState}.
  */
-import type { SessionRecord, StoreRegistry } from "../stores/types";
-import { generateId } from "../utils/generate-id";
-
-/** Everything a caller supplies; `lineageId` and the write predicate are not theirs. */
-export type SessionRecordSeed = Omit<SessionRecord, "lineageId">;
-
-/** The stores a session's birth touches: its own record, and its resource state. */
-type SessionBirthStores = Pick<StoreRegistry, "session" | "resourceState">;
+import type { StoreRegistry } from "../stores/types";
 
 /**
  * Release a newborn session from the resource-state tombstones a previous
@@ -124,45 +120,8 @@ type SessionBirthStores = Pick<StoreRegistry, "session" | "resourceState">;
  *    never-existed key.
  */
 export async function purgeStaleResourceState(
-  stores: SessionBirthStores,
+  stores: Pick<StoreRegistry, "resourceState">,
   storageKey: string
 ): Promise<void> {
   await stores.resourceState.purgeTombstones("session", storageKey);
-}
-
-/**
- * Return the session record at `storageKey`, creating it if absent.
- *
- * The returned record is **authoritative**: on a lost create race it is the
- * winner's, not the one this caller built. Callers that go on to read
- * `lineageId` (or anything else) must use what comes back rather than what they
- * passed in, or they are back to two answers for one question.
- *
- * @throws when the key is tombstoned — the store contract requires a caller to
- * treat that as deleted and stop, never as "reuse my copy".
- */
-export async function ensureSessionRecord(
-  stores: SessionBirthStores,
-  storageKey: string,
-  build: () => SessionRecordSeed
-): Promise<SessionRecord> {
-  const existing = await stores.session.get(storageKey);
-  if (existing !== undefined) return existing;
-
-  // Before the create, so nothing is committed until it has succeeded — the
-  // `get` above is what keeps this off an already-existing session. See
-  // `purgeStaleResourceState` for why this order and no other.
-  await purgeStaleResourceState(stores, storageKey);
-
-  const record: SessionRecord = { ...build(), lineageId: generateId("lin") };
-  const created = await stores.session.set(storageKey, record, "absent");
-  if (created.ok) return record;
-
-  const winner = created.conflict.currentValue ?? (await stores.session.get(storageKey));
-  if (winner === undefined) {
-    throw new Error(
-      `Session "${storageKey}" was deleted while this request was creating it`
-    );
-  }
-  return winner;
 }

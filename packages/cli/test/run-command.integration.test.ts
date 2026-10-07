@@ -604,6 +604,62 @@ describe("seed state", () => {
   });
 });
 
+describe("--worker, on a flow that checks its session creates", () => {
+  it("creates a new session through the flow's check, with what the check stored", async () => {
+    const stores = createInMemoryStores();
+    const result = await executeRunCommand("linked", "who", {
+      input: "{}",
+      session: "w-1",
+      worker: "ok-researcher",
+      cwd: fixturesDir,
+      stores,
+      quiet: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.output).toEqual({ link: "checked:ok-researcher" });
+    expect((await stores.session.get("w-1"))?.link).toBe("checked:ok-researcher");
+  });
+
+  it("refuses a new session without --worker, and writes nothing", async () => {
+    const stores = createInMemoryStores();
+    const run = executeRunCommand("linked", "who", { input: "{}", session: "w-2", cwd: fixturesDir, stores, quiet: true });
+    await expect(run).rejects.toThrow(/Name a worker to create this session\. Pass --worker <id>\./);
+    await expect(run).rejects.toMatchObject({ exitCode: EXIT_INVALID_ARGS });
+    expect(await stores.session.get("w-2")).toBeUndefined();
+  });
+
+  it("refuses a different --worker on an existing session, which keeps its link", async () => {
+    const stores = createInMemoryStores();
+    await executeRunCommand("linked", "who", {
+      input: "{}", session: "w-3", worker: "ok-a", cwd: fixturesDir, stores, quiet: true,
+    });
+    await expect(
+      executeRunCommand("linked", "who", { input: "{}", session: "w-3", worker: "ok-b", cwd: fixturesDir, stores, quiet: true }),
+    ).rejects.toThrow(/never changes/);
+    expect((await stores.session.get("w-3"))?.link).toBe("checked:ok-a");
+  });
+
+  it("refuses a seeded server-owned field, new session or existing", async () => {
+    const stores = createInMemoryStores();
+    await expect(
+      executeRunCommand("linked", "who", {
+        input: "{}", session: "w-4", worker: "ok-a", seedSession: '{"granted": ["x"]}', cwd: fixturesDir, stores, quiet: true,
+      }),
+    ).rejects.toThrow(/"granted"/);
+    expect(await stores.session.get("w-4")).toBeUndefined();
+
+    await executeRunCommand("linked", "who", {
+      input: "{}", session: "w-5", worker: "ok-a", seedSession: '{"note": "hi"}', cwd: fixturesDir, stores, quiet: true,
+    });
+    await expect(
+      executeRunCommand("linked", "who", {
+        input: "{}", session: "w-5", seedSession: '{"granted": ["x"]}', cwd: fixturesDir, stores, quiet: true,
+      }),
+    ).rejects.toThrow(/"granted"/);
+    expect((await stores.session.get("w-5"))?.state).toEqual({ note: "hi" });
+  });
+});
+
 const appConfigDir = resolve(import.meta.dirname, "fixtures-config", "app");
 
 interface ConfigStashes {

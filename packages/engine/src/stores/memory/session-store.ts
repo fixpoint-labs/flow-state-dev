@@ -106,6 +106,10 @@ export class InMemorySessionStore implements SessionStore {
         return false;
       }
 
+      if (options?.link !== undefined && record.link !== options.link) {
+        return false;
+      }
+
       return true;
     });
 

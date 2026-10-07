@@ -11,6 +11,7 @@
  * module is the only place `source: "cli"` can be produced.
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { SessionCreateRefusedError } from "../../context/session-birth";
 import type { FlowRegistry } from "../../registry/flow-registry";
 import type { SessionRecord, StoreRegistry } from "../../stores/types";
 import type { ExecutionResult } from "../../execution/types";
@@ -160,7 +161,8 @@ function isRefusedAdmission(error: unknown): boolean {
     error instanceof FlowInstanceBindingMismatchError ||
     error instanceof RequestOwnerMismatchError ||
     error instanceof UserBindingMismatchError ||
-    error instanceof OrgBindingMismatchError
+    error instanceof OrgBindingMismatchError ||
+    error instanceof SessionCreateRefusedError
   );
 }
 

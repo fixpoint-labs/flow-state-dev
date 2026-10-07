@@ -286,7 +286,16 @@ export function taskSessionKeyFor(
  *   that was not dispatched has no sender (`no-sender`).
  */
 export type SessionTarget =
-  | { readonly key: string }
+  | {
+      readonly key: string;
+      /**
+       * The create's link input for the child, when the target flow declares
+       * a `session.createCheck`. Read only when the child is created; a child
+       * that already exists keeps the link it was created with. Computed by
+       * the dispatching block's own code, never taken from a caller's input.
+       */
+      readonly link?: string;
+    }
   | { readonly id: string }
   | { readonly from: true };
 
@@ -332,6 +341,8 @@ export type DispatchRefusal =
   | "session-not-addressable"
   /** A `key` target derived a child id already held by a record that is not this request's child. */
   | "key-occupied"
+  /** The target flow's `session.createCheck` refused to create the child session. */
+  | "create-refused"
   /** This process executes requests but was not wired to dispatch one. */
   | "no-dispatch-operation"
   /** The host refused before starting — a `reject` concurrency policy whose key is held. */

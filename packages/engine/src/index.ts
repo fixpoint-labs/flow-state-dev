@@ -1,6 +1,10 @@
 export { createExecutionContext } from "./context/createExecutionContext";
-export { ensureSessionRecord } from "./context/ensure-session-record";
-export type { SessionRecordSeed } from "./context/ensure-session-record";
+export {
+  ensureSessionRecord,
+  refuseServerOwnedState,
+  SessionCreateRefusedError
+} from "./context/session-birth";
+export type { SessionCreateRequest, SessionRecordSeed } from "./context/session-birth";
 export type {
   CreateExecutionContextOptions,
   ExecutionContext,

@@ -91,6 +91,13 @@ const flow = useFlow({ autoCreateSession: true });
 // flow.activeSessionId, flow.sessions, flow.createSession(), flow.selectSession()
 ```
 
+On a flow whose sessions each run one worker, pass `worker`: the hook lists only
+that worker's sessions and creates new ones with it.
+
+```ts
+const flow = useFlow({ flowKind: "agent", worker: "researcher", autoCreateSession: true });
+```
+
 ### `useSession(sessionId, options?)`
 
 The primary hook. Gives you everything about a session — items, state, streaming status, and the ability to send actions:

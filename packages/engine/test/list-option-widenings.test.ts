@@ -79,6 +79,21 @@ function request(id: string, overrides: Partial<RequestRecord> = {}): RequestRec
 
 describe.each(adapters)("list-option widenings — $name adapter", ({ create }) => {
 
+  it("session link filters exactly, and a session with no link never matches", async () => {
+    const { session: store } = await create();
+    await store.set("w1", session("w1", { link: "researcher" }), "any");
+    await store.set("w2", session("w2", { link: "editor" }), "any");
+    await store.set("none", session("none"), "any");
+
+    expect((await store.list({ link: "researcher" })).map((r) => r.id)).toEqual(["w1"]);
+    expect((await store.list({ link: "nobody" })).map((r) => r.id)).toEqual([]);
+    expect((await store.list({ userId: "alice" })).map((r) => r.id).sort()).toEqual([
+      "none",
+      "w1",
+      "w2"
+    ]);
+  });
+
   // -------------------------------------------------------------------------
   // flowId — the exact-owner filter, on both list-option types
   // -------------------------------------------------------------------------

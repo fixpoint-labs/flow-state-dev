@@ -80,6 +80,21 @@ function request(id: string, overrides: Partial<RequestRecord> = {}): RequestRec
 }
 
 describe("Postgres list-option widenings", () => {
+  it("session link filters exactly, and a session with no link never matches", async () => {
+    const s = await freshStores();
+    await s.session.set("w1", session("w1", { link: "researcher" }), "any");
+    await s.session.set("w2", session("w2", { link: "editor" }), "any");
+    await s.session.set("none", session("none"), "any");
+
+    expect((await s.session.list({ link: "researcher" })).map((r) => r.id)).toEqual(["w1"]);
+    expect((await s.session.list({ link: "nobody" })).map((r) => r.id)).toEqual([]);
+    expect((await s.session.list({ userId: "alice" })).map((r) => r.id).sort()).toEqual([
+      "none",
+      "w1",
+      "w2"
+    ]);
+    expect((await s.session.get("w1"))?.link).toBe("researcher");
+  });
   it("flowId filters sessions and requests to the exact owner, and a legacy NULL never matches", async () => {
     const s = await freshStores();
     await s.session.set("east", session("east", { flowKind: "review", flowId: "review-east" }), "any");

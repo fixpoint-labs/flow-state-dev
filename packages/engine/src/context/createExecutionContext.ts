@@ -68,7 +68,7 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
-import { ensureSessionRecord } from "./ensure-session-record";
+import { ensureSessionRecord } from "./session-birth";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause, isValidOrgId } from "@flow-state-dev/core";
@@ -705,12 +705,29 @@ export async function createExecutionContext<
     return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
   });
 
-  // Created through the one path that mints the lineage id and writes
-  // create-if-absent (FIX-1068), so this request cannot overwrite a concurrent
-  // first action and cannot invent a second address for the same session.
+  // Created through the one birth function (`session-birth.ts`): it runs the
+  // flow's create check, mints the lineage id and writes create-if-absent
+  // (FIX-1068), so this request cannot overwrite a concurrent first action and
+  // cannot invent a second address for the same session. An action names no
+  // link, so a flow that declares a create check refuses a session born here.
   let sessionRecord =
     loadedSession ??
-    ((await ensureSessionRecord(stores, sessionKey, () => ({
+    ((await ensureSessionRecord(
+      stores,
+      sessionKey,
+      {
+        flow,
+        sessionId,
+        principal: {
+          userId,
+          orgId: options.orgId,
+          ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {})
+        },
+        link: undefined,
+        callerState: options.sessionState,
+        via: "action"
+      },
+      () => ({
       id: sessionKey,
       flowKind: flow.kind,
       flowId: flow.id,
@@ -723,7 +740,8 @@ export async function createExecutionContext<
       createdAt: now,
       updatedAt: now,
       journal: []
-    }))) as typeof loadedSession & object);
+    })
+    )) as typeof loadedSession & object);
 
   ensureJournalDefaults(sessionRecord);
 
@@ -2600,18 +2618,20 @@ export async function createExecutionContext<
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       if (attempt > 0) await waitForCASRetry(attempt, flow.session?.cas);
       const stored = await stores.session.get(sessionRef.current.id);
-      if (stored !== undefined) ensureJournalDefaults(stored);
-      const current = stored ?? sessionRef.current;
+      // A session deleted while this request ran stays deleted. Writing the
+      // held copy back would bring a record into existence outside the one
+      // birth function, carrying the old incarnation's lineage and link.
+      if (stored === undefined) {
+        throw new Error(`Session "${sessionId}" was deleted while this request was running`);
+      }
+      ensureJournalDefaults(stored);
+      const current = stored;
       const next: SessionRecord = {
         ...mutate(current),
         version: current.version + 1,
         updatedAt: Date.now()
       };
-      const result = await stores.session.set(
-        next.id,
-        next,
-        stored === undefined ? "absent" : stored.version
-      );
+      const result = await stores.session.set(next.id, next, stored.version);
       if (result.ok) {
         if (sessionContainer.getVersion() === current.version) {
           sessionContainer.commit(sessionContainer.read() as TSessionState, result.version);
@@ -2636,6 +2656,8 @@ export async function createExecutionContext<
         orgId: sessionRef.current.orgId,
         tenantId: options.tenantId
       },
+      // Read off the record, never the request: written once at birth.
+      link: sessionRef.current.link ?? undefined,
       get metadata() {
         const s = sessionRef.current;
         return {

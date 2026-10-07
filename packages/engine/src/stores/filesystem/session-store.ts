@@ -65,6 +65,10 @@ export class FilesystemSessionStore implements SessionStore {
           return false;
         }
 
+        if (listOptions?.link !== undefined && record.link !== listOptions.link) {
+          return false;
+        }
+
         return true;
       }
     });

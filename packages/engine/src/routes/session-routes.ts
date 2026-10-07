@@ -5,10 +5,11 @@ import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestActionResult, RequestRecord, SessionParentage, SessionRecord, StoreRegistry } from "../stores/types";
+import type { SessionRecordSeed } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
-import { purgeStaleResourceState } from "../context/ensure-session-record";
+import { birthSession, SessionCreateRefusedError } from "../context/session-birth";
 import { resolveRecordOwner } from "../context/record-owner";
 import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
 import { isOrgAttributed } from "../context/org-attribution";
@@ -185,6 +186,11 @@ export async function handleListSessions(
     // put there on purpose; the include is the only way past it, and it widens
     // parentage alone — never owner, tenant or organization.
     ...(include.parentage === undefined ? {} : { parentage: include.parentage }),
+    // Exact match on the link a flow's create check stored. A narrowing only:
+    // owner, organization and tenant are scoped above whatever it says.
+    ...(getString(url.searchParams.get("link")) === undefined
+      ? {}
+      : { link: getString(url.searchParams.get("link")) }),
     limit: getPositiveInteger(url.searchParams.get("limit")),
     offset: getPositiveInteger(url.searchParams.get("offset"))
   });
@@ -347,7 +353,8 @@ export async function handleCreateSession(
     // happens at action-execution time, not session-create time.
   }
 
-  const record: SessionRecord = {
+  const orgId = ctx.principal?.orgId ?? DEFAULT_ORG_ID;
+  const build = (): SessionRecordSeed => ({
     // `id` is the tenant-namespaced storage key (FIX-682), consistent with the
     // session record created in `createExecutionContext`. The response surfaces
     // the bare id below.
@@ -367,55 +374,67 @@ export async function handleCreateSession(
     // which is the same condition that puts the whole app on `DEFAULT_ORG_ID` —
     // so that is what the session binds to, rather than binding to nothing and
     // becoming a record the reads then have to refuse.
-    orgId: ctx.principal?.orgId ?? DEFAULT_ORG_ID,
+    orgId,
     tenantId: ctx.tenantId,
     title: getString(body.title),
     description: getString(body.description),
     tags: asStringArray(body.tags),
     metadata: asObject(body.metadata),
     state: initialState,
-    // Minted per record. Recreating a deleted id therefore yields a NEW
-    // lineage, which is what makes a surviving descendant of the old one keep
-    // its own address with nothing conjoined in to keep them apart (FIX-1068).
-    lineageId: generateId("lin"),
+    // `lineageId` is minted per record by the birth. Recreating a deleted id
+    // therefore yields a NEW lineage, which is what makes a surviving
+    // descendant of the old one keep its own address with nothing conjoined
+    // in to keep them apart (FIX-1068).
     version: 0,
     createdAt: now,
     updatedAt: now,
     journal: []
-  };
+  });
 
-  // This route does not go through `ensureSessionRecord` — it owes the caller a
-  // 409 on a lost race, which that helper resolves into an adoption instead —
-  // so it makes the same reclamation decision explicitly. `sessionId` is
-  // caller-supplied, so this may be the second session to live under it, and
-  // the first one's resource-state tombstones would otherwise brick every
-  // static resource here (FIX-1258).
-  //
-  // This read does NOT decide the create race — `"absent"` below still does,
-  // for the reason it always did: two requests can both pass an existence check
-  // and both write, and the loser would silently overwrite the winner. What it
-  // decides is whether to reclaim at all. A retried create against a session
-  // that plainly already exists must not reclaim that live session's
-  // tombstones, and answering 409 here keeps it from reaching one.
-  if ((await ctx.stores.session.get(record.id)) !== undefined) {
-    return jsonResponse(409, {
-      error: `Session "${sessionId}" already exists`
-    });
+  // `body.link` is the create's input to the flow's `session.createCheck`.
+  // What is stored is what the check returns, never this value as sent.
+  const linkInput = body.link;
+  if (linkInput !== undefined && linkInput !== null && typeof linkInput !== "string") {
+    return jsonResponse(400, { error: "link must be a string" });
   }
 
-  // Before the create, so a failure leaves nothing committed for a retry to
-  // trip over. See `purgeStaleResourceState` for why this order and no other.
-  await purgeStaleResourceState(ctx.stores, record.id);
-
-  const created = await ctx.stores.session.set(record.id, record, "absent");
-  if (!created.ok) {
+  // Through the one birth function every new session record takes: it checks
+  // the create, reclaims the id's resource-state tombstones (FIX-1258) and
+  // writes create-if-absent. This route keeps one choice of its own: an id
+  // that already exists, or that another create took first, answers 409
+  // rather than adopting — it owes the caller that answer.
+  let outcome: Awaited<ReturnType<typeof birthSession>>;
+  try {
+    outcome = await birthSession(
+      ctx.stores,
+      sessionKey,
+      {
+        flow,
+        sessionId,
+        principal: { userId, orgId, ...(ctx.tenantId !== undefined ? { tenantId: ctx.tenantId } : {}) },
+        link: getString(linkInput),
+        callerState: callerState ?? undefined,
+        via: "create"
+      },
+      build
+    );
+  } catch (error) {
+    if (error instanceof SessionCreateRefusedError) {
+      return jsonResponse(error.status, {
+        error: error.message,
+        ...(error.field !== undefined ? { field: error.field } : {})
+      });
+    }
+    throw error;
+  }
+  if (!outcome.born) {
     return jsonResponse(409, {
       error: `Session "${sessionId}" already exists`
     });
   }
 
   return jsonResponse(201, {
-    session: { ...record, id: sessionId }
+    session: { ...outcome.record, id: sessionId }
   });
 }
 

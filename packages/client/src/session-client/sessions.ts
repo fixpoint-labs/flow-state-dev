@@ -44,6 +44,12 @@ export type ListSessionsOptions = {
    * started it.
    */
   include?: "dispatch-runs";
+  /**
+   * Only the sessions created with this worker: the sessions whose stored
+   * `link` equals it. On a flow whose sessions each run one worker, the
+   * server sets that link when the session is created.
+   */
+  worker?: string;
 };
 
 /**
@@ -105,6 +111,13 @@ export type CreateSessionOptions = {
   tags?: string[];
   metadata?: Record<string, unknown>;
   state?: Record<string, unknown>;
+  /**
+   * The worker this session runs, on a flow whose sessions each run one
+   * worker. Sent as the create's `link`; the server checks it before the
+   * session exists, stores what its check returns, and never changes it.
+   * A create on such a flow without it is refused.
+   */
+  worker?: string;
 };
 
 export type UpdateSessionMetadataOptions = {
@@ -197,7 +210,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
         baseUrl: options.baseUrl,
         apiPath: options.apiPath,
         path: "/api/flows/sessions",
-        query: asQuery(listOptions)
+        query: asSessionListQuery(listOptions)
       })
     });
 
@@ -324,7 +337,8 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
           description: createOptions.description,
           tags: createOptions.tags,
           metadata: createOptions.metadata,
-          state: createOptions.state
+          state: createOptions.state,
+          link: createOptions.worker
         })
       }
     });
@@ -523,6 +537,15 @@ function requireId(value: string, name: string): string {
   }
 
   return trimmed;
+}
+
+/** The listing's query string: `worker` goes on the wire as `link`. */
+function asSessionListQuery(
+  value: ListSessionsOptions | undefined
+): Record<string, QueryValue> | undefined {
+  if (value === undefined) return undefined;
+  const { worker, ...rest } = value;
+  return asQuery({ ...rest, link: worker });
 }
 
 function asQuery(

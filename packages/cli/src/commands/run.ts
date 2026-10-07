@@ -1,7 +1,13 @@
 /**
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
-import { createFlowRegistry, ensureSessionRecord, ownsRecord } from "@flow-state-dev/engine";
+import {
+  createFlowRegistry,
+  ensureSessionRecord,
+  ownsRecord,
+  refuseServerOwnedState,
+  SessionCreateRefusedError
+} from "@flow-state-dev/engine";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
@@ -104,6 +110,7 @@ export function registerRunCommand(program: Command): void {
     .option("--org <id>", "Run in this organization and skip the app's resolver")
     .option("-u, --user <id>", "Run as this user. The organization comes from the app's resolver unless you also pass --org. Default: the user your app's resolver returns, or cli-user if the app has none or you pass --org")
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
+    .option("--worker <id>", "The worker a new session runs, on a flow whose sessions each run one worker")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
@@ -134,6 +141,12 @@ export interface RunCommandOptions {
   model?: string;
   session?: string;
   seedSession?: string;
+  /**
+   * `--worker`: the link input a new session's create check receives, on a
+   * flow that declares `session.createCheck` (a worker flow names the worker).
+   * Refused for an existing session whose link differs: a link never changes.
+   */
+  worker?: string;
   /** `--org`: run in this organization; the app's resolver is not asked. */
   org?: string;
   /** `--user`: run as this user. The organization comes from the app's resolver unless `--org` is also given. */
@@ -327,30 +340,78 @@ export async function executeRunCommand(
 
     if (!options.quiet) process.stderr.write(describePrincipal(principal, { org: options.org, user: options.user }) + "\n");
 
-    if (seedData !== undefined) {
-      if (existing !== undefined) {
+    if (existing !== undefined) {
+      // A session's link is decided once, when it is created.
+      if (options.worker !== undefined && existing.link !== options.worker) {
+        throw new CliError(
+          `Session "${sessionId}" already exists ${
+            existing.link == null ? "with no worker" : `with worker "${existing.link}"`
+          }; a session's worker never changes. Start a new session for another worker; nothing was written`,
+          EXIT_INVALID_ARGS,
+        );
+      }
+      if (seedData !== undefined) {
+        try {
+          refuseServerOwnedState(flow, sessionId, seedData);
+        } catch (err) {
+          if (err instanceof SessionCreateRefusedError) {
+            throw new CliError(`${err.message} Nothing was written`, EXIT_INVALID_ARGS);
+          }
+          throw err;
+        }
         await stores.session.set(sessionId, {
           ...existing,
           state: { ...existing.state, ...seedData },
           updatedAt: Date.now(),
         }, "any");
-      } else {
-        // One creation path (FIX-1068) — it mints the lineage id, which a
-        // seeded CLI session needs as much as any other.
-        await ensureSessionRecord(stores, sessionId, () => ({
-          id: sessionId,
-          flowKind: flow.kind,
-          flowId: flow.id,
-          // The identity the run below executes under, so the run accepts the
-          // record it seeded.
-          userId: principal.userId,
-          orgId: principal.orgId,
-          state: seedData,
-          version: 0,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          journal: [],
-        }));
+      }
+    } else if (
+      seedData !== undefined ||
+      options.worker !== undefined ||
+      flow.session?.createCheck !== undefined
+    ) {
+      // The one birth function: it runs the flow's create check with
+      // `--worker` as the link, refuses a seeded server-owned field, and mints
+      // the lineage id (FIX-1068), which a seeded CLI session needs as much as
+      // any other. A flow that checks its creates is born here rather than by
+      // the run, so a refusal is this command's error, not a failed run.
+      const now = Date.now();
+      try {
+        await ensureSessionRecord(
+          stores,
+          sessionId,
+          {
+            flow,
+            sessionId,
+            principal: { userId: principal.userId, orgId: principal.orgId },
+            link: options.worker,
+            ...(seedData !== undefined ? { callerState: seedData } : {}),
+            via: "cli",
+          },
+          () => ({
+            id: sessionId,
+            flowKind: flow.kind,
+            flowId: flow.id,
+            // The identity the run below executes under, so the run accepts the
+            // record it seeded.
+            userId: principal.userId,
+            orgId: principal.orgId,
+            state: seedData ?? {},
+            version: 0,
+            createdAt: now,
+            updatedAt: now,
+            journal: [],
+          }),
+        );
+      } catch (err) {
+        if (err instanceof SessionCreateRefusedError) {
+          const hint =
+            flow.session?.createCheck !== undefined && options.worker === undefined
+              ? " Pass --worker <id>."
+              : "";
+          throw new CliError(`${err.message}${hint} Nothing was written`, EXIT_INVALID_ARGS);
+        }
+        throw err;
       }
     }
 

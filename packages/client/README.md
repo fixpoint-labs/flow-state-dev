@@ -185,6 +185,20 @@ const runs = rows.filter((row) => row.parentSessionId != null);
 Leave the option off and you get the sessions a person started. Rows belonging to
 another principal, organization or tenant are absent either way.
 
+### Sessions created with a worker
+
+On a flow whose sessions each run one worker, `createSession` takes the worker
+and the server checks it before the session exists. `listSessions` takes the
+same option as a filter.
+
+```ts
+const fresh = await sessions.createSession({ flowKind: "agent", userId, worker: "researcher" });
+const mine = await sessions.listSessions({ flowKind: "agent", userId, worker: "researcher" });
+```
+
+The worker is sent as the session's `link`, which each returned session carries.
+It is fixed when the session is created.
+
 `listChildSessions` asks one session which dispatch runs were started from it.
 
 ```ts

@@ -62,6 +62,14 @@ export function createSQLiteSessionStore(db: Database.Database): SessionStore {
       }
       // `"all"` emits no clause at all — today's unrestricted query, unchanged.
 
+      // Link filter: an equality on the record's server-written `link`, read
+      // out of the stored JSON. No column of its own: the query is already
+      // narrowed by the indexed owner columns, and a session has one link.
+      if (options?.link !== undefined) {
+        parts.push("json_extract(data, '$.link') = ?");
+        params.push(options.link);
+      }
+
       return { clause: parts.join(" AND "), params };
     },
     // FIX-1010: `createdAt` orders on two immutable columns so a session

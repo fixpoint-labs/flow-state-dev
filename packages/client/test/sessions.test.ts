@@ -76,6 +76,25 @@ describe("createSessionClient", () => {
     );
   });
 
+  it("sends a worker as the create's link and as the listing's link filter", async () => {
+    const fetcher = vi
+      .fn<ClientFetch>()
+      .mockImplementationOnce(async () => createJsonResponse({ session: SESSION }, 201))
+      .mockImplementationOnce(async () => createJsonResponse({ sessions: [] }));
+
+    const client = createSessionClient({ fetcher });
+    await client.createSession({ flowKind: "agent", userId: "devuser", worker: "researcher" });
+    await client.listSessions({ flowKind: "agent", userId: "devuser", worker: "researcher" });
+
+    const createInit = fetcher.mock.calls[0]?.[1];
+    const body = JSON.parse(String(createInit?.body)) as Record<string, unknown>;
+    expect(body.link).toBe("researcher");
+    expect(body).not.toHaveProperty("worker");
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "/api/flows/sessions?flowKind=agent&userId=devuser&link=researcher"
+    );
+  });
+
   it("creates and deletes sessions", async () => {
     const fetcher = vi
       .fn<ClientFetch>()

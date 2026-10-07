@@ -198,6 +198,12 @@ export type SessionScopeHandle<
   TState extends object = Record<string, unknown>
 > = {
   identity: ScopeIdentity;
+  /**
+   * The value the flow's `session.createCheck` stored when this session was
+   * created. Fixed for the session's life: no route, action or block changes
+   * it. `undefined` for a session of a flow that declares no create check.
+   */
+  readonly link?: string;
   state: Readonly<TState>;
   metadata: Readonly<SessionMetadata>;
   items: SessionItemViews;
