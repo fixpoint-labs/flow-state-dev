@@ -5,8 +5,9 @@
  * A shared resource is an org-scoped collection whose every entry carries a
  * required `writtenBy: { userId, workerId? }`. Required in the resource's own
  * schema, so an entry written without it is refused by the store's validation
- * however it was written. The worker contract checks that any `writtenBy` a
- * worker flow declares is this whole field, so a loose one can't register.
+ * however it was written. The worker contract refuses a worker flow that
+ * declares `writtenBy` on any resource this helper didn't build, so the field's
+ * shape is always this one.
  *
  * {@link writeShared} stamps the field from the session, never from its input,
  * so whoever calls a flow can't sign as someone else. It is a helper, not a
@@ -39,53 +40,24 @@ export const writtenBySchema = z
 export type WrittenBy = z.infer<typeof writtenBySchema>;
 
 /**
- * What {@link writtenBySchema} accepts and refuses, as values: the rule a
- * declared `writtenBy` is judged by. Kept beside the schema, and a test runs
- * the schema itself through {@link isSharedWrittenBy}, so the two can't drift.
+ * The mark {@link sharedResource} leaves on what it returns: a
+ * non-enumerable property holding the state schema it built. Spreading the
+ * definition drops it, and swapping the schema in place no longer matches it,
+ * so only the helper's own output carries it.
  */
-const WRITTEN_BY_SAMPLES: { readonly accepts: readonly unknown[]; readonly refuses: readonly unknown[] } = {
-  accepts: [{ userId: "alice" }, { userId: "alice", workerId: "researcher" }],
-  refuses: [
-    undefined,
-    null,
-    {},
-    "alice",
-    { workerId: "researcher" },
-    { userId: "" },
-    { userId: 7 },
-    { userId: "alice", workerId: 7 },
-    { userId: "alice", workerId: "" }
-  ]
-};
-
-/** Anything that parses values the way a zod schema does. */
-export type SafeParser = { safeParse: (value: unknown) => { success: boolean; data?: unknown } };
-
-/** The same attribution: the same keys, each the same value. */
-function sameAttribution(parsed: unknown, sample: unknown): boolean {
-  if (parsed === null || typeof parsed !== "object" || sample === null || typeof sample !== "object") return false;
-  const a = parsed as Record<string, unknown>;
-  const b = sample as Record<string, unknown>;
-  const keys = Object.keys(b);
-  return Object.keys(a).length === keys.length && keys.every((key) => Object.hasOwn(a, key) && a[key] === b[key]);
-}
+const SHARED_RESOURCE = Symbol.for("flow-state-dev.workforce.sharedResource");
 
 /**
- * Whether `field` takes `writtenBy` the way a shared resource does: it accepts
- * what {@link writtenBySchema} accepts, keeping each value as given, and
- * refuses what it refuses. Judged on values, so a field declared some other way
- * but behaving the same passes, and an optional, looser or rewriting one (a
- * transform that drops `workerId`) fails.
+ * Whether `resource` is what {@link sharedResource} returned, with the state
+ * schema it built. The worker contract passes such a resource's `writtenBy`
+ * without looking further: the helper owns the field.
  *
- * @param field A resource's declared `writtenBy` schema.
+ * @param resource A resource as a flow declares it.
  */
-export function isSharedWrittenBy(field: SafeParser): boolean {
-  return (
-    WRITTEN_BY_SAMPLES.accepts.every((value) => {
-      const parsed = field.safeParse(value);
-      return parsed.success && sameAttribution(parsed.data, value);
-    }) && WRITTEN_BY_SAMPLES.refuses.every((value) => !field.safeParse(value).success)
-  );
+export function isSharedResource(resource: unknown): boolean {
+  if (resource === null || typeof resource !== "object") return false;
+  const built = (resource as Record<symbol, unknown>)[SHARED_RESOURCE];
+  return built !== undefined && built === (resource as { stateSchema?: unknown }).stateSchema;
 }
 
 type ZodDefLike = { typeName?: unknown; [key: string]: unknown };
@@ -113,16 +85,16 @@ function objectShapesOf(schema: unknown, seen: Set<unknown>): Record<string, unk
 }
 
 /**
- * Every `writtenBy` field a resource's schema declares, wherever zod's
- * wrappers put it: inside a `.refine()` or `.transform()`, either side of a
- * `.pipe()` or an intersection, any member of a union.
+ * Whether a resource's schema declares `writtenBy` anywhere zod's wrappers put
+ * it: inside a `.refine()` or `.transform()`, either side of a `.pipe()` or an
+ * intersection, any member of a union. Detection only, and best effort: it
+ * finds the field so the contract can ask where it came from, and judges
+ * nothing about its shape.
  *
  * @param stateSchema A resource's declared `stateSchema`.
  */
-export function declaredWrittenByFields(stateSchema: unknown): SafeParser[] {
-  return objectShapesOf(stateSchema, new Set())
-    .filter((shape) => Object.hasOwn(shape, WRITTEN_BY_KEY))
-    .map((shape) => shape[WRITTEN_BY_KEY] as SafeParser);
+export function declaresWrittenBy(stateSchema: unknown): boolean {
+  return objectShapesOf(stateSchema, new Set()).some((shape) => Object.hasOwn(shape, WRITTEN_BY_KEY));
 }
 
 /**
@@ -138,11 +110,13 @@ export function declaredWrittenByFields(stateSchema: unknown): SafeParser[] {
  * @param shape The entry's own fields. `writtenBy` is added, required.
  */
 export function sharedResource<T extends z.ZodRawShape>(pattern: string, shape: T) {
-  return defineResourceCollection({
+  const resource = defineResourceCollection({
     pattern,
     scope: "org",
     stateSchema: z.object({ ...shape, [WRITTEN_BY_KEY]: writtenBySchema })
   });
+  Object.defineProperty(resource, SHARED_RESOURCE, { value: resource.stateSchema, enumerable: false });
+  return resource;
 }
 
 /**

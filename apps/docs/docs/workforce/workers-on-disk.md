@@ -371,10 +371,10 @@ A worker flow must:
   accept the value a worker brings: `seatId` is a string, for instance.
 - **Have one door.** Exactly one public action declares `userMessage` and takes `{ message }`, so
   an app can talk to any worker without knowing which flow it runs on.
-- **Declare `writtenBy` in the shared-resource shape, if it declares it at all.** If a resource
-  declares `writtenBy`, it uses the shape a [shared resource](#sharing-something-from-a-worker)
-  does: a required `{ userId, workerId? }`, each a non-empty string. An optional or looser field is
-  refused.
+- **Declare any resource with `writtenBy` through `sharedResource()`.** A resource that has a
+  `writtenBy` field is declared with [`sharedResource()`](#sharing-something-from-a-worker), which
+  adds the field itself. A resource you define by hand with a `writtenBy` field is refused, even
+  when its shape is right.
 
 A worker is either **declared** or **hired**. A declared worker is one a `WORKER.md` file defines.
 A hired worker is one hired while the app runs, through the [`hire` handler or tool](./durable-hire.md)
@@ -546,8 +546,8 @@ A record is refused when it:
 
 `hireWorkforce` checks each flow in `workerFlows` too, before it hires anyone. A flow is refused
 when it is passed under a key that is not its own `kind`, has no door or more than one, doesn't
-accept a worker's configuration, or declares `writtenBy` some other way than a shared resource
-does. One run names every problem with every flow, and nothing is hired.
+accept a worker's configuration, or has a resource with `writtenBy` that `sharedResource()`
+didn't build. One run names every problem with every flow, and nothing is hired.
 
 A stored worker refused at startup is handled by `reloadHiredSeats`, not thrown: see
 [Reading the roster back at the next start](./durable-hire.md#reading-the-roster-back-at-the-next-start).

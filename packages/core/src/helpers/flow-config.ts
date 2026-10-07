@@ -29,7 +29,75 @@ export type FlowConfigMismatch =
    * or a `.transform()` on a requirement. The block would read a value the bag
    * does not hold, through a type that says otherwise.
    */
-  | { kind: "contributes"; requirement: FlowConfigRequirement; keys: string[] };
+  | {
+      kind: "contributes";
+      requirement: FlowConfigRequirement;
+      /** The paths as the message names them. */
+      keys: string[];
+      /** The same paths as segments; `[]` is the whole bag. */
+      paths: (string | number)[][];
+    };
+
+/** A path in a config bag, as segments. `[]` is the whole bag. */
+export type FlowConfigPath = readonly (string | number)[];
+
+/**
+ * One reason a config bag was refused, as data: what the refusal's message
+ * renders, path by path, so a caller can read it without parsing the message.
+ */
+export type FlowConfigIssue = {
+  /** Where in the bag. `[]` is the whole bag. */
+  path: FlowConfigPath;
+  /**
+   * Zod's issue code (`"unrecognized_keys"` names one undeclared key, at its
+   * own path), or the framework's: `"no_config_schema"` (the flow declares
+   * none) and `"block_contributes"` (a block's `flowConfigSchema` would change
+   * the bag at this path).
+   */
+  code: string;
+  /** The issue's own message. */
+  message: string;
+};
+
+/**
+ * What a refused config bag throws: the same message as before, plus the
+ * issues as data. Its `name` stays `"Error"`, so nothing that reads the error
+ * as text sees a difference.
+ */
+export class FlowConfigRefusalError extends Error {
+  /** Every reason the bag was refused. Never empty. */
+  readonly issues: readonly FlowConfigIssue[];
+
+  constructor(message: string, issues: readonly FlowConfigIssue[]) {
+    super(message);
+    this.issues = issues;
+  }
+}
+
+/** A Zod failure as issues, one per undeclared key. */
+export function flowConfigIssuesOf(error: ZodError): FlowConfigIssue[] {
+  return error.issues.flatMap((issue): FlowConfigIssue[] => {
+    if (issue.code === "unrecognized_keys") {
+      const keys = (issue as unknown as { keys: string[] }).keys;
+      return keys.map((key) => ({
+        path: [...issue.path, key],
+        code: issue.code,
+        message: `"${key}" is not a declared setting`
+      }));
+    }
+    return [{ path: [...issue.path], code: issue.code, message: issue.message }];
+  });
+}
+
+/** A mismatch as issues. */
+export function flowConfigMismatchIssues(mismatch: FlowConfigMismatch): FlowConfigIssue[] {
+  if (mismatch.kind === "unsatisfied") return flowConfigIssuesOf(mismatch.error);
+  return mismatch.paths.map((path) => ({
+    path,
+    code: "block_contributes",
+    message: `block "${mismatch.requirement.blockName}" declares a flowConfigSchema that would change the bag here`
+  }));
+}
 
 /**
  * The first requirement the bag does not fit, or `undefined`.
@@ -63,14 +131,14 @@ export function findFlowConfigMismatch(
       // A top-level `.transform()` on a requirement: the block would read
       // something the bag is not. Same failure as a default, reported against
       // the whole declaration rather than a key.
-      return { kind: "contributes", requirement, keys: ["<the whole bag>"] };
+      return { kind: "contributes", requirement, keys: ["<the whole bag>"], paths: [[]] };
     }
     // The requirement schema is not closed, so its output is normally a subset
     // of the bag — at every level. A path the parse HOLDS that the bag does not
     // is the schema contributing rather than reading.
-    const contributed = contributedPaths(parsed, bag, "");
+    const contributed = contributedPaths(parsed, bag, []);
     if (contributed.length > 0) {
-      return { kind: "contributes", requirement, keys: contributed };
+      return { kind: "contributes", requirement, keys: contributed.map(renderPath), paths: contributed };
     }
   }
   return undefined;
@@ -101,11 +169,15 @@ export function findFlowConfigMismatch(
  * `undefined` through a type promising otherwise. A transform at the TOP level
  * is still refused, by the non-object check above.
  */
-function contributedPaths(parsed: unknown, held: unknown, at: string): string[] {
+function contributedPaths(
+  parsed: unknown,
+  held: unknown,
+  at: (string | number)[]
+): (string | number)[][] {
   if (isPlainObject(parsed) && isPlainObject(held)) {
-    const paths: string[] = [];
+    const paths: (string | number)[][] = [];
     for (const key of Object.keys(parsed)) {
-      const path = at === "" ? key : `${at}.${key}`;
+      const path = [...at, key];
       if (!Object.hasOwn(held, key)) {
         paths.push(path);
         continue;
@@ -115,13 +187,20 @@ function contributedPaths(parsed: unknown, held: unknown, at: string): string[] 
     return paths;
   }
   if (Array.isArray(parsed) && Array.isArray(held) && parsed.length === held.length) {
-    const paths: string[] = [];
+    const paths: (string | number)[][] = [];
     for (let i = 0; i < parsed.length; i++) {
-      paths.push(...contributedPaths(parsed[i], held[i], `${at}[${i}]`));
+      paths.push(...contributedPaths(parsed[i], held[i], [...at, i]));
     }
     return paths;
   }
   return deepEqual(parsed, held) ? [] : [at];
+}
+
+/** A path as the messages name it: `a.b[0].c`. */
+function renderPath(path: readonly (string | number)[]): string {
+  return path
+    .map((segment, i) => (typeof segment === "number" ? `[${segment}]` : i === 0 ? segment : `.${segment}`))
+    .join("");
 }
 
 /** Render a Zod failure so the offending key is in the message, not just a path. */

@@ -9,11 +9,11 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { defineFlow, defineResourceCollection, FlowConfigRefusalError, handler } from "@flow-state-dev/core";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { workerConfigSchema } from "../src/worker-config";
 import { CONTRACT_KEYS, CONTRACT_PROBE_BAG, contractKeysRefused, workerFlowProblems } from "../src/worker-flow-contract";
-import { isSharedWrittenBy, sharedResource, writtenBySchema } from "../src/shared-resource";
+import { sharedResource, writtenBySchema } from "../src/shared-resource";
 
 const message = z.object({ message: z.string() });
 const reply = handler({
@@ -152,6 +152,43 @@ describe("configuration (BR-2)", () => {
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("`seatSkills`");
   });
+
+  it("refuses a flow whose block would replace the whole configuration", () => {
+    const flattens = handler({
+      name: "flattens-the-bag",
+      inputSchema: message,
+      outputSchema: message,
+      flowConfigSchema: z.object({ seatId: z.string() }).transform(() => "flat"),
+      execute: (input) => input
+    });
+    const flow = flowWith("flattened", {
+      actions: { run: { ...door, block: flattens } }
+    });
+    // Every hire of it fails: the mint refuses the bag as a whole.
+    expect(() => (flow as never as (o: object) => unknown)({ id: "x", config: { ...CONTRACT_PROBE_BAG } })).toThrow(
+      /<the whole bag>/
+    );
+    const problems = workerFlowProblems("flattened", flow);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('"flattened"');
+  });
+
+  it("passes a flow whose own setting refuses only the probe, whatever its message says", () => {
+    // The probe brings no `desk`, so the default fails its own rule; a real hire
+    // names a desk. The message holds a `; `, which is not two issues.
+    const flow = flowWith("desk-clerk", {
+      configSchema: workerConfigSchema().extend({
+        desk: z
+          .string()
+          .default("front")
+          .refine((desk) => desk !== "front", "choose custom; front reserved")
+      })
+    });
+    expect(workerFlowProblems("desk-clerk", flow)).toEqual([]);
+    expect(() =>
+      (flow as never as (o: object) => unknown)({ id: "x", config: { ...CONTRACT_PROBE_BAG, desk: "returns" } })
+    ).not.toThrow();
+  });
 });
 
 describe("the door (BR-3, BR-4)", () => {
@@ -180,96 +217,75 @@ describe("the door (BR-3, BR-4)", () => {
 });
 
 describe("attribution (BR-5)", () => {
-  const loose: Array<[string, z.ZodTypeAny]> = [
-    ["optional", z.object({ userId: z.string().min(1), workerId: z.string().min(1).optional() }).optional()],
-    ["any", z.any()],
-    ["without a required user", z.object({ userId: z.string().optional(), workerId: z.string().optional() })],
-    ["a bare string", z.string()],
-    ["a numeric user", z.object({ userId: z.union([z.string().min(1), z.number()]), workerId: z.string().min(1).optional() })],
-    ["any worker", z.object({ userId: z.string().min(1), workerId: z.any() })],
-    ["an empty worker", z.object({ userId: z.string().min(1), workerId: z.string().optional() })]
+  /** A flow declaring one org resource under `notes`. */
+  const sharing = (kind: string, notes: unknown) => flowWith(kind, { resources: { notes } });
+  const handRolled = (stateSchema: z.ZodTypeAny) =>
+    defineResourceCollection({ pattern: "team-notes/*", scope: "org", stateSchema });
+
+  it("passes a resource `sharedResource()` built", () => {
+    const notes = sharedResource("team-notes/*", { text: z.string() });
+    expect(workerFlowProblems("built-sharer", sharing("built-sharer", notes))).toEqual([]);
+  });
+
+  // Every one of these declares `writtenBy` on a resource the helper didn't
+  // build, so each is refused, however its schema reads. The ones after the
+  // first are the shapes no value probe could tell apart from the real field.
+  const handRolledCases: Array<[string, z.ZodTypeAny]> = [
+    ["the full shape, written out by hand", z.object({ text: z.string(), writtenBy: writtenBySchema })],
+    ["an optional field", z.object({ text: z.string(), writtenBy: writtenBySchema.optional() })],
+    ["any", z.object({ text: z.string(), writtenBy: z.any() })],
+    [
+      "a union with an unsigned branch",
+      z.union([z.object({ text: z.string(), writtenBy: writtenBySchema }), z.object({ text: z.string() })])
+    ],
+    [
+      "a transform of the whole entry that drops it",
+      z.object({ text: z.string(), writtenBy: writtenBySchema }).transform(({ text }) => ({ text }))
+    ],
+    [
+      "a field broader than the shared one",
+      z.object({
+        text: z.string(),
+        writtenBy: z.object({ userId: z.union([z.string().min(1), z.boolean()]), workerId: z.string().min(1).optional() }).strict()
+      })
+    ],
+    ["an alternative to the shared field", z.object({ text: z.string(), writtenBy: writtenBySchema.or(z.literal("system")) })],
+    ["a field that drops the worker", z.object({ text: z.string(), writtenBy: writtenBySchema.transform(({ userId }) => ({ userId })) })],
+    ["a refinement around a loose entry", z.object({ writtenBy: z.any(), text: z.string() }).refine(() => true)],
+    ["an intersection", z.intersection(z.object({ text: z.string() }), z.object({ writtenBy: z.any() }))],
+    ["a pipe", z.object({ writtenBy: z.any(), text: z.string() }).pipe(z.any())]
   ];
 
-  for (const [label, field] of loose) {
-    it(`refuses a \`writtenBy\` declared as ${label}, naming the accessor and its pattern`, () => {
-      const flow = flowWith("loose-sharer", {
-        resources: {
-          notes: defineResourceCollection({
-            pattern: "team-notes/*",
-            scope: "org",
-            stateSchema: z.object({ text: z.string(), writtenBy: field })
-          })
-        }
-      });
-      const problems = workerFlowProblems("loose-sharer", flow);
+  for (const [label, stateSchema] of handRolledCases) {
+    it(`refuses \`writtenBy\` on a hand-rolled resource: ${label}`, () => {
+      const problems = workerFlowProblems("hand-sharer", sharing("hand-sharer", handRolled(stateSchema)));
       expect(problems).toHaveLength(1);
-      expect(problems[0]).toContain('"loose-sharer"');
+      expect(problems[0]).toContain('"hand-sharer"');
       expect(problems[0]).toContain('"notes"');
       expect(problems[0]).toContain("team-notes/*");
+      expect(problems[0]).toContain("sharedResource(");
     });
   }
 
   it("judges a `writtenBy` at any scope, not only at org scope", () => {
-    const flow = flowWith("user-sharer", {
-      resources: {
-        notes: defineResourceCollection({
-          pattern: "my-notes/*",
-          scope: "user",
-          stateSchema: z.object({ text: z.string(), writtenBy: z.any() })
-        })
-      }
+    const notes = defineResourceCollection({
+      pattern: "my-notes/*",
+      scope: "user",
+      stateSchema: z.object({ text: z.string(), writtenBy: writtenBySchema })
     });
-    expect(workerFlowProblems("user-sharer", flow)).toHaveLength(1);
+    expect(workerFlowProblems("user-sharer", sharing("user-sharer", notes))).toHaveLength(1);
   });
 
-  // An entry's schema wrapped in a refinement, a transform, a pipe or an
-  // intersection still declares the field; the check must find it there.
-  const looseEntry = z.object({ writtenBy: z.any(), text: z.string() });
-  const wrapped: Array<[string, z.ZodTypeAny]> = [
-    ["a refinement", looseEntry.refine(() => true)],
-    ["a transform", looseEntry.transform((entry) => entry)],
-    ["a pipe", looseEntry.pipe(z.any())],
-    ["an intersection", z.intersection(z.object({ text: z.string() }), z.object({ writtenBy: z.any() }))],
-    ["a union member", z.union([z.object({ text: z.string(), writtenBy: z.any() }), z.object({ id: z.number() })])]
-  ];
-
-  for (const [label, stateSchema] of wrapped) {
-    it(`finds a loose \`writtenBy\` inside ${label}`, () => {
-      // What the gap let through: the resource takes an entry naming nobody.
-      expect(stateSchema.safeParse({ text: "x" }).success).toBe(true);
-      const flow = flowWith("wrapped-sharer", {
-        resources: { notes: defineResourceCollection({ pattern: "team-notes/*", scope: "org", stateSchema }) }
-      });
-      const problems = workerFlowProblems("wrapped-sharer", flow);
-      expect(problems).toHaveLength(1);
-      expect(problems[0]).toContain('"notes"');
-    });
-  }
-
-  it("passes a shared resource's field inside a refinement", () => {
-    const stateSchema = z.object({ text: z.string(), writtenBy: writtenBySchema }).refine(() => true);
-    const flow = flowWith("refined-sharer", {
-      resources: { notes: defineResourceCollection({ pattern: "team-notes/*", scope: "org", stateSchema }) }
-    });
-    expect(workerFlowProblems("refined-sharer", flow)).toEqual([]);
-  });
-
-  it("refuses a `writtenBy` that accepts a worker's name and then drops it", () => {
-    const dropsWorker = writtenBySchema.transform(({ userId }) => ({ userId }));
-    // Every value the shared field accepts, this accepts too; what it stores loses the worker.
-    expect(dropsWorker.parse({ userId: "alice", workerId: "researcher" })).toEqual({ userId: "alice" });
-    const flow = flowWith("forgetful-sharer", {
-      resources: {
-        notes: defineResourceCollection({
-          pattern: "team-notes/*",
-          scope: "org",
-          stateSchema: z.object({ text: z.string(), writtenBy: dropsWorker })
-        })
-      }
-    });
-    const problems = workerFlowProblems("forgetful-sharer", flow);
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain('"notes"');
+  it("refuses a copy of a built resource with its schema swapped, by spread or in place", () => {
+    const built = sharedResource("team-notes/*", { text: z.string() });
+    const dropsAttribution = built.stateSchema.transform(({ text }) => ({ text }));
+    // Spreading loses the mark: it isn't enumerable.
+    const spread = { ...built, stateSchema: dropsAttribution };
+    expect(workerFlowProblems("spread-sharer", sharing("spread-sharer", spread))).toHaveLength(1);
+    // Swapping the schema in place keeps the mark, which no longer matches.
+    const swapped = sharedResource("team-notes/*", { text: z.string() });
+    (swapped as { stateSchema: unknown }).stateSchema = dropsAttribution;
+    expect(workerFlowProblems("swapped-sharer", sharing("swapped-sharer", swapped))).toHaveLength(1);
   });
 });
 
@@ -309,73 +325,66 @@ describe("every problem at once (BR-7)", () => {
 });
 
 /**
- * The reader of a flow's refusal, alone. Each refusal is in core's wording
- * (`describeFlowConfigIssues` inside a mint's envelope). Check 1 rests on this
- * reading, so a refusal it can't read must say so, never pass.
+ * The reader of a flow's refusal, alone. It reads the issues core attaches to
+ * a config refusal, never the message, so each refusal here is built from
+ * issues. Check 1 rests on this reading: a refusal it can't read must say so,
+ * never pass.
  */
 describe("reading a flow's refusal of a worker's configuration", () => {
-  const bag = (issues: string) => `Flow "f" instance "f::worker-contract-probe" has an invalid config bag: ${issues}.`;
+  const refusal = (...issues: Array<[Array<string | number>, string, string?]>) =>
+    new FlowConfigRefusalError(
+      "Flow refused its bag.",
+      issues.map(([path, code, message]) => ({ path, code, message: message ?? "Required" }))
+    );
+  const none = { noConfigSchema: false, undeclared: [], wrongValue: [], wholeBag: [], unread: false };
 
   it("reads a flow with no configSchema", () => {
-    const read = contractKeysRefused(
-      'Flow "f" instance "f::p" was created with a config bag, but the flow declares no configSchema. ' +
-        "A copy may only carry settings the definition declared — add `configSchema: z.object({ ... })` " +
-        "to defineFlow(...), or drop the bag."
-    );
-    expect(read).toEqual({ noConfigSchema: true, undeclared: [], wrongValue: [], unread: false });
+    expect(contractKeysRefused(refusal([[], "no_config_schema"]))).toEqual({ ...none, noConfigSchema: true });
   });
 
   it("reads an undeclared top-level key as a contract key, and skips the flow's own", () => {
-    const read = contractKeysRefused(bag('"seatTools", "notAContractKey" is not a declared setting'));
-    expect(read).toEqual({ noConfigSchema: false, undeclared: ["seatTools"], wrongValue: [], unread: false });
+    const read = contractKeysRefused(refusal([["seatTools"], "unrecognized_keys"], [["notAContractKey"], "unrecognized_keys"]));
+    expect(read).toEqual({ ...none, undeclared: ["seatTools"] });
   });
 
   it("reads a wrong value at a contract key, at the top or inside it", () => {
-    expect(contractKeysRefused(bag('"seatId": Expected number, received string')).wrongValue).toEqual(["seatId"]);
-    expect(contractKeysRefused(bag('"seatSkills.0.name": Required')).wrongValue).toEqual(["seatSkills"]);
+    expect(contractKeysRefused(refusal([["seatId"], "invalid_type"])).wrongValue).toEqual(["seatId"]);
+    expect(contractKeysRefused(refusal([["seatSkills", 0, "name"], "invalid_type"])).wrongValue).toEqual(["seatSkills"]);
+    expect(contractKeysRefused(refusal([["seatTools", "extra"], "unrecognized_keys"])).wrongValue).toEqual(["seatTools"]);
   });
 
   it("names no contract key for a path inside the flow's own settings", () => {
     const read = contractKeysRefused(
-      bag('"own.seatId": Required; "seatId" is not a declared setting of "own"; "seatIdentity": Required')
+      refusal([["own", "seatId"], "invalid_type"], [["own", "seatId"], "unrecognized_keys"], [["seatIdentity"], "invalid_type"])
     );
-    expect(read).toEqual({ noConfigSchema: false, undeclared: [], wrongValue: [], unread: false });
+    expect(read).toEqual(none);
   });
 
-  it("reads every issue of a refusal that names several", () => {
+  it("reads every issue of a refusal that names several, whatever their messages hold", () => {
     const read = contractKeysRefused(
-      bag('"instructions" is not a declared setting; "seatId": Expected number, received string; "model": Required')
+      refusal(
+        [["instructions"], "unrecognized_keys"],
+        [["seatId"], "invalid_type", "Expected number; received string"],
+        [["model"], "custom", "choose custom; front reserved"]
+      )
     );
-    expect(read).toEqual({
-      noConfigSchema: false,
-      undeclared: ["instructions"],
-      wrongValue: ["seatId"],
-      unread: false
-    });
-  });
-
-  it("reads a block's refusal of the bag, whose own text carries a `; `", () => {
-    const read = contractKeysRefused(
-      'Flow "f" instance "f::p" has a config bag that block "b" cannot read: "seatId": Required. ' +
-        "That block declares `flowConfigSchema`; the flow's configSchema must produce a bag that " +
-        "satisfies it, and this copy's does not."
-    );
-    expect(read).toEqual({ noConfigSchema: false, undeclared: [], wrongValue: ["seatId"], unread: false });
+    expect(read).toEqual({ ...none, undeclared: ["instructions"], wrongValue: ["seatId"] });
   });
 
   it("reads a block that would change the bag at a contract key", () => {
-    const read = contractKeysRefused(
-      'Flow "f" instance "f::p": block "b" declares a flowConfigSchema that would change the bag at ' +
-        '"seatTools", "model" — a default, a transform, or a coercion. A block declares what it NEEDS.'
-    );
-    expect(read.wrongValue).toEqual(["seatTools"]);
-    expect(read.unread).toBe(false);
+    const read = contractKeysRefused(refusal([["seatTools"], "block_contributes"], [["model"], "block_contributes"]));
+    expect(read).toEqual({ ...none, wrongValue: ["seatTools"] });
   });
 
-  it("marks a refusal in any other wording unread, never as a pass", () => {
-    expect(contractKeysRefused(bag("seatId is not declared")).unread).toBe(true);
-    expect(contractKeysRefused(bag('"model": Required; seatId is missing')).unread).toBe(true);
-    expect(contractKeysRefused('Flow "f" rejected its configuration: "seatId" is unknown.').unread).toBe(true);
+  it("reads an issue about the whole bag as one, never as a pass", () => {
+    const read = contractKeysRefused(refusal([[], "block_contributes", "would change the bag here"]));
+    expect(read).toEqual({ ...none, wholeBag: ["would change the bag here"] });
+  });
+
+  it("marks anything that isn't a config refusal unread", () => {
+    expect(contractKeysRefused(new Error('"seatId" is not a declared setting')).unread).toBe(true);
+    expect(contractKeysRefused(new FlowConfigRefusalError("no issues", [])).unread).toBe(true);
+    expect(contractKeysRefused("thrown string").unread).toBe(true);
   });
 
   it("refuses a flow whose refusal it can't read, quoting the refusal", () => {
@@ -390,16 +399,5 @@ describe("reading a flow's refusal of a worker's configuration", () => {
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("can't read");
     expect(problems[0]).toContain('rejected its configuration: "seatId" is unknown.');
-  });
-});
-
-describe("the `writtenBy` rule check 3 applies", () => {
-  it("is passed by the shared resource's own schema, so the rule and the schema can't drift", () => {
-    expect(isSharedWrittenBy(writtenBySchema)).toBe(true);
-  });
-
-  it("is failed by an optional or looser field", () => {
-    expect(isSharedWrittenBy(writtenBySchema.optional())).toBe(false);
-    expect(isSharedWrittenBy(z.object({ userId: z.string(), workerId: z.string().optional() }))).toBe(false);
   });
 });

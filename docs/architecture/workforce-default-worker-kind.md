@@ -239,7 +239,8 @@ how "absent means default" and "wrong means error" drift apart.
 Before any record, the gate checks the flows themselves (FIX-1789): every entry of `workerFlows`,
 and the built-in under them, must meet the worker contract (`worker-flow-contract.ts`) — take the
 configuration a hire supplies by key and by value, have exactly one door, and declare any
-`writtenBy` as the shared-resource field. One problem refuses the whole call, once per flow, so the
+resource with `writtenBy` through `sharedResource()`, which owns the field (judged by provenance, a
+mark only the helper's output carries, not by sampling what the schema accepts). One problem refuses the whole call, once per flow, so the
 refusal does not depend on a worker naming the flow. Then each record resolves: the `agent` default
 first, then standard-only (an entry `{ flow, standardOnly: true }` refuses a record carrying an
 owner pin, which every runtime hire and stored row does and no `WORKER.md` does). The complete rule

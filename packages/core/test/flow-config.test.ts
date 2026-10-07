@@ -12,7 +12,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { defineFlow, generator, handler, router, sequencer } from "../src";
+import { defineFlow, FlowConfigRefusalError, generator, handler, router, sequencer } from "../src";
 import type { FlowInstance } from "../src/types/flow";
 import { createMockContext, runForTest } from "./helpers";
 
@@ -1045,5 +1045,115 @@ describe("flow config bag — what a block's declaration is worth", () => {
     flow({ config: { model: "opus" } } as never);
     expect(parse).toHaveBeenCalledTimes(1);
     parse.mockRestore();
+  });
+});
+
+/**
+ * A refusal carries its issues as data, beside the same message. A caller
+ * that has to tell one key's refusal from another (the workforce contract,
+ * for one) reads these instead of parsing the text.
+ */
+describe("flow config bag — refusals carry their issues as data", () => {
+  const refusalOf = (mint: () => unknown): FlowConfigRefusalError => {
+    try {
+      mint();
+    } catch (error) {
+      if (error instanceof FlowConfigRefusalError) return error;
+      throw error;
+    }
+    throw new Error("expected the mint to refuse");
+  };
+
+  const plain = handler({
+    name: "reads-nothing",
+    inputSchema: z.object({}),
+    outputSchema: z.object({}),
+    execute: async () => ({})
+  });
+  const action = { run: { block: plain, inputSchema: z.object({}) } };
+
+  it("names each undeclared key and each wrong value at its own path, message unchanged", () => {
+    const flow = defineFlow({
+      kind: "issues",
+      cardinality: "collection",
+      configSchema: z.object({ model: z.string(), limits: z.object({ retries: z.number() }).strict() }),
+      actions: action
+    });
+    const refused = refusalOf(() =>
+      flow({ id: "a", config: { model: 7, extra: 1, limits: { retries: 1, nope: true } } as never })
+    );
+    expect(refused.message).toContain('has an invalid config bag: ');
+    expect(refused.message).toContain('"extra" is not a declared setting');
+    expect(refused.name).toBe("Error");
+    expect(refused.issues.map((issue) => [issue.path, issue.code])).toEqual(
+      expect.arrayContaining([
+        [["model"], "invalid_type"],
+        [["extra"], "unrecognized_keys"],
+        [["limits", "nope"], "unrecognized_keys"]
+      ])
+    );
+  });
+
+  it("keeps a custom message whole, whatever punctuation it holds", () => {
+    const flow = defineFlow({
+      kind: "custom-message",
+      cardinality: "collection",
+      configSchema: z.object({ desk: z.string().refine(() => false, "choose custom; front reserved") }),
+      actions: action
+    });
+    const refused = refusalOf(() => flow({ id: "a", config: { desk: "front" } }));
+    expect(refused.issues).toEqual([{ path: ["desk"], code: "custom", message: "choose custom; front reserved" }]);
+  });
+
+  it("says the whole bag, an empty path, when a block would change all of it", () => {
+    const flow = defineFlow({
+      kind: "whole-bag",
+      cardinality: "collection",
+      configSchema: z.object({ model: z.string() }),
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "transforms-the-bag",
+            inputSchema: z.object({}),
+            outputSchema: z.object({}),
+            flowConfigSchema: z.object({ model: z.string() }).transform(() => "flat"),
+            execute: async () => ({})
+          })
+        }
+      }
+    });
+    const refused = refusalOf(() => flow({ id: "a", config: { model: "m" } }));
+    expect(refused.message).toContain('"<the whole bag>"');
+    expect(refused.issues).toEqual([expect.objectContaining({ path: [], code: "block_contributes" })]);
+  });
+
+  it("names the path a block's default would fill", () => {
+    const flow = defineFlow({
+      kind: "nested-contribution",
+      cardinality: "collection",
+      configSchema: z.object({ limits: z.object({}).passthrough() }),
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "fills-retries",
+            inputSchema: z.object({}),
+            outputSchema: z.object({}),
+            flowConfigSchema: z.object({ limits: z.object({ retries: z.number().default(9) }) }),
+            execute: async () => ({})
+          })
+        }
+      }
+    });
+    const refused = refusalOf(() => flow({ id: "a", config: { limits: {} } }));
+    expect(refused.message).toContain('"limits.retries"');
+    expect(refused.issues).toEqual([expect.objectContaining({ path: ["limits", "retries"], code: "block_contributes" })]);
+  });
+
+  it("says a flow with no configSchema refuses the whole bag", () => {
+    const flow = defineFlow({ kind: "no-schema", cardinality: "collection", actions: action });
+    const refused = refusalOf(() => flow({ id: "a", config: { model: "m" } as never }));
+    expect(refused.issues).toEqual([expect.objectContaining({ path: [], code: "no_config_schema" })]);
   });
 });

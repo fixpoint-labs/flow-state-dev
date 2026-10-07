@@ -240,8 +240,8 @@ export interface HireOptions {
    *
    * Every flow here, and the built-in `agent` under them, is checked against
    * the worker contract before any worker is hired: it takes the configuration
-   * a hire supplies, has one door, and declares any `writtenBy` in full
-   * (`workerFlowProblems`). One problem refuses the whole call.
+   * a hire supplies, has one door, and declares any resource with `writtenBy`
+   * through `sharedResource()` (`workerFlowProblems`). One problem refuses the whole call.
    *
    * Optional: the built-in `agent` flow is always available underneath, so a
    * roster of records that name no flow needs none of these. Passing a flow

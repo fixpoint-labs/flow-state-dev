@@ -122,7 +122,7 @@ export default defineFlow({
 
 Calling the factory with no argument yields the flow's one instance, whose id is its `kind`. A definition that should run as several configured copies declares `cardinality: "collection"` and gives each instance its own `id` (`reviewFlow({ id: "review-east" })`); a singleton refuses any other id. See [Flow options](https://flow-state.dev/docs/configuration/flow).
 
-Copies that differ by more than their name declare `configSchema` on the definition and pass `config` per copy (`reviewFlow({ id: "review-east", config: { model: "opus" } })`). The bag is parsed against the schema and frozen at that call; blocks read it as `ctx.flow.config`, and a block declares what it needs of any flow that installs it with `flowConfigSchema`. Both options are definition-time and instance-time halves of the same thing — see [Flow options](https://flow-state.dev/docs/configuration/flow).
+Copies that differ by more than their name declare `configSchema` on the definition and pass `config` per copy (`reviewFlow({ id: "review-east", config: { model: "opus" } })`). The bag is parsed against the schema and frozen at that call; blocks read it as `ctx.flow.config`, and a block declares what it needs of any flow that installs it with `flowConfigSchema`. Both options are definition-time and instance-time halves of the same thing — see [Flow options](https://flow-state.dev/docs/configuration/flow). A bag the copy can't take throws `FlowConfigRefusalError`: its message says why, and its `issues` list each reason as `{ path, code, message }`, where an empty `path` means the whole bag and `code` is Zod's issue code, `"no_config_schema"` or `"block_contributes"` (a block's `flowConfigSchema` would change the bag at that path).
 
 ## Exports
 
