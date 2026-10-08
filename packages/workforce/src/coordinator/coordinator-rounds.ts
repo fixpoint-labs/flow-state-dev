@@ -39,6 +39,7 @@ import {
   type DeliveryRecord
 } from "../delivery-ledger";
 import type { CoordinatorRouting } from "./coordinator-config";
+import { MAX_ROUNDS } from "./coordinator-keys";
 import {
   delegateLabel,
   roundAnswerSchema,
@@ -59,7 +60,7 @@ export const routeOnSchema = z
     /** The person's post the answers came from. */
     postId: z.string().min(1),
     /** The round they go out in. */
-    round: z.number().int().min(1),
+    round: z.number().int().min(1).max(MAX_ROUNDS),
     /** The answers, by author. */
     answers: z.array(roundAnswerSchema),
     /** Who they never go back to: the author, under best fit and round robin. */
