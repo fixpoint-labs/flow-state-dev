@@ -32,8 +32,9 @@ flowchart LR
 
 **How we verify:** `node specs/issues/FIX-1812/poc/sweep/sweep.mjs` classifies every
 `sequencer({...})` in tracked sources and docs code fences, and fails if any site with a
-`description` is missing from its list or a listed site is gone. Two controls were run and went
-red: a planted rename wrapper in `packages/testing`, and a stale expected entry. After the
+`description` is missing from its list or a listed site is gone. `--control` plants an unlisted
+wrapper and a stale entry and passes only when both are reported (`CONTROL PASS`). It was also run by hand once with a
+wrapper planted in `packages/testing`. After the
 change, the checker's expected list flips the `rename` sites to "gone", and the shift-manager
 tests that read the chief of staff's tool set stay green.
 
@@ -71,8 +72,8 @@ FIX-1811's. Nothing is persisted under the replaced wrappers' names: `hire` and
 ([D1](DECISIONS.md#d1)). *If wrong:* a few action-root wrappers stay; a later sweep can remove
 them with no change to `.as()`.
 
-**Open: none.** Blocked by FIX-1811: implementation starts after `.as()` merges, and follows
-whatever FIX-1811 decides about how `.as()` meets the Workforce catalog's name check.
+**Open: none.** Blocked by FIX-1811. Its spec (#2874) has `.as()` give the block its new name
+everywhere, so it passes the Workforce catalog's key-equals-name check with no Workforce change.
 
 Improvement · `shift-manager`, `workforce` README, `apps/docs` · small · 1 PR · blocked by
 [FIX-1811](https://linear.app/fixpoint-labs/issue/FIX-1811)

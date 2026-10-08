@@ -10,7 +10,7 @@ under FIX-1786 work.
 <a name="sites"></a>
 ## Sites
 
-From `node specs/issues/FIX-1812/poc/sweep/sweep.mjs` on `028d3547`.
+From `node specs/issues/FIX-1812/poc/sweep/sweep.mjs` on `028d3547`. The script's `EXPECTED` map is canonical; this table is a readable copy. On a rebase, update `EXPECTED` first.
 
 | Site | Verdict |
 | --- | --- |
@@ -59,8 +59,15 @@ See [DOCS.md](DOCS.md): code-example updates on two pages and one README.
 
 ## POC
 
-`poc/sweep/sweep.mjs`: the factual base of this spec. Totality assertion plus two negative
-controls (a planted wrapper; a stale expected entry), both seen red.
+`poc/sweep/sweep.mjs`: the factual base of this spec. Totality assertion; `--control` plants an
+unlisted wrapper and a stale expected entry and prints `CONTROL PASS` only when both fail.
+
+## Notes from review
+
+- (cursor, #2873) An exception-only manifest would shrink `EXPECTED` by about half; trade-off is
+  the kept sites' reasons leave the data. Implementer's call if the list churns on rebase.
+- (cursor, #2873) Keys like `name` and `RUN_BOARD_TOOL_NAME` are the unresolved name
+  expression; fine for frozen evidence, revisit if they churn.
 
 ## Follow-ups
 

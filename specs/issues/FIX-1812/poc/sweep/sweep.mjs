@@ -15,64 +15,68 @@
  * Totality: every `rename` and `kept` site must appear in EXPECTED below, and
  * every EXPECTED entry must still be found. Exit 1 on any mismatch.
  *
- * Usage: node specs/issues/FIX-1812/poc/sweep/sweep.mjs [repoRoot]
+ * Usage: node specs/issues/FIX-1812/poc/sweep/sweep.mjs [repoRoot] [--control]
+ *
+ * --control plants an unlisted described one-step wrapper and a stale EXPECTED
+ * entry, and passes only if the check reports both (prints CONTROL PASS).
  */
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-const root = path.resolve(process.argv[2] ?? ".");
+const args = process.argv.slice(2);
+const control = args.includes("--control");
+const root = path.resolve(args.find((a) => !a.startsWith("--")) ?? ".");
 const require = createRequire(path.join(root, "packages/core/package.json"));
 const ts = require("typescript");
 
 /** file → sequencer name → expected class and reason. */
+/** file → sequencer name → [expected class, reason]. Canonical site list; PLAN → Sites mirrors it. */
 const EXPECTED = {
   "packages/shift-manager/teams/devteam/host.mts": {
-    setWorkstreams: "rename",
-    hire: "rename",
-    createProject: "kept: approval tapIf before the write",
-    setRepository: "kept: approval tap before the write",
-    fire: "kept: approval tap before the write",
+    setWorkstreams: ["rename", "replace with .as()"],
+    hire: ["rename", "replace with .as()"],
+    createProject: ["kept", "approval tapIf before the write"],
+    setRepository: ["kept", "approval tap before the write"],
+    fire: ["kept", "approval tap before the write"],
   },
   "apps/kitchen-sink/lib/mailbox-post-control.ts": {
-    "post-to-mailbox": "rename",
+    "post-to-mailbox": ["rename", "replace with .as()"],
   },
   "packages/workforce/src/mailbox-post-capability.ts": {
-    "post-to-mailbox": "kept: signs, routes and maps the result",
+    "post-to-mailbox": ["kept", "signs, routes and maps the result"],
   },
   "apps/docs/docs/workforce/projects.md": {
-    createProject: "rename",
-    setWorkstreams: "rename",
+    createProject: ["rename", "replace with .as()"],
+    setWorkstreams: ["rename", "replace with .as()"],
   },
   "apps/docs/docs/workforce/chief-of-staff.md": {
-    hire: "rename",
-    fire: "kept: approval tap before the write",
+    hire: ["rename", "replace with .as()"],
+    fire: ["kept", "approval tap before the write"],
   },
   "packages/workforce/README.md": {
-    hire: "rename",
-    fire: "kept: approval tap before the write",
+    hire: ["rename", "replace with .as()"],
+    fire: ["kept", "approval tap before the write"],
   },
   // Kept: the wrapper does more than rename.
-  "apps/kitchen-sink/workforce/blocks/escalate.ts": { escalate: "kept: branches" },
-  "labs/fsd-coding-skill/src/flow.ts": { name: "kept: input connector" },
-  "packages/claude-code/src/sdk/workspace.ts": { name: "kept: taps around the step" },
-  "packages/integration-tests/src/scenarios/fixtures/artifact-flow.ts": { "write-artifact": "kept: tap" },
-  "packages/memory/src/tools/recall-tool.ts": { "memory/recall": "kept: steps, stepIf and rescue" },
-  "packages/orchestration/src/skills/delegation-surface.ts": { RUN_BOARD_TOOL_NAME: "kept: two steps" },
+  "apps/kitchen-sink/workforce/blocks/escalate.ts": { escalate: ["kept", "branches"] },
+  "labs/fsd-coding-skill/src/flow.ts": { name: ["kept", "input connector"] },
+  "packages/claude-code/src/sdk/workspace.ts": { name: ["kept", "taps around the step"] },
+  "packages/integration-tests/src/scenarios/fixtures/artifact-flow.ts": { "write-artifact": ["kept", "tap"] },
+  "packages/memory/src/tools/recall-tool.ts": { "memory/recall": ["kept", "steps, stepIf and rescue"] },
+  "packages/orchestration/src/skills/delegation-surface.ts": { RUN_BOARD_TOOL_NAME: ["kept", "two steps"] },
   "packages/tools/src/bash/blocks.ts": {
-    bash: "kept: cold sandbox setup",
-    "bash-read-file": "kept: cold sandbox setup",
-    "bash-write-file": "kept: cold sandbox setup",
+    bash: ["kept", "cold sandbox setup"],
+    "bash-read-file": ["kept", "cold sandbox setup"],
+    "bash-write-file": ["kept", "cold sandbox setup"],
   },
-  // Kept: these tests are about a sequencer used as a tool; the wrapper is the subject.
+  // Rename-shaped, but kept: these tests are about a sequencer used as a tool.
   "packages/core/test/flow-config.test.ts": {
-    "nested-tool": "kept: test subject is a sequencer tool",
-    "static-nested-tool": "kept: test subject is a sequencer tool",
+    "nested-tool": ["kept-shape", "test subject is a sequencer tool"],
+    "static-nested-tool": ["kept-shape", "test subject is a sequencer tool"],
   },
 };
-/** Sites classified `rename` whose expected verdict is kept anyway. */
-const RENAME_SHAPED_BUT_KEPT = new Set(["packages/core/test/flow-config.test.ts"]);
 
 const files = execSync("git ls-files '*.ts' '*.mts' '*.tsx' '*.md' '*.mdx'", { cwd: root })
   .toString().trim().split("\n")
@@ -120,13 +124,17 @@ for (const f of files) {
   } else scan(f, text, f.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
 }
 
+if (control) {
+  scan("planted.ts", 'sequencer({ name: "planted", description: "x" }).step(b);', ts.ScriptKind.TS);
+  EXPECTED["stale.ts"] = { stale: ["rename", "planted stale entry"] };
+}
+
 let bad = 0;
 for (const s of found) {
-  const want = EXPECTED[s.file]?.[s.name];
-  const ok = want !== undefined
-    && (want === "rename" || RENAME_SHAPED_BUT_KEPT.has(s.file) ? true : s.cls === "kept")
-    && (want !== "rename" || s.cls === "rename");
-  console.log(`${ok ? "ok  " : "FAIL"} ${s.cls.padEnd(6)} ${s.file} :: ${s.name}  [${s.chain.join(" ")}]${want && want !== "rename" ? `  (${want})` : ""}`);
+  const [want, why] = EXPECTED[s.file]?.[s.name] ?? [];
+  // `kept-shape`: rename-shaped by the rule, kept by decision (E3).
+  const ok = want === (s.cls === "rename" ? "rename" : "kept") || (want === "kept-shape" && s.cls === "rename");
+  console.log(`${ok ? "ok  " : "FAIL"} ${(want ?? s.cls).padEnd(10)} ${s.file} :: ${s.name}  [${s.chain.join(" ")}]${why ? `  (${why})` : ""}`);
   if (!ok) bad += 1;
 }
 for (const [file, names] of Object.entries(EXPECTED)) {
@@ -137,5 +145,12 @@ for (const [file, names] of Object.entries(EXPECTED)) {
     }
   }
 }
-console.log(`\n${found.filter((s) => s.cls === "rename").length} rename, ${found.filter((s) => s.cls === "kept").length} kept, ${roots} undescribed roots (out of scope)`);
+console.log(`\n${found.filter((s) => s.cls === "rename").length} rename-shaped, ${found.filter((s) => s.cls === "kept").length} kept, ${roots} undescribed roots (out of scope)`);
+if (control) {
+  const out = found.find((s) => s.file === "planted.ts");
+  const caught = out && !(EXPECTED[out.file]?.[out.name]);
+  const pass = caught && bad === 2;
+  console.log(pass ? "CONTROL PASS: planted wrapper and stale entry both reported" : `CONTROL FAIL: expected exactly 2 failures, got ${bad}`);
+  process.exit(pass ? 0 : 1);
+}
 process.exit(bad ? 1 : 0);
