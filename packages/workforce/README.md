@@ -2317,6 +2317,74 @@ Register `researchFlow()` and `rosterFlow()`.
   `flowKind === "workforce-roster"`. Two first calls at once may create two roster sessions, which
   is harmless: the roster lives in the user's scope, not in either session.
 
+## Coordinators
+
+A coordinator is a worker that hands each post to other workers on the same user's roster, its
+**delegates**. It runs on the `coordinator` flow, registered on the installation like any worker
+flow. A delegate's flow declares the internal entry that takes a delegated post; the built-in
+`agent` flow declares it, and your own flow does with `delegatedPostEntry`:
+
+```ts
+import {
+  createWorkerInstallation,
+  defineCoordinatorFlow,
+  delegatedPostEntry,
+  workerConfigSchema,
+} from "@flow-state-dev/workforce";
+
+const researchFlow = defineFlow({
+  kind: "research",
+  configSchema: workerConfigSchema(),
+  session: installation.session(),
+  resources: { ...installation.resources },
+  actions: { run: { inputSchema, block: door, userMessage: (i) => i.message } },
+  internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } }, // takes delegated posts
+});
+
+const coordinatorFlow = defineCoordinatorFlow({
+  installation,
+  delegateFlows: [researchFlow],     // the flows a delivery can reach
+  routeModel: "openai/gpt-5.4-mini", // best fit's one evaluator call
+});
+```
+
+A coordinator's file names its defaults:
+
+```md
+---
+flow: coordinator
+delegates: [researcher, scribe]
+routing: best-fit        # or judgment, the default
+fallback: scribe         # one of the delegates
+rounds: 0                # the default; at most 3
+---
+```
+
+- **Routing.** `judgment` runs the coordinator's own turn, which hands the post on with its
+  `handOff` tool or answers itself. `best-fit` sends a follow-up to the delegate still working the
+  person's last post, else makes one evaluator call over each delegate's note or description, else
+  sends it to the fallback, else runs the judgment turn. If that turn fails too, nobody takes the
+  post, and the conversation says so.
+- **Delegates per conversation.** Each conversation starts from a copy of the defaults, and its
+  changes stay in it. Change them with the `addDelegate({ worker, note? })`,
+  `removeDelegate({ worker })` and `setFallback({ worker | null })` actions, and read them with
+  `listDelegates({})`. The coordinator's turn has the same four as tools. A session create can't
+  set them: one that tries is refused with a 400 naming the field.
+- **Who can be a delegate.** A worker on the conversation's user's own roster, one of theirs or a
+  standard one, whose flow takes a delegated post or a task. Anything else is refused with the
+  same answer as a worker that doesn't exist: `No worker "<id>" on your roster.` A conversation
+  holds at most 25. A standard coordinator's defaults can name only standard workers;
+  `createWorkerInstallation` refuses the file otherwise.
+- **Delivery.** Each delegate gets its own session per conversation, created naming the delegate
+  as its worker, and reused for that conversation's later posts. Its answer lands in the
+  conversation under the delegate's name, once, however many times it is sent.
+- **The record.** Every routing decision leaves one `coordinator-route` component item: the post,
+  the round, the policy, `by` (`judgment`, `held`, `evaluated`, `fallback` or `unplaced`) and what
+  became of each delegate. Render it apart from the conversation's lines.
+
+Call `installation.standardWorkerProblems()` once your worker flows are defined to refuse a broken
+standard worker at load, such as a coordinator whose `rounds:` is above 3.
+
 ## Importing from a browser component
 
 The package root is server code. The mailbox floor reaches the task board, which imports
@@ -2363,6 +2431,10 @@ before fire removed inventory rows is left out that way.
 | `createSeatHireCapability({ workerFlows, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, mailboxBoards?, askBefore? })` | Puts catalog tools `hire`, `fire`, `brokenSeats` and `rehire` on a worker kind; `askBefore` puts `hire` and/or `fire` behind a person's approval, and `rehire` is always behind one. Compose it into `defineAgentWorkerFlow({ uses })`. A seat calls them by selecting `seat-hire: [tools]` with no `tools:` line, or by naming them in `tools:`; `tools: []` withholds them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
 | `createSeatHireBlocks({ workerFlows, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, mailboxBoards? })` | Returns `{ hire, fire, brokenSeats, rehire }`; `hire` and `fire` are the handlers behind `createSeatHireCapability`'s catalog tools, for mounting as a flow's actions, where they never ask for approval. Same options, inputs, outputs and refusals. Declare `defineHiredRosterCollection()` under `HIRED_ROSTER_RESOURCE` and `defineSeatInventoryCollection()` under `SEAT_INVENTORY_RESOURCE` on that flow. The organization comes from the session's principal; a body `orgId` is ignored, and with no resolver in play the session is in the default organization, so the hire lands there. Each hire and re-hire stamps a fresh `incarnation` on its roster row, its inventory row and the seat it mints; `fire` deletes only that incarnation's inventory row and, given `instanceAt` (the registry's instance at an address), releases only the seat minted from the row. Without `instanceAt` those checks fall back to the kind, and a `rehire` retry that finds the address already served is refused. `refuseRosterAdmin: true` refuses a hire or re-hire whose settings would give the seat the roster tools; off by default. |
 | `createWorkerInstallation({ standardWorkers?, workerFlows?, seatBlocks?, packageBlocks?, documents?, references?, skills?, packages? })` | The worker model's one module (see [Workers as data](#workers-as-data)). Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
+| `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
+| `defineCoordinatorFlow({ installation, delegateFlows, routeModel, defaultModel? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
+| `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. |
+| `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |
 | `defineWorkerRosterFlow(installation, actions?)` | The roster flow (`workforce-roster`), which declares the two worker collections so a client reads a user's roster through one session of it. Mount the hire blocks on it as actions. |
 | `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession({ worker })` and `ensureWorkerSession({ worker })`, over the session and resource clients. From `./browser` only. |
