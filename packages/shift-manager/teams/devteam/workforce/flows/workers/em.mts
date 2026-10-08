@@ -11,9 +11,13 @@
  *
  * What it does have is the feature board — its declaration of the ledger the
  * feature mailbox holds — and the board's `coder` worker is a
- * dispatcher naming another flow instance. That one line is D1: the row is
+ * dispatcher naming another flow and the worker on it. That is D1: the row is
  * handed across flows to the seat a Markdown file declared, rather than to a
  * task entry co-located on this flow.
+ *
+ * Every EM worker runs on this kind's one copy. A session names its worker
+ * (`installation.session()`), and a block reads that worker's own settings
+ * through the installation, never `ctx.flow.config`.
  *
  * Nothing under `flows/` is read as a convention file — the loader walks
  * `workers/`, `skills/`, `resources/` and `mailboxes/` and ignores the rest
@@ -21,10 +25,10 @@
  */
 
 import { defineFlow, dispatcher, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
-import type { BlockContext, TaskFlowTarget } from "@flow-state-dev/core/types";
+import type { BlockContext, TaskFlowTarget, TaskStateTarget } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
-import { MAILBOX_KIND } from "@flow-state-dev/workforce";
+import { MAILBOX_KIND, type WorkerInstallation } from "@flow-state-dev/workforce";
 
 /**
  * The mailbox kind's internal entry a seat's reply to a routed post goes
@@ -43,8 +47,9 @@ import {
 } from "../../../board.mts";
 import {
   ASK_ENTRY,
+  defineReadOwnFacts,
   INSPECT_ENTRY,
-  readOwnFacts,
+  seatOf,
   seatSettingsSchema,
 } from "../../../seat-config.mts";
 
@@ -192,13 +197,17 @@ const answerRoomPost = dispatcher({
 const POST_SHAPE = /^\s*([a-z0-9][a-z0-9-]*)\s*:\s*(\S.*)$/;
 
 export interface EmWorkerFlowOptions {
+  /** The installation whose workers run on this kind. */
+  installation: WorkerInstallation;
   /**
-   * The hired `coder` seat's instance id — where a claimed row is handed.
+   * The `coder` worker's id — whose session a claimed row runs in.
    *
    * Passed in rather than named here because the host derives it from the tree:
    * no file, and no seat, is named in this lab's code.
    */
-  coderSeatId: string;
+  coderWorker: string;
+  /** The flow the coder worker runs on. */
+  coderFlow: string;
   /** The file-declared documents, as `resourcesFromDocs` built them. */
   resources: Record<string, unknown>;
   /**
@@ -209,10 +218,10 @@ export interface EmWorkerFlowOptions {
   ledger: FeatureLedger;
   /**
    * Which worker a row's assignee names, for every name the board does not
-   * route itself: the Workforce lookup's `flowKind`, which the host builds
-   * over its live registry.
+   * route itself: the Workforce lookup's `flowKind` and `state`, which the
+   * host builds over the installation.
    */
-  findWorker?: TaskFlowTarget;
+  findWorker?: { flowKind: TaskFlowTarget; state: TaskStateTarget };
   /**
    * **Control only.** The asking door files its row *before* it suspends, so
    * a row exists while the ask is still pending. The red state of "nothing is
@@ -224,13 +233,16 @@ export interface EmWorkerFlowOptions {
 /**
  * Build the coordinator kind.
  *
- * @param options The coder seat's address, the documents and the ledger.
- * @returns The flow factory `hireWorkforce` mints one copy of per EM record.
+ * @param options The installation, the coder worker, the documents and the ledger.
+ * @returns The flow factory `hireWorkforce` registers one copy of, which every EM worker runs on.
  */
 export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
+  const { installation } = options;
+  const readOwnFacts = defineReadOwnFacts(seatOf(installation, EM_KIND));
   const board = coordinatorBoard({
     ledger: options.ledger,
-    coderSeatId: options.coderSeatId,
+    coderWorker: options.coderWorker,
+    coderFlow: options.coderFlow,
     ...(options.findWorker === undefined ? {} : { findWorker: options.findWorker }),
   });
 
@@ -446,10 +458,11 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
 
   return defineFlow({
     kind: EM_KIND,
-    // One copy per worker record, each addressed by its own id.
+    // Registered once, at its kind; every EM worker's session runs on it.
     cardinality: "collection",
     configSchema: seatSettingsSchema(),
-    resources: options.resources,
+    session: installation.session(),
+    resources: { ...options.resources, ...installation.resources },
     actions: {
       [FILE_ENTRY]: { block: fileRow, description: "File one feature as a row on the board." },
       [DRAIN_ENTRY]: { block: board.drain, description: "Run the board until it is idle." },

@@ -25,7 +25,7 @@ import { SessionItemsProvider } from "./flow-state/session-items-context";
 import { shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
 import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
-import { useSeatConversation } from "../lib/conversation";
+import { openConversation, useSeatConversation } from "../lib/conversation";
 import { useFollowLatest } from "../lib/follow";
 import { useLab } from "../lib/lab-data";
 import type { Seat } from "../lib/reads";
@@ -114,7 +114,7 @@ export function Conversation({
 
   // Nothing is sent into a conversation the screen hasn't read, or to a seat with no door.
   const blocked =
-    seat.door === null
+    seat.door === null || seat.kind === null
       ? `${seat.id} ${gaps.turn.noDoor}`
       : failure !== undefined
         ? "The conversation didn't load, so nothing can be sent until it does."
@@ -137,7 +137,9 @@ export function Conversation({
         const settled = startWork?.();
         feed.follow();
         try {
-          const sent = await sendTurn(clients, { sessionId: target, flowId: seat.id, door: seat.door! }, message, {
+          // A first line opens its session naming the seat's worker before the door's request runs in it.
+          if (sessionId === null) await openConversation(clients, { id: seat.id, kind: seat.kind! }, target);
+          const sent = await sendTurn(clients, { sessionId: target, flowId: seat.kind!, door: seat.door! }, message, {
             onHeld: () => {
               // The session holds the line: read it back now, so it is drawn while the reply is in flight.
               conversation.open(target);

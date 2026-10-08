@@ -16,19 +16,25 @@
  * host hands this kind the mailbox's ledger. The manager runs each row as a
  * coding run whose checkout and branch are derived from that ledger's id. The
  * task entry takes its rows from that ledger through {@link ledgerDoor}, with
- * no board of its own: the EM's board drains it and hands each row here.
+ * no board of its own: the EM's board drains it and hands each row here, in a
+ * session naming the coder worker it was handed to.
+ *
+ * Every coder worker runs on this kind's one copy. A session names its worker
+ * (`installation.session()`), and the phase reads that worker's own settings
+ * through the installation, never `ctx.flow.config`.
  */
 
 import { defineFlow } from "@flow-state-dev/core";
 import type { DeclaredResources } from "@flow-state-dev/core";
 import { harnessManager, type PhaseSpec, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { projectWorkspaceCapability } from "@flow-state-dev/workforce";
+import { projectWorkspaceCapability, type WorkerInstallation } from "@flow-state-dev/workforce";
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { ledgerDoor, RESUME_ENTRY, WORK_ENTRY, type FeatureLedger } from "../../../board.mts";
 import {
+  defineReadOwnFacts,
   INSPECT_ENTRY,
-  readOwnFacts,
+  seatOf,
   seatSettingsSchema,
 } from "../../../seat-config.mts";
 
@@ -36,6 +42,8 @@ import {
 export const CODER_KIND = "coder";
 
 export interface CoderWorkerFlowOptions {
+  /** The installation whose workers run on this kind. */
+  installation: WorkerInstallation;
   /**
    * **The slot.** How this kind is pointed at a coding harness.
    *
@@ -67,21 +75,24 @@ export interface CoderWorkerFlowOptions {
    */
   ledger: FeatureLedger;
   /**
-   * The hired EM seat's instance id: the coordinator whose board hands this
-   * seat its rows. The message door re-runs that board there after a stop.
-   * Absent, the kind declares no message door: nothing would re-run its board.
+   * The flow the coordinator whose board hands this seat its rows runs on.
+   * The message door re-runs that board there, in the session that claimed
+   * the row, after a stop. Absent, the kind declares no message door: nothing
+   * would re-run its board.
    */
-  coordinatorSeatId?: string;
+  coordinatorFlow?: string;
 }
 
 /**
  * Build the working kind.
  *
- * @param options The harness slot, the workspace, the phase, the documents and the ledger.
- * @returns The flow factory `hireWorkforce` mints one copy of per coder record.
+ * @param options The installation, the harness slot, the workspace, the phase, the documents and the ledger.
+ * @returns The flow factory `hireWorkforce` registers one copy of, which every coder worker runs on.
  */
 export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   const { collection } = options.ledger;
+  const { installation } = options;
+  const readOwnFacts = defineReadOwnFacts(seatOf(installation, CODER_KIND));
 
   const manager = harnessManager({
     boardCollectionId: options.ledger.id,
@@ -97,14 +108,15 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
 
   return defineFlow({
     kind: CODER_KIND,
-    // One copy per worker record, each addressed by its own id — which is what
-    // the coordinator's dispatcher names in `flowKind`.
+    // Registered once, at its kind, which is what the coordinator's
+    // dispatcher names in `flowKind`; the worker is named by the row's session.
     cardinality: "collection",
     configSchema: seatSettingsSchema(),
+    session: installation.session(),
     // Installed at flow level. Org-scoped, and organization identity is
     // unconditional, so the org registry is always built for a request that
     // reaches the reading blocks.
-    resources: options.resources,
+    resources: { ...options.resources, ...installation.resources },
     actions: {
       [INSPECT_ENTRY]: {
         block: readOwnFacts,
@@ -112,12 +124,12 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
       },
       // The seat's door: a person's message into one of its running coding
       // runs, which stops and continues the same coding session with it.
-      ...(options.coordinatorSeatId === undefined
+      ...(options.coordinatorFlow === undefined
         ? {}
-        : { message: manager.messageDoor({ drain: RESUME_ENTRY, flowKind: options.coordinatorSeatId }) }),
+        : { message: manager.messageDoor({ drain: RESUME_ENTRY, flowKind: options.coordinatorFlow }) }),
     },
     // Reachable only through the door's claim gate, by a hand-off that named
-    // this instance and carried this ledger's id.
+    // this flow and carried this ledger's id.
     task: { actions: { [WORK_ENTRY]: { block: manager, from: ledgerDoor(options.ledger) } } },
   } as never);
 }

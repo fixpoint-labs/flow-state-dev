@@ -4,10 +4,11 @@
  *
  * Neither goal tree raises an ask on `main` today, so this is the tree the
  * ask paths (Inbox, a workstream Stream's asks, the shared resume) are proved
- * on. It is an ordinary Lab config: read the tree, hire, build the mailbox
- * kind with the framework's own member wake and the inventory writer, open the
- * mailboxes and then the inventory, default-export the `FlowState`. In-memory
- * stores, so every load is a fresh Lab.
+ * on. It is an ordinary Lab config: read the tree, build the installation and
+ * register one copy of the asker flow, build the mailbox kind with the
+ * framework's own member wake and the inventory writer, open the mailboxes and
+ * then the inventory, default-export the `FlowState`. In-memory stores, so
+ * every load is a fresh Lab.
  *
  * `fsdev.config.mts` beside this file is the config the `shift-manager` command
  * loads; tests call {@link openAskLab} directly for the handle and the tree.
@@ -25,8 +26,10 @@ import {
   MAILBOX_KIND,
   mailboxBoardIds,
   mailboxInstances,
+  createWorkerInstallation,
   defineMailboxFlow,
   hireWorkforce,
+  inventorySeats,
   resourcesFromDocs,
   defineProjectBlocks,
   openMailboxes,
@@ -138,17 +141,19 @@ export async function openAskLab(options: AskLabOptions = {}) {
   const orgId = options.bearer === undefined ? DEFAULT_ORG_ID : (options.orgId ?? ASK_LAB_ORG_ID);
   const tree = await readAskLabTree();
   if (options.chiefOfStaff === true) tree.workers.push(...(await readAskLabTree(CHIEF_OF_STAFF_TREE)).workers);
-  const seats = hireWorkforce(tree.workers, {
-    workerFlows: { [ASKER_KIND]: defineAskerFlow(resourcesFromDocs(tree.documents), { projects: options.seatsStartProjects }) as never },
-    mailboxBoards: mailboxBoardIds(tree.mailboxes),
-  });
+  let workerFlows: Record<string, unknown> = {};
+  const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => workerFlows as never });
+  workerFlows = {
+    [ASKER_KIND]: defineAskerFlow(installation, resourcesFromDocs(tree.documents), { projects: options.seatsStartProjects }),
+  };
+  const copies = hireWorkforce(installation, { mailboxBoards: mailboxBoardIds(tree.mailboxes) });
   const declared = options.inventoryDeclared !== false;
-  const mailboxKind = defineMailboxFlow({ notify: wakeMemberSeats(seats), inventory: declared });
+  const mailboxKind = defineMailboxFlow({ notify: wakeMemberSeats(copies, { installation }), inventory: declared });
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(
       mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } }).map((i) => [i.kind, i]),
     ),
-    ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
+    ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     ...(options.projects === undefined
       ? {}
       : {
@@ -219,7 +224,9 @@ export async function openAskLab(options: AskLabOptions = {}) {
     };
     const binding = await openInventory(
       {
-        seats: options.doors === false ? seats.map((seat) => ({ id: seat.id, kind: seat.kind, actions: {} })) : seats,
+        seats: options.doors === false
+          ? inventorySeats(installation).map((seat) => ({ ...seat, actions: {} }))
+          : inventorySeats(installation),
         mailboxes: tree.mailboxes,
       },
       { run, seatWriter: { flowKind: MAILBOX_KIND }, userId: ASK_LAB_USER_ID, orgId },

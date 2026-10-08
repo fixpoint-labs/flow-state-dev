@@ -9,7 +9,7 @@
  * landing in the same session.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { SessionSummary } from "@flow-state-dev/client";
+import { ClientHttpError, type SessionSummary } from "@flow-state-dev/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GAPS } from "../src/gaps";
 import type { Seat } from "../src/lib/reads";
@@ -17,22 +17,27 @@ import { TurnNotDelivered } from "../src/lib/send";
 
 const read = vi.fn();
 const sendTurn = vi.fn();
+const createSession = vi.fn();
 // One object, as the provider hands one: a fresh `clients` each render would re-read forever.
-const lab = { clients: {}, refresh: vi.fn() };
+const lab = { clients: { userId: "u_1", sessions: { createSession } }, refresh: vi.fn() };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/run", async (original) => ({ ...(await original<typeof import("../src/lib/run")>()), readSessionItems: (...a: unknown[]) => read(...a) }));
 vi.mock("../src/lib/send", async (original) => ({ ...(await original<typeof import("../src/lib/send")>()), sendTurn: (...a: unknown[]) => sendTurn(...a) }));
 
 import { Conversation } from "../src/components/Conversation";
 
-const seat = { id: "eng.reviewer", door: "talk" } as unknown as Seat;
-const session = (id: string): SessionSummary => ({ id, flowId: "eng.reviewer", createdAt: 1, parentSessionId: null }) as unknown as SessionSummary;
+// A worker on the shared `agent` flow: its sessions are that flow's, naming it as their worker.
+const seat = { id: "eng.reviewer", kind: "agent", door: "talk" } as unknown as Seat;
+const session = (id: string): SessionSummary =>
+  ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "eng.reviewer" }, createdAt: 1, parentSessionId: null }) as unknown as SessionSummary;
 const item = (id: string, text: string) => ({ id, requestId: "r", type: "message", role: "assistant", ts: Date.UTC(2026, 9, 7, 17, 34), text });
 const delivered = { requestId: "q", suspended: false, stopped: null };
 
 beforeEach(() => {
   read.mockReset();
   sendTurn.mockReset();
+  createSession.mockReset();
+  createSession.mockResolvedValue({});
   lab.refresh.mockReset();
   read.mockResolvedValue({ items: [], truncated: false });
 });
@@ -101,8 +106,20 @@ describe("when a line may go", () => {
   });
 
   it("sends nothing to a seat that takes no message, and says why", () => {
-    drawn([], { seat: { id: "eng.reviewer", door: null } as unknown as Seat });
+    drawn([], { seat: { id: "eng.reviewer", kind: "agent", door: null } as unknown as Seat });
     expect(screen.getByTestId("rev-composer-blocked").textContent).toContain("eng.reviewer");
+  });
+
+  it("sends nothing to a worker whose flow it can't name, since its session couldn't be opened", () => {
+    drawn([], { seat: { id: "eng.reviewer", kind: null, door: "talk" } as unknown as Seat });
+    expect(screen.getByTestId("rev-composer-blocked").textContent).toContain("eng.reviewer");
+  });
+
+  it("isn't another worker's conversation on the same flow", async () => {
+    const theirs = { ...session("s9"), state: { workerId: "eng.author" } } as unknown as SessionSummary;
+    drawn([theirs]);
+    expect(screen.getByTestId("rev-conversation-empty")).toBeTruthy();
+    expect(read).not.toHaveBeenCalled();
   });
 
   it("holds it when the conversation failed to load", async () => {
@@ -117,7 +134,9 @@ describe("sending", () => {
     sendTurn.mockResolvedValue(delivered);
     drawn([session("s1")]);
     await send("ship it?");
-    expect(sendTurn.mock.calls[0]![1]).toEqual({ sessionId: "s1", flowId: "eng.reviewer", door: "talk" });
+    // To the worker's flow, never an address carrying the worker; the session names the worker.
+    expect(sendTurn.mock.calls[0]![1]).toEqual({ sessionId: "s1", flowId: "agent", door: "talk" });
+    expect(createSession).not.toHaveBeenCalled();
     expect(sendTurn.mock.calls[0]![2]).toBe("ship it?");
   });
 
@@ -148,6 +167,8 @@ describe("sending", () => {
 
   it("starts a conversation with a first line, and a retry after it failed lands in the same session", async () => {
     sendTurn.mockRejectedValueOnce(new TurnNotDelivered("not-sent", "offline")).mockResolvedValue(delivered);
+    // The retry finds the session the first attempt opened: the Lab answers 409, and the line still goes.
+    createSession.mockResolvedValueOnce({}).mockRejectedValueOnce(new ClientHttpError("exists", { status: 409, body: null }));
     drawn([]);
     await send("hello");
     await send("hello");
@@ -155,6 +176,9 @@ describe("sending", () => {
     expect(first).toMatch(/^conv_[0-9a-f]{32}$/);
     // A new id here would orphan a session the Lab may already have opened.
     expect(second).toBe(first);
+    // Opened naming the worker before the door's request runs in it: an action can't name one.
+    expect(createSession.mock.calls[0]![0]).toEqual({ flowKind: "agent", userId: "u_1", sessionId: first, state: { workerId: "eng.reviewer" } });
+    expect(createSession.mock.invocationCallOrder[0]!).toBeLessThan(sendTurn.mock.invocationCallOrder[0]!);
   });
 
   it("sends a line handed in from elsewhere once, as if typed", async () => {
