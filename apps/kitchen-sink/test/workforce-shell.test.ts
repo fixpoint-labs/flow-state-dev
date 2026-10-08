@@ -32,6 +32,7 @@ import {
   SHELL_BOARDS,
   SHELL_MAILBOXES,
   seatAskFor,
+  wokenWorkerOf,
 } from "../lib/workforce-shell";
 
 describe("the shell's names match the workforce tree", () => {
@@ -157,5 +158,15 @@ describe("the conversation the page opens on", () => {
   it("is none when the hire session is all there is, so the page starts one", () => {
     expect(defaultConversation([{ id: "sess-hires", tags: ["seat-hires"] }])).toBeUndefined();
     expect(defaultConversation([])).toBeUndefined();
+  });
+});
+
+describe("a mailbox's working row names the worker it woke", () => {
+  // Every worker runs on the one `agent` copy, so a run's flow id is `agent`
+  // for all of them; only the wake's key says which worker it is.
+  it("reads the worker off the wake's key, and nothing off any other run", () => {
+    expect(wokenWorkerOf({ topic: "mailbox:support.help:support.devices" })).toBe("support.devices");
+    expect(wokenWorkerOf({ topic: "brief:billing" })).toBeUndefined();
+    expect(wokenWorkerOf({})).toBeUndefined();
   });
 });

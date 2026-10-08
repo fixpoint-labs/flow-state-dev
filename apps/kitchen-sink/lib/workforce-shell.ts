@@ -65,6 +65,17 @@ export const SEAT_ASKS = {
   agent: { action: "run", field: "message" },
 } as const satisfies Record<(typeof SEAT_KINDS)[number], SeatAsk>;
 
+/**
+ * The worker a mailbox woke, read off the run's `topic`: the key Workforce's
+ * wake derives each worker's conversation from, `mailbox:<mailbox>:<worker>`.
+ * Every worker on a flow shares its copy, so the run's `flowId` names the
+ * flow (`agent`), not the worker. `undefined` for any other run.
+ */
+export function wokenWorkerOf(run: { readonly topic?: string }): string | undefined {
+  const match = /^mailbox:[^:]+:(.+)$/.exec(run.topic ?? "");
+  return match?.[1];
+}
+
 /** A seat kind's answer, or `undefined` for a kind the shell does not know. */
 export function seatAskFor(kind: string): SeatAsk | undefined {
   return (SEAT_ASKS as Record<string, SeatAsk | undefined>)[kind];
