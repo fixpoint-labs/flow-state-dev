@@ -1145,6 +1145,29 @@ export interface BlockDefinition<
   ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>;
 
   /**
+   * Return a copy of this block under a new name, a new description, or both.
+   * Everything else is the same block: schemas, connectors, resources,
+   * capabilities, rescue handlers and the model-output mapper ride the copy.
+   *
+   * The new name is the copy's only name: the model calls it by that name,
+   * and its items, trace rows, errors and resume points carry it. The original
+   * block is not changed. An omitted option keeps the original's value; a
+   * blank name is refused when the copy is built.
+   *
+   * Unlike {@link asTool}, `.as()` adds nothing at run time — no wrapper and
+   * no extra `tool_output`. The two stack: `block.as({ name }).asTool()` shows
+   * a tool pill under the new name, while `block.asTool().as({ name })`
+   * renames only the wrapper and the pill keeps the original name.
+   *
+   * Returns a plain block definition, so on a sequencer finish adding steps
+   * first and rename last.
+   *
+   * Known limitation: a copy of a `dispatcher()` block still names its
+   * dispatches and dispatch refusals with the original name.
+   */
+  as(options: BlockAsOptions): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>;
+
+  /**
    * Return a copy of this block that recovers from its own failures. If the
    * block throws a non-`SuspensionError`, the first handler whose `when` matches
    * runs — receiving the thrown error, with the same scoped context the block
@@ -1160,6 +1183,14 @@ export interface BlockDefinition<
    */
   rescue(handlers: RescueHandlerSpec[]): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>;
 }
+
+/** Options for {@link BlockDefinition.as}. */
+export type BlockAsOptions = {
+  /** The copy's name — what the model calls and what items and traces show. Omitted, the original's. */
+  name?: string;
+  /** What the model reads about the copy. Omitted, the original's. */
+  description?: string;
+};
 
 /** Options for {@link BlockDefinition.asTool}. */
 export type AsToolOpts = {

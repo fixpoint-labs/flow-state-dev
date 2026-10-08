@@ -371,3 +371,38 @@ describe("BlockDefinition.asTool", () => {
     expect(items.map((i) => i.blockName).sort()).toEqual(["r", "s"]);
   });
 });
+
+describe("BlockDefinition.as stacked with .asTool()", () => {
+  const lookup = () =>
+    handler({
+      name: "lookup",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({ answer: z.string() }),
+      execute: (input) => ({ answer: `result:${input.q}` }),
+    });
+
+  it("names the pill for the copy when .as() comes first (BR-15)", async () => {
+    const seq = sequencer({ name: "prefetch", inputSchema: z.object({ q: z.string() }) }).step(
+      lookup().as({ name: "fetchPrices" }).asTool(),
+    );
+    const { ctx, emitted } = ctxWithRecorder();
+    await expect(runForTest(seq, { q: "hello" }, ctx)).resolves.toEqual({ answer: "result:hello" });
+
+    const items = toolOutputsOf(emitted);
+    expect(items).toHaveLength(1);
+    expect(items[0].blockName).toBe("fetchPrices");
+    expect(items[0].toolCall.name).toBe("fetchPrices");
+  });
+
+  it("renames only the wrapper when .as() comes after, and the pill keeps the original name (BR-16)", async () => {
+    const wrapped = lookup().asTool().as({ name: "fetchPrices" });
+    expect(wrapped.name).toBe("fetchPrices");
+    const seq = sequencer({ name: "prefetch", inputSchema: z.object({ q: z.string() }) }).step(wrapped);
+    const { ctx, emitted } = ctxWithRecorder();
+    await runForTest(seq, { q: "hello" }, ctx);
+
+    const items = toolOutputsOf(emitted);
+    expect(items).toHaveLength(1);
+    expect(items[0].toolCall.name).toBe("lookup");
+  });
+});

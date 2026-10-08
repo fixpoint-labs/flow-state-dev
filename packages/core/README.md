@@ -147,6 +147,7 @@ Copies that differ by more than their name declare `configSchema` on the definit
 - `.connectInput(mapper)` — adapt input shape at the call boundary
 - `.connectOutput(mapper)` — transform output shape at the call boundary
 - `.mapModelOutput(mapper)` — when the block is used as a generator tool, supply a model-visible string representation of its output
+- `.as({ name?, description? })` — a copy of the block under a new name and/or description, for showing it to a model as a tool or registering it under a key that must match its name. The new name is used everywhere (tool calls, items, traces, resume); the original is unchanged. Adds nothing at run time, unlike `.asTool()`
 - `.asTool(opts?)` — wrap the block so it emits a `tool_output` item when run from a sequencer step (same envelope and lifecycle as the AI SDK tool-loop path)
 
 **Background work lifetime:** `.sideChain()`, `.sideChainIf()`, and `.forEachSideChain()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool before terminal status — on every outcome, and repeatedly until no task is left, so a task that queues more background work is waited on too. Use `.waitForSideChain()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.

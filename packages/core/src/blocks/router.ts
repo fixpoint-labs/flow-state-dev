@@ -250,7 +250,11 @@ export function router<
     // down one arm is still a board the flow must be able to route to after a
     // restart.
     childBlocks: config.routes ?? [],
-    execute: async (input, ctx) => {
+    execute: async (input, ctx, self) => {
+      // The running definition's name, not the authored `config.name`: a
+      // `.as()` copy shares this closure. Route record, errors and resume
+      // validation all name the router that is running.
+      const routerName = self.name;
       const candidate = (config.execute as (input: TInput, ctx: BlockContext) =>
         Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>
       )(input, ctx);
@@ -273,7 +277,7 @@ export function router<
 
       if (!passesValidation) {
         throw new Error(
-          `Router "${config.name}" selected invalid route "${selected.name}". Route must be one of declared candidates.`
+          `Router "${routerName}" selected invalid route "${selected.name}". Route must be one of declared candidates.`
         );
       }
 
@@ -290,7 +294,7 @@ export function router<
       const recordedDecision = replayLog?.recordedRouterDecision(`${requestId}:${routerPath}`);
       if (recordedDecision !== undefined && recordedDecision.selectedRoute !== selected.name) {
         throw new RouteUnavailableError({
-          routerName: config.name,
+          routerName,
           recordedRoute: recordedDecision.selectedRoute,
           reselectedRoute: selected.name,
           recordedRouteDeclared: config.routes.some(
@@ -303,7 +307,7 @@ export function router<
       // (FIX-814): the hook's `router_decision` write was fire-and-forget,
       // so a suspension inside the branch could persist before its anchor,
       // orphaning the decision for the resume path.
-      await ctx._runtimeHooks?.onRouteSelected?.(config.name, selected.name, ctx._blockIdentity?.blockInstanceId);
+      await ctx._runtimeHooks?.onRouteSelected?.(routerName, selected.name, ctx._blockIdentity?.blockInstanceId);
 
       // FIX-573 §5: the routed block's input source matches whatever the
       // router itself received. Stash the router's own `_blockInputHint`

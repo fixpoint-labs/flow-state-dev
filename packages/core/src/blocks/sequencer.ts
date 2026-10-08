@@ -17,7 +17,7 @@ import type {
   SideChainIterationOptions,
   SideChainResult
 } from "./sequencer-methods";
-import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
+import { buildBlock, mergeDeclaredResources, stampInformationalOutputSchema } from "./internal/build-block";
 import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../errors/sequencer-output-schema-error";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
@@ -107,6 +107,12 @@ type SequencerOpResult = {
 
 type SequencerOperation = {
   name: string;
+  /**
+   * The operation's name, derived from the running sequencer's name. Set by
+   * operations that carry the sequencer's own name (`/connect-input`), so a
+   * `.as()` copy's step is named for the copy, not the original.
+   */
+  nameFor?: (sequencerName: string) => string;
   run: (
     value: unknown,
     ctx: BlockContext,
@@ -862,8 +868,8 @@ function runSequencerOperations(
   rescueHandlers: RescueHandlerSpec[],
   durable: boolean,
   stateSchema: ZodTypeAny | undefined
-): (input: unknown, ctx: BlockContext) => Promise<SequencerInnerResult> {
-  return async (input: unknown, ctx: BlockContext): Promise<SequencerInnerResult> => {
+): (input: unknown, ctx: BlockContext, sequencerName: string) => Promise<SequencerInnerResult> {
+  return async (input: unknown, ctx: BlockContext, sequencerName: string): Promise<SequencerInnerResult> => {
     const runtime = createRuntimeState();
     let currentValue: unknown = input;
     // Running BlockValue descriptor for the sequencer's output (FIX-413).
@@ -917,7 +923,8 @@ function runSequencerOperations(
 
         for (let index = 0; index < operations.length; index += 1) {
           const operation = operations[index];
-          runtime.stepHistory.push(operation.name);
+          const operationName = operation.nameFor?.(sequencerName) ?? operation.name;
+          runtime.stepHistory.push(operationName);
           currentStepIndex = index;
 
           const result = await operation.run(currentValue, ctx, runtime, index);
@@ -931,7 +938,7 @@ function runSequencerOperations(
           snapshotVersion += 1;
           lastStateJson = await emitStateSnapshot(
             ctx,
-            operation.name,
+            operationName,
             index,
             lastStateJson,
             durable,
@@ -943,7 +950,7 @@ function runSequencerOperations(
           if (lastStateJson === prevStateJson) {
             snapshotVersion -= 1;
           } else {
-            lastStepName = operation.name;
+            lastStepName = operationName;
             lastStepIndex = index;
           }
 
@@ -1074,12 +1081,14 @@ function runSequencerOperations(
  * `superRefine`) that `safeParse` would silently skip.
  */
 function wrapWithOutputValidation(
-  inner: (input: unknown, ctx: BlockContext) => Promise<SequencerInnerResult>,
-  outputSchema: ZodTypeAny | undefined,
-  sequencerName: string
-): (input: unknown, ctx: BlockContext) => Promise<unknown> {
-  return async (input, ctx) => {
-    const { value, lastStepName } = await inner(input, ctx);
+  inner: (input: unknown, ctx: BlockContext, sequencerName: string) => Promise<SequencerInnerResult>,
+  outputSchema: ZodTypeAny | undefined
+): (input: unknown, ctx: BlockContext, self: BlockDefinition<any, any>) => Promise<unknown> {
+  return async (input, ctx, self) => {
+    // The running definition's name, not the authored one: a `.as()` copy
+    // shares this closure, and its steps and errors must name the copy.
+    const sequencerName = self.name;
+    const { value, lastStepName } = await inner(input, ctx, sequencerName);
     if (outputSchema === undefined) {
       return value;
     }
@@ -1166,8 +1175,7 @@ function createSequencer<
     },
     execute: wrapWithOutputValidation(
       runSequencerOperations(operations, rescueHandlers, durable, config.stateSchema),
-      config.outputSchema,
-      config.name
+      config.outputSchema
     ),
     declaredResources: accumulatedResources,
     ownDeclaredResources,
@@ -1182,8 +1190,7 @@ function createSequencer<
   // Override the informational schema on the block definition so devtools and consumers
   // (parallel, forEach) see the real output type — without triggering validation.
   if (trackedOutputSchema !== undefined) {
-    (baseBlock as any).outputSchema = trackedOutputSchema;
-    (baseBlock as any).config = { ...baseBlock.config, outputSchema: trackedOutputSchema };
+    stampInformationalOutputSchema(baseBlock, trackedOutputSchema);
   }
 
   /** Merge a child block's declaredResources into the sequencer's accumulator. */
@@ -2425,6 +2432,7 @@ function createSequencer<
     connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): SequencerDefinition<TFrom, TOutput, TStateSchema> {
       const connectOp: SequencerOperation = {
         name: `${config.name}/connect-input`,
+        nameFor: (sequencerName) => `${sequencerName}/connect-input`,
         run: async (value, ctx) => {
           // `connectInput` transforms input; the transform itself is not a
           // content-bearing item. Leave descriptor unset — downstream ops

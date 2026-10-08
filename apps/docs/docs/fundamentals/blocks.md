@@ -153,6 +153,50 @@ When the LLM calls `deep-research`, the framework runs the full sequencer pipeli
 
 A tool can also pause for a human before it runs: call `ctx.suspend()` inside it to gate the call for approval, and the request resumes past it. See [Generator and router suspend/resume](/docs/advanced/generator-and-router-suspend-resume).
 
+#### Renaming a block for the model: `.as()`
+
+The model calls a tool by the block's `name` and decides when to call it from the block's `description`. A block you didn't write, from a pattern or another package, often has a name that reads wrong in your flow, or no description at all.
+
+`block.as({ name, description })` returns a copy of the block under a new name, a new description, or both. Everything else is the same block: its schemas, connectors, resources and rescue handlers come along.
+
+```ts
+import { generator } from "@flow-state-dev/core";
+import { notes } from "./notes";
+
+const assistant = generator({
+  name: "assistant",
+  model: "openai/gpt-5.4-mini",
+  tools: [
+    notes.write.as({
+      name: "saveNote",
+      description: "Save a note for the person. Use it when they ask you to remember something.",
+    }),
+  ],
+});
+```
+
+Wherever the copy runs, it goes by the new name. The model is offered `saveNote`, and the copy's tool pills, trace rows and a suspended call's resume all show `saveNote`. The original is unchanged: where you use `notes.write` directly, it runs and shows up as `notes.write`. You can list the original and a renamed copy in one `tools` array, and the model sees two tools.
+
+Leave out `name` to keep the original's name and only replace the description, or leave out `description` to keep the original's.
+
+A blank or whitespace-only `name` throws when you call `.as()`.
+
+Tool names must be unique within one generator. Each `.as()` call returns a new block, so two copies under two names are two tools, but two different blocks with the same name in one `tools` array make the generator throw when it runs (`Generator "assistant" has two tools named "saveNote"`). That includes a description-only copy listed beside its original, and two `.as()` calls with the same name. Listing the same block value twice is fine.
+
+A router's routes follow the same rule, checked when you build the router: two different blocks in `routes` can't share a name.
+
+On a sequencer, call `.as()` after the last `.step()`. The copy is typed as a `BlockDefinition`, which has no `.step()` or other step-adding methods.
+
+`.as()` is not `.asTool()`. `.as()` changes what the block is called and adds nothing at run time. `.asTool()`, below, wraps a block so a sequencer step shows a tool pill. They stack: put `.as()` first, and the pill shows the new name.
+
+```ts
+const prefetch = sequencer({ name: "prefetch" }).parallel({
+  fetchPrices: getPrices.as({ name: "fetchPrices" }).asTool({ agentName: "analyst" }),
+});
+```
+
+The other order, `.asTool().as(...)`, renames only the wrapper's row in the trace, and the pill keeps the original name.
+
 #### Showing a deterministic call as a tool: `.asTool()`
 
 Sometimes you already know what the tool inputs are. An analyst-style flow may fetch its data up front (deterministic, parallel, no LLM in the loop) and only call the LLM for synthesis.

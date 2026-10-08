@@ -13,7 +13,7 @@
  * post action. The stand-in lives here, honoured only under `KITCHEN_SINK_TEST_MODE=1`
  * (`goalControl`), and can never reach a deployed build.
  */
-import { defineCapability, dispatcher, sequencer, type DefinedCapability } from "@flow-state-dev/core";
+import { defineCapability, dispatcher, type DefinedCapability } from "@flow-state-dev/core";
 import {
   MAILBOX_KIND,
   MAILBOX_SEAT_POST_ACTION,
@@ -28,20 +28,15 @@ import { goalControl } from "./goal-control";
 /** The stand-in capability when the control is on; `undefined` otherwise. */
 export function mailboxPostControl(): DefinedCapability | undefined {
   if (goalControl() !== "post-without-author") return undefined;
-  const postWithoutAuthor = sequencer({
+  const postWithoutAuthor = dispatcher({
     name: POST_TO_MAILBOX_TOOL,
     description: "Post a line to a mailbox you are a member of.",
+    flowKind: MAILBOX_KIND,
+    action: MAILBOX_SEAT_POST_ACTION,
     inputSchema: postToMailboxInputSchema,
-  }).step(
-    dispatcher({
-      name: "post-to-mailbox-without-author",
-      flowKind: MAILBOX_KIND,
-      action: MAILBOX_SEAT_POST_ACTION,
-      inputSchema: postToMailboxInputSchema,
-      session: { id: (input: PostToMailboxInput) => input.mailbox },
-      payload: (input: PostToMailboxInput) => ({ body: input.body }),
-    }),
-  );
+    session: { id: (input: PostToMailboxInput) => input.mailbox },
+    payload: (input: PostToMailboxInput) => ({ body: input.body }),
+  });
   return defineCapability({
     name: MAILBOX_POST_CAPABILITY,
     presets: { tools: { tools: [postWithoutAuthor] }, default: ["tools"] },

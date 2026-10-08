@@ -266,6 +266,13 @@ const remembers = defineAgentWorkerFlow({
 });
 ```
 
+> To list a block under a different key, rename the block to match with
+> [`.as({ name })`](../fundamentals/blocks.md#renaming-a-block-for-the-model-as). If a
+> capability in `uses` and the catalog both list the renamed block, build it once and pass that
+> one value to both. Each `.as()` call returns a new block, so two calls give two different
+> blocks under one key, and `defineAgentWorkerFlow` throws
+> (`refused catalog key "memory/recall"`).
+
 Then the worker names it like any other tool:
 
 ```md

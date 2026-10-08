@@ -40,7 +40,7 @@ You can't fire yourself or any worker declared in the organization's files.
 Those change when someone edits their folder.
 ```
 
-Then build the tools from `createWorkerHireBlocks` and put them in the `agent` flow's catalog. A catalog key is the tool's own name, so wrap each block in a sequencer carrying the name and what the model reads about it. Here a fire waits for a person's approval first:
+Then build the tools from `createWorkerHireBlocks` and put them in the `agent` flow's catalog. A catalog key is the tool's own name, so give `hire` that name with `.as()`, along with what the model reads about it. A fire waits for a person's approval first, so `fire` is a sequencer that asks before it writes:
 
 ```ts title="src/workforce.ts"
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
@@ -79,12 +79,10 @@ const installation = createWorkerInstallation({
 
 const { hire, fire } = createWorkerHireBlocks(installation);
 const rosterTools = {
-  hire: sequencer({
+  hire: hire.as({
     name: "hire",
     description: "Hire a worker of the person's own: `id`, the `flow` it runs on (`agent` when omitted), and `settings`.",
-    inputSchema: hire.inputSchema,
-    outputSchema: hire.outputSchema,
-  }).step(hire),
+  }),
   fire: sequencer({
     name: "fire",
     description: "Fire one of the person's own workers, by id, once the person approves it.",
