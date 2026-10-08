@@ -1,7 +1,8 @@
 import { z } from "zod";
 import type { BlockContext } from "../types/block";
-import type { ResourceRef } from "../types/resource";
+import type { AnyResourceRef, ResourceRef } from "../types/resource";
 import type { ResourceCollectionRef } from "../types/resource-collection";
+import type { ResourceVisibility, ResourceVisibilityRule } from "../types/resource-visibility";
 import { handler } from "../blocks/handler";
 import {
   extractBareTopic,
@@ -14,7 +15,41 @@ type CollectionEntry = {
   name: string;
   scope: string;
   ref: ResourceCollectionRef<any>;
+  /** What this turn's visibility rule allows the model: never `"hidden"` here. */
+  access: Exclude<ResourceVisibility, "hidden">;
 };
+
+/**
+ * The flow's visibility rule, read off the running flow. `ctx.flow` is the
+ * flow instance at run time; the rule is definition-only, so every copy
+ * carries its definition's.
+ */
+function visibilityRuleOf(ctx: BlockContext): ResourceVisibilityRule | undefined {
+  return (ctx.flow as { resourceVisibility?: ResourceVisibilityRule } | undefined)?.resourceVisibility;
+}
+
+/**
+ * Every registered resource the model may reach on this turn, with what it
+ * may do: the one place the flow's `resourceVisibility` rule is applied, so
+ * every listing and lookup below narrows the same way. A resource the rule
+ * hides is left out here, so it answers exactly like one that isn't
+ * registered. With no rule, every entry is `"visible"`.
+ */
+function reachableEntries(ctx: BlockContext): Array<{ entry: AnyResourceRef; access: Exclude<ResourceVisibility, "hidden"> }> {
+  const registry = ctx.resources;
+  if (registry === undefined) return [];
+  const rule = visibilityRuleOf(ctx);
+  if (rule === undefined) return registry.list().map((entry) => ({ entry, access: "visible" as const }));
+  const out: Array<{ entry: AnyResourceRef; access: Exclude<ResourceVisibility, "hidden"> }> = [];
+  // The registry's own keys are its accessor names; `get` and `list` are its methods.
+  for (const [name, entry] of Object.entries(registry as Record<string, unknown>)) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const ref = entry as AnyResourceRef;
+    const access = rule(ctx, { name, ref });
+    if (access !== "hidden") out.push({ entry: ref, access });
+  }
+  return out;
+}
 
 /**
  * True for a projected resource collection ref (FIX-858) — carries the
@@ -35,14 +70,11 @@ function isProjectedRef(entry: unknown): boolean {
  */
 function collectCollections(ctx: BlockContext): CollectionEntry[] {
   const entries: CollectionEntry[] = [];
-  const registry = ctx.resources;
-  if (registry === undefined) return entries;
-
-  for (const entry of registry.list()) {
+  for (const { entry, access } of reachableEntries(ctx)) {
     // ResourceCollectionRef has a `pattern` property that ResourceRef does not.
     if ("pattern" in entry && !isProjectedRef(entry)) {
       const nsRef = entry as unknown as ResourceCollectionRef<any>;
-      entries.push({ name: nsRef.pattern, scope: nsRef.scope, ref: nsRef });
+      entries.push({ name: nsRef.pattern, scope: nsRef.scope, ref: nsRef, access });
     }
   }
 
@@ -57,28 +89,25 @@ function collectCollections(ctx: BlockContext): CollectionEntry[] {
  */
 export function collectProjectedCollections(ctx: BlockContext): CollectionEntry[] {
   const entries: CollectionEntry[] = [];
-  const registry = ctx.resources;
-  if (registry === undefined) return entries;
-
-  for (const entry of registry.list()) {
+  for (const { entry, access } of reachableEntries(ctx)) {
     if ("pattern" in entry && isProjectedRef(entry)) {
       const nsRef = entry as unknown as ResourceCollectionRef<any>;
-      entries.push({ name: nsRef.pattern, scope: nsRef.scope, ref: nsRef });
+      entries.push({ name: nsRef.pattern, scope: nsRef.scope, ref: nsRef, access });
     }
   }
 
   return entries;
 }
 
+/** The static (single) resources the model may reach on this turn, with what it may do. */
+function reachableStatics(ctx: BlockContext): Array<{ ref: ResourceRef<any>; access: Exclude<ResourceVisibility, "hidden"> }> {
+  return reachableEntries(ctx)
+    .filter(({ entry }) => !("pattern" in entry && "create" in entry) && !isProjectedRef(entry))
+    .map(({ entry, access }) => ({ ref: entry as ResourceRef<any>, access }));
+}
+
 function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
-  const registry = ctx.resources;
-  if (registry === undefined) return [];
-  return registry
-    .list()
-    .filter(
-      (entry: any): entry is ResourceRef<any> =>
-        !("pattern" in entry && "create" in entry) && !isProjectedRef(entry)
-    );
+  return reachableStatics(ctx).map(({ ref }) => ref);
 }
 
 /**
@@ -111,7 +140,7 @@ export function resourceTools() {
       ok: z.literal(true),
     }),
     execute: async (input, ctx) => {
-      const { nsRef, key } = resolvePathToCollection(input.path, ctx);
+      const { nsRef, key } = resolvePathToCollection(input.path, ctx, "write");
       await nsRef.create(key, input.state as any);
       return { path: input.path, ok: true as const };
     },
@@ -146,7 +175,7 @@ export function resourceTools() {
       ok: z.literal(true),
     }),
     execute: async (input, ctx) => {
-      const { nsRef, key } = resolvePathToCollection(input.path, ctx);
+      const { nsRef, key } = resolvePathToCollection(input.path, ctx, "write");
       const handle = await nsRef.get(key);
       await handle.patchState(input.state as any);
       return { path: input.path, ok: true as const };
@@ -164,7 +193,7 @@ export function resourceTools() {
       ok: z.literal(true),
     }),
     execute: async (input, ctx) => {
-      const { nsRef, key } = resolvePathToCollection(input.path, ctx);
+      const { nsRef, key } = resolvePathToCollection(input.path, ctx, "write");
       await nsRef.delete(key);
       return { path: input.path, ok: true as const };
     },
@@ -189,14 +218,8 @@ export async function resolveResourceByPath(
   path: string,
   ctx: BlockContext,
 ): Promise<ResourceRef<any> | undefined> {
-  const registry = ctx.resources;
-  if (registry === undefined) return undefined;
-
-  for (const entry of registry.list()) {
-    if (!("pattern" in entry && "create" in entry) && !isProjectedRef(entry)) {
-      const ref = entry as ResourceRef<any>;
-      if (ref.path === path) return ref;
-    }
+  for (const ref of collectStaticResources(ctx)) {
+    if (ref.path === path) return ref;
   }
 
   const collections = collectCollections(ctx);
@@ -228,6 +251,23 @@ export function isLlmReadable(ref: ResourceRef<any>): boolean {
 /** Content write gate. Independent of `llmReadable`, matching the single-resource contract. */
 export function isLlmWritable(ref: ResourceRef<any>): boolean {
   return ref.config?.llmWritable === true;
+}
+
+/**
+ * Whether the model may write `ref` on this turn: its own `llmWritable`, and
+ * the flow's visibility rule leaving it writable. `ref` is a static resource
+ * or a collection instance resolved through this module on this turn.
+ */
+export function isLlmWritableNow(ref: ResourceRef<any>, ctx: BlockContext): boolean {
+  if (!isLlmWritable(ref)) return false;
+  if (visibilityRuleOf(ctx) === undefined) return true;
+  const own = reachableStatics(ctx).find((s) => s.ref === ref || s.ref.uri === ref.uri);
+  if (own !== undefined) return own.access === "visible";
+  const slash = ref.uri.indexOf("/");
+  const scope = ref.uri.slice(0, slash);
+  const path = ref.uri.slice(slash + 1);
+  const owner = collectCollections(ctx).find((ns) => ns.scope === scope && matchCollectionKey(ns, path) !== undefined);
+  return owner?.access === "visible";
 }
 
 /**
@@ -310,9 +350,12 @@ export async function resolveResourceByUri(
 
 function resolvePathToCollection(
   path: string,
-  ctx: BlockContext
+  ctx: BlockContext,
+  intent: "read" | "write" = "read"
 ): { nsRef: ResourceCollectionRef<any>; key: string | Record<string, string> } {
-  const collections = collectCollections(ctx);
+  // A collection the rule leaves read-only isn't a target for a write: the
+  // write answers as for a path no collection matches.
+  const collections = collectCollections(ctx).filter((ns) => intent === "read" || ns.access === "visible");
 
   for (const ns of collections) {
     const key = matchCollectionKey(ns, path);
