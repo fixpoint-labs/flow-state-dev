@@ -198,7 +198,7 @@ export const SNAPSHOT_IDENTITY: Record<string, string> = {
 export type Git = (
   cwd: string,
   args: string[],
-  options?: { env?: Record<string, string>; input?: string | Uint8Array },
+  options?: { env?: Record<string, string>; input?: string | Uint8Array; raw?: boolean },
 ) => Promise<string>;
 
 /** A temporary directory for one hold or rebuild, removed by the caller. */
@@ -220,7 +220,10 @@ export async function snapshotWorkingTree(
   scratch: string,
 ): Promise<{ head: string; tree: string; snapshot: string; skipped: SkippedPath[] }> {
   const head = await git(checkout, ["rev-parse", "--verify", "HEAD^{commit}"]);
-  const status = await git(checkout, ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none"]);
+  const status = await git(checkout, ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none"], {
+    // Untrimmed: the first entry's status code can start with a space.
+    raw: true,
+  });
   const skipped: SkippedPath[] = [];
   for (const path of statusPaths(status)) {
     const full = join(checkout, ...path.replace(/\/$/, "").split("/"));
@@ -230,7 +233,12 @@ export async function snapshotWorkingTree(
     } catch {
       continue; // deleted: nothing to read, and the add records the deletion
     }
-    if (stat.isDirectory()) skipped.push({ path: path.replace(/\/$/, ""), why: "submodule" });
+    // A directory on the list is a submodule or a nested repository only when
+    // it has a `.git` of its own. Otherwise it is a tracked file the run
+    // replaced with a directory, whose files are listed on their own.
+    if (stat.isDirectory()) {
+      if (existsSync(join(full, ".git"))) skipped.push({ path: path.replace(/\/$/, ""), why: "submodule" });
+    }
     else if (stat.isFile() && stat.size > HELD_FILE_CAP_BYTES) skipped.push({ path, why: "over-cap" });
   }
 

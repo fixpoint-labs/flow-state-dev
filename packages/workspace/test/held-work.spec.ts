@@ -290,6 +290,48 @@ describe("a hold snapshots the working tree through a temporary index (BR-1–BR
     expect(held.bytes).toBeLessThan(HELD_FILE_CAP_BYTES);
   });
 
+  it("names an over-cap edit when it is the only change, unstaged", async () => {
+    remote.commit("main", "big.bin", "small at head\n");
+    const host = hostOn(rootA);
+    const place = await host.provision(answer, request());
+    writeFileSync(join(place.cwd, "big.bin"), Buffer.alloc(HELD_FILE_CAP_BYTES + 1, 1));
+
+    const held = (await host.checkpoint(place))!;
+
+    expect(held.skipped).toEqual([{ path: "big.bin", why: "over-cap" }]);
+  });
+
+  it("holds new directories of files, and a tracked file the run replaced with a directory, and rebuilds them", async () => {
+    const a = hostOn(rootA);
+    const place = await a.provision(answer, request());
+    mkdirSync(join(place.cwd, "brand-new", "inner"), { recursive: true });
+    writeFileSync(join(place.cwd, "brand-new", "a.txt"), "a\n");
+    writeFileSync(join(place.cwd, "brand-new", "inner", "b.txt"), "b\n");
+    rmSync(join(place.cwd, "gone.txt"));
+    mkdirSync(join(place.cwd, "gone.txt"));
+    writeFileSync(join(place.cwd, "gone.txt", "now-a-dir.txt"), "c\n");
+    const expected = treeOf(place.cwd);
+
+    const held = (await a.checkpoint(place))!;
+
+    expect(held.skipped).toEqual([]);
+    const placeB = await hostOn(rootB).provision(answer, request({ host: a.hostId(), held }));
+    expect(placeB.origin).toBe("held");
+    expect(treeOf(placeB.cwd)).toEqual(expected);
+  });
+
+  it("still leaves out a nested repository", async () => {
+    const a = hostOn(rootA);
+    const place = await a.provision(answer, request());
+    mkdirSync(join(place.cwd, "vendored"));
+    execFileSync("git", ["init", "-q", join(place.cwd, "vendored")]);
+    writeFileSync(join(place.cwd, "vendored", "x.txt"), "x\n");
+
+    const held = (await a.checkpoint(place))!;
+
+    expect(held.skipped).toEqual([{ path: "vendored", why: "submodule" }]);
+  });
+
   it("drops a file the run deleted, however large it was at the head", async () => {
     const host = hostOn(rootA);
     const place = await host.provision(answer, request());
@@ -444,6 +486,26 @@ describe("provision brings a run back (BR-16–BR-22)", () => {
     expect(place.heldDir).toBe(join(rootB, ...PLACE, "held"));
     expect(readFileSync(join(place.heldDir!, "src", "deep", "nested", "new.txt"), "utf8")).toBe("new in turn 1\n");
     expect(existsSync(join(place.cwd, "held"))).toBe(false);
+  });
+
+  it("starts from the base with no held/ when the answered pack does not match its record", async () => {
+    const held = await holdTurnOne();
+    const bytes = (await store.get(held.key))!;
+    bytes[bytes.length - 30] ^= 0xff;
+    await store.put(held.key, bytes);
+    const place = await hostOn(rootB).provision(answer, request({ host: "machine-a", held: { ...held, parked: true } }));
+    expect(place.origin).toBe("base");
+    expect(place.heldDir).toBeUndefined();
+    expect(existsSync(join(rootB, ...PLACE, "held"))).toBe(false);
+  });
+
+  it("fails the provision, rather than starting without held/, when the store cannot be read", async () => {
+    const held = await holdTurnOne();
+    const broken: HeldWorkStore = { ...store, get: async () => Promise.reject(new Error("the held-work store is unavailable")) };
+    await expect(
+      hostOn(rootB, broken).provision(answer, request({ host: "machine-a", held: { ...held, parked: true } })),
+    ).rejects.toThrow(/unavailable/);
+    expect(existsSync(join(rootB, ...PLACE, "held"))).toBe(false);
   });
 
   it("starts from the base with no held/ when the answered pack cannot be read", async () => {

@@ -385,7 +385,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         env: { ...env, ...extra?.env },
         ...(extra?.input !== undefined ? { input: extra.input } : {}),
       });
-      return stdout.trim();
+      return extra?.raw === true ? stdout : stdout.trim();
     };
   }
 
@@ -852,7 +852,13 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline);
       let heldDir: string | undefined;
       if (held !== null) {
-        heldDir = await locked(cloneLock, deadline, () => layOutHeld(clone, held, dir, left)).catch(() => undefined);
+        // A pack that cannot be read, or is not the one recorded, leaves no
+        // `held/` (BR-20). Anything else, the store itself failing above all,
+        // fails the provision, so a retry can still lay the work out.
+        heldDir = await locked(cloneLock, deadline, () => layOutHeld(clone, held, dir, left)).catch((error: unknown) => {
+          if (error instanceof HeldWorkMismatchError) return undefined;
+          throw error;
+        });
       }
       return { repo, origin: "base", base: repo.baseCommit!, ...(heldDir !== undefined ? { heldDir } : {}) };
     }
@@ -959,6 +965,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       const index = { GIT_INDEX_FILE: join(scratch, "index") };
       await g(clone, ["read-tree", held.snapshot], { env: index });
       await g(clone, [`--work-tree=${heldDir}`, "checkout-index", "--all", "--force"], { env: index });
+    } catch (error) {
+      rmSync(heldDir, { recursive: true, force: true });
+      throw error;
     } finally {
       rmSync(scratch, { recursive: true, force: true });
     }
