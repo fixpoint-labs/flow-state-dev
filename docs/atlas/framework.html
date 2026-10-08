@@ -386,7 +386,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 396" role="img" aria-label="The determinism dial: four control modes from left to right — sequencer decided by the author at build time, router decided by your code per call, task board decided by the running program during the run, and skill delegation decided by the model inside the turn — each with what it costs on resume and when to reach for it.">
+      <svg viewBox="0 0 940 396" role="img" aria-label="The determinism dial: four control modes from left to right — sequencer decided by the author at build time, router decided by your code per call, task board decided by the running program during the run, and a model planning on the board with the task tools, decided by the model inside the turn — each with what it costs on resume and when to reach for it.">
         <defs><marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
 
         <text class="t-lbl" x="24" y="20">Shape known before the run</text>
@@ -458,7 +458,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
         <rect class="n-box" x="714" y="48" width="214" height="304" rx="5"/>
         <rect x="714" y="48" width="214" height="4" fill="var(--k-generator)"/>
-        <text class="t-b" x="728" y="76" fill="var(--k-generator)">skill delegation</text>
+        <text class="t-b" x="728" y="76" fill="var(--k-generator)">the task tools</text>
         <text class="t-s" x="728" y="94">a plan the model writes</text>
         <path class="ln-soft" d="M728,106 L914,106"/>
         <text class="t-xs" x="728" y="124">DECIDED BY</text>
@@ -487,7 +487,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <ul>
     <li>A <strong>sequencer step</strong> can be a task board&rsquo;s drain — <code>.step(board.drain)</code>. <code>parallelTasks</code>, <code>supervisor</code>, <code>planAndExecute</code> and <code>eventActors</code> are all exactly that.</li>
     <li>A <strong>board worker</strong> can be a sequencer, so one node of a dynamic graph can be a fixed pipeline.</li>
-    <li>A <strong>generator</strong> holding a skill can command its own private board — the skill plans tasks, <code>runBoard</code> drains them.</li>
+    <li>A <strong>generator</strong> holding the task tools can plan tasks onto a board for that board&rsquo;s workers to take.</li>
     <li>A <strong>board task</strong> can be handed off by a dispatcher seat, re-entering through that same board's claim gate in a child session.</li>
   </ul>
   <p>So the practical design move is not "which mode is this application?" but <strong>"at which point in this pipeline does the shape stop being knowable?"</strong> Everything before that point should be a sequencer. Everything after it needs a board or a skill. Most real systems put the boundary somewhere in the middle, and the framework's job is to make that seam invisible.</p>
@@ -628,7 +628,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-s" x="118" y="236">addTask × 4  (assignee, deps)</text>
         <text class="t-xs" x="620" y="236">ROWS LAND IN A RESOURCE-BACKED TaskCollection</text>
         <path class="ln-soft" d="M106,262 L113,262"/>
-        <text class="t-s" x="118" y="266">runBoard</text>
+        <text class="t-s" x="118" y="266">board.drain</text>
         <rect class="n-acc" x="500" y="252" width="92" height="20" rx="10"/>
         <text class="t-xs" x="546" y="266" text-anchor="middle">PROGRAM</text>
         <text class="t-xs" x="620" y="266">ONE DRAIN · DEPENDENCY-GATED · CAPPED CONCURRENCY</text>
@@ -666,12 +666,11 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <p class="lede">Workforce is the shippable Layer&nbsp;2 product — roster / teams + seats + mailboxes + thin helpers. DevForce (software eng) and Pentest Lab (FIX-1355) are sibling consumers on it (D-12), not sibling ships — <a href="workforce.html#lab">Workforce atlas &#167;03</a>. The package hires file-declared workers into flow instances, supplies the built-in agent worker kind, loads resources and skills, and opens mailboxes. It does not provide an Agent factory. The product lock and the honesty tags live on the <a href="workforce.html">Workforce atlas</a>. Mailboxes are L2 — one roster (system + helper-minted), Collab later, not W2 — <a href="workforce.html#collab">Workforce atlas &#167;14</a>. When DM / mailbox vs dispatch: <a href="workforce.html#when">Workforce atlas &#167;08</a>. W3 is the file-convention surface (kinds + blocks scan as the code door; seats stay <code>WORKER.md</code>) — <a href="workforce.html#vision">Workforce atlas &#167;03</a> / <a href="workforce.html#doors">&#167;04</a>. Do not mint Team / Mailbox / MessageBoard here, and do not fold Workforce into core.</p>
 
   <h3>What exists</h3>
-  <p><code>core</code> declares the thin <code>Agent</code> and <code>AgentRegistry</code> extension contracts used by skills delegation. Applications using an <code>agent-ref</code> skill supply the registry and materializer. <code>@flow-state-dev/workforce</code> does not export <code>defineAgent</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code>, or <code>agentBlock</code>. Its workers are generators or flows with instructions, a model, and tools; its seats are flow instances. See the <a href="workforce.html#fence">Workforce atlas &#167;04</a>.</p>
+  <p><code>core</code> declares no <code>Agent</code> type: the thin <code>Agent</code> / <code>AgentRegistry</code> contracts served only skill sub-agents (<code>agent-ref</code>) and went with them (FIX-1814). <code>@flow-state-dev/workforce</code> does not export <code>defineAgent</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code>, or <code>agentBlock</code>. Its workers are generators or flows with instructions, a model, and tools; its seats are flow instances. See the <a href="workforce.html#fence">Workforce atlas &#167;04</a>.</p>
   <p><code>definePersona</code> is the piece worth noticing: it is sugar over <code>defineResource</code> / <code>defineResourceCollection</code> with a content template, which means <strong>an agent's identity is a resource</strong> — editable at runtime, renderable from state, and addressable by path. That is the same move skills make with Markdown, applied to who an agent is rather than what it should do.</p>
 
   <h3>Where teams actually happen today</h3>
-  <p>Not in <code>workforce</code>. The one place a set of agents collaborates is the <strong>skills delegation surface</strong>: a skill declaring <code>agents:</code> installs a private task board, materializes each declared agent as a board worker, seats every allowed tool in the <em>same assignee namespace</em> as those agents, and hands the executive generator the eight <code>taskTools</code> plus <code>runBoard</code>. The model then plans work as tasks with an <code>assignee</code> and <code>deps</code>, and drains the whole graph in one call.</p>
-  <p>That is a real multi-agent team, and it is complete. But it is a team <em>inside one skill</em> — the roster is that skill's frontmatter, the board is that generator's own state, and none of it outlives the turn or is addressable from anywhere else.</p>
+  <p>Not inside a skill. Skills used to run a private team of their own (<code>agents:</code>, a private board, <code>runBoard</code>); FIX-1814 removed it, because the same eight task tools on the conversation&rsquo;s board are where delegation and hand-offs live. A set of agents collaborates on a shared board, such as the one a coordinator files tasks onto.</p>
 
   <figure>
     <div class="fig-body">
@@ -697,7 +696,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="855" y="112" text-anchor="middle">BUILT</text>
 
         <text class="t-s" x="24" y="142">a member that can plan</text>
-        <text class="t-xs" x="330" y="142">SKILLS DELEGATION — taskTools + runBoard</text>
+        <text class="t-xs" x="330" y="142">THE TASK TOOLS ON A SHARED BOARD — taskTools</text>
         <rect class="n-acc" x="782" y="128" width="146" height="20" rx="10"/>
         <text class="t-xs" x="855" y="142" text-anchor="middle">BUILT</text>
 
@@ -1744,7 +1743,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <p>A skill is a folder with a <code>SKILL.md</code> — YAML frontmatter plus a Markdown playbook, with supporting files reachable from the body via <code>${SKILL_DIR}</code>. When it activates, the body renders into the generator's system prompt. The whole runtime lives in <code>orchestration/src/skills</code>: a library, a directory reader and importer, an activation store, activators, an inline-activate path, seeding, and a worker materializer.</p>
   <p>There are two activation paths, and the up-front one is the optional half. The primary path is a per-generator binding: <code>.with(&#123; active, allowed, activeState, dynamicActivation &#125;)</code> &mdash; skills can be statically active, and the <code>dynamicActivation</code> preset installs a model-facing <code>loadSkill</code> tool so the generator can pull one mid-turn. The optional path is <code>createSkillActivator</code>, which runs <em>before</em> the main generator and is three-tiered: a literal <code>/&lt;skill-name&gt;</code> slash match, then a local keyword scan, then a fast LLM classifier when neither decides.</p>
   <p>The lifetime is the part worth getting right. There is no session-global active-skills bag: activation state defaults to the <strong>generator&rsquo;s own block state</strong> and is therefore request-scoped &mdash; it does not carry into the next turn. Pass <code>activeState: &#123; scope, field &#125;</code> to store it at a named <code>request</code>&#8239;/&#8239;<code>session</code>&#8239;/&#8239;<code>user</code>&#8239;/&#8239;<code>org</code> scope when it should be shared across generators or survive the turn.</p>
-  <p>The delegation path is where skills meet the board. A skill declaring <code>agents:</code> installs a private task board, the <code>taskTools</code> capability (eight tools including <code>addTask</code> and <code>completeTask</code>), and a <code>runBoard</code> tool. The generator plans work as tasks with an <code>assignee</code> and <code>deps</code>, then drains the whole graph with one call. An assignee can also name one of the generator's own tools, which runs as a direct call with no model turn.</p>
+  <p>Skills meet the board through tools: a board&rsquo;s drain or a goal-seek loop registered in the catalog and listed under <code>allowed-tools</code> is one tool call. A skill does not run a team of its own &mdash; FIX-1814 removed <code>agents:</code> &mdash; so delegation happens on a shared board, with the task tools.</p>
   <div class="note">
     <span class="lbl">Capability or skill?</span>
     <p>The docs draw the line cleanly: a <strong>capability</strong> is code that ships with the app, always on, structural. A <strong>skill</strong> is Markdown authored by anyone, editable at runtime, active only when matched. The two compose — the skills package itself is shipped as a capability.</p>

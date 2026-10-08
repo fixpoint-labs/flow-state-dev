@@ -168,7 +168,6 @@ Every bad selection on a worker is reported, not just the first.
 - It does not let a worker install a capability. A worker file picks among what the kind carries.
 - It does not let a worker take something away. Selecting only adds.
 - It does not pass on tools a worker didn't select. A capability your app installs on the kind can switch presets on by default, the way memory switches on `recall`. Those presets give their tools only to the workers whose own file selects them.
-- It does not pass selected tools down to a delegate. When a worker hands work to another agent through a skill, that agent can call only tools the worker named in `tools:`.
 - It does not affect `.md` files. A `.md` file in a `resources/` folder is still read as a document.
 
 ## Upgrading from @flow-state-dev/workforce 0.3 or earlier

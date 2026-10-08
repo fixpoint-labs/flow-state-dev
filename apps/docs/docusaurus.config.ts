@@ -87,7 +87,7 @@ const config: Config = {
           },
           {
             from: "/docs/skills/pattern-skills",
-            to: "/docs/skills/delegation",
+            to: "/docs/skills/overview",
           },
           {
             from: "/docs/advanced/utility-blocks-deprecated",

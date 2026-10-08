@@ -169,10 +169,7 @@ catalog carries, what a bound skill's `allowed-tools` declares (see C5), or what
 attached through `uses` would otherwise contribute. A seat that writes **no** `tools:` line may
 call the tools of the capability presets its own file picked under `capabilities:` and the blocks
 of the packages it holds (FIX-1459);
-presets this kind switches on by default grant nothing the seat did not pick. The delegation surface
-is fenced to the names the seat listed (FIX-1362's `toolSeatFence`), so a seat with `tools: []`
-reaches no catalog tool through a skill's `agents:` either, and a seat with no line takes none of the
-tools it chose with it.
+presets this kind switches on by default grant nothing the seat did not pick.
 
 **Capability tools are fenced by mechanism (FIX-1393).** The core resolver drops a capability's
 catalog-granted tools when the consuming block declares `tools:`, so an app's `uses` can no longer
@@ -183,17 +180,13 @@ gone; `docs/architecture/capabilities.md` → *The tools fence* is canonical for
 `tools` (a grant from the app's catalog, fenced) and `controlTools` (a framework control, never
 fenced). A control is built inside its capability and never exported — so no `tools:` list could
 name it back in, and fencing it would leave the seat advertising a tool in its prompt it cannot
-call. Three ship in this kind. The first two are held only because the seat's own configuration
-asked for them; the third is held by every seat in the kind, and a seat's configuration narrows it
-rather than requesting it:
+call. Two ship in this kind. The first is held only because the seat's own configuration asked
+for it; the second is held by every seat in the kind, and a seat's configuration narrows it rather
+than requesting it:
 
 - **The skill loader.** A seat that sets `skills.activateTool: true` is bound with
   `dynamicActivation`, which installs the loader as a control. It reaches the model without
   appearing in `tools:` — by design, because the seat's own setting is the declaration.
-- **The delegation surface.** A skill the seat holds that declares `agents:` brings the task
-  board's eight tools, also as controls, so `tools: []` does not cut a worker off from the board
-  it was given. FIX-1362's `toolSeatFence` still scopes which *catalog* tools reach a skill's
-  agents; the board itself is not a catalog grant.
 - **The discovery door (FIX-817).** `createWorkforceCapability` contributes `discover` as a
   control, and it ships **on**. This is the one control a seat does not ask for: composing the
   capability is itself the declaration that a seat may ask what is around it, so a second per-seat
@@ -343,8 +336,8 @@ purpose (`packages/orchestration/src/skills/seeding.ts:116-117`).
 
 **One exception, and it is not a body edit.** `ensureSeeded` re-seeds an already-seeded name when
 `needsResed` finds the persisted record stale against the FIX-918 migration shape — it still
-carries a legacy non-inline `contextMode` the source dropped, the source declares `agents:` the
-record lacks, or the source's `contextMode` changed (`seeding.ts:69-74,128-135`). Those replace a
+carries a legacy non-inline `contextMode` the source dropped, it still carries the `agents:` that
+FIX-1814 removed, or the source's `contextMode` changed (`seeding.ts`, `needsResed`). Those replace a
 seat's copy without anyone refreshing it. FIX-1362 left that reseeding as it is for seat copies:
 it fires on a *schema* mismatch between the persisted record and the current parser, never on a
 body edit, so it repairs records the renderer would otherwise skip rather than propagating an

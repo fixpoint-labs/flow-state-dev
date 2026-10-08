@@ -44,10 +44,9 @@ Everything else a capability brings is unaffected. Context injection, storage, a
 A worker's own settings can still put a **control** on it. A control is a piece of framework machinery rather than a tool from your catalog, and the setting that switched it on is what put it there, so `tools:` neither lists it nor holds it back:
 
 - **The skill loader**, when the worker sets [`skills.activateTool`](#using-them). It lets the model pull a skill the worker holds into the turn as it runs.
-- **The delegation controls**, when a skill the worker holds declares `agents:`. Activating that skill puts the task board's eight tools and `runBoard` on the worker, so it can create tasks and run them.
 - **The controls a capability preset declares**, when the worker selects that preset in its [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool) key. A preset's `controlTools` reach the worker even with `tools: []`.
 
-A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Neither does delegating: a worker the delegation seats is seated from the holding worker's catalog tools, so a worker with `tools: []` reaches nothing through a delegate, and tools a worker got by selecting a preset stay with that worker. It can command the board, but the workers it commands are fenced. A block from a worker's own folder or from a package it holds does not travel that way either: a delegated worker is its own seat, with its own folder and its own list. Holding a package gives a worker with no `tools:` line that package's blocks; they are not added to the catalog. See [Packages on disk](./packages-on-disk.md#its-tools).
+A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Holding a package gives a worker with no `tools:` line that package's blocks; they are not added to the catalog. See [Packages on disk](./packages-on-disk.md#its-tools).
 
 Checking `tools:` against a catalog is the built-in kind's rule, not a rule of `hireWorkforce`. A kind you write yourself declares its own settings, so what a `tools:` name is checked against is that kind's business. So is whether it declares `tools` at all.
 

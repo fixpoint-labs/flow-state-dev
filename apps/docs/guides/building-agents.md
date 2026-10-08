@@ -17,8 +17,6 @@ flow-state.dev takes a different approach. The five block kinds (handler, genera
 
 Naming blocks honestly reflects what they actually do. A `generator` generates. A `sequencer` sequences. A `handler` handles. When you see a flow definition, you know what each piece contributes. "Agent" obscures that.
 
-The word "agent" does appear in one place: a skill's `agents:` frontmatter, where each entry is a persona, a model, and a tool list that a task board can assign work to by name. That is data, not a builder — each entry materializes into an ordinary generator, and you can read the persona in the skill folder. Reach for it when you want the model to plan and hand out the work; reach for the raw blocks for everything else. See [Agents](/docs/orchestration/agents).
-
 ## The determinism spectrum
 
 Flows exist on a spectrum from fully deterministic to highly non-deterministic. Where you land on that spectrum is a composition choice, not a framework choice. Here's how it looks in practice.

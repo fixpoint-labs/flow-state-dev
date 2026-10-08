@@ -109,8 +109,6 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 
 Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, was moved to `blocked`, or is `pending` behind a dep that will never complete. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a hand-off: both let the drain go, and the one that owes a person an answer is the one you need to see. A refused retry outranks all of them.
 
-A delegation board's `runBoard` tool reports a `status` of its own, and the two count different things. `terminationReason` asks whether every task succeeded. `runBoard`'s `status` asks whether any task is still outstanding, so a board whose only problem is one errored task reads `"blocked-by-failures"` here and `"drained"` there. See [Delegation](../skills/delegation.md) for the coordinator's side.
-
 ```ts
 // On the final task-board-meta item:
 {
@@ -309,9 +307,9 @@ const board = taskBoard({
 });
 ```
 
-There is no `defaultWorker` unless you pass one. The skills delegation surface always passes one, which is how every delegation board gets an on-demand [default worker](../skills/delegation.md#default-worker-the-floor); a plain `taskBoard` opts in.
+There is no `defaultWorker` unless you pass one.
 
-A delegation board catches a bad assignee earlier than that. Its roster is the skill's declared agents plus the tools it allows, and `addTask` with an assignee naming neither returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. The check needs a roster to check against. A delegation board with no agents and an empty catalog has none, and neither does a `taskBoard` you wire yourself, so on those boards every assignee is accepted and an unmatched one takes the fallback path above.
+The task tools can catch a bad assignee earlier than that. Give `createTaskToolsCapability` a roster, and `addTask` with an assignee the roster doesn't name returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. Without a roster every assignee is accepted, and an unmatched one takes the fallback path above.
 
 A registry seat can also run its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Seats that hand off](#seats-that-hand-off).
 
@@ -611,7 +609,7 @@ A task can also keep returning to `pending` without ever settling. `maxAttempts`
 - `maxTotalRetries` (default `50`) — how many failure retries the board may **authorize in total**, across every task.
 - `concurrency` (default `4`) — how many run at the same time.
 
-Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound. What a coordinator should do about each is in [Delegation](../skills/delegation#how-much-work-the-board-will-take-on).
+Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. The model-facing `addTask` task tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound.
 
 The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, an `unblock`, an `unpark`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
 
@@ -668,7 +666,7 @@ When a board's completion item reports `terminationReason: "retry-budget-exhaust
 No count is a stored counter. All three are read off the board's stored task map at the moment the bound is checked: the total is that map's size, the enqueue count is how many of its tasks are `pending`, and the retry count is the sum of every task's `retryLedger.granted`. The two creation counts are read when a task is created; the retry count is read when a task fails. All three last exactly as long as the map does, which depends on the backing:
 
 - **On the request** (the default) — the tasks live on the request, so a new request starts empty and all three counts start from zero.
-- **On a state you pass** — the counts last as long as that state does. A sequencer's state is restored from its checkpoint on resume, task map included, so work after a resume is checked against the tasks already there. A generator's own state is not checkpointed, so a board kept there, such as the [delegation board](../skills/delegation#board-and-overrides), starts its tasks and counts from zero after a resume. See [Block State → The durability boundary](../advanced/block-state#the-durability-boundary).
+- **On a state you pass** — the counts last as long as that state does. A sequencer's state is restored from its checkpoint on resume, task map included, so work after a resume is checked against the tasks already there. A generator's own state is not checkpointed, so a board kept there starts its tasks and counts from zero after a resume. See [Block State → The durability boundary](../advanced/block-state#the-durability-boundary).
 - **Durable (resource-backed)** — no bound is enforced. What the resource layer gives you instead is `maxInstances` on `defineTaskCollection`, and that is a capacity limit rather than a lifetime ceiling: it caps how many task instances the collection **holds at once**, and creating one past it throws. Deleting an instance through the resource collection frees the slot again, so a board that deletes and re-queues can create more tasks over its life than `maxInstances` ever allows at one moment. Creation here also goes one instance at a time, so a batch that crosses the limit stops partway and the tasks made before it stay; the all-or-nothing behavior above belongs to the request and sequencer backings only.
 
 ### One writer, or hand every writer the bounds
@@ -715,7 +713,7 @@ const tasks = await getOrCreateTaskCollection({
 });
 ```
 
-Which state ref to pass depends on where your code runs, and getting it wrong fails quietly rather than loudly: you get a working collection over the wrong slot. From a block *inside* the sequencer, pass `ctx.sequencer`. From a tool running as a child of a generator that owns the board, pass `ctx.parent` (see [wiring a bounded board by hand](../skills/delegation#board-and-overrides)).
+Which state ref to pass depends on where your code runs, and getting it wrong fails quietly rather than loudly: you get a working collection over the wrong slot. From a block *inside* the sequencer, pass `ctx.sequencer`. From a tool running as a child of a generator that owns the board, pass `ctx.parent`.
 
 The cap options exist on `backing: "state"` only. Passing `maxTotalTasks` or `maxEnqueuedTasks` with `backing: "resource"` is a TypeScript error, not a ceiling that quietly does nothing.
 

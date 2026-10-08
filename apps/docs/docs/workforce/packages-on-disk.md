@@ -66,7 +66,7 @@ What a worker can call from the packages it holds depends on its `tools:` line, 
 
 If a worker's `tools:` line names something that is both a block in a package it holds and a tool in the kind's [catalog](./built-in-worker.md#tools), the worker is refused at startup, and the message names both.
 
-A package's tools reach only the workers that hold it. They are not in your app's tool catalog, a worker that doesn't hold the package can't name them, and a worker it [delegates to](./built-in-worker.md#tools) doesn't get them.
+A package's tools reach only the workers that hold it. They are not in your app's tool catalog, and a worker that doesn't hold the package can't name them.
 
 ## In your app
 

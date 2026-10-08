@@ -104,7 +104,6 @@ Not sure which to pick? Benchmark them on your own tasks. See [Benchmarks](../te
 
 ## Reaching a pattern from a skill
 
-A skill reaches these patterns two ways. Both keep the skill as plain inline instructions.
+A skill stays plain inline instructions, and reaches these patterns through its tools.
 
-- **Delegation.** A skill that declares an `agents:` field gets a private task board plus `taskTools` and a `runBoard` tool. The generator plans the work as tasks (`addTask` with an `assignee`) and drains the board with `runBoard`; the board runs the agents it declared, and any tool it can call. See [Delegation](../skills/delegation).
 - **Blocks as tools.** A deterministic recipe — a `taskBoard(...).drain`, a `goalSeekLoop`, or a whole pattern sequencer — is a block, and [any block can be a tool](../fundamentals/blocks#any-block-can-be-a-tool). Register it in the skills catalog and list it under the skill's `allowed-tools`; the generator calls it as one tool and gets back only the finalized result.

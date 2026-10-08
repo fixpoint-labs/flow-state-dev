@@ -133,7 +133,7 @@ const chatAgent = generator({
 
 When the model calls `deep-research`, the framework runs the loop to completion and feeds `finalize`'s projected output back as the tool result. The generator declares the loop's own `inputSchema` as the tool's input, so the model supplies `{ question }` and gets the synthesized answer. Nothing about the board internals leaks in.
 
-A skill can wire this too: register the loop block in the skills catalog and list it under the skill's `allowed-tools`. See [Delegation](../skills/delegation#running-a-board-as-a-tool).
+A skill can wire this too: register the loop block in the skills catalog and list it under the skill's `allowed-tools`.
 
 ## Stream items
 

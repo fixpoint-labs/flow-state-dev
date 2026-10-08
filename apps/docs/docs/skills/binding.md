@@ -61,9 +61,7 @@ Declaring the slot is what draws the line, not what you put in it. So if you dec
 
 `registerCatalogTools: false` turns off the grant, not the check. A bound skill's `allowed-tools` is still validated against the catalog, so a typo in a skill file is still reported.
 
-`loadSkill` and the delegation surface are controls, not catalog tools. A `tools:` list never takes a control away: a generator with `tools: []` still has them.
-
-Delegation is where `allowed-tools` does restrict: a delegating skill can assign a task only to a tool it lists, and a skill that lists none makes the whole catalog assignable. See [Delegation](./delegation).
+`loadSkill` is a control, not a catalog tool. A `tools:` list never takes a control away: a generator with `tools: []` still has it.
 
 ## `with({ active })` — preload a skill
 
@@ -73,7 +71,6 @@ Delegation is where `allowed-tools` does restrict: a delegating skill can assign
 uses: [skills.with({ active: ["detailed-analysis", "cite-sources"] })];
 ```
 
-- **A preloaded skill can delegate.** If the skill declares an `agents:` field, binding it installs the delegation surface on this generator: a private board, the `taskTools`, and `runBoard`. The tools a task can be assigned to are the ones the skill lists in `allowed-tools`, or the whole catalog when it lists none. `delegation: true` and `delegation: false` override that default, which is to install the surface exactly when `agents:` is declared. `false` suppresses it; `true` forces it on with no `agents:`, relying on the board's default worker. See [Delegation](./delegation).
 - **Fails loud on a typo.** A name that isn't a known skill throws at build time. Binding by name validates against the library's bundled `initialSkills`, so pass them to `createSkillsLibrary`; binding a name with no catalog to check against is itself an error.
 
 ## `with({ dynamicActivation })` — let the agent load a skill mid-turn

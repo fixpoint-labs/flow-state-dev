@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" role="img" aria-labelledby="title desc">
   <title id="title">Orchestration: what a task board is made of</title>
-  <desc id="desc">A task is a row with a goal, a status and an optional assignee. Tasks live in a task collection, kept in state or in a resource collection. A task board is a sequencer that drains the collection: a dispatcher picks the next ready task, and its assignee routes it to a board worker, which is any block. Built on a board: the goal-seek loop, the harness manager, skill agents, and four patterns. A task's assignee names a board worker, never a Workforce worker.</desc>
+  <desc id="desc">A task is a row with a goal, a status and an optional assignee. Tasks live in a task collection, kept in state or in a resource collection. A task board is a sequencer that drains the collection: a dispatcher picks the next ready task, and its assignee routes it to a board worker, which is any block. Built on a board: the goal-seek loop, the harness manager, and four patterns. A task's assignee names a board worker, never a Workforce worker.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
@@ -78,30 +78,24 @@
   <path d="M642 202 L668 202" class="edge"/>
   <path d="M404 202 L434 202" class="edge"/>
   <text x="28" y="320" class="tag-proc">BUILT ON A TASK BOARD</text>
-  <rect x="28" y="332" width="204" height="128" rx="10" class="card"/>
+  <rect x="28" y="332" width="280" height="128" rx="10" class="card"/>
   <text x="42" y="356" class="h">Goal-seek loop</text>
   <text x="42" y="376" class="p">Drains, asks a judge</text>
   <text x="42" y="394" class="p">if the goal is met,</text>
   <text x="42" y="412" class="p">replans, drains again.</text>
   <text x="42" y="430" class="muted">orchestration</text>
-  <rect x="248" y="332" width="204" height="128" rx="10" class="card"/>
-  <text x="262" y="356" class="h">Harness manager</text>
-  <text x="262" y="376" class="p">A board worker: one task</text>
-  <text x="262" y="394" class="p">becomes one supervised</text>
-  <text x="262" y="412" class="p">coding run.</text>
-  <text x="262" y="430" class="muted">harness-manager</text>
-  <rect x="468" y="332" width="204" height="128" rx="10" class="card"/>
-  <text x="482" y="356" class="h">Skill agent</text>
-  <text x="482" y="376" class="p">An agent in a SKILL.md,</text>
-  <text x="482" y="394" class="p">made into a generator</text>
-  <text x="482" y="412" class="p">that works board tasks.</text>
-  <text x="482" y="430" class="muted">orchestration</text>
-  <rect x="688" y="332" width="204" height="128" rx="10" class="card"/>
-  <text x="702" y="356" class="h">Patterns</text>
-  <text x="702" y="376" class="code">supervisor</text>
-  <text x="702" y="394" class="code">planAndExecute</text>
-  <text x="702" y="412" class="code">parallelTasks  eventActors</text>
-  <text x="702" y="430" class="muted">patterns</text>
+  <rect x="320" y="332" width="280" height="128" rx="10" class="card"/>
+  <text x="334" y="356" class="h">Harness manager</text>
+  <text x="334" y="376" class="p">A board worker: one task</text>
+  <text x="334" y="394" class="p">becomes one supervised</text>
+  <text x="334" y="412" class="p">coding run.</text>
+  <text x="334" y="430" class="muted">harness-manager</text>
+  <rect x="612" y="332" width="280" height="128" rx="10" class="card"/>
+  <text x="626" y="356" class="h">Patterns</text>
+  <text x="626" y="376" class="code">supervisor</text>
+  <text x="626" y="394" class="code">planAndExecute</text>
+  <text x="626" y="412" class="code">parallelTasks  eventActors</text>
+  <text x="626" y="430" class="muted">patterns</text>
   <rect x="28" y="484" width="864" height="52" rx="12" class="dash"/>
   <text x="44" y="515" class="p">A task's assignee names a board worker, or a Workforce worker that takes tasks. The board runs the list; Workforce finds the worker.</text>
 </svg>
