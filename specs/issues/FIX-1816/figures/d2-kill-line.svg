@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, the kill line. Chosen: ask ships. Instead of: stop after this spec and ship assign alone. It comes down to the first row: whether the request that asked carries the answer; with ask it does, with assign the answer arrives in a later turn, so a research lead&#x27;s own answer never carries its team&#x27;s results. The price is the second row: a second hand-off with a timeout, a depth limit and a resume path to keep correct, where assign alone carries none. The third row: a team that worked in parallel runs one ask at a time, where a later turn could gather all results. Locks in: two hand-offs, and asks one at a time. Flips if the research team&#x27;s brief may arrive as a second message."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, the kill line. Chosen: ask ships. Instead of: stop after this spec and ship assign alone. It comes down to the first row: whether the request that asked carries the answer; with ask it does, with assign the answer arrives in a later turn, so a research lead&#x27;s own answer never carries its team&#x27;s results. The price is the second row: a second hand-off with a timeout and a resume path to keep correct, where assign alone carries none. The third row: a team that worked in parallel runs one ask at a time, where a later turn could gather all results. Locks in: two hand-offs, and asks one at a time. Flips if the research team&#x27;s brief may arrive as a second message."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -66,7 +66,7 @@
     <text class="t-lbl" x="32" y="222">WHAT WE CARRY</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">A second hand-off</text>
-    <text class="t-s" x="248" y="241">timeout, depth, a resume path</text>
+    <text class="t-s" x="248" y="241">a timeout and a resume path</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">One hand-off</text>
     <text class="t-s" x="612" y="241">nothing new to keep correct</text>

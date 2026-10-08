@@ -12,15 +12,18 @@ FIX-1794 P2.
 | ID | Package · role | Change | Epic row | Rules |
 |---|---|---|---|---|
 | S1 | `core` · the request host's type | A fifth verb: resume a turn parked on an ask **in this session**, with an answer or an error. Closed over the running session like the other four; takes the gate's id, never a session or request id from input | L1 | BR-13 |
-| S2 | `engine` · the request host, beside `routes/resume-routes.ts` | Implement S1: load the gate, admit only an ask gate that is still pending, resolve it once under the request's lease, continue the same request. `public-reentry.ts` is unchanged | L1 | BR-2 BR-12 BR-13 |
-| S3 | `core` · the ask gate | A suspension reason for an ask, whose data is the wait binding: the board, the row and its claim ticket. On resume the generator returns the answer as the tool's result (`generator-resume.ts`, as approvals do) | L2 | BR-2 BR-3 BR-8 BR-9 |
-| S4 | `orchestration` · the task tools | `askTask` beside the eight, in the same capability instance (epic ER-32 of FIX-1786). Files under `runOnce`, keyed on the tool call, never on the attempt; writes the row marked asked, with the gate's id and a deadline, server-side; then parks. Returns at once when the row has already ended. Offered only with durable execution | L5, as D1 reshapes it | BR-1 BR-4 BR-5 BR-7 BR-10 BR-18 |
-| S5 | `orchestration` · the board row | The resume-owed marker, on FIX-1802's settle-owed pattern (its BR-17): written in the write that records an asked row's ending; cleared only by an accepted S2 resume; replayed by any touch of the board, never inside a turn | L3 | BR-11 BR-12 |
-| S6 | `orchestration` · a task worker that asks | When the asking turn is itself running a row, that row parks (the existing `parked` status, fenced unpark on resume). No notice to its filer for this park | L6 | BR-17 |
-| S7 | `orchestration` · the bounds | Deadline on the gate and the row. Past it, the durability sweeper or a touch of the board resumes the turn with a timeout, and the resumed call cancels its row. A cancelled asking turn cancels its row; a cancelled row's lease renewal fails, which aborts a run under way. Depth is FIX-1802's chain limit, not a new counter | L7 | BR-14 BR-15 BR-16 |
-| S8 | `testing` | One helper that answers an ask in a unit test, so an app tests its asking worker without running the colleague. No separate durable runtime: restarts are proved on the SQLite cold-restart shape (a fresh store registry on the same file), which expresses a restart mid-wait | L8, reshaped by the epic's note | — |
+| S2 | `engine` · the request host, beside `routes/resume-routes.ts` | Implement S1: load the gate, admit only an ask gate that is still pending, resolve it once under the request's lease, continue the same request. The same path serves S7's sweeper branch, which resolves the gate with `ask_timed_out` instead of an answer. `public-reentry.ts` is unchanged | L1 | BR-2 BR-12 BR-13 BR-14 |
+| S3 | `core` · the ask gate | A suspension reason for an ask, whose data is the wait binding: the board, the row and its claim ticket. On resume the generator returns the answer as the tool's result (`generator-resume.ts`, as approvals do) | L2 | BR-2 BR-3 BR-9 |
+| S4 | `orchestration` · the task tools | `askTask` beside the eight, in the same capability instance (epic ER-32 of FIX-1786). Files under `runOnce`, keyed on the tool call, never on the attempt; writes the row marked asked, with the gate's id and a deadline, server-side; then parks. Returns at once when the row has already ended, clearing its marker. Refuses a second ask in the same step. Offered only with durable execution and a running durability sweeper, and never on a turn that is itself working a task row, so depth is one | L5, as D1 reshapes it | BR-1 BR-4 BR-5 BR-7 BR-8 BR-10 |
+| S5 | `orchestration` · the board row | The resume-owed marker, on FIX-1802's settle-owed pattern (its BR-17): written in the write that records an asked row's ending; cleared by an accepted S2 resume, a refused one (already resolved), or BR-7's direct return; replayed by any touch of the board, never inside a turn. Stored rather than derived: see [DECISIONS](DECISIONS.md#decided-not-asked) | L3 | BR-7 BR-11 BR-12 |
+| S7 | `engine` and `orchestration` · the bounds | A fixed ten-minute deadline, as the gate's `expiresAt` and on the row. `durability-sweeper.ts`'s expiry step gains an ask branch, run before the generic one: a pending ask gate past its deadline is resumed through S2 with `ask_timed_out`, never marked `expired` (which S2 would refuse, stranding the turn). The resumed call cancels its row. Resolution: ten to twenty minutes at the default sweep. A cancelled asking turn cancels its row and drops its later ending; a run under way is not stopped. Depth needs no counter (S4) | L7 | BR-14 BR-16 |
 | S9 | `orchestration` · the child-finished signal (P3) | Lift FIX-1794 P2's notice module into `orchestration` and re-point its S6 and S7 at it, no copy. Extend it once: an asked row's ending resumes the parked turn (S2) and wakes no judgment turn | L4 | BR-2 BR-11 BR-12 |
 | S10 | `goals` | `goals/hand-offs/ask-survives-a-restart/` with its two controls | — | goal |
+
+S6 (a task worker parks its own row) and S8 (a testing helper) were
+[cut before the gate](DECISIONS.md#cut-before-the-gate). Restarts are proved on the SQLite
+cold-restart shape, a fresh store registry on the same file (epic L8, as the epic's note
+reshaped it).
 | S11 | Docs | Publish [DOCS.md](DOCS.md) | — | — |
 
 Nothing is removed. FIX-1814 removes the skills' private team; this issue builds nothing on it.
@@ -32,9 +35,7 @@ flowchart TD
   S1["S1 · the fifth verb"] --> S2["S2 · resume in the engine"]
   S3["S3 · the ask gate"] --> S4["S4 · askTask"]
   S2 --> S4
-  S8["S8 · testing helper"] --> S4
   S4 --> S5["S5 · resume-owed"]
-  S4 --> S6["S6 · a task worker parks its row"]
   S5 --> S7["S7 · bounds"]
   S5 --> S9["S9 · the lift · after FIX-1794 P2"]
   S9 --> S10["S10 · goal check"]
@@ -43,12 +44,13 @@ flowchart TD
 
 | PR | Delivers | depends_on |
 |---|---|---|
-| P1 · park and resume | S1, S2, S3, S8 | — |
-| P2 · ask on the board | S4, S5, S6, S7 | P1 · FIX-1814 merged |
+| P1 · park and resume | S1, S2, S3 | — |
+| P2 · ask on the board | S4, S5, S7 | P1 · FIX-1814 merged |
 | P3 · the waker | S9, S10, S11 | P2 · FIX-1794 P2 merged |
 
 P1 and P2 do not wait on FIX-1794 P2 (epic ER-15). P2 tests the resume by calling the waker
-function directly; P3 is the first PR where an ending resumes a turn on its own.
+function directly, and does not yet offer `askTask` to models; P3 is the first PR where an ending
+resumes a turn on its own, and turns the tool on.
 
 ## Checks
 
@@ -56,15 +58,14 @@ function directly; P3 is the first PR where an ending resumes a turn on its own.
 |---|---|---|
 | V1 | S2 | A task-source turn parked on an ask gate resumes with the answer through S1; the public route answers not-found for it; a second resume is refused (BR-12, BR-13) |
 | V2 | S3 | A generator whose tool parks on an ask gate resumes with the answer as that tool's result; a SQLite cold restart between park and resume still resumes (BR-2, BR-9) |
-| V3 | S4 | BR-1, BR-4, BR-5, BR-7, BR-8, BR-18. BR-10 by replaying the turn: one row. Its red state: remove `runOnce` and see two rows |
+| V3 | S4 | BR-1, BR-4, BR-5, BR-7 (the row ended between filing and park: the answer returns and the marker clears), BR-8. BR-10 across a real replay: park, cold restart on SQLite, resume, and the replay reaches `askTask` again: one row. Its red state, on that same replay, not a same-process retry: remove `runOnce` and see two rows |
 | V4 | S5 | BR-11: kill after the asked row's ending write and before resume, on SQLite; the next touch resumes once and clears the marker. Its red state: no marker, and the turn stays parked |
-| V5 | S6 | BR-17: an asking task worker past its lease is not claimed again. Red: today a second worker claims it |
-| V6 | S7 | BR-14, BR-16; BR-15 as a real mutual ask ending at the timeout, and at the sixth board once FIX-1802 P1 is on `main` |
+| V6 | S7 | BR-14 by a real sweep tick on a gate past its deadline: the turn resumes with `ask_timed_out` and the row is cancelled. Red: today's sweeper marks it `expired` and the turn stays suspended. BR-16 |
 | V7 | S9 | FIX-1794's V5 passes before and after the lift. An asked row's ending resumes and wakes no turn; an assigned row's still wakes one |
 | D1 | S4 | The check that D1 holds: no new export on `core`'s block context, no new engine read, and the row is the only record of the ask |
 | VG | S10 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `run.mts` PASSES after both controls FAILED, the FAILs shown in P3's PR first |
 
-D2 and D3 are product calls: D2 is proved by VG's leg 2, and D3 by FIX-1791's suite staying green.
+D2 and D3 are product calls: D2 is proved by VG, whose asking turn's own output carries B's word, and D3 by FIX-1791's suite staying green.
 
 ## Pinned names
 
@@ -73,6 +74,7 @@ D2 and D3 are product calls: D2 is proved by VG's leg 2, and D3 by FIX-1791's su
 | Tool | `askTask` | A model calls it; it sits in the task-tool family |
 | Goal | `goals/hand-offs/ask-survives-a-restart/` | The closure cites it |
 | Controls | `no-run-once`, `no-waker` | The goal's two controls |
+| Errors | `ask_timed_out`, `ask_task_failed`, `ask_task_cancelled`, `ask_already_waiting` | A model reads them, and the docs publish them |
 
 Everything else is yours to name.
 
@@ -86,6 +88,7 @@ Everything else is yours to name.
 | No request is held open while it waits | Epic D1: serverless limits, held leases, and deadlocks |
 | The only touch of FIX-1786 code is S9's re-pointing (epic ER-12) | Another session owns that epic |
 | Nothing new builds on mailbox boards | FIX-1792 converts them |
+| A touch of the board stops at once when no row owes a resume: read the marker through an index or a count, never by scanning the board's rows | A touch runs on hot paths such as `listTasks`; a full scan per touch costs touches times rows |
 
 ## Docs
 
@@ -95,17 +98,21 @@ error names. The epic's shared section "Waiting for the answer" is this issue's 
 ## Sketch · pseudocode, illustrative, react to the shape
 
 ```
-askTask(goal, assignee, timeout?) in conversation C, inside A's turn:
+askTask(goal, assignee) in conversation C, inside A's turn (never a task row's turn):
+    if this step already asked: refuse ask_already_waiting                         ← BR-8
     row ← runOnce(this call): file on C's board, marked asked, gate id, deadline   ← one row, ever
-    if row has ended: return its answer                                            ← BR-7
-    if this turn runs a task row above: park that row                              ← S6
-    return suspend(ask gate: C's board, row, ticket)                               ← the turn parks
+    if row has ended: clear its marker, return its answer                          ← BR-7
+    return suspend(ask gate: C's board, row, ticket, expiresAt = deadline)         ← the turn parks
 the asked row ends (B's task session, any flow):
     one write: the ending + notice-owed (FIX-1794) + resume-owed (this issue)
     notice → C                                                                     ← FIX-1794's path
 in C, on the notice, or on any touch of C's board:
     for each row with resume-owed: resume(the row's gate, the row's ending)        ← the fifth verb
     an accepted resume clears the marker; a refused one (already resolved) clears it too
+    a marker whose gate does not exist yet is left for BR-7's replay to clear
+the durability sweeper, each tick:
+    for each pending ask gate past its deadline: resume it with ask_timed_out      ← S7
+    the resumed call cancels its row; a later ending is dropped
 ```
 
 **POC: none.** The premises are on `main` and read, not assumed: a generator tool's suspend
@@ -123,6 +130,8 @@ design, so no checker.
   for a reply before P2 and P3.
 - `ctx.suspend`'s doc says "inside a durable sequencer"; the code checks only for a provider.
   Confirm on a Workforce turn in P1 before building S4 on it.
+- The sweeper is built in `createFlowApiRouter.ts`, which holds the flows, so S7's branch can
+  continue a request there. Confirm in P1, and expose whether a sweeper runs, which S4 reads.
 - If FIX-1814 has not merged, the skills' private team still installs the task tools; `askTask`
   joins the one set FIX-1786's ER-32 allows, never a second.
 - After the gate: close FIX-1537 as a duplicate of this issue, under FIX-1312, with a comment
@@ -130,6 +139,8 @@ design, so no checker.
 
 ## Follow-ups
 
-- Asking several colleagues at once and resuming once on all of them (the epic's fan-in).
+- Asking several colleagues at once and resuming once on all of them (the epic's fan-in), and
+  several asks in one step.
+- An ask from a turn that is itself working a task, if a caller needs a lead that is itself asked.
 - A sweeper that touches idle boards, so an owed resume needs no next message (FIX-1794's
   follow-up names the same gap for notices).

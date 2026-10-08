@@ -19,10 +19,10 @@ publishes it, with the names and limits below. Prose is proposed reader-facing t
 > restart while the turn waits loses nothing: the turn resumes after the restart, and the task
 > was filed once.
 >
-> Every ask has a time limit, ten minutes unless the call sets one, up to twenty-four hours. Asks
-> also count toward the board chain's depth limit of five. If two workers ask each other, both
-> get a timeout error instead of waiting forever. Cancelling the turn that asked cancels the
-> task it is waiting on.
+> Every ask has a ten-minute limit. If the task hasn't ended by then, the turn gets a timeout
+> error at the next background sweep, so within twenty minutes, and the task is cancelled.
+> Cancelling the turn that asked cancels the task it is waiting on. A worker that is itself
+> working a task can't ask; it files with `addTask` instead, so asks never nest.
 >
 > Each answer replays the asking turn once, so an ask costs one extra replay. Use one when the
 > answer changes what this turn says or does next. When it doesn't, file the task and let the
@@ -32,47 +32,31 @@ publishes it, with the names and limits below. Prose is proposed reader-facing t
 
 > ### Asking, and waiting for the answer
 >
-> A worker that holds the task tools also gets `askTask` when the server has durable execution.
-> It files a task exactly as `addTask` does, then parks the worker's turn until the task ends,
-> and returns the task's output as the tool's result.
+> A worker that holds the task tools also gets `askTask` when the server has durable execution
+> and runs the durability sweeper, unless the turn is itself working a task. It files a task
+> exactly as `addTask` does, then parks the worker's turn until the task ends, and returns the
+> task's output as the tool's result. One ask per step: a second `askTask` in the same step is
+> refused.
 >
 > | Input | |
 > |---|---|
 > | `goal`, `assignee` | As for `addTask`. An assignee `addTask` would refuse is refused the same way, and nothing parks |
-> | `timeoutMs` | Optional. Default 600000 (ten minutes), at most 86400000 (a day) |
 >
 > | Error | When |
 > |---|---|
-> | `ask_timed_out` | The task did not end in time. It is cancelled |
+> | `ask_timed_out` | The task did not end within ten minutes. It is cancelled |
 > | `ask_task_failed` | The task failed for good |
 > | `ask_task_cancelled` | The task was cancelled, or the turn that asked was |
+> | `ask_already_waiting` | This step has already asked. Nothing is filed |
 >
 > An asked task is an ordinary row: `listTasks` shows it, marked `asked`, and the board's limits
-> and the chain's depth limit apply to it. If the turn that asked is itself working a task, that
-> task parks until the answer comes back, and its filer is not told about the park. There is no
-> `askTask_<board>` action: an app files with `addTask_<board>`.
+> and the chain's depth limit apply to it. There is no `askTask_<board>`
+> action: an app files with `addTask_<board>`.
 
 ## UPDATE · `packages/orchestration/README.md` · task tools
 
 > `askTask` files a task and parks the calling turn until it ends, then returns the task's
-> output. It needs a durability provider. See the task board page for limits and errors.
-
-## UPDATE · `packages/testing/README.md` · new section "Testing a worker that asks"
-
-> A worker that calls `askTask` parks until its colleague answers. In a unit test, answer the ask
-> yourself instead of running the colleague:
->
-> ```ts
-> const run = await testFlow(flow).send("chat", { message: "Is ACME's SOC 2 current?" })
-> await run.answerAsk({ assignee: "researcher", output: "Yes, renewed 2026-08." })
-> expect(await run.output()).toContain("renewed 2026-08")
-> ```
->
-> To prove the ask survives a restart, run it on the SQLite store and open a fresh store
-> registry on the same file between the park and the answer.
-
-The helper's final name is the implementer's; the example is reconciled against it before
-publishing.
+> output. It needs a durability provider and a running durability sweeper. See the task board page for limits and errors.
 
 ## Not changed
 
