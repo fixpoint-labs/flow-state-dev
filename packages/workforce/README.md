@@ -2356,7 +2356,7 @@ flow: coordinator
 delegates: [researcher, scribe]
 routing: best-fit        # or judgment, the default
 fallback: scribe         # one of the delegates
-rounds: 0                # the default; at most 3
+rounds: 0                # the default; above 0 isn't supported yet
 ---
 ```
 
@@ -2387,7 +2387,7 @@ rounds: 0                # the default; at most 3
   became of each delegate. Render it apart from the conversation's lines.
 
 Call `installation.standardWorkerProblems()` once your worker flows are defined to refuse a broken
-standard worker at load, such as a coordinator whose `rounds:` is above 3.
+standard worker at load, such as a coordinator whose `rounds:` is above 0.
 
 ## Importing from a browser component
 

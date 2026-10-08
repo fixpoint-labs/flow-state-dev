@@ -7,6 +7,7 @@
  *   V1     no `routing:` means judgment, no `rounds:` means zero;
  *   BR-11  a standard coordinator's defaults naming a worker that isn't standard is refused at load;
  *   BR-26  `rounds:` above 3 is refused when saved, and at load for a file;
+ *          until answers go back out, so is any `rounds:` above 0;
  *   BR-1   the first read copies the defaults into the conversation; the configuration is not written;
  *   BR-1a  a delegate action on a session no create linked to a worker is refused, naming why;
  *   BR-2   an add lands in this conversation only; a `target` sent to `addDelegate` is refused, naming it;
@@ -51,8 +52,21 @@ describe("a coordinator's configuration (V1)", () => {
 
     const saved = await host.hire("alice", { id: "triage", flow: "coordinator", settings: { rounds: 5 } });
     expect(messageOf(saved.error)).toMatch(/rounds can be at most 3/);
-    const fine = await host.hire("alice", { id: "triage", flow: "coordinator", settings: { rounds: 3 } });
+    const fine = await host.hire("alice", { id: "triage", flow: "coordinator", settings: { rounds: 0 } });
     expect(fine.error, messageOf(fine.error)).toBeUndefined();
+  });
+
+  it("refuses any rounds above zero, at load and on save, since no answer goes back out yet", async () => {
+    // A coordinator only routes at rounds 0. Accepting `rounds: 1` would let a
+    // roster author believe answers go back out when they don't.
+    const host = bootHost({ standard: standardWorkers({ desk: { rounds: 1 } }) });
+    expect(host.installation.standardWorkerProblems().join("\n")).toMatch(
+      /standard worker "desk": .*rounds above 0 aren't supported yet/
+    );
+    for (const rounds of [1, 3]) {
+      const saved = await host.hire("alice", { id: `triage-${rounds}`, flow: "coordinator", settings: { rounds } });
+      expect(messageOf(saved.error)).toMatch(/rounds above 0 aren't supported yet/);
+    }
   });
 
   it("refuses a fallback that isn't one of its defaults", () => {

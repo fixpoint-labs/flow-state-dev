@@ -10,7 +10,9 @@
  * - `fallback`: the delegate a post best fit can't place goes to. One of
  *   `delegates`.
  * - `rounds`: how many times an answer goes back out. Zero by default, at most
- *   {@link MAX_ROUNDS}.
+ *   {@link MAX_ROUNDS}. Only zero is accepted for now: a coordinator doesn't
+ *   send answers back out yet, so a higher value is refused rather than
+ *   accepted and ignored.
  * - `model`: the model the judgment turn runs on.
  */
 import { z } from "zod";
@@ -33,6 +35,7 @@ export function coordinatorConfigSchema() {
       .int()
       .min(0)
       .max(MAX_ROUNDS, { message: `rounds can be at most ${MAX_ROUNDS}` })
+      .refine((rounds) => rounds === 0, { message: "rounds above 0 aren't supported yet" })
       .default(0),
     model: z.string().min(1).optional()
   });

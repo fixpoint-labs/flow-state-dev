@@ -10,7 +10,6 @@
  *   hasn't answered since. No model call.
  * - `evaluated`: best fit's one evaluator call picked the delegate.
  * - `fallback`: best fit couldn't place it, and the fallback delegate took it.
- * - `round-robin`, `everyone`: the fixed policies of those names.
  * - `unplaced`: nobody took it. `none` says why.
  *
  * Each delegate the decision touched is listed: delivered, skipped with why
@@ -28,8 +27,6 @@ export const coordinatorRouteBySchema = z.enum([
   "held",
   "evaluated",
   "fallback",
-  "round-robin",
-  "everyone",
   "unplaced"
 ]);
 
