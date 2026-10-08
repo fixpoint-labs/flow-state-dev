@@ -330,33 +330,8 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
     ignored: IgnoredDirectory,
     preserved: { checkoutStillAttached: boolean } | undefined,
   ): Promise<void> {
-    const guards = ignored.guards ?? (() => true);
-    const tracked = (await git(checkout, ["ls-files", "--", ignored.dir], left()))
-      .split("\n")
-      .filter((line) => line !== "" && guards(line));
-    if (tracked.length > 0) {
-      throw new Error(
-        `the repository behind ${checkout} already tracks files under ${ignored.dir}: ` +
-          `${tracked.join(", ")}. ${ignored.why} An ignore rule does not un-track a file, so ` +
-          `a commit of everything would still pick them up. Remove those files from that ` +
-          `repository first.` +
-          staleBranchRemedy(preserved),
-      );
-    }
-    try {
-      await git(checkout, ["check-ignore", "-q", "--no-index", ignored.dir], left());
-      return;
-    } catch (error) {
-      if (!gitAnsweredNo(error)) throw error;
-    }
-    throw new Error(
-      `the repository behind ${checkout} does not ignore the directory "${ignored.dir}". ` +
-        `${ignored.why} Nothing here can stop a commit of everything from staging a file git ` +
-        `does not ignore. The DIRECTORY is what is checked, because a rule naming one file ` +
-        `leaves the next one unprotected. Add \`${ignored.rule}\` to that repository's ` +
-        `.gitignore.` +
-        staleBranchRemedy(preserved),
-    );
+    const problem = await ignoredProblem(checkout, ignored, (args) => git(checkout, args, left()));
+    if (problem !== undefined) throw new Error(problem + staleBranchRemedy(preserved));
   }
 
   /**
@@ -415,6 +390,48 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
       return undefined;
     }
   }
+}
+
+/**
+ * Why `checkout`'s repository would commit the caller's files under
+ * `ignored.dir`, or `undefined` when it would not.
+ *
+ * Tracked first, and it is a different failure: an ignore rule does not
+ * un-track a file. Then the DIRECTORY, not a file in it, because git does not
+ * descend into an excluded directory, so no rule naming single files can
+ * satisfy it partway. `--no-index`, so a tracked path does not read as "not
+ * ignored" for a rule that is there.
+ */
+export async function ignoredProblem(
+  checkout: string,
+  ignored: IgnoredDirectory,
+  git: (args: string[]) => Promise<string>,
+): Promise<string | undefined> {
+  const guards = ignored.guards ?? (() => true);
+  const tracked = (await git(["ls-files", "--", ignored.dir]))
+    .split("\n")
+    .filter((line) => line !== "" && guards(line));
+  if (tracked.length > 0) {
+    return (
+      `the repository behind ${checkout} already tracks files under ${ignored.dir}: ` +
+      `${tracked.join(", ")}. ${ignored.why} An ignore rule does not un-track a file, so ` +
+      `a commit of everything would still pick them up. Remove those files from that ` +
+      `repository first.`
+    );
+  }
+  try {
+    await git(["check-ignore", "-q", "--no-index", ignored.dir]);
+    return undefined;
+  } catch (error) {
+    if (!gitAnsweredNo(error)) throw error;
+  }
+  return (
+    `the repository behind ${checkout} does not ignore the directory "${ignored.dir}". ` +
+    `${ignored.why} Nothing here can stop a commit of everything from staging a file git ` +
+    `does not ignore. The DIRECTORY is what is checked, because a rule naming one file ` +
+    `leaves the next one unprotected. Add \`${ignored.rule}\` to that repository's ` +
+    `.gitignore.`
+  );
 }
 
 /**

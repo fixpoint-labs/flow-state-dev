@@ -38,6 +38,8 @@ export {
 } from "./scope-identity";
 export type { ScopeName, ScopePrincipal } from "./scope-identity";
 export { localWorkspaceHost, WorkspaceRefusedError } from "./local-host";
+export { fileHeldWorkStore, HeldWorkMismatchError } from "./held-work";
+export type { HeldWork, HeldWorkMismatchField, HeldWorkStore, RecordedHold, SkippedPath } from "./held-work";
 export type { IgnoredDirectory } from "./worktree";
 export { isStrictlyInside } from "./worktree";
 export { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run } from "./exec";
@@ -48,7 +50,9 @@ export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./r
 export { redactRemote } from "./remotes";
 export type {
   LocalWorkspaceHostOptions,
+  PlaceOrigin,
   PlaceRequest,
+  RecordedPlace,
   WorkspaceHost,
   WorkspacePlace,
 } from "./local-host";

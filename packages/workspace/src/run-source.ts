@@ -54,6 +54,12 @@ export interface RepoRunSource {
   projectId?: string;
   /** The collection of kept files. Required together with `projectId`. */
   files?: RunFiles;
+  /**
+   * Where this run's held work goes in the host's held-work store: a key
+   * prefix, `/`-separated. Opaque to the host, like `projectId`. Without it,
+   * nothing is held for the run, even on a host with a held-work store.
+   */
+  heldPrefix?: string;
 }
 
 /**

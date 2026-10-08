@@ -264,7 +264,170 @@ A caller that writes its own files inside the checkout can name that directory i
 
 One provision, every git command and every wait for another provision of the same place or clone included, is held to `provisionTimeoutMs` (ten minutes by default). `host.locate(answer, { place })` says where `provision` would put a place, without making anything, for a caller that has to name the working directory first.
 
-`checkpoint` and `restore` exist on the host and do nothing yet. They mark where keeping uncommitted repository work across a lost machine will plug in.
+### Holding a run's work across machines
+
+A run's checkout lives on its host's disk. When the next turn of that run lands on another machine, the checkout isn't there. Held work covers that case: at points you choose, the host copies the run's work into a store you provide, and a host on another machine rebuilds the checkout from it.
+
+It's off unless you pass a `heldWork` store. A host that keeps its disk between turns, or a sandbox that preserves its state, doesn't need it.
+
+```ts
+import { fileHeldWorkStore, localWorkspaceHost } from "@flow-state-dev/workspace";
+
+const host = localWorkspaceHost({
+  root: "/var/fsd/runs",
+  remotes: { allow: ["github.com"] },
+  source: () => ({
+    kind: "repo",
+    repo: "https://github.com/acme/storefront.git",
+    heldPrefix: "acme/storefront",   // where this run's held work goes in the store
+  }),
+  heldWork: fileHeldWorkStore({ dir: "/mnt/shared/held-work" }),
+});
+```
+
+Holding applies to a run only when the host has a store, the source's repository answer names a `heldPrefix`, and the repository is a remote. A repository listed in `localRepositories` is never held. `host.holds(answer)` tells you whether an answer qualifies.
+
+#### What is held
+
+`host.checkpoint(place, previous?)` takes a git snapshot of the checkout: the run's commits since its base, plus everything uncommitted on top of them. Edits, untracked files and deletions are all included. It leaves the checkout's staging area alone, creates no branch or tag, and pushes nothing to the remote.
+
+Some files are left out:
+
+- Files the repository ignores, such as `.env` or `node_modules`.
+- Any file over 10 MB. The snapshot keeps it as it was at the run's head commit, or leaves it out if it's new. `skipped` lists it with `why: "over-cap"`.
+- Submodules and nested repositories, listed in `skipped` with `why: "submodule"`.
+
+`checkpoint` returns `null` when holding doesn't apply to the place. Otherwise it writes the snapshot to the store and returns a `HeldWork`:
+
+```ts
+{
+  base: "4f1c…",       // the commit the run's branch was cut at
+  head: "9a2e…",       // the branch's commit when the snapshot was taken
+  snapshot: "c07b…",   // the working tree, as a commit on top of head
+  key: "acme/storefront/t1/u1/run-42/c07b….pack",   // <heldPrefix>/<place…>/<snapshot>.pack
+  sha256: "…",         // hash of the stored bytes
+  bytes: 18234,
+  skipped: [{ path: "fixtures/dump.sql", why: "over-cap" }],
+  unchanged: false,
+}
+```
+
+Pass the last `HeldWork` you recorded as `previous`. If nothing has changed since, the result has `unchanged: true` and nothing is written.
+
+Each new snapshot goes under a new key, and the one before it stays in the store. Save the new result on your run record first, then delete the key it replaced with `host.dropHeld(place, key)`. In that order, a run that dies in between still points at a key that exists. `dropHeld` throws for a key outside the place's own prefix, and for a place that holding doesn't apply to.
+
+#### Bringing a run back
+
+To bring a run back, call `provision` with `recorded`; `restore(place)` is a no-op on this host. `recorded` is a `RecordedPlace`, which your run keeps between turns. Every field is optional:
+
+- `host`: the `hostId()` of the host that last provisioned the place. Write it yourself after each `provision`; the host never updates your record. A host's id belongs to its `root`, so hosts that share a root count as one host.
+- `held`: the last `checkpoint` result you kept. `provision` reads `base`, `head`, `snapshot`, `key`, `sha256` and an optional `parked` flag (see [When a restore fails](#when-a-restore-fails)).
+- `remote` and `branch`: what the place was cut from, as `place.repo.remote` and `place.repo.branch` reported them. When holding applies, `provision` rejects a record whose `remote` or `branch` differs from the request.
+- `baseRef`: the branch the run was cut from, as `place.repo.baseRef` reported it. Used to find the base commit of a checkout handed back here when the record has no hold.
+
+Keep the whole `HeldWork` in `held`, so you can also pass it to `checkpoint` as `previous`:
+
+```ts
+import type { HeldWork, RecordedPlace } from "@flow-state-dev/workspace";
+
+type RunRecord = RecordedPlace & { held?: HeldWork | null };
+
+const answer = await host.source(ctx);
+const place = await host.provision(answer, {
+  place: [tenant, user, runId],
+  branch: `fsd/${runId}`,
+  recorded: record,
+});
+record = {
+  ...record,
+  host: host.hostId(),
+  remote: place.repo!.remote,
+  branch: place.repo!.branch,
+  baseRef: place.repo!.baseRef ?? record.baseRef,   // reported only when the branch was just cut
+};
+await saveRunRecord(runId, record);
+
+// ...the worker's turn...
+
+const held = await host.checkpoint(place, record.held);
+if (held !== null && !held.unchanged) {
+  const replaced = record.held?.key;
+  record = { ...record, held };
+  await saveRunRecord(runId, record);
+  if (replaced !== undefined) await host.dropHeld(place, replaced);
+}
+```
+
+Leave `recorded` out on a first provision.
+
+A place whose record names another host, or names this host but has no checkout here, is lost here, and `provision` makes it again. The returned place says what happened in `origin`:
+
+| `origin` | When |
+| --- | --- |
+| `new` | There's no record, or it names no host, and there's no checkout here yet. A branch is cut for the first time. |
+| `live` | The place is live here: its checkout is on this host, and the record names this host or no host. The checkout is handed back as it was. |
+| `held` | The place is lost here and the record has a hold that isn't parked. The checkout is rebuilt from it: the branch is at the recorded `head`, and the uncommitted changes are back in the working tree, unstaged, with new files untracked. |
+| `base` | The place is lost here and the record has no hold, or its hold has `parked: true`. The branch is cut again from the base. |
+
+On a host without a `heldWork` store, or for a run that holding doesn't apply to, `provision` never rebuilds, and `origin` is only ever `new` or `live`. A host without a store still checks `recorded.held`: if the record names held work and the run has no live checkout here, `provision` rejects with `field: "disabled"`.
+
+A rebuilt checkout starts from a clone of the remote, so ignored files, `node_modules` included, aren't there. Reinstall dependencies before the worker runs.
+
+To follow a rebuild, pass `progress` in the request:
+
+```ts
+progress?: (state: "lost" | "restoring") => void | Promise<void>;
+```
+
+It's called with `"lost"` when `provision` finds the place lost here, and with `"restoring"` just before a rebuild from held work starts, so you can record each state first. `provision` waits for the callback to resolve before going on.
+
+A checkout this host still has for a lost place is renamed to `checkout.stale-<time>` and kept. A rebuilt checkout gets the same `ignored` check as a new one, and is refused the same way.
+
+#### When a restore fails
+
+When the held work and the record disagree, `provision` rejects with a `HeldWorkMismatchError` and nothing in the store changes. Provisioning again with the same record fails the same way, so the run needs a person to decide what happens to it. `field` says what disagreed:
+
+| `field` | What disagreed |
+| --- | --- |
+| `remote` | The record names a different remote than the source answered. |
+| `branch` | The record names a different branch than the request. |
+| `scope` | The recorded key isn't under this run's prefix, `<heldPrefix>/<place…>/`. |
+| `base` | The base commit isn't on any branch of the remote. |
+| `pack` | The stored object is missing, its hash doesn't match the record, or it can't be read. |
+| `head` | The head commit is in neither the held work nor the remote. |
+| `snapshot` | The snapshot commit isn't in the held work, or doesn't sit on the recorded head. |
+| `tree` | The rebuilt checkout doesn't match the snapshot. The rebuilt checkout is removed. |
+| `disabled` | The record names held work, this host has no `heldWork` store, and the run has no live checkout here. |
+
+`error.message` names the key or commit involved. A store that throws while it's being read fails the provision with the store's own error, which is worth retrying.
+
+Once a person has decided, provision again with `parked: true` on the recorded hold:
+
+```ts
+const place = await host.provision(answer, {
+  place: [tenant, user, runId],
+  branch: `fsd/${runId}`,
+  recorded: { ...record, held: { ...record.held!, parked: true } },
+});
+// place.origin is "base"; place.heldDir is set when the held files could be laid out
+```
+
+The run starts again from its base. If the held work can be read and matches the record, its files are laid out in a `held/` directory beside the checkout, and `place.heldDir` points there. Otherwise `heldDir` is absent.
+
+#### Writing your own store
+
+`fileHeldWorkStore({ dir })` keeps each key as a file under `dir`. For hosts on different machines, put `dir` on storage they all mount. For object storage, implement `HeldWorkStore`:
+
+```ts
+interface HeldWorkStore {
+  put(key: string, bytes: Uint8Array): Promise<void>;   // replaces anything under key
+  get(key: string): Promise<Uint8Array | undefined>;    // undefined when the key is absent
+  delete(key: string): Promise<void>;                   // resolves when the key is already gone
+  list(prefix: string): Promise<string[]>;              // every key starting with prefix
+}
+```
+
+`put` must be atomic: a reader sees the whole object or nothing, never a partial write. A store that can expose half an object can leave a run whose record names work that can't be read back. `fileHeldWorkStore` writes atomically. Keys are `/`-separated, with no empty, `.` or `..` segments.
 
 ### Which remotes a host reaches
 
@@ -293,7 +456,16 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `principalFromContext(ctx)` | The scoping identity, read off a block's execution context. |
 | `collectionIdFor(collection, principal)` | A `Mount.collectionId` for a scoped door. |
 | `unscopedCollectionId(collection)` | A `Mount.collectionId` for a door with no principal. |
-| `localWorkspaceHost({ root, remotes, source, localRepositories?, provisionTimeoutMs? })` | A workspace host on this machine. Returns `{ root, source, provisionTimeoutMs, locate, provision, save, checkpoint, restore, release }`. |
+| `localWorkspaceHost({ root, remotes, source, localRepositories?, provisionTimeoutMs?, heldWork? })` | A workspace host on this machine. Returns `{ root, source, provisionTimeoutMs, locate, provision, save, hostId, holds, checkpoint, dropHeld, restore, release }`. With a `heldWork` store, `checkpoint(place, previous?)` saves a repository run's work to it and returns a `HeldWork` (or `null` when holding doesn't apply), `dropHeld(place, key)` deletes one of the place's earlier keys, and `provision` takes `recorded` and rebuilds a lost checkout from it, reporting `origin`. |
+| `HeldWorkStore` | Where held work goes: `put(key, bytes)`, `get(key)`, `delete(key)`, `list(prefix)`. `put` must be atomic. |
+| `fileHeldWorkStore({ dir })` | A `HeldWorkStore` that keeps each key as a file under `dir`, written atomically. |
+| `HeldWorkMismatchError` | What `provision` rejects with when held work disagrees with the run's record, or this host has no store to rebuild from. `field` is one of `remote`, `branch`, `scope`, `base`, `pack`, `head`, `snapshot`, `tree`, `disabled`. |
+| `HeldWork` | What `checkpoint` returns: `{ base, head, snapshot, key, sha256, bytes, skipped, unchanged }`. |
+| `RecordedPlace` | What `provision` takes as `recorded`: `{ host?, held?, remote?, branch?, baseRef? }`. |
+| `RecordedHold` | The `held` field of a `RecordedPlace`: `{ base, head, snapshot, key, sha256, parked? }`. A `HeldWork` fits it. |
+| `PlaceOrigin` | A place's `origin`: `"new" \| "live" \| "held" \| "base"`. |
+| `SkippedPath` | A path a snapshot left out: `{ path, why: "over-cap" \| "submodule" }`. |
+| `HeldWorkMismatchField` | The values of `HeldWorkMismatchError.field`. |
 | `IgnoredDirectory` | The `ignored` field of a place request: `{ dir, rule, why }`. |
 | `repositoryIdentity(dir)`, `identityFromCommonDir(dir, commonDir)` | Which repository a directory belongs to, as the real path of its git common directory. Two worktrees of one repository answer the same. |
 | `resolvesToCommit(repo, ref)` | Whether `ref` names a commit in `repo`. |
