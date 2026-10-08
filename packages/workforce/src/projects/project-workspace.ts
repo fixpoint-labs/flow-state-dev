@@ -53,8 +53,7 @@
  * `uses`.
  */
 
-import { defineCapability } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { defineCapability, type LooseBlockContext } from "@flow-state-dev/core";
 import {
   collectionIdFor,
   principalFromContext,
@@ -151,8 +150,7 @@ export interface ProjectWorkspaceOptions {
 export function projectWorkspace(options: ProjectWorkspaceOptions = {}): RunSource {
   const workstream = options.board === undefined ? undefined : boardWorkstream(options.board.id);
 
-  const source: RunSource = async (looseCtx): Promise<RunSourceAnswer> => {
-    const ctx = looseCtx as unknown as BlockContext;
+  const source: RunSource = async (ctx): Promise<RunSourceAnswer> => {
     const link = ctx.session?.state?.[WORKSTREAM_STATE_KEY];
     if (typeof link === "string") return fromWorkstream(ctx, link);
     if (workstream === undefined) {
@@ -179,12 +177,12 @@ function boardWorkstream(boardId: string): string {
 }
 
 /** The bare user a run belongs to, not `identity.id`: that is the user record's storage key, which carries the org. */
-function runOwnerOf(ctx: BlockContext): string | undefined {
+function runOwnerOf(ctx: LooseBlockContext): string | undefined {
   return ctx.user?.identity?.userId;
 }
 
 /** A run for the workstream its session leads. */
-async function fromWorkstream(ctx: BlockContext, link: string): Promise<RunSourceAnswer> {
+async function fromWorkstream(ctx: LooseBlockContext, link: string): Promise<RunSourceAnswer> {
   const address: WorkstreamAddress | undefined = parseWorkstreamRef(link);
   const owner = ctx.session.identity.userId;
   if (address === undefined || owner === undefined || owner.length === 0) {
@@ -210,7 +208,7 @@ async function fromWorkstream(ctx: BlockContext, link: string): Promise<RunSourc
 }
 
 /** A run on a mailbox board a project lists: found through the workstream's claim. */
-async function fromClaim(ctx: BlockContext, workstream: string): Promise<RunSourceAnswer> {
+async function fromClaim(ctx: LooseBlockContext, workstream: string): Promise<RunSourceAnswer> {
   const claims = collectionAt(ctx, WORKSTREAM_CLAIMS_RESOURCE, notHeld);
   const projects = projectRowsAt(ctx, "shared", notHeld);
 
@@ -242,7 +240,7 @@ async function fromClaim(ctx: BlockContext, workstream: string): Promise<RunSour
 }
 
 /** The answer for `project` at `visibility`: its repository, or its files, with its kept files beside either. */
-function answer(ctx: BlockContext, visibility: ProjectVisibility, project: ProjectRow): RunSourceAnswer {
+function answer(ctx: LooseBlockContext, visibility: ProjectVisibility, project: ProjectRow): RunSourceAnswer {
   const declaration = visibility === "private" ? definePrivateProjectFilesCollection() : defineProjectFilesCollection();
   const kept = {
     collection: collectionAt<ProjectedEntryState>(ctx, projectFilesAccessor(visibility), notHeld),

@@ -315,23 +315,19 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
   });
 
   /** One dispatcher per lead flow: creates the lead's session, linked at create, and runs nothing. */
-  const dispatchers = new Map<string, BlockDefinition<any, any>>();
-  for (const kind of leadFlowKinds) {
-    dispatchers.set(
-      kind,
-      dispatcher({
-        name: `workstream-open-session-${kind}`,
-        flowKind: kind,
-        action: WORKSTREAM_OPENED_ENTRY,
-        inputSchema: openStepSchema,
-        session: {
-          key: (step: OpenStep) => `workstream:${step.ref}`,
-          state: (step: OpenStep) => ({ [WORKER_ID_STATE_KEY]: step.lead, [WORKSTREAM_STATE_KEY]: step.ref })
-        },
-        payload: () => ({})
-      })
-    );
-  }
+  const openSessionOn = (kind: string) =>
+    dispatcher({
+      name: `workstream-open-session-${kind}`,
+      flowKind: kind,
+      action: WORKSTREAM_OPENED_ENTRY,
+      inputSchema: openStepSchema,
+      session: {
+        key: (step: OpenStep) => `workstream:${step.ref}`,
+        state: (step: OpenStep) => ({ [WORKER_ID_STATE_KEY]: step.lead, [WORKSTREAM_STATE_KEY]: step.ref })
+      },
+      payload: () => ({})
+    });
+  const dispatchers = new Map([...leadFlowKinds].map((kind) => [kind, openSessionOn(kind)] as const));
   const createSession = router({
     name: "workstream-open-session",
     inputSchema: openStepSchema,

@@ -76,7 +76,7 @@ const spreadWorkstreamResources: MissingCollection = (accessor) =>
 export function collectionAt<TState extends JsonObject = JsonObject>(
   ctx: ResourcesContext,
   accessor: string,
-  missing: MissingCollection = spreadProjectResources
+  missing: MissingCollection
 ): ResourceCollectionRef<TState> {
   const ref = (ctx.resources as Record<string, unknown> | undefined)?.[accessor];
   if (ref === undefined) throw new Error(missing(accessor));
@@ -87,7 +87,7 @@ export function collectionAt<TState extends JsonObject = JsonObject>(
 export function projectRowsAt(
   ctx: ResourcesContext,
   visibility: ProjectVisibility,
-  missing?: MissingCollection
+  missing: MissingCollection = spreadProjectResources
 ): ResourceCollectionRef<ProjectRow> {
   return collectionAt<ProjectRow>(ctx, projectRowsAccessor(visibility), missing);
 }
@@ -96,7 +96,7 @@ export function projectRowsAt(
 export function projectFilesAt(
   ctx: ResourcesContext,
   visibility: ProjectVisibility,
-  missing?: MissingCollection
+  missing: MissingCollection = spreadProjectResources
 ): ResourceCollectionRef<ProjectFile> {
   return collectionAt<ProjectFile>(ctx, projectFilesAccessor(visibility), missing);
 }
