@@ -5,7 +5,7 @@
  * wrapper sits between the tool and the write.
  */
 import { describe, expect, it } from "vitest";
-import { createWorkerInstallation, defineProjectBlocks } from "@flow-state-dev/workforce";
+import { createWorkerHireBlocks, createWorkerInstallation, defineProjectBlocks } from "@flow-state-dev/workforce";
 import { chiefOfStaffProjectTools, chiefOfStaffRosterTools } from "../teams/devteam/host.mts";
 
 describe("chief of staff tools presented with .as()", () => {
@@ -23,9 +23,12 @@ describe("chief of staff tools presented with .as()", () => {
   it("hire is the Workforce hire block under the tool's own name", () => {
     const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => ({}) });
     const tool = chiefOfStaffRosterTools(installation).hire;
+    const block = createWorkerHireBlocks(installation).hire;
     expect(tool.name).toBe("hire");
     expect(tool.description).toMatch(/^Hire a worker of the person's own: `id` is a short lowercase slug/);
+    expect(tool.kind).toBe(block.kind);
     expect(tool.kind).not.toBe("sequencer");
+    expect(tool.inputSchema).toBe(block.inputSchema);
   });
 
   it("the tools that wait for an approval keep their sequencer", () => {

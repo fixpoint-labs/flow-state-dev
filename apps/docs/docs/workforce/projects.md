@@ -111,6 +111,8 @@ const agent = defineAgentWorkerFlow({
 });
 ```
 
+`.as()` only renames. If a write should wait for a person's approval first, keep a sequencer that asks before the step, as the [chief of staff](./chief-of-staff.md) does for `fire`.
+
 A seat calls them only when its own `tools:` names them. The owner is the person whose session the seat is answering in, so a project a seat creates belongs to whoever asked for it, and `members` adds the people they name. The talk session `createProject` gets ready is that person's.
 
 The writes read the organization's [mailbox inventory](./inventory.md) to check workstream ids. A flow takes one declaration of a collection, so if the same kind reads the inventory itself, for example through `createWorkforceCapability`'s `discover`, declare that read with `projectWritesMailboxInventory` rather than a `defineMailboxInventoryCollection()` of its own:

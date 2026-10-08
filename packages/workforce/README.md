@@ -1964,9 +1964,8 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
   });
   ```
 - **As a worker's tools.** Put the writes in `defineAgentWorkerFlow({ catalog })` under the names a worker's
-  `tools:` spells. A catalog key must be the tool's own name, so wrap each in a one-step
-  `sequencer({ name: "createProject", inputSchema: createProjectInputSchema, outputSchema:
-  createProjectOutputSchema }).step(projects.createProject)`. The owner is the session the seat
+  `tools:` spells. A catalog key must be the tool's own name, so give each that name with
+  `projects.createProject.as({ name: "createProject", description: "…" })`. The owner is the session the seat
   answers in, so the project belongs to the person who asked. A kind that also reads the mailbox
   inventory (the `discover` door) declares it with `projectWritesMailboxInventory`: a flow refuses a
   second declaration of the collection beside the writes'.
