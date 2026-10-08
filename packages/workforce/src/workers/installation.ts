@@ -116,6 +116,24 @@ export interface ResolvedWorker {
 }
 
 /**
+ * A worker on a user's roster, as {@link WorkerInstallation.rosterWorker}
+ * reads it: enough to tell whether it is theirs and what it runs on, without
+ * loading its configuration.
+ */
+export interface RosterWorker {
+  /** The worker's id. */
+  id: string;
+  /** Whether it is a standard worker (from the files) rather than one of the user's own. */
+  standard: boolean;
+  /** The flow it names. */
+  flow: string;
+  /** Its description, or `null`. */
+  description: string | null;
+  /** Why it can't run, when its row can't be read or names a flow kept for standard workers. */
+  problem?: string;
+}
+
+/**
  * Thrown when a turn can't run as the session's worker: it was fired, now
  * names another flow, names something the installation no longer registers,
  * or runs on a flow kept for standard workers. Nothing is written; the row and
@@ -172,6 +190,25 @@ export interface WorkerInstallation {
    * @throws WorkerTurnRefusedError when the turn can't run as the worker.
    */
   resolveWorker(ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker>;
+  /**
+   * The worker `workerId` names on the session user's roster, read by id
+   * now: one of their own (read at their scope, so another user's is simply
+   * not there) or a standard one. `undefined` when the user has no such
+   * worker, which is also the answer for another user's.
+   *
+   * Answers "is it yours", not "may it run": nothing is minted.
+   *
+   * @param ctx The block's context. The block must declare {@link resources}.
+   */
+  rosterWorker(ctx: WorkerTurnContext, workerId: string): Promise<RosterWorker | undefined>;
+  /**
+   * Check every standard worker's configuration as its flow would on a turn,
+   * the way {@link configurationProblems} checks a row. An app calls it once
+   * its worker flows are defined, to refuse a broken file at load.
+   *
+   * @returns Each problem, naming its worker; empty when every one would run.
+   */
+  standardWorkerProblems(): string[];
   /** A standard worker by id, or `undefined`. */
   standardWorker(id: string): WorkerManifest | undefined;
   /** The worker flows, resolved: each one's flow and whether it is kept for standard workers. */
@@ -197,7 +234,9 @@ function declaredOf(row: WorkerRow): Record<string, unknown> {
  * Build the installation's worker model.
  *
  * Refuses a standard worker whose file names no flow, or names one the
- * installation doesn't run, and two standard workers under one id.
+ * installation doesn't run, two standard workers under one id, and a standard
+ * worker whose `delegates:` names a worker that isn't standard: every user has
+ * a standard worker, so its defaults can name only what every user has too.
  */
 export function createWorkerInstallation(options: WorkerInstallationOptions = {}): WorkerInstallation {
   const standard = new Map<string, WorkerManifest>();
@@ -211,6 +250,19 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       );
     }
     standard.set(manifest.id, manifest);
+  }
+  for (const manifest of standard.values()) {
+    const delegates = manifest.declared.delegates;
+    if (!Array.isArray(delegates)) continue;
+    const unknown = delegates.filter((name) => typeof name !== "string" || !standard.has(name));
+    if (unknown.length > 0) {
+      throw new Error(
+        `createWorkerInstallation: standard worker "${manifest.id}" names ` +
+          `${unknown.map((name) => JSON.stringify(name)).join(", ")} in \`delegates:\`, which ` +
+          `${unknown.length === 1 ? "isn't a standard worker" : "aren't standard workers"}. ` +
+          `A standard worker's delegates must be standard workers too.`
+      );
+    }
   }
 
   const workerFlowsOption = (): HireOptions["workerFlows"] =>
@@ -378,6 +430,20 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     return { ok: true };
   };
 
+  /** The user's worker collection, as the calling block declared it. */
+  const workerCollection = (ctx: WorkerTurnContext, caller: string): ResourceCollectionRef => {
+    const collection = (ctx.resources as Record<string, unknown>)[WORKERS_RESOURCE] as
+      | ResourceCollectionRef
+      | undefined;
+    if (collection === undefined || typeof collection.getOptional !== "function") {
+      throw new Error(
+        `${caller} needs the worker collection: declare \`resources: { ...installation.resources }\` ` +
+          `on the block that calls it.`
+      );
+    }
+    return collection;
+  };
+
   const resolveWorker = async (ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker> => {
     const workerId = (ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY];
     if (typeof workerId !== "string" || workerId.length === 0) {
@@ -395,15 +461,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       refuse(`Flow "${flowKind}" isn't a worker flow here, so worker "${workerId}" can't run on it.`);
     }
 
-    const collection = (ctx.resources as Record<string, unknown>)[WORKERS_RESOURCE] as
-      | ResourceCollectionRef
-      | undefined;
-    if (collection === undefined || typeof collection.getOptional !== "function") {
-      throw new Error(
-        `resolveWorker needs the worker collection: declare \`resources: { ...installation.resources }\` ` +
-          `on the block that calls it.`
-      );
-    }
+    const collection = workerCollection(ctx, "resolveWorker");
     const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
     if (found.found === "none") {
       refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
@@ -448,10 +506,43 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     };
   };
 
+  const rosterWorker = async (ctx: WorkerTurnContext, workerId: string): Promise<RosterWorker | undefined> => {
+    const collection = workerCollection(ctx, "rosterWorker");
+    const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
+    if (found.found === "none") return undefined;
+    if (found.found === "unreadable") {
+      return { id: workerId, standard: false, flow: "", description: null, problem: found.problem };
+    }
+    if (found.found === "own") {
+      return {
+        id: workerId,
+        standard: false,
+        flow: found.flow,
+        description: found.row.description,
+        ...(found.standardOnly ? { problem: standardOnlyReason(found.flow, false) } : {})
+      };
+    }
+    const declaredDescription = found.manifest.declared.description;
+    return {
+      id: workerId,
+      standard: true,
+      flow: found.flow,
+      description: typeof declaredDescription === "string" ? declaredDescription : null
+    };
+  };
+
+  const standardWorkerProblems = (): string[] =>
+    [...standard.values()].flatMap((manifest) => {
+      const minted = mint(manifest);
+      return minted.ok ? [] : minted.problems.map((problem) => `standard worker "${manifest.id}": ${problem}`);
+    });
+
   return {
     resources,
     sessionStateShape,
     createCheck,
+    rosterWorker,
+    standardWorkerProblems,
     session(extraShape) {
       return {
         stateSchema: z.object({ ...sessionStateShape, ...(extraShape ?? {}) }) as never,

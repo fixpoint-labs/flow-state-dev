@@ -146,3 +146,4 @@ export * from "./inventory";
 export * from "./roster";
 export * from "./projects";
 export * from "./workers";
+export * from "./coordinator";

@@ -34,6 +34,7 @@ export {
   verifiedWorkerOf,
   WorkerTurnRefusedError,
   type ResolvedWorker,
+  type RosterWorker,
   type WorkerInstallation,
   type WorkerInstallationOptions,
   type WorkerTurnContext

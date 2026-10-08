@@ -92,6 +92,8 @@ import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board"
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
+import { DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
+import { delegatedPostEntry } from "./coordinator/delegated-post";
 import { mailboxTaskLists } from "./mailbox/mailbox-board";
 import {
   mailboxNotifyInputSchema,
@@ -1247,7 +1249,11 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
           inputSchema: mailboxNotifyInputSchema,
           block: heardPost,
           userMessage: heardTurn
-        }
+        },
+        // A coordinator's delivery: one turn of `run` on the post, its reply
+        // handed back to the delivering conversation with the delivery's
+        // token. That is what makes an agent worker a delegate that takes posts.
+        [DELEGATED_POST_ENTRY]: delegatedPostEntry(run)
       }
     },
     ...(options.taskLists === undefined
