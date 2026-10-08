@@ -5,7 +5,7 @@
  * A thin orchestrator over one commit. It builds Shift Manager once, then:
  *
  *   part 1   legs a and b on one store (a's restart, b's two), leg c on its own
- *            (three boots: `extra-kind`, then as shipped twice), every CoS turn
+ *            (three boots: `extra-flow`, then as shipped twice), every CoS turn
  *            on a real model in Chromium, graded once (D2)
  *   controls `deny-fire` (a click), `no-cos` and `no-tool` (scratch patches,
  *            printed in full), and today's `main` (its own checkout and build),
@@ -22,12 +22,12 @@
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerPages } from "../../lib/shift-manager.mts";
-import { extraKind, noCos, noTool, scratchLab, type Patch } from "./controls/patches.mts";
+import { extraFlow, noCos, noTool, scratchLab, type Patch } from "./controls/patches.mts";
 import { j4, type J4Result } from "./j4.mts";
 import { legA, readBack } from "./legs/a.mts";
 import { hireWithoutCos, legB } from "./legs/b.mts";
@@ -71,7 +71,7 @@ async function runLegs(
   label: string,
   pages: string,
   browser: Awaited<ReturnType<typeof launchChromium>>,
-  opts: { config: string; extraKindConfig: (kind: string) => { config: string; diff: string; remove(): void }; deny: boolean; legs: Array<"a" | "b" | "c"> },
+  opts: { config: string; extraFlowConfig: (flow: string) => { config: string; diff: string; remove(): void }; deny: boolean; legs: Array<"a" | "b" | "c"> },
 ): Promise<LegsRun> {
   const run: LegsRun = { label, records: [], patches: [], stores: [] };
   if (opts.legs.includes("a") || opts.legs.includes("b")) {
@@ -116,17 +116,18 @@ async function runLegs(
     run.records.push(record);
     const store = join(STORES, `${label}-c.sqlite`);
     run.stores.push({ file: store, steps: "c1 (boot 1), c2 and c3 (boot 2), c4 (boot 3)" });
-    const kind = `scratch-${hex(2)}`;
-    const patched = opts.extraKindConfig(kind);
-    run.patches.push(patched.diff);
+    const flow = `scratch-${hex(2)}`;
     const world = new World(browser, people, { config: opts.config, pages, scratch: SCRATCH, store }, record);
+    let patched: ReturnType<typeof opts.extraFlowConfig> | undefined;
     try {
-      await legC(world, BOARD_MAILBOX, { seat: `helper-${hex()}`, kind, patchedConfig: patched.config, shippedConfig: opts.config });
+      patched = opts.extraFlowConfig(flow);
+      run.patches.push(patched.diff);
+      await legC(world, { worker: `helper-${hex()}`, flow, patchedConfig: patched.config, shippedConfig: opts.config });
     } catch (error) {
       record.fail("reach", (error as Error).stack?.slice(0, 1500) ?? String(error));
       await world.stop().catch(() => undefined);
     } finally {
-      patched.remove();
+      patched?.remove();
     }
   }
   return run;
@@ -160,12 +161,12 @@ await runGoal(async () => {
   let j4Result: J4Result | undefined;
   let p3: RunResult[] = [];
   let p4: SeamRow[] = [];
-  const shipped = (patches: Patch[]) => (kind: string) => scratchLab(hex(2), [...patches, extraKind(kind)]);
+  const shipped = (patches: Patch[]) => (flow: string) => scratchLab(hex(2), [...patches, extraFlow(flow)]);
 
   try {
     // ---- part 1 -------------------------------------------------------------------
     if (wants("legs")) {
-      const plain = await runLegs("plain", pages, browser, { config: CONFIG, extraKindConfig: shipped([]), deny: false, legs: ["a", "b", "c"] });
+      const plain = await runLegs("plain", pages, browser, { config: CONFIG, extraFlowConfig: shipped([]), deny: false, legs: ["a", "b", "c"] });
       runs.push(plain);
       for (const red of reds(plain)) failures.push(`part 1 ${red.id}: ${red.notes.filter((n) => n.startsWith("FAIL") || n.startsWith("BLOCKED")).join(" / ")}`);
     }
@@ -201,14 +202,14 @@ await runGoal(async () => {
     const B = ["b1", "b2", "b3", "b4"];
     const C = ["c1", "c2", "c3", "c4"];
     if (wants("deny-fire")) {
-      const run = await runLegs("deny-fire", pages, browser, { config: CONFIG, extraKindConfig: shipped([]), deny: true, legs: ["a", "b", "c"] });
+      const run = await runLegs("deny-fire", pages, browser, { config: CONFIG, extraFlowConfig: shipped([]), deny: true, legs: ["a", "b", "c"] });
       runs.push(run);
       grade("deny-fire", run, "b3", /seat gone/, [...A, "b1", "b2", "b4", ...C]);
     }
     if (wants("no-tool")) {
       const lab = scratchLab(hex(2), [noTool]);
       try {
-        const run = await runLegs("no-tool", pages, browser, { config: lab.config, extraKindConfig: shipped([noTool]), deny: false, legs: ["a", "b", "c"] });
+        const run = await runLegs("no-tool", pages, browser, { config: lab.config, extraFlowConfig: shipped([noTool]), deny: false, legs: ["a", "b", "c"] });
         run.patches.unshift(lab.diff);
         runs.push(run);
         grade("no-tool", run, "a1", /two rows|createProject/, [...B, ...C]);
@@ -306,7 +307,8 @@ await runGoal(async () => {
   // ---- the report -------------------------------------------------------------------------
   const report = writeReport({ head, base, runs, controlVerdicts, j4Result, p3, p4, failures });
   // Every store this run owned is deleted, pass or fail (QR-7).
-  for (const f of existsSync(STORES) ? readdirSync(STORES) : []) rmSync(join(STORES, f), { force: true });
+  // The Lab keeps a project's repository beside its store, so a store can be a directory.
+  for (const f of existsSync(STORES) ? readdirSync(STORES) : []) rmSync(join(STORES, f), { recursive: true, force: true });
   say(`report: ${report}`);
   return { failures, evidence: `report at ${report}` };
 });
@@ -340,7 +342,7 @@ function writeReport(r: {
   for (const run of r.runs) {
     out.push(`### ${run.label}`, "");
     for (const rec of run.records) {
-      for (const boot of rec.boots) out.push(`- boot "${boot.label}": ${boot.problems.length === 0 ? "no problems" : boot.problems.join(" | ")}`);
+      for (const boot of rec.boots) out.push(`- boot "${boot.label}" on \`${relative(REPO_ROOT, boot.config)}\``);
       out.push("", "| Step | Verdict | What it showed |", "|---|---|---|");
       for (const [id, e] of rec.steps) out.push(`| ${id} | ${e.verdict} | ${e.notes.join("<br>").replaceAll("|", "\\|").slice(0, 3000)} |`);
       out.push("");

@@ -1,5 +1,5 @@
 /**
- * The scratch patches (S3): `extra-kind` (leg c's boot 1), `no-cos` and
+ * The scratch patches (S3): `extra-flow` (leg c's boot 1), `no-cos` and
  * `no-tool`. `deny-fire` is a click, not a patch.
  *
  * Each is applied to a scratch copy of the commit's DevTeam Lab, never to the
@@ -20,32 +20,55 @@ const PROFILE = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam")
 /** One edit to a scratch copy of the Lab: its name, and what it does to the copy at `lab`. */
 export type Patch = { name: string; apply(lab: string): void };
 
-/** One more kind for leg c's boot 1: a copy of the built-in `agent` kind under `kind`, in the kind map and in `allowKinds`. */
-export function extraKind(kind: string): Patch {
+/** The door of {@link extraFlow}'s flow: the one action that takes a person's message. */
+export const EXTRA_FLOW_DOOR = "run";
+
+/**
+ * One more worker flow for leg c's boot 1, registered under `flow` beside the
+ * Lab's own, so a person's worker can be hired onto it. Its door answers with
+ * the worker its session names, as `resolveWorker` loads it on the turn: a
+ * turn that runs proves the worker runs on that flow. No model.
+ */
+export function extraFlow(flow: string): Patch {
   return {
-    name: "extra-kind",
+    name: "extra-flow",
     apply(lab) {
       const host = join(lab, "host.mts");
       let text = readFileSync(host, "utf8");
-      const allow = "allowKinds: [CODER_KIND, AGENT_KIND],";
-      const anchor = "  // Refuses the WHOLE roster when any record cannot be hired, naming the";
-      if (!text.includes(allow) || !text.includes(anchor)) throw new Error("extra-kind: host.mts no longer has the lines this patch edits");
-      text = text.replace(allow, `allowKinds: [CODER_KIND, AGENT_KIND, ${JSON.stringify(kind)}],`);
-      // The agent kind's own graph, filed under the scratch name: the factory and every seat it mints say `kind`.
-      const k = JSON.stringify(kind);
+      const anchor = "  const copies = hireWorkforce(installation, { mailboxBoards: mailboxBoardIds(roster.mailboxes) });";
+      if (!text.includes(anchor)) throw new Error("extra-flow: host.mts no longer has the line this patch edits");
+      const k = JSON.stringify(flow);
+      const door = JSON.stringify(EXTRA_FLOW_DOOR);
       text = text.replace(
         anchor,
         [
-          `  const scratchAgent = kinds[AGENT_KIND] as any;`,
-          `  kinds[${k}] = Object.assign(`,
-          `    (o?: unknown) => { const seat = scratchAgent(o); return new Proxy(seat, { get: (t, p) => (p === "kind" ? ${k} : Reflect.get(t, p)) }); },`,
-          `    { ...scratchAgent, kind: ${k} },`,
-          `  ) as never;`,
+          `  // extra-flow: one more worker flow, ${k}, on this installation.`,
+          `  kinds[${k}] = defineFlow({`,
+          `    kind: ${k},`,
+          `    configSchema: scratchWorkerConfigSchema(),`,
+          `    session: installation.session(),`,
+          `    resources: { ...installation.resources },`,
+          `    actions: {`,
+          `      [${door}]: {`,
+          `        inputSchema: z.object({ message: z.string() }),`,
+          `        userMessage: (input: { message: string }) => input.message,`,
+          `        block: handler({`,
+          `          name: ${JSON.stringify(`${flow}-${EXTRA_FLOW_DOOR}`)},`,
+          `          inputSchema: z.object({ message: z.string() }),`,
+          `          resources: { ...installation.resources },`,
+          `          execute: async (_input: { message: string }, ctx: any) => {`,
+          `            const worker = await installation.resolveWorker(ctx, ${k});`,
+          `            return { worker: worker.id, flow: worker.flow };`,
+          `          },`,
+          `        }),`,
+          `      },`,
+          `    },`,
+          `  } as never) as never;`,
           ``,
           anchor,
         ].join("\n"),
       );
-      writeFileSync(host, text);
+      writeFileSync(host, `import { workerConfigSchema as scratchWorkerConfigSchema } from "@flow-state-dev/workforce";\n${text}`);
     },
   };
 }

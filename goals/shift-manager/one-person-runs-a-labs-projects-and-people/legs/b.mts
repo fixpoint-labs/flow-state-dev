@@ -4,6 +4,10 @@
  * across a restart while it waits, and lands only on Approve; a team seat
  * asked to hire doesn't.
  *
+ * A worker the person hires is theirs: a row on their own roster, which
+ * Shift Manager's Roster lists as theirs, and nothing in the organization's
+ * seat inventory.
+ *
  * Steps b1 to b4 (PLAN.md → Checks). Runs on leg a's store and server, after
  * leg a. Under the `deny-fire` control, b3 clicks Reject.
  */
@@ -12,31 +16,42 @@ import {
   askCos,
   asksOf,
   callsTo,
+  cosFlowOf,
   hex,
   inboxAsks,
   quote,
   readInventory,
-  readRoster,
+  readWorkers,
+  rosterOwn,
   sleep,
-  teamsSeats,
+  treeWorkers,
   visible,
   type World,
 } from "../steps.mts";
 import type { StoredItem } from "../../../lib/shift-manager.mts";
 
-const hiredAs = (rows: Array<Record<string, any>>, seat: string) => rows.find((r) => typeof r.id === "string" && (r.id === seat || (r.id as string).endsWith(`.${seat}`)));
+/**
+ * The ask for a coder, naming what the claim isn't about: the flow and the
+ * brief a coder runs with, read from the team's own coder in the tree, so a
+ * chief of staff that asks which brief instead of hiring isn't graded on it.
+ */
+async function hireCoder(world: World, seat: string): Promise<string> {
+  const coder = (await treeWorkers(world)).find((w) => w.id.endsWith(".coder"));
+  if (coder === undefined || typeof coder.declared.flow !== "string" || typeof coder.declared.document !== "string") {
+    throw new Error("the tree declares no team coder with a flow and a document to hire one like");
+  }
+  return `Please hire one more coder for the team, with the seat id "${seat}", like ${coder.id}: on the "${coder.declared.flow}" flow, with the settings { "document": "${coder.declared.document}" }.`;
+}
 
-/** What the seat looks like in each place it can be read. */
-async function where(world: World, mailboxSession: string, cosSession: string | null, seat: string) {
+/** What the worker looks like in each place it can be read: the person's roster, Roster's own rows, the org's seat inventory. */
+async function where(world: World, mailboxSession: string, worker: string) {
+  const rosterRow = (await readWorkers(world.routes.owner)).find((x) => x.id === worker);
   const inventory = await readInventory(world.routes.owner, mailboxSession);
-  const roster = await readRoster(world.routes.owner, cosSession);
-  const row = hiredAs(inventory, seat);
-  const teams = await teamsSeats(world);
+  const onRoster = (await rosterOwn(world)).some((x) => x.id === worker);
   return {
-    inventoryRow: row,
-    rosterRow: roster?.find((x) => x.seatId === seat),
-    rosterReadable: roster !== undefined,
-    inTeams: row !== undefined ? teams.includes(String(row.id)) : teams.some((t) => t === seat || t.endsWith(`.${seat}`)),
+    rosterRow,
+    onRoster,
+    inInventory: inventory.some((x) => typeof x.id === "string" && (x.id === worker || (x.id as string).endsWith(`.${worker}`))),
   };
 }
 
@@ -55,15 +70,15 @@ export async function hireWithoutCos(world: World, mailboxSession: string, board
     return;
   }
   r.saw("setup", "the Chief of Staff view draws its no-CoS state");
-  const posted = await postInWorkstream(world, boardMailbox, `Please hire one more coder for the team, with the seat id "${seat}".`);
+  const posted = await postInWorkstream(world, boardMailbox, await hireCoder(world, seat));
   if (posted.stored !== 1) {
     r.fail("setup", `the ask to the EM was not kept: ${posted.said}; the mailbox's session holds ${posted.stored} copies, so a missing worker would prove nothing`);
     return;
   }
   await sleep(20_000);
-  const seen = await where(world, mailboxSession, null, seat);
-  if (seen.inventoryRow === undefined && !seen.inTeams) r.fail("b1", `seat appears: asked of the EM seat with no chief of staff, no seat "${seat}" is in the inventory or TEAMS`);
-  else r.saw("b1", `"${seat}" appeared: inventory ${String(seen.inventoryRow?.id)}, TEAMS ${seen.inTeams}`);
+  const seen = await where(world, mailboxSession, seat);
+  if (seen.rosterRow === undefined && !seen.onRoster) r.fail("b1", `seat appears: asked of the EM seat with no chief of staff, no worker "${seat}" is on the person's roster or listed in Roster`);
+  else r.saw("b1", `"${seat}" appeared: roster row ${JSON.stringify(seen.rosterRow)}, Roster lists it ${seen.onRoster}`);
 }
 
 /**
@@ -95,7 +110,7 @@ export async function legB(world: World, mailboxSession: string, boardMailbox: s
   const seat = `coder-${hex()}`;
 
   // ---- b1 · hire -----------------------------------------------------------------
-  const hire = await askCos(world, "b1", `Please hire one more coder for the team, with the seat id "${seat}".`);
+  const hire = await askCos(world, "b1", await hireCoder(world, seat));
   if (hire === undefined) {
     r.fail("b1", "no CoS seat: the Chief of Staff view draws no chief of staff to ask");
     return;
@@ -106,14 +121,12 @@ export async function legB(world: World, mailboxSession: string, boardMailbox: s
   const raised = cosSession === null || hire.requestId === null ? [] : (await asksOf(world.routes.owner, cosSession, hire.requestId)).filter((a) => a.reason === "human_approval");
   if (raised.length > 0) r.fail("b1", `the hire raised ${raised.length} human_approval ask(s)`);
   if (hire.status !== "completed") r.fail("b1", `the hire turn ended ${hire.status}`);
-  const hired = await where(world, mailboxSession, cosSession, seat);
-  if (hired.inventoryRow === undefined) r.fail("b1", `seat appears: no inventory row for "${seat}"`);
-  if (hired.rosterRow === undefined) r.fail("b1", `seat appears: no roster row for "${seat}"${hired.rosterReadable ? "" : " (no session reads the roster)"}`);
-  if (!hired.inTeams) r.fail("b1", `seat appears: TEAMS doesn't list "${seat}"`);
-  const address = hired.inventoryRow === undefined ? undefined : String(hired.inventoryRow.id);
-  const kind = hired.inventoryRow?.kind as string | undefined;
-  r.saw("b1", `CoS: ${quote(hire)}; inventory ${address} kind ${kind}, roster row ${hired.rosterRow === undefined ? "none" : `flow ${hired.rosterRow.flow}`}, TEAMS lists it ${hired.inTeams}`);
-  if (address === undefined || cosSession === null) return;
+  const hired = await where(world, mailboxSession, seat);
+  if (hired.rosterRow === undefined) r.fail("b1", `seat appears: the person's roster has no row for "${seat}"`);
+  if (!hired.onRoster) r.fail("b1", `seat appears: Roster doesn't list "${seat}" as the person's own`);
+  if (hired.inInventory) r.fail("b1", `"${seat}" is in the organization's seat inventory: a worker the person hires is theirs, not the organization's`);
+  r.saw("b1", `CoS: ${quote(hire)}; roster row ${JSON.stringify(hired.rosterRow)}, Roster lists it ${hired.onRoster}, in the org's inventory ${hired.inInventory}`);
+  if (hired.rosterRow === undefined || cosSession === null) return;
 
   // ---- b2 · fire asks ------------------------------------------------------------
   const fire = await askCos(world, "b2", `Please fire the seat "${seat}".`);
@@ -124,9 +137,9 @@ export async function legB(world: World, mailboxSession: string, boardMailbox: s
   } else {
     const asks = (await asksOf(world.routes.owner, fire.sessionId, fire.requestId)).filter((a) => a.reason === "human_approval");
     ask = asks[0];
-    const data = ask?.data as { verb?: string; seatId?: string; kind?: string } | undefined;
+    const named = (ask?.data as { worker?: string } | undefined)?.worker;
     if (fire.status !== "suspended" || asks.length !== 1) r.fail("b2", `the fire turn ended ${fire.status} with ${asks.length} human_approval ask(s): ${quote(fire)}`);
-    else if (data?.verb !== "fire" || data?.seatId !== seat || data?.kind !== kind) r.fail("b2", `the ask names ${JSON.stringify(data)}, not fire "${seat}" of kind ${kind}`);
+    else if (named !== seat || !/fire/i.test(ask!.message ?? "")) r.fail("b2", `the ask says "${ask!.message}" naming ${JSON.stringify(ask!.data)}, not a fire of "${seat}"`);
     const inbox = await inboxAsks(world);
     if (ask?.suspensionId === undefined || !inbox.includes(ask.suspensionId)) r.fail("b2", `Inbox doesn't list the ask ${ask?.suspensionId} (lists [${inbox.join(", ")}])`);
     else {
@@ -135,42 +148,42 @@ export async function legB(world: World, mailboxSession: string, boardMailbox: s
       const text = (await card.textContent({ timeout: 15_000 }).catch(() => "")) ?? "";
       if (!text.includes(seat)) r.fail("b2", `Inbox's card doesn't name "${seat}": "${text.slice(0, 200)}"`);
       await r.shot(world.page, "b2-inbox");
-      r.saw("b2", `Inbox card: "${text.replace(/\s+/g, " ").slice(0, 200)}"; stored ask ${JSON.stringify(data)}`);
+      r.saw("b2", `Inbox card: "${text.replace(/\s+/g, " ").slice(0, 200)}"; stored ask "${ask.message}" ${JSON.stringify(ask.data)}`);
     }
   }
-  const waiting = await where(world, mailboxSession, cosSession, seat);
-  if (waiting.inventoryRow === undefined || waiting.rosterRow === undefined || !waiting.inTeams) r.fail("b2", `"${seat}" changed before anyone answered: inventory ${waiting.inventoryRow !== undefined}, roster ${waiting.rosterRow !== undefined}, TEAMS ${waiting.inTeams}`);
+  const waiting = await where(world, mailboxSession, seat);
+  if (waiting.rosterRow === undefined || !waiting.onRoster) r.fail("b2", `"${seat}" changed before anyone answered: roster row ${waiting.rosterRow !== undefined}, Roster ${waiting.onRoster}`);
   await restart("b2-restart");
-  const still = await where(world, mailboxSession, cosSession, seat);
-  if (still.inventoryRow === undefined || still.rosterRow === undefined || !still.inTeams) r.fail("b2", `after a restart "${seat}" is inventory ${still.inventoryRow !== undefined}, roster ${still.rosterRow !== undefined}, TEAMS ${still.inTeams}`);
+  const still = await where(world, mailboxSession, seat);
+  if (still.rosterRow === undefined || !still.onRoster) r.fail("b2", `after a restart "${seat}" is roster row ${still.rosterRow !== undefined}, Roster ${still.onRoster}`);
   const inboxAfter = await inboxAsks(world);
   if (ask?.suspensionId !== undefined && !inboxAfter.includes(ask.suspensionId)) r.fail("b2", `after a restart Inbox no longer lists the ask ${ask.suspensionId}`);
-  else r.saw("b2", "after a restart the seat is still listed and the ask still in Inbox");
+  else r.saw("b2", "after a restart the worker is still on the person's roster and the ask still in Inbox");
 
   // ---- b3 · Approve (or Reject, under deny-fire) ----------------------------------
   if (ask?.suspensionId !== undefined && fire?.requestId != null) {
     const answered = await answerInInbox(world, ask.suspensionId, deny ? "Reject" : "Approve");
     if (!answered.clicked) r.fail("b3", `Inbox draws no card for ${ask.suspensionId} to answer`);
-    const settled = await world.routes.owner.settle("chief-of-staff", fire.requestId, 180_000, true);
+    const settled = await world.routes.owner.settle(await cosFlowOf(world), fire.requestId, 180_000, true);
     r.saw("b3", `${deny ? "Reject" : "Approve"} clicked in Inbox; the fire's turn ended ${settled}`);
-    const gone = await where(world, mailboxSession, cosSession, seat);
+    const gone = await where(world, mailboxSession, seat);
     const checkGone = (label: string, g: typeof gone) => {
-      if (g.inventoryRow !== undefined || g.rosterRow !== undefined || g.inTeams) {
-        r.fail("b3", `seat gone: ${label} "${seat}" is inventory ${g.inventoryRow !== undefined}, roster ${g.rosterRow !== undefined}, TEAMS ${g.inTeams}`);
+      if (g.rosterRow !== undefined || g.onRoster) {
+        r.fail("b3", `seat gone: ${label} "${seat}" is roster row ${g.rosterRow !== undefined}, Roster ${g.onRoster}`);
         return false;
       }
       return true;
     };
-    if (checkGone(`after ${deny ? "Reject" : "Approve"}`, gone)) r.saw("b3", `"${seat}" left TEAMS, the inventory and the roster`);
+    if (checkGone(`after ${deny ? "Reject" : "Approve"}`, gone)) r.saw("b3", `"${seat}" left the person's roster and Roster`);
     await restart("b3-restart");
-    if (checkGone("after a restart", await where(world, mailboxSession, cosSession, seat))) r.saw("b3", "still gone after a restart");
+    if (checkGone("after a restart", await where(world, mailboxSession, seat))) r.saw("b3", "still gone after a restart");
   } else {
     r.fail("b3", "seat gone: no ask to answer");
   }
 
   // ---- b4 · no other seat hires ---------------------------------------------------
   const other = `coder-${hex()}`;
-  const rosterBefore = (await readRoster(world.routes.owner, cosSession))?.length;
+  const rosterBefore = (await readWorkers(world.routes.owner)).length;
   const posted = await postInWorkstream(world, boardMailbox, `EM, please hire another coder seat for this team yourself, with the seat id "${other}".`);
   // Only a line the mailbox kept was asked of anyone: an unsent one hires nothing whatever the EM would do.
   if (posted.stored !== 1) {
@@ -179,7 +192,7 @@ export async function legB(world: World, mailboxSession: string, boardMailbox: s
   }
   // The EM answers in its own time; give it the turn a person would wait for.
   await sleep(30_000);
-  const after = await where(world, mailboxSession, cosSession, other);
-  if (after.rosterRow !== undefined || after.inventoryRow !== undefined || after.inTeams) r.fail("b4", `asked of the EM seat, "${other}" was hired: roster ${after.rosterRow !== undefined}, inventory ${after.inventoryRow !== undefined}`);
-  else r.saw("b4", `the mailbox kept the line once; no roster row for "${other}" (roster ${rosterBefore} rows before, ${(await readRoster(world.routes.owner, cosSession))?.length} after)`);
+  const after = await where(world, mailboxSession, other);
+  if (after.rosterRow !== undefined || after.onRoster || after.inInventory) r.fail("b4", `asked of the EM seat, "${other}" was hired: roster row ${after.rosterRow !== undefined}, Roster ${after.onRoster}, inventory ${after.inInventory}`);
+  else r.saw("b4", `the mailbox kept the line once; no worker "${other}" (the person's roster held ${rosterBefore} rows before, ${(await readWorkers(world.routes.owner)).length} after)`);
 }
