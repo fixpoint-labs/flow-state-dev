@@ -19,6 +19,7 @@
  * an upgrade has to land on the session it started, not mint a second one
  * beside it.
  */
+import { deepEqual } from "@flow-state-dev/core/helpers";
 import { createHash } from "node:crypto";
 import type { FlowCardinality } from "@flow-state-dev/core/types";
 import { framed } from "@flow-state-dev/core/types";
@@ -160,6 +161,32 @@ function sameOptional(a: string | undefined | null, b: string | undefined | null
   const left = a == null ? undefined : a;
   const right = b == null ? undefined : b;
   return left === right;
+}
+
+/**
+ * The first readonly session-state field whose value the dispatch names and
+ * the record already holds differently, or `undefined` when none differs.
+ *
+ * Adopting such a record would run the dispatch in a session created with
+ * another value of a field nothing may change, so the caller refuses it. A
+ * field the dispatch doesn't name isn't compared: a dispatch that names no
+ * state adopts as it always has.
+ *
+ * @param readonlyFields The target flow's readonly session-state fields.
+ * @param requested The state the dispatch named for a new child.
+ * @param stored The adopted record's state.
+ */
+export function readonlyStateMismatch(
+  readonlyFields: readonly string[],
+  requested: Readonly<Record<string, unknown>> | undefined,
+  stored: Readonly<Record<string, unknown>> | undefined
+): string | undefined {
+  if (requested === undefined) return undefined;
+  for (const field of readonlyFields) {
+    if (!Object.hasOwn(requested, field)) continue;
+    if (!deepEqual(requested[field], stored?.[field])) return field;
+  }
+  return undefined;
 }
 
 /**

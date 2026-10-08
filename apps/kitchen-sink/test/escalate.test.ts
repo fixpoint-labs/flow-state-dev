@@ -25,8 +25,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FlowState } from "@flow-state-dev/engine";
 import { runAction } from "@flow-state-dev/engine";
-import { createResourceClient, createSessionClient } from "@flow-state-dev/client";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { createResourceClient, createSessionClient } from "@flow-state-dev/client";
 
 // Each case boots the whole app afresh, and the first import is cold.
 vi.setConfig({ testTimeout: 30_000 });
@@ -83,16 +83,17 @@ function textOf(item: Item): string {
   return item.text ?? JSON.stringify(item);
 }
 
-/** Send a message the way the seat composer does, and wait for the run to finish. */
-async function ask(app: App, seat: string, message: string) {
-  const session = await app.sessions.createSession({ flowKind: seat, userId: "devuser" });
+/** Send a message to a worker the way the panel's composer does, and wait for the run to finish. */
+async function ask(app: App, worker: string, message: string) {
+  // A conversation with a worker is a session on its flow's one copy, created naming the worker.
+  const session = await app.sessions.createSession({ flowKind: "agent", userId: "devuser", state: { workerId: worker } });
   const res = await app.router.POST(
-    new Request(`http://localhost/api/flows/${seat}/actions/run`, {
+    new Request(`http://localhost/api/flows/agent/actions/run`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
       body: JSON.stringify({ userId: "devuser", sessionId: session.id, input: { message } }),
     }),
-    { params: { path: [seat, "actions", "run"] } },
+    { params: { path: ["agent", "actions", "run"] } },
   );
   const stream = await res.text();
   const snapshot = await app.sessions.getSessionState(session.id, { includeItems: true });
@@ -164,15 +165,25 @@ describe("V3 · a specialist files what needs a person", () => {
     ]);
   });
 
-  it("files nothing for a seat that is not a member of support.help, and says so", async () => {
+  it("files nothing for a worker that is not a member of support.help, and says so", async () => {
     const app = await bootApp();
-    const { kitchenSinkKinds } = await import("@/workforce/hire");
-    const { hireWorkforce } = await import("@flow-state-dev/workforce");
-    const [outsider] = hireWorkforce(
-      [{ id: "support.bo", declared: { tools: ["escalate"] }, body: "Answer questions." }],
-      { workerFlows: kitchenSinkKinds },
+    // The person hires a worker of their own, holding the tool, through the roster flow.
+    const roster = await app.sessions.createSession({ flowKind: "workforce-roster", userId: "devuser" });
+    const hired = await app.router.POST(
+      new Request(`http://localhost/api/flows/workforce-roster/actions/hire`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "text/event-stream" },
+        body: JSON.stringify({
+          userId: "devuser",
+          sessionId: roster.id,
+          input: { id: "support.bo", instructions: "Answer questions.", settings: { tools: ["escalate"] } },
+        }),
+      }),
+      { params: { path: ["workforce-roster", "actions", "hire"] } },
     );
-    app.flowstate.register(outsider as FlowInstance);
+    expect(hired.status).toBe(200);
+    const stream = await hired.text();
+    expect(stream, "the hire's own answer").not.toMatch(/"status":"failed"|refused/);
     const mark = token();
     const ran = await ask(app, "support.bo", `[scenario:needs-a-person] ${mark} escalate me`);
 
@@ -199,8 +210,12 @@ describe("V3 · a specialist files what needs a person", () => {
   it("says filing is unavailable past an external dispatcher, and files nothing (BR-11)", async () => {
     const app = await bootApp();
     const runtime = await app.flowstate.getRuntime();
-    const seat = runtime.registry.get("support.devices") as FlowInstance;
-    const session = await app.sessions.createSession({ flowKind: "support.devices", userId: "devuser" });
+    const seat = runtime.registry.get("agent") as FlowInstance;
+    const session = await app.sessions.createSession({
+      flowKind: "agent",
+      userId: "devuser",
+      state: { workerId: "support.devices" },
+    });
     const mark = token();
 
     const ran = await runAction({

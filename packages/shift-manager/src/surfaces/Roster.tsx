@@ -1,6 +1,10 @@
 /**
- * Roster: every worker in the seat inventory, grouped on shift, on call and
- * off shift, for all teams or one (`/roster[?team=]`).
+ * Roster: every worker the person has, grouped on shift, on call and off
+ * shift, for all teams or one (`/roster[?team=]`). The workers are the
+ * person's roster, read through Workforce's client: their own workers and the
+ * standard ones, each on the flow it names. A standard worker's row is the
+ * seat inventory's. The roster is read again with every snapshot, so a worker
+ * hired or fired on a turn shows on the next read.
  *
  * Every status, slot and count is read from the one `seatStates` result over
  * the snapshot, the same one the sidebar and the workstream panel draw, so a
@@ -11,12 +15,15 @@
  * with what its status means, and ON CALL FOR as boxed tags, a task or an ask
  * waiting on you tagged WAITING on the highlighter.
  */
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { pickedTeam, seatStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type SeatState, type ShiftStatus } from "../lib/derive";
 import { readStatus } from "../lib/columns";
 import { themeLabel, type ThemeLook } from "../lib/theme";
 import { useLab } from "../lib/lab-data";
+import { describeFailure, STAFF_TEAM, type Failure, type Seat } from "../lib/reads";
+import { useWorkforce } from "../lib/workforce";
 import { navigate } from "../lib/routes";
 import type { Gaps } from "../gaps";
 
@@ -61,7 +68,59 @@ function useLookName(look: ThemeLook | undefined): string | null {
   return theme === undefined ? null : themeLabel(theme);
 }
 
-function WorkerRow({ state, gaps }: { state: SeatState; gaps: Gaps }) {
+/**
+ * The person's roster, read through Workforce's client with every snapshot:
+ * `undefined` until the first read lands.
+ */
+function useRoster(readAt: number): { entries: RosterEntry[] } | { failure: Failure } | undefined {
+  const workforce = useWorkforce();
+  const [read, setRead] = useState<{ entries: RosterEntry[] } | { failure: Failure } | undefined>(undefined);
+  useEffect(() => {
+    let closed = false;
+    workforce
+      .roster()
+      .then((entries) => {
+        if (!closed) setRead({ entries });
+      })
+      .catch((error: unknown) => {
+        if (!closed) setRead({ failure: describeFailure(error) });
+      });
+    return () => {
+      closed = true;
+    };
+  }, [workforce, readAt]);
+  return read;
+}
+
+/**
+ * The person's own workers as rows beside the inventory's: each on the flow
+ * it names, with that flow's door, grouped by its id the way an inventory
+ * row is.
+ */
+function ownSeats(entries: readonly RosterEntry[], inventory: readonly Seat[]): Seat[] {
+  return entries
+    .filter((entry) => !entry.standard && !inventory.some((seat) => seat.id === entry.id))
+    .map((entry) => {
+      const dot = entry.id.indexOf(".");
+      return {
+        id: entry.id,
+        kind: entry.flow,
+        door: inventory.find((seat) => seat.kind === entry.flow)?.door ?? null,
+        team: dot > 0 ? entry.id.slice(0, dot) : STAFF_TEAM,
+        name: dot > 0 ? entry.id.slice(dot + 1) : entry.id,
+      };
+    });
+}
+
+/** A standard worker the roster lists and the inventory hasn't registered, as a row. */
+function standardSeats(entries: readonly RosterEntry[], inventory: readonly Seat[]): Seat[] {
+  return ownSeats(
+    entries.filter((entry) => entry.standard).map((entry) => ({ ...entry, standard: false })),
+    inventory,
+  );
+}
+
+function WorkerRow({ state, gaps, own }: { state: SeatState; gaps: Gaps; own: boolean }) {
   const { seat, status, held, asks } = state;
   const parked = held.filter((row) => readStatus(row.status) === "parked");
   return (
@@ -70,11 +129,17 @@ function WorkerRow({ state, gaps }: { state: SeatState; gaps: Gaps }) {
       data-testid="roster-worker"
       data-seat-id={seat.id}
       data-status={status}
+      data-own={own ? "true" : "false"}
     >
       <div className="min-w-0">
         <p className="flex items-baseline gap-2">
           <span className="font-medium">{seat.name}</span>
           <span className="text-xs text-muted-foreground">{seat.team}</span>
+          {own ? (
+            <span className="border px-1 text-[10px] tracking-widest text-muted-foreground" data-testid="roster-worker-own">
+              YOURS
+            </span>
+          ) : null}
         </p>
         <p className="truncate text-xs text-muted-foreground">
           {seat.kind ?? "unknown kind"}
@@ -150,16 +215,30 @@ export function RosterView({
 }) {
   const { refresh } = useLab();
   const lookName = useLookName(look);
-  if (!snapshot.inventory.ok) {
+  const roster = useRoster(snapshot.readAt);
+  const entries = roster !== undefined && "entries" in roster ? roster.entries : [];
+  const inventorySeats = snapshot.inventory.ok ? snapshot.inventory.value.seats : [];
+  const own = ownSeats(entries, inventorySeats);
+  // With the inventory unread, the standard workers the roster lists are still the person's.
+  const extra = snapshot.inventory.ok ? own : [...standardSeats(entries, inventorySeats), ...own];
+  if (!snapshot.inventory.ok && extra.length === 0) {
     return (
       <div className="p-4" data-testid="roster">
         <SectionFailure what="Roster" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="roster-inventory-failure" />
       </div>
     );
   }
-  const seats = snapshot.inventory.value.seats;
+  const seats = [...inventorySeats, ...extra];
+  const withOwn: LoadedSnapshot = {
+    ...snapshot,
+    inventory: {
+      ok: true,
+      value: { ...(snapshot.inventory.ok ? snapshot.inventory.value : { workstreams: [] }), seats },
+    },
+  };
+  const ownIds = new Set(own.map((seat) => seat.id));
   const team = pickedTeam(seats, asked);
-  const states = seatStates(snapshot);
+  const states = seatStates(withOwn);
   const shown = [...states.seats.values()].filter((s) => team === null || s.seat.team === team);
   const counts = shiftCounts(states, team ?? undefined);
   const unread = Object.entries(snapshot.boards).flatMap(([workstreamId, boards]) => (boards.ok ? [] : [{ workstreamId, failure: boards.failure }]));
@@ -207,6 +286,16 @@ export function RosterView({
         <span>ON CALL FOR</span>
       </div>
       <div className="flex-1 overflow-y-auto px-5 pb-6">
+        {snapshot.inventory.ok ? null : (
+          <div className="mt-3">
+            <SectionFailure what="The seat inventory" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="roster-inventory-failure" />
+          </div>
+        )}
+        {roster !== undefined && "failure" in roster ? (
+          <p className="mt-3 text-xs text-muted-foreground" data-testid="roster-own-failure">
+            Your own workers didn't load: {roster.failure.message}
+          </p>
+        ) : null}
         {snapshot.asks.ok ? null : (
           <div className="mt-3">
             <SectionFailure what="Asks" failure={snapshot.asks.failure} onRetry={() => void refresh()} testId="roster-asks-failure" />
@@ -234,7 +323,7 @@ export function RosterView({
               </h2>
               <ul>
                 {group.map((state) => (
-                  <WorkerRow key={state.seat.id} state={state} gaps={gaps} />
+                  <WorkerRow key={state.seat.id} state={state} gaps={gaps} own={ownIds.has(state.seat.id)} />
                 ))}
               </ul>
             </section>

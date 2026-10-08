@@ -13,7 +13,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import { readWorkforce } from "../src/loader/read-workforce";
 
 let root: string;
@@ -168,7 +168,7 @@ describe("readWorkforce then hireWorkforce: a refused package in a worker's own 
       execute: () => ({ ok: true }),
     });
     expect(() =>
-      hireWorkforce(workers, {
+      mintSeats(workers, {
         packageBlocks: { "teams/support/workers/clerk/packages/refunds": { "issue-refund": issueRefund } },
       }),
     ).toThrow(/worker "support\.clerk"[\s\S]*teams\/support\/workers\/clerk\/packages\/refunds/);

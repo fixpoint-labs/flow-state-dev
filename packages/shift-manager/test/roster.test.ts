@@ -12,17 +12,12 @@ const ORG = "acme";
 
 describe("BR-13a, BR-13b: which group a seat sits in", () => {
   it("an org seat (no dot) sits in Staff, never in a team of its own", () => {
-    expect(toSeat({ id: "chief-of-staff", kind: "cos" }, ORG)).toMatchObject({ team: STAFF_TEAM, name: "chief-of-staff" });
-    expect(toSeat({ id: "ops", kind: "ops" }, ORG)).toMatchObject({ team: STAFF_TEAM, name: "ops" });
-  });
-
-  it("a hired seat `<org>.<seatId>` is grouped by the seat id it holds, user-owned too", () => {
-    expect(toSeat({ id: `${ORG}.eng.coder-2`, kind: "coder" }, ORG)).toMatchObject({ team: "eng", name: "coder-2" });
-    expect(toSeat({ id: `${ORG}.~u_1.eng.coder-3`, kind: "coder" }, ORG)).toMatchObject({ team: "eng", name: "coder-3" });
+    expect(toSeat({ id: "chief-of-staff", kind: "cos" })).toMatchObject({ team: STAFF_TEAM, name: "chief-of-staff" });
+    expect(toSeat({ id: "ops", kind: "ops" })).toMatchObject({ team: STAFF_TEAM, name: "ops" });
   });
 
   it("a team seat `<team>.<name>` is unchanged", () => {
-    expect(toSeat({ id: "eng.coder", kind: "coder" }, ORG)).toMatchObject({ id: "eng.coder", team: "eng", name: "coder" });
+    expect(toSeat({ id: "eng.coder", kind: "coder" })).toMatchObject({ id: "eng.coder", team: "eng", name: "coder" });
   });
 });
 
@@ -39,7 +34,7 @@ function snapshotOf(seats: Seat[], rows: BoardRow[], asks: Ask[] | "failed" = []
   } as unknown as LoadedSnapshot;
 }
 
-const seat = (id: string) => toSeat({ id, kind: "worker" }, ORG)!;
+const seat = (id: string) => toSeat({ id, kind: "worker" })!;
 const row = (id: string, status: string, assignee: string | null): BoardRow =>
   toBoardRow("eng.desk.work", "eng.desk", id, { id, title: id, status, assignee });
 const ask = (seatId: string | null, suspensionId: string): Ask =>
@@ -152,22 +147,5 @@ describe("BR-13: the Roster route", () => {
     expect(pickedTeam(seats, "eng")).toBe("eng");
     expect(pickedTeam(seats, STAFF_TEAM)).toBe(STAFF_TEAM);
     expect(pickedTeam(seats, null)).toBeNull();
-  });
-});
-
-describe("a hired seat holds its rows by its logical id", () => {
-  it("a row assigned `<team>.<name>` belongs to the hired seat `<org>.<team>.<name>`", () => {
-    const hired = seat(`${ORG}.eng.coder-2`);
-    const states = seatStates(snapshotOf([hired], [row("a", "in_progress", "eng.coder-2"), row("b", "parked", "eng.coder-2")], [], ["eng.coder-2"]));
-    expect(states.seats.get(`${ORG}.eng.coder-2`)).toMatchObject({ status: "on shift" });
-    expect(states.seats.get(`${ORG}.eng.coder-2`)!.held.map((r) => r.id)).toEqual(["a", "b"]);
-  });
-
-  it("its bare name, shared with a seat in another team, resolves through the mailbox's logical members", () => {
-    const hired = seat(`${ORG}.eng.coder`);
-    const ops = seat("ops.coder");
-    const states = seatStates(snapshotOf([hired, ops], [row("a", "in_progress", "coder")], [], ["eng.coder"]));
-    expect(states.seats.get(`${ORG}.eng.coder`)!.status).toBe("on shift");
-    expect(states.seats.get("ops.coder")!.status).toBe("off shift");
   });
 });

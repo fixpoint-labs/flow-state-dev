@@ -21,7 +21,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext } from "@flow-state-dev/testing";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
-import { hireWorkforce, type HireOptions } from "../src/hire";
+import { mintSeats, type HireOptions } from "../src/hire";
 import { resolveHeldPackages } from "../src/seat-packages";
 import { SEAT_PACKAGES_KEY, type PackageManifest, type WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
@@ -96,7 +96,7 @@ function hire(
   manifests: WorkerManifest[],
   options: Omit<HireOptions, "packageBlocks"> & { packageBlocks?: HireOptions["packageBlocks"] } = {}
 ): (id: string) => FlowInstance {
-  const seats = hireWorkforce(manifests, { packageBlocks, ...options });
+  const seats = mintSeats(manifests, { packageBlocks, ...options });
   return (id) => {
     const seat = seats.find((candidate) => candidate.id === id);
     if (!seat) throw new Error(`no seat "${id}" in [${seats.map((s) => s.id).join(", ")}]`);
@@ -106,7 +106,7 @@ function hire(
 
 function refusal(manifests: WorkerManifest[], options: HireOptions = {}): string {
   try {
-    hireWorkforce(manifests, { packageBlocks, ...options });
+    mintSeats(manifests, { packageBlocks, ...options });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }

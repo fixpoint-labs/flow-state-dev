@@ -15,7 +15,7 @@ import { createMockModelResolver, mockEvaluationModel, mockGenerator } from "@fl
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { defineCoordinatorFlow } from "../src/coordinator/coordinator-flow";
 import { DELEGATED_POST_ENTRY } from "../src/coordinator/coordinator-keys";
-import { hireWorkforce } from "../src/hire";
+import { hireWorkforce } from "../src/workers/register";
 import { createWorkerInstallation } from "../src/workers/installation";
 
 describe("the agent flow as a delegate (S9)", () => {
@@ -25,7 +25,6 @@ describe("the agent flow as a delegate (S9)", () => {
   });
 
   it("answers a delegated post into the delivering conversation, once, under the delegate's name", async () => {
-    const agentFlow = defineAgentWorkerFlow();
     let flows: Record<string, unknown> = {};
     const installation = createWorkerInstallation({
       standardWorkers: [
@@ -34,12 +33,14 @@ describe("the agent flow as a delegate (S9)", () => {
       ],
       workerFlows: () => flows as never
     });
+    // The agent copy every agent worker shares, built on the installation.
+    const agentFlow = defineAgentWorkerFlow({ installation });
     const coordinator = defineCoordinatorFlow({ installation, delegateFlows: [agentFlow], routeModel: "typesafe-ai/jev" });
-    flows = { coordinator };
-    const [agent] = hireWorkforce([{ id: "agent", declared: {}, body: "You answer questions." }]);
+    flows = { agent: agentFlow, coordinator };
+    const copies = hireWorkforce(installation);
     const answer = mockGenerator({ name: "agent-answer", script: [{ when: () => true, then: { text: "Otto's answer." } }] });
     const state = createFlowState({
-      flows: { coordinator: coordinator() as unknown as FlowInstance, agent: agent! },
+      flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({
         generators: { "agent-answer": answer },
@@ -62,7 +63,7 @@ describe("the agent flow as a delegate (S9)", () => {
     const sessionId = ((await res.json()) as { session: { id: string } }).session.id;
     const runtime = await state.getRuntime();
     const posted = await runAction({
-      flow: coordinator() as unknown as FlowInstance,
+      flow: copies.find((copy) => copy.id === "coordinator")!,
       actionName: "run",
       input: { message: "what's our refund policy?" },
       userId: "alice",

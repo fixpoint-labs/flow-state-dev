@@ -57,7 +57,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { KITCHEN_SINK, REPO_ROOT, loadFixture, runGoal } from "../../lib/index.mts";
 
@@ -377,25 +377,40 @@ await runGoal(async () => {
     const first = workers[0]!.declared;
     workers = workers.map((worker) => ({ ...worker, declared: { ...first } }));
   }
-  const seats = hireWorkforce(workers, { workerFlows: generated.kinds as never });
+  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: generated.kinds as never });
+  const copies = hireWorkforce(installation);
   const state = createFlowState({
-    flows: Object.fromEntries(seats.map((seat) => [seat.id, seat])),
+    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     stores: { default: { primary: inMemoryStores() } },
   } as never);
   try {
     const runtime = await state.getRuntime();
+    const router = await state.getRouter();
     const seen: Record<string, string> = {};
+    const copy = copies.find((c) => c.kind === fixture.host.kind);
+    if (copy === undefined) fail("d", `no copy of the tree's custom flow "${fixture.host.kind}" was registered (registered: ${copies.map((c) => c.id).join(", ")})`);
     for (const seatId of fixture.host.seats) {
-      const seat = seats.find((s) => s.id === seatId);
-      if (seat === undefined) {
-        fail("d", `${seatId} was not hired from the fixture tree (hired: ${seats.map((s) => s.id).join(", ")})`);
+      if (copy === undefined) break;
+      const declaredFlow = installation.standardWorker(seatId)?.declared.flow;
+      if (declaredFlow !== fixture.host.kind) {
+        fail("d", `${seatId} runs on "${String(declaredFlow)}", not the tree's custom flow "${fixture.host.kind}"`);
+      }
+      // A session on the one copy, created naming the worker.
+      const sessionPath = [copy.id, "sessions"];
+      const created = await router.POST(
+        new Request(`http://goal/api/flows/${sessionPath.join("/")}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId: fixture.host.userId, sessionId: `s_${seatId}`, state: { workerId: seatId } }),
+        }),
+        { params: { path: sessionPath } },
+      );
+      if (created.status !== 201) {
+        fail("d", `${seatId}: its session was not created (${created.status}): ${await created.text()}`);
         continue;
       }
-      if (seat.kind !== fixture.host.kind) {
-        fail("d", `${seatId} was hired on "${seat.kind}", not the tree's custom kind "${fixture.host.kind}"`);
-      }
       const ran = (await runAction({
-        flow: seat,
+        flow: copy,
         actionName: "answer",
         input: { note: fixture.host.note },
         userId: fixture.host.userId,

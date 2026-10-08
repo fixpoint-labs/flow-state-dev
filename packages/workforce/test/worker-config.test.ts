@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { INSTRUCTIONS_KEY, SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, TEAM_INSTRUCTIONS_KEY } from "../src/manifest";
 import { workerConfigSchema, type WorkerConfig } from "../src/worker-config";
@@ -32,7 +32,7 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
 
 function refusalOf(manifests: WorkerManifest[], kinds: Record<string, never>): string {
   try {
-    hireWorkforce(manifests, { workerFlows: kinds });
+    mintSeats(manifests, { workerFlows: kinds });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -109,7 +109,7 @@ describe("workerConfigSchema — what composing it buys a kind", () => {
   const kinds = { "contract-triage": triage, "contract-triage-strict": strictTriage } as never;
 
   it("hires a seat and hands it both its own setting and the contract's", () => {
-    const [seat] = hireWorkforce(
+    const [seat] = mintSeats(
       [record({ id: "support.desk", declared: { flow: "contract-triage", desk: "mezzanine" } })],
       { workerFlows: kinds }
     );

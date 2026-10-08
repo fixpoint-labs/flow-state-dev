@@ -27,23 +27,25 @@ import type {
   SessionCreateCheckInput,
   SessionCreateCheckResult
 } from "@flow-state-dev/core/types";
-import type { DeclaredResources } from "@flow-state-dev/core";
+import type { DeclaredResources, ResourceVisibilityRule } from "@flow-state-dev/core";
 import { z } from "zod";
-import { AGENT_KIND } from "../agent-worker-flow";
+import { AGENT_KIND, defineAgentWorkerFlow } from "../agent-worker-flow";
 import {
   hireRefusalReasons,
-  hireWorkforce,
+  mintSeats,
   resolveWorkerFlows,
   standardOnlyReason,
   type HireOptions,
-  type ResolvedWorkerFlow
+  type ResolvedWorkerFlow,
+  type WorkerFlowEntry
 } from "../hire";
+import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import { FILING_SESSION_STATE_KEY, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE, WORKER_ID_STATE_KEY } from "./keys";
 import { defineStandardWorkerCollection, standardWorkerFlow } from "./standard-workers";
 import { defineWorkerCollection, parseWorkerRow, type WorkerRow } from "./worker-row";
-import { markVerifiedWorker } from "./verified-worker";
+import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
 
 export { verifiedWorkerOf } from "./verified-worker";
 
@@ -115,6 +117,25 @@ export interface ResolvedWorker {
   reaches(accessor: string): boolean;
 }
 
+/** The two ways an installation's documents and references are handed to a worker flow. */
+export interface WorkerGrants {
+  /**
+   * Every document and reference a worker may be granted, by accessor. A
+   * worker flow whose model reaches documents declares them all in its
+   * `resources`, and sets {@link resourceVisibility} so each turn's model
+   * reaches only its worker's.
+   */
+  readonly documents: DeclaredResources;
+  /**
+   * The flow's `resourceVisibility`: on each turn, a granted document is
+   * visible to the model's resource tools when the worker `resolveWorker`
+   * loaded on this turn reaches it, read-only when its grant is, and hidden
+   * otherwise, including on a turn that loaded no worker. Every other resource
+   * is visible.
+   */
+  readonly resourceVisibility: ResourceVisibilityRule;
+}
+
 /**
  * A worker on a user's roster, as {@link WorkerInstallation.rosterWorker}
  * reads it: enough to tell whether it is theirs and what it runs on, without
@@ -158,7 +179,7 @@ export type WorkerSessionStateShape = {
 };
 
 /** The installation's worker model. Build it once, at boot. */
-export interface WorkerInstallation {
+export interface WorkerInstallation extends WorkerGrants {
   /**
    * The two worker collections: the user's own workers, and the standard
    * ones projected from the files. A worker flow spreads them into its
@@ -191,7 +212,11 @@ export interface WorkerInstallation {
   /**
    * The worker this turn runs as, loaded now: the session's worker read from
    * the user's roster or the standard workers, with its configuration
-   * resolved. Call it at the start of every turn on a worker flow.
+   * resolved. Call it on every turn of a worker flow: in the flow's
+   * `request.onStarted`, which runs again when a request resumes, or in the
+   * block that reads the worker. Not in an earlier step of the turn: a
+   * resumed request reuses a finished step's recorded output without running
+   * it, so the worker it loaded is gone on the resumed run.
    *
    * @param ctx The block's context. The block must declare {@link resources}.
    * @param flowKind The running flow's kind.
@@ -209,16 +234,10 @@ export interface WorkerInstallation {
    * @param ctx The block's context. The block must declare {@link resources}.
    */
   rosterWorker(ctx: WorkerTurnContext, workerId: string): Promise<RosterWorker | undefined>;
-  /**
-   * Check every standard worker's configuration as its flow would on a turn,
-   * the way {@link configurationProblems} checks a row. An app calls it once
-   * its worker flows are defined, to refuse a broken file at load.
-   *
-   * @returns Each problem, naming its worker; empty when every one would run.
-   */
-  standardWorkerProblems(): string[];
   /** A standard worker by id, or `undefined`. */
   standardWorker(id: string): WorkerManifest | undefined;
+  /** Every standard worker, by id order. */
+  standardWorkers(): readonly WorkerManifest[];
   /** The worker flows, resolved: each one's flow and whether it is kept for standard workers. */
   workerFlows(): Record<string, ResolvedWorkerFlow>;
   /**
@@ -229,6 +248,14 @@ export interface WorkerInstallation {
    * @returns The reasons it would be refused; empty when it would run.
    */
   configurationProblems(id: string, row: WorkerRow): string[];
+  /**
+   * Check every standard worker the same way, as its file declares it. Used by
+   * `hireWorkforce`, which refuses to register anything while one would be
+   * refused on its first turn.
+   *
+   * @returns Each refusal, prefixed with the worker's id; empty when every one would run.
+   */
+  standardWorkerProblems(): string[];
 }
 
 /** The settings a row hands its flow: its own settings, keyed as a `WORKER.md` frontmatter. */
@@ -273,8 +300,29 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
   }
 
-  const workerFlowsOption = (): HireOptions["workerFlows"] =>
-    typeof options.workerFlows === "function" ? options.workerFlows() : options.workerFlows;
+  // The built-in `agent`, bound to this installation, unless the app passes
+  // its own: built on first use, once, so every turn checks its workers
+  // against the one copy `hireWorkforce` registers.
+  let boundAgent: unknown;
+  // A `workerFlow(...)` builder, built on this installation once.
+  const built = new Map<WorkerFlowBuilder, WorkerFlowEntry>();
+  const buildOf = (entry: WorkerFlowEntry): WorkerFlowEntry => {
+    if (!isWorkerFlowBuilder(entry)) return entry;
+    let flow = built.get(entry);
+    if (flow === undefined) {
+      flow = { flow: entry.build(installation) as never, standardOnly: entry.standardOnly };
+      built.set(entry, flow);
+    }
+    return flow;
+  };
+  const workerFlowsOption = (): HireOptions["workerFlows"] => {
+    const read = typeof options.workerFlows === "function" ? options.workerFlows() : options.workerFlows;
+    const given =
+      read === undefined ? undefined : Object.fromEntries(Object.entries(read).map(([kind, entry]) => [kind, buildOf(entry)]));
+    if (given !== undefined && Object.hasOwn(given, AGENT_KIND)) return given;
+    boundAgent ??= defineAgentWorkerFlow({ installation });
+    return { [AGENT_KIND]: boundAgent as never, ...given };
+  };
   let resolvedFlows: Record<string, ResolvedWorkerFlow> | undefined;
   const workerFlows = (): Record<string, ResolvedWorkerFlow> =>
     (resolvedFlows ??= resolveWorkerFlows(workerFlowsOption()));
@@ -300,6 +348,9 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional()
   } as const;
 
+  /** Every resource a worker may be granted: the documents and the references. */
+  const documents: DeclaredResources = Object.freeze({ ...(options.documents ?? {}), ...(options.references ?? {}) });
+
   /**
    * What `hireWorkforce` would refuse this worker for, or the instance it
    * would mint. Nothing is registered: the instance is read and dropped.
@@ -313,7 +364,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     manifest: WorkerManifest
   ): { ok: true; seat: FlowInstance } | { ok: false; problems: string[] } => {
     try {
-      const [seat] = hireWorkforce([manifest], {
+      const [seat] = mintSeats([manifest], {
         workerFlows: workerFlowsOption(),
         ...(options.seatBlocks !== undefined ? { seatBlocks: options.seatBlocks } : {}),
         ...(options.packageBlocks !== undefined ? { packageBlocks: options.packageBlocks } : {}),
@@ -391,6 +442,12 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     const minted = mint(built.manifest);
     return minted.ok ? [] : minted.problems;
   };
+
+  const standardWorkerProblems = (): string[] =>
+    [...standard.values()].flatMap((manifest) => {
+      const minted = mint(manifest);
+      return minted.ok ? [] : minted.problems.map((problem) => `worker "${manifest.id}" — ${problem}`);
+    });
 
   const createCheck: SessionCreateCheck = async (
     input: SessionCreateCheckInput
@@ -511,7 +568,15 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     const seat = (minted as { seat: FlowInstance }).seat;
     const reached = (seat.resources ?? {}) as Record<string, unknown>;
 
-    markVerifiedWorker(ctx.session as object, workerId);
+    // What the worker's grants let its model do with each grantable resource:
+    // the mint narrows a read-only grant by turning its write flags off.
+    const granted = new Map<string, GrantedAccess>();
+    for (const accessor of Object.keys(documents)) {
+      if (!Object.hasOwn(reached, accessor)) continue;
+      const entry = reached[accessor] as { llmWritable?: unknown; writable?: unknown };
+      granted.set(accessor, entry.llmWritable === true && entry.writable !== false ? "visible" : "read-only");
+    }
+    markVerifiedWorker(ctx.session as object, workerId, seat.config as Readonly<Record<string, unknown>>, granted);
     return {
       id: workerId,
       standard: worker.found === "standard",
@@ -547,18 +612,14 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     };
   };
 
-  const standardWorkerProblems = (): string[] =>
-    [...standard.values()].flatMap((manifest) => {
-      const minted = mint(manifest);
-      return minted.ok ? [] : minted.problems.map((problem) => `standard worker "${manifest.id}": ${problem}`);
-    });
-
-  return {
+  const installation: WorkerInstallation = {
     resources,
+    documents,
+    resourceVisibility: (ctx, { name }) =>
+      Object.hasOwn(documents, name) ? (grantedAccessOf(ctx.session as object, name) ?? "hidden") : "visible",
     sessionStateShape,
     createCheck,
     rosterWorker,
-    standardWorkerProblems,
     session(extraShape) {
       return {
         stateSchema: z.object({ ...sessionStateShape, ...(extraShape ?? {}) }) as never,
@@ -567,7 +628,10 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     },
     resolveWorker,
     standardWorker: (id) => standard.get(id),
+    standardWorkers: () => [...standard.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     workerFlows,
-    configurationProblems
+    configurationProblems,
+    standardWorkerProblems
   };
+  return installation;
 }

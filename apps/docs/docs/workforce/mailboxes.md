@@ -307,19 +307,22 @@ Your app supplies the addresses. The `notify` slot takes any block, so to reach 
 ### Waking agent seats
 
 Most apps want a post to reach the agents in the mailbox and nobody else. Workforce ships that as
-one call. Hand `wakeMemberSeats` the seats you hired, and put what it returns in the notify slot:
+one call. Hand `wakeMemberSeats` the flows `hireWorkforce` returned and the installation, and put
+what it returns in the notify slot:
 
 ```ts
 import {
+  createWorkerInstallation,
   mailboxInstances,
   defineMailboxFlow,
   hireWorkforce,
   wakeMemberSeats,
 } from "@flow-state-dev/workforce";
 
-const seats = hireWorkforce(workers, { workerFlows: kinds });   // hire first: the wake reaches these seats
+const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds });
+const flows = hireWorkforce(installation);   // first: the wake reaches the workers on these flows
 const mailboxFlows = mailboxInstances(mailboxes, {
-  kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) },
+  kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(flows, { installation }) }) },
 });
 ```
 
@@ -337,15 +340,14 @@ For each post, it decides per member whether that member runs:
   agents hear a seat's post, write your own notify block and run it when `seatAuthored`
   is `true`.
 - **The `fallback` block runs**, or nothing if you passed none, for every other member: one whose
-  kind can't hear a post, one with no worker in the list you passed, or one the mailbox's caller
-  can't reach. A worker hired while the app is running isn't in that list until the app restarts
-  and passes it in. For these members the fallback runs on every post, including a worker's.
+  flow can't hear a post, or one that names no standard worker on the flows you passed. A user's
+  own worker is never woken as a member. For these members the fallback runs on every post,
+  including a worker's.
 
-If the same seat id appears more than once (in several organizations, or owned by several users),
-the one the mailbox's caller can reach runs, in this order: their own, the organization's, a shared
-one. To wake fewer seats, pass fewer.
+To wake fewer workers, pass fewer flows.
 
-Each woken seat keeps one conversation per mailbox. The second post it hears lands in the same
+Each woken worker keeps one conversation per mailbox, created naming that worker, so two workers on
+one flow woken by the same post each answer in their own. The second post it hears lands in the same
 conversation, so it remembers the thread. Two posts that arrive together each run once, in no
 guaranteed order. The conversation is a child of the mailbox's session, so an ordinary session
 listing does not show it. List with dispatch runs included (`include: "dispatch-runs"`, or
@@ -380,20 +382,23 @@ declaration is all `wakeMemberSeats` looks for.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { mailboxNotifyInputSchema, workerConfigSchema } from "@flow-state-dev/workforce";
+import { mailboxNotifyInputSchema, workerConfigSchema, workerFlow } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
-export const triager = defineFlow({
-  kind: "triager",
-  cardinality: "collection",
-  configSchema: workerConfigSchema(),
-  actions: {
-    run: { inputSchema: z.object({ message: z.string() }), block: triage, userMessage: (input) => input.message },
-  },
-  internal: {
-    actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: triageFromPost } },
-  },
-});
+export const triager = workerFlow((installation) =>
+  defineFlow({
+    kind: "triager",
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources },
+    actions: {
+      run: { inputSchema: z.object({ message: z.string() }), block: triage, userMessage: (input) => input.message },
+    },
+    internal: {
+      actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: triageFromPost } },
+    },
+  }),
+);
 ```
 
 #### What `author` is
@@ -422,14 +427,14 @@ routing:
 ---
 ```
 
-Then give the mailbox kind the route. It needs the seats you hired and a model that can evaluate:
+Then give the mailbox kind the route. It needs the flows `hireWorkforce` returned, the installation, and a model that can evaluate:
 
 ```ts
 import { defineMailboxFlow, routeByPurpose, wakeMemberSeats } from "@flow-state-dev/workforce";
 
 defineMailboxFlow({
-  notify: wakeMemberSeats(seats),
-  route: routeByPurpose(seats, { model: "typesafe-ai/jev" }),
+  notify: wakeMemberSeats(flows, { installation }),
+  route: routeByPurpose(flows, { model: "typesafe-ai/jev", installation }),
 });
 ```
 
@@ -438,7 +443,7 @@ of answers and gets one of them back. Not every model can do that; see
 [Evaluation models](/docs/fundamentals/models#evaluation-models). A mailbox without the
 `routing:` line is not routed, even on a kind built with a route: a client `post` wakes every agent member.
 
-The fallback has to be a member whose hired seat can hear a post, or the app refuses to start and
+The fallback has to be a member whose worker can hear a post, or the app refuses to start and
 names the mailbox. So does a `routing:` line on a kind built without a route. The line is read
 from the file each time the app starts, so adding it to a mailbox that is already open routes that
 mailbox from the next start, with its lines kept.
@@ -456,9 +461,7 @@ For each client `post`, in this order:
    The choices are the members whose seat can hear a post and has a description, each described
    by the `description:` in its `WORKER.md`. The model also sees the mailbox's recent lines, which
    is how "it fails right after the password" reaches the specialist who asked about the password.
-   A seat [hired while the app runs](./durable-hire.md) has no description, because `hire` takes
-   none, so it is never a choice. It can still take a post as the fallback, and step 1 then sends
-   it the next client `post`. When no member has a description, there is no call and the fallback
+   When no member has a description, there is no call and the fallback
    takes the post.
 3. **The fallback.** If the call fails, or answers with anything outside the choices, the
    fallback member takes the post. A model that can't evaluate fails every call, so every post
@@ -538,7 +541,7 @@ its view. A seat woken in an unrouted mailbox, or talked to directly, gets no li
   it is routed by what it says.
 - A follow-up after an answer relies on the evaluator call. If that call fails, the follow-up goes
   to the fallback.
-- A member with no `description:`, such as a seat hired while the app runs, is never picked for
+- A member with no `description:` is never picked for
   what a post is about. It gets a post only as the fallback, or as the next post held for it after
   that.
 - Cancelling a post's fan-out, the request that picks its member and wakes it, may not stop the
@@ -792,7 +795,7 @@ The part after the tool name is the mailbox's id and the board's name, joined, w
 
 It is off by default, and that's deliberate. Anyone who can reach the mailbox can then settle or reassign its rows, including one a seat is working on, and the roster check `fileTask` makes on `author` doesn't apply to these. Each action works only in its own mailbox's session, so one mailbox can't reach another's board through them. Turn it on for boards people are meant to work from outside a run, and for development.
 
-A board that no hired worker declares warns at hire, naming the mailbox and the board. Nothing is refused: a mailbox may keep a board that only people read. The warning prints once per server process, so a hot reload under `next dev` doesn't repeat it.
+A board that no worker flow declares warns at `hireWorkforce`, naming the mailbox and the board. Nothing is refused: a mailbox may keep a board that only people read. The warning prints once per server process, so a hot reload under `next dev` doesn't repeat it.
 
 A board's rows are stored at organization scope, so they sit in [the organization the mailbox runs in](#which-organization-a-mailbox-runs-in).
 
@@ -802,12 +805,13 @@ The rows themselves are [task substrate](../orchestration/task-substrate.md) row
 
 ### Handing a row to the worker it names
 
-A board's `workers` map fixes its names when you write it. To let a row name any of your workers instead, including one hired a minute ago, the worker has to be able to take a task, and the board has to ask who a name means when it hands the row over.
+A board's `workers` map fixes its names when you write it. To let a row name any of your standard workers instead, the worker has to be able to take a task, and the board has to ask who a name means when it hands the row over.
 
-The built-in `agent` kind takes tasks from the boards you pass it as `taskLists`, and from none without them, which includes the copy you get when you pass no `workerFlows`. Build it with every board your mailboxes hold, hire, and build the **worker lookup** over the live registry:
+The built-in `agent` kind takes tasks from the boards you pass it as `taskLists`, and from none without them, which includes the copy you get when you pass no `workerFlows`. Build it with every board your mailboxes hold, and build the **worker lookup** over the installation:
 
 ```ts
 import {
+  createWorkerInstallation,
   createWorkerLookup,
   defineAgentWorkerFlow,
   defineMailboxFlow,
@@ -816,26 +820,26 @@ import {
   mailboxInstances,
 } from "@flow-state-dev/workforce";
 import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
-import { instanceAt } from "./registry-access";
 
 // Check `errors` on both reads, as in "Treat a non-empty errors as fatal".
 const { workers } = await readWorkforce("./workforce");
 const { mailboxes } = await readMailboxesDirectory("./workforce");
 const boardIds = mailboxBoardIds(mailboxes);
 
-const hired = hireWorkforce(workers, {
-  workerFlows: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) },
-  mailboxBoards: boardIds,
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: () => ({ agent: defineAgentWorkerFlow({ installation, taskLists: boardIds }) }),
 });
+const flows = hireWorkforce(installation, { mailboxBoards: boardIds });
 
-const lookup = createWorkerLookup({ instanceAt, declared: hired.map((worker) => worker.id) });
+const lookup = createWorkerLookup({ installation });
 
 const mailboxKinds = mailboxInstances(mailboxes, {
   kinds: { mailbox: defineMailboxFlow({ checkAssignee: lookup.filingCheck() }) },
 });
 ```
 
-`instanceAt(address)` returns the flow registered at an address right now: `registry.get(address)` on the runtime, the same getter the hire tools take. [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate) shows it in `registry-access.ts`. The lookup reads it on every call, so a worker hired while the app runs is found the moment it is registered, and a fired one stops being found.
+The lookup answers with the flow a worker runs on, and the hand-over opens each task's session on that flow, naming the worker in its starting state.
 
 Then give the board that drains the ledger a `defaultWorker` that hands each row to whatever its name means:
 
@@ -856,6 +860,7 @@ const board = taskBoard({
     action: WORKER_TASK_ENTRY,    // "work"
     session: "per-task",
     flowKind: lookup.flowKind,
+    state: lookup.state,          // the task's session is born naming its worker
   }),
 });
 
@@ -865,18 +870,17 @@ export const followupsDesk = defineFlow({
 })();
 ```
 
-Register `followupsDesk` alongside the hired workers and mailbox kinds, and run its `drain` the way you would any board's. Each row filed with `fileTask` and an `assignee` then runs on that worker, one run per row. A worker of the built-in kind answers it as one turn, and the answer becomes the row's result. See [Taking a task](./built-in-worker.md#taking-a-task).
+Register `followupsDesk` alongside the worker flows and mailbox kinds, and run its `drain` the way you would any board's. Each row filed with `fileTask` and an `assignee` then runs on that worker, one run per row. A worker of the built-in kind answers it as one turn, and the answer becomes the row's result. See [Taking a task](./built-in-worker.md#taking-a-task).
 
 `boardId` has to be the ledger's id, `followups.id`. A worker takes a row only from a board whose id is one of its `taskLists`, and refuses any other with `UnknownTaskLedgerError` before reading a row.
 
 #### Who a name reaches
 
-The lookup finds a worker your files declare, a worker hired for the organization, or a worker the member hired for themselves. "The member" is always the person who filed the row. The list records who filed it, so when a teammate's drain hands the row over, it still reaches the filer's own worker and never the teammate's. It never finds another organization's workers, or another member's own.
+The lookup finds a worker your files declare. A mailbox's board belongs to the organization, and whoever drains it opens the task's session, so it never hands a row to a user's own worker: only that worker's owner can open a session with it.
 
 | The name | At `fileTask` | At hand-over |
 | --- | --- | --- |
 | Nobody holds it | Refused, nothing written. `MailboxPostRefusedError`, `reason: "unknown-assignee"`, message `unknown-assignee: No worker is named "frontend".` | Refused `flow-not-found`, naming the assignee. The attempt fails. |
-| Held by two workers, such as one hired for the organization and one of the member's own | Refused `unknown-assignee`, naming both: `"frontend" names 2 workers: one hired for the organization and one your own. Fire or rename one of them so the name means one worker.` | The attempt fails with an error carrying the same sentence. |
 | Held by a worker whose kind takes no tasks | Refused `unknown-assignee`, with a message naming the worker and its kind, which declares no `work` task entry. | The attempt fails with an error carrying the same sentence. |
 
 A worker fired after its row was filed fails at hand-over, naming it. No other worker runs that row. A row filed with no assignee is refused at hand-over too, since the fallback hands a row over by the name on it. Every failed attempt goes through the board's ordinary error path, so `maxAttempts` and `onError` apply.

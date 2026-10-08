@@ -13,7 +13,7 @@
 
 import { z } from "zod";
 import { handler } from "../blocks/handler";
-import { collectReadableResources, isLlmReadable, isLlmWritable, resolveResourceByUri } from "./resource-tools";
+import { collectReadableResources, isLlmReadable, isLlmWritableNow, resolveResourceByUri } from "./resource-tools";
 
 /**
  * Tool block for reading rendered resource content, keyed by scope-qualified uri.
@@ -62,7 +62,7 @@ export function writeResourceContentTool() {
     outputSchema: z.object({ uri: z.string(), ok: z.literal(true) }),
     execute: async (input, ctx) => {
       const ref = await resolveResourceByUri(input.uri, ctx);
-      if (ref === undefined || !isLlmWritable(ref)) {
+      if (ref === undefined || !isLlmWritableNow(ref, ctx)) {
         throw new Error(`Writable resource not found for uri: ${input.uri}`);
       }
 

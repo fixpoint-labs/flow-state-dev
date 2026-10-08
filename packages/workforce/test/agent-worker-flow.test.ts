@@ -16,7 +16,7 @@ import type { FlowInstance, InitialSkill } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
 import { formatAllowedToolsIntentNote } from "@flow-state-dev/orchestration";
-import { hireWorkforce, type HireOptions } from "../src/hire";
+import { mintSeats, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
@@ -26,12 +26,12 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
 }
 
 function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): FlowInstance[] {
-  return hireWorkforce(manifests, { workerFlows: kinds });
+  return mintSeats(manifests, { workerFlows: kinds });
 }
 
 function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): string {
   try {
-    hireWorkforce(manifests, { workerFlows: kinds });
+    mintSeats(manifests, { workerFlows: kinds });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -66,7 +66,7 @@ describe("the built-in agent kind", () => {
 
   // A roster of records that name no kind needs no `kinds` at all.
   it("hires with no options passed", () => {
-    const [seat] = hireWorkforce([record({ id: "engineering.lead", body: "You are the lead." })]);
+    const [seat] = mintSeats([record({ id: "engineering.lead", body: "You are the lead." })]);
     expect(seat!.kind).toBe(AGENT_KIND);
   });
 

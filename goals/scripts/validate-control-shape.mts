@@ -75,11 +75,6 @@ const PAIRS = [
     file: "goals/workforce-seats/a-non-agent-seat-receives-its-skills/fixtures/flows.ts",
     control: "noContractFlow",
     twin: "handRolledFlow"
-  },
-  {
-    file: "goals/workforce-seats/two-seats-run-their-own-configuration/fixtures/flows.ts",
-    control: "noContractFlow",
-    twin: "handRolledFlow"
   }
 ] as const;
 

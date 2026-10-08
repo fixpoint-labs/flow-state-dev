@@ -19,6 +19,7 @@ import {
 } from "../src/lib/reads";
 import { asksFor, workstreamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
+import { ASKER_KIND } from "./fixtures/ask-lab/asker.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const served: ServedLab[] = [];
@@ -47,10 +48,17 @@ async function post(clients: ReturnType<typeof createLabClients>, mailboxId: str
 
 /**
  * A person asks a seat directly, through its public `ask` action, in the
- * seat's own session (`s_<seat id>`, the session the Lab's EM ask lives in).
+ * seat's own session (`s_<seat id>`, the session the Lab's EM ask lives in),
+ * opened naming the seat's worker on the asker flow's one copy.
  */
 async function ask(clients: ReturnType<typeof createLabClients>, seatId: string, what: string) {
-  await clients.actions(seatId).sendAction("ask", { what }, { sessionId: `s_${seatId.replace(/\./g, "_")}` });
+  const sessionId = `s_${seatId.replace(/\./g, "_")}`;
+  await clients.sessions
+    .createSession({ flowKind: ASKER_KIND, userId: clients.userId, sessionId, state: { workerId: seatId } })
+    .catch((error: unknown) => {
+      if ((error as { status?: number }).status !== 409) throw error;
+    });
+  await clients.actions(ASKER_KIND).sendAction("ask", { what }, { sessionId });
 }
 
 /** Count requests by method and path, through the real `fetch`. */
@@ -282,7 +290,7 @@ describe("asks through the mailbox-notify path (V7)", () => {
     expect(asks.map((a) => a.seatId).sort()).toEqual([...(desk.declared.members as string[])].sort());
     for (const ask of asks) {
       expect(ask.parentSessionId).toBe("ops.desk");
-      expect(ask.flowId).toBe(ask.seatId);
+      expect(ask.flowId).toBe(ASKER_KIND);
       expect(ask.item.message).toBe("Approve: ship it");
     }
 

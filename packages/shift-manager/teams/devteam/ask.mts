@@ -8,8 +8,9 @@
  * host keeps one option and one call; the rule for when to ask lives here.
  *
  * What it does, and nothing else: in the EM seat's own session (`s_<seat id>`,
- * the one `file` and `drain` run in, and which a session listing returns), run
- * the asking door as the given person until it suspends on a stock
+ * the one `file` and `drain` run in, and which a session listing returns),
+ * opened naming the EM worker if it isn't there yet ({@link openSeatSession}),
+ * run the asking door as the given person until it suspends on a stock
  * `human_approval`. The answer is not this module's business: it arrives
  * through the engine's resume route, the one Shift Manager's Inbox uses.
  *
@@ -42,7 +43,8 @@
  * read, names this step.
  */
 
-import { resolveUserStorageKey, runAction, type FlowState } from "@flow-state-dev/engine";
+import { ensureSessionRecord, resolveUserStorageKey, runAction, type FlowState } from "@flow-state-dev/engine";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import type { FeatureLedger } from "./board.mts";
@@ -75,8 +77,10 @@ export interface AskFeature {
 export interface RaiseAskOptions {
   /** The flow state the seats are registered in. Must have durable execution on. */
   state: FlowState;
-  /** The hired EM seat, whose own session the ask is raised in. */
-  emSeat: FlowInstance;
+  /** The EM kind's registered copy. */
+  emFlow: FlowInstance;
+  /** The EM worker, whose own session the ask is raised in. */
+  emWorker: string;
   /** What to ask about. */
   feature: AskFeature;
   /** The person the ask runs as, and whose Inbox lists it. */
@@ -102,6 +106,47 @@ export function seatSessionId(seatId: string): string {
   return `s_${seatId.replace(/\./g, "_")}`;
 }
 
+/**
+ * Open a seat's own session ({@link seatSessionId}) on `flow`, naming its
+ * worker, unless it is there already. Through the engine's one session-birth
+ * path, so the flow's create check judges the worker it names.
+ *
+ * @returns The session id.
+ * @throws When the flow's create check refuses the worker.
+ */
+export async function openSeatSession(
+  stores: Parameters<typeof ensureSessionRecord>[0],
+  options: { flow: FlowInstance; workerId: string; principal: { userId: string; orgId: string } },
+): Promise<string> {
+  const { flow, workerId, principal } = options;
+  const sessionId = seatSessionId(workerId);
+  const now = Date.now();
+  await ensureSessionRecord(
+    stores,
+    sessionId,
+    {
+      flow: flow as never,
+      sessionId,
+      principal,
+      state: { [WORKER_ID_STATE_KEY]: workerId },
+      fromCaller: true,
+      via: "create",
+    },
+    () => ({
+      id: sessionId,
+      flowKind: flow.kind,
+      flowId: flow.id,
+      userId: principal.userId,
+      orgId: principal.orgId,
+      version: 0,
+      createdAt: now,
+      updatedAt: now,
+      journal: [],
+    }),
+  );
+  return sessionId;
+}
+
 /** One wording for whatever an error turns out to be. */
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -123,8 +168,8 @@ function messageOf(error: unknown): string {
  *   message starts with {@link RAISE_ASK_STEP}.
  */
 export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult> {
-  const { state, emSeat, feature, principal, ledger } = options;
-  const sessionId = seatSessionId(emSeat.id);
+  const { state, emFlow, emWorker, feature, principal, ledger } = options;
+  const sessionId = seatSessionId(emWorker);
   const refuse = (why: string): never => {
     throw new Error(`${RAISE_ASK_STEP}: the ask for "${feature.issue}" was not raised — ${why}`);
   };
@@ -142,15 +187,15 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
   if (runtime.runtimeConfig.durabilityProvider === undefined) {
     refuse("the flow state has no durable execution, so there is nothing for the answer to resume");
   }
-  if ((emSeat as { actions?: Record<string, unknown> }).actions?.[ASK_ENTRY] === undefined) {
-    refuse(`seat "${emSeat.id}" has no "${ASK_ENTRY}" action`);
+  if ((emFlow as { actions?: Record<string, unknown> }).actions?.[ASK_ENTRY] === undefined) {
+    refuse(`flow "${emFlow.id}" has no "${ASK_ENTRY}" action`);
   }
   const { stores } = runtime;
 
   const taskId = harnessTaskId(feature.issue, PHASE);
   const orgLedger = ledger.collection.scope === "org";
   // The principal's cell in their org, where every flow keeps their user data.
-  const userCell = resolveUserStorageKey(principal.userId, principal.orgId, { id: emSeat.id, isolateUserState: false });
+  const userCell = resolveUserStorageKey(principal.userId, principal.orgId, { id: emFlow.id, isolateUserState: false });
   const row = await guarded("reading the board", () =>
     stores.resourceState.get(
       orgLedger ? "org" : "user",
@@ -202,11 +247,12 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
 
   let result: { requestId?: string; error?: unknown };
   try {
+    await openSeatSession(stores, { flow: emFlow, workerId: emWorker, principal });
     // `runAction`, the entry the action route dispatches into, rather than the
     // route itself: the route answers 202 before the run reaches its gate, and
     // this step's promise is that the ask is pending when it returns.
     result = (await runAction({
-      flow: emSeat,
+      flow: emFlow,
       actionName: ASK_ENTRY,
       input: { issue: feature.issue, goal: feature.goal },
       userId: principal.userId,

@@ -63,8 +63,8 @@ describe("finding the run (V1, D1)", () => {
       expect(await resolveRunFlow(clients, row.run!.sessionId)).toBe(stored?.flowId);
     }
     // The seat on a flow of its own runs on that flow, not the drainer's.
-    expect(await resolveRunFlow(clients, own.run!.sessionId)).not.toBe(lab.drainerId);
-    expect(await resolveRunFlow(clients, same.run!.sessionId)).toBe(lab.drainerId);
+    expect(await resolveRunFlow(clients, own.run!.sessionId)).not.toBe(lab.drainerFlow);
+    expect(await resolveRunFlow(clients, same.run!.sessionId)).toBe(lab.drainerFlow);
   });
 
   it("opens the cross-flow run through its session's flow, and fails through the board drainer's", async () => {
@@ -72,7 +72,7 @@ describe("finding the run (V1, D1)", () => {
     const flowId = await resolveRunFlow(clients, own.run!.sessionId);
     expect(await readRunStatus(clients, { flowId, requestId: own.run!.requestId })).toBe("in_progress");
     // The negative: the drainer's flow does not own this request.
-    await expect(readRunStatus(clients, { flowId: lab.drainerId, requestId: own.run!.requestId })).rejects.toThrow(/404|not found/i);
+    await expect(readRunStatus(clients, { flowId: lab.drainerFlow, requestId: own.run!.requestId })).rejects.toThrow(/404|not found/i);
   });
 
   it("a row never claimed names no run", async () => {

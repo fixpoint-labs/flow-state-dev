@@ -18,19 +18,18 @@ You are the engineering lead. You break work into tasks and report back.
 ```
 
 ```ts
-import { hireWorkforce } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
 const { workers } = await readWorkforce("./workforce");
 
-const seats = hireWorkforce(workers);
-
-flowRegistry.registerMany(seats);
+const installation = createWorkerInstallation({ standardWorkers: workers });
+flowRegistry.registerMany(hireWorkforce(installation));
 ```
 
-No `workerFlows` argument, no flow of your own. The body becomes the worker's instructions and steers its answers; `description` is a label for the roster and never reaches the model.
+No `workerFlows` argument, no flow of your own. Every worker that runs on `agent` shares its one registered copy, and each turn runs as the worker its session names. The body becomes the worker's instructions and steers its answers; `description` is a label for the roster and never reaches the model.
 
-The settings a worker writes for itself are `instructions`, `model`, `tools`, the `skills` switches below, `capabilities` — which picks presets from the capabilities the kind carries, covered in [Capabilities on disk](./capabilities-on-disk.md) — and `packages`, which takes [packages](./packages-on-disk.md) from its team's or the org's library. Four more reach the seat in the same bag, put there by the hire rather than by the file: the team's instructions, the skills the worker's folders hold, the blocks its `tools:` resolved out of its own levels, and the instructions and blocks of the packages it holds. A file that declares one of those four is refused by name. `flow: agent` names the same kind explicitly, and hires the same way.
+The settings a worker writes for itself are `instructions`, `model`, `tools`, the `skills` switches below, `capabilities` — which picks presets from the capabilities the kind carries, covered in [Capabilities on disk](./capabilities-on-disk.md) — and `packages`, which takes [packages](./packages-on-disk.md) from its team's or the org's library. Four more reach the worker in the same bag, put there by the installation rather than by the file: the team's instructions, the skills the worker's folders hold, the blocks its `tools:` resolved out of its own levels, and the instructions and blocks of the packages it holds. A file that declares one of those four is refused by name. `flow: agent` names the same kind explicitly, and hires the same way.
 
 ## Tools
 
@@ -59,27 +58,28 @@ What the key *means* is not. `tools` is reserved across hireable kinds for one t
 To give the built-in a tool catalog, build the kind yourself with `defineAgentWorkerFlow` and pass it under `agent`:
 
 ```ts
-import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { boardTool, searchTool } from "./tools";
 
 const { workers } = await readWorkforce("./workforce");
 
-const seats = hireWorkforce(workers, {
-  workerFlows: {
-    agent: defineAgentWorkerFlow({
-      catalog: { board: boardTool, search: searchTool },
-    }),
-  },
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: () => ({
+    agent: defineAgentWorkerFlow({ installation, catalog: { board: boardTool, search: searchTool } }),
+  }),
 });
+const flows = hireWorkforce(installation);
 ```
 
-`defineAgentWorkerFlow()` with no arguments is the built-in itself, so the copy you pass replaces it rather than adding to it. It takes over for every seat that runs on the `agent` kind: the records that leave `flow:` out, and any that name `agent` outright. A worker naming any other kind is unaffected. Hire with no `workerFlows` at all and the workers have no tool catalog.
+`workerFlows` is a function here because the built-in is built on the installation: it takes the installation's session, so each session names its worker, and loads that worker on every turn. The function is read when first needed. The copy you pass replaces the built-in rather than adding to it. It takes over for every worker that runs on `agent`: the records that leave `flow:` out, and any that name `agent` outright. A worker naming any other flow is unaffected. With no `workerFlows` at all the installation adds the built-in itself, and the workers have no tool catalog.
 
 `defineAgentWorkerFlow` takes:
 
 | Option | What it does |
 | --- | --- |
+| `installation` | The installation that runs this flow's workers. Required for a copy you register: `hireWorkforce` refuses a worker flow that doesn't declare the installation's session. |
 | `catalog` | The tools every worker of this kind may name in `tools:`, by key — `workforce.gen.ts`'s `blocks` export goes straight in. Left out, the only names a worker can resolve are the ones its own folders register. Whatever a catalog tool declares as a resource is installed on the kind, for every worker of it. |
 | `skills` | Skills every worker of this kind holds, on top of the ones its own folders hold. A name that collides with a skill a worker already holds is refused at the hire. |
 | `model` | The model a worker uses when its own file names none. |
@@ -88,33 +88,35 @@ const seats = hireWorkforce(workers, {
 | `taskLists` | The mailbox boards this kind's workers take tasks from, by id (`mailboxBoardIds(mailboxes)`). Left out, the kind takes no tasks. See [Taking a task](#taking-a-task). |
 | `uses` | Capabilities every worker of this kind carries, attached to the generator that answers. |
 | `afterAnswer` | A block that runs after the worker answers, without changing the reply. |
-| `isolateUserState` | Give each worker its own user-scoped storage instead of one shared cell. |
+| `isolateUserState` | Keep this flow's user-scoped storage apart from other flows'. Every worker on `agent` shares one copy, so a user's workers on it still share the same user-scoped storage. |
 
-`classifierModel` and `confidenceThreshold` belong to the kind: nothing reads either until a worker turns `skills.enableLlmClassifier` on, and a `WORKER.md` that names one is refused at the hire, by name, along with any other setting the kind does not declare. The last three are what [Giving workers memory](#giving-workers-memory) uses.
+`classifierModel` and `confidenceThreshold` belong to the kind: nothing reads either until a worker turns `skills.enableLlmClassifier` on, and a `WORKER.md` that names one is refused at the hire, by name, along with any other setting the kind does not declare. `uses` and `afterAnswer` are what [Giving workers memory](#giving-workers-memory) uses.
 
-A replacement declares `kind: "agent"`, like any other kind passed under its own name. It also declares `cardinality: "collection"`, which is what lets one definition have many copies. Leave that out and each seat mints, then is refused when you register it.
+A replacement declares `kind: "agent"`, like any other flow passed under its own name.
 
 ## Taking a task
 
 A worker on this kind can be handed a task from a mailbox's board, by name, when you build the kind with `taskLists`:
 
 ```ts
-import { defineAgentWorkerFlow, hireWorkforce, mailboxBoardIds } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce, mailboxBoardIds } from "@flow-state-dev/workforce";
 
 const boardIds = mailboxBoardIds(mailboxes);
 
-const hired = hireWorkforce(workers, {
-  workerFlows: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) },
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: () => ({ agent: defineAgentWorkerFlow({ installation, taskLists: boardIds }) }),
 });
+const flows = hireWorkforce(installation);
 ```
 
 Each task runs as one turn, in a session of its own when the board hands tasks over `per-task`. The worker answers with its own instructions, tools and model. The message is the task's title, goal and context. The answer is stored as the task's result, and the task completes. If the turn fails, the attempt fails, and the task's `maxAttempts` decides whether it runs again. Nothing is posted to a mailbox unless the worker's own tools post it.
 
-Without `taskLists` the kind takes no tasks, and that includes the built-in you get when you pass no `workerFlows`. A task given to one of its workers is refused, saying the worker takes no tasks. The board side, and who a task's name can reach, is in [Handing a row to the worker it names](./mailboxes.md#handing-a-row-to-the-worker-it-names).
+A board hands tasks to standard workers only: whoever drains it opens the task's session, and nobody can open one with another user's worker. Without `taskLists` the kind takes no tasks, and that includes the built-in you get when you pass no `workerFlows`. A task given to one of its workers is refused, saying the worker takes no tasks. The board side, and who a task's name can reach, is in [Handing a row to the worker it names](./mailboxes.md#handing-a-row-to-the-worker-it-names).
 
 ## What a worker keeps
 
-A conversation keeps its recent turns, each person keeps their own copy of the worker's skills, and memory, once you add it, is kept per person.
+A conversation keeps its recent turns, each worker keeps its own skills for each person, and long-term memory, once you add it, is kept per person and shared by that person's workers.
 
 ![A conversation holds recent turns, a worker's skills are kept per person, and memory is kept per person](./built-in-worker-memory.svg)
 
@@ -193,10 +195,10 @@ The built-in sees only the conversation it's in: each turn, its model gets that 
 
 You turn it on by composing it into your own copy of the kind. A *capability* is a bundle you attach to a block — the context it injects, the tools it adds, the storage it needs — and memory ships as one. [Memory](../memory/overview.md) covers the system itself: its tiers, what each one stores, and every knob `system()` takes. What follows is how a roster of workers picks it up.
 
-It rides on the last three options in the table above: `uses`, `afterAnswer` and `isolateUserState`. Here is the whole recipe:
+It rides on two options in the table above: `uses` and `afterAnswer`. Here is the whole recipe:
 
 ```ts
-import { AGENT_KIND, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { AGENT_KIND, createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { system } from "@flow-state-dev/memory";
 import { boardTool, searchTool } from "./tools";
@@ -208,7 +210,15 @@ const mem = system({
   semantic: true,
 });
 
+const { workers } = await readWorkforce("./workforce");
+
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: () => ({ [AGENT_KIND]: remembers }),
+});
+
 const remembers = defineAgentWorkerFlow({
+  installation,
   catalog: { board: boardTool, search: searchTool },
   uses: [
     mem.capability.presets({
@@ -221,18 +231,14 @@ const remembers = defineAgentWorkerFlow({
       episodic: true,   // things that happened
     }),
   ],
-  // Each worker remembers separately.
-  isolateUserState: true,
   // The write side. Without this, nothing is ever recorded.
   afterAnswer: mem.captureFromItems,
 });
 
-const { workers } = await readWorkforce("./workforce");
-
-const seats = hireWorkforce(workers, { workerFlows: { [AGENT_KIND]: remembers } });
+const flows = hireWorkforce(installation);
 ```
 
-Tell a worker something in one conversation and it knows it in the next.
+Tell a worker something in one conversation and it knows it in the next. Memory is kept per person, and every worker on `agent` shares one copy, so one person's workers on it share what it remembers. It never reaches another person.
 
 ### The parts that are easy to get wrong
 
@@ -268,19 +274,25 @@ tools: [memory/recall]
 ---
 ```
 
-### What isolation does and does not give you
+### Whose memory it is
 
-`isolateUserState: true` keys each worker's storage on that worker's id, so two workers serving the same person do not read each other's memory. Leave it off and they share one per user per organization, as every flow does.
+Every worker on `agent` runs on one shared copy, so what a worker remembers depends on the tier:
 
-![Where a hired seat keeps what it learns about alice. Inside the acme organization: one cell for alice in acme, holding her user record and her shared user-scoped resources, which every flow in acme uses, hired seats included; and one cell per seat for flow-isolated data, such as alice in acme for acme.support.ada. In globex, alice has a separate cell of her own, which nothing in acme reads. A projected resource is stored by your own hooks, so key its rows by the organization too.](./seat-person-data.svg)
+- **Long-term memory** (episodic, semantic and digest) is kept per person, in their user scope in
+  the organization they're signed in to. One person's workers on `agent` share it: tell one of
+  them something and another may recall it. It never crosses people: another person's workers
+  can't read it. That is at the tiers' default `user` scope; a tier you set to `org` scope is
+  shared with the whole organization.
+- **Working memory** is kept per conversation. A conversation runs one worker for its whole life,
+  so it is that worker's own.
+- **Skills** are kept per worker, for each person, by the built-in itself.
 
-It is a decision for the whole kind. A roster is all-separate or all-shared; you cannot keep one shared store across the team while giving each worker its own of something else.
-
-The flag decides *where* a worker's memory is stored, so anything that moves the key leaves the old memory behind. Renaming a worker does it, because the key is the worker's id. So does turning the flag on for a roster that has already been talking to people, because shared and separate are different places. Neither has a migration. Decide it before the roster has anything worth keeping, or accept that workers start fresh.
+`isolateUserState: true` keeps the `agent` flow's user-scoped storage apart from every other
+flow's. It doesn't separate workers on `agent`: they share the one copy it keys on.
 
 ## Related pages
 
-- [Workers on disk](./workers-on-disk.md) — the folder tree, `WORKER.md`, `readWorkforce`, and `hireWorkforce`.
+- [Workers on disk](./workers-on-disk.md) — the folder tree, `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
 - [Workforce](./overview.md) — what a hired roster is, and when to reach for it instead of a task board.
 - [Skills](../skills/overview.md) — what a `SKILL.md` is and what goes in one.
 - [Activation paths](../skills/activation.md) — the ways a skill becomes active, and what each costs.

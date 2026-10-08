@@ -43,6 +43,7 @@ wrote anything. Rows are filed through the EM worker and run by its drain, as in
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | On one copy per worker flow: the storefront run committed on its project's repository branch, the sandbox run worked on the project's files. |
 | `fixed-source` | the manager on the lab's one fixed scratch repository, as before | `a:marker` (and every leg that needs a project's source) |
 | `no-sync-back` | the host saves nothing back | `b:second-run-sees-file` (and `a:note-saved`, `b:file-saved`) |
 

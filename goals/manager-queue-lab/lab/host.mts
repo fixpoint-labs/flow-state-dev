@@ -4,7 +4,9 @@
  * and differ by one block.
  *
  * What `openLab` does, in order, and nothing else: read the tree, build the
- * kinds, hire, register, open the mailbox, hand back handles. Every file it
+ * installation and its two worker flows, register one copy of each, open the
+ * mailbox, hand back handles. Every worker drains in its own session on its
+ * flow's copy, and the session names it. Every file it
  * reads is found by walking from one root; no file is named in this code.
  *
  * ## The three things that are the lab's rather than the framework's
@@ -30,7 +32,7 @@
  * out here either.
  */
 
-import { createFlowState, runAction } from "@flow-state-dev/engine";
+import { createFlowState, ensureSessionRecord, runAction } from "@flow-state-dev/engine";
 import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -38,6 +40,7 @@ import {
   mailboxBoard,
   mailboxBoardIds,
   mailboxInstances,
+  createWorkerInstallation,
   hireWorkforce,
   openMailboxes,
   type MailboxBoardCollection,
@@ -217,7 +220,7 @@ export interface OpenLabOptions {
 /** Everything a check needs to drive and observe one lab. */
 export interface Lab {
   roster: DeclaredRoster;
-  /** The hired seats, by id. */
+  /** Each worker's flow copy, by the worker's id. */
   seats: Record<string, FlowInstance>;
   /** The coordinator seat's id, read off the tree rather than named. */
   coordinatorId: string;
@@ -331,7 +334,17 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   const drainWidth = options.drainWidth ?? drainWidthFromEnv();
 
+  // The installation the two worker flows run their workers on. It reads the
+  // flows when it first needs them, so they are built on it below.
+  let workerFlows: Record<string, unknown> = {};
+  const installation = createWorkerInstallation({
+    standardWorkers: workers,
+    workerFlows: () => workerFlows as never,
+    seatBlocks,
+  });
+
   const builderKind = defineBuilderWorkerFlow({
+    installation,
     board,
     desks,
     assignees,
@@ -357,6 +370,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   }));
 
   const coordinator = defineCoordinatorWorkerFlow({
+    installation,
     board,
     composeBoard: options.composeBoard ?? true,
     ...(options.door === undefined ? {} : { door: options.door }),
@@ -364,21 +378,20 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     seats: hiredSeats,
   });
 
-  // Refuses the WHOLE roster when any record cannot be hired, naming the
-  // worker. Nothing is returned partially, so a refusal cannot leave a short
-  // roster running — which is where BR-3's seat-folder board lands.
-  const hired = hireWorkforce(workers, {
-    workerFlows: {
-      [COORDINATOR_KIND]: coordinator.kind as never,
-      [BUILDER_KIND]: builderKind as never,
-    },
-    seatBlocks,
+  // Refuses the WHOLE roster when any worker would be refused on its turn,
+  // naming the worker. Nothing is registered partially, so a refusal cannot
+  // leave a short roster running — which is where BR-3's seat-folder board lands.
+  workerFlows = { [COORDINATOR_KIND]: coordinator.kind, [BUILDER_KIND]: builderKind };
+  const hired = hireWorkforce(installation, {
     // Every minted id is declared by a hired seat, so this says nothing. A
     // warning on stderr here would mean a builder's declaration missed.
     mailboxBoards: mailboxBoardIds(mailboxes),
   });
   const seats: Record<string, FlowInstance> = Object.fromEntries(
-    hired.map((seat) => [seat.id, seat]),
+    workers.map((worker) => [
+      worker.id,
+      hired.find((copy) => copy.kind === worker.declared.flow) as FlowInstance,
+    ]),
   );
 
   const instances = mailboxInstances(mailboxes);
@@ -386,7 +399,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const state = createFlowState({
     flows: {
       ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
-      ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
+      ...Object.fromEntries(hired.map((copy) => [copy.id, copy])),
     },
     stores: { default: { primary: options.stores } },
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
@@ -465,6 +478,38 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   };
 
   await openMailboxes(mailboxes, { client, userId: LAB_USER_ID });
+
+  // Each worker's drain session, created naming it, the way the session route
+  // creates one: the installation's check runs, and the name is readonly after.
+  for (const worker of workers) {
+    const sessionId = drainSessionId(worker.id);
+    const now = Date.now();
+    await ensureSessionRecord(
+      runtime.stores,
+      sessionId,
+      {
+        flow: seats[worker.id] as never,
+        sessionId,
+        principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+        state: { workerId: worker.id },
+        fromCaller: true,
+        via: "create",
+      },
+      () =>
+        ({
+          id: sessionId,
+          flowKind: seats[worker.id]!.kind,
+          flowId: seats[worker.id]!.id,
+          userId: LAB_USER_ID,
+          orgId: LAB_ORG_ID,
+          lineageId: `lin_${sessionId}`,
+          version: 0,
+          createdAt: now,
+          updatedAt: now,
+          journal: [],
+        }) as never,
+    );
+  }
 
   const mailboxInstance = instances.find((instance) => instance.kind === MAILBOX_KIND);
   if (mailboxInstance === undefined) {

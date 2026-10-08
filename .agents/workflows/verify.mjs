@@ -1202,6 +1202,47 @@ check('args are read identically whether delivered as a JSON string or an object
   assert.ok(asString.result.held.length > 0, 'the string shape must actually reach the rows, not read an empty table')
 })
 
+check('a Linear state TYPE reads as terminal, the same as its name', async () => {
+  // The children read sometimes reports a state's TYPE (`completed`, `canceled`) where the state's NAME
+  // (`Done`, `Canceled`) was asked for. `canceled` was already terminal by spelling; `completed` was not,
+  // so a finished prerequisite read as open work and held its dependent's implementation — observed live.
+  // FIX-2 is a carried, PR-less row, so the only thing deciding whether it still blocks is its state.
+  for (const state of ['completed', 'Completed', 'COMPLETED']) {
+    const { result, calls } = await run('epic-wake.js', {
+      args: epicArgs({ issues: [row('FIX-2', { phase: 'DONE' }), row('FIX-3', { phase: 'NEEDS_IMPLEMENTATION' })] }),
+      respond: epicResponder({
+        fresh: { 'FIX-2': { phase: 'DONE' }, 'FIX-3': { phase: 'NEEDS_IMPLEMENTATION' } },
+        linear: { 'FIX-2': state, 'FIX-3': { state: 'Todo', blockedBy: ['FIX-2'], category: 'Bug' } },
+        worker: { 'FIX-3': { phase: 'PR_FEEDBACK', implPr: 31 } },
+      }),
+    })
+    assert.equal(result.issues.find((r) => r.id === 'FIX-2').linearTerminal, true, `"${state}" is a finished issue`)
+    assert.deepEqual(result.blocked, [], `a prerequisite in "${state}" has landed and stops blocking`)
+    assert.ok(workerLabels(calls).includes('implement:FIX-3'), `and its dependent is built once the prerequisite reads "${state}"`)
+  }
+
+  // `canceled` is a type too, and it must stay what it was: terminal, but never a cleared prerequisite.
+  const canceled = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'DONE' }), row('FIX-3', { phase: 'NEEDS_IMPLEMENTATION' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'DONE' }, 'FIX-3': { phase: 'NEEDS_IMPLEMENTATION' } },
+      linear: { 'FIX-2': 'canceled', 'FIX-3': { state: 'Todo', blockedBy: ['FIX-2'], category: 'Bug' } },
+    }),
+  })
+  assert.equal(canceled.result.issues.find((r) => r.id === 'FIX-2').linearTerminal, true)
+  assert.deepEqual(canceled.result.blocked.map((b) => b.issueId), ['FIX-3'], 'cancelled work never landed, so it keeps blocking')
+
+  // And a child first seen in a `completed` state is finished work, not new work to spec.
+  const discovered = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' }, 'FIX-4': {} },
+      linear: { 'FIX-4': 'completed' },
+    }),
+  })
+  assert.ok(!discovered.result.issues.some((r) => r.id === 'FIX-4'), 'a completed child is not entered at NEEDS_SPEC')
+})
+
 check('epic-PR review still folds while the objective is unapproved', async () => {
   // The gate holds the sub-issues, not the epic-spec's own review — blocking the fold would
   // deadlock the very gate it is waiting on, since folding is how the objective gets revised.
@@ -1213,6 +1254,51 @@ check('epic-PR review still folds while the objective is unapproved', async () =
   assert.deepEqual(workerLabels(calls), [], 'but no sub-issue advances')
   assert.equal(result.epic.reviewRounds, 1)
   assert.match(logs.join('\n'), /still folding epic-PR review so the objective can be revised/)
+})
+
+check('moreWorkNow stays false while the epic gate holds every actionable row', async () => {
+  // Before the objective is approved and merged, every row's first action is held. A fold of epic-PR
+  // review still runs (see above), and the rows it would have deferred for that fold used to be reported
+  // as `heldForFold` — "dispatch next wake" — which set moreWorkNow. The next wake held them again, so the
+  // coordinator looped on a gate only the human can open. Observed live.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 }, issues: [row('FIX-2'), row('FIX-3')] }),
+    respond: epicResponder({
+      approved: false,
+      epicReviewEvents: true,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' }, 'FIX-3': { phase: 'NEEDS_SPEC' } },
+    }),
+  })
+  assert.deepEqual(labels(calls, 'fold:epic'), ['fold:epic'], 'the objective is still being revised')
+  assert.deepEqual(workerLabels(calls), [], 'no child advances under a closed gate')
+  assert.equal(result.moreWorkNow, false, 'nothing a further wake could dispatch, so the turn ends and waits for the human')
+  assert.deepEqual(result.held.sort(), ['FIX-2', 'FIX-3'], 'the rows are held by the gate')
+  assert.deepEqual(result.heldForFold, [], 'not deferred one wake for the fold — the next wake holds them too')
+
+  // The counter-case: the gate is closed only by an ANSWERED epic question, and this wake's fold applies
+  // the answer. The next wake finds the gate open and dispatches, so this one must say run again now.
+  const answered = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, openQuestions: ['which store?'], answers: [{ question: 'which store?', answer: 'sqlite' }] },
+      issues: [row('FIX-2'), row('FIX-3')],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' }, 'FIX-3': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.deepEqual(labels(answered.calls, 'fold:epic'), ['fold:epic'])
+  assert.deepEqual(workerLabels(answered.calls), [], 'held this wake: the decision is still being folded')
+  assert.deepEqual(answered.result.epic.openQuestions, [], 'the fold applied the answer')
+  assert.equal(answered.result.moreWorkNow, true, 'the gate opens with this fold, so the held rows dispatch on the next wake')
+
+  // ...and a question still UNANSWERED keeps the gate closed after the wake, so no immediate wake.
+  const open = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0, openQuestions: ['which store?'] },
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({ epicReviewEvents: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.deepEqual(workerLabels(open.calls), [])
+  assert.equal(open.result.moreWorkNow, false, 'an open question keeps the gate closed after this wake')
 })
 
 check('a pre-merge epic snapshot can reflect an already-existing child merge without spending review budget', async () => {
@@ -1896,6 +1982,137 @@ check('GATE: implementation waits for the cross-spec coherence pass', async () =
   })
   assert.ok(withCancelled.result.crossSpecGate, 'a cancelled row does not block the ask either')
   assert.deepEqual(withCancelled.result.crossSpecGate.issueIds, ['FIX-2', 'FIX-3'])
+})
+
+check('GATE: no dispatch can start implementation while the cross-spec pass has not cleared', async () => {
+  // Observed live: a row whose spec had merged was built while `crossSpecCleared` was false. The hold
+  // guarded the two `implement` branches, but a verdict or an answered decision dispatches on its own,
+  // ahead of the phase switch — and the worker is told to advance the row to its next external wait,
+  // which for a merged, approved spec is opening the implementation PR. Only an open `blockedBy` gated
+  // those dispatches, so the coordinator had to park each such row by hand with a `blocker`. The hold has
+  // to stand on its own: no per-row blocker, no prerequisite.
+  const sibling = row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 })
+  const siblingFresh = { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 }
+  const carrying = {
+    decision: { blockerResolutions: [{ for: null, answer: 'use the store adapter' }] },
+    verdict: { verdicts: [{ claim: 'c', verdict: 'REFUTED', evidence: 'ran it', threads: 't' }] },
+  }
+  for (const phase of ['NEEDS_IMPLEMENTATION', 'AWAITING_SPEC_APPROVAL']) {
+    for (const [kind, extra] of Object.entries(carrying)) {
+      const issues = [row('FIX-2', { phase, specPr: 8, specMerged: true, approvedHeadSha: 'abc', blocker: null, ...extra }), sibling]
+      const fresh = { 'FIX-2': { phase, specPr: 8, specApproved: true, specMerged: true }, 'FIX-3': siblingFresh }
+
+      const held = await run('epic-wake.js', { args: epicArgs({ issues }), respond: epicResponder({ fresh }) })
+      assert.deepEqual(workerLabels(held.calls), [], `${phase} + ${kind}: nothing dispatches for a merged spec before the pass clears`)
+      assert.equal(held.result.moreWorkNow, false, `${phase} + ${kind}: and nothing loops on it`)
+
+      const cleared = await run('epic-wake.js', {
+        args: epicArgs({ crossSpecCleared: true, issues }),
+        respond: epicResponder({ fresh, worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 11 } } }),
+      })
+      // Which action wins is `pendingAction`'s existing order (a verdict first; an answered decision is a
+      // fallback behind real phase work, and travels in the worker prompt) — not what this check is about.
+      assert.equal(
+        workerLabels(cleared.calls).filter((l) => l.endsWith(':FIX-2')).length,
+        1,
+        `${phase} + ${kind}: once the pass clears, the same row dispatches`,
+      )
+    }
+  }
+
+  // Spec work is not implementation and still runs under the hold: an unapproved spec folds its verdict.
+  const specWork = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, ...carrying.verdict }), sibling] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }, 'FIX-3': siblingFresh } }),
+  })
+  assert.deepEqual(workerLabels(specWork.calls), ['apply-verdict:FIX-2'], 'folding a verdict into an unapproved spec is spec work')
+
+  // The same rule over the whole input space, straight from `pendingAction`: under the hold, a
+  // spec-route row whose spec is approved, or that sits at NEEDS_IMPLEMENTATION, gets no dispatch at all;
+  // every other row (unapproved spec work, a bug on the direct route, work already past implementation
+  // start) gets exactly what it would get without the hold.
+  const { pendingAction, setHold } = loadRules('epic-wake.js', [
+    'atReviewBudget',
+    'cursorUsable',
+    'pendingAction',
+    'setHold: (v) => { crossSpecHold = v }',
+  ])
+  const space = product({
+    phase: ['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL', 'NEEDS_IMPLEMENTATION'],
+    route: ['spec', 'direct'],
+    specApproved: [true, false],
+    specMerged: [true, false],
+    newSpecReviewEvents: [true, false],
+    verdicts: [[], [{ claim: 'c', verdict: 'REFUTED' }]],
+    blockerResolutions: [[], [{ for: null, answer: 'use the store adapter' }]],
+  })
+  // A bug sits at NEEDS_IMPLEMENTATION (`directRoutePhase` corrects it there), so that is the only
+  // phase it is enumerated in.
+  for (const base of space.filter((b) => b.route === 'spec' || b.phase === 'NEEDS_IMPLEMENTATION')) {
+    const r = { ...base, blocker: null, blockedBy: [], latestActivityAt: '2026-09-05T10:00:00Z' }
+    setHold(false)
+    const unheld = pendingAction(r)
+    setHold(true)
+    const underHold = pendingAction(r)
+    const startsImplementation = r.route === 'spec' && (r.phase === 'NEEDS_IMPLEMENTATION' || r.specApproved)
+    assert.deepEqual(underHold, startsImplementation ? null : unheld, `cross-spec hold mis-gated: ${JSON.stringify(base)}`)
+  }
+  setHold(false)
+  assert.ok(space.length >= 150, `expected a real space, enumerated ${space.length}`)
+})
+
+check('GATE: an open prerequisite holds every dispatch that can carry a row into implementation', async () => {
+  // Same root cause as the cross-spec hold above, one precondition over. A verdict or an answered decision
+  // dispatches ahead of the phase switch, and `buildsCode` called it spec work whenever the phase was
+  // pre-approval — so an APPROVED, merged spec carrying a verdict dispatched with its prerequisite still
+  // open, and the worker, told to advance the row to its next external wait, opened the implementation PR
+  // concurrently with the work it depends on. `crossSpecCleared: true` throughout, so only the prerequisite
+  // can be what holds these rows.
+  const verdict = { verdicts: [{ claim: 'c', verdict: 'REFUTED', evidence: 'ran it', threads: 't' }] }
+  const decision = { blockerResolutions: [{ for: null, answer: 'use the store adapter' }] }
+  const wake = (blockerState) =>
+    run('epic-wake.js', {
+      args: epicArgs({
+        crossSpecCleared: true,
+        issues: [
+          row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specMerged: true, approvedHeadSha: 'abc', ...verdict }),
+          row('FIX-3', { phase: 'NEEDS_IMPLEMENTATION', specPr: 9, specMerged: true, approvedHeadSha: 'abc', ...decision }),
+          row('FIX-5', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 10, ...verdict }),
+          // The prerequisite: a carried, PR-less row, so its Linear state alone decides whether it is open.
+          row('FIX-4', { phase: 'DONE' }),
+        ],
+      }),
+      respond: epicResponder({
+        fresh: {
+          'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, specMerged: true },
+          'FIX-3': { phase: 'NEEDS_IMPLEMENTATION', specPr: 9, specApproved: true, specMerged: true },
+          'FIX-5': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 10 },
+          'FIX-4': { phase: 'DONE' },
+        },
+        linear: {
+          'FIX-2': { state: 'In Progress', blockedBy: ['FIX-4'] },
+          'FIX-3': { state: 'In Progress', blockedBy: ['FIX-4'] },
+          'FIX-5': { state: 'In Progress', blockedBy: ['FIX-4'] },
+          'FIX-4': blockerState,
+        },
+        worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 11 }, 'FIX-3': { phase: 'PR_FEEDBACK', implPr: 12 } },
+      }),
+    })
+
+  const open = await wake('In Progress')
+  const openLabels = workerLabels(open.calls)
+  assert.ok(!openLabels.some((l) => l.endsWith(':FIX-2')), `an approved, merged spec with a verdict waits for its prerequisite: ${openLabels}`)
+  assert.ok(!openLabels.some((l) => l.endsWith(':FIX-3')), `a NEEDS_IMPLEMENTATION row with a decision waits for its prerequisite: ${openLabels}`)
+  // ...but a verdict on an UNAPPROVED spec cannot reach implementation, so it is spec work and still runs.
+  assert.ok(openLabels.includes('apply-verdict:FIX-5'), `a verdict on an unapproved spec is not held by the prerequisite: ${openLabels}`)
+  assert.deepEqual(open.result.blocked.map((b) => b.issueId).sort(), ['FIX-2', 'FIX-3', 'FIX-5'])
+
+  // Control: the same rows dispatch once the prerequisite is done.
+  const done = await wake('Done')
+  const doneLabels = workerLabels(done.calls)
+  assert.deepEqual(done.result.blocked, [], 'a finished prerequisite stops blocking')
+  assert.ok(doneLabels.includes('apply-verdict:FIX-2'), `the approved spec folds its verdict once unblocked: ${doneLabels}`)
+  assert.equal(doneLabels.filter((l) => l.endsWith(':FIX-3')).length, 1, `the NEEDS_IMPLEMENTATION row dispatches once unblocked: ${doneLabels}`)
 })
 
 check('a blocked sibling\'s spec is written and joins the cross-spec set', async () => {
@@ -9391,13 +9608,15 @@ check('INVARIANT: a decision parks everything; a prerequisite parks only impleme
   for (const base of space) {
     // Parked by an escalated decision: nothing may dispatch, whatever phase or event the row carries.
     assert.equal(pendingAction({ ...base, blocker: 'needs a call' }), null, `blocker dispatched: ${JSON.stringify(base)}`)
-    // An open blocked-by relation parks IMPLEMENTATION only. Stated from the phase, not from action names:
-    // whatever a pre-approval row would do unblocked — author, review, fold a verdict, apply an answered
-    // decision — it still does blocked, and only `implement` (or any post-spec work) waits. The cross-spec
-    // hold counts a blocked pre-approval row as "coming", which is only deadlock-free because of this.
+    // An open blocked-by relation parks IMPLEMENTATION only. Stated from the row, not from action names:
+    // whatever an UNAPPROVED pre-approval row would do unblocked — author, review, fold a verdict, apply an
+    // answered decision — it still does blocked. `implement`, any post-spec work, and any dispatch on an
+    // approved spec (whose worker would go on to implement) waits. The cross-spec hold counts a blocked
+    // unapproved row as "coming", which is only deadlock-free because of this.
     const unblocked = pendingAction(base)
     const whenBlocked = pendingAction({ ...base, blockedBy: ['FIX-9'] })
-    const specWork = unblocked && ['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL'].includes(base.phase) && unblocked.action !== 'implement'
+    const specWork =
+      unblocked && ['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL'].includes(base.phase) && !base.specApproved && unblocked.action !== 'implement'
     assert.deepEqual(whenBlocked, specWork ? unblocked : null, `blockedBy mis-gated ${JSON.stringify(unblocked)}: ${JSON.stringify(base)}`)
 
     // And an unparked row never invents an action outside the known set.

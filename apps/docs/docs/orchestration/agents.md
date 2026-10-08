@@ -167,11 +167,11 @@ Both forms default to `scope: "org"`, so a persona is shared across users unless
 
 `createWorkforceCapability({ roster, inventory })` returns a capability named `workforce` that gives every seat of the kind one tool: `discover`, which answers what seats and mailboxes have been registered, and whatever other domains you hand it. Pass the declared roster and the registry keys the [inventory](../workforce/inventory)'s seat and mailbox rows are mounted under. See [Discovery](./discovery).
 
-## Hired workers
+## Workforce workers
 
-Workforce is a separate product. `hireWorkforce` turns a roster into configured flow copies you register and open a session against. A board's workers are blocks that claim tasks from a collection.
+Workforce is a separate product. A Workforce worker is a configuration run by one shared copy of the flow it names, and you talk to it by opening a session that names it. A board's workers are blocks that claim tasks from a collection.
 
-A hired worker's flow can mount a board, and that board's workers are any of the three above. A task's `assignee` can also name a hired worker: a board whose `defaultWorker` asks Workforce's worker lookup hands the task to the worker of that name. See [Giving a task to a worker](../workforce/overview#giving-a-task-to-a-worker).
+A worker flow can mount a board, and that board's workers are any of the three above. A task's `assignee` can also name a standard Workforce worker: a board whose `defaultWorker` asks Workforce's worker lookup hands the task to the worker of that name. See [Giving a task to a worker](../workforce/overview#giving-a-task-to-a-worker).
 
 ## Related pages
 

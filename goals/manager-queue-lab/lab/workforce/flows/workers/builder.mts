@@ -2,7 +2,8 @@
  * The `builder` worker kind — one file under `workforce/flows/workers/`,
  * basename = the kind id every builder `WORKER.md` names in its `flow:` line.
  *
- * Three seats are hired onto this one kind. What makes them different is the
+ * Three seats are workers on this one flow, one registered copy, each draining
+ * in its own session, which names it. What makes them different is the
  * routing key each answers for, and **that key reaches a seat two ways on
  * purpose**, because the whole of BR-4 lives in the gap between them:
  *
@@ -10,8 +11,9 @@
  *   is the implementation under test. It narrows what the seat's drain claims
  *   and it is the only thing VG's negative control moves.
  * - **The tree** — each `WORKER.md`'s own `answersFor:` line, which arrives in
- *   the seat's config bag and is reported back out from inside the running
- *   work. This is the oracle, and it is never read by any wiring here.
+ *   the worker's settings when its turn loads it and is reported back out from
+ *   inside the running work. This is the oracle, and it is never read by any
+ *   wiring here.
  *
  * Grading the map against itself would move the oracle along with the
  * implementation and the control would stay green. So the wiring reads the map
@@ -43,9 +45,10 @@
  *
  * The seat under `workers` is a `dispatcher({ action, session: "per-task" })` —
  * a **same-flow hand-off**. The row is claimed by the drain and then run in its
- * own child session, on this same flow instance, at the `task` entry below. One
- * ledger declaration, one hop, and a child session per row that carries a
- * `parentSessionId` and none of the coordinator's transcript.
+ * own child session, on this same flow, at the `task` entry below, naming the
+ * same worker as the drain that claimed it. One ledger declaration, one hop,
+ * and a child session per row that carries a `parentSessionId` and none of the
+ * coordinator's transcript.
  *
  * Nothing here declares the ledger a second time: the entry is reachable from
  * this flow's own board, which is what the orphan-task-entry guard wants. The
@@ -61,7 +64,13 @@ import {
   type TaskDispatcher,
   type TaskWorkerInput,
 } from "@flow-state-dev/orchestration/tasks";
-import { workerConfigSchema, type MailboxBoardCollection } from "@flow-state-dev/workforce";
+import {
+  WORKER_ID_STATE_KEY,
+  workerConfigOf,
+  workerConfigSchema,
+  type MailboxBoardCollection,
+  type WorkerInstallation,
+} from "@flow-state-dev/workforce";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
 import { ledgerOf } from "../../../ledger.mts";
@@ -96,11 +105,20 @@ export const HOLD_ENTRY = "hold";
  */
 const ANSWERS_FOR_KEY = "answersFor";
 
-/** What a builder seat's settings bag holds: the contract, plus its own desk. */
+/**
+ * What a builder seat's settings bag holds: the contract, plus its own desk.
+ * Optional here because the flow's one copy has no desk of its own; each
+ * worker's file names one, and the host routes only the workers that do.
+ */
 export function builderSettingsSchema() {
   return workerConfigSchema().extend({
-    [ANSWERS_FOR_KEY]: z.string().min(1),
+    [ANSWERS_FOR_KEY]: z.string().min(1).optional(),
   });
+}
+
+/** The worker a builder session runs, as its session names it (checked when the session was created). */
+function seatOf(ctx: BlockContext): string {
+  return String((ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY] ?? "");
 }
 
 /** The parts of the bag this module reads where the bag's type is erased. */
@@ -110,7 +128,7 @@ interface BuilderConfig {
 
 /** One line the work leaves behind — a real file, outside the board entirely. */
 export const workLineSchema = z.object({
-  /** The seat instance that ran it, off `ctx.flow.id`. */
+  /** The worker that ran it, off the session it ran in. */
   seat: z.string(),
   /** What that seat's OWN FILE says it answers for — the oracle, from the tree. */
   declaredAssignee: z.string(),
@@ -127,9 +145,9 @@ export type WorkLine = z.infer<typeof workLineSchema>;
 /**
  * A claim narrowed to one seat's desk.
  *
- * Per **seat**, resolved at claim time off `ctx.flow.id`, because three seats
- * share one kind and therefore one board object: a key captured when the board
- * was built would be one key for all three.
+ * Per **seat**, resolved at claim time off the drain session's worker, because
+ * three seats share one flow and therefore one board object: a key captured
+ * when the board was built would be one key for all three.
  *
  * A seat the map does not name claims nothing at all, rather than falling back
  * to a bare claim — the failure a fallback produces is a seat quietly eating
@@ -138,8 +156,7 @@ export type WorkLine = z.infer<typeof workLineSchema>;
 function deskDispatcher(assignees: Record<string, string>): TaskDispatcher {
   return {
     async claim(collection, workerId, ctx) {
-      const seat = String((ctx.flow as { id?: string }).id ?? "");
-      const desk = assignees[seat];
+      const desk = assignees[seatOf(ctx)];
       if (desk === undefined) return null;
       return collection.claim(workerId, {
         // No status arm — claimability is the substrate's call, and adding one
@@ -152,6 +169,8 @@ function deskDispatcher(assignees: Record<string, string>): TaskDispatcher {
 }
 
 export interface BuilderWorkerFlowOptions {
+  /** The installation that runs this flow's workers. */
+  installation: WorkerInstallation;
   /** The mailbox's own ledger — the one the `MAILBOX.md` declared by name. */
   board: MailboxBoardCollection;
   /**
@@ -193,7 +212,7 @@ export interface BuilderWorkerFlowOptions {
  *
  * @param options The ledger, the board's desk vocabulary, the seat map under
  *   test, the drain width, and where finished work leaves its line.
- * @returns The flow factory `hireWorkforce` mints one copy of per builder record.
+ * @returns The flow `hireWorkforce` registers one copy of, for every builder worker.
  */
 export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
   const outbox = options.outbox;
@@ -215,9 +234,9 @@ export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
     inputSchema: taskWorkerInputSchema,
     outputSchema: workLineSchema,
     execute: async (input: TaskWorkerInput, ctx: BlockContext): Promise<WorkLine> => {
-      const config = ctx.flow.config as unknown as BuilderConfig;
+      const config = workerConfigOf(ctx) as unknown as BuilderConfig;
       const line: WorkLine = {
-        seat: String((ctx.flow as { id?: string }).id ?? "<unknown>"),
+        seat: seatOf(ctx) || "<unknown>",
         declaredAssignee: config.answersFor,
         taskId: input.taskId,
         goal: input.goal,
@@ -246,6 +265,8 @@ export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
           name: `${BUILDER_KIND}-hand-off-${desk}`,
           action: WORK_ENTRY,
           session: "per-task",
+          // The row's session names the worker whose drain claimed it.
+          state: (_task, ctx) => ({ [WORKER_ID_STATE_KEY]: seatOf(ctx) }),
         }),
       ]),
     ),
@@ -265,7 +286,7 @@ export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
     inputSchema: z.object({}).optional(),
     outputSchema: z.object({ taskId: z.string().nullable(), leaseMs: z.number() }),
     execute: async (_input: unknown, ctx: BlockContext) => {
-      const seat = String((ctx.flow as { id?: string }).id ?? "");
+      const seat = seatOf(ctx);
       const desk = options.assignees[seat];
       const ledger = await ledgerOf(ctx, options.board.id);
       const claimed = await ledger.claim(`hold:${seat}`, {
@@ -276,10 +297,24 @@ export function defineBuilderWorkerFlow(options: BuilderWorkerFlowOptions) {
     },
   });
 
+  const installation = options.installation;
+  /** Loads the turn's worker, on every run of a request, so `workerConfigOf` reads it. */
+  const loadWorker = handler({
+    name: `${BUILDER_KIND}-load-worker`,
+    inputSchema: z.unknown(),
+    resources: { ...installation.resources },
+    execute: async (_input: unknown, ctx: BlockContext) => ({
+      worker: (await installation.resolveWorker(ctx as never, BUILDER_KIND)).id,
+    }),
+  });
+
   return defineFlow({
     kind: BUILDER_KIND,
     cardinality: "collection",
     configSchema: builderSettingsSchema(),
+    session: installation.session(),
+    resources: { [options.board.id]: options.board, ...installation.resources },
+    request: { onStarted: loadWorker },
     actions: { ...workerDoor,
       [DRAIN_ENTRY]: {
         block: board.drain,

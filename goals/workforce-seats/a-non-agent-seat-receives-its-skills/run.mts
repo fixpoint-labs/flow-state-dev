@@ -18,17 +18,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { hireWorkforce, type HireOptions } from "@flow-state-dev/workforce";
+import { hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { fixtureDir, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { fixtureDir, installWorkers, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import {
   TRIAGE_KIND,
   NO_CONTRACT_KIND,
   HAND_ROLLED_KIND,
-  triageFlow,
-  noContractFlow,
-  handRolledFlow
+  HAND_ROLLED_WORKER,
+  controlInstallation,
+  defineTriageFlow,
+  twinInstallation
 } from "./fixtures/flows";
 
 type SeatFixture = {
@@ -51,20 +52,6 @@ stripIntentOverrides();
 const fixture = loadFixture<Fixture>(import.meta.url);
 const { support, billing } = fixture.seats;
 
-const kinds: HireOptions["workerFlows"] = {
-  [TRIAGE_KIND]: triageFlow as never,
-  // The positive half of the structural rule: hand-written, accepts the bag, hires.
-  [HAND_ROLLED_KIND]: handRolledFlow as never
-};
-
-/**
- * The same flows with the control registered, so its refusal is about the
- * contract it never composed, not about a kind the app forgot to pass. Kept
- * off `kinds`: a worker flow that misses the contract refuses the whole
- * installation at boot.
- */
-const withNoContract: HireOptions["workerFlows"] = { ...kinds, [NO_CONTRACT_KIND]: noContractFlow as never };
-
 const tree = (name: string): string => join(fixtureDir(import.meta.url), name);
 
 function host(stores: StoreRegistry, flows: FlowInstance[]) {
@@ -75,8 +62,22 @@ function host(stores: StoreRegistry, flows: FlowInstance[]) {
 
 type Router = ReturnType<typeof createFlowApiRouter>;
 
-async function act(router: Router, address: string, sessionId: string): Promise<Response> {
-  const path = [address, sessionId, "actions", "run"];
+/** Open `sessionId` on `flow`, naming `worker`, as the session route does for a person. */
+async function open(router: Router, flow: string, worker: string, sessionId: string): Promise<number> {
+  const path = [flow, "sessions"];
+  const res = await router.POST(
+    new Request(`http://goal/api/flows/${path.join("/")}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: fixture.userId, sessionId, state: { workerId: worker } })
+    }),
+    { params: { path } }
+  );
+  return res.status;
+}
+
+async function act(router: Router, flow: string, sessionId: string): Promise<Response> {
+  const path = [flow, sessionId, "actions", "run"];
   return router.POST(
     new Request(`http://goal/api/flows/${path.join("/")}`, {
       method: "POST",
@@ -93,7 +94,9 @@ async function ranOn(router: Router, sessionId: string) {
     params: { path }
   });
   const body = (await res.json()) as {
-    clientData?: { session?: { ran?: { skills?: string[] | null; desk?: string | null; runs?: number } } };
+    clientData?: {
+      session?: { ran?: { skills?: string[] | null; desk?: string | null; hasSeatSkills?: boolean | null; runs?: number } };
+    };
   };
   return { status: res.status, ...(body.clientData?.session?.ran ?? {}) };
 }
@@ -123,10 +126,13 @@ await runGoal(async () => {
   if (skillErrors.length > 0) failures.push(`the loader reported skill errors: ${JSON.stringify(skillErrors)}`);
   if (workers.length !== 2) failures.push(`the tree produced ${workers.length} record(s), wanted 2`);
 
-  const seats = hireWorkforce(workers, { workerFlows: kinds });
-  if (seats.length !== 2) failures.push(`hired ${seats.length} seat(s), wanted 2`);
+  const { copies: seats } = installWorkers(workers, (installation) => ({ [TRIAGE_KIND]: defineTriageFlow(installation) }));
+  const triageCopies = seats.filter((copy) => copy.kind === TRIAGE_KIND);
+  if (triageCopies.length !== 1 || triageCopies[0]!.id !== TRIAGE_KIND) {
+    failures.push(`${triageCopies.length} copies of "${TRIAGE_KIND}" registered, wanted one, at its kind`);
+  }
   evidence.push(
-    "the real loader read the tree and one hireWorkforce call turned both records into seats of a kind with no model in it"
+    `the real loader read the tree, and one copy of "${TRIAGE_KIND}", a flow with no model in it, runs both workers`
   );
 
   // ---- (b) each seat RUNS, and its nested block reads its own skills -------
@@ -134,7 +140,12 @@ await runGoal(async () => {
   {
     const router = host(stores, seats);
     for (const id of [support.id, billing.id]) {
-      const res = await act(router, id, sessions[id]!);
+      const opened = await open(router, TRIAGE_KIND, id, sessions[id]!);
+      if (opened !== 201) {
+        failures.push(`${id}: its session on "${TRIAGE_KIND}" was not created (${opened})`);
+        continue;
+      }
+      const res = await act(router, TRIAGE_KIND, sessions[id]!);
       const body = (await res.json()) as { request?: { id: string } };
 
       // One failure per thing that actually went wrong. A rejected action has
@@ -144,7 +155,7 @@ await runGoal(async () => {
       // one. A check that invents a failure is worse than a check that misses
       // one: whoever reads the output is told two things broke when one did.
       if (res.status !== 202) {
-        failures.push(`${id}: expected 202 from its own address, got ${res.status}`);
+        failures.push(`${id}: expected 202 from "${TRIAGE_KIND}", got ${res.status}`);
         continue;
       }
       const requestId = body.request?.id;
@@ -156,7 +167,7 @@ await runGoal(async () => {
       const status = await settled(stores, requestId);
       if (status !== "completed") failures.push(`${id}: request ended ${String(status)}`);
     }
-    evidence.push("both seats ran an action to completion through the real HTTP route, with no model call");
+    evidence.push("both workers ran an action to completion through the real HTTP route, each in a session naming it, with no model call");
   }
 
   (stores as unknown as { close(): void }).close();
@@ -189,7 +200,7 @@ await runGoal(async () => {
       if (ran.runs !== 1) failures.push(`${seat.id}: ran ${String(ran.runs)} times`);
     }
     evidence.push(
-      "after closing the store and rebuilding the host, each seat's nested block shows the skills its own folders declared, in level order, read off ctx.flow.config.seatSkills"
+      "after closing the store and rebuilding the host, each worker's nested block shows the skills its own folders declared, in level order, read off the turn's worker"
     );
 
     // ---- (c) control: a seat is NOT handed its sibling's folders -----------
@@ -217,72 +228,62 @@ await runGoal(async () => {
       `both seats hold the org folder's "${fixture.orgSkill}" and neither holds the other's team or own-folder skills`
     );
 
-    // ---- (d) control: strip the contract, and nothing is hired -------------
+    // ---- (d) control: a schema that can't take the bag registers nothing ---
     {
-      const { workers: legacy } = await readWorkforce(tree(fixture.control.dir));
       let hired: FlowInstance[] | undefined;
       let refusal = "";
       try {
-        hired = hireWorkforce([...workers, ...legacy], { workerFlows: withNoContract });
+        hired = hireWorkforce(controlInstallation);
       } catch (error) {
         refusal = messageOf(error);
       }
       if (hired !== undefined) {
-        failures.push(`the kind with no contract hired ${hired.length} seat(s) instead of refusing`);
+        failures.push(`the flow with no contract registered ${hired.length} cop(ies) instead of refusing`);
       } else {
-        for (const name of [`worker flow "${NO_CONTRACT_KIND}"`, "seatSkills"]) {
-          if (!refusal.includes(name)) {
-            failures.push(`the refusal does not name "${name}": ${refusal}`);
-          }
-        }
-        // A refusal after a partial hire is not a refusal — the seats whose own
-        // kind was fine are gone too, so nothing can be registered.
-        const emptied = host(stores, hired ?? []);
-        const res = await act(emptied, billing.id, "s_refused");
-        if (res.status !== 404) {
-          failures.push(`a seat was registered anyway (${billing.id} answered ${res.status})`);
+        for (const name of [fixture.control.id, NO_CONTRACT_KIND, "seatSkills", "nothing was registered"]) {
+          if (!refusal.includes(name)) failures.push(`the refusal does not name "${name}": ${refusal}`);
         }
       }
       evidence.push(
-        "a kind whose schema omits seatSkills refuses the whole roster at boot, naming the flow and the missing key, and nothing is registered"
+        "a flow whose schema omits seatSkills refuses the whole installation at boot, naming the worker, the flow and the missing key, and nothing is registered"
       );
     }
 
     // ---- (e) control: admission is structural, not nominal ----------------
     //
-    // (d) shows a refusal. On its own it is equally consistent with hire
-    // checking whether `workerConfigSchema()` was CALLED — it does not and
-    // cannot. So a hand-written schema that never calls the helper, but accepts
-    // everything hire imposes, must hire exactly like a composed kind.
+    // (d) shows a refusal. On its own it is equally consistent with a check on
+    // whether `workerConfigSchema()` was CALLED — there is none. So a
+    // hand-written schema that never calls the helper, but takes everything a
+    // worker is handed, must register and run exactly like a composed flow.
     {
       let hired: FlowInstance[] | undefined;
       let refusal = "";
       try {
-        hired = hireWorkforce(
-          [
-            ...workers,
-            {
-              id: "support.handrolled",
-              declared: { description: "Hand-rolled, never composed.", flow: HAND_ROLLED_KIND },
-              body: "You hold the hand-rolled desk."
-            }
-          ],
-          { workerFlows: kinds }
-        );
+        hired = hireWorkforce(twinInstallation);
       } catch (error) {
         refusal = messageOf(error);
       }
       if (hired === undefined) {
-        failures.push(`a hand-written schema that accepts the imposed bag was refused: ${refusal}`);
+        failures.push(`a hand-written schema that takes the bag was refused: ${refusal}`);
       } else {
-        const seat = hired.find((s) => s.id === "support.handrolled");
-        if (seat === undefined) failures.push("the hand-rolled kind hired no seat");
-        else if (!Object.hasOwn(seat.config, "seatSkills")) {
-          failures.push("the hand-rolled seat hired without the imposed seatSkills key");
+        const twinStores = createSQLiteStores({ filename: join(dir, "twin.db") }) as unknown as StoreRegistry;
+        try {
+          const router = host(twinStores, hired);
+          const session = "s_handrolled";
+          const opened = await open(router, HAND_ROLLED_KIND, HAND_ROLLED_WORKER.id, session);
+          const res = opened === 201 ? await act(router, HAND_ROLLED_KIND, session) : undefined;
+          const requestId = res?.status === 202 ? ((await res.json()) as { request?: { id: string } }).request?.id : undefined;
+          const status = requestId === undefined ? undefined : await settled(twinStores, requestId);
+          const ran = await ranOn(router, session);
+          if (status !== "completed") failures.push(`the hand-rolled worker's turn ended ${String(status)} (session ${opened}, action ${res?.status})`);
+          else if (ran.hasSeatSkills !== true) failures.push("the hand-rolled worker's turn carried no seatSkills key");
+          else if (ran.desk !== HAND_ROLLED_WORKER.declared.desk) failures.push(`the hand-rolled worker's turn saw desk ${String(ran.desk)}`);
+        } finally {
+          (twinStores as unknown as { close(): void }).close();
         }
       }
       evidence.push(
-        "a hand-written schema that never calls workerConfigSchema() but accepts the imposed bag hires exactly like a composed kind, so (d)'s refusal is about what the schema takes and not about which helper built it"
+        "a hand-written schema that never calls workerConfigSchema() but takes the bag registers, and its worker's turn carries seatSkills, so (d)'s refusal is about what the schema takes and not about which helper built it"
       );
     }
   }

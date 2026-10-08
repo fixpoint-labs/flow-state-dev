@@ -12,6 +12,12 @@ import type { LabClients } from "../src/lib/connection";
 import { STAFF_TEAM, toBoardRow, toSeat, toWorkstream, type Ask, type BoardRow, type LabSnapshot, type Section, type WorkstreamBoards } from "../src/lib/reads";
 
 let fixture: LabSnapshot;
+/** What the person's roster read answers: their own workers and the standard ones. */
+let rosterRead: () => Promise<Array<{ id: string; flow: string; standard: boolean; description: string | null }>> = async () => [];
+
+vi.mock("../src/lib/workforce", () => ({
+  useWorkforce: () => ({ roster: () => rosterRead() }),
+}));
 
 vi.mock("../src/lib/reads", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/lib/reads")>();
@@ -26,7 +32,7 @@ vi.mock("../src/lib/reads", async (importOriginal) => {
 });
 
 const ORG = "acme";
-const seat = (id: string, kind = "worker") => toSeat({ id, kind }, ORG)!;
+const seat = (id: string, kind = "worker") => toSeat({ id, kind })!;
 const row = (mailbox: string, id: string, status: string, assignee: string): BoardRow =>
   toBoardRow(`${mailbox}.work`, mailbox, id, { id, title: `${id} title`, status, assignee });
 const ask = (seatId: string, suspensionId: string, message: string): Ask =>
@@ -84,6 +90,7 @@ const attrs = (els: HTMLElement[], name: string) => els.map((el) => el.getAttrib
 
 beforeEach(() => {
   fixture = lab();
+  rosterRead = async () => [];
 });
 afterEach(() => cleanup());
 
@@ -101,6 +108,44 @@ describe("Roster (V3)", () => {
       ["chief-of-staff", "off shift"],
     ]);
     expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^1 on shift · 2 on call · 2 off shift · 3 waiting on you/);
+  });
+
+  it("draws the person's own workers from their roster, marked as theirs, beside the inventory's (S12)", async () => {
+    rosterRead = async () => [
+      { id: "amber-1f2e", flow: "coder", standard: false, description: "Alice's own" },
+      { id: "eng.coder", flow: "coder", standard: true, description: null },
+    ];
+    await open("/roster");
+    const page = await screen.findByTestId("roster");
+    await within(page).findByTestId("roster-worker-own");
+    const workers = within(page).getAllByTestId("roster-worker");
+    const own = workers.filter((w) => w.getAttribute("data-own") === "true").map((w) => w.getAttribute("data-seat-id"));
+    expect(own).toEqual(["amber-1f2e"]);
+    // The standard ones are the inventory's rows, drawn once each.
+    expect(workers.filter((w) => w.getAttribute("data-seat-id") === "eng.coder")).toHaveLength(1);
+    expect(workers).toHaveLength(6);
+  });
+
+  it("with the inventory unread, still draws the roster's workers, and says the inventory failed", async () => {
+    rosterRead = async () => [
+      { id: "amber-1f2e", flow: "coder", standard: false, description: null },
+      { id: "eng.coder", flow: "coder", standard: true, description: null },
+    ];
+    await open("/roster", lab({ inventory: "failed" }));
+    const page = await screen.findByTestId("roster");
+    await within(page).findByTestId("roster-worker-own");
+    expect(within(page).getAllByTestId("roster-worker").map((w) => w.getAttribute("data-seat-id")).sort()).toEqual(["amber-1f2e", "eng.coder"]);
+    expect(within(page).getByTestId("roster-inventory-failure").textContent).toContain("inventory offline");
+  });
+
+  it("says so when the person's own workers didn't load, and still draws the inventory's", async () => {
+    rosterRead = async () => {
+      throw new Error("roster offline");
+    };
+    await open("/roster");
+    const page = await screen.findByTestId("roster");
+    expect((await within(page).findByTestId("roster-own-failure")).textContent).toContain("roster offline");
+    expect(within(page).getAllByTestId("roster-worker")).toHaveLength(5);
   });
 
   it("draws slots as a count and one square per held task, with no free squares (D2)", async () => {

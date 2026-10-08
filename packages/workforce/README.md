@@ -2,11 +2,14 @@
 
 The seat factory for flow-state-dev.
 
-A **worker** is a flow kind plus its instructions. Describe each one as a `WORKER.md` record, then hire the roster: `hireWorkforce` turns those records into one configured, addressable flow copy per worker, which you register.
+A **worker** is a configuration plus an owner, run by one shared copy of the flow it names. Describe
+each standard worker as a `WORKER.md` record; every user has those. Users hire or fork workers of
+their own while the app runs, as rows in their own data. `createWorkerInstallation` holds both, and
+`hireWorkforce` gives back the flows to register: one copy of each worker flow, and the roster flow.
 
 ## Quick Start
 
-Describe the roster on disk, read it, hire it, register what comes back.
+Describe the roster on disk, read it, build the installation, register what comes back.
 
 ```
 workforce/teams/engineering/workers/lead/WORKER.md
@@ -25,33 +28,51 @@ and lists whatever failed to load on `problems`.
 
 ```ts
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { hireWorkforce } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
 
 const roster = await readDeclaredRoster("./workforce");
 if (roster.problems.length) {
   throw new Error(`workforce: ${roster.problems.map((p) => `${p.layer} ${p.path}`).join(", ")}`);
 }
 
-const seats = hireWorkforce(roster.workers);
-flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
+const installation = createWorkerInstallation({ standardWorkers: roster.workers });
+const flows = hireWorkforce(installation);
+flowRegistry.registerMany(flows); // ["agent", "workforce-roster"]
 ```
 
-That record names no `flow:`, so it is hired into the built-in `agent` kind and needs no
-`workerFlows` argument. Its body becomes its instructions and steers its answers.
+That record names no `flow:`, so it runs on the built-in `agent` flow and needs no `workerFlows`
+option. Its body becomes its instructions and steers its answers. Every worker on `agent` shares
+its one copy; a session names its worker when it is created, and each turn loads it.
 
-The built-in keeps each worker's skills in the scope of the user it runs for, so two people never
-share one worker's copy.
+The built-in keeps each worker's skills apart, per user, so two workers never share skills and
+two people never share one worker's.
 
-To run a worker on a flow you wrote, name that flow's `kind` in the record's `flow:` and pass the
-flow under the same key:
+To talk to it, find or start a session with the worker, then send to the flow it names:
 
 ```ts
-const seats = hireWorkforce(workers, { workerFlows: { "custom-agent": customAgentFlow } });
+import { createClient } from "@flow-state-dev/client";
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+
+const workforce = createWorkforceClient({ userId, baseUrl });
+const session = await workforce.ensureWorkerSession({ worker: "engineering.lead" });
+await createClient({ flowKind: session.flowKind, userId, baseUrl }).sendAction("run", { message }, { sessionId: session.id });
 ```
 
-`customAgentFlow` is your own `defineFlow(...)`. The record's frontmatter becomes that flow's config
-and its body arrives as `config.instructions`, so the flow's `configSchema` — not this package —
-decides what a worker may declare. One roster can mix both.
+To run a worker on a flow you wrote, name that flow's `kind` in the record's `flow:` and pass the
+flow under the same key. A worker flow is built on the installation, so a flow in its own module
+exports a `workerFlow(...)` builder:
+
+```ts
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: { "custom-agent": customAgentFlow }, // workerFlow((installation) => defineFlow({ ... }))
+});
+```
+
+The record's frontmatter becomes that worker's configuration, parsed by the flow's `configSchema`,
+and its body arrives as `instructions`, so the flow — not this package — decides what a worker may
+declare. A turn reads it from `installation.resolveWorker(ctx, kind).config`. One roster can mix
+both. [Workers as data](#workers-as-data) has the whole contract.
 
 ## Personas
 
@@ -261,12 +282,12 @@ back everything declared in it, plus one list of what failed to load.
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 
 const roster = await readDeclaredRoster("./workforce");
-const seats = hireWorkforce(roster.workers);
+const flows = hireWorkforce(createWorkerInstallation({ standardWorkers: roster.workers }));
 ```
 
 | Field | What it holds |
 |-------|---------------|
-| `workers` | One `WorkerManifest` per worker, each carrying its own resolved skills. The records `hireWorkforce` takes. |
+| `workers` | One `WorkerManifest` per worker, each carrying its own resolved skills. The standard workers `createWorkerInstallation` takes. |
 | `teams` | One `TeamManifest` per team that wrote a [`TEAM.md`](#the-optional-team-file). A team without one is absent, not present-and-empty. |
 | `documents` | One `ResourceDoc` per [document](#reading-documents-from-files), from every `resources/` folder the convention reads. |
 | `references` | One `ResourceDoc` per [reference](#reading-documents-from-files), from every `references/` folder, each carrying the `filePath` it was read from. |
@@ -335,12 +356,13 @@ whose name breaks the naming rules.
 
 ## Hiring a workforce
 
-`hireWorkforce` turns worker records into **seats**: one configured, addressable flow copy per worker.
-It reads no files, builds no flow graph, and registers nothing. You pass the worker flows your app
-defined, as `workerFlows`, and you register what comes back.
+`createWorkerInstallation` takes the standard workers and the worker flows your app defined, and
+`hireWorkforce` gives back the flows to register: **one copy of each worker flow**, at the flow's own
+kind, and the roster flow (`workforce-roster`). Every worker on a flow shares its one copy. A hire,
+fork or fire is a write to the user's data. Every process sees it on the next turn.
 
 ```ts
-import { hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
 
 const workers: WorkerManifest[] = [
   {
@@ -351,25 +373,35 @@ const workers: WorkerManifest[] = [
   { id: "engineering.intake", declared: { flow: "intake", description: "The front door." }, body: "" },
 ];
 
-const seats = hireWorkforce(workers, { workerFlows: { "custom-agent": customAgentFlow, intake: intakeFlow } });
-flowRegistry.registerMany(seats); // FlowInstance[], ordered by id
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: { "custom-agent": customAgentFlow, intake: intakeFlow }, // workerFlow(...) builders
+});
+const flows = hireWorkforce(installation);
+flowRegistry.registerMany(flows); // agent, custom-agent, intake, workforce-roster
 ```
 
-The factory reads three keys of its own: **`flow`**, which names the kind to instantiate,
+The installation reads three keys of its own: **`flow`**, which names the flow the worker runs on,
 **`description`**, the roster label, and **[`resources`](#the-documents-a-seat-may-touch)**, the
-documents this seat may touch. Everything else is that worker's settings, handed to the flow
-verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
-declared is refused by name at the hire.
+documents this worker may touch. Everything else is that worker's settings, parsed against the
+flow's `configSchema`. That schema is closed, so a setting the flow never declared is refused by
+name: for a standard worker by `hireWorkforce`, before anything is registered, and for a user's
+own worker when it is hired or edited.
 
-A seat takes a person's message through its **door**, which names an action on the seat's flow:
-the one public action its kind declares with `userMessage` and a `{ message }` input. The hire finds it, and `openInventory` writes it on the
-seat's [inventory row](#the-inventory) as `door`. Every worker flow has exactly one: a flow with
-none, or with two, is refused when `hireWorkforce` checks its worker flows, naming the flow.
+A worker flow declares the installation's session (`session: installation.session()`), so every
+session names its worker in a readonly `workerId`, checked when the session is created, and loads
+that worker on every turn with `installation.resolveWorker(ctx, kind)`. `hireWorkforce` refuses a
+worker flow that doesn't declare it.
+
+A worker takes a person's message through its flow's **door**: the one public action the flow
+declares with `userMessage` and a `{ message }` input. `openInventory` writes it on the worker's
+[inventory row](#the-inventory) as `door`. Every worker flow has exactly one: a flow with none, or
+with two, is refused when `hireWorkforce` checks its worker flows, naming the flow.
 
 ### The documents a seat may touch
 
-A `WORKER.md` may list the [file-declared documents](#reading-documents-from-files) that seat is
-allowed to reach, chosen from the ones its kind was installed with:
+A `WORKER.md` may list the [file-declared documents](#reading-documents-from-files) that worker is
+allowed to reach, chosen from the ones the app declared:
 
 ```md
 ---
@@ -381,68 +413,73 @@ resources:
 ---
 ```
 
-A ref on its own is read-only: the seat reads the document, and a write is refused both at the
-resource handle and through the model's own write tool. `<ref>: rw` grants writes, and
-`<ref>: ro` spells the default out.
+A ref on its own is read-only: the worker's model reads the document, and a write through its
+resource tools is refused. `<ref>: rw` grants writes, and `<ref>: ro` spells the default out. A
+document the worker isn't granted answers its model exactly as one that doesn't exist, through
+core's resource tools and any tool built on them. That is the flow's `resourceVisibility` rule,
+which the installation supplies: block code that names a document directly is not narrowed.
 
-**Absent and empty are different answers.** A seat whose file has no `resources:` key reaches every
-document its kind installed, and writes the ones that allow writes. `resources: []` is how a file
-says a seat gets none.
+**Absent and empty are different answers.** A worker whose file has no `resources:` key reaches every
+document the app passed to the installation as `documents`, on the flow's shared copy, and writes
+the ones that allow writes. `resources: []` is how a file
+says a worker gets none.
 
-**Only documents are narrowed.** The stores, boards and anything else the kind declares at flow
-level stay reachable and writable whatever a seat's list says, and so do the resources the kind's
-own blocks declare.
+**Only documents are narrowed.** The stores, boards and anything else the flow declares stay
+reachable and writable whatever a worker's list says.
 
-For a ref to resolve, the hire step has to be told which entries in the kind's map are documents.
-Hand it the same catalog you spread into the flow:
+For a ref to resolve, the installation has to be told which documents the app declared. Hand it the
+map `resourcesFromDocs` returned, and declare `installation.documents` and the installation's
+`resourceVisibility` on the flow:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { hireWorkforce, resourcesFromDocs, workerConfigSchema } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, resourcesFromDocs, workerConfigSchema, workerFlow } from "@flow-state-dev/workforce";
 import { readResourcesDirectory } from "@flow-state-dev/workforce/loader";
-import { inputSchema, runTurn } from "./blocks";
+import { inputSchema, loadWorker, runTurn } from "./blocks";
 import { boardResource } from "./resources";
 
 const { documents } = await readResourcesDirectory("./workforce");
-const catalog = resourcesFromDocs(documents);
 
-const customAgentFlow = defineFlow({
-  kind: "custom-agent",
-  cardinality: "collection",
-  configSchema: workerConfigSchema(),
-  resources: { board: boardResource, ...catalog },
-  actions: { run: { inputSchema, block: runTurn } },
-});
+const customAgentFlow = workerFlow((installation) =>
+  defineFlow({
+    kind: "custom-agent",
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { board: boardResource, ...installation.resources, ...installation.documents },
+    resourceVisibility: installation.resourceVisibility,
+    request: { onStarted: loadWorker(installation) }, // installation.resolveWorker(ctx, "custom-agent")
+    actions: { run: { inputSchema, block: runTurn, userMessage: (input) => input.message } },
+  }),
+);
 
-const seats = hireWorkforce(workers, {
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
   workerFlows: { "custom-agent": customAgentFlow },
-  documents: catalog,
+  documents: resourcesFromDocs(documents),
 });
 ```
 
-One catalog, spread into the flow and passed to the hire. Which entries in that map are documents
-is what the `documents` option answers: `board` above is not one, and no seat's list governs it.
+The flow declares every document any of its workers may be granted, and the rule narrows each
+turn's model to its own worker's: a turn that loaded no worker reaches no document. `board` above
+is not a document, and no worker's list governs it.
 
-`documents` is consulted only for a seat that declares `resources:`. A roster where none does hires
-the same whether it is passed or not, and a seat that does declare one while `documents` is absent
-is refused, naming what is missing.
+`documents` is consulted only for a worker that declares `resources:`. A worker that does declare
+one while `documents` is absent is refused, naming what is missing.
 
-Every problem with a list refuses the whole roster, naming the seat: a `resources:` that is not a
+Every problem with a list refuses the worker, naming it: a `resources:` that is not a
 list at all, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document
-matches, a ref naming a document the app declared but did not install on this seat's kind, a mode
+matches, a ref naming a document the app declared but did not install on this worker's flow, a mode
 that is neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says
 `writable: false`, a ref colliding with a name the kind's own blocks already declare, and a ref the
-kind does declare at flow level while what it holds there is not the document the app passed — the
-two cannot be told apart, so the hire refuses rather than guessing.
+kind does declare at flow level while what it holds there is not the document the app passed.
 
-One more is checked on the seat after it is built rather than on the list: if a document the seat
-did **not** name is reachable anyway — because one of the kind's blocks declares that same document,
-and a block's declaration is merged back in after a seat's narrowed map replaces the flow-level one
-— the hire refuses, naming the ref and the kind. Keep such a document at flow level and let the
-block reach it from there, or grant it to the seat deliberately.
+One more is checked on the worker's configuration rather than on the list: if a document the worker
+did **not** name is reachable anyway — because one of the flow's blocks declares that same
+document — it is refused, naming the ref and the flow. Keep such a document at flow level and let
+the block reach it from there, or grant it to the worker deliberately.
 
-`resources:` never reaches the kind's settings. It is the factory's key, like `flow` and
-`description`, so a kind that declares a `resources` setting of its own does not receive one from a
+`resources:` never reaches the flow's settings. It is the installation's key, like `flow` and
+`description`, so a flow that declares a `resources` setting of its own does not receive one from a
 file.
 
 `references:` is the sibling key, over the documents in `references/` folders. It narrows within a
@@ -461,7 +498,7 @@ A worker kind is an ordinary flow. What makes it *hireable* is that its `configS
 | `seatSkills` | The skills its folders resolved for it, in level order. Imposed on every seat, present and empty when there are none. |
 | `seatTools` | The blocks this seat's `tools:` resolved to from its own folders and the packages it holds, already resolved. Imposed on every seat, present and empty when there are none. Live blocks, not names — names that resolved to the kind's catalog stay on the kind's own `tools` setting. |
 | `seatPackages?` | The [packages](#packages-from-files) this seat holds, in the order it holds them: `{ name, path, instructions?, tools }[]`, where `tools` is the package's blocks. Imposed when the seat holds at least one, absent otherwise. |
-| `seatId` | The seat's own id — the one a mailbox's `members:` lists and checks an author against. For a runtime-hired seat it is the roster's seat id, not its `<orgId>.<seatId>` address. Imposed on every seat. A block inside the seat reads it from `ctx.flow.config.seatId` to sign what it files or posts. |
+| `seatId` | The worker's own id — the one a mailbox's `members:` lists and checks an author against. Imposed on every worker. A block reads it from the worker the turn loaded (`installation.resolveWorker(ctx, kind).config.seatId`), never from `ctx.flow.config`, which the shared copy holds once for every worker. |
 
 So hiring imposes `instructions` when the body is not empty, `seatSkills`, `seatTools` and `seatId`
 always, `teamInstructions` when the seat's team wrote a `TEAM.md`, and `seatPackages` when the seat
@@ -475,16 +512,19 @@ the same value in the bag.
 Add your kind's own settings on top, at the same level:
 
 ```ts
-import { workerConfigSchema } from "@flow-state-dev/workforce";
+import { workerConfigSchema, workerFlow } from "@flow-state-dev/workforce";
 
-const triage = defineFlow({
-  kind: "request-triage",
-  cardinality: "collection",
-  configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-  actions: {
-    run: { inputSchema: z.object({ message: z.string() }), block: triageWork, userMessage: (input) => input.message },
-  },
-});
+const triage = workerFlow((installation) =>
+  defineFlow({
+    kind: "request-triage",
+    configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
+    session: installation.session(),
+    resources: { ...installation.resources },
+    actions: {
+      run: { inputSchema: z.object({ message: z.string() }), block: triageWork(installation), userMessage: (input) => input.message },
+    },
+  }),
+);
 ```
 
 `desk` sits at the top level beside the contract's keys, where the schema closes it: a worker file that writes
@@ -494,9 +534,9 @@ did name.
 
 Reading any of it is optional. A kind that composes the contract and never looks at `seatSkills`
 is not an error. What is not optional is that your schema can take the bag: `hireWorkforce` checks
-every flow in `workerFlows`, and the built-in `agent`, before it hires anyone, and a flow whose
-schema refuses a key of the contract, or the value a hire supplies for one, refuses the whole call
-with a message naming the flow and the fix.
+every flow in `workerFlows`, and the built-in `agent`, before it registers anything, and a flow
+whose schema refuses a key of the contract, or the value a worker supplies for one, refuses the
+whole call with a message naming the flow and the fix.
 
 What is checked is what your schema accepts, not which function built it — so a kind that declares
 these keys by hand hires just the same, as long as each key takes the value a hire supplies
@@ -504,8 +544,8 @@ these keys by hand hires just the same, as long as each key takes the value a hi
 composed kind picks it up, and a hand-rolled one refuses at boot naming the new key until you add
 it.
 
-The same check also requires one door, and that any resource with `writtenBy` comes from
-`sharedResource()`. The door is exactly one public action that declares `userMessage` and takes
+The same check also requires one door, that the flow declares the installation's session, and
+that any resource with `writtenBy` comes from `sharedResource()`. The door is exactly one public action that declares `userMessage` and takes
 `{ message }`, so an app can talk to any worker without knowing its flow; none, or two, refuses. A
 resource with a `writtenBy` field is declared with `sharedResource()`, which adds the field; one
 defined by hand is refused, even with the right shape.
@@ -513,29 +553,31 @@ defined by hand is refused, even with the right shape.
 tests. [Which flows can run workers](https://flow-state.dev/docs/workforce/workers-on-disk#which-flows-can-run-workers) has the whole contract.
 
 Only `instructions` is ever authored. A worker file that writes `seatSkills:`, `seatTools:`,
-`seatPackages:`, `seatId:` or `teamInstructions:` is refused by name, at the loader and at the hire: a seat's
+`seatPackages:`, `seatId:` or `teamInstructions:` is refused by name, at the loader and by the installation: a seat's
 skills, its own blocks and its packages are the folders it can see, its id is its record's, and a team's instructions come
 from its team's `TEAM.md` body.
 That last key is refused in a `TEAM.md` too — the file an author would most reasonably try it in —
 so all three doors refuse it, from one exported constant rather than a literal spelled into each.
 
-**A record that leaves `flow:` out is hired into the built-in `agent` kind** — it talks, its body
+**A record that leaves `flow:` out runs on the built-in `agent` flow** — it talks, its body
 arrives as its instructions, and it reads the skills its own folders hold plus any the app seeded
 through `defineAgentWorkerFlow({ skills })`. It sees the earlier turns of the conversation it is
 in, up to the session's history window (the last 50 by default), and nothing from any other
 conversation. `workerFlows` is therefore optional. A `flow:` that is present but empty or whitespace-only
 refuses, because it names no kind — only an absent key means the built-in.
 
-A seat on the `agent` kind is talked to through its `run` action, which takes `{ message }`. The
-message a seat is sent is kept as the caller's turn in that seat's conversation, so a conversation
-reads as both sides.
+A worker on `agent` is talked to through the flow's `run` action, which takes `{ message }`, in a
+session that names the worker. A message that names a worker is refused: the session already does.
+The message is kept as the caller's turn in that conversation, so a conversation reads as both
+sides.
 
-Configure that kind by replacing it. Build the flow with `defineAgentWorkerFlow` and pass it under
-`agent` (`workerFlows: { agent: defineAgentWorkerFlow({ catalog, skills }) }`). It takes over for every
-seat that runs on the `agent` kind — the records that leave `flow:` out, and any that name `agent`
-— and leaves a worker on any other kind alone. A flow of your own registered under `agent` must
-declare `kind: "agent"` and `cardinality: "collection"`; without the second, each seat mints and is
-then refused when you register it, because a singleton's id is its kind.
+Configure that flow by replacing it. Build it with `defineAgentWorkerFlow({ installation, ... })`
+and pass it under `agent`, with `workerFlows` as a function, since the flow is built on the
+installation:
+`workerFlows: () => ({ agent: defineAgentWorkerFlow({ installation, catalog, skills }) })`. It takes
+over for every worker that runs on `agent` — the records that leave `flow:` out, and any that name
+`agent` — and leaves a worker on any other flow alone. A flow of your own registered under `agent`
+must declare `kind: "agent"`.
 
 A worker record declares data: a description, the kind it runs, and that kind's settings. Behavior
 lives in the flow the kind names, so a worker that has to do something none of your kinds do is a
@@ -544,14 +586,14 @@ flow you define in your app and pass in `workerFlows`, named by that worker's `f
 A record's **`body` reaches its flow as one setting, `instructions`**. Every hireable kind declares
 that setting by composing `workerConfigSchema()`, so a body always has somewhere to arrive and no
 worker flow has to check for one; the instructions are available at `config.instructions`, and what
-the flow does with them is the flow's business. A kind that wants instructions to be mandatory makes
+the flow does with them is the flow's business. A flow that wants instructions to be mandatory makes
 the key required when it extends the contract — `workerConfigSchema().extend({ instructions:
-z.string() })` — and a worker of that kind with no body is then a failed hire.
+z.string() })` — and a worker on it with no body is then refused.
 
 A body that is empty or only whitespace contributes no `instructions` key at all; a body with content
 is handed over verbatim, leading and trailing whitespace included. A record that declares
 `instructions:` *and* carries a body is refused naming both sources. Whitespace is not a body, so a
-record that declares `instructions:` and carries an empty or blank one hires on the frontmatter value.
+record that declares `instructions:` and carries an empty or blank one runs on the frontmatter value.
 
 A `WORKER.md` has no `persona` setting: declaring it lands the worker in
 `readWorkforceDirectory`'s `errors`, or is refused by `hireWorkforce` for a hand-built record.
@@ -567,7 +609,7 @@ worker.
 | --- | --- |
 | `uses` | Capabilities attached to every worker's answer generator. The skills binding stays first and is never displaced. A capability passed as a plain ref brings its own storage with it; one passed as a `(ctx) => refs` resolver brings none, so anything it needs has to be declared statically somewhere. |
 | `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string, it cannot change the answer, and a failure in it does not fail the turn. Absent, nothing runs after the answer. |
-| `isolateUserState` | Forwarded to `defineFlow`. Gives each worker its own user-scoped storage, keyed on the worker's id, instead of one cell shared across the roster. Default `false`. |
+| `isolateUserState` | Forwarded to `defineFlow`. Keys the flow's user-scoped storage by its copy, apart from the person's other flows. Every worker on `agent` shares the one copy, so a person's workers on it still share the same user-scoped storage. Default `false`. |
 
 **The tools fence.** A worker that writes a `tools:` line can call exactly the tools it lists,
 whatever it selected under `capabilities:`. The kind maps those names against the catalog and hands
@@ -601,7 +643,7 @@ Memory is one thing you can pass through these options. Install `@flow-state-dev
 separately:
 
 ```ts
-import { AGENT_KIND, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { AGENT_KIND, createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
 import { system } from "@flow-state-dev/memory";
 
 const mem = system({
@@ -611,7 +653,13 @@ const mem = system({
   semantic: true,
 });
 
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: () => ({ [AGENT_KIND]: remembers }),
+});
+
 const remembers = defineAgentWorkerFlow({
+  installation,
   catalog: appTools,
   uses: [
     mem.capability.presets({
@@ -621,11 +669,10 @@ const remembers = defineAgentWorkerFlow({
       episodic: true,   // context injection; OFF by default
     }),
   ],
-  isolateUserState: true,
   afterAnswer: mem.captureFromItems,
 });
 
-const seats = hireWorkforce(workers, { workerFlows: { [AGENT_KIND]: remembers } });
+const flows = hireWorkforce(installation);
 ```
 
 Each of these fails quietly if you skip it:
@@ -644,20 +691,19 @@ select it (`capabilities: { memory: [recall] }`) with no `tools:` line. A worker
 lists `memory/recall` in its `tools:`. The key has to match the tool's own name; a catalog key that
 doesn't is refused when the kind is built.
 
-Isolation is a decision for the whole kind: a roster is all-isolated or all-shared.
+Every worker on `agent` shares the one copy. Long-term memory (episodic, semantic and digest) is
+kept in the person's user scope, so one person's workers on `agent` share it, and it never reaches
+another person or organization. Working memory is kept per conversation, and each conversation runs
+one worker. Skills are kept per worker. Keeping a capability's data apart per worker is the app's,
+as for any data a worker flow keeps per user ([Workers as data](#workers-as-data)).
 
-`isolateUserState` decides **where** a worker's user-scoped data is keyed, so anything that
-changes the key leaves the old data behind. Two ways that happens, both with no migration:
-**renaming a worker** (the key is its id), and **flipping the flag on a roster already in use**
-(shared and isolated are different cells). Decide it before the roster carries anything worth
-keeping.
-
-Every problem is a startup misconfiguration: problems are collected and thrown as one error naming
-every bad worker, and nothing is returned, so a bad record cannot leave a half-hired roster.
+Every problem with a standard worker is a startup misconfiguration: `hireWorkforce` collects them
+and throws one error naming every bad worker, and registers nothing, so a bad record cannot leave a
+short roster.
 
 ## Kinds and blocks from files
 
-The `workerFlows` map above names each kind a second time, after the flow already declared it. There is a
+The `workerFlows` map above names each flow a second time, after the flow already declared it. There is a
 file convention for that half too: put a flow under `workforce/flows/workers/` or
 `workforce/flows/mailboxes/`, or a block under `workforce/blocks/`, and the basename is the name it
 registers under.
@@ -665,7 +711,7 @@ registers under.
 ```
 workforce/
   flows/
-    workers/request-triage.ts                        ← default-exports a flow, cardinality: "collection"
+    workers/request-triage.ts                        ← default-exports a workerFlow(...) builder
     mailboxes/standup.ts                              ← default-exports a flow, singleton (the default)
   blocks/triage.ts                                   ← a block any worker may name
   teams/engineering/blocks/build-status.ts           ← a block this team's workers may name
@@ -675,16 +721,22 @@ workforce/
 ```
 
 `fsdev gen` walks those folders and writes `workforce/workforce.gen.ts` beside them, exporting
-`kinds`, `mailboxKinds`, `blocks`, `seatBlocks` and `packageBlocks` — parameters `hireWorkforce`,
-`mailboxInstances`, a task board and a worker kind's tool catalog already take. The same file
+`kinds`, `mailboxKinds`, `blocks`, `seatBlocks` and `packageBlocks` — parameters
+`createWorkerInstallation`, `mailboxInstances`, a task board and a worker flow's tool catalog
+already take. The same file
 carries `resourceModules`, covered in [Resource modules from files](#resource-modules-from-files).
 
 ```ts
-import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
 import { blocks, kinds, packageBlocks, seatBlocks } from "./workforce/workforce.gen";
 
-const agent = defineAgentWorkerFlow({ catalog: blocks });
-const seats = hireWorkforce(workers, { workerFlows: { ...kinds, agent }, seatBlocks, packageBlocks });
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: () => ({ ...kinds, agent: defineAgentWorkerFlow({ installation, catalog: blocks }) }),
+  seatBlocks,
+  packageBlocks,
+});
+const flows = hireWorkforce(installation);
 ```
 
 A `blocks/` folder **registers** a name: `workforce/blocks/` for every worker, a team's for that
@@ -819,8 +871,8 @@ it; `tools: []` gets the text and no tools.
 (`PackageManifest[]`: the org's library, its team's, and its own folder; an org seat has no team's) and reports refused package
 folders on `packageErrors`. `readDeclaredRoster` reports the same entries on its `package` layer.
 The blocks come from `fsdev gen`'s `packageBlocks` export, keyed by package path and then block
-name; pass it to `hireWorkforce`, which decides from each worker's folder and `packages:` line which
-packages it holds. Leave `packageBlocks` out and a held package brings its instructions and no tools.
+name; pass it to `createWorkerInstallation`, which decides from each worker's folder and `packages:`
+line which packages it holds. Leave `packageBlocks` out and a held package brings its instructions and no tools.
 
 ```ts
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
@@ -829,10 +881,11 @@ import { kinds, packageBlocks, seatBlocks } from "./workforce/workforce.gen";
 const { workers, errors, packageErrors } = await readWorkforce("./workforce");
 if (errors.length || packageErrors.length) throw new Error("workforce: failed to load");
 
-const seats = hireWorkforce(workers, { workerFlows: kinds, seatBlocks, packageBlocks });
+const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds, seatBlocks, packageBlocks });
+const flows = hireWorkforce(installation);
 ```
 
-A kind of your own receives what a seat holds on `seatPackages`, and only when it holds at least one;
+A flow of your own receives what a worker holds on `seatPackages`, and only when it holds at least one;
 composing `workerConfigSchema()` is what lets its schema accept the key.
 
 Reported by the loader, on `packageErrors`: a `PACKAGE.md` that is missing, has no frontmatter or
@@ -899,12 +952,19 @@ Escalate anything customer-visible within 15 minutes.
 
 `readResourcesDirectory` walks all four and returns one record per document; `resourcesFromDocs`
 turns those records into the resource map you already pass to a flow. `readReferencesDirectory` and
-`referencesFromDocs` are the same pair over `references/`. Both maps spread into one flow, and both
-are passed to `hireWorkforce`:
+`referencesFromDocs` are the same pair over `references/`. Both maps are passed to
+`createWorkerInstallation`, and a worker flow spreads `installation.documents`, which holds both:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { hireWorkforce, referencesFromDocs, resourcesFromDocs } from "@flow-state-dev/workforce";
+import {
+  createWorkerInstallation,
+  hireWorkforce,
+  referencesFromDocs,
+  resourcesFromDocs,
+  workerConfigSchema,
+  workerFlow,
+} from "@flow-state-dev/workforce";
 import { readReferencesDirectory, readResourcesDirectory } from "@flow-state-dev/workforce/loader";
 import { answerQuestion } from "./blocks";
 import { ticketResource } from "./resources";
@@ -915,26 +975,30 @@ for (const { errors } of [references, resources]) {
   if (errors.length) throw new Error(`workforce: ${errors.length} document(s) failed to load`);
 }
 
-const documents = resourcesFromDocs(resources.documents);
-const referenceMap = referencesFromDocs(references.documents);
+const supportFlow = workerFlow((installation) =>
+  defineFlow({
+    kind: "support",
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ticket: ticketResource, ...installation.resources, ...installation.documents },
+    resourceVisibility: installation.resourceVisibility,
+    actions: { answer: { inputSchema, block: answerQuestion(installation), userMessage: (input) => input.message } },
+  }),
+);
 
-export const supportFlow = defineFlow({
-  kind: "support",
-  actions: { answer: { block: answerQuestion } },
-  resources: { ticket: ticketResource, ...documents, ...referenceMap },
-});
-
-const seats = hireWorkforce(workers, {
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
   workerFlows: { support: supportFlow },
-  documents,
-  references: referenceMap,
+  documents: resourcesFromDocs(resources.documents),
+  references: referencesFromDocs(references.documents),
 });
+const flows = hireWorkforce(installation);
 ```
 
-`references` is what tells the hire which entries on a kind's map are references, and
-[which seats reach which reference](#what-a-seat-reaches) is decided only for the entries it names.
-So once a kind holds references, the option is required: omit it, or pass a map that is missing one of them, and `hireWorkforce` throws, naming every reference it
-was not given. A kind that holds none needs no map. A ref passed in both maps is refused as well,
+`references` is what tells the installation which entries are references, and
+[which workers reach which reference](#what-a-seat-reaches) is decided only for the entries it names.
+So once a flow holds references, the option is required: omit it, or pass a map that is missing one of them, and `hireWorkforce` throws, naming every reference it
+was not given. A flow that holds none needs no map. A ref passed in both maps is refused as well,
 naming it.
 
 **Every file-declared document is org-scoped, and nothing needs declaring for that.** Organization
@@ -1095,7 +1159,7 @@ errors;
 
 Neither reader sees the other's slot, so neither reports a basename claimed by both.
 `readDeclaredRoster` reads the whole tree and puts that collision in its `problems`, naming both
-files; `hireWorkforce` throws on the same collision for a catalog that never passed a loader.
+files; `createWorkerInstallation` throws on the same collision for a catalog that never passed a loader.
 
 `resourcesFromDocs` and `referencesFromDocs` throw instead of collecting, because a record that
 cannot become a resource is a startup misconfiguration.
@@ -1324,10 +1388,10 @@ nor fence them out. A narrower set is a different capability.
 
 Compose it once per board; a seat holding two boards holds sixteen tools and the names say which
 board each writes to. A mailbox board is org-scoped, so it cannot be declared by a block colocated
-in a seat's own folder; that refuses at hire.
+in a seat's own folder; that refuses at `hireWorkforce`.
 
 Pass `hireWorkforce` the roster's minted ids as `mailboxBoards` and it warns on stderr for any board
-no hired seat declares, naming the mailbox and the board. It never refuses: a mailbox may keep a
+no registered flow declares, naming the mailbox and the board. It never refuses: a mailbox may keep a
 board that only people read. Each warning prints once per process, so a dev server that re-runs
 the hire on every hot reload says it once, and only a board that newly goes unattended prints again.
 
@@ -1338,14 +1402,17 @@ that moved.
 
 ### Handing a row to the worker it names
 
-A row's `assignee` can name any worker, by the name `discover` lists, including one hired while the
-app runs, when the board draining the ledger asks the worker lookup who the name means.
+A row's `assignee` can name any standard worker, by the name `discover` lists, when the board
+draining the ledger asks the worker lookup who the name means. A mailbox's board is the
+organization's, and whoever drains it opens the task's session, so it never reaches a user's own
+worker: only that worker's owner can open a session with it.
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   WORKER_TASK_ENTRY,
+  createWorkerInstallation,
   createWorkerLookup,
   defineAgentWorkerFlow,
   defineMailboxFlow,
@@ -1356,15 +1423,14 @@ import {
 } from "@flow-state-dev/workforce";
 
 const boardIds = mailboxBoardIds(mailboxes);
-const hired = hireWorkforce(workers, {
-  workerFlows: { agent: defineAgentWorkerFlow({ taskLists: boardIds }) }, // gives the agent kind a `work` task entry
-  mailboxBoards: boardIds,
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  // gives the agent flow a `work` task entry
+  workerFlows: () => ({ agent: defineAgentWorkerFlow({ installation, taskLists: boardIds }) }),
 });
+const flows = hireWorkforce(installation, { mailboxBoards: boardIds });
 
-const lookup = createWorkerLookup({
-  instanceAt: (id) => runtime.registry.get(id), // read on every lookup, never copied
-  declared: hired.map((worker) => worker.id),
-});
+const lookup = createWorkerLookup({ installation });
 
 const mailboxKinds = mailboxInstances(mailboxes, {
   kinds: { mailbox: defineMailboxFlow({ checkAssignee: lookup.filingCheck() }) },
@@ -1376,24 +1442,26 @@ const board = taskBoard({
   boardId: followups.id, // hand off under the ledger's id
   collection: followups,
   workers: {},
-  defaultWorker: dispatcher({ name: "hand-to-named-worker", action: WORKER_TASK_ENTRY, session: "per-task", flowKind: lookup.flowKind }),
+  defaultWorker: dispatcher({
+    name: "hand-to-named-worker",
+    action: WORKER_TASK_ENTRY,
+    session: "per-task",
+    flowKind: lookup.flowKind,
+    state: lookup.state, // the task's session is born naming its worker
+  }),
 });
 const desk = defineFlow({ kind: "followups-desk", actions: { drain: { block: board.drain } } })();
 ```
 
-`createWorkerLookup({ instanceAt, declared })` returns `{ find(name, ctx, member?), flowKind, filingCheck(aliases?) }`.
-`declared` may be a getter, read on every lookup, for a lookup built before the workers are hired.
+`createWorkerLookup({ installation })` returns `{ find(name), flowKind, state, filingCheck(aliases?) }`.
 `find` answers `{ found: true, flowId }` or `{ found: false, reason, message }`, `reason` being
-`not-found`, `ambiguous` or `takes-no-tasks`. It finds a worker the files declare (an id in
-`declared` with a flow registered there), one hired for the request's organization, or one the
-member who filed the task hired for themselves: the session owner at filing (or the `member` passed
-to `find`), and at hand-over the filer the ledger recorded on the row, whoever runs the drain. A
-row with no recorded filer reaches no member's own worker. Another organization's workers and another member's own are never found. A name held
-by more than one of those is `ambiguous`, naming each; a worker whose kind declares no `work` task
-entry is `takes-no-tasks`, which still carries the `flowId` the name means.
+`not-found` or `takes-no-tasks`. It finds a standard worker, read from the installation on every
+call; a worker whose flow declares no `work` task entry is `takes-no-tasks`, which still carries the
+`flowId` the name means. `state` gives each task's session its starting state, naming the worker
+the row names, so the flow's create check confirms it.
 
 `flowKind` is the `TaskFlowTarget` for a board's `defaultWorker`: `not-found` answers nothing, which
-refuses the hand-over `flow-not-found` naming the assignee; `ambiguous` and `takes-no-tasks` throw
+refuses the hand-over `flow-not-found` naming the assignee; `takes-no-tasks` throws
 `[workforce] task "<id>" could not be handed over: <message>`. Either way the attempt fails through
 the board's error path. `filingCheck(aliases?)` is `defineMailboxFlow`'s `checkAssignee`: it
 returns `undefined` for a name the lookup finds, else the message, which `fileTask` throws as
@@ -1432,13 +1500,14 @@ nobody is woken.
 The framework carries the policy and your app supplies the addresses: the framework will not pick a
 dispatch target out of stored data, so a notify block declares its own recipients.
 
-`wakeMemberSeats(seats, { fallback? })` is the notify block for `defineMailboxFlow({ notify })`.
-It wakes each member whose hired seat declares the internal `onMailboxPost` entry, once per post,
-in one conversation per seat per mailbox. A seat's line (`seatAuthored: true`) wakes nobody. A
+`wakeMemberSeats(flows, { installation, fallback? })` is the notify block for
+`defineMailboxFlow({ notify })`. It wakes each member that names a standard worker on a flow that
+declares the internal `onMailboxPost` entry, once per post, in one conversation per worker per
+mailbox, created naming that worker. A user's own worker isn't woken as a member. A seat's line (`seatAuthored: true`) wakes nobody. A
 client `post` wakes each hearing member whether or not it sets `author`. Members whose seat can't
 hear a post get `fallback`, or nothing, including on a seat's line. The fallback is not sent to a
-member who would have been woken. Pass the seats
-`hireWorkforce` returned, and hire before you build mailboxes. The built-in `agent` kind declares
+member who would have been woken. Pass the flows
+`hireWorkforce` returned, and call it before you build mailboxes. The built-in `agent` kind declares
 `onMailboxPost`; a kind of your own hears posts by declaring it too. See the mailboxes guide,
 "Waking agent seats".
 
@@ -1451,19 +1520,18 @@ with a route:
 
 ```ts
 defineMailboxFlow({
-  notify: wakeMemberSeats(seats),
-  route: routeByPurpose(seats, { model: "typesafe-ai/jev" }),
+  notify: wakeMemberSeats(flows, { installation }),
+  route: routeByPurpose(flows, { model: "typesafe-ai/jev", installation }),
 });
 ```
 
-`routeByPurpose(seats, { model })` places each client `post` in this order: the member the last
+`routeByPurpose(flows, { model, installation })` places each client `post` in this order: the member the last
 client `post` was routed to by the evaluator or the fallback, until it answers (a post held this way holds
 nothing, and neither does one whose route isn't recorded yet); else one evaluator call (block name
 `mailbox-route`) choosing among the members whose seat hears posts and has a description, each
 described by its `WORKER.md` `description:`; else the `fallback:` member, when that call fails or
-answers outside the options, or when no member has a description and there is no call. A seat hired
-at runtime has no description, since `hire` takes none, so it gets a post only as the fallback, or
-as the next post held for it after that. The model must be able to evaluate. Only the chosen member
+answers outside the options, or when no member has a description and there is no call. The model
+must be able to evaluate. Only the chosen member
 is notified, with `routed: true` and `recent` (the mailbox's last 20 lines) on its delivery, and
 each decision is kept as one `mailbox-route` item on the mailbox's session, never as a line. The
 two fallbacks differ: `routing: fallback:` names a member who takes a post the route can't place,
@@ -1540,306 +1608,49 @@ Mailboxes used to be called channels, everywhere, and the old names are not read
   from an empty store. Old conversations, and the inventory rows that listed old channels, are not
   carried over.
 
-## Hiring at runtime, and reloading at boot
+## Hire, fork and fire as tools
 
-`hireWorkforce` turns records into flow instances, whether those records came from files or from
-somewhere else. To keep a runtime hire across restarts, store it and read it back.
+A user's own workers are rows on their roster ([Workers as data](#workers-as-data)), written by the
+roster flow's `hire`, `fork`, `edit` and `fire` actions, which `hireWorkforce` registers. A hire,
+fork or fire is a write to the user's data. Every process sees it on the next turn.
 
-```ts
-import { defineHiredRosterCollection, reloadHiredSeats } from "@flow-state-dev/workforce";
-```
-
-`defineHiredRosterCollection()` is an org-scoped resource collection at `workforce/roster/*`, one
-row per hired seat. Install it under the block that does the hiring, and write the row with
-`create()` before you register the seat. `create()` throws when the key already exists, and that
-throw is what refuses a second hire of the same seat, including two arriving at once — so you need
-no lock and no check of your own. Reach for `upsert()` here and you lose the refusal without any
-sign that you did.
-
-If registration then fails, delete the row you just created before reporting the failure. A hire
-that did not take should not leave a seat waiting at the next start.
-
-The collection is readable by a browser, so a roster panel can name the seats without an action in
-between. Because it is org-scoped, that read resolves against the reading session's own
-organization. What crosses is `seatId`, `flow` and `instructions`. The settings bag stays
-on the server.
-
-A row holds the seat's id within its organization, the flow kind, the settings bag and the
-instructions. The envelope is this package's to version; the settings bag is handed back to the
-kind untouched, including keys this version has never heard of, because that bag belongs to the
-kind's own schema.
-
-`reloadHiredSeats` reads those rows back when the app starts:
+To let a worker hire or fire for the person it talks to, hand the same blocks to a model as tools.
+A catalog key is the tool's own name, so wrap each block in a sequencer that carries the name and
+what the model reads about it, and put the pair in the worker flow's catalog:
 
 ```ts
-const { seats, problems } = await reloadHiredSeats({
-  stores,           // the runtime's resolved stores
-  orgIds,           // which organizations to reload; you decide the policy
-  workerFlows,      // the same map you pass to hireWorkforce
-});
+import { sequencer } from "@flow-state-dev/core";
+import { createWorkerHireBlocks, defineAgentWorkerFlow } from "@flow-state-dev/workforce";
 
-for (const seat of seats) {
-  try { flowstate.register(seat, { pin: seat.ownerPin }); }
-  catch (err) { problems.push(`${seat.id} — ${String(err)}`); }
-}
-```
-
-A reloaded seat is addressed `<orgId>.<seatId>`, so two organizations can both hold a seat called
-`support.ada`. The organization id is percent-escaped in the address: lowercase letters, digits and
-`-` stay, everything else is encoded, so `org_pentest_lab` becomes `org%5Fpentest%5Flab.<seatId>`. Use `seatAddress` and `splitSeatAddress` instead of building
-`${orgId}.` prefixes by hand.
-
-Register the seats yourself, one at a time, with each seat's `ownerPin`, and add any refusal to
-`problems`. The other seats still start.
-
-You pass the organizations to reload; `reloadHiredSeats` does not discover them.
-
-`problems` is the part to handle rather than log, the same shape `openInventory` returns. A row naming a kind you no longer ship, or carrying a
-setting that kind no longer accepts, comes back here with its reason instead of throwing. The other
-seats still hire, the app still starts, and the row is left exactly as it was — nothing is repaired
-or deleted on your behalf.
-
-`byOrg` is the same result split by organization: one `{ orgId, seats, problems }` per organization
-you passed in, in that order, with empty lists where there was nothing to report. Use it when each
-organization's report goes somewhere only that organization reads, and loop its `seats` rather than
-the flat list so a registry refusal lands in the right organization's `problems`.
-
-A read the store will not complete rejects, and a set of organizations larger than the cap rejects
-too, naming both numbers. The cap is `maxOrgs`, 100 by default; the read's own bound is `timeoutMs`,
-10000ms by default, and it covers the whole set rather than each organization. Neither returns a
-partial roster.
-
-The roster and the inventory are different collections. A roster row at
-`workforce/roster/<seatId>` is the durable hire: `hire` writes it, `fire` deletes it. An
-inventory row at `inventory/seats/<address>` means *was registered in this organization*. A
-declared seat's row is never removed; a runtime-hired seat's row is removed by `fire`, and only
-while it carries the incarnation fired.
-
-`createSeatHireCapability`'s `hire` tool writes both. `discover` lists a seat when it is still
-hired or still declared in a worker file, and has been registered in this organization. Pass
-`hiredRoster` on `createWorkforceCapability` so a runtime hire is listed the same way a
-file-declared seat is. A file-declared description wins over a same-id hire. After `fire`, a
-hired seat's roster row and its inventory row are both gone, so `discover` does not list it. A
-fire that stopped between the two leaves the inventory row; `discover` withholds the seat, since
-no roster row backs it.
-
-### Hire and fire as catalog tools
-
-`createSeatHireCapability` puts `hire`, `fire`, `brokenSeats` and `rehire` on a worker kind's
-catalog. Install it with `defineAgentWorkerFlow({ uses: [seatHire] })`. A seat with no `tools:`
-line calls them by selecting the preset (`capabilities: { seat-hire: [tools] }`); a seat that
-writes a `tools:` line names them there. An empty `tools:` list means the seat cannot call them.
-
-The seat is hired in the caller's organization. A body `orgId` is ignored.
-Hire will not register a seat without an owner pin `{ orgId, userId? }` taken
-from the hire row's roster owner — not from the address.
-
-```ts
-import {
-  createSeatHireCapability,
-  createWorkforceCapability,
-  defineAgentWorkerFlow,
-  hireWorkforce,
-  HIRED_ROSTER_RESOURCE,
-  SEAT_INVENTORY_RESOURCE,
-  type HireOptions,
-} from "@flow-state-dev/workforce";
-import type { FlowInstance } from "@flow-state-dev/core";
-
-const workerFlows: NonNullable<HireOptions["workerFlows"]> = {};
-const roster = { workers: [], mailboxes: [] };
-const held = new Map<string, FlowInstance>();
-const live = {
-  register: (seat: FlowInstance, _pin: { orgId: string; userId?: string }) => {
-    held.set(seat.id, seat);
-  },
-  unregister: (id: string) => held.delete(id),
-  kindAt: (id: string) => held.get(id)?.kind,
+const { hire, fire } = createWorkerHireBlocks(installation);
+const rosterTools = {
+  hire: sequencer({ name: "hire", description: "Hire a worker of the person's own.", inputSchema: hire.inputSchema, outputSchema: hire.outputSchema }).step(hire),
+  fire: sequencer({ name: "fire", description: "Fire one of the person's own workers.", inputSchema: fire.inputSchema, outputSchema: fire.outputSchema })
+    .tap(askFire) // your own `human_approval` suspension, if a fire should wait for the person
+    .step(fire),
 };
 
-const seatHire = createSeatHireCapability({
-  workerFlows,
-  register: live.register,
-  unregister: live.unregister,
-  kindAt: live.kindAt,
-});
-
-const workforce = createWorkforceCapability({
-  roster, // or readDeclaredRoster(...)'s result
-  inventory: { seats: SEAT_INVENTORY_RESOURCE },
-  hiredRoster: HIRED_ROSTER_RESOURCE,
-});
-
-workerFlows.agent = defineAgentWorkerFlow({ uses: [seatHire, workforce] });
-
-const [manager] = hireWorkforce(
-  [{ id: "eng.manager", declared: { tools: ["hire", "fire"] }, body: "Expands the roster." }],
-  { workerFlows },
-);
+const agent = defineAgentWorkerFlow({ installation, catalog: rosterTools });
 ```
 
-Pass the same `workerFlows` object you pass to `hireWorkforce`. A kind you add on that object after
-the factory runs is hireable.
-
-| Option | Role |
-|--------|------|
-| `workerFlows` | The same map `hireWorkforce` takes. Omit it and only built-in `agent` is hireable, unless `allowKinds` excludes it. Every seat these tools hire is a hired worker: it is visible to the whole organization and carries an owner pin. So a flow marked `standardOnly` refuses it, before anything is written. |
-| `register(seat, pin)` | Admit the minted flow at its address. `pin` is `{ orgId, userId? }` from the hire row's roster owner. Hire refuses rather than omit it. |
-| `unregister(id)` | Release the address in this process. Returns whether it was held. |
-| `kindAt?(id)` | Kind serving an address right now. Hire uses it to refuse a second hire of a live seat, and a seat id a file-declared seat answers on. Fire uses it to refuse a file-declared seat. Omit it and a duplicate seat is still refused. |
-| `allowKinds?` | Subset of `workerFlows` this tool may mint. |
-| `refuseRosterAdmin?` | When `true`, `hire` and `rehire` refuse settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`. Default `false`. |
-| `mailboxBoards?` | Ledger ids forwarded so an unattended board warns. Hire does not attach boards. |
-| `askBefore?` | `"hire"` and/or `"fire"`: those tools wait for a person's approval before they change anything. `rehire` always waits. Omitted, `hire` and `fire` act at once. Any other entry throws when the capability is built. |
-
-**`hire`** takes `{ seatId, flow, settings?, instructions?, orgId? }` (extra keys are refused)
-and returns `{ seatId, address, warning? }`. `address` is `<orgId>.<seatId>`.
-
-A successful hire leaves a roster row and an inventory row. A thrown `register` leaves neither.
-A duplicate seat is refused. It does not invent a kind. It does not attach boards. `warning`
-is present when a named mailbox board is unattended.
-
-It refuses an unknown kind or one outside `allowKinds` (and lists the hireable ones), an
-address already served, a seat id a file-declared seat answers on, an address a declared
-seat's inventory row sits at (`hired: false`), and a request with no organization.
-
-It also refuses when the kind's settings schema refuses the seat, before anything is written, with
-`"<address>" was not hired, and nothing was written. Kind "<kind>" refused it: <the schema's message>`
-and a last line, ``If that names a setting, call hire again with it in `settings`.`` A model calling
-the tool gets this as the tool's result and can call again with the setting.
-
-**`fire`** takes `{ seatId, owner?, orgId? }` (extra keys are refused) and returns
-`{ seatId, address, released, alreadyGone? }`. It deletes the roster row, unregisters the
-address when the live kind matches the stored kind, and deletes the seat's inventory row. When
-a different kind holds the address, the roster row is deleted, the address and its inventory
-row are left alone, and `released` is `false`. Called for a seat whose roster row is already
-gone but whose inventory row is left (a crash between the two deletes), it removes that row
-when the row says `hired: true` and returns `released: false` with `alreadyGone: true`; a row
-that doesn't say so is left, and the call refused as for a seat never hired. A roster row that can't be read is deleted by its key and nothing else is
-touched (`address: null`). After `fire`, `discover` withholds the seat. `removeHiredSeat` is
-this removal on its own, for an app whose fire is its own handler, and `resolveHiredSeatLocation({ seatId, owner?, roster, privateRoster?, userId?, leftoverAt })` picks the row it removes, as `fire` does. `leftoverAt` is required: a fire passes `{ orgId, inventory }` so that a retry after a fire that stopped past the caller's own row stays on that seat; a caller acting only on a row that exists passes `null`.
-
-It refuses when this organization hired no seat, or when a live file-declared seat sits at that
-address (removed by editing its folder, not by firing it).
-
-**Asking first.** A tool `askBefore` lists runs every refusal above first, then suspends the
-request with `reason: "human_approval"`, `data: { verb, seatId, kind, owner, incarnation }` and
-`allow: ["approve", "reject"]`. `owner` is the member whose own seat it is (`null` for an
-org-visible seat or a hire); `incarnation` names the hire that wrote the row (`null` for a hire).
-Approve makes the change to that row only: if the seat id names another row by then (fired and
-hired again), the change is refused with "changed while you were asked". Reject changes nothing
-and the model gets `{ denied: true, reason }` as the tool result. A refusal raises no ask.
-`askBefore` covers `hire` and `fire`; `rehire` always asks. Asking needs durable
-execution (`durable: true` on `createFlowState`); without it a listed tool throws, naming
-itself, and changes nothing. The ask survives a restart, and a request recovered after the
-approval landed makes the change once on a store that keeps a run's items as it goes.
-
-**Pairing with `discover`.** Compose both capabilities on the kind and pass
-`inventory: { seats: SEAT_INVENTORY_RESOURCE }` plus `hiredRoster: HIRED_ROSTER_RESOURCE`.
-Pass both keys so `discover` lists a runtime hire the same way it lists a file-declared seat.
-Omit `hiredRoster` and it lists only file-declared seats.
-
-### The same handlers, as actions
-
-`createSeatHireBlocks` takes the same options as `createSeatHireCapability` and returns
-`{ hire, fire, brokenSeats, rehire }`. `hire` and `fire` are the handlers behind its catalog
-tools. Mount them as a flow's actions when a person or your own code does the hiring and no
-model should be in front of it. Inputs, outputs and refusals are the ones described above for
-the tools.
-
-**`brokenSeats`** takes `{}` and returns the caller's organization's stored seats that would
-not start, each `{ seatId, key, owner, kind, reason, detail }`, with `reason` one of `kind-gone`,
-`refused`, `unreadable`. It reads through the start's own per-row check, so `detail` is the
-sentence `reloadHiredSeats` puts in `problems`, and it writes nothing. For an `unreadable` row,
-`seatId` is the row's key, which `fire` retires it by. `owner` is `"organization"` or `"me"`,
-whose row it is; pass it to `fire` or `rehire` to reach that row. It runs the full check on every row, a
-mint included, so it is an admin read made on demand, not something to poll.
-
-User-owned seats: mount `defineHiredRosterPrivateCollection()` under
-`HIRED_ROSTER_PRIVATE_RESOURCE` on the same flow, and `brokenSeats` lists the caller's own
-user-owned rows beside the org's. `fire` and `rehire` take `owner: "organization" | "me"` to
-name which row; without it they act on the only row under the seat id, and refuse, naming both,
-when the caller has an org row and a user-owned row under it. `resolveHiredSeatLocation` is that
-choice, exported for an app's own fire. That collection serves a row only to the member it belongs to, so a
-member lists and repairs only their own; the start still names every member's. Without it, the
-four reach org-visible seats only.
-
-**`rehire`** takes `{ seatId, flow, settings?, instructions?, owner?, orgId? }` and returns
-`{ seatId, address, warning? }`. It keeps the seat's id and address and runs it on `flow`, with
-`settings` for that kind; the stored instructions carry over unless replaced. It refuses a seat
-that would start, an `unreadable` row, a kind this app doesn't carry or `allowKinds` excludes,
-and settings the kind refuses, all before writing anything. The row is replaced in one
-version-checked write, so of two repairs of one seat arriving together one is refused. A failed
-registration writes the old row back. If the process dies after the row is written, or the
-inventory write fails after the seat is serving, the same call run again finishes it. The row
-write marks the row `pendingRepair` until the seat is registered and published, and only a marked
-row is finished. A seat the registry already holds at the address counts as registered only when
-`instanceAt` shows it was minted from that row; any other holder is a refusal. Any
-other re-hire of a working seat is refused. Each step re-reads the row first: if `fire` removed it
-meanwhile, the re-hire stops and takes back what it registered or published.
-
-None of the four asks for approval. Mount `brokenSeats` and `rehire` behind one.
-
-Declare the roster and seat-inventory collections on that flow, under `HIRED_ROSTER_RESOURCE`
-and `SEAT_INVENTORY_RESOURCE`. The handlers read them by those keys, and without them every
-hire fails before anything is written.
-
-```ts
-import { defineFlow } from "@flow-state-dev/core";
-import {
-  createSeatHireBlocks,
-  defineHiredRosterCollection,
-  defineSeatInventoryCollection,
-  HIRED_ROSTER_RESOURCE,
-  SEAT_INVENTORY_RESOURCE,
-} from "@flow-state-dev/workforce";
-
-// `workerFlows` and `live` as in the example above.
-const hireActions = createSeatHireBlocks({
-  workerFlows,
-  register: live.register,
-  unregister: live.unregister,
-  kindAt: live.kindAt,
-});
-
-const workforceAdmin = defineFlow({
-  kind: "workforce-admin",
-  requireUser: true,
-  // Your AuthenticationConfig. Its resolvePrincipal must return an orgId.
-  authentication: adminAuthentication,
-  resources: {
-    [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
-    [SEAT_INVENTORY_RESOURCE]: defineSeatInventoryCollection(),
-  },
-  actions: {
-    hire: { block: hireActions.hire },
-    fire: { block: hireActions.fire },
-  },
-});
-```
-
-The organization comes from the session's principal; an `orgId` in the input is ignored. A
-session whose principal names no organization belongs to the default organization, and a hire
-there lands under `%5F%5Ffsd%5Fdefault%5Forg%5F%5F.<seatId>` and reloads at the next start like any
-other. Configure a `resolvePrincipal` that returns an `orgId` on the flow that mounts these to hire
-into a real organization.
+A worker holds `hire` or `fire` only when its own `tools:` names them. Each write goes to the roster
+of the person whose turn it is: a worker can't hire for anyone else. The blocks write at once; an
+approval before a fire is yours to add as a step before it, as the chief of staff guide shows.
 
 ### Posting to a mailbox from a seat
 
-`mailboxPostCapability` puts one tool, `post-to-mailbox`, on a worker kind's catalog. Install it
-with `defineAgentWorkerFlow({ uses: [mailboxPostCapability] })`, and a seat names the tool in
-`tools:` to use it. Its input is `{ mailbox, body }` and nothing else, so an `author` from the
-model is refused.
+`workerMailboxPostCapability` puts one tool, `post-to-mailbox`, on a worker flow's catalog. Install
+it with `defineAgentWorkerFlow({ installation, uses: [workerMailboxPostCapability] })`, or in your
+own worker flow's `uses`, and a worker names the tool in `tools:` to use it. Its input is
+`{ mailbox, body }` and nothing else, so an `author` from the model is refused.
 
-Outside a routed turn (below), the tool posts through the built-in mailbox kind with the seat's
-`seatId` (its record id, as `members:` lists it) as `author`, so the mailbox's member check applies.
-The line has `seatAuthored: true`, so `wakeMemberSeats` wakes nobody for it. A client `post` that
-sets `author` to the same seat id wakes hearing members. `hireWorkforce`
-writes `seatId` on every
-seat it mints. A seat minted without one is refused, and the error names `seatId`. Every seat of
-the built-in `agent` kind is refused when its flow is built, whether or not it names the tool. A
-seat of any other kind carrying the capability is refused when a turn would offer the tool, before
-the model is called. Either way it posts nothing.
+Outside a routed turn (below), the tool posts through the built-in mailbox kind with the id of the
+worker the turn loaded (as `members:` lists it) as `author`, so the mailbox's member check applies.
+The worker comes from the session, never from the input or a setting. The line has
+`seatAuthored: true`, so `wakeMemberSeats` wakes nobody for it. A client `post` that sets `author`
+to the same worker id wakes hearing members. A turn that loaded no worker posts nothing.
+Passing `mailboxPostCapability` to `defineAgentWorkerFlow({ installation })` puts this one in its
+place.
 
 The tool returns once the post is handed to the mailbox, as `{ handedTo, note }`. A refusal by the
 mailbox, such as an author who is not a member, lands on the mailbox's request, not in the seat's
@@ -1889,7 +1700,7 @@ when it registered.
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
-| `defineSeatInventoryCollection()` | registered seat, at `inventory/seats/<seatId>` | `id`, `kind` (the worker kind the seat was hired into), `door` (the action that takes a person's message, or `null`), `hired` (`true` for a seat hired at runtime, `false` for a declared one, `null` on a row written before the field), `incarnation` (the hire or repair that published it; `null` on a declared seat's row and an older row) |
+| `defineSeatInventoryCollection()` | registered seat, at `inventory/seats/<seatId>` | `id`, `kind` (the worker flow the standard worker runs on), `door` (the action that takes a person's message, or `null`), `hired` (`false`: only standard workers are listed), `incarnation` (`null`) |
 | `defineMailboxInventoryCollection()` | registered mailbox, at `inventory/mailboxes/<mailboxId>` | `id`, `kind` (the mailbox kind that opened it), `members` (seat ids, `[]` when absent), `openedAt` (ISO string, or `null` when absent) |
 | `defineMembershipIndexCollection()` | seat-in-mailbox, at `inventory/members/<seatId>/<mailboxId>` | `seatId`, `mailboxId` |
 
@@ -1910,7 +1721,7 @@ import {
   openInventory,
 } from "@flow-state-dev/workforce";
 
-const seats = hireWorkforce(roster.workers);
+const flows = hireWorkforce(createWorkerInstallation({ standardWorkers: roster.workers }));
 const instances = mailboxInstances(roster.mailboxes, { inventory: true });
 
 flowRegistry.registerMany([...seats, ...instances]);
@@ -1969,16 +1780,12 @@ the mailbox's session state, not the inventory; the row is a copy for finding th
 
 **Running it twice.** Every write is an upsert keyed by the record's id. Nothing duplicates, and a
 mailbox registered on an earlier boot keeps its original `openedAt`. A row stays where it is when a
-later roster no longer names the seat or mailbox. Seat rows are the exception to the upsert: the
-roster a boot read can be older than the store, so the boot creates a seat's row only where there was
-none when it read the inventory, and otherwise replaces it only while the stored row is the same kind
-of seat — a declared row for a declared seat, and for a hired seat a hired row carrying the same
-incarnation. A runtime hire's row is never replaced by another hire's or a declared seat's, and a row
-a fire removed after the boot read it is not written back.
+later roster no longer names the seat or mailbox. The seats are the standard workers
+(`inventorySeats(installation)`); a user's own workers are on their roster, never in the inventory.
 
 **What lands in `problems`.** `openInventory` returns `{ seats, mailboxes, problems }`. `seats` counts
 the seat rows that landed, as the seat action reports it when `run` returns the action's output (or a
-run result carrying it as `output`); a row the boot left for a newer hire isn't counted. A mailbox
+run result carrying it as `output`). A mailbox
 whose session is not open, or whose kind declares no registration action, is named in `problems` and
 the rest of the roster is still attempted.
 
@@ -2212,19 +2019,14 @@ restart.
 
 ## Workers as data
 
-A worker can also be data rather than a registered copy: a row its owner holds in their user
-scope, or a standard worker your files declare, run by one registered copy of the flow it names.
-A session names its worker once, when it is created, and each turn loads it. This runs beside
-`hireWorkforce`: nothing here mints a copy or sets a pin.
+A worker is data: a row its owner holds in their user scope, or a standard worker your files
+declare, run by one registered copy of the flow it names. A session names its worker once, when it
+is created, and each turn loads it. A hire, fork or fire is a write to the user's data. Every
+process sees it on the next turn.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import {
-  createWorkerHireBlocks,
-  createWorkerInstallation,
-  defineWorkerRosterFlow,
-  workerConfigSchema,
-} from "@flow-state-dev/workforce";
+import { createWorkerInstallation, hireWorkforce, workerConfigSchema } from "@flow-state-dev/workforce";
 
 const installation = createWorkerInstallation({
   standardWorkers: roster,                  // readWorkforce(...)'s workers
@@ -2244,16 +2046,13 @@ const worker = await installation.resolveWorker(ctx, "research");
 worker.config.instructions; // the worker's own, as the flow's configSchema parsed them
 worker.reaches("handbook"); // its document grants, applied on this turn
 
-const { hire, fork, edit, fire } = createWorkerHireBlocks(installation);
-const rosterFlow = defineWorkerRosterFlow(installation, {
-  hire: { inputSchema: hire.inputSchema, block: hire },
-  fork: { inputSchema: fork.inputSchema, block: fork },
-  edit: { inputSchema: edit.inputSchema, block: edit },
-  fire: { inputSchema: fire.inputSchema, block: fire },
-});
+const flows = hireWorkforce(installation); // research, agent, and the roster flow
 ```
 
-Register `researchFlow()` and `rosterFlow()`.
+Register every flow `hireWorkforce` returns: one copy of each worker flow, and the roster flow,
+`workforce-roster`, which carries the `hire`, `fork`, `edit` and `fire` actions below.
+`createWorkerHireBlocks(installation)` returns the same four as blocks, to mount elsewhere or hand
+to a model as [tools](#hire-fork-and-fire-as-tools).
 
 - **Creating a session.** A session of a worker flow is created with `state: { workerId }`. The
   worker must be the creating user's own or a standard one. Asking for another user's worker
@@ -2264,6 +2063,10 @@ Register `researchFlow()` and `rosterFlow()`.
 - **Each turn.** `resolveWorker(ctx, flowKind)` loads the session's worker and resolves its tools,
   skills and packages against what the installation registers. Read the worker's settings from
   `worker.config`: `ctx.flow.config` is the flow's own config, the same for every worker on it.
+  Load it in the flow's `request.onStarted`, or in the block that reads it. A request that waited
+  for a person runs again when the answer arrives, and a step that already finished isn't run
+  again: its recorded output is reused, so a worker loaded in an earlier step is gone on the
+  resumed run. The built-in `agent` loads it in `request.onStarted`.
   When the turn can't run, `resolveWorker` throws `WorkerTurnRefusedError` and nothing is written:
   - the worker was fired: its sessions stay readable; start a session with another worker;
   - the worker now runs on another flow: call `ensureWorkerSession` again, which starts a session
@@ -2274,17 +2077,30 @@ Register `researchFlow()` and `rosterFlow()`.
     flow.
 - **A worker's own data.** Data a flow keeps per user is shared by all of that user's workers on
   the flow, and never reaches another user. Keeping one worker's data apart from the user's other
-  workers is the flow author's job: key a collection by the session's readonly `workerId`, or use a
-  skills library with `partitionBy` reading it
+  workers is the flow author's job: key a collection by the worker the turn loaded, or use a
+  skills library with `partitionBy` reading the session's readonly `workerId`
   ([Partitioning a library](../orchestration/README.md#partitioning-a-library)). The framework
-  neither refuses nor partitions it for you.
+  neither refuses nor partitions it for you. The built-in `agent` keeps each worker's skills apart.
+
+  ```ts
+  // a user-scoped collection `worker-notes/*`, declared on the block beside `installation.resources`
+  const worker = await installation.resolveWorker(ctx, "research");
+  await ctx.resources.workerNotes.upsert(worker.id, { text: "Prefers short answers." });
+  ```
+- **What a worker's model reaches.** A worker flow declares every document any of its workers may be
+  granted (`...installation.documents`) and sets `resourceVisibility: installation.resourceVisibility`.
+  Each turn's model then reaches only the documents the turn's worker is granted, read-only where
+  its grant is, through core's resource tools and the `discover` door; every other document answers
+  as one that doesn't exist. A turn that loaded no worker reaches no document. Block code that names
+  a document directly is not narrowed. The built-in `agent` sets this for you.
 - **The roster.** Each worker the user hires or forks is a row at `workforce/workers/<id>` in their
   user scope, one roster per organization. Every write is checked the way a turn would check it,
   and a standard worker's id is refused with a suggestion to fork it:
   - `hire({ id, flow?, description?, instructions?, skills?, settings? })` returns `{ id, flow }`;
     `flow` defaults to `agent`, and `settings` takes the keys a `WORKER.md` frontmatter accepts;
   - `fork({ from, id })` returns `{ id, flow }`, copying a standard worker's, or one of the user's
-    own, configuration and shared instructions; a later edit to the files doesn't reach the fork;
+    own, configuration: its flow, description, instructions, team instructions, skill names and
+    settings; a later edit to the files doesn't reach the fork;
   - `edit({ id, flow?, description?, instructions?, skills?, settings? })` returns `{ id, flow }`,
     replacing each field given;
   - `fire({ id })` returns `{ id }` and deletes the row.
@@ -2309,6 +2125,10 @@ Register `researchFlow()` and `rosterFlow()`.
     sessionId: session.id,
   });
   ```
+
+  In React, build the client once with `useMemo` over the same options. `useFlow` creates sessions
+  with no starting state, which a worker flow refuses, so find or start the session with the client
+  and select it on the hook (`flow.selectSession(session.id)`).
 
   `ensureWorkerSession` returns the user's most recent session with the worker, or creates one.
   Two calls at once get the same session. `findWorkerSession` takes the same argument and returns
@@ -2399,46 +2219,32 @@ drop. A client component imports the few names a panel reads with from the `./br
 "use client";
 import {
   MAILBOX_POST_COMPONENT,
-  HIRED_ROSTER_RESOURCE,
-  splitSeatAddress,
+  createWorkforceClient,
   type MailboxTranscriptLine,
 } from "@flow-state-dev/workforce/browser";
 ```
 
-It also exports `createWorkforceClient`, `deriveWorkerSessionId`, `isDerivedWorkerSessionId`,
-`ROSTER_FLOW_KIND` and `WORKER_ID_STATE_KEY`.
-
-It exports `HIRED_ROSTER_RESOURCE`, `SEAT_INVENTORY_RESOURCE`, `HIRED_ROSTER_BROWSER_PATTERN`, `splitSeatAddress`,
-`MAILBOX_POST_COMPONENT`, `mailboxTranscriptLineSchema` and `MailboxTranscriptLine`, the same values
-the root exports, and reaches no Node built-in. It also exports `listedSeatRows(orgId, rows, roster, owned?)`,
-the team-list rule: of the seat inventory rows, a hired seat's is kept only while a roster row
-names its address (pass `undefined` when the roster didn't load, and no hired seat is kept), and
-every other row is kept as it is. A row says which it is in `hired`; one written before that field
-is read by its id's shape, which `isHiredSeatRow(orgId, row)` also answers. A hired row is kept only when the roster
-row at its address carries the same `incarnation`; rows from before incarnations match only each
-other (`null` on both sides). The org roster publishes `incarnation` to browsers for this. A
-user-owned hire's row (`<org>.~<user>.<seatId>`) is kept only when `owned`, the reader's own
-user-owned roster rows read on the server, has a row at that address with the same `incarnation`. The roster that would back
-it is owner-private, so a browser reader has no `owned` and keeps no user-owned hire. An
-`incarnation` on the inventory row says which hire published it, not that the hire is still there. A hired seat fired
-before fire removed inventory rows is left out that way.
+It exports `createWorkforceClient`, `deriveWorkerSessionId`, `isDerivedWorkerSessionId`,
+`ROSTER_FLOW_KIND`, `WORKER_ID_STATE_KEY`, `MAILBOX_POST_COMPONENT`, `mailboxTranscriptLineSchema`
+and `MailboxTranscriptLine`, the same values the root exports, and reaches no Node built-in.
 
 ## Exports
 
 | Export | Description |
 |--------|-------------|
-| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and `onMailboxPost` (internal, for a mailbox's notify block), and with `taskLists` a `work` task entry. |
+| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. With `installation` it is the copy every worker on `agent` shares: it declares the installation's session and documents, loads the turn's worker in `request.onStarted`, and refuses a turn whose input names a worker; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and `onMailboxPost` (internal, for a mailbox's notify block), and with `taskLists` a `work` task entry. |
 | `AGENT_KIND` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
-| `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and mailbox sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |
-| `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and mailbox sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` meaning as `createWorkforceCapability`. |
-| `createSeatHireCapability({ workerFlows, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, mailboxBoards?, askBefore? })` | Puts catalog tools `hire`, `fire`, `brokenSeats` and `rehire` on a worker kind; `askBefore` puts `hire` and/or `fire` behind a person's approval, and `rehire` is always behind one. Compose it into `defineAgentWorkerFlow({ uses })`. A seat calls them by selecting `seat-hire: [tools]` with no `tools:` line, or by naming them in `tools:`; `tools: []` withholds them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
-| `createSeatHireBlocks({ workerFlows, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, mailboxBoards? })` | Returns `{ hire, fire, brokenSeats, rehire }`; `hire` and `fire` are the handlers behind `createSeatHireCapability`'s catalog tools, for mounting as a flow's actions, where they never ask for approval. Same options, inputs, outputs and refusals. Declare `defineHiredRosterCollection()` under `HIRED_ROSTER_RESOURCE` and `defineSeatInventoryCollection()` under `SEAT_INVENTORY_RESOURCE` on that flow. The organization comes from the session's principal; a body `orgId` is ignored, and with no resolver in play the session is in the default organization, so the hire lands there. Each hire and re-hire stamps a fresh `incarnation` on its roster row, its inventory row and the seat it mints; `fire` deletes only that incarnation's inventory row and, given `instanceAt` (the registry's instance at an address), releases only the seat minted from the row. Without `instanceAt` those checks fall back to the kind, and a `rehire` retry that finds the address already served is refused. `refuseRosterAdmin: true` refuses a hire or re-hire whose settings would give the seat the roster tools; off by default. |
+| `createWorkforceCapability({ roster, inventory, sources? })` | The discovery door. Installs the seat and mailbox sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`, which lists the standard workers the files declare and the mailboxes. |
+| `workforceManifestSources({ roster, inventory })` | The seat and mailbox sources on their own, for an app assembling its own manifest registry. |
 | `createWorkerInstallation({ standardWorkers?, workerFlows?, seatBlocks?, packageBlocks?, documents?, references?, skills?, packages? })` | The worker model's one module (see [Workers as data](#workers-as-data)). Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
 | `defineCoordinatorFlow({ installation, delegateFlows, routeModel, defaultModel? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
 | `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
+| `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `kinds` holds. |
+| `inventorySeats(installation)` | The standard workers as `openInventory` takes seats: each worker's id, its flow and that flow's actions. |
+| `workerConfigOf(ctx)` | The configuration of the worker the turn loaded, synchronously, for a prompt, a tool list or a step condition. Throws when the turn loaded no worker: call `installation.resolveWorker` in the flow's `request.onStarted`. |
 | `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |
 | `defineWorkerRosterFlow(installation, actions?)` | The roster flow (`workforce-roster`), which declares the two worker collections so a client reads a user's roster through one session of it. Mount the hire blocks on it as actions. |
 | `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession({ worker, filingSessionId? })` and `ensureWorkerSession({ worker, filingSessionId? })`, over the session and resource clients. From `./browser` only. |
@@ -2446,12 +2252,7 @@ before fire removed inventory rows is left out that way.
 | `WorkerTurnRefusedError` | What `resolveWorker` throws when a turn can't run as the session's worker; nothing is written. |
 | `defineWorkerCollection()` / `workerRowSchema` / `parseWorkerRow(value)` | The user's worker collection at `workforce/workers/*`, user scope, and its row. |
 | `WORKER_ID_STATE_KEY`, `WORKERS_RESOURCE`, `STANDARD_WORKERS_RESOURCE`, `ROSTER_FLOW_KIND` | The readonly session-state field naming a session's worker (`"workerId"`), the accessors the two worker collections are declared under, and the roster flow's kind. |
-| `registerHiredSeat(register, seat, pin)` | The hire writer's register path. Refuses when `pin` has no `orgId`. The pin is the hire row's roster owner, not the address. |
 | `HiredSeatOwnerPin` | Another name for core's `InstanceOwnerPin`: `{ orgId, userId? }`, with `userId` present only for a user-owned hire row. Either name works wherever the other is expected. |
-| `SEAT_HIRE_CAPABILITY` | The capability name, `"seat-hire"`. |
-| `HIRED_ROSTER_RESOURCE` | Registry key the seat-hire capability installs the hired roster under, `"hiredRoster"`. Pass it as `hiredRoster` on `createWorkforceCapability` so `discover` reads the same collection. |
-| `SEAT_INVENTORY_RESOURCE` | Registry key the seat-hire capability installs the seat inventory under, `"seatInventory"`. Pass it as `inventory.seats` on `createWorkforceCapability`. |
-| `HIRED_ROSTER_PRIVATE_RESOURCE` | Registry key, `"hiredRosterPrivate"`, a flow mounts `defineHiredRosterPrivateCollection()` under so `createSeatHireBlocks`' `fire`, `brokenSeats` and `rehire` reach the caller's own user-owned seats. The capability does not install it. |
 | `SEAT_DISCOVER_KEY` | The pinned worker-file key, `"discover"` — the domains one seat sees, out of what its scope carries. Narrows only: a seat can never reach a domain the app did not install. |
 | `readDeclaredRoster(root)` | Read the whole tree in one call — workers with their skills and packages in reach, teams, documents and mailboxes — plus one list of everything that failed to load, each entry tagged with the layer that reported it. Collects rather than throws, so the boot policy stays yours. Ships from the `./loader` subpath (Node only). |
 | `readWorkforce(root)` | Read the tree into worker records that already carry their own skills and the packages in their reach — `readWorkforceDirectory` joined with `readSeatSkills` per seat and `readPackagesDirectory`. Returns `{ workers, errors, skillErrors, teams, teamErrors, packageErrors }`. Reach for it when seats are all you need. Ships from the `./loader` subpath (Node only). |
@@ -2468,8 +2269,8 @@ before fire removed inventory rows is left out that way.
 | `describePreRenameMarks(marks)` | The marks above as one clause for a boot message ("written before … : mailbox "…" (…)"). The host adds what to do about it. |
 | `PRE_RENAME_NAMES` | The names the rename retired, frozen: record file and folder, kinds folder, kind, item components, inventory prefix and discovery domain. For recognising old data and seeding tests, never for reading it. |
 | `renderWorkforceCode(files, modules, seatBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `seatBlocks` and `packageBlocks` as a module of static imports exporting `kinds`, `mailboxKinds`, `blocks`, `resourceModules`, `seatBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
-| `hireWorkforce(manifests, { workerFlows, seatBlocks, packageBlocks, mailboxBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `workerFlows`, each a flow or `{ flow, standardOnly: true }` for a flow kept for declared workers (a hired worker, one carrying an owner pin: hired at runtime or reloaded from the roster, org-visible or private, is refused on it; a worker naming no flow is checked as an `agent` worker). Every worker flow, the built-in `agent` with them, is checked against the [worker contract](https://flow-state.dev/docs/workforce/workers-on-disk#which-flows-can-run-workers) before any worker is hired, and one problem refuses the whole call. Pass `workforce.gen.ts`'s `seatBlocks` and `packageBlocks` exports under the same names, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, which references each seat reaches is worked out against it, and a kind holding references it was not given refuses the whole roster. `mailboxBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
-| `mergeSeatFlows(flows, seats)` | Add the hired seats to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when a seat's id is already one of `flows`' keys (an org seat's id is its bare folder name, so a folder named `mailbox` would otherwise replace the mailbox flow) or when two seats share an id. Returns a new record; `flows` is not changed. |
+| `hireWorkforce(installation, { mailboxBoards? })` | The flows to register for an installation: one copy of each worker flow, at its kind, and the roster flow (`workforce-roster`) with `hire`, `fork`, `edit` and `fire`. Throws, naming every problem, when a worker flow misses the contract or doesn't declare the installation's session, or when a standard worker would be refused on its first turn; nothing is registered. With `mailboxBoards`, warns once per process for a board no registered flow declares. |
+| `mergeSeatFlows(flows, seats)` | Add the flows `hireWorkforce` returned to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when one is already in `flows`. |
 | `unattendedBoardWarnings(boardIds, seats)` | The unattended-board warning strings `hireWorkforce` prints. The `hire` tool puts the same sentences on `warning` when a named board has no seat that declares it. |
 | `workerFlowProblems(name, flow)` | Every way `flow`, registered as `name`, misses the worker contract: a name that is not its `kind`, a configuration it refuses by key or by value, or takes but rewrites, no door or two, a resource with `writtenBy` that `sharedResource()` didn't build. An empty list for a worker flow. The check `hireWorkforce` runs, exported for a library's own tests. |
 | `sharedResource(pattern, shape)` | An org-scoped collection whose every entry carries a required `writtenBy: { userId, workerId? }` beside the fields of `shape`. An entry written without it is refused by the resource's own schema. The only way to declare a resource with `writtenBy` on a worker flow: the contract refuses one defined by hand, or a copy of this one with its schema replaced. |
@@ -2493,7 +2294,7 @@ before fire removed inventory rows is left out that way.
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `SeatCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that seat wants. Read by the built-in `agent` kind; validated at the hire. |
 | `defineMailboxFlow(options?)` | Build a mailbox kind. `options.notify` is the per-member fan-out block. `options.route` is the route from `routeByPurpose`. `options.checkAssignee(assignee, listId, ctx)` runs before `fileTask` files a row naming an assignee: return `undefined` to file it, or the sentence to refuse with (`unknown-assignee`). Pass `createWorkerLookup(...).filingCheck(aliases)`. |
-| `wakeMemberSeats(seats, options?)` | The notify block for `defineMailboxFlow({ notify })`. Wakes each member whose hired seat declares `onMailboxPost`, once per post, and never on a seat's line (`seatAuthored: true`). A client `post` wakes hearing members whether or not it sets `author`. `options.fallback` runs for members whose seat can't hear a post, including on a seat's line. |
+| `wakeMemberSeats(flows, { installation?, fallback? })` | The notify block for `defineMailboxFlow({ notify })`. Wakes each member that names a standard worker on a flow declaring `onMailboxPost`, once per post, in that worker's own conversation per mailbox, and never on a worker's line. |
 | `routeByPurpose(seats, { model })` | The route a mailbox kind takes as `defineMailboxFlow({ route })`. For a mailbox that declares `routing:`, each client `post` goes to one member: the member the last client `post` was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `mailbox-route`), else the declared fallback. A seat's line (`seatAuthored: true`) is not routed. A member of the built-in `agent` kind answers with the mailbox's last 20 lines in view, and its reply is posted into the mailbox as its line, once per post. Needs in-process dispatch or queue workers that share a lease backend. Throws without a `model`. |
 | `mailboxRouteRecordSchema` / `MailboxRouteRecord` / `MAILBOX_ROUTE_COMPONENT` / `MAILBOX_ROUTE_EVALUATOR` | One route decision as it is kept on the mailbox's session (`{ postId, by, member?, reason? }`, where `by` is `held`, `evaluated`, `fallback` or `failed`), the component name it is kept under, and the route evaluator's block name. Both names are `"mailbox-route"`. |
 | `MailboxRoute` / `MailboxRouting` | What `routeByPurpose` returns, and a mailbox file's `routing:` as read (`{ fallback }`). |
@@ -2510,7 +2311,7 @@ before fire removed inventory rows is left out that way.
 | `mailboxBoardTaskTools(board)` | Capability granting a seat all eight task tools over one mailbox board, board-qualified by name. List it in the seat kind's `uses`; it declares the ledger too. |
 | `mailboxBoardIds(manifests)` | Every minted id across a roster, sorted and deduped — what `hireWorkforce`'s `mailboxBoards` and `defineAgentWorkerFlow`'s `taskLists` take. |
 | `mailboxTaskLists(boardIds, { allowSessionState? })` | A `TaskBinding` for a task entry's `from`: the entry takes tasks from any of these mailbox boards, resolved in the running organization. A board id outside the list is refused `UnknownTaskLedgerError`. |
-| `createWorkerLookup({ instanceAt, declared })` | Which worker a task's name means. Returns `{ find, flowKind, filingCheck }`; see [Handing a row to the worker it names](#handing-a-row-to-the-worker-it-names). Types `WorkerLookup`, `WorkerLookupAnswer`, `WorkerLookupOptions`. |
+| `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`; see [Handing a row to the worker it names](#handing-a-row-to-the-worker-it-names). |
 | `WORKER_TASK_ENTRY` | `"work"`, the task entry a worker kind takes tasks through. |
 | `MailboxBoardCollection` | A `DefinedTaskCollection` carrying its minted `id`. |
 | `mailboxBoardRowSchema` | One row as `readBoard` publishes it: the board's facts and the `run` working the task, without the claim's coordinates (`claimedBy`, the lease) or write provenance. |
@@ -2519,20 +2320,6 @@ before fire removed inventory rows is left out that way.
 | `mailboxPostInputSchema` / `mailboxReadOutputSchema` / `mailboxNotifyInputSchema` | The post, read and notify contracts. |
 | `mailboxSessionStateSchema` / `mailboxTranscriptLineSchema` | A mailbox session's state, and one transcript line. On a kind built with a route, a mailbox's state also carries `mailboxRouteLedger`, which this schema does not describe. |
 | `MAILBOX_POST_COMPONENT` / `emitMailboxPostLine(ctx, line)` / `readMailboxPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a mailbox kind of your own. |
-| `defineHiredRosterCollection()` | The hired roster's browser collection: one org-scoped row per org-visible seat, at `workforce/roster/<seatId>`. One segment, so a user-owned row is not listed. Takes no options. Write org-visible rows with `create()` — its already-exists throw is what refuses a duplicate hire, and `upsert()` loses that refusal silently. |
-| `defineHiredRosterPrivateCollection()` | The server-side writer for a user-owned row, at `workforce/roster/~<escaped user>/<seatId>`. No browser read. It is an owner-private collection (`ownerPrivate: { param: "owner" }`): a row is served only to the member it belongs to, and any other collection whose pattern can reach those rows is refused at startup. Declare `workforce/roster/*` for the org roster. |
-| `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId, pendingRepair, incarnation }`. `owningOrgId`, `ownerUserId`, `pendingRepair` (set only while a `rehire` is unfinished) and `incarnation` (the hire or re-hire that wrote it) are nullable and default to `null`. `pendingRepair` is server-only; `incarnation` is published to browsers by `defineHiredRosterCollection`, beside `seatId`, `flow` and `instructions`, so a browser can join a roster row to its inventory row. The envelope is closed when parsed; the roster collections store it with unknown keys kept, so a key a newer version wrote survives this version's rewrite of the row (a re-hire). `settings` is a passthrough bag belonging to the kind's own schema. |
-| `HIRED_ROSTER_PREFIX` | The roster's storage prefix, `"workforce/roster/"`. Moving it strands every roster already written. |
-| `HIRED_ROSTER_BROWSER_PATTERN` / `HIRED_ROSTER_PRIVATE_PATTERN` | The two roster collections' patterns, `"workforce/roster/*"` and `"workforce/roster/[owner]/[seat]"`. Like the prefix, they spell stored keys. |
-| `seatAddress(orgId, seatId, ownerUserId?)` / `splitSeatAddress(orgId, address)` | Join an organization and a seat id into the address a hired seat answers on, and take the seat id back out. Org-visible is `<org>.<seatId>`. User-owned is `<org>.~<user>.<seatId>`, with the user escaped. The organization is percent-escaped like the user (`seatAddress("org_pentest_lab", "helper")` is `org%5Fpentest%5Flab.helper`). The pin is the hire row, not the address. `seatAddress` throws when the organization id is empty, whitespace-only, or not well-formed Unicode (a lone UTF-16 surrogate), or when the seat id is empty or starts with `~`. `splitSeatAddress` returns `undefined` when the address isn't under that organization. Both are also exported from `@flow-state-dev/workforce/browser`. |
-| `newIncarnation()` / `tagIncarnation(seat, incarnation)` | For a host that writes roster rows itself rather than through `createSeatHireCapability`. Stamp each hire's row with `toHiredSeatRow({ ..., incarnation: newIncarnation() })` and tag the seat minted from it with the same id. A fire then removes only the inventory row carrying that id, so a replacement hired at the same address keeps its own. A row written with no incarnation can't be told from a replacement written the same way. |
-| `toHiredSeatRow(input)` / `parseHiredSeatRow(value)` | Build a row from what a hire supplied, and read a stored value back into one. `parseHiredSeatRow` returns `{ row }` or `{ problem }` — it never throws and never rewrites the stored value. |
-| `hiredRosterStorageKey(row)` | `seatId` for an org-visible row, `~<escaped user>/<seatId>` for a user-owned one. The user id is escaped, so a `/` in it stays one segment. |
-| `hiredSeatManifest(orgId, row)` / `hiredSeatRowFromManifest(orgId, manifest)` | Turn a row into the record `hireWorkforce` mints from, and back. Each returns `{ ... }` or `{ problem }`. A row whose `owningOrgId` disagrees with `orgId` is a problem and is not minted. A legacy row (`owningOrgId` null) binds `orgId`. The manifest's `ownerPin` is `{ orgId, userId? }`. |
-| `hiredSeatOwnerPin(orgId, row)` / `hiredSeatOwnerPinFromRosterOwner({ orgId, userId? })` | The pin a hired seat registers under, built from a stored row, or from an owner `{ orgId, userId? }` you already hold. An org-visible row (`ownerUserId` null) gets `{ orgId }`, and a user-owned row gets `{ orgId, userId }`. `userId` is kept only when it is a non-empty string. The organization comes from `orgId`; the row's `owningOrgId` is not checked, so validate the row first (for example with `hiredSeatManifest`). Throws when `orgId` is missing or empty. |
-| `registerHiredSeat(register, seat, pin)` | The hire writer's register. Calls `register(seat, pin)` only when `pin.orgId` is present. Omitting the pin throws, and `register` is not called. Wrap the engine door as `(seat, pin) => state.register(seat, { pin })`. App and kind flows do not use this. |
-| `reloadHiredSeats(options)` | Read each organization's stored roster at boot and hire what it names. Takes `{ stores, orgIds, workerFlows?, maxOrgs?, timeoutMs? }` and returns `{ seats, problems, byOrg }`, where `byOrg` is one `{ orgId, seats, problems }` per organization passed in, in that order, empty ones included. **It registers nothing** — loop the seats and `register(seat, { pin: seat.ownerPin })` one at a time, folding refusals into `problems`. Rejects (loading nothing) past the org cap (`maxOrgs`, default 100) or when the whole read does not complete in its bound (`timeoutMs`, default 10000). |
-| `DEFAULT_MAX_RELOAD_ORGS` / `DEFAULT_ROSTER_READ_TIMEOUT_MS` | The two bounds' defaults: 100 organizations, and 10000 ms for the whole read. |
 | `HiredRosterReload` / `HiredRosterOrgReload` / `HiredRosterStores` / `ReloadHiredSeatsOptions` / `RowProblem` | What the reload returns, one organization's share of it, the slice of the runtime's stores it reads through, its options, and the `{ problem }` shape a row that could not be read comes back as. |
 | `defineSeatInventoryCollection()` | The seat inventory: one org-scoped row per registered seat, at `inventory/seats/<seatId>`. Takes no options; install what it returns under a block's `resources`. |
 | `defineMailboxInventoryCollection()` | The mailbox inventory: one org-scoped row per registered mailbox, at `inventory/mailboxes/<mailboxId>`, carrying the mailbox's `members` and `openedAt`. Takes no options. |
@@ -2569,8 +2356,10 @@ before fire removed inventory rows is left out that way.
 | Symlinked `skills/` folder at a level | Collected in `readSeatSkills`'s `errors` as `kind: "refused-symlinked-level"`, keyed by the level's path — never followed |
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
-| Worker flow misses the contract | `hireWorkforce`, before any worker — a flow passed under a key that is not its own kind, a configuration it refuses by key or by value, or takes but rewrites (composing `workerConfigSchema()` is the fix), no door or two, or a resource with `writtenBy` that `sharedResource()` didn't build. Collected: one error names every problem with every flow, and nothing is hired |
-| Worker cannot be hired | `hireWorkforce` — an empty or whitespace-only `flow`, an unknown kind, a hired worker (one carrying an owner pin) naming a flow marked `standardOnly` (or naming none, when `agent` is marked), a duplicate id, a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this seat's kind, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a seat did not name that its minted flow reaches anyway because one of the kind's blocks declares it, a `references:` list the hire step cannot resolve (a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this seat cannot reach from its place in the tree — including every ref when no `references` map was passed), a seat id that names no place in the tree while its kind holds references, a reference the seat did not name that its minted flow reaches anyway, `instructions` given both in the frontmatter and as a body, a `packages:` list the hire step cannot resolve (not a list of names, a name no library in reach offers, or a name both its own folder and a library offer), a held package's block that clashes with another tool the seat can call, registers under a name other than its own, or declares a store, a package with blocks in its own folder that failed to load, or a `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` or `teamInstructions:` key. Collected: one error names every bad worker |
+| Worker flow misses the contract | `hireWorkforce`, before anything is registered — a flow passed under a key that is not its own kind, a configuration it refuses by key or by value, or takes but rewrites (composing `workerConfigSchema()` is the fix), no door or two, no installation session, or a resource with `writtenBy` that `sharedResource()` didn't build. Collected: one error names every problem with every flow, and nothing is hired |
+| Worker cannot run | For a standard worker, `hireWorkforce`; for a user's own worker, the `hire`, `fork` or `edit` that saves it, and its turn — an empty or whitespace-only `flow`, an unknown flow, a user's own worker naming a flow marked `standardOnly` (or naming none, when `agent` is marked), a duplicate standard id (`createWorkerInstallation`), a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this worker's flow, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a worker did not name that the worker's flow reaches anyway because one of the kind's blocks declares it, a `references:` list the hire step cannot resolve (a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this seat cannot reach from its place in the tree — including every ref when no `references` map was passed), a seat id that names no place in the tree while its kind holds references, a reference the worker did not name that the worker's flow reaches anyway, `instructions` given both in the frontmatter and as a body, a `packages:` list the hire step cannot resolve (not a list of names, a name no library in reach offers, or a name both its own folder and a library offer), a held package's block that clashes with another tool the seat can call, registers under a name other than its own, or declares a store, a package with blocks in its own folder that failed to load, or a `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` or `teamInstructions:` key. Collected: one error names every bad worker |
+| A roster write refused | The `hire`, `fork`, `edit` or `fire` block: a standard worker's id (suggesting a fork), an id already on the caller's roster, a worker that isn't the caller's, a flow that isn't a worker flow or is kept for standard workers, or a configuration its flow refuses. Nothing is written. |
+| A turn on a session whose worker can't run | `resolveWorker` throws `WorkerTurnRefusedError`, naming the worker: fired, moved to another flow, a name that no longer resolves, or a flow now kept for standard workers. Nothing is written; the session stays readable. |
 | Package folder fails to load | Collected in `readPackagesDirectory`'s and `readWorkforce`'s `packageErrors` as `kind: "package-load-failed"` (a symlinked or badly named folder, or a missing, unreadable or malformed `PACKAGE.md`), `"refused-entry"` (a file in `packages/`, or a documents, skills or packages folder or a symlink inside a package), or `"unreadable-slot"`, keyed by the path. The package is left out whole |
 | Package block clashes with a preset tool built per turn | That turn fails with a "two tools named" error |
 | A `resources/` slot, `org/`, `teams/`, a team folder, a `workers/` level or a worker folder unreadable or symlinked | Collected in `readResourcesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
@@ -2583,7 +2372,7 @@ before fire removed inventory rows is left out that way.
 | `writable`, `llmWritable`, `render` or `flowIsolation` in a reference file | Collected in `readReferencesDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the file's path — at either value |
 | One basename claimed by a `references/` and a `resources/` file at one level | Collected in `readDeclaredRoster`'s `problems` on the `reference` layer, naming both files. Neither single-folder reader sees it |
 | Reference cannot become a resource | `referencesFromDocs` throws naming the ref — a setting the convention derives, a lazy `prefetchMode`, a record with no `filePath`, or frontmatter `defineResource` itself rejects |
-| One ref passed to `hireWorkforce` as both a document and a reference | `hireWorkforce` throws before hiring anything, naming every ref in both maps |
+| One ref passed to `createWorkerInstallation` as both a document and a reference | Refused before anything is registered, naming every ref in both maps |
 | A reference row cannot be addressed | `clearShadowedReferences` throws when the org id — or, for a flow that isolates its org scope, the flow id — contains `:` or a backslash |
 | A `mailboxes/` slot, `teams/` or a team folder unreadable or symlinked | Collected in `readMailboxesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | Mailbox folder fails to load | Collected in `readMailboxesDirectory`'s `errors` as `kind: "mailbox-load-failed"`, keyed by the folder's path — an unusable name, a symlink, or a missing, unreadable or malformed `MAILBOX.md` |
@@ -2598,10 +2387,6 @@ before fire removed inventory rows is left out that way.
 | `unknown-assignee` | A `fileTask` naming an assignee the mailbox kind's `checkAssignee` refuses: no worker holds the name, two do, or its kind takes no tasks. Per-request; nothing is written |
 | `external-dispatcher` | A flow-to-flow post into an opened mailbox on a host whose dispatcher hands work to an external queue and shares no lease backend. A post through the public action route is written, but its notify block never runs: no member is woken and a routed mailbox doesn't answer |
 | Inventory id is not one path segment | `membershipKey` and `membershipPrefix` throw, naming the offending argument: an empty id, one containing `/` or `\`, or `.` and `..` |
-| Unknown kind on `hire` | The tool, listing the hireable kinds. Writes nothing. |
-| Address already served | The `hire` tool, naming the address and the live kind. Writes nothing. |
-| Hire or fire with no organization | The tool. The verified principal carries no org, and the roster is org-scoped. |
-| `fire` names no roster row | The tool. "This organization hired no seat" when nothing is live at that address. A live file-declared seat is refused as removed by editing its folder, not by firing it. |
 | Inventory write with no org | `openInventory` throws before writing anything — the three collections are org-scoped |
 | Seat inventory write with no seatWriter | `openInventory` throws when passed seats and no `seatWriter` — a seat has no session of its own, so its row needs a flow to run in |
 | Mailbox or seat registration failed | Collected in `openInventory`'s `problems`: a mailbox whose session is not open, whose kind declares no registration action, or whose action failed; a seat write that failed. The rest of the roster is still attempted |

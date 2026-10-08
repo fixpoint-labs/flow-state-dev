@@ -9,7 +9,8 @@
 
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { MAILBOX_KIND, workerConfigSchema } from "@flow-state-dev/workforce";
+import { MAILBOX_KIND, workerConfigSchema, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { z } from "zod";
 import type { PieceInput } from "../piece.mts";
 import { hearingDoor } from "../../../../hearing-door.mts";
@@ -21,6 +22,8 @@ export const PLANNER_KIND = "planner";
 export const FILE_ENTRY = "file";
 
 export interface PlannerFlowOptions {
+  /** The installation whose workers run on this kind. */
+  installation: WorkerInstallation;
   /** The mailbox's id — the session its `fileTask` door runs in. */
   mailboxId: string;
   /** The board's LOCAL name, as `MAILBOX.md` wrote it. */
@@ -48,6 +51,8 @@ export function definePlannerFlow(options: PlannerFlowOptions) {
     kind: PLANNER_KIND,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
+    session: options.installation.session(),
+    resources: { ...options.installation.resources },
     actions: {
       ...hearingDoor,
       [FILE_ENTRY]: {
@@ -68,7 +73,8 @@ export function definePlannerFlow(options: PlannerFlowOptions) {
               ...(input.desk === undefined ? {} : { assignee: input.desk }),
               ...(input.maxAttempts === undefined ? {} : { maxAttempts: input.maxAttempts }),
               ...(Object.keys(piece).length === 0 ? {} : { input: piece }),
-              author: String((ctx.flow as { id?: string }).id ?? ""),
+              // The worker the session names, which its create check confirmed.
+              author: String((ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY] ?? ""),
             };
           },
         }),

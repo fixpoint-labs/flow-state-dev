@@ -81,7 +81,7 @@ import type {
   ToolCatalog,
   UsesSlot
 } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, DeclaredResourceEntry, ResourceVisibilityRule, SessionConfig } from "@flow-state-dev/core/types";
 import {
   activeSkillsArraySchema,
   createSkillActivator,
@@ -104,8 +104,11 @@ import {
 import {
   ROUTED_TURN_STATE,
   answerRoutedPost,
+  mailboxPostCapability,
   routedTurnStateSchema,
-  seatIdConfigSchema
+  seatIdConfigSchema,
+  workerIdOfTurn,
+  workerMailboxPostCapability
 } from "./mailbox-post-capability";
 import { SEAT_PACKAGES_KEY, SEAT_SKILLS_KEY, SEAT_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
@@ -120,6 +123,8 @@ import {
 } from "./seat-capabilities";
 import { SEAT_DISCOVER_KEY } from "./seat-discovery";
 import { seatSkillSchema, workerConfigSchema } from "./worker-config";
+import { seatConfigOf, verifiedWorkerOf } from "./workers/verified-worker";
+import type { WorkerInstallation } from "./workers/installation";
 
 /**
  * The kind name the hire step resolves a record to when it names none, and the
@@ -232,7 +237,7 @@ function packageCatalogCollisions(
  * kind registered under `agent` could hand over a config without the key.
  */
 function seatSkillsOf(ctx: BlockContext): InitialSkill[] {
-  return (ctx.flow.config as Partial<SeatConfig> | undefined)?.seatSkills ?? [];
+  return (seatConfigOf(ctx) as Partial<SeatConfig>).seatSkills ?? [];
 }
 
 /**
@@ -241,7 +246,7 @@ function seatSkillsOf(ctx: BlockContext): InitialSkill[] {
  * off, so anything other than an explicit `true` takes the plain arm.
  */
 function activateToolOn(ctx: BlockContext): boolean {
-  return (ctx.flow.config as Partial<SeatConfig> | undefined)?.skills?.activateTool === true;
+  return (seatConfigOf(ctx) as Partial<SeatConfig>).skills?.activateTool === true;
 }
 
 /** What the app supplies. Everything else is a worker's own setting. */
@@ -305,13 +310,16 @@ export interface AgentWorkerFlowOptions {
    */
   uses?: UsesSlot;
   /**
-   * Give each worker of this kind its own user-scoped storage, instead of one
-   * cell shared by every worker serving the same person. Default: false,
-   * matching the framework (BP-027).
+   * Key this flow's user-scoped storage by the flow copy's id, instead of one
+   * cell the person's other flows share. Default: false, matching the
+   * framework (BP-027).
    *
-   * Forwarded to the flow untouched. The key is the worker's id, so renaming
-   * a worker leaves its isolated data behind under the old name — and so does
-   * flipping this flag on a roster already in use.
+   * Forwarded to the flow untouched. On an installation every worker runs on
+   * the one `agent` copy, so its workers still share one cell per person;
+   * only the skills drawer is kept per worker. On a copy minted for one
+   * worker, the key is that worker's id, so renaming it leaves its isolated
+   * data behind under the old name — and so does flipping this flag on a
+   * roster already in use.
    *
    * All-or-nothing for the kind: a roster is either all-isolated or
    * all-shared, never a mix. Mixing would need each resource to carry its own
@@ -351,6 +359,16 @@ export interface AgentWorkerFlowOptions {
    * Omitted, the kind's sequence is exactly what it is today.
    */
   afterAnswer?: BlockDefinition<any, any>;
+  /**
+   * Run workers as data: one copy of this flow for every worker, each
+   * session naming its worker when it is created (the installation's create
+   * check), and each turn loading that worker's configuration before
+   * anything reads it. The drawer is kept per worker.
+   *
+   * Omitted, the flow reads its settings off the copy, as a copy minted for
+   * one worker does.
+   */
+  installation?: WorkerInstallation;
 }
 
 /**
@@ -757,7 +775,13 @@ function catalogDeclaredResources(
  * @param options What only the app can supply — see {@link AgentWorkerFlowOptions}.
  * @returns A `defineFlow` result of kind `agent`, cardinality `collection`.
  */
-export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
+export function defineAgentWorkerFlow(given: AgentWorkerFlowOptions = {}) {
+  // A copy that runs every worker has no `seatId` of its own: its mailbox
+  // lines are signed by the worker each turn loads.
+  const options: AgentWorkerFlowOptions =
+    given.installation === undefined
+      ? given
+      : { ...given, uses: given.uses?.map((use) => (use === mailboxPostCapability ? workerMailboxPostCapability : use)) };
   const catalog = mergeKindCatalog(options.uses, options.catalog);
   // Before anything is built from it. A catalog key that disagrees with its
   // block's own name would hand the model a tool no seat's `tools:` can
@@ -772,6 +796,12 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   // declares a store is advertised with nothing behind it.
   const catalogResources = catalogDeclaredResources(catalog, seatCapabilityCatalog);
   const settings = settingsSchema({ ...options, catalog }, seatCapabilityCatalog);
+  /**
+   * The settings this turn runs with: the configuration of the worker the
+   * turn resolved, or the copy's own config on a copy minted for one worker.
+   */
+  const turnConfig = (ctx: { readonly session: object; readonly flow?: { readonly config: unknown } }) =>
+    seatConfigOf(ctx) as z.infer<typeof settings>;
   const inputSchema = z.object({ message: z.string() });
   /**
    * The answer's own input: the turn, and on a routed mailbox post the
@@ -825,12 +855,19 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     // switched on re-seeds from the new key; the old rows are orphaned, not
     // lost — BP-030.)
     collectionConfig: { flowIsolation: true },
+    // One drawer per worker on a copy the installation runs every worker on:
+    // the worker this turn's `resolveWorker` loaded and checked, never a value
+    // in session state (BP-031). On a copy minted for one worker the drawer
+    // is the copy's.
+    ...(options.installation !== undefined
+      ? { partitionBy: (ctx: BlockContext) => verifiedWorkerOf(ctx.session as object) }
+      : {}),
     // The second half of the `tools:` fence. A skill a seat merely HOLDS can
     // declare `agents:`, and the delegation surface would otherwise seat board
     // workers — separate generators the `tools:` mapping below never sees —
     // from the app's whole catalog. The fence is the seat's own list, so a
     // seat with `tools: []` reaches nothing, delegated or not.
-    toolSeatFence: (ctx) => (ctx.flow.config as Partial<SeatConfig>).tools ?? []
+    toolSeatFence: (ctx) => (seatConfigOf(ctx) as Partial<SeatConfig>).tools ?? []
   });
 
   // Pinned by the contract (C5): the library plus a per-generator binding.
@@ -897,7 +934,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   const seatCapabilities = (ctx: BlockContext) =>
     resolveSeatCapabilities(
       seatCapabilityCatalog,
-      (ctx.flow.config as Partial<SeatConfig> | undefined)?.capabilities
+      (seatConfigOf(ctx) as Partial<SeatConfig>).capabilities
     );
   const usesEntries = [
     ...(options.uses ?? []),
@@ -962,11 +999,11 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       // seat holds the package, so its text reads as part of what this seat is
       // told. The same caveat holds — order, not precedence.
       prompt: [
-        (_input, ctx) => ctx.flow.config.teamInstructions,
-        (_input, ctx) => ctx.flow.config.instructions,
-        (_input, ctx) => packageInstructionsOf(ctx.flow.config[SEAT_PACKAGES_KEY])
+        (_input, ctx) => turnConfig(ctx).teamInstructions,
+        (_input, ctx) => turnConfig(ctx).instructions,
+        (_input, ctx) => packageInstructionsOf(turnConfig(ctx)[SEAT_PACKAGES_KEY])
       ],
-      model: (_input, ctx) => ctx.flow.config.model,
+      model: (_input, ctx) => turnConfig(ctx).model,
       // A routed mailbox post's lines before it, for this turn only: the
       // context slot reaches the model on its own call and is never stored,
       // so the lines are not kept in the conversation or sent on a later
@@ -989,15 +1026,16 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       // package block the line names already resolved onto `seatTools` at the
       // hire, like a block in the seat's own folder.
       tools: async (_input, ctx): Promise<GeneratorTool[]> => {
-        const listed = ctx.flow.config.tools;
+        const config = turnConfig(ctx);
+        const listed = config.tools;
         const named =
           listed === undefined
             ? [
-                ...(await selectedPresetTools(seatCapabilityCatalog, ctx.flow.config.capabilities, ctx)),
-                ...(ctx.flow.config[SEAT_PACKAGES_KEY] ?? []).flatMap((held) => held.tools)
+                ...(await selectedPresetTools(seatCapabilityCatalog, config.capabilities, ctx)),
+                ...(config[SEAT_PACKAGES_KEY] ?? []).flatMap((held) => held.tools)
               ]
             : listed.map((toolName) => catalog[toolName] as GeneratorTool);
-        const own = ctx.flow.config[SEAT_TOOLS_KEY] as GeneratorTool[] | undefined;
+        const own = config[SEAT_TOOLS_KEY] as GeneratorTool[] | undefined;
         // Materialized only when the seat has both, which is the uncommon case.
         if (own === undefined || own.length === 0) return named;
         return named.length === 0 ? own : [...named, ...own];
@@ -1059,7 +1097,7 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       [ACTIVE_SKILLS_STATE.field]: activeSkillsArraySchema
     }),
     execute: async (_input, ctx) => {
-      const names = ctx.flow.config.skills.active;
+      const names = turnConfig(ctx).skills.active;
       // The cross-field refusal the mint could not carry — see the note there.
       assertHeldSkills(names, seatSkillsOf(ctx), appSkills);
       if (names.length === 0) return { added: 0 };
@@ -1097,9 +1135,31 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     }
   });
 
+  const installation = options.installation;
+  /**
+   * The turn's worker, loaded before anything reads a setting: every read
+   * below goes through `turnConfig`, which returns this worker's
+   * configuration once it is loaded. It runs as the flow's request
+   * `onStarted`, which runs at the start of every run of a request, a resumed
+   * one included. A step of the turn would not: a resumed request injects a
+   * completed step's recorded output rather than running it again, so the
+   * worker would be loaded on the first run only, and a tool that waited for
+   * a person would be gone when the answer arrived.
+   */
+  const resolveTurnWorker = handler({
+    name: "agent-resolve-worker",
+    inputSchema: z.unknown(),
+    outputSchema: z.object({ worker: z.string().nullable() }),
+    ...(installation !== undefined ? { resources: { ...installation.resources } } : {}),
+    execute: async (_input, ctx) => {
+      if (installation === undefined) return { worker: null };
+      return { worker: (await installation.resolveWorker(ctx, AGENT_KIND)).id };
+    }
+  });
+
   const answered = sequencer({ name: "agent-run", inputSchema: turnInputSchema, flowConfigSchema: settings })
-    .tapIf((_input, ctx) => ctx.flow.config.skills.enableLlmClassifier !== true, matcherWithoutClassifier)
-    .tapIf((_input, ctx) => ctx.flow.config.skills.enableLlmClassifier === true, matcherWithClassifier)
+    .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier !== true, matcherWithoutClassifier)
+    .tapIf((_input, ctx) => turnConfig(ctx).skills.enableLlmClassifier === true, matcherWithClassifier)
     .tap(appendSeatDefaults)
     // Two arms rather than two `.stepIf`s: the answer is the sequencer's OUTPUT,
     // and a second conditional step would have to be typed against the first
@@ -1172,7 +1232,8 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       z.object({ answeredAlready: z.literal(true) })
     ]),
     requestStateSchema: routedTurnStateSchema,
-    flowConfigSchema: seatIdConfigSchema,
+    // A copy minted for one worker signs as its `seatId`, checked at the mint.
+    ...(options.installation === undefined ? { flowConfigSchema: seatIdConfigSchema } : {}),
     execute: async (reply: unknown, ctx) => {
       // Run only on a routed turn (the `tapIf` below), which is marked.
       const routed = ctx.request.state.mailboxRoutedPost!;
@@ -1181,7 +1242,10 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
           mailbox: routed.mailboxId,
           postId: routed.postId,
           body: reply,
-          author: ctx.flow.config.seatId,
+          author:
+            options.installation === undefined
+              ? String((ctx.flow.config as Record<string, unknown>).seatId)
+              : workerIdOfTurn(ctx),
           ...(routed.answerToken === undefined ? {} : { token: routed.answerToken })
         };
       }
@@ -1224,6 +1288,25 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
   const taskTurn = sequencer({ name: "agent-task-turn", inputSchema: taskWorkerInputSchema })
     .step((task: TaskWorkerInput) => ({ message: taskMessage(task) }), run);
 
+  // On an installation the copy declares every document a worker may be
+  // granted, and each turn's model reaches only its worker's: the
+  // installation's visibility rule reads the worker this turn loaded. Typed
+  // as the optional fields they fill, so the flow's type is one shape either
+  // way.
+  const bound: {
+    session?: SessionConfig;
+    resources?: Record<string, DeclaredResourceEntry>;
+    resourceVisibility?: ResourceVisibilityRule;
+    request?: { onStarted: typeof resolveTurnWorker };
+  } =
+    installation !== undefined
+      ? {
+          session: installation.session(),
+          resources: { ...installation.resources, ...installation.documents },
+          resourceVisibility: installation.resourceVisibility,
+          request: { onStarted: resolveTurnWorker }
+        }
+      : {};
   const flow = defineFlow({
     kind: AGENT_KIND,
     // Required by contract C2. A plain singleton's seats mint and are then
@@ -1234,9 +1317,14 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     // shared across the roster otherwise, which is the framework's default.
     isolateUserState: options.isolateUserState ?? false,
     configSchema: settings,
+    ...bound,
     // `userMessage` keeps the caller's message as their turn, so a seat's
     // conversation holds both sides and survives a reload.
-    actions: { run: { inputSchema, block: run, userMessage: (input) => input.message } },
+    // On an installation copy the session names its worker, so a turn whose
+    // input names one (or carries any other key) is refused, not stripped.
+    actions: {
+      run: { inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema, block: run, userMessage: (input) => input.message }
+    },
     // A mailbox's notify block reaches a seat here: a dispatch resolves only
     // internal entries, so this is never caller-addressed. It runs `run`'s own
     // sequence, so a seat answers a post exactly as it answers a person; the

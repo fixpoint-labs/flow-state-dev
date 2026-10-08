@@ -53,7 +53,6 @@ import { resolveResourceCollection } from "@flow-state-dev/orchestration";
 import { isTalkTemplate } from "./mailbox/mailbox-binder";
 import type { MailboxManifest, WorkerManifest } from "./manifest";
 import type { MailboxInventoryRow, SeatInventoryRow } from "./inventory/collections";
-import { hiredSeatManifestFromStored } from "./roster/rows";
 
 /**
  * The declared half, as the sources need it — a structural subset of
@@ -92,15 +91,6 @@ export interface WorkforceManifestSourceOptions {
   roster: DeclaredWorkforce;
   /** Where the live rows are mounted. A domain with no key gets no source. */
   inventory: InventoryKeys;
-  /**
-   * Registry key for the durable hired roster (`defineHiredRosterCollection`).
-   *
-   * When named, a roster row with no file is the declared half for that seat
-   * — so Discover sees a runtime hire the same way it sees a file-declared
-   * one (FIX-1526). Omitted, only the boot-resolved file tree is declared,
-   * which is the ordinary state for an app that does not hire at runtime.
-   */
-  hiredRoster?: string;
 }
 
 /**
@@ -121,14 +111,6 @@ function purposeOf(
   if (typeof described === "string" && described.trim() !== "") return described.trim();
   if (typeof instructions === "string" && instructions.trim() !== "") return instructions.trim();
   return `The ${noun} "${id}". Its file declares no description.`;
-}
-
-/**
- * The org this discover call runs under, from the verified principal.
- */
-function orgOf(ctx: BlockContext): string | undefined {
-  const orgId = ctx.org?.identity.orgId ?? ctx.org?.identity.id;
-  return typeof orgId === "string" && orgId.length > 0 ? orgId : undefined;
 }
 
 /**
@@ -184,30 +166,13 @@ async function listRows<T>(
 function seatsSource(
   roster: DeclaredWorkforce,
   key: string,
-  hiredRosterKey?: string,
 ): BlockManifestSource {
   const files = new Map(roster.workers.map((worker) => [worker.id, worker]));
   return {
     domain: "seats",
     origin: "createWorkforceCapability",
     entries: async (ctx: BlockContext): Promise<ManifestEntry[]> => {
-      const declared = new Map(files);
-      if (hiredRosterKey !== undefined) {
-        const orgId = orgOf(ctx);
-        if (orgId !== undefined) {
-          for (const stored of await listRows<unknown>(ctx, hiredRosterKey, "hired roster")) {
-            // One bad row is one skip, as in `reloadHiredSeats` — which names
-            // each skipped row in its `problems`. Discover skips silently: a
-            // row it cannot list is simply not a seat here.
-            const record = hiredSeatManifestFromStored(orgId, stored.state);
-            if ("problem" in record) continue;
-            if (!declared.has(record.manifest.id)) {
-              declared.set(record.manifest.id, record.manifest);
-            }
-          }
-        }
-      }
-
+      const declared = files;
       const entries: ManifestEntry[] = [];
       for (const row of await listRows<SeatInventoryRow>(ctx, key, "seats")) {
         // A row that lost its required fields reads back empty rather than
@@ -298,7 +263,7 @@ export function workforceManifestSources(
 ): BlockManifestSource[] {
   const sources: BlockManifestSource[] = [];
   if (options.inventory.seats !== undefined) {
-    sources.push(seatsSource(options.roster, options.inventory.seats, options.hiredRoster));
+    sources.push(seatsSource(options.roster, options.inventory.seats));
   }
   if (options.inventory.mailboxes !== undefined) {
     sources.push(mailboxesSource(options.roster, options.inventory.mailboxes));

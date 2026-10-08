@@ -27,8 +27,6 @@ For each storage key the session touches, the debug response includes:
 
 It does not apply `prefetchWindow`: a collection lists all of its items, not a window of them. It does not apply `client.data` to the storage view either; that projection is shown alongside the raw state, not in place of it.
 
-The workforce roster is the exception to the full listing. A [user-owned seat](../workforce/durable-hire.md#hiring-a-seat-only-one-member-can-reach) that belongs to a user other than the session's user doesn't appear in the collection's item list or its item count, and fetching its content returns 404.
-
 On any collection, fetching content for a topic that doesn't match the collection's pattern also returns 404.
 
 The endpoint is read-only. You can't mutate state through it.

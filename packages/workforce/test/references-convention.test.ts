@@ -49,12 +49,11 @@ import {
   clearShadowedReferences,
   describeShadowedReferences,
 } from "../src/clear-shadowed-references";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { SEAT_REFERENCES_KEY, placeOfReference } from "../src/seat-references";
 import { SEAT_RESOURCES_KEY } from "../src/seat-resources";
 import { workerConfigSchema } from "../src/worker-config";
-import { hiredSeatManifest, toHiredSeatRow } from "../src/roster/rows";
 import { workerDoor } from "./worker-door";
 
 const ORG = "org_fix1467";
@@ -182,7 +181,7 @@ const handleFor = (ctx: { resources: { get(k: string): unknown } }, key: string)
 async function seatOn(root: string, seatRecord: WorkerManifest = seat(ENG_SEAT)) {
   const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
   const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
-  const hired = hireWorkforce([seatRecord], {
+  const hired = mintSeats([seatRecord], {
     workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never },
     documents,
     references,
@@ -372,7 +371,7 @@ describe("V2b · BR-19 — a row written BEFORE the move shadows the file", () =
       "org/resources/handbook.md": doc("The org handbook", "ORG HANDBOOK v1"),
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
-    const before = hireWorkforce([seat(ENG_SEAT)], {
+    const before = mintSeats([seat(ENG_SEAT)], {
       workerFlows: { [KIND]: kindWith(documents) as never },
       documents,
     });
@@ -630,7 +629,7 @@ describe("V4 · BR-14 — the mutable path is untouched", () => {
       "org/resources/coc.md": doc("Code of conduct", "coc seed"),
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
-    const hired = hireWorkforce([seat(ENG_SEAT)], {
+    const hired = mintSeats([seat(ENG_SEAT)], {
       workerFlows: { [KIND]: kindWith(documents) as never },
       documents,
     });
@@ -690,7 +689,7 @@ describe("BR-15 · a ref claimed by both slots is refused at both doors", () => 
       content: "x",
     });
     expect(() =>
-      hireWorkforce([seat(ENG_SEAT)], {
+      mintSeats([seat(ENG_SEAT)], {
         workerFlows: { [KIND]: kindWith({ [ORG_HANDBOOK]: shared }) as never },
         documents: { [ORG_HANDBOOK]: shared },
         references: { [ORG_HANDBOOK]: shared },
@@ -744,7 +743,7 @@ describe("the wall places a reference by its minted ref, not by its accessor key
       // A single-segment alias of a TEAM document — the widening shape.
       companyHandbook: references[ENG_HANDBOOK]!,
     };
-    const hired = hireWorkforce([seat(seatId)], {
+    const hired = mintSeats([seat(seatId)], {
       workerFlows: { [KIND]: kindWith({ ...documents, ...aliased }) as never },
       documents,
       references: aliased,
@@ -925,7 +924,7 @@ describe("the wall cannot be turned off by omission", () => {
     const root = await tree();
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
     const references = referencesFromDocs((await readReferencesDirectory(root)).documents);
-    return hireWorkforce([seatRecord], {
+    return mintSeats([seatRecord], {
       workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never },
       documents,
       // `references` deliberately NOT passed. This is the whole case.
@@ -950,7 +949,7 @@ describe("the wall cannot be turned off by omission", () => {
       Object.entries(all).filter(([ref]) => ref !== SALES_HANDBOOK),
     );
     expect(() =>
-      hireWorkforce([seat(ENG_SEAT)], {
+      mintSeats([seat(ENG_SEAT)], {
         workerFlows: { [KIND]: kindWith({ ...documents, ...all }) as never },
         documents,
         references: partial,
@@ -965,7 +964,7 @@ describe("the wall cannot be turned off by omission", () => {
       "teams/engineering/resources/scratch.md": doc("Scratch", "seed"),
     });
     const documents = resourcesFromDocs((await readResourcesDirectory(root)).documents);
-    const hired = hireWorkforce([seat(ENG_SEAT)], {
+    const hired = mintSeats([seat(ENG_SEAT)], {
       workerFlows: { [KIND]: kindWith(documents) as never },
       documents,
     });
@@ -1011,28 +1010,3 @@ describe("an org seat's own references/ reach that seat alone", () => {
   });
 });
 
-describe("a runtime-hired seat on a kind with references", () => {
-  it("mints at its org-qualified address, and its wall is drawn from the seat id it was hired as", async () => {
-    // The hire row's address carries the organization (`acme.engineering.ada`);
-    // the place in the tree is the seat id (`engineering.ada`).
-    const bound = hiredSeatManifest("acme", toHiredSeatRow({ seatId: ENG_SEAT, flow: KIND, owningOrgId: "acme" }));
-    if ("problem" in bound) throw new Error(bound.problem);
-    expect(bound.manifest.id).toBe(`acme.${ENG_SEAT}`);
-
-    const { seat: hired } = await seatOn(await tree(), bound.manifest);
-    expect(hired?.id).toBe(`acme.${ENG_SEAT}`);
-    // Under the organization the hire pinned it to.
-    const ctx = await createExecutionContext({
-      flow: hired!,
-      actionName: "run",
-      requestId: "req_hired",
-      sessionId: "sess_hired",
-      userId: USER,
-      orgId: "acme",
-      stores: createInMemoryStores(),
-    });
-    expect(await handleFor(ctx, ORG_HANDBOOK)!.readContent()).toBe("ORG HANDBOOK v1");
-    expect(handleFor(ctx, ENG_HANDBOOK)).toBeDefined();
-    expect(handleFor(ctx, SALES_HANDBOOK)).toBeUndefined();
-  });
-});

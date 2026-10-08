@@ -24,9 +24,16 @@
  * can never reach a deployed build. The published kind has no switch that
  * stops a routed answer landing, and must not.
  */
-import { defineFlow, generator, type BlockDefinition, type DefinedCapability } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, sequencer, type BlockDefinition, type DefinedCapability } from "@flow-state-dev/core";
 import { resolveActivePresets } from "@flow-state-dev/core/capability";
-import { AGENT_KIND, mailboxNotifyInputSchema, workerConfigSchema, type MailboxNotifyInput } from "@flow-state-dev/workforce";
+import {
+  AGENT_KIND,
+  mailboxNotifyInputSchema,
+  workerConfigOf,
+  workerConfigSchema,
+  type MailboxNotifyInput,
+  type WorkerInstallation,
+} from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 import { goalControl } from "./goal-control";
@@ -53,19 +60,26 @@ function grantedTools(capability: DefinedCapability): Record<string, BlockDefini
  * @param mailboxPost The mailbox-post capability the real kind is built with. Its
  *   tool joins the catalog, and a seat reaches the entries its `tools:` names,
  *   as on the real kind.
+ * @param installation The installation the real kind runs its workers on:
+ *   this one does too, loading each turn's worker first, as the real kind does.
  */
-export function mailboxLandingControl(catalog: Record<string, BlockDefinition<any, any>>, mailboxPost: DefinedCapability) {
+export function mailboxLandingControl(
+  catalog: Record<string, BlockDefinition<any, any>>,
+  mailboxPost: DefinedCapability,
+  installation: WorkerInstallation,
+) {
   if (goalControl() !== "no-landing") return undefined;
   const kindCatalog = { ...grantedTools(mailboxPost), ...catalog };
   const settings = workerConfigSchema().extend({ tools: z.array(z.string()).optional() });
   type Settings = z.infer<typeof settings>;
-  const tools = (_input: unknown, ctx: { flow: { config: unknown } }): BlockDefinition<any, any>[] =>
-    ((ctx.flow.config as Settings).tools ?? [])
+  const config = (ctx: { session: object }) => workerConfigOf(ctx) as Settings;
+  const tools = (_input: unknown, ctx: { session: object }): BlockDefinition<any, any>[] =>
+    (config(ctx).tools ?? [])
       .filter((name) => kindCatalog[name] !== undefined)
       .map((name) => kindCatalog[name]!);
   const prompt = [
-    (_input: unknown, ctx: { flow: { config: unknown } }) => (ctx.flow.config as Settings).teamInstructions,
-    (_input: unknown, ctx: { flow: { config: unknown } }) => (ctx.flow.config as Settings).instructions,
+    (_input: unknown, ctx: { session: object }) => config(ctx).teamInstructions,
+    (_input: unknown, ctx: { session: object }) => config(ctx).instructions,
   ];
   const answerPost = generator({
     name: "agent-answer",
@@ -93,19 +107,40 @@ export function mailboxLandingControl(catalog: Record<string, BlockDefinition<an
     user: (input: { message: string }) => input.message,
     tools,
   });
+  // The turn's worker, loaded before the answer reads its settings.
+  const resolve = <T extends z.ZodTypeAny>(inputSchema: T) =>
+    handler({
+      name: "agent-resolve-worker",
+      inputSchema,
+      resources: { ...installation.resources },
+      execute: async (_input, ctx) => {
+        await installation.resolveWorker(ctx, AGENT_KIND);
+      },
+    });
+  const turnInput = z.object({ message: z.string() });
   return defineFlow({
     kind: AGENT_KIND,
     cardinality: "collection",
     configSchema: settings,
+    session: installation.session(),
+    resources: { ...installation.resources },
     actions: {
       run: {
-        inputSchema: z.object({ message: z.string() }),
-        block: answerTurn,
+        inputSchema: turnInput.strict(),
+        block: sequencer({ name: "agent-run", inputSchema: turnInput }).tap(resolve(turnInput)).step(answerTurn),
         userMessage: (input: { message: string }) => input.message,
       },
     },
     internal: {
-      actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: answerPost, userMessage: heard } },
+      actions: {
+        onMailboxPost: {
+          inputSchema: mailboxNotifyInputSchema,
+          block: sequencer({ name: "agent-heard-post", inputSchema: mailboxNotifyInputSchema })
+            .tap(resolve(mailboxNotifyInputSchema))
+            .step(answerPost),
+          userMessage: heard,
+        },
+      },
     },
   } as never);
 }

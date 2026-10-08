@@ -12,9 +12,28 @@ import type { BoardRow } from "../src/lib/reads";
 import { GAPS } from "../src/gaps";
 import { bootTheme } from "../src/lib/theme";
 import { createLabClients } from "../src/lib/connection";
-import { ASKER_GATED_LINE, ASKER_REFUSED_LINE, ASKER_SLOW_LINE, heardLine, holdSlowLines, startProjectLine } from "./fixtures/ask-lab/asker.mts";
+import { ASKER_GATED_LINE, ASKER_KIND, ASKER_REFUSED_LINE, ASKER_SLOW_LINE, heardLine, holdSlowLines, startProjectLine } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
+
+/**
+ * Run a seat's action as a person would: in a session of the asker flow's one
+ * copy, opened naming the seat's worker first.
+ */
+async function seatAction(
+  clients: ReturnType<typeof createLabClients>,
+  seatId: string,
+  action: string,
+  input: unknown,
+  sessionId: string,
+) {
+  await clients.sessions
+    .createSession({ flowKind: ASKER_KIND, userId: clients.userId, sessionId, state: { workerId: seatId } })
+    .catch((error: unknown) => {
+      if ((error as { status?: number }).status !== 409) throw error;
+    });
+  return clients.actions(ASKER_KIND).sendAction(action, input, { sessionId });
+}
 
 const served: ServedLab[] = [];
 afterEach(async () => {
@@ -165,7 +184,7 @@ describe("a workstream's Stream holds its members' asks (BR-16)", () => {
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/w/ops.desk/stream`);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     // ops.asker sits in #ops.desk, so its ask belongs in that Stream.
-    await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
+    await seatAction(clients, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
 
     const ask = await screen.findByTestId("feed-ask");
@@ -269,7 +288,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     const lab = await serveLab((await openAskLab(options)).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
-    await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
+    await seatAction(clients, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
     beforeRender?.();
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
@@ -425,7 +444,7 @@ describe("Jump to a declared document (BR-10)", () => {
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     // A seat session, before the page boots, makes a flow that serves the document listable.
-    await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
+    await seatAction(clients, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
 
@@ -454,7 +473,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     for (let i = 0; i < asks; i += 1) {
-      await clients.actions("ops.asker").sendAction("ask", { what: `ship part ${i}` }, { sessionId: `s_ops_asker_${i}` });
+      await seatAction(clients, "ops.asker", "ask", { what: `ship part ${i}` }, `s_ops_asker_${i}`);
     }
     setURL(`${lab.baseUrl}${path}`);
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
@@ -587,7 +606,9 @@ describe("Chief of Staff (FIX-1722)", () => {
 
     // The session the door opened is the seat's, and holds the line and the reply drawn.
     const sessionId = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
-    expect((await clients.sessions.getSession(sessionId)).flowId).toBe("ops.chief-of-staff");
+    const opened = await clients.sessions.getSession(sessionId);
+    expect(opened.flowId).toBe(ASKER_KIND);
+    expect(opened.state?.workerId).toBe("ops.chief-of-staff");
     const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message"] });
     const stored = (state.items ?? []) as Array<{ id: string; role?: string; content?: unknown }>;
     const reply = stored.find((item) => item.role === "assistant");
@@ -746,7 +767,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     fireEvent.click(screen.getByTestId("cos-composer-send"));
     await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
     expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(first);
-    const direct = (await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).filter((s) => s.flowId === "ops.chief-of-staff" && s.parentSessionId == null);
+    const direct = (await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).filter((s) => (s as { state?: { workerId?: string } }).state?.workerId === "ops.chief-of-staff" && s.parentSessionId == null);
     expect(direct.map((s) => s.id)).toEqual([first]);
   });
 
@@ -754,7 +775,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
-    await clients.actions("ops.chief-of-staff").sendAction("message", { message: "earlier" }, { sessionId: "s_cos_earlier" });
+    await seatAction(clients, "ops.chief-of-staff", "message", { message: "earlier" }, "s_cos_earlier");
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     let failing = false;
@@ -788,14 +809,15 @@ describe("Chief of Staff (FIX-1722)", () => {
     const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
-    await clients.actions("ops.chief-of-staff").sendAction("ask", { what: "ship it" }, { sessionId: "s_cos_asked" });
+    setURL(lab.baseUrl);
+    await seatAction(clients, "ops.chief-of-staff", "ask", { what: "ship it" }, "s_cos_asked");
     let suspension: { requestId: string; suspensionId: string } | undefined;
     await waitFor(async () => {
       const state = await clients.sessions.getSessionState("s_cos_asked", { includeItems: true, itemTypes: ["suspension"] });
       suspension = (state.items ?? [])[0] as typeof suspension;
       expect(suspension).toBeDefined();
     });
-    await clients.recovery.resumeSuspension("ops.chief-of-staff", suspension!.requestId, {
+    await clients.recovery.resumeSuspension(ASKER_KIND, suspension!.requestId, {
       suspensionId: suspension!.suspensionId,
       action: "approve",
       resumedBy: ASK_LAB_USER_ID,
@@ -815,7 +837,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     const lab = await serveLab((await openAskLab()).flowState);
     served.push(lab);
     // A seat session, so there are asks to read.
-    await createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID }).actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
+    await seatAction(createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID }), "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);

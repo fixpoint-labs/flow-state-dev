@@ -33,7 +33,7 @@ import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext, mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { system } from "@flow-state-dev/memory";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
-import { hireWorkforce, type HireOptions } from "../src/hire";
+import { mintSeats, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 
 const USER_ID = "one-human";
@@ -44,7 +44,7 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
 }
 
 function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): FlowInstance[] {
-  return hireWorkforce(manifests, { workerFlows: kinds });
+  return mintSeats(manifests, { workerFlows: kinds });
 }
 
 /** The write-side entry point — `createMemoryCapability` would be read-only. */

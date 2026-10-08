@@ -27,14 +27,14 @@ vi.mock("@flow-state-dev/workforce", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@flow-state-dev/workforce")>();
   return {
     ...actual,
-    hireWorkforce: (...args: Parameters<typeof actual.hireWorkforce>) => {
-      hired.options.push(args[1]);
-      return actual.hireWorkforce(...args);
+    createWorkerInstallation: (...args: Parameters<typeof actual.createWorkerInstallation>) => {
+      hired.options.push(args[0]);
+      return actual.createWorkerInstallation(...args);
     },
   };
 });
 
-const { hireKitchenSinkWorkforce } = await import("../workforce/hire");
+const { buildKitchenSinkWorkforce } = await import("../workforce/hire");
 const { packageBlocks } = await import("../workforce/workforce.gen");
 
 afterEach(() => {
@@ -43,8 +43,8 @@ afterEach(() => {
 });
 
 describe("the kitchen-sink hire and packages", () => {
-  it("passes the generated packageBlocks to the hire", async () => {
-    await hireKitchenSinkWorkforce();
+  it("passes the generated packageBlocks to the installation", async () => {
+    await buildKitchenSinkWorkforce();
     expect(hired.options.length).toBeGreaterThan(0);
     expect((hired.options[0] as { packageBlocks?: unknown }).packageBlocks).toBe(packageBlocks);
   });
@@ -52,7 +52,7 @@ describe("the kitchen-sink hire and packages", () => {
   it("does not start when the loader refused a package, naming its folder", async () => {
     const at = "teams/support/workers/iris/packages/refunds";
     loader.packageErrors = [{ path: at, error: new Error("no PACKAGE.md"), kind: "package-load-failed" }];
-    await expect(hireKitchenSinkWorkforce()).rejects.toThrow(at);
+    await expect(buildKitchenSinkWorkforce()).rejects.toThrow(at);
     expect(hired.options).toEqual([]);
   });
 });

@@ -56,28 +56,32 @@ import { ClientHttpError, type ResourceManifest, type SessionSummary } from "@fl
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
-import {
-  HIRED_ROSTER_BROWSER_PATTERN,
-  isHiredSeatRow,
-  listedSeatRows,
-  splitSeatAddress
-} from "@flow-state-dev/workforce/browser";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import type { LabClients } from "./connection";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
 
+/**
+ * The worker a session runs, as its state names it (`workerId`), or `null`
+ * when it names none.
+ */
+export function workerOf(session: SessionSummary): string | null {
+  return text(field((session as { state?: unknown }).state, WORKER_ID_STATE_KEY));
+}
+
 /** One section's outcome: its value, or why it has none. */
 export type Section<T> = { ok: true; value: T } | { ok: false; failure: Failure };
 
-/** A seat, as the seat inventory registers it. */
+/** A seat, as the seat inventory registers it: one worker. */
 export type Seat = {
   /**
-   * The seat's address, which is also its flow instance id: `<team>.<name>`,
-   * a bare name for an org seat, or `<org>.<seatId>` for a hired one.
+   * The worker's id: `<team>.<name>`, or a bare name for an org seat. Boards
+   * and mailboxes name the seat by it, and its sessions carry it as their
+   * `workerId`.
    */
   id: string;
-  /** The kind the seat was hired from; `null` on a row that has none. */
+  /** The worker flow the worker runs on, which is also that flow's copy id; `null` on a row that has none. */
   kind: string | null;
   /**
    * The action that takes a person's message into this seat's sessions, as
@@ -85,17 +89,6 @@ export type Seat = {
    * written before doors were published.
    */
   door: string | null;
-  /**
-   * Whether the row says the seat was hired at runtime (`true`) or declared
-   * (`false`); `null` on a row written before rows said, which is then read
-   * by its id's shape.
-   */
-  hired: boolean | null;
-  /**
-   * The id boards and mailboxes name the seat by: for a hired seat the
-   * `<seatId>` inside its `<org>.<seatId>` address, otherwise `id` itself.
-   */
-  seatId: string;
   /** The team it sits under, or {@link STAFF_TEAM} for an org seat (see {@link toSeat}). */
   team: string;
   name: string;
@@ -250,17 +243,9 @@ export type DeclaredResource = { ref: string; sessionId: string };
 
 /** The organization's seats and workstreams, as the inventory registers them. */
 export type Inventory = {
-  /**
-   * The seats a team list shows: a hired seat only while the organization's
-   * roster backs it (Workforce's `listedSeatRows`), every declared seat as registered.
-   */
+  /** Every seat the inventory registers. */
   seats: Seat[];
   workstreams: Workstream[];
-  /**
-   * Set when hired seats were left out because the roster couldn't be read:
-   * says how many and why. Absent when the roster loaded, or nothing was left out.
-   */
-  rosterUnread?: string;
 };
 
 /** Everything one refresh read. */
@@ -307,9 +292,6 @@ export const ROOM_KIND = "mailbox";
  * The organization's projects, by their published key pattern.
  */
 const PROJECT_PATTERNS = { projects: "projects/*" } as const;
-
-/** The organization's hired roster, by its published key pattern. */
-const ROSTER_PATTERN = HIRED_ROSTER_BROWSER_PATTERN;
 
 /** Rows per collection page: the collection route's maximum. */
 const PAGE_SIZE = 200;
@@ -380,29 +362,19 @@ function time(value: unknown): number | null {
 export const STAFF_TEAM = "Staff";
 
 /**
- * A seat inventory row, grouped by its address (FIX-1719's seat contract):
+ * A seat inventory row, grouped by its worker id:
  *
- * - `<org>.<seatId>`, a seat hired at runtime into this organization (a
- *   user-owned one too), is split the way Workforce splits it and grouped by
- *   the seat id it holds;
  * - `<team>.<name>` sits under its team: a team id carries no dot, so the team
  *   is everything before the first one;
  * - an id with no dot is an org seat, and sits in {@link STAFF_TEAM}.
- *
- * Which of the first two a row is comes from the row's own `hired` field, so
- * a declared team that shares the organization's name stays a team. A row
- * written before the field existed is read by its id's shape.
  */
-export function toSeat(row: unknown, orgId: string): Seat | undefined {
+export function toSeat(row: unknown): Seat | undefined {
   const id = text(field(row, "id"));
   if (id === null) return undefined;
-  const flag = field(row, "hired");
-  const hired = typeof flag === "boolean" ? flag : null;
-  const address = (isHiredSeatRow(orgId, { id, hired }) ? splitSeatAddress(orgId, id) : undefined) ?? id;
-  const dot = address.indexOf(".");
-  const team = dot > 0 ? address.slice(0, dot) : STAFF_TEAM;
-  const name = dot > 0 ? address.slice(dot + 1) : address;
-  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), hired, seatId: address, team, name };
+  const dot = id.indexOf(".");
+  const team = dot > 0 ? id.slice(0, dot) : STAFF_TEAM;
+  const name = dot > 0 ? id.slice(dot + 1) : id;
+  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), team, name };
 }
 
 /** A mailbox inventory row. A row written before `members` existed reads as none (BP-030). */
@@ -579,52 +551,8 @@ export function createLabReader(clients: LabClients): LabReader {
   const readBoard = async (mailboxId: string, boardRef: string): Promise<BoardRow[]> =>
     (await readCollection(mailboxId, boardRef)).map((row) => toBoardRow(boardRef, mailboxId, row.topic, row.clientData));
 
-  /**
-   * The organization's hired roster (its seat ids), through the first listed
-   * flow that declares it. A failure, or no listed flow declaring it, is the
-   * section's failure: the caller then lists no hired seat.
-   */
-  const readRoster = async (
-    byKind: ReadonlyMap<string, string>,
-  ): Promise<Section<Array<{ seatId: string; incarnation: string | null }>>> => {
-    try {
-      for (const [kind, sessionId] of byKind) {
-        const manifest = await manifestFor(kind, sessionId);
-        const ref = manifest.resources.find(
-          (r) => r.kind === "collection" && r.pattern === ROSTER_PATTERN && r.client.state?.read === true,
-        )?.ref;
-        if (ref === undefined) continue;
-        const rows = await readCollection(sessionId, ref);
-        return {
-          ok: true,
-          value: rows.flatMap((row) => {
-            const seatId = text(field(row.clientData, "seatId"));
-            return seatId === null ? [] : [{ seatId, incarnation: text(field(row.clientData, "incarnation")) }];
-          }),
-        };
-      }
-    } catch (error) {
-      return { ok: false, failure: describeFailure(error) };
-    }
-    return { ok: false, failure: { message: "None of this person's sessions is on a flow that declares the roster." } };
-  };
-
-  /**
-   * The sessions the roster may be read through: the top-level ones by kind
-   * first, then a kind seen only on a dispatch child. The roster is org-scoped,
-   * so any session of the org reads the same rows, and a viewer whose only
-   * session on a roster-declaring flow is a child still has one.
-   */
-  const rosterCarriers = (sessions: SessionSummary[], topLevel: ReadonlyMap<string, string>) => {
-    const byKind = new Map(topLevel);
-    for (const session of sessions) {
-      if (!byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
-    }
-    return byKind;
-  };
-
   /** Find the inventory through the first listed session whose flow declares it. */
-  const readInventory = async (sessions: SessionSummary[], orgId: string): Promise<Section<Inventory>> => {
+  const readInventory = async (sessions: SessionSummary[]): Promise<Section<Inventory>> => {
     const byKind = new Map<string, string>();
     for (const session of sessions) {
       if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
@@ -647,32 +575,11 @@ export function createLabReader(clients: LabClients): LabReader {
           readCollection(sessionId, seatsRef),
           readCollection(sessionId, mailboxesRef),
         ]);
-        // Each seat beside the incarnation its row carries, which the
-        // team-list rule matches against the roster row's.
-        const rows = seatRows.flatMap((r) => {
-          const seat = toSeat(r.clientData, orgId);
-          return seat === undefined
-            ? []
-            : [{ id: seat.id, hired: seat.hired, incarnation: text(field(r.clientData, "incarnation")), seat }];
-        });
-        const registered = rows.map((row) => row.seat);
-        // A hired seat is listed only while the roster backs it: Workforce's
-        // team-list rule, applied once here so every screen draws the same list.
-        // The roster is read only when a hired seat's row is there to check.
-        const anyHired = registered.some((seat) => isHiredSeatRow(orgId, seat));
-        const roster = anyHired ? await readRoster(rosterCarriers(sessions, byKind)) : ({ ok: true, value: [] } as const);
-        const seats = listedSeatRows(orgId, rows, roster.ok ? roster.value : undefined).map((row) => row.seat);
-        const hiddenForNoRoster = registered.length - seats.length;
-        const rosterUnread =
-          roster.ok || hiddenForNoRoster === 0
-            ? null
-            : `${hiddenForNoRoster} hired seat${hiddenForNoRoster === 1 ? " isn't" : "s aren't"} listed: the roster didn't load, so Shift Manager can't show ${hiddenForNoRoster === 1 ? "it's" : "they're"} still hired. ${roster.failure.message}`;
+        const seats = seatRows.map((r) => toSeat(r.clientData)).filter((seat): seat is Seat => seat !== undefined);
         const workstreams = mailboxRows
           .map((r) => toWorkstream(r.clientData))
           .filter((w): w is Workstream => w !== undefined);
-        // Empty means nothing registered, not nothing listed: hired seats the
-        // roster can't vouch for are a listed inventory with `rosterUnread`.
-        if (registered.length === 0 && workstreams.length === 0) {
+        if (seats.length === 0 && workstreams.length === 0) {
           return {
             ok: false,
             failure: {
@@ -681,7 +588,7 @@ export function createLabReader(clients: LabClients): LabReader {
             },
           };
         }
-        return { ok: true, value: { seats, workstreams, ...(rosterUnread === null ? {} : { rosterUnread }) } };
+        return { ok: true, value: { seats, workstreams } };
       } catch (error) {
         return { ok: false, failure: describeFailure(error) };
       }
@@ -890,7 +797,7 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(clients.userId, "their session records none") } };
 
-    const inventory = await readInventory(sessions, orgId);
+    const inventory = await readInventory(sessions);
 
     const [boardEntries, asks, resources, projects] = await Promise.all([
       inventory.ok
@@ -902,17 +809,17 @@ export function createLabReader(clients: LabClients): LabReader {
         if (!inventory.ok) {
           return { ok: false, failure: { message: `Asks are read from seat sessions, and the seat inventory did not load. ${inventory.failure.message}` } };
         }
+        // A seat's sessions are on its worker flow, and name the worker in
+        // their state. One on a seat's flow that names none is still read: its
+        // asks are shown, unattributed.
         const seatIds = new Set(inventory.value.seats.map((s) => s.id));
         const seatKinds = new Set(inventory.value.seats.map((s) => s.kind).filter((k): k is string => k !== null));
-        const seatSessions = sessions.flatMap((s): Array<{ session: SessionSummary; seatId: string | null }> =>
-          s.flowId != null
-            ? seatIds.has(s.flowId)
-              ? [{ session: s, seatId: s.flowId }]
-              : []
-            : seatKinds.has(s.flowKind)
-              ? [{ session: s, seatId: null }]
-              : [],
-        );
+        const seatSessions = sessions.flatMap((s): Array<{ session: SessionSummary; seatId: string | null }> => {
+          if (!seatKinds.has(s.flowKind)) return [];
+          const workerId = workerOf(s);
+          if (workerId === null) return [{ session: s, seatId: null }];
+          return seatIds.has(workerId) ? [{ session: s, seatId: workerId }] : [];
+        });
         try {
           const found = await inBatches(seatSessions, ASK_READ_BATCH, ({ session, seatId }) => readAsks(session, seatId));
           return { ok: true, value: found.flat().sort((a, b) => a.since - b.since) };

@@ -22,6 +22,7 @@ import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
 import type { SessionCreateCheck } from "./session-create";
+import type { ResourceVisibilityRule } from "./resource-visibility";
 
 /** Legacy scope-keyed config alias preserved for type-internal usage. */
 export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
@@ -597,6 +598,15 @@ export type FlowDefinition<
    */
   schedules?: SchedulesConfig;
 
+  /**
+   * Which of the flow's resources the model's resource tools reach on each
+   * turn: listing, search, reading and writing through core's resource tools
+   * and the discovery door. Omitted, every resource is reachable as its own
+   * `llmReadable` and `llmWritable` flags allow. A resource the rule hides
+   * answers exactly like one that isn't registered. Definition-only.
+   */
+  resourceVisibility?: ResourceVisibilityRule;
+
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
 
@@ -733,6 +743,8 @@ export type FlowInstance<
   mcp?: McpConfig;
   webhooks?: WebhookConfig;
   schedules?: SchedulesConfig;
+  /** See {@link FlowDefinition.resourceVisibility}. */
+  resourceVisibility?: ResourceVisibilityRule;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState: boolean;

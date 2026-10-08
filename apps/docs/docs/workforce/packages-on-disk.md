@@ -70,10 +70,10 @@ A package's tools reach only the workers that hold it. They are not in your app'
 
 ## In your app
 
-`fsdev gen` writes a `packageBlocks` export onto `workforce.gen.ts`, keyed by each package's folder and then by block name. Pass it to `hireWorkforce` beside `seatBlocks`:
+`fsdev gen` writes a `packageBlocks` export onto `workforce.gen.ts`, keyed by each package's folder and then by block name. Pass it to `createWorkerInstallation` beside `seatBlocks`:
 
 ```ts
-import { hireWorkforce } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { kinds, packageBlocks, seatBlocks } from "./workforce/workforce.gen";
 
@@ -83,12 +83,13 @@ if (errors.length || packageErrors.length) {
   throw new Error(`workforce failed to load:\n${reported.join("\n")}`);
 }
 
-const seats = hireWorkforce(workers, { workerFlows: kinds, seatBlocks, packageBlocks });
+const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds, seatBlocks, packageBlocks });
+const flows = hireWorkforce(installation);
 ```
 
 Leave `packageBlocks` out and a held package brings its instructions and no tools.
 
-`readWorkforce` puts the packages in each worker's reach on that worker's record as `packages`: the org's library, its team's library, and its own folder. An org seat has no team, so its reach is the org's library and its own folder. Which of them the worker holds is decided when it is hired, from its `packages:` line.
+`readWorkforce` puts the packages in each worker's reach on that worker's record as `packages`: the org's library, its team's library, and its own folder. An org seat has no team, so its reach is the org's library and its own folder. Which of them the worker holds is decided from its `packages:` line, when its configuration is checked.
 
 ## When a file is wrong
 
@@ -104,7 +105,7 @@ Reading the tree reports a broken package in `packageErrors`, keyed by its path,
 
 `fsdev gen` refuses a package's `blocks/` folder for what it refuses in [any `blocks/` folder](./code-on-disk.md#what-it-checks-and-when), such as a symlink or a basename that breaks the naming rule.
 
-`hireWorkforce` refuses a worker when:
+A worker is refused when:
 
 - its `packages:` is not a list of names;
 - it names a package no library in its reach offers. The message names both folders it looked in;
@@ -113,10 +114,10 @@ Reading the tree reports a broken package in `packageErrors`, keyed by its path,
 - a block in a package it holds has a `name` that differs from its file's name, or declares a store;
 - its own `packages/` folder has a package with blocks that failed to load. The message points at `packageErrors`.
 
-Like every hire refusal, these are collected and thrown together, one message naming every bad worker:
+For a standard worker, these are collected and thrown together by `hireWorkforce`, one message naming every bad worker. A user's own worker gets the same refusal when it is hired or edited:
 
 ```
-hireWorkforce refused 1 of 3 workers; nothing was hired:
+hireWorkforce: 1 standard worker problem(s); nothing was registered:
   - worker "support.billing" — names package "escalation" in `packages:`, and no library in its reach offers it. Looked in "teams/support/packages/escalation" and "org/packages/escalation".
 ```
 
@@ -147,5 +148,5 @@ A seat that holds none doesn't get the key. Compose [`workerConfigSchema()`](./w
 
 - [Code on disk](./code-on-disk.md) — `fsdev gen`, and the rules every `blocks/` folder follows.
 - [The built-in worker](./built-in-worker.md#tools) — how a worker's `tools:` line is resolved.
-- [Workers on disk](./workers-on-disk.md) — the folder tree, `WORKER.md`, `readWorkforce` and `hireWorkforce`.
+- [Workers on disk](./workers-on-disk.md) — the folder tree, `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
 - [Skills](../skills/overview.md) — Markdown guidance that loads when it's relevant.

@@ -40,7 +40,8 @@ import type {
   TaskDispatcher,
   TaskWorkerInput,
 } from "@flow-state-dev/orchestration/tasks";
-import { workerConfigSchema, type MailboxBoardCollection } from "@flow-state-dev/workforce";
+import { workerConfigSchema, type MailboxBoardCollection, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
 import { pieceInputSchema } from "../piece.mts";
@@ -78,7 +79,7 @@ export type WorkerControl = "ignore-the-answer" | "silent-park";
  */
 export const workLineSchema = z.object({
   event: z.enum(["parked", "finished"]),
-  /** The seat instance that ran it, off `ctx.flow.id`. */
+  /** The worker that ran it, as the turn loaded it. */
   seat: z.string(),
   /** What that seat's OWN FILE says it answers for — the oracle, from the tree. */
   declaredDesk: z.string(),
@@ -103,8 +104,8 @@ export type WorkLine = z.infer<typeof workLineSchema>;
 /**
  * A claim narrowed to the desks the APP routes to this seat.
  *
- * Resolved per seat at claim time off `ctx.flow.id`, because every worker seat
- * shares one kind and therefore one board object.
+ * Resolved per seat at claim time off the worker the drain's session names,
+ * because every worker seat shares one kind, one copy and one board object.
  *
  * The eligibility is the desk **or no assignee at all**. The second arm is
  * deliberate: the lab declares no `defaultWorker`, so a row filed for nobody
@@ -118,7 +119,7 @@ export type WorkLine = z.infer<typeof workLineSchema>;
 function deskDispatcher(routes: Readonly<Record<string, string>>): TaskDispatcher {
   return {
     async claim(collection, workerId, ctx) {
-      const seat = String((ctx.flow as { id?: string }).id ?? "");
+      const seat = workerOf(ctx);
       const desks = new Set(
         Object.entries(routes)
           .filter(([, routedSeat]) => routedSeat === seat)
@@ -132,7 +133,14 @@ function deskDispatcher(routes: Readonly<Record<string, string>>): TaskDispatche
   };
 }
 
+/** The worker a session runs, as its state names it. Its create check confirmed it. */
+function workerOf(ctx: BlockContext): string {
+  return String((ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY] ?? "");
+}
+
 export interface WorkerFlowOptions {
+  /** The installation whose workers run on this kind. */
+  installation: WorkerInstallation;
   /** The mailbox's own ledger — the one `MAILBOX.md` declared by name. */
   board: MailboxBoardCollection;
   /**
@@ -150,10 +158,10 @@ export interface WorkerFlowOptions {
 /**
  * Build the `worker` kind. Every worker seat is hired onto this one factory.
  *
- * @returns The flow factory `hireWorkforce` mints one copy of per worker record.
+ * @returns The flow factory `hireWorkforce` registers one copy of, which every worker seat runs on.
  */
 export function defineWorkerFlow(options: WorkerFlowOptions) {
-  const { board: ledger, routes, outbox, control } = options;
+  const { board: ledger, routes, outbox, control, installation } = options;
 
   /** The board's name, which is also its capability's key on `ctx.cap`. */
   const BOARD_NAME = `${WORKER_KIND}-desk-board`;
@@ -179,6 +187,8 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
           name: `${WORKER_KIND}-hand-off-${desk}`,
           action: WORK_ENTRY,
           session: "per-task",
+          // The row runs as the seat whose drain claimed it.
+          state: (_task, ctx) => ({ [WORKER_ID_STATE_KEY]: workerOf(ctx) }),
         }),
       ]),
     ),
@@ -197,6 +207,7 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
     uses: [board.capability],
     inputSchema: taskWorkerInputSchema,
     outputSchema: workLineSchema,
+    resources: { ...installation.resources },
     execute: async (input: TaskWorkerInput, ctx: BlockContext): Promise<WorkLine> => {
       const tasks: TaskCollectionRef = await (
         ctx.cap as unknown as Record<string, { tasks(): Promise<TaskCollectionRef> }>
@@ -207,9 +218,10 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
       }
       const piece = pieceInputSchema.parse(input.input ?? {});
       const answer = row.feedback ?? null;
+      const worker = await installation.resolveWorker(ctx, WORKER_KIND);
       const base = {
-        seat: String((ctx.flow as { id?: string }).id ?? "<unknown>"),
-        declaredDesk: String((ctx.flow.config as { answersFor?: unknown }).answersFor),
+        seat: worker.id,
+        declaredDesk: String((worker.config as { answersFor?: unknown }).answersFor),
         taskId: input.taskId,
         goal: input.goal,
         session: String(ctx.session.identity.id),
@@ -262,7 +274,11 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
   return defineFlow({
     kind: WORKER_KIND,
     cardinality: "collection",
-    configSchema: workerConfigSchema().extend({ answersFor: z.string().min(1) }),
+    // Optional so the shared copy, which carries no worker's settings, builds;
+    // the host refuses a worker seat whose file names no `answersFor`.
+    configSchema: workerConfigSchema().extend({ answersFor: z.string().min(1).optional() }),
+    session: installation.session(),
+    resources: { ...installation.resources },
     actions: {
       ...hearingDoor,
       [DRAIN_ENTRY]: {

@@ -370,11 +370,6 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
           TEAMS
         </Heading>
         <div data-testid="teams">
-          {loaded?.inventory.ok && loaded.inventory.value.rosterUnread !== undefined ? (
-            <p className="px-2 py-1 text-xs text-muted-foreground" data-testid="teams-roster-unread">
-              {loaded.inventory.value.rosterUnread}
-            </p>
-          ) : null}
           {loaded === undefined ? null : loaded.inventory.ok ? (
             teamsOf(loaded.inventory.value.seats).map(({ team, seats }) => (
               <button

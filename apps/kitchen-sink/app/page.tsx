@@ -47,7 +47,6 @@ import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/f
 import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { TeamPanel } from "@/components/team-panel";
-import { SeatPane } from "@/components/seat-pane";
 import { PickedSessionPanel } from "@/components/picked-session-panel";
 import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
@@ -60,6 +59,7 @@ import { ChatAgentMessage } from "@/components/chat-agent/message";
 import { cn } from "@/lib/utils";
 import { railSessions } from "@/lib/rail-sessions";
 import { MAILBOX_KINDS, defaultConversation, isMailboxKind, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
+import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
 
@@ -75,15 +75,10 @@ const chatAgentRenderers: RendererRegistry = {
 type MobilePanel = "chat" | "artifacts";
 
 /**
- * Whether the rail lists hired seats.
- *
- * The seat rows come from the server's flow list. A hired seat is pinned to
- * its owner, and the list shows it only to a caller that seat's own resolver
- * accepts as that owner: a visitor here sees the seats hired into this app's
- * organization, and not an operator's own. A seat declared in a worker file is
- * pinned to nobody and is listed to anyone who can load this page. Set this to
- * `false` to ship the rail with mailboxes only; the roster panel on the right
- * is organization-scoped either way.
+ * Whether the rail lists the person's conversations with workers: the
+ * sessions on the one `agent` copy every worker runs on. A conversation is
+ * started from the roster panel's "Talk", which names its worker. Set this to
+ * `false` to ship the rail with mailboxes only.
  */
 const SHOW_SEATS_IN_RAIL = true;
 
@@ -94,22 +89,17 @@ const SHOW_SEATS_IN_RAIL = true;
  */
 const panelFetch: ClientFetch = (input, init) => fetch(input, init);
 
-/** Whether a navigator leaf is a seat, and so opens into its detail. */
-function isSeatKind(kind: string): boolean {
-  return (SEAT_KINDS as readonly string[]).includes(kind);
-}
-
 /**
  * The rail's sections. How deep each kind goes is read off the flow's declared
  * cardinality, never written here: a mailbox kind opens straight into its
- * conversations, a seat kind opens into seats and then one seat's.
+ * conversations, and so does `agent`, whose one copy holds every worker's.
  *
  * "Assistant" is this app's own chat flow, so its conversations stay one click
  * away.
  */
 const RAIL_SECTIONS: readonly FlowNavigatorSection[] = [
   { label: "Mailboxes", kinds: MAILBOX_KINDS },
-  ...(SHOW_SEATS_IN_RAIL ? [{ label: "Seats", kinds: SEAT_KINDS }] : []),
+  ...(SHOW_SEATS_IN_RAIL ? [{ label: "Workers", kinds: SEAT_KINDS }] : []),
   { label: "Assistant", kinds: [SHELL_FLOW_KIND] },
 ];
 
@@ -124,8 +114,9 @@ const RAIL_THEME = {
 
 /**
  * A session picked in the rail that is not one of the assistant's own.
- * `address` is the flow it belongs to: the kind for a mailbox, the seat's own
- * id for a seat. Continuing or retrying a request is routed by it.
+ * `address` is the flow it belongs to: the kind for a mailbox, and the worker
+ * flow's copy for a conversation with a worker. Continuing or retrying a
+ * request is routed by it.
  */
 type PickedSession = { sessionId: string; kind: string; address: string };
 
@@ -268,16 +259,14 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
 
   // One resource client for every panel read, held stable: the panels fence
   // their reads on it, so a new object each render would read as a new
-  // backend each render.
+  // backend each render. Each board reads through its own mailbox's session.
   const resourceClient = useMemo(() => createResourceClient({ baseUrl: "", fetcher: panelFetch }), []);
-  // The roster reads through the assistant's session, because that flow is the
-  // one declaring it; each board reads through its own mailbox's session. The
-  // assistant's organization, from its own record, is the one a seat's address
-  // is read against.
-  const panelSessionId = flow.activeSessionId;
-  const panelOrgId = session.detail?.orgId;
+  // The person's roster and their conversations with workers.
+  const workforce = useMemo(
+    () => createWorkforceClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }),
+    [],
+  );
 
-  // Starts a seat's new conversation from the rail.
   const sessionClient = useMemo(() => createSessionClient({ baseUrl: "" }), []);
   // What the rail lists: a mailbox kind's declared mailboxes, never one a kept
   // store holds from an earlier roster. Stable, so the navigator's reads stay
@@ -379,27 +368,15 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     [flow]
   );
 
-  // "New conversation" on a seat's row: a session on that seat's own address,
-  // opened in the panel. A failed create has no conversation to show its
-  // error in, so the seat's row shows it and nothing opens.
-  const [seatCreateError, setSeatCreateError] = useState<{ address: string; message: string } | null>(null);
-  const handleNewSeatConversation = useCallback(
-    async (leaf: FlowNavigatorLeafState) => {
-      setSeatCreateError(null);
-      try {
-        const created = await sessionClient.createSession({ flowKind: leaf.address, userId: KITCHEN_SINK_USER_ID });
-        setPicked({ sessionId: created.id, kind: leaf.kind, address: leaf.address });
-        leaf.refresh();
-        setIsRailDrawerOpen(false);
-        setMobilePanel("chat");
-      } catch (cause) {
-        setSeatCreateError({
-          address: leaf.address,
-          message: cause instanceof Error ? cause.message : String(cause),
-        });
-      }
+  // "Talk" on a worker in the roster: the person's conversation with that
+  // worker, found or started on the worker's flow, opened in the panel.
+  const handleTalk = useCallback(
+    async (worker: RosterEntry) => {
+      const conversation = await workforce.ensureWorkerSession({ worker: worker.id });
+      setPicked({ sessionId: conversation.id, kind: conversation.flowKind, address: conversation.flowKind });
+      setMobilePanel("chat");
     },
-    [sessionClient]
+    [workforce]
   );
 
   const handleSelectSession = useCallback(
@@ -426,9 +403,8 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
 
   const railSlots = useMemo(
     () => ({
-      // "New session" sits on the assistant's own row, and "New
-      // conversation" on each seat's: the places a conversation can be
-      // started from this page. Mailboxes get none; the boot opens them.
+      // "New session" sits on the assistant's own row. Mailboxes get none; the
+      // boot opens them. A conversation with a worker starts from the roster.
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
         leaf.kind === SHELL_FLOW_KIND ? (
           <AssistantLeafToolbar
@@ -437,50 +413,10 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
             disabled={flow.isLoading}
             onNewSession={handleNewSession}
           />
-        ) : isSeatKind(leaf.kind) ? (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="New conversation"
-            title="New conversation"
-            onClick={() => void handleNewSeatConversation(leaf)}
-          >
-            <Plus className="size-3.5" />
-          </Button>
         ) : null,
-      // An open seat shows its kind, what it handles and its instructions
-      // under its row, and why its last "New conversation" failed, if it did.
-      leafDetail: (leaf: FlowNavigatorLeafState) =>
-        isSeatKind(leaf.kind) ? (
-          <>
-            {seatCreateError?.address === leaf.address && (
-              <p role="alert" className="text-xs text-destructive" data-testid="seat-create-error">
-                Could not start a conversation: {seatCreateError.message}
-              </p>
-            )}
-            {panelSessionId === undefined || panelOrgId === undefined ? (
-              <p className="text-xs text-muted-foreground">Loading…</p>
-            ) : (
-              <SeatPane
-                sessionId={panelSessionId}
-                orgId={panelOrgId}
-                kind={leaf.kind}
-                address={leaf.address}
-                resourceClient={resourceClient}
-              />
-            )}
-          </>
-        ) : null,
+      leafDetail: () => null,
     }),
-    [
-      handleNewSession,
-      handleNewSeatConversation,
-      seatCreateError,
-      flow.isLoading,
-      panelSessionId,
-      panelOrgId,
-      resourceClient,
-    ]
+    [handleNewSession, flow.isLoading]
   );
 
   const handleSelectedModelChange = useCallback(
@@ -579,7 +515,8 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
 
   const teamPanel = (
     <TeamPanel
-      sessionId={panelSessionId}
+      workforce={workforce}
+      onTalk={handleTalk}
       resourceClient={resourceClient}
       fetcher={panelFetch}
       live={pickedLive}

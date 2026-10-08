@@ -2,7 +2,6 @@
  * What the screens compute from one snapshot, kept out of the components so
  * every surface computes it the same way.
  */
-import { splitSeatAddress } from "@flow-state-dev/workforce/browser";
 import { columnFor, isDone, readStatus } from "./columns";
 import {
   STAFF_TEAM,
@@ -39,11 +38,10 @@ export type Roster = { seats: readonly Seat[]; workstreams: readonly Workstream[
  * to, not a seat address: a board may name `<name>` for the seat
  * `<team>.<name>`. So, in order:
  *
- * 1. a seat whose id, or whose logical seat id (a hired seat's `<seatId>`
- *    inside its `<org>.<seatId>` address), is the assignee;
+ * 1. the seat whose id is the assignee;
  * 2. the one seat whose own name is the assignee;
  * 3. when that name belongs to seats in more than one team, the one of them
- *    that is a member of the row's mailbox, by either id.
+ *    that is a member of the row's mailbox.
  *
  * Still more than one, or none, is no seat: a row is never shown against
  * several seats, or against a guess. Which seat actually claimed the row is
@@ -52,12 +50,12 @@ export type Roster = { seats: readonly Seat[]; workstreams: readonly Workstream[
  */
 export function seatFor(roster: Roster, row: BoardRow): Seat | undefined {
   if (row.assignee === null) return undefined;
-  const exact = roster.seats.find((seat) => seat.id === row.assignee || seat.seatId === row.assignee);
+  const exact = roster.seats.find((seat) => seat.id === row.assignee);
   if (exact !== undefined) return exact;
   const named = roster.seats.filter((seat) => seat.name === row.assignee);
   if (named.length <= 1) return named[0];
   const members = new Set(roster.workstreams.find((w) => w.id === row.mailboxId)?.members ?? []);
-  const inMailbox = named.filter((seat) => members.has(seat.id) || members.has(seat.seatId));
+  const inMailbox = named.filter((seat) => members.has(seat.id));
   return inMailbox.length === 1 ? inMailbox[0] : undefined;
 }
 
@@ -172,12 +170,13 @@ export function workstreamsOf(ask: Ask, workstreams: readonly Workstream[]): Wor
 }
 
 /**
- * The door of the flow that owns a session: the seat inventory row whose id is
- * that flow's id names it. `null` when no seat row matches or its kind takes
- * no message.
+ * The door of the flow that owns a session: the seat inventory rows of the
+ * workers on that flow name it, since a worker flow is registered at its kind.
+ * Every worker on one flow shares its door. `null` when no seat row is on the
+ * flow, or its kind takes no message.
  */
 export function doorOf(seats: readonly Seat[], flowId: string): string | null {
-  return seats.find((seat) => seat.id === flowId)?.door ?? null;
+  return seats.find((seat) => seat.kind === flowId)?.door ?? null;
 }
 
 /**
@@ -350,17 +349,13 @@ const CHIEF_OF_STAFF = "chief-of-staff";
 export type ChiefOfStaff = { kind: "one"; seat: Seat } | { kind: "none" } | { kind: "several"; seats: Seat[] };
 
 /**
- * The chief of staff among the inventory's seats (D2): the seats whose name,
- * once an Ops-hired seat's `<org>.` address is split off, is exactly
- * `chief-of-staff`. That is an org seat (`chief-of-staff`), a team's worker
- * (`<team>.chief-of-staff`), or either hired at runtime under the org. One is
- * the chief of staff; two or more are a state, never a guess.
+ * The chief of staff among the inventory's seats (D2): the seats whose name is
+ * exactly `chief-of-staff`. That is an org seat (`chief-of-staff`) or a
+ * team's worker (`<team>.chief-of-staff`). One is the chief of staff; two or
+ * more are a state, never a guess.
  */
-export function chiefOfStaffOf(seats: readonly Seat[], orgId: string): ChiefOfStaff {
-  const found = seats.filter((seat) => {
-    const seatId = splitSeatAddress(orgId, seat.id) ?? seat.id;
-    return seatId.slice(seatId.indexOf(".") + 1) === CHIEF_OF_STAFF;
-  });
+export function chiefOfStaffOf(seats: readonly Seat[]): ChiefOfStaff {
+  const found = seats.filter((seat) => seat.id.slice(seat.id.indexOf(".") + 1) === CHIEF_OF_STAFF);
   if (found.length === 0) return { kind: "none" };
   return found.length === 1 ? { kind: "one", seat: found[0]! } : { kind: "several", seats: found };
 }

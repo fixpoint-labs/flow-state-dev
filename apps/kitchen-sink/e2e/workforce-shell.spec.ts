@@ -1,8 +1,13 @@
 /**
  * The rebuilt shell, against the built app: the rail browses mailboxes and
- * seats to the depth each flow declares, a seat opens into its kind, what it
- * handles and its instructions, the panel stands beside the stream, and the
- * three regions give way in the right order as the window narrows.
+ * the worker flow to the depth each flow declares, the roster panel lists each
+ * worker with its flow and what it handles, the panel stands beside the
+ * stream, and the three regions give way in the right order as the window
+ * narrows.
+ *
+ * Every worker runs on one copy of the flow it names, so the rail's worker
+ * section is the `agent` kind, its one copy, and that copy's conversations:
+ * each one a session that names its worker when it is created.
  *
  * These open the app as `devuser`, not a per-test user, because that is who
  * the boot opens the mailboxes for: a fresh user would see no mailbox
@@ -23,7 +28,10 @@
 import type { Browser, Locator, Page, Request } from "@playwright/test";
 import { test, expect, openKitchenSink } from "./fixtures";
 
+/** A standard worker on `agent`, declared in the app's workforce tree. */
 const SEAT = "support.devices";
+/** The flow every worker in this app runs on, registered as one copy at its kind. */
+const WORKER_FLOW = "agent";
 /** A mailbox the old roster declared and this one does not. */
 const RETIRED_MAILBOX = "support.desk";
 
@@ -59,10 +67,13 @@ async function seedRetiredMailbox(page: Page): Promise<void> {
   expect([200, 201, 409], await response.text()).toContain(response.status());
 }
 
-/** Give the seat one conversation, so it has something to open into. */
+/**
+ * Give the worker one conversation: a session of its flow's one copy, created
+ * naming it, so the copy has something to open into.
+ */
 async function seedSeatSession(page: Page, title?: string): Promise<string> {
-  const response = await page.request.post(`/api/flows/${SEAT}/sessions`, {
-    data: { userId: "devuser", ...(title === undefined ? {} : { title }) },
+  const response = await page.request.post(`/api/flows/${WORKER_FLOW}/sessions`, {
+    data: { userId: "devuser", state: { workerId: SEAT }, ...(title === undefined ? {} : { title }) },
   });
   expect(response.ok(), await response.text()).toBe(true);
   const json = (await response.json()) as { session?: { id: string }; id?: string };
@@ -76,8 +87,12 @@ async function openShell(page: Page): Promise<void> {
 
 const rail = (page: Page) => page.getByTestId("rail");
 const row = (page: Page, name: string) => rail(page).getByRole("button", { name, exact: true });
+/** A kind's own row. The worker flow's kind and its one copy share the name `agent`. */
+const kindRow = (page: Page, kind: string) => rail(page).locator(`button[data-kind="${kind}"]`);
+/** A copy's row under its kind. */
+const copyRow = (page: Page, id: string) => rail(page).locator(`button[data-instance-id="${id}"]`);
 
-test("the rail opens a mailbox kind into conversations and a seat kind into seats, reading only leaves", async ({
+test("the rail opens a mailbox kind into conversations and the worker flow into its one copy, reading only leaves", async ({
   page,
   consoleErrors: _consoleErrors,
 }) => {
@@ -86,15 +101,18 @@ test("the rail opens a mailbox kind into conversations and a seat kind into seat
   const requests = sessionListRequests(page);
   await openShell(page);
   await expect(rail(page).getByRole("list", { name: "Mailboxes" })).toBeVisible();
-  await expect(rail(page).getByRole("list", { name: "Seats" })).toBeVisible();
-  // Drawing the rail reads no session list of its own. The one read at load
-  // is the assistant's, for the conversation the stream opens on. The team
-  // panel's live board holds its mailbox's stream open, so the page never goes
-  // network-idle: wait for the board's first read, then the half-second quiet
-  // that network-idle means.
+  await expect(rail(page).getByRole("list", { name: "Workers" })).toBeVisible();
+  // Drawing the rail reads no session list of its own. The reads at load are
+  // the assistant's, for the conversation the stream opens on, and the roster
+  // panel's, for the person's roster session. The team panel's live board
+  // holds its mailbox's stream open, so the page never goes network-idle:
+  // wait for the board's first read, then the half-second quiet that
+  // network-idle means.
   await expect(page.getByTestId("board-support.help.escalations").locator('[data-panel="board"]')).toBeVisible();
   await page.waitForTimeout(500);
-  expect(requests.take().filter((url) => !url.includes("flowKind=chat-agent"))).toEqual([]);
+  expect(
+    requests.take().filter((url) => !url.includes("flowKind=chat-agent") && !url.includes("flowKind=workforce-roster")),
+  ).toEqual([]);
 
   // A mailbox kind is a singleton: its row is the leaf, so opening it lands
   // straight on the mailbox conversations. It is ONE read, of the mailbox the
@@ -107,18 +125,21 @@ test("the rail opens a mailbox kind into conversations and a seat kind into seat
   expect(mailboxReads.take()).toHaveLength(1);
   expect(requests.take()).toEqual([]);
 
-  // A seat kind is a collection: opening it lists the seats and reads nothing.
-  await row(page, "agent").click();
-  await expect(row(page, SEAT)).toBeVisible();
+  // The worker flow is a collection with one copy: opening its kind lists the
+  // copy and reads nothing. No copy is drawn per worker.
+  await kindRow(page, WORKER_FLOW).click();
+  await expect(copyRow(page, WORKER_FLOW)).toBeVisible();
+  await expect(copyRow(page, SEAT)).toHaveCount(0);
   await page.waitForTimeout(300);
   expect(requests.take()).toEqual([]);
 
-  // Opening one seat is one read, for that seat, and shows its conversation.
-  await row(page, SEAT).click();
+  // Opening the copy is one read, for that copy, and shows the conversation
+  // created naming the worker.
+  await copyRow(page, WORKER_FLOW).click();
   await expect(rail(page).locator(`[data-session-id="${seatSessionId}"]`)).toBeVisible();
   const seatReads = requests.take();
   expect(seatReads).toHaveLength(1);
-  expect(seatReads[0]).toContain(`flowId=${encodeURIComponent(SEAT)}`);
+  expect(seatReads[0]).toContain(`flowId=${encodeURIComponent(WORKER_FLOW)}`);
 });
 
 /**
@@ -141,16 +162,16 @@ test("the header names the assistant's model on the assistant only, never on a m
   await expect(headerModel).toBeVisible();
   await expect(headerModel).not.toHaveText("");
 
-  const expand = async (name: string) => {
-    if ((await row(page, name).getAttribute("aria-expanded")) !== "true") await row(page, name).click();
+  const expand = async (button: Locator) => {
+    if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
   };
-  await expand("mailbox");
+  await expand(row(page, "mailbox"));
   await row(page, "support.help").click();
   await expect(page.locator('[data-testid="picked-session"]:visible')).toBeVisible();
   await expect(headerModel).toHaveCount(0);
 
-  await expand("agent");
-  await expand(SEAT);
+  await expand(kindRow(page, WORKER_FLOW));
+  await expand(copyRow(page, WORKER_FLOW));
   await rail(page).locator(`[data-session-id="${seatSessionId}"]`).click();
   await expect(page.locator('[data-testid="picked-session"]:visible')).toBeVisible();
   await expect(headerModel).toHaveCount(0);
@@ -164,10 +185,10 @@ const LONG_SEAT = "support.escalations-overnight-weekend-queue";
 const LONG_TITLE = "Refund escalation for order 4417 and both of its linked chargebacks";
 
 /**
- * Serve this page the real flow list plus one agent seat whose name is
- * too long for the rail. The roster is the app's workforce tree, which has no
- * name this long, and hiring one would leave it in every other scenario's
- * rail. Its session read goes to the real server, which has none for it.
+ * Serve this page the real flow list plus one more `agent` copy whose name is
+ * too long for the rail. The app registers one copy per worker flow, none
+ * with a name this long. Its session read goes to the real server, which has
+ * none for it.
  */
 async function withLongSeat(page: Page): Promise<void> {
   await page.route(
@@ -553,52 +574,6 @@ async function checkRail(
   await test.info().attach(shot.file, { path, contentType: "image/png" });
 }
 
-/**
- * G9: an open seat's detail sits under its row, not on it. The open seat's row
- * stays one line, the height of a closed seat's, every detail starts below its
- * row, and neither the rows nor the details run past the rail.
- */
-async function checkLeafDetail(nav: Locator, name: string, openSeat: string, closedSeat: string): Promise<void> {
-  // The detail is on the open row's line when it isn't under it, so the two
-  // rows are measured as they are drawn: one open, one closed.
-  await nav.locator(`[data-instance-id="${closedSeat}"][aria-expanded="true"]`).click();
-  const m = await nav.evaluate(
-    (root, seats) => {
-      const frameOf = (address: string) =>
-        root.querySelector(`[data-instance-id="${CSS.escape(address)}"]`)!.parentElement!.getBoundingClientRect();
-      const railRect = root.getBoundingClientRect();
-      const details = [...root.querySelectorAll<HTMLElement>("[data-leaf-detail]")].map((detail) => {
-        const frame = detail.previousElementSibling!.getBoundingClientRect();
-        const box = detail.getBoundingClientRect();
-        return {
-          address: detail.dataset.leafDetail!,
-          below: box.top >= frame.bottom - 0.5,
-          inside:
-            box.left >= railRect.left - 0.5 &&
-            box.right <= railRect.right + 0.5 &&
-            frame.right <= railRect.right + 0.5 &&
-            detail.scrollWidth <= detail.clientWidth + 1,
-        };
-      });
-      return {
-        openHeight: frameOf(seats.open).height,
-        closedHeight: frameOf(seats.closed).height,
-        details,
-        railOverflows: root.scrollWidth > root.clientWidth + 1,
-      };
-    },
-    { open: openSeat, closed: closedSeat },
-  );
-  const misplaced = m.details.filter((d) => !d.below || !d.inside);
-  const ok =
-    m.details.some((d) => d.address === openSeat) &&
-    Math.abs(m.openHeight - m.closedHeight) <= 0.5 &&
-    misplaced.length === 0 &&
-    !m.railOverflows;
-  const line = `${name} · G9 an open seat's row stays one line and its detail sits below it, inside the rail — open ${openSeat} row ${m.openHeight.toFixed(1)}px vs closed ${closedSeat} ${m.closedHeight.toFixed(1)}px; ${m.details.length - misplaced.length} of ${m.details.length} details below their row and inside the rail${misplaced.length ? ` (not: ${misplaced.map((d) => d.address).join(", ")})` : ""}; rail overflows: ${m.railOverflows}`;
-  test.info().annotations.push({ type: ok ? "pass" : "fail", description: line });
-  expect.soft(ok, line).toBe(true);
-}
 
 /** G8's last clause: a screen with no hover pointer shows every row's actions. */
 async function checkTouch(
@@ -632,8 +607,10 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
   consoleErrors: _consoleErrors,
 }) => {
   test.setTimeout(180_000);
-  // A seat with a conversation that has no title, one with a title too long
-  // for the rail, a seat with none, and the singleton mailboxes the boot opens.
+  // The worker flow's copy holding a conversation with no title and one with a
+  // title too long for the rail, a copy with none, and the singleton mailboxes
+  // the boot opens. The app draws no detail under a copy: a worker's flow and
+  // what it handles are on the roster panel, which the VG test below reads.
   await seedSeatSession(page);
   await seedSeatSession(page, LONG_TITLE);
 
@@ -655,7 +632,6 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
     container: rail(page),
     file: "rail-kitchen-sink.png",
   });
-  await checkLeafDetail(shellNav, "/", SEAT, "support.accounts");
   await checkTouch(browser, openShellRail, "/");
 
   // The developer tool's rail, narrowed to the same 256px.
@@ -677,7 +653,7 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
   await page.mouse.up();
   expect((await aside.boundingBox())!.width).toBe(256);
   await checkRail(page, toolNav, "/devtool", {
-    hoverRow: `[data-instance-id="${SEAT}"]`,
+    hoverRow: `[data-instance-id="${WORKER_FLOW}"]`,
     quietRow: '[data-kind="agent"]',
     container: aside,
     file: "rail-devtool.png",
@@ -686,20 +662,22 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
 });
 
 /**
- * VG, the completion gate for opening a seat from the rail (`specs/issues/FIX-1500`),
- * re-pointed at this roster (`specs/issues/FIX-1611`, D3).
+ * VG, the completion gate for a declared worker on the page (`specs/issues/FIX-1500`),
+ * re-pointed at this roster (`specs/issues/FIX-1611`, D3) and at workers as
+ * data (`specs/issues/FIX-1788`): the roster panel lists each worker with the
+ * flow it runs on and what it handles.
  *
- * `support.devices` is declared in a worker file, so opening it proves the
- * kind comes from the row the rail already holds, and that a seat with no
- * roster row reads no instructions. Its hire half left with the page's
- * "Hire another" (FIX-1611 D3); FIX-1415 brings both back.
+ * `support.devices` is declared in a worker file, so it is a standard worker:
+ * the roster lists it from the person's roster read, and its instructions,
+ * the file's body, never reach the page. Hiring is the roster flow's, not a
+ * button on the page.
  *
  * Red states produced before this was trusted:
- *   - Serve the detail from an app-private route: the API-surface assertion fails.
- *   - Leave "Hire another" on the seat: the no-hire assertion fails.
- *   - Drop the description from the seat's detail: the description assertion fails.
+ *   - Serve the roster from an app-private route: the API-surface assertion fails.
+ *   - Put "Hire another" back on the page: the no-hire assertion fails.
+ *   - Drop the description from the worker's row: the description assertion fails.
  */
-test("VG · open a declared seat: its kind and what it handles, no instructions read, and no hire button", async ({
+test("VG · a declared worker: its flow and what it handles, no instructions read, and no hire button", async ({
   page,
   sessionId,
   consoleErrors: _consoleErrors,
@@ -710,15 +688,11 @@ test("VG · open a declared seat: its kind and what it handles, no instructions 
 
   await openKitchenSink(page, sessionId);
 
-  // A declared seat: its kind, what it handles, and no roster row to read instructions from.
-  await row(page, "agent").click();
-  await row(page, DECLARED).click();
-  const declared = rail(page).locator(`[data-leaf-detail="${DECLARED}"]`);
-  await expect(declared.locator("[data-seat-kind]")).toHaveText("agent");
-  await expect(declared.getByTestId("seat-description")).toHaveText(
-    "Printers, laptops, phones, wifi and anything else with a power button.",
-  );
-  await expect(declared.locator('[data-state="not-published"]')).toBeVisible();
+  // A standard worker: its flow, what it handles, and none of its instructions.
+  const declared = page.locator(`[data-testid="roster"]:visible [data-worker-id="${DECLARED}"]`);
+  await expect(declared).toContainText(WORKER_FLOW);
+  await expect(declared).toContainText("Printers, laptops, phones, wifi and anything else with a power button.");
+  await expect(page.getByText("devices specialist")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Hire another" })).toHaveCount(0);
 
   // No data request went to a developer-tool route or an app-private API:

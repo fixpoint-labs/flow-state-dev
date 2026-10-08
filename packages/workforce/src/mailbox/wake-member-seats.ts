@@ -38,6 +38,10 @@ import type { BlockContext, BlockDefinition, FlowInstance } from "@flow-state-de
 import { z } from "zod";
 import { SEAT_ID_KEY } from "../manifest";
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
+import { AGENT_KIND } from "../agent-worker-flow";
+import type { WorkerInstallation } from "../workers/installation";
+import { runsWorkersOf } from "../workers/register";
+import { standardWorkerFlow } from "../workers/standard-workers";
 import { mailboxNotifyInputSchema, type MailboxNotifyInput } from "./mailbox-flow";
 
 /** The internal entry a seat's kind declares to hear a mailbox's posts. */
@@ -51,6 +55,14 @@ export interface WakeMemberSeatsOptions {
    * gets. Never for a member the wake would have run. Silent when omitted.
    */
   fallback?: BlockDefinition<any, any>;
+  /**
+   * The installation whose worker flows run as one copy each. A copy passed
+   * in `seats` that declares this installation's session hears posts for
+   * every standard worker on its flow: a member naming that worker wakes it,
+   * in a conversation of its own, created naming the worker. A user's own
+   * worker isn't woken as a member.
+   */
+  installation?: WorkerInstallation;
 }
 
 /** What a member gets when nothing is delivered to it. */
@@ -76,14 +88,25 @@ function seatIdOf(seat: FlowInstance): string {
  * The seats that can hear a post, grouped by the logical id a mailbox's
  * `members:` names them by. The wake's test of who can be woken, shared with
  * `routeByPurpose` so a route never offers a member the wake would not run.
- * Not re-exported from the package root.
+ * A copy that runs an installation's workers hears posts for each standard
+ * worker on its flow, under that worker's id. Not re-exported from the
+ * package root.
  */
-export function hearingSeatsById(seats: readonly FlowInstance[]): Map<string, FlowInstance[]> {
+export function hearingSeatsById(
+  seats: readonly FlowInstance[],
+  installation?: WorkerInstallation
+): Map<string, FlowInstance[]> {
   const byId = new Map<string, FlowInstance[]>();
+  const add = (id: string, seat: FlowInstance) => byId.set(id, [...(byId.get(id) ?? []), seat]);
   for (const seat of seats) {
     if (!hearsPosts(seat)) continue;
-    const seatId = seatIdOf(seat);
-    byId.set(seatId, [...(byId.get(seatId) ?? []), seat]);
+    if (installation !== undefined && runsWorkersOf(seat, installation)) {
+      for (const worker of installation!.standardWorkers()) {
+        if (standardWorkerFlow(worker, AGENT_KIND) === seat.kind) add(worker.id, seat);
+      }
+      continue;
+    }
+    add(seatIdOf(seat), seat);
   }
   return byId;
 }
@@ -122,28 +145,36 @@ export function wakeMemberSeats(
 ): BlockDefinition<typeof mailboxNotifyInputSchema, any> {
   const fallback = options.fallback ?? silent;
 
-  // One dispatcher per seat that can hear a post, grouped by logical id.
-  const hearing = hearingSeatsById(seats);
-  const wakes = new Map<FlowInstance, BlockDefinition<any, any>>();
-  for (const seat of [...hearing.values()].flat()) {
+  // One dispatcher per (seat, member) that can hear a post. A seat minted
+  // for one worker has one member; a copy that runs every worker of a flow
+  // has one per standard worker on it.
+  const hearing = hearingSeatsById(seats, options.installation);
+  const wakes = new Map<string, BlockDefinition<any, any>>();
+  const wakeKey = (seat: FlowInstance, member: string) => `${seat.id}\u0000${member}`;
+  for (const [member, group] of hearing) {
+    for (const seat of group) {
+    const shared = options.installation !== undefined && runsWorkersOf(seat, options.installation);
+    const worker = shared ? member : seatIdOf(seat);
     wakes.set(
-      seat,
+      wakeKey(seat, member),
       dispatcher({
-        name: `wake-${seat.id}`,
+        name: shared ? `wake-${seat.id}-${member}` : `wake-${seat.id}`,
         flowKind: seat.id,
         action: MAILBOX_POST_ENTRY,
         inputSchema: mailboxNotifyInputSchema,
-        // One conversation per seat per mailbox, adopted on every post after the first.
-        // The worker is named when the conversation is created, from the seat
-        // this code chose, never the post's fields: a worker flow's create
-        // check confirms it (FIX-1788 BR-18). A conversation that exists keeps
-        // its own.
+        // One conversation per worker per mailbox, adopted on every post after
+        // the first. The worker is in the key as well as the state: on a copy
+        // several workers share, a key without it would hand the second
+        // worker the first one's conversation, which the engine refuses. The
+        // worker is named from the seat this code chose, never the post's
+        // fields, and a worker flow's create check confirms it (FIX-1788 BR-18).
         session: {
-          key: (post: MailboxNotifyInput) => `mailbox:${post.mailboxId}`,
-          state: { [WORKER_ID_STATE_KEY]: seatIdOf(seat) }
+          key: (post: MailboxNotifyInput) => `mailbox:${post.mailboxId}:${worker}`,
+          state: { [WORKER_ID_STATE_KEY]: worker }
         }
       })
     );
+    }
   }
 
   /**
@@ -152,7 +183,7 @@ export function wakeMemberSeats(
    */
   const wakeFor = (member: string, ctx: BlockContext): BlockDefinition<any, any> | undefined => {
     const seat = reachableSeat(hearing.get(member) ?? [], ctx);
-    return seat === undefined ? undefined : wakes.get(seat);
+    return seat === undefined ? undefined : wakes.get(wakeKey(seat, member));
   };
 
   const routes = [...wakes.values(), silent];

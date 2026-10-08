@@ -177,7 +177,7 @@ The tab appears on a session whose flow declares at least one of the three inven
 - **Registered mailboxes:** Id, Kind, Members, and Registered, the time the mailbox first registered.
 - **Registered memberships:** Seat and Mailbox.
 
-A mailbox's session declares all three. Some flows declare only part: a seat carrying the [`seat-hire` tools](/docs/workforce/durable-hire) declares only the seat collection. A collection the flow doesn't declare reads "Not installed on this flow.", which is different from an empty section such as "No seats registered." When nothing is registered anywhere, the tab says so and points at the usual cause: the app never calls `openInventory` at boot.
+A mailbox's session declares all three. Some flows declare only part. A collection the flow doesn't declare reads "Not installed on this flow.", which is different from an empty section such as "No seats registered." When nothing is registered anywhere, the tab says so and points at the usual cause: the app never calls `openInventory` at boot.
 
 Every row is labelled registered. Rows are never removed, so a fired seat stays listed, and a mailbox's members are the ones it had when it registered. The tab is a record of what has been registered here. It can't tell you which seats are working now.
 

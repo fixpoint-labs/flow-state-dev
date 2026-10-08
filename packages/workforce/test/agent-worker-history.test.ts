@@ -28,7 +28,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import type { FlowStateRuntime } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import { mailboxNotifyInputSchema, wakeMemberSeats, type MailboxNotifyInput } from "../src/index";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 
 const USER_ID = "u_person";
 const SEAT = "support.devices";
@@ -64,7 +64,7 @@ function turnOf(messages: unknown): string | undefined {
  * post reaches the seat in the conversation a real mailbox would use.
  */
 function boot() {
-  const [seat] = hireWorkforce([{ id: SEAT, declared: {}, body: "You answer device questions." }]);
+  const [seat] = mintSeats([{ id: SEAT, declared: {}, body: "You answer device questions." }]);
   const answer = mockGenerator({
     name: "agent-answer",
     script: [

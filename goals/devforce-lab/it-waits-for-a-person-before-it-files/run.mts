@@ -185,7 +185,7 @@ async function answer(
 ): Promise<{ status: number; body: any }> {
   return await lab.door(
     "POST",
-    `${fixture.coordinatorSeat}/requests/${ask.requestId}/resume`,
+    `${lab.seats[fixture.coordinatorSeat]!.id}/requests/${ask.requestId}/resume`,
     { body: { suspensionId: ask.suspensionId, action }, bearer },
   );
 }
@@ -194,7 +194,7 @@ async function answer(
 async function requestReaches(lab: Lab, requestId: string, want: string[]): Promise<string> {
   let last = "";
   for (let waited = 0; waited < wait.timeoutMs; waited += wait.pollMs) {
-    const r = await lab.door("GET", `${fixture.coordinatorSeat}/requests/${requestId}/status`);
+    const r = await lab.door("GET", `${lab.seats[fixture.coordinatorSeat]!.id}/requests/${requestId}/status`);
     last = r.body?.status ?? r.body?.request?.status ?? `http ${r.status}`;
     if (want.includes(last)) return last;
     await sleep(wait.pollMs);
@@ -337,7 +337,7 @@ await runGoal(async () => {
           note("2", `the row "${row.id}" is not derived from "${feature.issue}"`);
         }
         if (row?.status !== "completed") note("2", `the row settled "${row?.status}", wanted "completed"`);
-        const reached = (await lab.dispatched(fixture.coordinatorSeat)).map((d) => d.flowId);
+        const reached = (await lab.dispatched(fixture.coordinatorSeat)).map((d) => d.workerId);
         if (reached.length !== 1 || reached[0] !== fixture.assignedSeat) {
           note("2", `the board handed the row to ${JSON.stringify(reached)}, wanted ["${fixture.assignedSeat}"]`);
         }
@@ -479,7 +479,8 @@ await runGoal(async () => {
         [0, 1].map(() =>
           raiseAsk({
             state: lab.state,
-            emSeat: lab.seats[fixture.coordinatorSeat]!,
+            emFlow: lab.seats[fixture.coordinatorSeat]!,
+            emWorker: fixture.coordinatorSeat,
             feature: other,
             principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
             ledger: lab.ledger,

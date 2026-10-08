@@ -121,11 +121,11 @@ A Lab with no resolver runs in the framework's development organization, `DEFAUL
 2. Call `openInventory` once `openMailboxes` has returned, under the organization your resolver names.
 
 ```ts
-// `roster` is the tree read with `readDeclaredRoster`, `hired` the seats
-// `hireWorkforce` returned, and `client` the session client `openMailboxes` takes.
+// `roster` is the tree read with `readDeclaredRoster`, `installation` the one built on its
+// workers, and `client` the session client `openMailboxes` takes.
 await openMailboxes(roster.mailboxes, { client, userId: "u_lab" });
 const opened = await openInventory(
-  { seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })), mailboxes: roster.mailboxes },
+  { seats: inventorySeats(installation), mailboxes: roster.mailboxes },
   { run, seatWriter: { flowKind: "mailbox" }, userId: "u_lab", orgId: "org_lab" },
 );
 if (opened.problems.length > 0) throw new Error(opened.problems.join("; "));
@@ -194,7 +194,7 @@ A Lab with no chief of staff needs nothing in its config. Every screen works, an
 ## What you see
 
 - **Shift Coordinator.** Where Shift Manager opens: a summary of the shift, and your conversation with the Lab's chief of staff. See [Shift Coordinator](#shift-coordinator).
-- **Sidebar.** The organization, Jump to (⌘K), Shift Coordinator, Inbox and Tasks with their counts (Inbox's count is highlighted while anything waits on you), Roster with how many workers are on shift and on call, PROJECTS (each project with its workstreams, then No project), and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on shift and a square for each worker. A workstream under PROJECTS shows a yellow square while one of its workers' asks waits on you, otherwise a blue one while one of its tasks runs. Organization-level workers, such as a chief of staff, sit in one Staff row at the top. A worker hired while the Lab runs is listed only while the organization's roster has its row, so a fired worker leaves the list even if its inventory row is still there. When no flow the person uses lets Shift Manager read the roster, hired workers aren't listed and TEAMS says how many were left out. Hover a square for the worker and its status. Click a team to open Roster for that team. The footer repeats the on-shift and on-call counts, followed by your initials.
+- **Sidebar.** The organization, Jump to (⌘K), Shift Coordinator, Inbox and Tasks with their counts (Inbox's count is highlighted while anything waits on you), Roster with how many workers are on shift and on call, PROJECTS (each project with its workstreams, then No project), and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on shift and a square for each worker. A workstream under PROJECTS shows a yellow square while one of its workers' asks waits on you, otherwise a blue one while one of its tasks runs. Organization-level workers, such as a chief of staff, sit in one Staff row at the top. TEAMS lists the Lab's standard workers; your own workers are on Roster. Hover a square for the worker and its status. Click a team to open Roster for that team. The footer repeats the on-shift and on-call counts, followed by your initials.
 - **Jump to (⌘K).** Finds Shift Coordinator, workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A seat opens Roster. A document opens read-only.
 - **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card, and can reply to the worker under it. An ask from a run the Lab started by itself, such as a seat woken by a mailbox post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside. Under the ask, *From the session* lists the last three tool calls the worker made before it asked. Replies you send appear below that list once the worker's session has stored them.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream. Each row shows its id and, while it runs, how long it has been running. Queued tasks, blocked ones included, stay hidden until you turn on the Queued toggle, which shows how many there are.
@@ -208,7 +208,7 @@ A post appears in the transcript only once the mailbox has kept it. Until then t
 
 **Talking to a worker.** Start a line with `@` and a worker's name to send it to that worker's task in this workstream instead of the mailbox. If it has several, the composer asks which. If it has none, Send is off and says so. In a task, the composer sends to that task's run. From Inbox, the reply box sends to the worker that asked, if its kind takes messages. A worker whose kind takes no message gets a reply box that says so.
 
-A running coding run stops where it is and carries on in the same session with your message. Each message box names the worker it sends to. In Shift Coordinator and Inbox, as soon as the worker's session holds your line, the line leaves the box and shows in the conversation, and the composer says it's waiting on the reply. It says *delivered* once the worker's turn on it ends. If the send fails after the line left the box, the line is put back. A conversation that's scrolled to its end keeps the latest turn in view as lines arrive. If the worker stops on an ask of its own, as a chief of staff does before it fires or retires a seat, the line is still delivered: the composer says so and points you at Inbox, where the ask now waits, and offers no Retry. If it stops to wait on something other than you, the composer says it's waiting, again with no Retry. If the worker refuses it, your draft stays and its reason is shown. If the line never reached the Lab, Retry sends it again. If it may have arrived but Shift Manager can't confirm it, the draft stays and there's no Retry, so it isn't sent twice. A finished task takes no message.
+A running coding run stops where it is and carries on in the same session with your message. Each message box names the worker it sends to. In Shift Coordinator and Inbox, as soon as the worker's session holds your line, the line leaves the box and shows in the conversation, and the composer says it's waiting on the reply. It says *delivered* once the worker's turn on it ends. If the send fails after the line left the box, the line is put back. A conversation that's scrolled to its end keeps the latest turn in view as lines arrive. If the worker stops on an ask of its own, as a chief of staff does before it fires a worker, the line is still delivered: the composer says so and points you at Inbox, where the ask now waits, and offers no Retry. If it stops to wait on something other than you, the composer says it's waiting, again with no Retry. If the worker refuses it, your draft stays and its reason is shown. If the line never reached the Lab, Retry sends it again. If it may have arrived but Shift Manager can't confirm it, the draft stays and there's no Retry, so it isn't sent twice. A finished task takes no message.
 
 To make your own worker kind take messages, give it one public action that declares `userMessage` and takes `{ message }`. Shift Manager sends lines there, using the `door` on the seat's inventory row.
 
@@ -220,7 +220,7 @@ Shift Manager opens here, at `/` or `/cos`.
 
 The top of the screen is Shift Manager's own summary of the shift: how many asks wait on you, each one with the same Approve and Reject you'd get in Inbox, and how many runs are going across how many workstreams. The numbers are the ones Inbox and Tasks show.
 
-Below it is your conversation with the Lab's chief-of-staff seat. A line goes through the seat's door, like any other line you send to a worker. The message box names who you're sending to, Shift Coordinator. The reply is what the seat wrote in that session, with the time it was written. While the seat works on a line you sent from this tab, a blue square says so under the conversation and on the sidebar's Shift Coordinator entry. Once you send a line, the conversation follows: each new turn scrolls into view, until you scroll up to read earlier ones. Come back later and the same conversation is there.
+Below it is your conversation with the Lab's chief-of-staff worker: your newest session on its flow that names it. A first line opens that session, naming the worker, before the line goes through the flow's door, like any other line you send to a worker. The message box names who you're sending to, Shift Coordinator. The reply is what the seat wrote in that session, with the time it was written. While the seat works on a line you sent from this tab, a blue square says so under the conversation and on the sidebar's Shift Coordinator entry. Once you send a line, the conversation follows: each new turn scrolls into view, until you scroll up to read earlier ones. Come back later and the same conversation is there.
 
 Above the message box sit suggested lines you can click to fill the box: `Who's on call?`, and `What's blocking #<workstream>?`. The workstream named is one with an ask waiting on you, or, if none has one, one with a task running. Nothing goes out until you send it.
 
@@ -284,17 +284,17 @@ A board that hands work off keeps a running task on the worker it was given to, 
 
 ## Roster
 
-Roster shows every worker the Lab's seat inventory lists, in three groups:
+Roster shows the signed-in person's workers: the standard workers the Lab's seat inventory lists, and their own, hired or forked, which no one else sees (marked YOURS). Their own are read through Workforce's client (`createWorkforceClient(...).roster()`), so the Lab has to register the roster flow `hireWorkforce` returns. Each worker is in one of three groups:
 
 - **On shift**: it holds a task that is running.
 - **On call**: nothing of its is running, but it is waiting on you, either on a task it parked for you or on an ask in Inbox.
 - **Off shift**: neither. A worker with only queued tasks is off shift until it claims one.
 
-Each worker shows its team and kind, how many slots it has in use (one square per task it holds), the tasks it holds, and what it is waiting on. Click a task to open it. The counts at the top are for the workers shown.
+Each worker shows its team and the flow it runs on, how many slots it has in use (one square per task it holds), the tasks it holds, and what it is waiting on. Click a task to open it. The counts at the top are for the workers shown.
 
 The same status appears in the sidebar and in a workstream's panel, so a worker reads the same everywhere. If the Lab's asks didn't load, each of those places marks its status *partial*: a worker waiting on you only through an ask would read off shift.
 
-Roster is read with the rest of the screen, when Shift Manager starts, on Retry, after you answer an ask, and after each message the chief of staff takes (so a hire, or a project it starts for you, shows up at once). It says when it was read. It doesn't refresh on its own.
+Roster is read with the rest of the screen, when Shift Manager starts, on Retry, after you answer an ask, and after each message the chief of staff takes (so a hire, a fire, or a project it starts for you, shows up at once). It says when it was read. It doesn't refresh on its own.
 
 Slots count what a worker holds now. Nothing in a Lab limits how many tasks a worker takes, so Roster shows no capacity and no free slots.
 

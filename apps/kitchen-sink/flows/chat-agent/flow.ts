@@ -29,7 +29,6 @@ import { approvalGate } from "./approval-gate";
 import { askQuestion, collectForm, chooseOption } from "./human-input";
 import { mem } from "./run/cognition";
 import { bashCap } from "./shared/capabilities/features";
-import { workforcePanelResources } from "./shared/workforce-panels";
 import {
   coalesceThinkingStyle,
   modeSchema,
@@ -145,11 +144,8 @@ const chatAgentFlow = defineFlow({
 
   // FIX-435: resources live in a single flat flow.resources map; their
   // intrinsic scope routes them to the right storage layer.
-  // `workforcePanelResources`: the roster and the boot report the shell's
-  // right panel reads through this flow's session.
   resources: {
     ...(mem.userResources ?? {}),
-    ...workforcePanelResources,
   },
 
   // Tear down the bash sandbox at request end. Required when the bash

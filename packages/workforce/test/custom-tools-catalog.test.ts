@@ -24,7 +24,7 @@ import { defineResource } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
-import { hireWorkforce, type HireOptions } from "../src/hire";
+import { mintSeats, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 
@@ -33,7 +33,7 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
 }
 
 function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"]): FlowInstance[] {
-  return hireWorkforce(manifests, { workerFlows: kinds });
+  return mintSeats(manifests, { workerFlows: kinds });
 }
 
 /** A model script that "calls" a tool by name. */

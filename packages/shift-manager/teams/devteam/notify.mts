@@ -38,13 +38,14 @@
  * **What BR-8 forbids is the second kind of dispatch, not this one.** The
  * framework invokes a notify block once per declared member however this map is
  * written; what must never reach the reviewer is *work* — a board hand-off or a
- * harness run. That is graded on the board dispatch record by `flowId`, and the
- * two are different things (see the check's own `work-reaches-the-reviewer`
+ * harness run. That is graded on the board dispatch record by the worker each
+ * child session names, and the two are different things (see the check's own `work-reaches-the-reviewer`
  * control).
  */
 
 import { handler, sequencer, dispatcher } from "@flow-state-dev/core";
 import { mailboxNotifyInputSchema, type MailboxNotifyInput } from "@flow-state-dev/workforce";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { z } from "zod";
 import { POST_ENTRY, ROOM_ENTRY } from "./workforce/flows/workers/em.mts";
 
@@ -92,12 +93,14 @@ export function createNotifyLog(): NotifyLog {
 
 export interface LabNotifyOptions {
   /**
-   * Member id → the hired seat's instance id it is delivered to.
+   * Member id → the worker it is delivered to.
    *
-   * Every id here is a seat `hireWorkforce` minted, so a dispatcher can name
-   * it. A member absent from this map is recorded and skipped.
+   * Every id here is a standard worker the tree declares. A member absent
+   * from this map is recorded and skipped.
    */
   addresses: Record<string, string>;
+  /** The flow a worker runs on, where its delivery's session is opened. */
+  flowOf: (workerId: string) => string;
   /** Where the run's routing decisions are recorded. */
   log: NotifyLog;
 }
@@ -109,7 +112,7 @@ export interface LabNotifyOptions {
  * @returns The block to pass as `defineMailboxFlow({ notify })`.
  */
 export function labNotify(options: LabNotifyOptions) {
-  const { addresses, log } = options;
+  const { addresses, log, flowOf } = options;
   const members = Object.keys(addresses);
 
   /**
@@ -154,25 +157,30 @@ export function labNotify(options: LabNotifyOptions) {
 
   /**
    * One dispatcher per addressed member, because `flowKind` is a static
-   * instance id and not a function.
+   * flow id and not a function.
    *
-   * `session: { key }`, never `{ id }`: a seat has no session until something
-   * wakes it, and an exact id nothing created is refused `session-not-found` by
-   * name. The `key` child is derived, created on first delivery, and inherits
-   * the sender's org — which is what carries the seat's document reads.
+   * `session: { key, state }`, never `{ id }`: a seat has no session until
+   * something wakes it, and an exact id nothing created is refused
+   * `session-not-found` by name. The `key` child is derived, created on first
+   * delivery naming the member's worker, and inherits the sender's org —
+   * which is what carries the seat's document reads.
    */
+  const session = (member: string) => ({
+    key: () => member,
+    state: { [WORKER_ID_STATE_KEY]: addresses[member]! },
+  });
   const toSeat = (member: string) =>
     dispatcher({
       name: `devforce-notify-${member.replace(/\./g, "-")}`,
       action: POST_ENTRY,
-      flowKind: addresses[member]!,
+      flowKind: flowOf(addresses[member]!),
       inputSchema: decisionSchema,
       payload: (decision: Decision) => ({
         mailboxId: decision.mailboxId,
         body: decision.body,
         member: decision.member,
       }),
-      session: { key: () => member },
+      session: session(member),
     } as never);
 
   /**
@@ -183,7 +191,7 @@ export function labNotify(options: LabNotifyOptions) {
     dispatcher({
       name: `devforce-notify-room-${member.replace(/\./g, "-")}`,
       action: ROOM_ENTRY,
-      flowKind: addresses[member]!,
+      flowKind: flowOf(addresses[member]!),
       inputSchema: decisionSchema,
       payload: (decision: Decision) => ({
         mailboxId: decision.mailboxId,
@@ -192,7 +200,7 @@ export function labNotify(options: LabNotifyOptions) {
         member: decision.member,
         token: decision.answerToken,
       }),
-      session: { key: () => member },
+      session: session(member),
     } as never);
 
   let seq: any = sequencer({

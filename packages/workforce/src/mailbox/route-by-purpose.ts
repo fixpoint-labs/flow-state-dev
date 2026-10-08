@@ -43,6 +43,8 @@ import type { EvaluationModel, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { bestFitEvaluationFailed, needsBestFitCall, placeBestFit, type BestFitMiss } from "../best-fit";
 import { seatDescription } from "../seat-description";
+import type { WorkerInstallation } from "../workers/installation";
+import { runsWorkersOf } from "../workers/register";
 import { boundMailbox } from "./mailbox-flow";
 import { emitMailboxRouteRecord } from "./mailbox-items";
 import {
@@ -68,6 +70,13 @@ export interface RouteByPurposeOptions {
    * fallback.
    */
   model: string | EvaluationModel;
+  /**
+   * The installation whose worker flows run as one copy each: a member that
+   * is one of its standard workers is routed to by that worker's
+   * `description:`, on the copy of its flow. The same installation the wake
+   * is given.
+   */
+  installation?: WorkerInstallation;
 }
 
 /** What the evaluator is asked. */
@@ -107,7 +116,13 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
         "The package names no default."
     );
   }
-  const hearing = hearingSeatsById(seats);
+  const hearing = hearingSeatsById(seats, options.installation);
+  /** A member's description: its standard worker's on a shared copy, else the minted seat's. */
+  const describe = (member: string, seat: FlowInstance): string | undefined => {
+    if (options.installation === undefined || !runsWorkersOf(seat, options.installation)) return seatDescription(seat);
+    const described = options.installation.standardWorker(member)?.declared.description;
+    return typeof described === "string" && described.trim() !== "" ? described : undefined;
+  };
 
   /** The members this caller can route to, the options, and whether the post's holder is one of them. */
   const readCase = handler({
@@ -124,7 +139,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
         const seat = reachableSeat(hearing.get(member) ?? [], ctx);
         if (seat === undefined) continue;
         reachable.push(member);
-        const description = seatDescription(seat);
+        const description = describe(member, seat);
         if (description !== undefined) options[member] = description;
       }
       const held = request.holder;

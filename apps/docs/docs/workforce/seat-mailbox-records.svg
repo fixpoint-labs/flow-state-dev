@@ -40,7 +40,7 @@
     <text class="code" x="50" y="282">teams/engineering/</text>
     <text class="code" x="50" y="300">  mailboxes/standup/</text>
     <text class="p" x="40" y="352">Read at every start.</text>
-    <text class="muted" x="40" y="374">A seat hired at runtime</text>
+    <text class="muted" x="40" y="374">A user's own worker</text>
     <text class="muted" x="40" y="392">has no file here.</text>
   </g>
 
@@ -60,22 +60,22 @@
     <text class="lbl" x="277" y="310">MEMBERSHIP ROW</text>
     <text class="muted" x="277" y="330">One per seat in a mailbox</text>
     <text class="muted" x="267" y="368">A declared row is never</text>
-    <text class="muted" x="267" y="386">deleted. Firing a hired</text>
-    <text class="muted" x="267" y="404">seat removes its row.</text>
+    <text class="muted" x="267" y="386">deleted. A user's own</text>
+    <text class="muted" x="267" y="404">worker has no row.</text>
   </g>
 
   <g id="roster">
     <rect class="wall-org" x="478" y="80" width="211" height="356" rx="14"/>
-    <text class="h" x="494" y="104">Hired roster</text>
-    <text class="muted" x="494" y="122">Is it hired right now?</text>
+    <text class="h" x="494" y="104">A user's roster</text>
+    <text class="muted" x="494" y="122">Whose worker is it?</text>
     <rect class="card" x="490" y="138" width="187" height="104" rx="10"/>
     <text class="lbl" x="504" y="158">ROSTER ROW</text>
-    <text class="code" x="504" y="178">workforce/roster/</text>
-    <text class="code" x="504" y="194">  support.ada</text>
-    <text class="code" x="504" y="220">seatId · flow</text>
-    <text class="p" x="494" y="270">Only seats hired while</text>
-    <text class="p" x="494" y="288">the app runs.</text>
-    <text class="muted" x="494" y="314">Deleted when the seat</text>
+    <text class="code" x="504" y="178">workforce/workers/</text>
+    <text class="code" x="504" y="194">  scribe</text>
+    <text class="code" x="504" y="220">flow · settings</text>
+    <text class="p" x="494" y="270">In the user's own data;</text>
+    <text class="p" x="494" y="288">nobody else reads it.</text>
+    <text class="muted" x="494" y="314">Deleted when the worker</text>
     <text class="muted" x="494" y="332">is fired.</text>
   </g>
 
@@ -98,7 +98,7 @@
     <rect class="box" x="24" y="452" width="892" height="104" rx="12"/>
     <text class="h" x="40" y="476">Not a copy</text>
     <text class="p" x="40" y="500">The inventory's members is a copy for finding mailboxes. The mailbox's session is the check on a post.</text>
-    <text class="p" x="40" y="520">A seat hired at runtime has its address as its inventory id, acme.support.ada; members name it support.ada.</text>
-    <text class="p" x="40" y="540">The roster says who is hired now. The inventory says what was registered, and keeps every declared row.</text>
+    <text class="p" x="40" y="520">The inventory lists the workers your files declare. A user's own workers are on their roster only.</text>
+    <text class="p" x="40" y="540">The roster says whose workers they are. The inventory says what was registered, and keeps every declared row.</text>
   </g>
 </svg>

@@ -22,7 +22,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import { readWorkforce, readWorkforceDirectory } from "../src/loader";
 import { SEAT_PACKAGES_KEY, type PackageManifest } from "../src/manifest";
 import { resolveHeldPackages } from "../src/seat-packages";
@@ -198,7 +198,7 @@ describe("an org seat reads the org level, then its own folder (BR-5)", () => {
       execute: () => ({ ok: true }),
     });
 
-    const seats = hireWorkforce(workers, {
+    const seats = mintSeats(workers, {
       packageBlocks: { "org/workers/chief-of-staff/packages/roster": { "add-seat": tool } },
     });
 
@@ -222,7 +222,7 @@ describe("an org seat reads the org level, then its own folder (BR-5)", () => {
       execute: () => ({ ok: true }),
     });
     expect(() =>
-      hireWorkforce(workers, {
+      mintSeats(workers, {
         packageBlocks: { "org/workers/chief-of-staff/packages/roster": { "add-seat": tool } },
       }),
     ).toThrow(/worker "chief-of-staff"[\s\S]*org\/workers\/chief-of-staff\/packages\/roster/);
@@ -301,27 +301,6 @@ describe("resolveHeldPackages reads an org seat's id through the parser", () => 
     expect(problems.join("\n")).toContain(deploy.path);
   });
 
-  it("reads a hired org seat's address <org>.<worker> as that org seat when the org is known", () => {
-    // Two segments: without the org peeled, "acme.cos" reads as a seat of team "acme".
-    const { held, problems } = resolveHeldPackages("acme.cos", ["house"], [house, own], {}, "acme");
-    expect(problems).toEqual([]);
-    expect(held.map((h) => h.manifest.path)).toEqual([own.path, house.path]);
-    // A user-owned address peels the same way.
-    expect(resolveHeldPackages("acme.~u_1.cos", ["house"], [house, own], {}, "acme").problems).toEqual([]);
-    // And a hired team seat keeps its team.
-    const lead = resolveHeldPackages("acme.eng.lead", ["deploy"], [deploy], {}, "acme");
-    expect(lead.problems).toEqual([]);
-    expect(lead.held.map((h) => h.manifest.path)).toEqual([deploy.path]);
-  });
-
-  it("hires an org seat from a roster row with its own folder's package held", () => {
-    // The caller that has the org: the hire, reading the row's owner pin.
-    const [seat] = hireWorkforce(
-      [{ id: "acme.cos", seatId: "cos", declared: {}, body: "", packages: [own], ownerPin: { orgId: "acme" } }],
-    );
-    expect(seat?.id).toBe("acme.cos");
-  });
-
   it("refuses a team library with no owning team on its record, even when it names that package", () => {
     // A hand-built or widened record can drop the optional `team`. An org
     // seat has no team, so no team-level package is ever its own.
@@ -336,29 +315,6 @@ describe("resolveHeldPackages reads an org seat's id through the parser", () => 
     const { held, problems } = resolveHeldPackages("eng.lead", ["deploy"], [house, ownerless], {});
     expect(held).toEqual([]);
     expect(problems.join("\n")).toContain("no team at all");
-  });
-
-  it("holds a hired org seat's own package by the seat id it was hired as, not its org-qualified address", () => {
-    // `acme.research` read as a declared id is team `acme`, worker `research`;
-    // the seat was hired as `research`, an org seat, and the package is its own.
-    const mine = pkg("roster", "worker", "org/workers/research/packages/roster", { worker: "research" });
-    const [seat] = hireWorkforce([
-      { id: "acme.research", seatId: "research", declared: {}, body: "", packages: [mine], ownerPin: { orgId: "acme" } },
-    ]);
-    expect(seat?.id).toBe("acme.research");
-    const held = (seat!.config as Record<string, Array<{ path: string }>>)[SEAT_PACKAGES_KEY];
-    expect((held ?? []).map((entry) => entry.path)).toEqual([mine.path]);
-  });
-
-  it("keeps a hired seat on a team named like its org on that team, holding the team's package", () => {
-    // Seat id `acme.lead` in org `acme`: peeling the org off the seat id would
-    // read it as org seat `lead` and refuse the team library.
-    const library = pkg("deploy", "team", "teams/acme/packages/deploy", { team: "acme" });
-    const [seat] = hireWorkforce([
-      { id: "acme.acme.lead", seatId: "acme.lead", declared: { packages: ["deploy"] }, body: "", packages: [library], ownerPin: { orgId: "acme" } },
-    ]);
-    const held = (seat!.config as Record<string, Array<{ path: string }>>)[SEAT_PACKAGES_KEY];
-    expect((held ?? []).map((entry) => entry.path)).toEqual([library.path]);
   });
 
   it("refuses a seat id that matches neither declared shape, rather than reading its last two segments", () => {

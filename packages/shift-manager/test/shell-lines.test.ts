@@ -36,7 +36,7 @@ describe("a message's time (v2:135)", () => {
 
 /** Two workstreams, `eng.desk` (coder) and `eng.side` (reviewer), with `rows` and `asks`. */
 function snapshotOf(rows: BoardRow[], asks: Ask[]): LoadedSnapshot {
-  const seats = [toSeat({ id: "eng.coder", kind: "worker" }, ORG)!, toSeat({ id: "eng.reviewer", kind: "worker" }, ORG)!];
+  const seats = [toSeat({ id: "eng.coder", kind: "worker" })!, toSeat({ id: "eng.reviewer", kind: "worker" })!];
   return {
     readAt: 0,
     sessions: [],

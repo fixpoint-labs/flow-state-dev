@@ -90,7 +90,7 @@ export function ShellPanels({ sessionId, bootProblems, getToken }: ShellPanelsPr
 
 Pass the same `resourceClient` to both, built once. Leave it out and each panel builds its own client with the plain browser `fetch`. That sends a same-origin cookie but no `Authorization` header, so once your [resolver](../server/authentication.md) expects a bearer token, the panels' reads get a 401.
 
-`problems` is the list of seats your last boot could not bring back. It comes from `reloadHiredSeats` on the server, so your app has to hand it to the browser itself, for example by writing it to an organization-scoped collection the same flow declares. See [Hiring while the app runs](./durable-hire).
+`problems` is an optional list of seats your app wants flagged, such as ones it couldn't start, which your app hands to the browser itself. Workforce writes none: a standard worker that can't run stops `hireWorkforce` at startup, and a user's own worker that stops resolving refuses its next turn, naming why.
 
 A board column is grouped by task status. An empty board says so, and names the usual reason: no seat drains it.
 
@@ -176,6 +176,6 @@ These components render; they don't administer. There is no create-mailbox or in
 
 The roster and the board columns are scoped to an organization, because the collections behind them are. **The navigator is not.** It shows the flow kinds your server has registered, the instances under them, and the sessions the caller can see, with no organization filter. The flow list is answered without authentication, so every caller sees every flow your app defines and every seat declared in a `WORKER.md` file.
 
-A hired seat is listed only to callers who could open it, as [Who can reach a hired seat](./durable-hire.md#who-can-reach-a-hired-seat) describes. For a person's own hired seats to appear, the navigator's `client` has to carry their credential. In a multi-organization deployment, don't show end users a seats section that includes file-declared seats, because those are listed to everyone.
+A user's own workers aren't flows, so the navigator doesn't list them: read them with `createWorkforceClient(...).roster()`, as [Hiring and forking](./durable-hire.md#after-a-hire-refresh-the-roster) shows. In a multi-organization deployment, don't show end users a seats section that includes file-declared seats, because those are listed to everyone.
 
 **Which organization the panels show depends on how your deployment signs people in.** A session is bound to the organization of the identity your server resolves for the request. With no sign-in configured there is one organization, and you see it. If you hire into real organizations but have not given the app a way to identify the person viewing it, the panels read the default organization and come up empty. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers how a request gets its organization.

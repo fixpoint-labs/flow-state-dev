@@ -9,7 +9,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { __resetDeprecationWarningsForTests, defineFlow, handler } from "@flow-state-dev/core";
-import { mailboxBoard, hireWorkforce, workerConfigSchema } from "../src/index";
+import { mailboxBoard, workerConfigSchema } from "../src/index";
+import { mintSeats } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerDoor } from "./worker-door";
 
@@ -52,7 +53,7 @@ describe("a mailbox folder that was renamed", () => {
       // moved with it and the rows filed under the old id are still sitting at
       // the old key. Nothing migrates them and nothing refuses (BR-23) — the
       // seat below is the one that did not move.
-      hireWorkforce([seat("eng.coder")], {
+      mintSeats([seat("eng.coder")], {
         workerFlows: { coder: seatKindHolding(["eng.feature.triage"]) as never },
         mailboxBoards: ["eng.renamed.triage"]
       });
@@ -76,7 +77,7 @@ describe("a mailbox board nobody declared", () => {
   it("warns at hire, names the mailbox and the id, and still hires", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const seats = hireWorkforce([seat("eng.coder")], {
+      const seats = mintSeats([seat("eng.coder")], {
         workerFlows: { coder: seatKindHolding(["eng.feature.triage"]) as never },
         mailboxBoards: ["eng.feature.triage", "eng.feature.review"]
       });
@@ -103,7 +104,7 @@ describe("a mailbox board nobody declared", () => {
   it("says nothing when every board a roster minted is declared somewhere", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      hireWorkforce([seat("eng.coder")], {
+      mintSeats([seat("eng.coder")], {
         workerFlows: { coder: seatKindHolding(["eng.feature.triage"]) as never },
         mailboxBoards: ["eng.feature.triage"]
       });
@@ -122,7 +123,7 @@ describe("a mailbox board nobody declared", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const hire = (mailboxBoards: string[]) =>
-        hireWorkforce([seat("eng.coder")], {
+        mintSeats([seat("eng.coder")], {
           workerFlows: { coder: seatKindHolding(["eng.feature.triage"]) as never },
           mailboxBoards
         });
@@ -147,7 +148,7 @@ describe("a mailbox board nobody declared", () => {
     // boards existed.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      hireWorkforce([seat("eng.coder")], {
+      mintSeats([seat("eng.coder")], {
         workerFlows: { coder: seatKindHolding([]) as never }
       });
       expect(warn).not.toHaveBeenCalled();

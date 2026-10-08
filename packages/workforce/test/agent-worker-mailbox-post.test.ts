@@ -25,7 +25,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import type { FlowStateRuntime } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import { mailboxNotifyInputSchema, type MailboxNotifyInput } from "../src/index";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 
 const USER_ID = "u_mailbox";
 const MAILBOX_SESSION = "support.desk";
@@ -50,7 +50,7 @@ function wakeFlow(seatId: string) {
 }
 
 function boot() {
-  const [seat] = hireWorkforce([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
+  const [seat] = mintSeats([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
   const heard: string[] = [];
   const sender = wakeFlow(seat!.id);
   const state = createFlowState({

@@ -48,7 +48,7 @@ describe("a coordinator's configuration (V1)", () => {
 
   it("refuses rounds above three when a file is loaded, and when a row is saved (BR-26)", async () => {
     const host = bootHost({ standard: standardWorkers({ desk: { rounds: 4 } }) });
-    expect(host.installation.standardWorkerProblems().join("\n")).toMatch(/standard worker "desk": .*rounds can be at most 3/);
+    expect(host.installation.standardWorkerProblems().join("\n")).toMatch(/worker "desk" — .*rounds can be at most 3/);
 
     const saved = await host.hire("alice", { id: "triage", flow: "coordinator", settings: { rounds: 5 } });
     expect(messageOf(saved.error)).toMatch(/rounds can be at most 3/);
@@ -61,7 +61,7 @@ describe("a coordinator's configuration (V1)", () => {
     // roster author believe answers go back out when they don't.
     const host = bootHost({ standard: standardWorkers({ desk: { rounds: 1 } }) });
     expect(host.installation.standardWorkerProblems().join("\n")).toMatch(
-      /standard worker "desk": .*rounds above 0 aren't supported yet/
+      /worker "desk" — .*rounds above 0 aren't supported yet/
     );
     for (const rounds of [1, 3]) {
       const saved = await host.hire("alice", { id: `triage-${rounds}`, flow: "coordinator", settings: { rounds } });

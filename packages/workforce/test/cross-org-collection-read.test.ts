@@ -56,7 +56,6 @@ import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
-import { defineHiredRosterCollection } from "../src/roster/collections";
 import { mailboxBoard, MAILBOX_BOARD_CLIENT_FIELDS } from "../src/mailbox/mailbox-board";
 import { mailboxBoardRowSchema } from "../src/mailbox/mailbox-flow";
 import {
@@ -67,30 +66,17 @@ import {
   openInventory,
   type MailboxManifest
 } from "../src/index";
-import {
-  createSeatHireBlocks,
-  HIRED_ROSTER_RESOURCE,
-  SEAT_INVENTORY_RESOURCE
-} from "../src/seat-hire-blocks";
 
-/**
- * Resource-map keys must be slash-free — they are one path segment in
- * `/sessions/:id/resources/:ref`, so `workforce/roster` would 404 on
- * segmentation. Distinct from the collection's `workforce/roster/*` PATTERN,
- * which is a storage-key shape and may contain slashes.
- */
-const ROSTER_REF = "roster";
 const BOARD_REF = "eng.feature.triage";
 const FLOW_KIND = "workforce-panels";
 
-const rosterCollection = defineHiredRosterCollection();
 const boardLedger = mailboxBoard("eng.feature", "triage");
 
 /** Execution internals a task envelope carries and a board card must never receive. */
 const EXECUTION_INTERNALS = ["claimedBy", "leaseUntil", "retryLedger", "writeLog"] as const;
 
 /**
- * Plants one roster row and one board row in whatever org the running session
+ * Plants one board row in whatever org the running session
  * is bound to. Deliberately an ACTION rather than a direct store write: the
  * rows have to land through the same org resolution the read uses, or the test
  * would be asserting against a fixture it placed by hand.
@@ -102,16 +88,9 @@ const seed = handler({
   name: "seed",
   inputSchema: z.object({ seatId: z.string(), goal: z.string() }),
   outputSchema: z.object({ ok: z.boolean() }),
-  resources: { [ROSTER_REF]: rosterCollection, [BOARD_REF]: boardLedger },
+  resources: { [BOARD_REF]: boardLedger },
   execute: async (input, ctx) => {
-    const roster = ctx.resources[ROSTER_REF] as ResourceCollectionRef<Record<string, unknown>>;
     const board = ctx.resources[BOARD_REF] as ResourceCollectionRef<Record<string, unknown>>;
-    await roster.create(input.seatId, {
-      seatId: input.seatId,
-      flow: "agent",
-      settings: { apiKey: "LEAKED-SETTINGS" },
-      instructions: null
-    });
     await board.create(`task-${input.seatId}`, {
       id: `task-${input.seatId}`,
       goal: input.goal,
@@ -137,7 +116,7 @@ const seed = handler({
 function panelFlow() {
   return defineFlow({
     kind: FLOW_KIND,
-    resources: { [ROSTER_REF]: rosterCollection, [BOARD_REF]: boardLedger },
+    resources: { [BOARD_REF]: boardLedger },
     actions: {
       seed: { inputSchema: z.object({ seatId: z.string(), goal: z.string() }), block: seed }
     },
@@ -257,19 +236,17 @@ describe("FIX-1477 · the panel collections' client read", () => {
     expect(extra, "browser-only board fields the model's allowlist does not publish").toEqual([]);
   });
 
-  it("both panel collections are org-scoped, which is what the opt-in rests on", () => {
-    const roster = rosterCollection as unknown as { scope?: string };
+  it("the board collection is org-scoped, which is what the opt-in rests on", () => {
     const board = boardLedger as unknown as { scope?: string };
-    expect(roster.scope, "the hired roster's scope").toBe("org");
     expect(board.scope, "a mailbox board ledger's scope").toBe("org");
   });
 
-  it("an org's own member can read both collections at all", async () => {
+  it("an org's own member can read the board at all", async () => {
     const h = await buildHarness();
     await plant(h, "org-a", "support.ada", "ship the thing");
     const sessionId = await openSession(h, "org-a", "org-a");
 
-    for (const ref of [ROSTER_REF, BOARD_REF]) {
+    for (const ref of [BOARD_REF]) {
       const { status, json } = await readCollection(h, sessionId, ref, "", {
         "x-verified-org": "org-a"
       });
@@ -294,23 +271,17 @@ describe("FIX-1477 · the panel collections' client read", () => {
       "x-organization": "org-b"
     };
 
-    const roster = await readCollection(h, sessionId, ROSTER_REF, "?orgId=org-b", steer);
     const board = await readCollection(h, sessionId, BOARD_REF, "?orgId=org-b", steer);
 
-    expect(roster.status).toBe(200);
     expect(board.status).toBe(200);
 
-    const seatIds = roster.json.items.map((i: any) => i.clientData?.seatId);
     const goals = board.json.items.map((i: any) => i.clientData?.goal);
 
-    expect(seatIds, "the seats an org-a session may see").toEqual(["support.ada"]);
-    expect(seatIds).not.toContain("victim.bob");
     expect(goals, "the tasks an org-a session may see").toEqual(["OWN-GOAL"]);
     expect(goals).not.toContain("VICTIM-GOAL");
 
     // The same claim over the raw payload, so a shape change in `clientData`
     // cannot quietly turn the two assertions above into no-ops.
-    expect(JSON.stringify(roster.json)).not.toContain("victim");
     expect(JSON.stringify(board.json)).not.toContain("VICTIM-GOAL");
   });
 
@@ -357,25 +328,6 @@ describe("FIX-1477 · the panel collections' client read", () => {
     expect(card).not.toHaveProperty("claimedBy");
   });
 
-  it("a roster row carries no settings bag", async () => {
-    const h = await buildHarness();
-    await plant(h, "org-a", "support.ada", "ship the thing");
-    const sessionId = await openSession(h, "org-a", "org-a");
-
-    const roster = await readCollection(h, sessionId, ROSTER_REF, "", {
-      "x-verified-org": "org-a"
-    });
-
-    // `settings` is passthrough by contract — a flow kind's own config bag,
-    // free to grow keys this package has never heard of.
-    expect(roster.json.items[0].clientData).toEqual({
-      seatId: "support.ada",
-      flow: "agent",
-      instructions: null,
-      incarnation: null
-    });
-    expect(JSON.stringify(roster.json)).not.toContain("LEAKED-SETTINGS");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -788,88 +740,3 @@ describe("FIX-1502 · the inventory collections' client read", () => {
   });
 });
 
-describe("a fired seat leaves the browser's inventory read (FIX-1621 BR-9)", () => {
-  /**
-   * `fire` deletes the roster row, releases the address, then deletes the
-   * seat's inventory row, so the browser read lists the seat after the hire
-   * and not after the fire. This case used to assert the row stayed; it was
-   * flipped when fire started removing it, not relaxed.
-   */
-  it("hire then fire through the seat-hire tools; the route lists the seat, then doesn't", async () => {
-    const registered = new Map<string, unknown>();
-    const { hire, fire } = createSeatHireBlocks({
-      register: (seat) => {
-        registered.set(seat.id, seat);
-      },
-      unregister: (id) => registered.delete(id)
-    });
-    const flow = defineFlow({
-      kind: "seat-hirer",
-      resources: {
-        [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
-        [SEAT_INVENTORY_RESOURCE]: defineSeatInventoryCollection()
-      },
-      actions: {
-        hire: { inputSchema: z.object({ seatId: z.string(), flow: z.string() }), block: hire },
-        fire: { inputSchema: z.object({ seatId: z.string() }), block: fire }
-      },
-      authentication: { resolvePrincipal: verifiedHeaderPrincipal((org) => `user-of-${org}`) }
-    } as never);
-    const state = createFlowState({
-      flows: { "seat-hirer": flow as never },
-      stores: { default: { primary: inMemoryStores() } },
-      modelResolver: createMockModelResolver({})
-    });
-    const runtime = await state.getRuntime();
-    const h = harnessOver(await state.getRouter());
-    const org = { "x-verified-org": "org-a" };
-    const created = await h.post(["seat-hirer", "sessions"], { userId: "user-of-org-a" }, org);
-    const sessionId = created.json.session?.id ?? created.json.id;
-
-    const act = async (action: string, input: unknown): Promise<void> => {
-      const posted = await h.post(
-        ["seat-hirer", sessionId, "actions", action],
-        { userId: "user-of-org-a", input },
-        org
-      );
-      expect(posted.status, JSON.stringify(posted.json)).toBe(202);
-      const requestId = posted.json.request.id;
-      for (let i = 0; i < 300; i++) {
-        const polled = await h.get(["seat-hirer", "requests", requestId, "status"], "", org);
-        const seen = polled.json?.status;
-        if (seen === "completed") return;
-        if (seen === "errored" || seen === "failed" || seen === "cancelled") {
-          throw new Error(`${action} ${seen}: ${JSON.stringify(polled.json)}`);
-        }
-        await new Promise((r) => setTimeout(r, 10));
-      }
-      throw new Error(`${action} never reached a terminal status`);
-    };
-
-    // A hired seat's address is `<orgId>.<seatId>`.
-    const address = "org-a.eng.ada";
-    await act("hire", { seatId: "eng.ada", flow: "agent" });
-    expect([...registered.keys()], "the hire registered the seat").toEqual([address]);
-    expect(
-      Object.keys(await runtime.stores.resourceState.getByPrefix("org", "org-a", "workforce/roster/")),
-      "roster rows after the hire"
-    ).toEqual(["workforce/roster/eng.ada"]);
-    const hired = await readCollection(h, sessionId, SEAT_INVENTORY_RESOURCE, "", org);
-    expect(hired.status).toBe(200);
-    // The row a hire through the tools wrote carries the agent kind's door.
-    expect(hired.json.items.map((item: any) => item.clientData)).toEqual([
-      { id: address, kind: "agent", door: "run", hired: true, incarnation: expect.any(String) }
-    ]);
-    await act("fire", { seatId: "eng.ada" });
-    // The fire happened: the address is released and the roster row is gone.
-    expect(registered.has(address), "the fire released the seat").toBe(false);
-    expect(
-      Object.keys(await runtime.stores.resourceState.getByPrefix("org", "org-a", "workforce/roster/")),
-      "roster rows after the fire"
-    ).toEqual([]);
-
-    const listed = await readCollection(h, sessionId, SEAT_INVENTORY_RESOURCE, "", org);
-    expect(listed.status).toBe(200);
-    expect(listed.json.items, "the fired seat's inventory row").toEqual([]);
-  });
-});

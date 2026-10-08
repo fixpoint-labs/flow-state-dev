@@ -29,7 +29,6 @@ import type {
   DeclaredResourceEntry,
   FlowInstance,
   FlowType,
-  InstanceOwnerPin,
   OrgConfig,
   RequestConfig,
   SessionConfig,
@@ -73,6 +72,7 @@ import {
 import { heldPackageProblems, resolveHeldPackages } from "./seat-packages";
 import { recordSeatDescription } from "./seat-description";
 import { workerFlowProblems } from "./worker-flow-contract";
+import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./workers/worker-flow";
 
 /**
  * The keys the factory itself reads. Everything else is the worker's settings.
@@ -101,10 +101,11 @@ const RESERVED_KEYS = [
 const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType;
 
 /**
- * One entry of {@link HireOptions.workerFlows}: a flow, or a flow and whether
- * this app keeps it for declared workers.
+ * One entry of {@link HireOptions.workerFlows}: a flow, a flow and whether
+ * this app keeps it for declared workers, or a `workerFlow(...)` builder the
+ * installation builds on itself.
  */
-export type WorkerFlowEntry = AnyFlowType | { flow: AnyFlowType; standardOnly?: boolean };
+export type WorkerFlowEntry = AnyFlowType | { flow: AnyFlowType; standardOnly?: boolean } | WorkerFlowBuilder;
 
 /** One worker flow as a hire resolves a `flow:` against it. */
 export type ResolvedWorkerFlow = { flow: AnyFlowType; standardOnly: boolean };
@@ -125,6 +126,12 @@ export function resolveWorkerFlows(
   const all: Record<string, WorkerFlowEntry> = { [AGENT_KIND]: builtInAgentWorkerFlow, ...workerFlows };
   const resolved: Record<string, ResolvedWorkerFlow> = {};
   for (const [name, entry] of Object.entries(all)) {
+    if (isWorkerFlowBuilder(entry)) {
+      throw new Error(
+        `Worker flow "${name}" is a workerFlow(...) builder, which is built on an installation: ` +
+          `pass it to createWorkerInstallation({ workerFlows }).`
+      );
+    }
     resolved[name] =
       typeof entry === "function"
         ? { flow: entry, standardOnly: false }
@@ -156,9 +163,10 @@ function contractProblemsOf(name: string, flow: AnyFlowType): readonly string[] 
 
 /**
  * Refuse unless every worker flow meets the contract — every problem with
- * every flow in one error, so an author fixes them in one pass.
+ * every flow in one error, so an author fixes them in one pass. Exported for
+ * `hireWorkforce` (`workers/register.ts`), not from the package root.
  */
-function checkWorkerFlows(flows: Record<string, ResolvedWorkerFlow>): void {
+export function checkWorkerFlows(flows: Record<string, ResolvedWorkerFlow>): void {
   const refused: string[] = [];
   const problems: string[] = [];
   for (const name of Object.keys(flows).sort()) {
@@ -416,13 +424,11 @@ function minter(
   id: string;
   config?: Record<string, unknown>;
   resources?: DeclaredResources;
-  ownerPin?: InstanceOwnerPin;
 }) => FlowInstance {
   return flow as unknown as (options: {
     id: string;
     config?: Record<string, unknown>;
     resources?: DeclaredResources;
-    ownerPin?: InstanceOwnerPin;
   }) => FlowInstance;
 }
 
@@ -498,23 +504,24 @@ function resolveDeclaredTools(
 }
 
 /**
- * Turn worker records into one configured flow copy each, ordered by id.
+ * Build the configured flow copy each worker record runs as, ordered by id,
+ * without registering any of them: what a worker's configuration is checked
+ * against when it is saved and on every turn (`createWorkerInstallation`).
+ * The installation's flows are registered once each, by `hireWorkforce`.
  *
- * Every problem is a startup misconfiguration, so every problem throws — but
- * they are collected first, so one run names all of them and an author fixes
- * them in one pass. Nothing is returned partially: a refusal after a partial
- * hire would not be a refusal.
+ * Every problem throws, but they are collected first, so one call names all
+ * of them. Nothing is returned partially.
  *
  * @param manifests The roster — from the loader, or hand-built.
  * @param options   `workerFlows`: the worker flows the app defined.
  *                  Optional — the built-in `agent` flow is always available
  *                  underneath, and a flow passed under `agent` replaces it for
  *                  every seat.
- * @returns One `FlowInstance` per record, ordered by id. Register these.
+ * @returns One `FlowInstance` per record, ordered by id. Not for registering.
  * @throws If a worker flow misses the contract (naming every problem with
  *   every flow), or if any record cannot be hired (naming every bad worker).
  */
-export function hireWorkforce(
+export function mintSeats(
   manifests: WorkerManifest[],
   options: HireOptions = {}
 ): FlowInstance[] {
@@ -701,15 +708,6 @@ export function hireWorkforce(
       continue;
     }
 
-    // Standard-only, AFTER the default above: a worker naming no flow is an
-    // `agent` worker, and it is refused here when `agent` is kept. A hired
-    // worker is one with an owner pin — a runtime hire or a stored roster row,
-    // which a `WORKER.md` never sets — so every path that runs a worker meets
-    // this one check.
-    if (entry.standardOnly && manifest.ownerPin !== undefined) {
-      refuse(standardOnlyReason(kind, !Object.hasOwn(manifest.declared, "flow")));
-      continue;
-    }
     const factory = entry.flow;
 
     // The seat's own skills, imposed on EVERY record — loaded or hand-built,
@@ -732,7 +730,7 @@ export function hireWorkforce(
     // `hire` tool, the boot reload) carries it. A hired record's `id` is its
     // org-qualified address, so it brings the logical id a mailbox's
     // `members:` lists on `manifest.seatId`; a file record's `id` is that id.
-    settings[SEAT_ID_KEY] = manifest.seatId ?? manifest.id;
+    settings[SEAT_ID_KEY] = manifest.id;
 
     // The seat's TEAM-level instructions — and **only when the record carries
     // them**, which is the opposite of the line above and deliberately so.
@@ -776,12 +774,10 @@ export function hireWorkforce(
     // The seat id it was hired as, not a hired seat's org-qualified address:
     // the same id the reference wall places the seat by.
     const { held, problems: heldProblems } = resolveHeldPackages(
-      manifest.seatId ?? manifest.id,
+      manifest.id,
       manifest.declared[PACKAGES_KEY],
       manifest.packages,
-      packageBlocks,
-      // Only an address carries the org to peel; a seat id never does.
-      manifest.seatId === undefined ? manifest.ownerPin?.orgId : undefined
+      packageBlocks
     );
     const packageProblems = [...heldProblems, ...heldPackageProblems(held, registry)];
     if (packageProblems.length > 0) {
@@ -871,7 +867,7 @@ export function hireWorkforce(
     // Placed by the seat id, not the address: a runtime hire answers on an
     // org-qualified address (`acme.engineering.ada`), and its place in the
     // tree is the seat id it was hired as (`engineering.ada`).
-    const placedAs = manifest.seatId ?? manifest.id;
+    const placedAs = manifest.id;
     const wall = applyReferenceWall({
       seatId: placedAs,
       declared: manifest.declared[SEAT_REFERENCES_KEY],
@@ -899,7 +895,6 @@ export function hireWorkforce(
       const seat = minter(factory)({
         id: manifest.id,
         config: settings,
-        ...(manifest.ownerPin !== undefined ? { ownerPin: manifest.ownerPin } : {}),
         ...(seatResources !== undefined ? { resources: seatResources } : {})
       });
       minting = false;
@@ -990,7 +985,8 @@ export function hireWorkforce(
 }
 
 /**
- * The unattended-board sentences `hireWorkforce` prints, as values.
+ * The unattended-board sentences `hireWorkforce` prints, as values, over the
+ * copies it registers.
  *
  * Hire does not attach boards. A caller that surfaces the same warning on a
  * tool result (the seat-hire capability) reads them here rather than
@@ -1022,7 +1018,7 @@ export function unattendedBoardWarnings(
     const boardName = boardId.slice(mailboxId.length + 1);
     warnings.push(
       `[workforce] mailbox "${mailboxId}" holds board "${boardName}" (ledger "${boardId}"), ` +
-        `and no flow hired in this ` +
+        `and no flow registered in this ` +
         `call declares it. Rows filed there will sit pending until something drains them — ` +
         `declare the board on the seat that runs the work ` +
         `(\`resources: { [board.id]: board }\` with \`mailboxBoard("${mailboxId}", "${boardName}")\`), ` +

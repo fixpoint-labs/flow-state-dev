@@ -29,7 +29,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import { readTeamsDirectory } from "../src/loader/read-teams-directory";
 import { readWorkforce } from "../src/loader/read-workforce";
 import { readWorkforceDirectory } from "../src/loader/read-workforce-directory";
@@ -79,7 +79,7 @@ const record = (over: Partial<WorkerManifest> = {}): WorkerManifest => ({
 
 const refusalOf = (roster: WorkerManifest[]): string => {
   try {
-    hireWorkforce(roster);
+    mintSeats(roster);
     return "";
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -163,14 +163,14 @@ describe("three doors, one constant", () => {
    * having it is worth having for both, as its own change.
    */
   it("does not refuse the record FIELD, which is the loader's own channel", () => {
-    const [seat] = hireWorkforce([record({ teamInstructions: "Built by hand, not read." })]);
+    const [seat] = mintSeats([record({ teamInstructions: "Built by hand, not read." })]);
 
     expect((seat!.config as Record<string, unknown>)[TEAM_INSTRUCTIONS_KEY]).toBe(
       "Built by hand, not read.",
     );
     // The sibling field behaves the same way, which is what makes the line
     // above a convention rather than an oversight in this one key.
-    const [withSkills] = hireWorkforce([
+    const [withSkills] = mintSeats([
       record({ id: "engineering.scribe", skills: [{ name: "hand-built", skillMd: "---\n---\n" }] }),
     ]);
     expect(
@@ -225,7 +225,7 @@ describe("the prompt seam", () => {
    * green for a seam that never wired the helper to the prompt slot at all.
    */
   async function systemPromptOf(manifest: WorkerManifest): Promise<string> {
-    const [seat] = hireWorkforce([manifest]);
+    const [seat] = mintSeats([manifest]);
     const answer = mockGenerator({ name: "agent-answer", script: [{ text: "noted" }] });
     const stores = createInMemoryStores();
     const sessionId = "seam-session";
@@ -345,7 +345,7 @@ describe("a kind that ignores the layer", () => {
       },
     });
 
-    const seats = hireWorkforce(
+    const seats = mintSeats(
       [
         record({
           id: "engineering.lead",
@@ -388,7 +388,7 @@ describe("end to end, from files", () => {
     const { workers, teamErrors } = await readWorkforce(root);
     expect(teamErrors).toEqual([]);
 
-    const seats = hireWorkforce(workers);
+    const seats = mintSeats(workers);
     const config = (id: string) =>
       seats.find((seat) => seat.id === id)!.config as Record<string, unknown>;
 

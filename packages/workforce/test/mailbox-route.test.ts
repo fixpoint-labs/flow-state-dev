@@ -53,7 +53,7 @@ import {
   type MailboxNotifyInput,
   type WorkerManifest
 } from "../src/index";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import { failLineWrite, postedLines } from "./mailbox-post-lines";
 import { workerDoor } from "./worker-door";
 
@@ -112,7 +112,6 @@ function workers(pinGeneralTo?: string, undescribed?: string): WorkerManifest[] 
       id,
       declared: { flow: "listener", description },
       body: "",
-      ...(id === "support.general" && pinGeneralTo !== undefined ? { ownerPin: { orgId: pinGeneralTo } } : {})
     })),
     { id: "support.notes", declared: { flow: "note", description: "Takes notes." }, body: "" },
     // A seat that hears posts and has no description, as a runtime hire reloads.
@@ -156,7 +155,7 @@ function host(
   } = {}
 ) {
   const { heard, kinds } = listeningKinds(options.failOn);
-  const seats = hireWorkforce(workers(options.pinGeneralTo, options.undescribed), { workerFlows: kinds });
+  const seats = mintSeats(workers(options.pinGeneralTo, options.undescribed), { workerFlows: kinds });
   const route = scriptedRoute();
   const [mailbox] = mailboxInstances(options.mailboxes ?? manifests(), {
     kinds: {
@@ -746,24 +745,6 @@ describe("a person's post to a routed mailbox", () => {
         postId: lines[1]!.id,
         spoke: []
       });
-    } finally {
-      await state.dispose();
-    }
-  });
-
-  it("runs nobody when the caller cannot reach the fallback's seat, recorded as failed (BR-6)", async () => {
-    const { mailbox, state, heard } = host({ pinGeneralTo: "globex" });
-    try {
-      const runtime = await state.getRuntime();
-      await bind(runtime.stores, HELP, MEMBERS);
-      await post(runtime, mailbox, HELP, "who do I ask about a parking pass?");
-      await settle(runtime, HELP, 1);
-
-      expect(who(heard, "parking pass")).toEqual([]);
-      const record = await recordFor(runtime.stores, "parking pass");
-      expect(record).toMatchObject({ by: "failed" });
-      expect(record?.member).toBeUndefined();
-      expect(record?.reason).toMatch(/the fallback "support\.general" has no seat this caller can reach/);
     } finally {
       await state.dispose();
     }

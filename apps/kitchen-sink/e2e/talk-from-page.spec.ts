@@ -28,8 +28,8 @@
  *
  * And, re-pointed at this roster, by `specs/issues/FIX-1585/BUSINESS-RULES.md`:
  * BR-1 and BR-2 (a line labelled `devuser` survives a reload), BR-17 (a failed
- * "New conversation" shows in the seat's row, opens nothing, and can be
- * pressed again). FIX-1585's BR-15 (a seat of a kind with no action takes no
+ * "Talk" shows in the worker's roster row, opens nothing, and can be pressed
+ * again). FIX-1585's BR-15 (a seat of a kind with no action takes no
  * messages) is checked on the panel itself, in `test/picked-session-panel`:
  * the rail lists only the kinds the shell names, so a seat of any other kind
  * never reaches the page.
@@ -49,6 +49,15 @@
  */
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
+
+/*
+ * Workers as data (FIX-1788): every specialist runs on the one `agent` copy,
+ * and a conversation with one is a session of that copy that names the worker
+ * when it is created. A person starts one with "Talk" on the roster panel. The
+ * rail lists the copy's conversations, so which worker a conversation belongs
+ * to is read from the server, by the session's `workerId`, and the
+ * conversation itself is opened and read on the page.
+ */
 
 // One at a time, in file order: see the header.
 test.describe.configure({ mode: "default" });
@@ -72,9 +81,40 @@ async function open(page: Page, name: string): Promise<void> {
   if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
 }
 
-/** The actions drawn on a seat's own row. */
-const seatRow = (page: Page, address: string): Locator =>
-  rail(page).locator(`[data-instance-id="${address}"]`).locator("xpath=..");
+/** The flow every specialist runs on, registered as one copy at its kind. */
+const WORKER_FLOW = "agent";
+
+/** A worker's row on the roster panel, with its "Talk". */
+const rosterRow = (page: Page, worker: string): Locator =>
+  page.locator(`[data-testid="roster"]:visible [data-worker-id="${worker}"]`);
+
+/** Open the worker flow's kind and its one copy in the rail, unless already open. */
+async function openWorkerCopy(page: Page): Promise<Locator> {
+  for (const button of [
+    rail(page).locator(`button[data-kind="${WORKER_FLOW}"]`),
+    rail(page).locator(`button[data-instance-id="${WORKER_FLOW}"]`),
+  ]) {
+    if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
+  }
+  const leaf = rail(page).locator(`ul[data-leaf="${WORKER_FLOW}"]`);
+  // The list is loaded once it shows a row or says it has none.
+  await expect(leaf.locator("[data-session-id]").or(leaf.getByText("No sessions yet")).first()).toBeVisible();
+  return leaf;
+}
+
+type WorkerSession = { id: string; parentSessionId?: string | null };
+
+/**
+ * The person's sessions with `worker`, as the server lists them by the
+ * session's readonly `workerId`; with `runs`, the conversations a mailbox
+ * started for it too. Not graded on its own: what each holds is read on the page.
+ */
+async function sessionsOf(page: Page, worker: string, runs = false): Promise<WorkerSession[]> {
+  const query = `flowId=${WORKER_FLOW}&userId=devuser&state.workerId=${encodeURIComponent(worker)}&limit=100${runs ? "&include=dispatch-runs" : ""}`;
+  const res = await page.request.get(`/api/flows/sessions?${query}`);
+  expect(res.ok(), await res.text()).toBe(true);
+  return ((await res.json()) as { sessions: WorkerSession[] }).sessions;
+}
 
 const token = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
@@ -149,31 +189,26 @@ function answersTo(drawn: Array<{ label: string; text: string }>, mark: string) 
   return next === -1 ? rest : rest.slice(0, next);
 }
 
-/** A seat's conversation for a mailbox: the run the mailbox started, listed under the seat. */
-const mailboxRun = (page: Page, seat: string, mailbox: string): Locator =>
-  rail(page).locator(`ul[data-leaf="${seat}"] [data-dispatch-run-of="${mailbox}"]`);
-
 /**
  * `seat`'s conversation for the mailbox, opened and drawn, or `undefined` when
- * it has none. A seat keeps one conversation per mailbox.
+ * it has none. A worker keeps one conversation per mailbox: the run the
+ * mailbox started, created naming the worker.
  *
- * Reloads first, so nothing is picked, then waits for the seat's list to load
+ * Reloads first, so nothing is picked, then waits for the copy's list to load
  * and the conversation to draw its first turn: a turn counted as missing is
  * read off a loaded conversation, never off one still fetching.
  */
 async function mailboxConversationOf(page: Page, seat: string): Promise<Locator | undefined> {
   await page.reload();
   await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
-  await open(page, "agent");
-  await open(page, seat);
-  const leaf = rail(page).locator(`ul[data-leaf="${seat}"]`);
-  // The list is loaded once it shows a row or says it has none.
-  await expect(leaf.locator("[data-session-id]").or(leaf.getByText("No sessions yet")).first()).toBeVisible();
-  const runs = mailboxRun(page, seat, MAILBOX);
-  const count = await runs.count();
-  expect(count, `${seat} lists ${count} conversations for ${MAILBOX}`).toBeLessThanOrEqual(1);
-  if (count === 0) return undefined;
-  await runs.click();
+  const runs = (await sessionsOf(page, seat, true)).filter((s) => s.parentSessionId === MAILBOX);
+  expect(runs.length, `${seat} has ${runs.length} conversations for ${MAILBOX}`).toBeLessThanOrEqual(1);
+  if (runs.length === 0) return undefined;
+  const leaf = await openWorkerCopy(page);
+  const run = leaf.locator(`[data-session-id="${runs[0]!.id}"]`);
+  // Listed as the run the mailbox started.
+  await expect(run).toHaveAttribute("data-dispatch-run-of", MAILBOX);
+  await run.click();
   const conversation = picked(page);
   // A conversation for the mailbox opens on a person's post.
   await expect(conversation.locator('[data-message-role="user"]').first()).toBeVisible();
@@ -206,9 +241,7 @@ test("a new support.devices conversation keeps the message and the reply across 
 }) => {
   const message = `[scenario:talk-to-seat] where is order ${token()}?`;
   await openShell(page);
-  await open(page, "agent");
-  await open(page, "support.devices");
-  await seatRow(page, "support.devices").getByRole("button", { name: "New conversation" }).click();
+  await rosterRow(page, "support.devices").getByTestId("roster-talk").click();
 
   const panel = picked(page);
   await panel.getByLabel("Message this seat").fill(message);
@@ -218,47 +251,48 @@ test("a new support.devices conversation keeps the message and the reply across 
   await expect(panel.getByRole("log").getByText(message, { exact: true })).toBeVisible();
   await expect(panel.getByText(/\[reply:talk-to-seat\]/)).toBeVisible();
 
-  // The conversation that was opened, so the reload can come back to it.
-  const sessionId = await rail(page)
-    .locator('ul[data-leaf="support.devices"] [aria-current="true"]')
-    .getAttribute("data-session-id");
+  // The conversation that was opened, so the reload can come back to it. It
+  // is a session the server lists as the person's with the worker.
+  const sessionId = await (await openWorkerCopy(page)).locator('[aria-current="true"]').getAttribute("data-session-id");
   expect(sessionId).toBeTruthy();
+  expect((await sessionsOf(page, "support.devices")).map((s) => s.id)).toContain(sessionId);
 
   await page.reload();
   await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
-  await open(page, "agent");
-  await open(page, "support.devices");
-  await rail(page).locator(`[data-session-id="${sessionId}"]`).click();
+  await (await openWorkerCopy(page)).locator(`[data-session-id="${sessionId}"]`).click();
   const kept = picked(page);
   await expect(kept.getByText(message, { exact: true })).toBeVisible();
   await expect(kept.getByText(/\[reply:talk-to-seat\]/)).toBeVisible();
 });
 
-test("a failed New conversation shows in the seat's row, opens nothing, and can be pressed again", async ({
+test("a failed Talk shows in the worker's roster row, opens nothing, and can be pressed again", async ({
   page,
   consoleErrors,
 }) => {
   let refuse = true;
+  // "Talk" finds the person's session with the worker, or creates one. Refuse
+  // both, so the press fails whichever it would have done.
   await page.route(
-    (url) => url.pathname === "/api/flows/support.accounts/sessions",
+    (url) =>
+      url.pathname === `/api/flows/${WORKER_FLOW}/sessions` ||
+      (url.pathname === "/api/flows/sessions" && url.searchParams.get("state.workerId") === "support.accounts"),
     async (route) => {
-      if (route.request().method() !== "POST" || !refuse) return route.fallback();
+      if (!refuse) return route.fallback();
       await route.fulfill({ status: 503, json: { error: { message: "store unavailable" } } });
     },
   );
   await openShell(page);
-  await open(page, "agent");
-  await open(page, "support.accounts");
-  const button = seatRow(page, "support.accounts").getByRole("button", { name: "New conversation" });
+  const worker = rosterRow(page, "support.accounts");
+  const button = worker.getByTestId("roster-talk");
   await button.click();
 
-  await expect(rail(page).getByTestId("seat-create-error")).toContainText("Could not start a conversation");
+  await expect(worker.getByTestId("roster-talk-error")).toContainText("Could not open a conversation");
   await expect(picked(page)).toHaveCount(0);
 
   refuse = false;
   await button.click();
   await expect(picked(page).getByLabel("Message this seat")).toBeVisible();
-  await expect(rail(page).getByTestId("seat-create-error")).toHaveCount(0);
+  await expect(worker.getByTestId("roster-talk-error")).toHaveCount(0);
   // The refused create's own 503 is the one console error this scenario causes.
   consoleErrors.splice(0, consoleErrors.length, ...consoleErrors.filter((e) => !e.includes("503")));
 });
@@ -337,20 +371,15 @@ test("a post to support.help runs the specialist it was routed to once, in its o
   // Time for a wrongly woken seat to run, so its absence below is not a race.
   await page.waitForTimeout(1_500);
 
-  await page.reload();
-  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
-  await open(page, "agent");
-  await open(page, "support.fsd");
-  // One conversation for the mailbox, whatever else the seat holds.
-  await expect(mailboxRun(page, "support.fsd", MAILBOX)).toHaveCount(1);
-  await mailboxRun(page, "support.fsd", MAILBOX).click();
-  const conversation = picked(page);
+  // One conversation for the mailbox, whatever else the worker holds.
+  const conversation = await mailboxConversationOf(page, "support.fsd");
+  expect(conversation, `support.fsd has no conversation for ${MAILBOX}`).toBeDefined();
   for (const line of [first, second]) {
-    const heard = conversation.locator('[data-message-role="user"]').filter({ hasText: line });
+    const heard = conversation!.locator('[data-message-role="user"]').filter({ hasText: line });
     await expect(heard).toHaveCount(1);
     await expect(heard).toContainText(`in ${MAILBOX}: ${line}`);
   }
-  await expect(conversation.locator('[data-message-role="assistant"]').filter({ hasText: "[reply:wake]" })).not.toHaveCount(0);
+  await expect(conversation!.locator('[data-message-role="assistant"]').filter({ hasText: "[reply:wake]" })).not.toHaveCount(0);
 
   // The other specialists never heard either post.
   for (const seat of SPECIALISTS.filter((s) => s !== "support.fsd")) {

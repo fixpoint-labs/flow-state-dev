@@ -33,7 +33,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, runAction, ensureSessionRecord } from "@flow-state-dev/engine";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -41,7 +41,7 @@ import {
   mailboxBoard,
   mailboxBoardIds,
   mailboxInstances,
-  hireWorkforce,
+  createWorkerInstallation, hireWorkforce,
   openMailboxes,
   workerConfigSchema,
   type MailboxManifest,
@@ -114,11 +114,15 @@ await runGoal(async () => {
     }
   }
 
-  // ---- the two kinds. Neither writes a ledger id. ---------------------------
+  // ---- the two kinds, each one copy for its workers. Neither writes a ledger id.
+  let workerFlows: Record<string, unknown> = {};
+  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => workerFlows as never });
   const emKind = defineFlow({
     kind: "em",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources },
     actions: { ...workerDoor,
       file: {
         // The EM has no board, no collection and no drain — the one line that
@@ -169,8 +173,9 @@ await runGoal(async () => {
     kind: "coder",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    // The whole of what a seat declares to reach the mailbox's ledger.
-    resources: { [seatBoard.id]: seatBoard },
+    session: installation.session(),
+    // The whole of what a seat declares to reach the mailbox's ledger, beside the installation's.
+    resources: { [seatBoard.id]: seatBoard, ...installation.resources },
     actions: { ...workerDoor, drain: { block: board.drain } }
   } as never);
 
@@ -180,8 +185,8 @@ await runGoal(async () => {
     mailboxKinds: Record<string, never>;
   };
   const instances = mailboxInstances(mailboxes, { kinds: generated.mailboxKinds });
-  const seats = hireWorkforce(workers, {
-    workerFlows: { em: emKind as never, coder: coderKind as never },
+  workerFlows = { em: emKind, coder: coderKind };
+  const seats = hireWorkforce(installation, {
     // One warning on stderr is expected, naming the board nobody drains. A
     // warning naming the coder's board would mean its declaration missed.
     mailboxBoards: mailboxBoardIds(mailboxes)
@@ -268,6 +273,19 @@ await runGoal(async () => {
     const mailboxInstance = instances.find((instance) => instance.kind === MAILBOX_KIND)!;
     const em = seats.find((seat) => seat.kind === "em")!;
     const coder = seats.find((seat) => seat.kind === "coder")!;
+    /** A worker's own session on its flow's one copy, created naming it. */
+    const seatSession = async (flow: { id: string; kind: string }) => {
+      const worker = workers.find((w) => w.declared.flow === flow.kind)!.id;
+      const sessionId = `s_${worker}`;
+      const now = Date.now();
+      await ensureSessionRecord(
+        runtime.stores,
+        sessionId,
+        { flow: flow as never, sessionId, principal: { userId: USER_ID, orgId: ORG_ID }, state: { workerId: worker }, fromCaller: true, via: "create" },
+        () => ({ id: sessionId, flowKind: flow.kind, flowId: flow.id, userId: USER_ID, orgId: ORG_ID, version: 0, createdAt: now, updatedAt: now, journal: [] }) as never
+      );
+      return sessionId;
+    };
 
     // ---- b. the mailbox says what it holds, by name -------------------------
     const view = await act(mailboxInstance, mailbox.id, "read", {});
@@ -279,7 +297,7 @@ await runGoal(async () => {
 
     // ---- c. one seat files one row, through the mailbox ---------------------
     const goal = `wire the ${boardName} board end to end`;
-    const filed = await act(em, `s_${em.id}`, "file", { goal });
+    const filed = await act(em, await seatSession(em), "file", { goal });
     if (filed.error !== undefined) {
       failures.push(`the EM seat could not file a row: ${String(filed.error)}`);
     }
@@ -287,7 +305,7 @@ await runGoal(async () => {
     // ---- d. the OTHER seat's board claims it and runs it --------------------
     // Nothing here names the row, the assignee or the worker: the drain is
     // handed nothing but a request to run.
-    const drained = await act(coder, `s_${coder.id}`, "drain", {});
+    const drained = await act(coder, await seatSession(coder), "drain", {});
     if (drained.error !== undefined) {
       failures.push(`the coder seat's board could not drain: ${String(drained.error)}`);
     }
