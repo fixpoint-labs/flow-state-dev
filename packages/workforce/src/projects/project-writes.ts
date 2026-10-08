@@ -1,6 +1,13 @@
 /**
  * The project writes: `createProject`, `setWorkstreams` and `setRepository`.
  *
+ * **Shared or private.** `createProject` takes a `visibility`, `"shared"` when
+ * omitted. A shared project is a row of the organization's `projects`; a
+ * private one is the same row in its owner's user scope, with only its owner
+ * as a member, no workstreams by mailbox id, and no room. Every later read
+ * and write names the project by its address, its visibility plus its id
+ * (`project-address.ts`).
+ *
  * Each is a block an app installs on the flow that creates projects — its own
  * boot code, or the chief of staff's tool — and {@link defineProjectBlocks}
  * also hands them back, with the project files read (`project-files.ts`), as
@@ -53,15 +60,18 @@ import { MAILBOX_KIND } from "../mailbox/mailbox-flow";
 import { defineMailboxInventoryCollection, type MailboxInventoryRow } from "../inventory/collections";
 import { retryOnConflict } from "./cas-retry";
 import {
-  defineProjectsCollection,
   defineWorkstreamClaimsCollection,
   PROJECTS_RESOURCE,
+  projectAddressSchema,
   projectIdProblem,
   projectRowSchema,
+  projectVisibilitySchema,
   WORKSTREAM_CLAIMS_RESOURCE,
   type ProjectRow,
+  type ProjectVisibility,
   type WorkstreamClaim
 } from "./collections";
+import { projectAt, projectRowsAt, PROJECT_ROW_RESOURCES } from "./project-address";
 import { isMember } from "./membership-gate";
 import { isAlreadyExists, isConcurrentModification, isResourceDeleted } from "./store-errors";
 import { readProjectFiles } from "./project-files";
@@ -96,9 +106,19 @@ export const createProjectInputSchema = z
     id: z.string().min(1),
     title: z.string().min(1),
     brief: z.string().optional(),
-    /** Who besides the creator may read and post the room. The creator is always a member. */
+    /**
+     * `"shared"` (the default): a row of the organization, which everyone in it
+     * reads. `"private"`: the same row in the creator's user scope, which nobody
+     * else lists or reads.
+     */
+    visibility: projectVisibilitySchema.optional(),
+    /**
+     * On a shared project, who besides the creator may read and post the room
+     * and open workstreams. The creator is always a member. A private project
+     * names nobody else.
+     */
     members: z.array(z.string().min(1)).optional(),
-    /** Full ids of declared mailboxes, from any team. */
+    /** Full ids of declared mailboxes, from any team. Shared projects only. */
     workstreams: z.array(z.string().min(1)).optional(),
     /** The git remote the project's code lives in. Omitted or `null`: a project with no repository. */
     repository: z.string().nullable().optional()
@@ -108,9 +128,11 @@ export const createProjectInputSchema = z
 /** @see createProjectInputSchema */
 export type CreateProjectInput = z.infer<typeof createProjectInputSchema>;
 
-/** What creating a project returns: the row, and whether this call wrote it. */
+/** What creating a project returns: the row, where it lives, and whether this call wrote it. */
 export const createProjectOutputSchema = z.object({
   project: projectRowSchema,
+  /** Where the row lives. With the row's id, the project's address. */
+  visibility: projectVisibilitySchema,
   /** `false` when the same owner re-sent an id it already holds; the row is returned unchanged. */
   created: z.boolean()
 });
@@ -129,9 +151,9 @@ export type SetWorkstreamsInput = z.infer<typeof setWorkstreamsInputSchema>;
 /** What setting a project's workstreams returns: the row as written. */
 export const setWorkstreamsOutputSchema = z.object({ project: projectRowSchema });
 
-/** What setting a project's repository takes: the new remote, or `null` to clear it. */
+/** What setting a project's repository takes: the project's address, and the new remote or `null` to clear it. */
 export const setRepositoryInputSchema = z
-  .object({ projectId: z.string().min(1), repository: z.string().nullable() })
+  .object({ project: projectAddressSchema, repository: z.string().nullable() })
   .strict();
 
 /** @see setRepositoryInputSchema */
@@ -156,7 +178,7 @@ export type ProjectBlocks = {
 
 /** One map, shared by every write: a flow refuses two declarations under one ref. */
 const WRITE_RESOURCES = {
-  [PROJECTS_RESOURCE]: defineProjectsCollection(),
+  ...PROJECT_ROW_RESOURCES,
   [WORKSTREAM_CLAIMS_RESOURCE]: defineWorkstreamClaimsCollection(),
   [MAILBOX_INVENTORY_RESOURCE]: projectWritesMailboxInventory
 };
@@ -294,10 +316,12 @@ const writeProject = handler({
     if (owner === undefined || owner.length === 0) {
       throw new Error("createProject needs a session with an owner: the owner is the session's user.");
     }
+    const visibility: ProjectVisibility = input.visibility ?? "shared";
+    if (visibility === "private") return writePrivateProject(ctx, input, owner);
     const { projects } = refsOf(ctx);
 
     const heldBy = (row: ProjectRow): CreateProjectOutput => {
-      if (row.ownerUserId === owner) return { project: projectRowSchema.parse(row), created: false };
+      if (row.ownerUserId === owner) return { project: projectRowSchema.parse(row), visibility, created: false };
       throw new ProjectRefusedError(
         "project-id-held",
         `project id "${input.id}" is held by another owner. Choose another id.`
@@ -355,9 +379,60 @@ const writeProject = handler({
       if (winner === undefined) throw error;
       return heldBy(winner as ProjectRow);
     }
-    return { project: row, created: true };
+    return { project: row, visibility, created: true };
   }
 });
+
+/**
+ * Create a private project: the row in the owner's own user scope, with the
+ * owner as its only member. Nobody else writes that scope, so an id it holds
+ * is the owner's own, and a re-sent create hands the row back unchanged.
+ *
+ * @throws `private-has-members` when the input names anyone but the owner;
+ *   `private-has-workstreams` when it lists workstreams by mailbox id, which
+ *   only a shared project holds.
+ */
+async function writePrivateProject(ctx: BlockContext, input: CreateProjectInput, owner: string): Promise<CreateProjectOutput> {
+  const others = unique(input.members ?? []).filter((member) => member !== owner);
+  if (others.length > 0) {
+    throw new ProjectRefusedError(
+      "private-has-members",
+      `a private project is its owner's alone, so it can't list ${others.map((m) => `"${m}"`).join(", ")}. ` +
+        `Make it shared to work on it with others.`
+    );
+  }
+  if ((input.workstreams ?? []).length > 0) {
+    throw new ProjectRefusedError(
+      "private-has-workstreams",
+      "a private project can't list workstreams by mailbox id; that list is for shared projects."
+    );
+  }
+  const projects = projectRowsAt(ctx, "private");
+  const done = (state: unknown, created: boolean): CreateProjectOutput => ({
+    project: projectRowSchema.parse(state),
+    visibility: "private",
+    created
+  });
+  const existing = await projects.getOptional(input.id);
+  if (existing !== undefined) return done(existing.state, false);
+  const row: ProjectRow = projectRowSchema.parse({
+    id: input.id,
+    title: input.title,
+    brief: input.brief ?? null,
+    ownerUserId: owner,
+    members: [owner],
+    repository: input.repository ?? null
+  });
+  try {
+    await projects.create(input.id, row);
+  } catch (error) {
+    // The same owner's duplicate create won: hand its row back.
+    const winner = isAlreadyExists(error) ? await projects.getOptional(input.id) : undefined;
+    if (winner === undefined) throw error;
+    return done(winner.state, false);
+  }
+  return done(row, true);
+}
 
 function createProjectSequence() {
   // Talk sessions run on the built-in mailbox kind, the one the talk
@@ -381,7 +456,8 @@ function createProjectSequence() {
     outputSchema: createProjectOutputSchema
   })
     .step(writeProject)
-    .tapIf((out: CreateProjectOutput) => !ownerBound(out.project), bindOwner);
+    // Rooms are shared projects': a private project binds no talk session.
+    .tapIf((out: CreateProjectOutput) => out.visibility === "shared" && !ownerBound(out.project), bindOwner);
 }
 
 /**
@@ -469,15 +545,11 @@ const setRepository = handler({
   resources: WRITE_RESOURCES,
   execute: async (input, rawCtx) => {
     const ctx = rawCtx as unknown as BlockContext;
-    const { projects } = refsOf(ctx);
-    const row = await projects.getOptional(input.projectId);
-    if (row === undefined) {
-      throw new ProjectRefusedError("no-such-project", `this organization has no project "${input.projectId}".`);
-    }
+    const row = await projectAt(ctx, input.project);
     if (!isMember(row.state, ctx.session.identity.userId)) {
       throw new ProjectRefusedError(
         "not-a-member",
-        `only project "${input.projectId}"'s members may change its repository.`
+        `only project "${input.project.id}"'s members may change its repository.`
       );
     }
     assertRepository(input.repository);

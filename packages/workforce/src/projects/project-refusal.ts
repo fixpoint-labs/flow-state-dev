@@ -9,7 +9,11 @@
  * claims and the room as they were.
  *
  * - `not-a-member`: the session's owner is not in the row's `members`.
- * - `no-such-project`: no row holds the id.
+ * - `no-such-project`: no row holds the id at that visibility. Another user's
+ *   private project is not there to find, so it gets this too.
+ * - `private-has-members`: a private create named someone besides its owner.
+ * - `private-has-workstreams`: a private create listed workstreams by mailbox
+ *   id, which only a shared project holds.
  * - `project-id-held`: another owner's row holds the id.
  * - `invalid-project-id`: the id is `unassigned`, empty, or not one path segment.
  * - `invalid-repository`: the repository is a path, starts with `-`, or carries a
@@ -24,6 +28,8 @@
 export type ProjectRefusalReason =
   | "not-a-member"
   | "no-such-project"
+  | "private-has-members"
+  | "private-has-workstreams"
   | "project-id-held"
   | "invalid-project-id"
   | "invalid-repository"
