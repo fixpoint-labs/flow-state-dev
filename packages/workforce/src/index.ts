@@ -128,3 +128,4 @@ export * from "./mailbox";
 export * from "./inventory";
 export * from "./projects";
 export * from "./workers";
+export * from "./coordinator";

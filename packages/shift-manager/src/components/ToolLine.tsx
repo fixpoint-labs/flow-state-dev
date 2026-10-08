@@ -19,7 +19,9 @@ import type { RendererRegistry } from "@flow-state-dev/react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { COORDINATOR_ROUTE } from "@flow-state-dev/workforce/browser";
 import { chatAssistantRenderers } from "./flow-state/chat-assistant";
+import { CoordinatorRoute } from "./CoordinatorRoute";
 import { ToolInput, ToolOutput } from "./flow-state/tool";
 
 type CallState = "pending" | "running" | "completed" | "error";
@@ -139,4 +141,9 @@ export function ToolLine({ item }: { item: ToolOutputItem }) {
 }
 
 /** The chat registry with tool calls drawn as quiet lines. */
-export const shiftManagerRenderers: RendererRegistry = { ...chatAssistantRenderers, tool_output: ToolLine };
+export const shiftManagerRenderers: RendererRegistry = {
+  ...chatAssistantRenderers,
+  tool_output: ToolLine,
+  // A coordinator's routing record, drawn apart from the conversation's lines.
+  component: { ...chatAssistantRenderers.component, [COORDINATOR_ROUTE]: CoordinatorRoute },
+};

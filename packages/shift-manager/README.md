@@ -187,6 +187,20 @@ A `chief-of-staff` seat declared as a team's worker, at `teams/<team>/workers/ch
 
 What it can do is up to its instructions and the tools you give it. Shift Manager only carries your lines to it and shows what it answers. A Lab with two seats of that name gets a line naming both, and Shift Manager talks to neither.
 
+To have it hand work to other workers, run it on Workforce's `coordinator` flow instead, with the workers it starts from as `delegates:`. The Lab registers that flow beside `agent` (`defineCoordinatorFlow`, see the Workforce README's Coordinators section). The DevTeam's chief of staff does this:
+
+```md title="workforce/org/workers/chief-of-staff/WORKER.md"
+---
+description: The person's one point of contact.
+flow: coordinator
+routing: judgment
+delegates: [eng.em, eng.coder]
+model: openai/gpt-5.4-mini
+---
+```
+
+A coordinator chief of staff gets a DELEGATES list in Shift Coordinator's right panel: the delegates of your conversation with it, a picker that adds one from your roster, and a remove beside each. A refused add shows the coordinator's reason. A delegate's answer appears in the conversation under the delegate's name, and each routing decision as a small note between the lines saying who the post went to and who was skipped. The chief of staff comes first in its Roster group.
+
 A Lab with no chief of staff needs nothing in its config. Every screen works, and Shift Coordinator shows the summary of asks and runs. Where the conversation would be, it says "This Lab declares no shift coordinator" and how to declare a `chief-of-staff` seat. That message needs an open inventory (above). With no inventory, the conversation area shows an error about the inventory instead.
 
 `test/fixtures/ask-lab/lab.mts` is a small Lab that does all of the above in one file.

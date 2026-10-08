@@ -19,6 +19,7 @@
  */
 export {
   DERIVED_WORKER_SESSION_PREFIX,
+  FILING_SESSION_STATE_KEY,
   ROSTER_FLOW_KIND,
   STANDARD_WORKERS_PATTERN,
   STANDARD_WORKERS_RESOURCE,
@@ -39,9 +40,11 @@ export {
   verifiedWorkerOf,
   WorkerTurnRefusedError,
   type ResolvedWorker,
+  type RosterWorker,
   type WorkerGrants,
   type WorkerInstallation,
   type WorkerInstallationOptions,
+  type WorkerSessionStateShape,
   type WorkerTurnContext
 } from "./installation";
 export { createWorkerHireBlocks, type WorkerHireBlocks } from "./hire-blocks";

@@ -46,6 +46,9 @@ describe("@flow-state-dev/workforce/browser", () => {
     expect(entry.MAILBOX_POST_COMPONENT).toBe("mailbox-post");
     expect(typeof entry.createWorkforceClient).toBe("function");
     expect(entry.ROSTER_FLOW_KIND).toBe("workforce-roster");
+    expect(entry.COORDINATOR_KIND).toBe("coordinator");
+    expect(entry.COORDINATOR_ROUTE).toBe("coordinator-route");
+    expect(entry.COORDINATOR_JUDGMENT).toBe("coordinator-judgment");
     expect(typeof entry.mailboxTranscriptLineSchema.parse).toBe("function");
     // The `MailboxTranscriptLine` type is pinned in `browser-exports.test-d.ts`.
   });

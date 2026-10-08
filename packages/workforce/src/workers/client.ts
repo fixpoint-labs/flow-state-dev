@@ -17,7 +17,13 @@ import {
   type SessionSummary
 } from "@flow-state-dev/client";
 import { deriveWorkerSessionId, type WorkerSessionCriteria } from "./derive-session-id";
-import { ROSTER_FLOW_KIND, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE, WORKER_ID_STATE_KEY } from "./keys";
+import {
+  FILING_SESSION_STATE_KEY,
+  ROSTER_FLOW_KIND,
+  STANDARD_WORKERS_RESOURCE,
+  WORKERS_RESOURCE,
+  WORKER_ID_STATE_KEY
+} from "./keys";
 
 /** The transport options `createSessionClient` takes, plus the user the client acts for. */
 export type WorkforceClientOptions = {
@@ -69,8 +75,18 @@ export interface WorkforceClient {
  * lookup returns only sessions that carry no key here it didn't name.
  */
 const CRITERIA_STATE_KEYS: Readonly<Record<keyof WorkerSessionCriteria, string>> = {
-  worker: WORKER_ID_STATE_KEY
+  worker: WORKER_ID_STATE_KEY,
+  filingSessionId: FILING_SESSION_STATE_KEY
 };
+
+/** The criteria as the session-state fields they name, with their values. */
+function criteriaState(criteria: WorkerSessionCriteria): Record<string, string> {
+  const state: Record<string, string> = {};
+  for (const [key, value] of Object.entries(criteria)) {
+    if (typeof value === "string") state[CRITERIA_STATE_KEYS[key as keyof WorkerSessionCriteria]] = value;
+  }
+  return state;
+}
 
 function stateOf(session: SessionSummary): Record<string, unknown> {
   const state = (session as { state?: unknown }).state;
@@ -153,11 +169,16 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
   };
 
   const find = async (criteria: WorkerSessionCriteria, flow: string): Promise<SessionSummary | undefined> => {
-    const named = new Set(Object.keys(criteria).map((key) => CRITERIA_STATE_KEYS[key as keyof WorkerSessionCriteria]));
+    const filter = criteriaState(criteria);
+    const named = new Set(Object.keys(filter));
     const rows = await sessions.listSessions({
       flowKind: flow,
       userId,
-      state: { [WORKER_ID_STATE_KEY]: criteria.worker }
+      state: filter,
+      // A coordinator's delivery opens its delegate's session as a dispatch run
+      // of the conversation, so a lookup for one includes those. A lookup that
+      // doesn't name the conversation keeps to the sessions a person started.
+      ...(criteria.filingSessionId === undefined ? {} : { include: "dispatch-runs" as const })
     });
     const matching = rows.filter((row) => {
       const state = stateOf(row);
@@ -185,7 +206,9 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
           flowKind: flow,
           userId,
           sessionId,
-          state: { [WORKER_ID_STATE_KEY]: criteria.worker }
+          // Every criteria key is a readonly field the session starts with, so
+          // a later lookup by the same criteria finds it.
+          state: criteriaState(criteria)
         });
       } catch (error) {
         // A racing call created it first: the store's create-if-absent let

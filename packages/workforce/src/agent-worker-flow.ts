@@ -92,6 +92,8 @@ import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board"
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
+import { DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
+import { delegatedPostEntry } from "./coordinator/delegated-post";
 import { mailboxTaskLists } from "./mailbox/mailbox-board";
 import {
   mailboxNotifyInputSchema,
@@ -774,6 +776,47 @@ function catalogDeclaredResources(
  * @returns A `defineFlow` result of kind `agent`, cardinality `collection`.
  */
 export function defineAgentWorkerFlow(given: AgentWorkerFlowOptions = {}) {
+  const turn = agentWorkerTurn(given);
+  const { options, settings, inputSchema, run, bound, mintProblems } = turn;
+  const installation = options.installation;
+  return defineAgentFlowAround(options, settings, inputSchema, run, bound, mintProblems, installation);
+}
+
+/**
+ * What a flow that shares the agent's turn changes about it. The built-in
+ * `agent` flow changes nothing; the `coordinator` flow runs the same turn on
+ * its own workers, with its delegate tools.
+ */
+export interface AgentTurnShare {
+  /** The kind of the flow the turn runs on: the turn loads its worker on this flow. */
+  readonly kind: string;
+  /** The answer generator's block name, which a scripted model resolves it by. */
+  readonly answerName: string;
+  /**
+   * Tools the turn always carries, beside the ones the worker's own file
+   * grants. Not fenced by the worker's `tools:` line: the flow gives them to
+   * every worker on it.
+   */
+  readonly extraTools?: readonly GeneratorTool[];
+}
+
+const AGENT_TURN: AgentTurnShare = { kind: AGENT_KIND, answerName: "agent-answer" };
+
+/**
+ * The built-in agent's turn, built once per flow that runs it: its settings
+ * schema, the `run` sequence (skill matching, the worker's default skills,
+ * and the answer), the request `onStarted` that loads the turn's worker, the
+ * session and resources a flow on an installation declares, and the
+ * cross-key checks a mint runs.
+ *
+ * The `agent` flow is this turn behind a door. The `coordinator` flow runs the
+ * same turn for its judgment, with {@link AgentTurnShare.extraTools}, so a
+ * fix to the agent's turn reaches both.
+ *
+ * @param given The agent kind's options: the app's catalog, capabilities, skills and models.
+ * @param share The sharing flow's kind, answer name and extra tools.
+ */
+export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: AgentTurnShare = AGENT_TURN) {
   // A copy that runs every worker has no `seatId` of its own: its mailbox
   // lines are signed by the worker each turn loads.
   const options: AgentWorkerFlowOptions =
@@ -1034,17 +1077,19 @@ export function defineAgentWorkerFlow(given: AgentWorkerFlowOptions = {}) {
               ]
             : listed.map((toolName) => catalog[toolName] as GeneratorTool);
         const own = config[SEAT_TOOLS_KEY] as GeneratorTool[] | undefined;
+        // The sharing flow's own tools, on every worker it runs.
+        const extra = share.extraTools ?? [];
         // Materialized only when the seat has both, which is the uncommon case.
-        if (own === undefined || own.length === 0) return named;
-        return named.length === 0 ? own : [...named, ...own];
+        if ((own === undefined || own.length === 0) && extra.length === 0) return named;
+        return [...named, ...(own ?? []), ...extra];
       },
       user: (input) => input.message
     });
 
-  const answer = answerWith(skillsBinding, "agent-answer");
+  const answer = answerWith(skillsBinding, share.answerName);
   const answerWithActivateTool = answerWith(
     skillsBindingWithActivateTool,
-    "agent-answer-with-activate-tool"
+    `${share.answerName}-with-activate-tool`
   );
 
   // `createSkillActivator` takes `enableLlmClassifier` at construction, so
@@ -1151,7 +1196,7 @@ export function defineAgentWorkerFlow(given: AgentWorkerFlowOptions = {}) {
     ...(installation !== undefined ? { resources: { ...installation.resources } } : {}),
     execute: async (_input, ctx) => {
       if (installation === undefined) return { worker: null };
-      return { worker: (await installation.resolveWorker(ctx, AGENT_KIND)).id };
+      return { worker: (await installation.resolveWorker(ctx, share.kind)).id };
     }
   });
 
@@ -1179,6 +1224,79 @@ export function defineAgentWorkerFlow(given: AgentWorkerFlowOptions = {}) {
   // must not be able to change the answer, and a failure inside it — a capture
   // call that times out, say — is not a conversation failure.
   const run = options.afterAnswer ? answered.sideChain(options.afterAnswer) : answered;
+
+  // On an installation the copy declares every document a worker may be
+  // granted, and each turn's model reaches only its worker's: the
+  // installation's visibility rule reads the worker this turn loaded. Typed
+  // as the optional fields they fill, so the flow's type is one shape either
+  // way.
+  const bound: AgentTurnBinding =
+    installation !== undefined
+      ? {
+          session: installation.session(),
+          resources: { ...installation.resources, ...installation.documents },
+          resourceVisibility: installation.resourceVisibility,
+          request: { onStarted: resolveTurnWorker }
+        }
+      : {};
+
+  /**
+   * The refusals the settings schema cannot carry, run on a minted copy's
+   * config. Two picked presets that carry different tools under one name — or
+   * a held package's block and a picked preset's tool sharing one — are a
+   * problem only for a worker with NO `tools:` line, which is granted both; a
+   * worker that wrote a line is granted exactly that line and hires as it
+   * always has. The rule reads two settings, and a flow's `configSchema` must
+   * be a plain closed object that cannot refine across keys — so it runs on
+   * the bag as handed over, where the unset `tools` the hire preserves is
+   * still visible.
+   *
+   * A worker that DID write a line has one clash of its own: a name on the line
+   * that is both a held package's block and a key in this kind's catalog. The
+   * hire resolved it to the package block because the hire cannot see the
+   * catalog; here both are visible, so it is refused rather than letting the
+   * package silently shadow the catalog's tool.
+   *
+   * @returns The message to throw, or `undefined` when there is none.
+   */
+  const mintProblems = (config: z.infer<typeof settings>): string | undefined => {
+    // Unset is no line even when the key is present, as the per-turn tools slot reads it.
+    if (config.tools === undefined) {
+      const problems = [
+        ...pickedToolCollisions(seatCapabilityCatalog, config.capabilities),
+        ...packageToolCollisions(seatCapabilityCatalog, config.capabilities, config[SEAT_PACKAGES_KEY] ?? [])
+      ];
+      return problems.length > 0 ? `This worker writes no \`tools:\` line, and it ${problems.join(" It also ")}` : undefined;
+    }
+    const problems = packageCatalogCollisions(
+      catalog,
+      config[SEAT_TOOLS_KEY] as ReadonlyArray<{ name?: unknown }> | undefined,
+      config[SEAT_PACKAGES_KEY] ?? []
+    );
+    return problems.length > 0 ? problems.join(" ") : undefined;
+  };
+
+  return { options, settings, inputSchema, run, bound, mintProblems };
+}
+
+/** What a flow on an installation declares to run the agent's turn. */
+type AgentTurnBinding = {
+  session?: SessionConfig;
+  resources?: Record<string, DeclaredResourceEntry>;
+  resourceVisibility?: ResourceVisibilityRule;
+  request?: { onStarted: BlockDefinition<any, any> };
+};
+
+/** The built-in `agent` flow: the agent's turn behind its door, its mailbox entries and its task entry. */
+function defineAgentFlowAround(
+  options: AgentWorkerFlowOptions,
+  settings: ReturnType<typeof agentWorkerTurn>["settings"],
+  inputSchema: ReturnType<typeof agentWorkerTurn>["inputSchema"],
+  run: ReturnType<typeof agentWorkerTurn>["run"],
+  bound: AgentTurnBinding,
+  mintProblems: ReturnType<typeof agentWorkerTurn>["mintProblems"],
+  installation: WorkerInstallation | undefined
+) {
 
   /**
    * Marks the turn as the answer to a routed post, so the post tool and the
@@ -1286,25 +1404,6 @@ export function defineAgentWorkerFlow(given: AgentWorkerFlowOptions = {}) {
   const taskTurn = sequencer({ name: "agent-task-turn", inputSchema: taskWorkerInputSchema })
     .step((task: TaskWorkerInput) => ({ message: taskMessage(task) }), run);
 
-  // On an installation the copy declares every document a worker may be
-  // granted, and each turn's model reaches only its worker's: the
-  // installation's visibility rule reads the worker this turn loaded. Typed
-  // as the optional fields they fill, so the flow's type is one shape either
-  // way.
-  const bound: {
-    session?: SessionConfig;
-    resources?: Record<string, DeclaredResourceEntry>;
-    resourceVisibility?: ResourceVisibilityRule;
-    request?: { onStarted: typeof resolveTurnWorker };
-  } =
-    installation !== undefined
-      ? {
-          session: installation.session(),
-          resources: { ...installation.resources, ...installation.documents },
-          resourceVisibility: installation.resourceVisibility,
-          request: { onStarted: resolveTurnWorker }
-        }
-      : {};
   const flow = defineFlow({
     kind: AGENT_KIND,
     // Required by contract C2. A plain singleton's seats mint and are then
@@ -1335,7 +1434,11 @@ export function defineAgentWorkerFlow(given: AgentWorkerFlowOptions = {}) {
           inputSchema: mailboxNotifyInputSchema,
           block: heardPost,
           userMessage: heardTurn
-        }
+        },
+        // A coordinator's delivery: one turn of `run` on the post, its reply
+        // handed back to the delivering conversation with the delivery's
+        // token. That is what makes an agent worker a delegate that takes posts.
+        [DELEGATED_POST_ENTRY]: delegatedPostEntry(run)
       }
     },
     ...(options.taskLists === undefined
@@ -1355,50 +1458,17 @@ export function defineAgentWorkerFlow(given: AgentWorkerFlowOptions = {}) {
   });
 
   /**
-   * The mint, with the one refusal the settings schema cannot carry.
-   *
-   * Two picked presets that carry different tools under one name — or a held
-   * package's block and a picked preset's tool sharing one — are a
-   * problem only for a worker with NO `tools:` line, which is granted both;
-   * a worker that wrote a line is granted exactly that line and hires as it
-   * always has. The rule reads two settings, and a flow's `configSchema` must
-   * be a plain closed object that cannot refine across keys — so it runs here,
-   * on the bag as handed over, where the unset `tools` the hire preserves is
-   * still visible. After the flow's own mint, so the schema's refusals come
+   * The mint, with the refusals the settings schema cannot carry
+   * (`mintProblems`). After the flow's own mint, so the schema's refusals come
    * first; thrown, so the hire collects it under the worker's id.
-   *
-   * A worker that DID write a line has one clash of its own: a name on the line
-   * that is both a held package's block and a key in this kind's catalog. The
-   * hire resolved it to the package block because the hire cannot see the
-   * catalog; here both are visible, so it is refused rather than letting the
-   * package silently shadow the catalog's tool.
    *
    * Every property of the defined flow is carried over unchanged: this is the
    * same flow with one more check at its door, not a different one.
    */
-  const mint = (options?: Parameters<typeof flow>[0]) => {
-    const seat = flow(options);
-    // Unset is no line even when the key is present, as the per-turn tools slot reads it.
-    if (seat.config.tools === undefined) {
-      const problems = [
-        ...pickedToolCollisions(seatCapabilityCatalog, seat.config.capabilities),
-        ...packageToolCollisions(
-          seatCapabilityCatalog,
-          seat.config.capabilities,
-          seat.config[SEAT_PACKAGES_KEY] ?? []
-        )
-      ];
-      if (problems.length > 0) {
-        throw new Error(`This worker writes no \`tools:\` line, and it ${problems.join(" It also ")}`);
-      }
-    } else {
-      const problems = packageCatalogCollisions(
-        catalog,
-        seat.config[SEAT_TOOLS_KEY] as ReadonlyArray<{ name?: unknown }> | undefined,
-        seat.config[SEAT_PACKAGES_KEY] ?? []
-      );
-      if (problems.length > 0) throw new Error(problems.join(" "));
-    }
+  const mint = (mintOptions?: Parameters<typeof flow>[0]) => {
+    const seat = flow(mintOptions);
+    const problem = mintProblems(seat.config as never);
+    if (problem !== undefined) throw new Error(problem);
     return seat;
   };
   return Object.assign(mint, flow) as typeof flow;

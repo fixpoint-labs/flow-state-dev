@@ -41,6 +41,7 @@
 import { choice, evaluator, handler, sequencer } from "@flow-state-dev/core";
 import type { EvaluationModel, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { bestFitEvaluationFailed, needsBestFitCall, placeBestFit, type BestFitMiss } from "../best-fit";
 import { seatDescription } from "../seat-description";
 import type { WorkerInstallation } from "../workers/installation";
 import { runsWorkersOf } from "../workers/register";
@@ -93,23 +94,6 @@ const routeCaseSchema = routeRequestSchema.extend({
 });
 
 type RouteCase = z.infer<typeof routeCaseSchema>;
-
-/** What a failed evaluator call leaves: the reason, as a value. */
-const failedEvaluationSchema = z.object({ failed: z.string() });
-
-/** What an answered call leaves, as far as the route reads it: the `member` question's choice. */
-const answeredEvaluationSchema = z.object({ answers: z.object({ member: z.object({ choice: z.unknown() }) }) });
-
-/**
- * What the evaluator step left, read one way: the call's own failure, or what
- * it chose for `member` (anything; `place` checks it against the options).
- */
-function evaluationOutcome(answer: unknown): { failed: string } | { choice: unknown } {
-  const failed = failedEvaluationSchema.safeParse(answer);
-  if (failed.success) return failed.data;
-  const answered = answeredEvaluationSchema.safeParse(answer);
-  return { choice: answered.success ? answered.data.answers.member.choice : undefined };
-}
 
 /** A line as the evaluator reads it. */
 function said(line: { author?: string; principal: string; body: string }) {
@@ -181,15 +165,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
    * caught. A cancelled request is not a failed call: its error goes on up, so
    * nothing is placed, recorded, noted in the ledger or woken.
    */
-  const evaluationFailed = handler({
-    name: "mailbox-route-evaluation-failed",
-    inputSchema: z.unknown(),
-    outputSchema: failedEvaluationSchema,
-    execute: (error: unknown, ctx) => {
-      if (ctx.signal.aborted) throw error;
-      return { failed: error instanceof Error ? error.message : String(error) };
-    }
-  });
+  const evaluationFailed = bestFitEvaluationFailed("mailbox-route-evaluation-failed");
 
   /**
    * Place the post, from the case and what the call (if any) answered, and
@@ -234,10 +210,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
   });
 
   const decide = sequencer({ name: "mailbox-route-decide", inputSchema: routeCaseSchema })
-    .stepIf(
-      (routeCase: RouteCase) => routeCase.held === undefined && Object.keys(routeCase.options).length > 0,
-      evaluate.rescue([{ block: evaluationFailed }])
-    )
+    .stepIf((routeCase: RouteCase) => needsBestFitCall(ladderCase(routeCase)), evaluate.rescue([{ block: evaluationFailed }]))
     .step(settle);
 
   const resolve = sequencer({
@@ -251,30 +224,39 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
   return { members: [...hearing.keys()].sort(), [ROUTE_BLOCK]: resolve };
 }
 
-/** Where the post goes, given the case and what the evaluator step left. */
+/** The mailbox's case as best fit's ladder reads it. */
+function ladderCase(routeCase: RouteCase) {
+  return {
+    ...(routeCase.held === undefined ? {} : { held: routeCase.held }),
+    reachable: routeCase.reachable,
+    options: routeCase.options,
+    fallback: routeCase.fallback
+  };
+}
+
+/** Why the ladder didn't use the evaluator's pick, in the mailbox's words. */
+function missReason(miss: BestFitMiss): string {
+  switch (miss.kind) {
+    case "none-reachable":
+      return "no member of the mailbox has a seat this caller can reach that hears posts";
+    case "none-described":
+      return "no member this caller can reach has a description to route by";
+    case "evaluation-failed":
+      return `the evaluation failed: ${miss.message}`;
+    case "not-an-option":
+      return `the evaluation answered ${JSON.stringify(miss.choice)}, which is not one of the options`;
+  }
+}
+
+/** Where the post goes, given the case and what the evaluator step left: best fit's ladder. */
 function place(
   routeCase: RouteCase,
   answer: unknown
 ): { by: MailboxRouteRecord["by"]; member?: string; reason?: string } {
-  if (routeCase.held !== undefined) return { by: "held", member: routeCase.held };
-
-  const outcome = evaluationOutcome(answer);
-  let reason: string;
-  if (routeCase.reachable.length === 0) {
-    reason = "no member of the mailbox has a seat this caller can reach that hears posts";
-  } else if (Object.keys(routeCase.options).length === 0) {
-    reason = "no member this caller can reach has a description to route by";
-  } else if ("failed" in outcome) {
-    reason = `the evaluation failed: ${outcome.failed}`;
-  } else if (typeof outcome.choice === "string" && Object.hasOwn(routeCase.options, outcome.choice)) {
-    return { by: "evaluated", member: outcome.choice };
-  } else {
-    reason = `the evaluation answered ${JSON.stringify(outcome.choice)}, which is not one of the options`;
-  }
-
-  if (routeCase.reachable.includes(routeCase.fallback)) {
-    return { by: "fallback", member: routeCase.fallback, reason };
-  }
+  const placed = placeBestFit(ladderCase(routeCase), answer);
+  if (placed.by === "held" || placed.by === "evaluated") return { by: placed.by, member: placed.member };
+  const reason = missReason(placed.miss);
+  if (placed.by === "fallback") return { by: "fallback", member: placed.member, reason };
   return {
     by: "failed",
     reason: `${reason}; the fallback "${routeCase.fallback}" has no seat this caller can reach that hears posts`

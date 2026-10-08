@@ -42,7 +42,7 @@ import {
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
-import { STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE, WORKER_ID_STATE_KEY } from "./keys";
+import { FILING_SESSION_STATE_KEY, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE, WORKER_ID_STATE_KEY } from "./keys";
 import { defineStandardWorkerCollection, standardWorkerFlow } from "./standard-workers";
 import { defineWorkerCollection, parseWorkerRow, type WorkerRow } from "./worker-row";
 import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
@@ -137,6 +137,24 @@ export interface WorkerGrants {
 }
 
 /**
+ * A worker on a user's roster, as {@link WorkerInstallation.rosterWorker}
+ * reads it: enough to tell whether it is theirs and what it runs on, without
+ * loading its configuration.
+ */
+export interface RosterWorker {
+  /** The worker's id. */
+  id: string;
+  /** Whether it is a standard worker (from the files) rather than one of the user's own. */
+  standard: boolean;
+  /** The flow it names. */
+  flow: string;
+  /** Its description, or `null`. */
+  description: string | null;
+  /** Why it can't run, when its row can't be read or names a flow kept for standard workers. */
+  problem?: string;
+}
+
+/**
  * Thrown when a turn can't run as the session's worker: it was fired, now
  * names another flow, names something the installation no longer registers,
  * or runs on a flow kept for standard workers. Nothing is written; the row and
@@ -154,6 +172,12 @@ export class WorkerTurnRefusedError extends Error {
   }
 }
 
+/** The readonly session-state fields every worker flow declares. */
+export type WorkerSessionStateShape = {
+  readonly [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString>;
+  readonly [FILING_SESSION_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+};
+
 /** The installation's worker model. Build it once, at boot. */
 export interface WorkerInstallation extends WorkerGrants {
   /**
@@ -167,10 +191,12 @@ export interface WorkerInstallation extends WorkerGrants {
     readonly [STANDARD_WORKERS_RESOURCE]: ReturnType<typeof defineStandardWorkerCollection>;
   };
   /**
-   * The session-state field a worker flow declares, readonly: spread it into
-   * the flow's session `stateSchema`, beside the flow's own fields.
+   * The session-state fields a worker flow declares, readonly: spread them
+   * into the flow's session `stateSchema`, beside the flow's own fields.
+   * `workerId` names the session's worker; `filingSessionId`, when a
+   * coordinator's delivery set it, names the conversation it was opened for.
    */
-  readonly sessionStateShape: { readonly [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString> };
+  readonly sessionStateShape: WorkerSessionStateShape;
   /** The create check a worker flow declares as `session.createCheck`. */
   readonly createCheck: SessionCreateCheck;
   /**
@@ -180,7 +206,7 @@ export interface WorkerInstallation extends WorkerGrants {
   session<TShape extends z.ZodRawShape = Record<never, never>>(
     extraShape?: TShape
   ): {
-    stateSchema: z.ZodObject<{ [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString> } & TShape>;
+    stateSchema: z.ZodObject<WorkerSessionStateShape & TShape>;
     createCheck: SessionCreateCheck;
   };
   /**
@@ -197,6 +223,17 @@ export interface WorkerInstallation extends WorkerGrants {
    * @throws WorkerTurnRefusedError when the turn can't run as the worker.
    */
   resolveWorker(ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker>;
+  /**
+   * The worker `workerId` names on the session user's roster, read by id
+   * now: one of their own (read at their scope, so another user's is simply
+   * not there) or a standard one. `undefined` when the user has no such
+   * worker, which is also the answer for another user's.
+   *
+   * Answers "is it yours", not "may it run": nothing is minted.
+   *
+   * @param ctx The block's context. The block must declare {@link resources}.
+   */
+  rosterWorker(ctx: WorkerTurnContext, workerId: string): Promise<RosterWorker | undefined>;
   /** A standard worker by id, or `undefined`. */
   standardWorker(id: string): WorkerManifest | undefined;
   /** Every standard worker, by id order. */
@@ -232,7 +269,9 @@ function declaredOf(row: WorkerRow): Record<string, unknown> {
  * Build the installation's worker model.
  *
  * Refuses a standard worker whose file names no flow, or names one the
- * installation doesn't run, and two standard workers under one id.
+ * installation doesn't run, two standard workers under one id, and a standard
+ * worker whose `delegates:` names a worker that isn't standard: every user has
+ * a standard worker, so its defaults can name only what every user has too.
  */
 export function createWorkerInstallation(options: WorkerInstallationOptions = {}): WorkerInstallation {
   const standard = new Map<string, WorkerManifest>();
@@ -246,6 +285,19 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       );
     }
     standard.set(manifest.id, manifest);
+  }
+  for (const manifest of standard.values()) {
+    const delegates = manifest.declared.delegates;
+    if (!Array.isArray(delegates)) continue;
+    const unknown = delegates.filter((name) => typeof name !== "string" || !standard.has(name));
+    if (unknown.length > 0) {
+      throw new Error(
+        `createWorkerInstallation: standard worker "${manifest.id}" names ` +
+          `${unknown.map((name) => JSON.stringify(name)).join(", ")} in \`delegates:\`, which ` +
+          `${unknown.length === 1 ? "isn't a standard worker" : "aren't standard workers"}. ` +
+          `A standard worker's delegates must be standard workers too.`
+      );
+    }
   }
 
   // The built-in `agent`, bound to this installation, unless the app passes
@@ -291,7 +343,10 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_KIND)
   } as const;
 
-  const sessionStateShape = { [WORKER_ID_STATE_KEY]: z.string().min(1).readonly() } as const;
+  const sessionStateShape = {
+    [WORKER_ID_STATE_KEY]: z.string().min(1).readonly(),
+    [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional()
+  } as const;
 
   /** Every resource a worker may be granted: the documents and the references. */
   const documents: DeclaredResources = Object.freeze({ ...(options.documents ?? {}), ...(options.references ?? {}) });
@@ -412,7 +467,12 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         userId: input.principal.userId,
         orgId: input.principal.orgId,
         flow: input.flow.kind,
-        criteria: { worker: workerId }
+        criteria: {
+          worker: workerId,
+          ...(typeof input.state[FILING_SESSION_STATE_KEY] === "string"
+            ? { filingSessionId: input.state[FILING_SESSION_STATE_KEY] }
+            : {})
+        }
       });
       if (own !== input.sessionId) {
         return {
@@ -443,6 +503,20 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     return { ok: true };
   };
 
+  /** The user's worker collection, as the calling block declared it. */
+  const workerCollection = (ctx: WorkerTurnContext, caller: string): ResourceCollectionRef => {
+    const collection = (ctx.resources as Record<string, unknown>)[WORKERS_RESOURCE] as
+      | ResourceCollectionRef
+      | undefined;
+    if (collection === undefined || typeof collection.getOptional !== "function") {
+      throw new Error(
+        `${caller} needs the worker collection: declare \`resources: { ...installation.resources }\` ` +
+          `on the block that calls it.`
+      );
+    }
+    return collection;
+  };
+
   const resolveWorker = async (ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker> => {
     const workerId = (ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY];
     if (typeof workerId !== "string" || workerId.length === 0) {
@@ -460,15 +534,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       refuse(`Flow "${flowKind}" isn't a worker flow here, so worker "${workerId}" can't run on it.`);
     }
 
-    const collection = (ctx.resources as Record<string, unknown>)[WORKERS_RESOURCE] as
-      | ResourceCollectionRef
-      | undefined;
-    if (collection === undefined || typeof collection.getOptional !== "function") {
-      throw new Error(
-        `resolveWorker needs the worker collection: declare \`resources: { ...installation.resources }\` ` +
-          `on the block that calls it.`
-      );
-    }
+    const collection = workerCollection(ctx, "resolveWorker");
     const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
     if (found.found === "none") {
       refuse(`Worker "${workerId}" was fired. This session stays readable; a new turn can't run as it.`);
@@ -521,6 +587,31 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     };
   };
 
+  const rosterWorker = async (ctx: WorkerTurnContext, workerId: string): Promise<RosterWorker | undefined> => {
+    const collection = workerCollection(ctx, "rosterWorker");
+    const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
+    if (found.found === "none") return undefined;
+    if (found.found === "unreadable") {
+      return { id: workerId, standard: false, flow: "", description: null, problem: found.problem };
+    }
+    if (found.found === "own") {
+      return {
+        id: workerId,
+        standard: false,
+        flow: found.flow,
+        description: found.row.description,
+        ...(found.standardOnly ? { problem: standardOnlyReason(found.flow, false) } : {})
+      };
+    }
+    const declaredDescription = found.manifest.declared.description;
+    return {
+      id: workerId,
+      standard: true,
+      flow: found.flow,
+      description: typeof declaredDescription === "string" ? declaredDescription : null
+    };
+  };
+
   const installation: WorkerInstallation = {
     resources,
     documents,
@@ -528,6 +619,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       Object.hasOwn(documents, name) ? (grantedAccessOf(ctx.session as object, name) ?? "hidden") : "visible",
     sessionStateShape,
     createCheck,
+    rosterWorker,
     session(extraShape) {
       return {
         stateSchema: z.object({ ...sessionStateShape, ...(extraShape ?? {}) }) as never,

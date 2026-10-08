@@ -38,6 +38,15 @@ export const STANDARD_WORKERS_RESOURCE = "workforceStandardWorkers";
 export const WORKER_ID_STATE_KEY = "workerId";
 
 /**
+ * The session-state field that names the conversation a worker session was
+ * opened for: a coordinator's delivery sets it on the delegate's session, from
+ * the coordinator conversation's id and incarnation. Readonly, like
+ * {@link WORKER_ID_STATE_KEY}, so a lookup can filter by it. **Pinned**: the
+ * criteria key `findWorkerSession` and `ensureWorkerSession` take.
+ */
+export const FILING_SESSION_STATE_KEY = "filingSessionId";
+
+/**
  * The roster flow's kind: a flow that runs no worker and declares the two
  * worker collections, so a client can read a user's roster through a session
  * of its own. Its own kind, so a listing of a worker flow's sessions never

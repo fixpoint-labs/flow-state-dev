@@ -62,6 +62,8 @@ import { localWorkspaceHost, redactRemote, type WorkspaceHost } from "@flow-stat
 import { z } from "zod";
 import {
   AGENT_KIND,
+  COORDINATOR_KIND,
+  defineCoordinatorFlow,
   MAILBOX_KIND,
   mailboxBoard,
   mailboxBoardIds,
@@ -571,10 +573,12 @@ export interface OpenLabOptions {
    */
   dropTask?: boolean;
   /**
-   * Leave the project tools out: not in the agent kind's catalog, and not in
-   * any seat's `tools:`, as before the chief of staff had them. Applied to the
-   * record before the mint, so the seat boots and genuinely cannot create a
-   * project. The red state of "the chief of staff creates projects".
+   * Leave the project tools out: not in the catalog the agent turn is built
+   * with (the `agent` kind's, and the chief of staff's on the coordinator
+   * flow), and not in any seat's `tools:`, as before the chief of staff had
+   * them. Applied to the record before the mint, so the seat boots and
+   * genuinely cannot create a project. The red state of "the chief of staff
+   * creates projects".
    */
   withoutProjectTools?: boolean;
 }
@@ -893,29 +897,43 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const asksBeforeChanging = workers.some((worker) =>
     ((worker.declared.tools as string[] | undefined) ?? []).some((tool) => asksFirst.has(tool)),
   );
+  // What the agent's turn is built with. The `agent` flow runs it behind its
+  // door, and the `coordinator` flow, which the chief of staff runs on, runs
+  // the same turn for its judgment: one catalog, one set of capabilities.
+  const agentTurn = {
+    // The project tools and the roster writes a worker names in `tools:`.
+    // The kind carries them, and only the chief of staff's line names them.
+    catalog: { ...(options.withoutProjectTools === true ? {} : projectTools), ...rosterTools },
+    uses: [
+      // The seat and mailbox inventories, which the discovery door reads.
+      // The mailbox inventory is declared with the project writes' own
+      // object, because the project tools read it too and a flow takes one
+      // declaration per storage key.
+      defineCapability({
+        name: "lab-inventory",
+        resources: { seatInventory: defineSeatInventoryCollection(), mailboxInventory: projectWritesMailboxInventory },
+      }),
+      createWorkforceCapability({
+        roster: { workers: roster.workers, mailboxes: roster.mailboxes },
+        inventory: { seats: "seatInventory", mailboxes: "mailboxInventory" },
+      }),
+      workerMailboxPostCapability,
+    ],
+  };
+  const agentKind = defineAgentWorkerFlow({ installation, ...agentTurn });
   kinds = {
     [EM_KIND]: emKind as never,
     [CODER_KIND]: coderKind as never,
-    [AGENT_KIND]: defineAgentWorkerFlow({
+    [AGENT_KIND]: agentKind as never,
+    // The chief of staff's flow. A delivery reaches a delegate on a flow that
+    // takes a delegated post: here, `agent`. Best fit's evaluator runs on the
+    // Lab's small model; the chief of staff routes by judgment, so it calls it
+    // only for a coordinator that names `routing: best-fit`.
+    [COORDINATOR_KIND]: defineCoordinatorFlow({
       installation,
-      // The project tools and the roster writes a worker names in `tools:`.
-      // The kind carries them, and only the chief of staff's line names them.
-      catalog: { ...(options.withoutProjectTools === true ? {} : projectTools), ...rosterTools },
-      uses: [
-        // The seat and mailbox inventories, which the discovery door reads.
-        // The mailbox inventory is declared with the project writes' own
-        // object, because the project tools read it too and a flow takes one
-        // declaration per storage key.
-        defineCapability({
-          name: "lab-inventory",
-          resources: { seatInventory: defineSeatInventoryCollection(), mailboxInventory: projectWritesMailboxInventory },
-        }),
-        createWorkforceCapability({
-          roster: { workers: roster.workers, mailboxes: roster.mailboxes },
-          inventory: { seats: "seatInventory", mailboxes: "mailboxInventory" },
-        }),
-        workerMailboxPostCapability,
-      ],
+      delegateFlows: [agentKind],
+      routeModel: "openai/gpt-5.4-mini",
+      agent: agentTurn,
     }) as never,
   };
 

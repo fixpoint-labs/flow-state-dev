@@ -20,12 +20,19 @@ import { DERIVED_WORKER_SESSION_PREFIX } from "./keys";
 /**
  * What a worker session is looked up and created by. FIX-1788 defines
  * `worker`; later issues add their own keys (a task, a workstream, a
- * coordinator's conversation), each pinned by its issue. The object stays
- * open for them and defines none of them here.
+ * coordinator's conversation), each pinned by its issue and each a readonly
+ * session-state field. FIX-1791 defines `filingSessionId`.
  */
 export type WorkerSessionCriteria = {
   /** The worker the session runs: a worker id on the user's roster, or a standard one. */
   worker: string;
+  /**
+   * The conversation the session was opened for: a coordinator conversation's
+   * `filingSessionId`, as its `listDelegates` returns it. Named, the lookup
+   * returns that conversation's delegate session; omitted, it never returns a
+   * session that carries one.
+   */
+  filingSessionId?: string;
 };
 
 /** The inputs a derived id is computed from. */

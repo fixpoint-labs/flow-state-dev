@@ -20,7 +20,7 @@ import { createNotifyLog } from "../teams/devteam/notify.mts";
 
 /** The chief of staff, and the flow it runs on, whose one copy every worker on it shares. */
 const COS = "chief-of-staff";
-const COS_FLOW = "agent";
+const COS_FLOW = "coordinator";
 const FIRST = "https://github.com/acme/storefront.git";
 const ASKED = "git@github.com:acme/storefront-next.git";
 
