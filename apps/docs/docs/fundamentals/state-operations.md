@@ -65,6 +65,8 @@ await ctx.session.pushState("history", { role: "user", text: "Hello" });
 
 The field must be declared as an array in your schema. If the field is missing, the operation initializes it to `[value]`.
 
+A field that holds anything other than an array, `null` included, makes the call throw, and the stored value is left as it was. The error is a plain `Error`. Its message names the field and says it is not an array.
+
 ### `setStateRecord(field, key, value)` and `deleteStateRecord(field, key)`
 
 Work with a record-typed field — a map keyed by ID — without you having to spread the whole map yourself:
