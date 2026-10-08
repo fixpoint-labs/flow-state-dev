@@ -94,7 +94,7 @@ A dated snapshot. Live state is Linear and the implementation PRs. Nothing has s
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1816](https://linear.app/fixpoint-labs/issue/FIX-1816) · ask | Park and resume: a turn waits on a dispatched worker and resumes with its answer, bounded by a timeout and a depth cap ([D5](DECISIONS.md#d5) rows L1 to L3, L5 to L8); lifts the child-finished signal into `orchestration` (L4) | Leg a. Its spec also decides "ask the delegate" and FIX-1537 | Todo · spec route, first |
+| [FIX-1816](https://linear.app/fixpoint-labs/issue/FIX-1816) · ask | Park and resume: a turn waits on a dispatched worker and resumes with its answer, bounded by a timeout and a depth cap ([D5](DECISIONS.md#d5) rows L1 to L3, L5, L7, L8); lifts the child-finished signal into `orchestration` (L4) | Leg a. Its spec also decides "ask the delegate" and FIX-1537 | Todo · spec route, first |
 | [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817) · assign stays open | An answered park resumes the same task session; a finished session answers and takes a follow-up task (L9) | Leg b | Todo · spec route · build waits on FIX-1802, which follows FIX-1794 P2 ([ER-15](BUSINESS-RULES.md#how-the-set-is-run)) |
 | [FIX-1820](https://linear.app/fixpoint-labs/issue/FIX-1820) · closure · **required** | The QA plan and the goal fixture, run on one `main` commit | Proves the whole | Backlog · blocked by every other child |
 
@@ -123,12 +123,12 @@ both specs run at once and settle the shared pieces together.
 
 ## What stays as it is
 
-- **Dispatch stays fire-and-forget by default.** Ask is opt-in ([D4](DECISIONS.md#d4)).
+- **Dispatch stays fire-and-forget by default.** Ask is an opt-in option on `addTask` ([D4](DECISIONS.md#d4)).
 - **The public resume, retry and continue routes** still refuse task and internal sources
   (`engine/src/routes/public-reentry.ts`). The new resume is server-side only.
 - **FIX-1786's children**, their specs and code, consumed as they ship ([ER-12](BUSINESS-RULES.md#what-no-child-may-do)).
-- **FIX-1312's `from` stamp**, which carries the sender's session and no request id. Ask reads
-  the request id the dispatch returns, not the stamp.
+- **FIX-1312's `from` stamp**, which carries the sender's session and no request id. Ask waits
+  on a task row on its own board, not on the stamp (L5).
 
 ## Sign off
 

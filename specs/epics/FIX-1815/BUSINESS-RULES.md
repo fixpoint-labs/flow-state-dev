@@ -12,8 +12,8 @@ checks them. Each names its owner and where it is checked.
 | ER-1 | An ask returns the asked worker's real answer inside the asker's turn, across a restart, and the asked worker runs once | FIX-1816 | FIX-1820's leg a and both controls |
 | ER-2 | An answered park resumes the same task session, which keeps what it did before it parked | FIX-1817 | FIX-1820's leg b |
 | ER-3 | A finished task's session answers a follow-up question from its history and accepts a follow-up task. It never locks. The finished row still declines writes (FIX-1794's leg e); a follow-up task is a new row bound to the same session | FIX-1817, with FIX-1765 on what a reply does | FIX-1820's leg b · FIX-1817's spec review |
-| ER-4 | Every ask has a timeout and a depth cap, and a cancel of the asker reaches the asked worker ([D3](DECISIONS.md#d3)) | FIX-1816 | FIX-1816's tests · FIX-1820's gap sweep with a mutual ask |
-| ER-5 | Dispatch stays fire-and-forget by default; ask is a separate, opt-in call ([D4](DECISIONS.md#d4)) | FIX-1816 decides · FIX-1817 consumes | Both specs' review |
+| ER-4 | Every ask has a timeout and a depth cap, and a cancel of the asker reaches the asked worker ([D3](DECISIONS.md#d3)). The cap is depth 1, by construction; the timeout is fixed (L7) | FIX-1816 | FIX-1816's tests · FIX-1820's gap sweep with a mutual ask |
+| ER-5 | Dispatch stays fire-and-forget by default; ask is an opt-in option, `addTask`'s `waitForResponse` (L5, [D4](DECISIONS.md#d4)) | FIX-1816 decides · FIX-1817 consumes | Both specs' review |
 
 ## What no child may do
 
@@ -24,7 +24,7 @@ checks them. Each names its owner and where it is checked.
 | ER-8 | Hold a request open while it waits | [D1](DECISIONS.md#d1) |
 | ER-9 | Merge ask and assign into one kind | The product owner, 2026-10-08 |
 | ER-10 | Restore skill `agents:` in any form, including a skill's private team | FIX-1814 removed it; Not doing |
-| ER-11 | Add a Layer 1 change outside [D5](DECISIONS.md#d5)'s nine, or any new public route | D5. It comes to this epic first |
+| ER-11 | Add a Layer 1 change outside [D5](DECISIONS.md#d5)'s list, or any new public route | D5. It comes to this epic first |
 | ER-12 | Change a FIX-1786 child's spec or code: FIX-1791, FIX-1792, FIX-1793, FIX-1794, FIX-1796, FIX-1797, FIX-1802, FIX-1814. A need goes to that epic as a comment. The one agreed exception: FIX-1816's lift re-points FIX-1794's S6 and S7 at the moved module ([Q2](DECISIONS.md#q2)) | Another session owns them |
 | ER-13 | Build the Shift Manager composer for finished tasks | FIX-1764 and epic FIX-1765 own it |
 

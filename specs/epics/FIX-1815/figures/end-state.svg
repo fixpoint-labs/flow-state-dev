@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 470" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What&#x27;s in the box. In the box, two kinds of hand-off. Ask, FIX-1816: the turn parks on a dispatched worker and resumes with its real answer, across a restart, the asked worker running once, bounded by a timeout, a depth cap and a cancel that reaches the child. Assign stays open, FIX-1817: an answered park resumes the same task session; a finished session answers follow-up questions and takes a follow-up task. Under both, the Layer 1 seam: a server-side resume, a wait binding, awaitDispatch with runOnce and resultOf, a worker that parks its row, a resume-owed marker, and a durable test runtime. Built once elsewhere and lifted or reused here: the child-finished notices from FIX-1794 P2, which ask lifts into orchestration, the settle-owed marker&#x27;s pattern from FIX-1802, which ask&#x27;s own marker reuses, and the board&#x27;s claim ticket or FIX-1791&#x27;s delivery ledger as the one answer-once check; generator suspend and resume already ships. The app&#x27;s: which kind to use per call, its timeout and depth values, and the Shift Manager composer, FIX-1764 and FIX-1765. Not built, below a fence: an untrusted external inbox, skill agents in any form, one merged kind, a request held open, parallel fan-in beyond one-at-a-time resume, a third answer-once check.">
+     aria-label="What&#x27;s in the box. In the box, two kinds of hand-off. Ask, FIX-1816: a task on the asker&#x27;s own board, addTask with waitForResponse; the turn parks on it and resumes with its real answer, across a restart, the asked worker running once, bounded by a fixed timeout, depth 1 with no nested asks, and a cancel that reaches the child. Assign stays open, FIX-1817: an answered park resumes the same task session; a finished session answers follow-up questions and takes a follow-up task, through answerTask and addTask&#x27;s followUpOf. Under both, the Layer 1 seam: a server-side resume, a wait binding, the waitForResponse option on addTask with no new tool, a resume-owed marker, answerTask as a ninth task tool with addTask&#x27;s followUpOf, and a durable test runtime. Built once elsewhere and lifted or reused here: the child-finished notices from FIX-1794 P2, which ask lifts into orchestration, the settle-owed marker&#x27;s pattern from FIX-1802, which ask&#x27;s own marker reuses, and the board&#x27;s claim ticket or FIX-1791&#x27;s delivery ledger as the one answer-once check; generator suspend and resume already ships. The app&#x27;s: which kind to use per call, and the Shift Manager composer, FIX-1764 and FIX-1765. Not built, below a fence: an untrusted external inbox, skill agents in any form, one merged kind, a request held open, parallel fan-in beyond one-at-a-time resume, nested asks, a third answer-once check.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -25,19 +25,19 @@
     <text class="t-lbl" x="32" y="44">IN THE BOX — TWO KINDS OF HAND-OFF, BOTH SURVIVE A RESTART, THE WORK RUNS ONCE</text>
     <rect class="held" x="32" y="56" width="430" height="112" rx="4"/>
     <text class="t-b" x="44" y="78">ask · FIX-1816</text>
-    <text class="t-s" x="44" y="98">the turn parks on a dispatched worker</text>
-    <text class="t-s" x="44" y="114">and resumes with its real answer</text>
+    <text class="t-s" x="44" y="98">a task on its own board · addTask + waitForResponse</text>
+    <text class="t-s" x="44" y="114">the turn parks on it and resumes with the answer</text>
     <text class="t-s" x="44" y="130">across a restart · the asked worker runs once</text>
-    <text class="t-s" x="44" y="146">bounded: a timeout · a depth cap · cancel reaches it</text>
+    <text class="t-s" x="44" y="146">bounded: a fixed timeout · depth 1 · cancel reaches it</text>
     <rect class="held" x="478" y="56" width="430" height="112" rx="4"/>
     <text class="t-b" x="490" y="78">assign stays open · FIX-1817</text>
     <text class="t-s" x="490" y="98">an answered park resumes the same task session</text>
     <text class="t-s" x="490" y="114">which keeps what it did before it parked</text>
     <text class="t-s" x="490" y="130">finished: answers follow-up questions</text>
-    <text class="t-s" x="490" y="146">and takes a follow-up task · never locks</text>
+    <text class="t-s" x="490" y="146">takes a follow-up task (answerTask, followUpOf) · never locks</text>
     <rect class="held" x="32" y="178" width="876" height="36" rx="4"/>
-    <text class="t-s" x="44" y="193">the Layer 1 seam, D5: server-side resume · a wait binding · awaitDispatch (runOnce + resultOf)</text>
-    <text class="t-s" x="44" y="207">a worker that asks parks its own row · a resume-owed marker · a durable in-memory runtime for tests</text>
+    <text class="t-s" x="44" y="193">the Layer 1 seam, D5: server-side resume · a wait binding · waitForResponse on addTask, no new tool</text>
+    <text class="t-s" x="44" y="207">a resume-owed marker · answerTask, a ninth task tool · a durable in-memory runtime for tests</text>
   </g>
   <g id="consumed">
     <rect class="repl" x="16" y="240" width="560" height="104" rx="5"/>
@@ -51,7 +51,7 @@
     <rect class="comp" x="592" y="240" width="332" height="104" rx="5"/>
     <text class="t-lbl" x="608" y="260">THE APP&#x27;S</text>
     <text class="t-s" x="608" y="280">ask or assign, per call · dispatch default</text>
-    <text class="t-s" x="608" y="296">the timeout and the depth values</text>
+    <text class="t-s" x="608" y="296">the timeout: fixed, not the app&#x27;s</text>
     <text class="t-s" x="608" y="312">the finished-task composer</text>
     <text class="t-s" x="608" y="328">FIX-1764 · epic FIX-1765</text>
   </g>
@@ -60,6 +60,6 @@
     <text class="t-non" x="32" y="382">NOT BUILT</text>
     <text class="t-s" x="32" y="404">no untrusted external inbox: "mailbox" stays reserved · no skill agents: in any form, no private team</text>
     <text class="t-s" x="32" y="420">no one merged kind · no request held open while it waits · no third answer-once check</text>
-    <text class="t-s" x="32" y="436">no parallel fan-in beyond a correct one-at-a-time resume</text>
+    <text class="t-s" x="32" y="436">no parallel fan-in beyond a correct one-at-a-time resume · no nested asks</text>
   </g>
 </svg>

@@ -10,17 +10,18 @@ text; names in `code` are working names until FIX-1816's spec fixes them.
 > ### Waiting for the answer
 >
 > A dispatch returns before the work it started has run. That is right for a job that outlives
-> the turn, and wrong when the next step needs the result. For that case, ask instead of
-> dispatching.
+> the turn, and wrong when the next step needs the result. For that case, add the work as a task
+> and wait for its answer: that is an ask.
 >
-> An ask starts the work the same way, then parks the turn on it. When the answer arrives, the
+> An ask files the task on the worker's own board, then parks the turn on it. When the answer arrives, the
 > turn picks up where it stopped, with the answer as the tool's result. Nothing holds the request
 > open in between, so a server restart while the turn waits loses nothing: the turn resumes after
 > the restart, and the asked work ran once.
 >
-> Every ask has a time limit and a limit on how deep asks can nest. If two workers ask each
-> other, both get a timeout error instead of waiting forever. Cancelling the turn that asked also
-> cancels the work it is waiting on.
+> Every ask has a time limit of ten minutes. The server checks it on its regular sweep, so a turn
+> whose answer never came resumes with a timeout error within ten to twenty minutes, instead of
+> waiting forever. A turn that is itself working a task can't ask, so asks never nest. Cancelling
+> the turn that asked also cancels the work it is waiting on.
 >
 > Each wake replays the asking turn once, so an ask costs one extra replay. Use one when the
 > answer changes what this turn does next. When it doesn't, dispatch the work, or assign it as a
