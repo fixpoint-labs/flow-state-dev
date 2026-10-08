@@ -182,7 +182,7 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
     }
     const drawn = await o.install.screen("m1", o.people.alice, true, "/roster", "alice-roster");
     r.via("m1", "screen");
-    if (!drawn.text.includes(facts.aliceWorker)) r.fail("m1", `Alice's Roster screen doesn't draw her worker \`${facts.aliceWorker}\` (${drawn.rows} worker rows drawn${drawn.errors.length > 0 ? `; ${drawn.errors.join(" | ")}` : ""})`);
+    if (!drawn.text.includes(facts.aliceWorker)) r.fail("m1", `Alice's Roster screen doesn't draw her worker \`${facts.aliceWorker}\` (${drawn.rows} worker rows drawn${drawn.ownUnread !== undefined ? `; ${drawn.ownUnread}` : ""}${drawn.errors.length > 0 ? `; ${drawn.errors.join(" | ")}` : ""})`);
     else r.saw("m1", `Alice's Roster screen draws \`${facts.aliceWorker}\``);
   }
 
@@ -271,7 +271,8 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
     r.via("m3", "screen");
     if (drawn.text.includes(name)) r.fail("m3", `${readsHers}: his Roster screen draws \`${name}\``);
     else if (drawn.rows === 0 && !drawn.text.includes(facts.standard!.id)) r.fail("m3", `Bob's Roster screen drew no worker, so it can't show what it leaves out${drawn.errors.length > 0 ? `: ${drawn.errors.join(" | ")}` : ""}`);
-    else r.saw("m3", `Bob's Roster screen draws ${drawn.rows} workers, not \`${name}\``);
+    else if (drawn.ownUnread !== undefined) r.notRun("m3", `Bob's Roster screen can't show it leaves \`${name}\` out: ${drawn.ownUnread}`);
+    else r.saw("m3", `Bob's Roster screen draws ${drawn.rows} workers once his own-worker read is in, not \`${name}\``);
   }
 
   // ---- m4 · Bob creates sessions on Alice's worker -------------------------------------
@@ -339,7 +340,8 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
     r.via("m5", "screen");
     if (drawn.text.includes(facts.aliceWorker)) r.fail("m5", `Alice's Roster screen in her second org draws \`${facts.aliceWorker}\``);
     else if (drawn.rows === 0 && !drawn.text.includes(facts.standard!.id)) r.fail("m5", `Alice's second-org Roster screen drew no worker, so it can't show what it leaves out${drawn.errors.length > 0 ? `: ${drawn.errors.join(" | ")}` : ""}`);
-    else r.saw("m5", `Alice's second-org Roster screen draws ${drawn.rows} workers, not \`${facts.aliceWorker}\``);
+    else if (drawn.ownUnread !== undefined) r.notRun("m5", `Alice's second-org Roster screen can't show it leaves \`${facts.aliceWorker}\` out: ${drawn.ownUnread}`);
+    else r.saw("m5", `Alice's second-org Roster screen draws ${drawn.rows} workers once her own-worker read is in, not \`${facts.aliceWorker}\``);
   } else {
     r.saw("m5", "no first-org worker to look for (m1 made none): sessions and user data only");
   }

@@ -73,7 +73,17 @@ export interface Drawn {
   /** How many worker rows the Roster drew. */
   rows: number;
   errors: string[];
+  /**
+   * Set when the person's own workers can't be on what was read: their read
+   * never landed, or it returned workers the screen never drew. An absence
+   * on such a screen shows nothing.
+   */
+  ownUnread?: string;
 }
+
+/** The read the Roster makes for the person's own workers: the workforce client listing `workforceWorkers`. */
+const OWN_WORKERS_READ = /\/sessions\/[^/]+\/resources\/workforceWorkers$/;
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** One store, the install serving it, and the people using it. */
 export class Install {
@@ -124,13 +134,27 @@ export class Install {
   async screen(step: string, person: Person, owner: boolean, path: string, shot: string): Promise<Drawn> {
     const opened = await personPage(this.browser, this.origin, { userId: person.userId, bearer: person.bearer }, owner);
     try {
+      // The Roster draws the inventory's workers at once and the person's own
+      // only when their read lands, so the screen is read once that read has
+      // landed and every worker it returned is drawn.
+      const ownRead = opened.page
+        .waitForResponse((res) => res.request().method() === "GET" && OWN_WORKERS_READ.test(new URL(res.url()).pathname), { timeout: 45_000 })
+        .then(async (res) => (res.ok() ? ((await res.json()) as { items: Array<{ topic: string }> }).items.map((i) => i.topic.slice(i.topic.lastIndexOf("/") + 1)) : `answered ${res.status()}`))
+        .catch((error: unknown) => `failed (${messageOf(error)})`);
       await openShiftManager(opened.page, this.origin, path);
       await opened.page.locator("[data-testid=roster-worker]").first().waitFor({ timeout: 15_000 }).catch(() => undefined);
-      const drawn = await readDrawn(opened.page);
+      const read = await ownRead;
+      let drawn = await readDrawn(opened.page);
+      const undrawn = () => (typeof read === "string" ? [] : read.filter((id) => !drawn.text.includes(id)));
+      for (const until = Date.now() + 15_000; undrawn().length > 0 && Date.now() < until; ) {
+        await sleep(250);
+        drawn = await readDrawn(opened.page);
+      }
       await this.opts.record.shot(opened.page, `${step}-${shot}`);
-      return { ...drawn, errors: opened.errors };
+      const ownUnread = typeof read === "string" ? `their own-worker read ${read}` : undrawn().length > 0 ? `their own-worker read returned ${undrawn().join(", ")}, which the screen never drew` : undefined;
+      return { ...drawn, errors: opened.errors, ...(ownUnread === undefined ? {} : { ownUnread }) };
     } catch (error) {
-      return { text: "", rows: 0, errors: [...opened.errors, messageOf(error)] };
+      return { text: "", rows: 0, errors: [...opened.errors, messageOf(error)], ownUnread: "the screen failed to open" };
     } finally {
       await opened.context.close().catch(() => undefined);
     }
