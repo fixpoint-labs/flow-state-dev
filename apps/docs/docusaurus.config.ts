@@ -14,6 +14,7 @@ const config: Config = {
   projectName: "flow-state-dev",
 
   onBrokenLinks: "throw",
+  onBrokenAnchors: "throw",
 
   markdown: {
     hooks: {

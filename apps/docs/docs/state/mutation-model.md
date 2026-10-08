@@ -265,7 +265,7 @@ A repo-wide check (`scripts/validate-updater-purity.mjs`, run by `pnpm typecheck
 
 ## Mutation timeout
 
-The lock path can deadlock if a mutator never finishes — say it awaits something that never resolves. To bound the worst case, every mutation on a scope with no store has a budget:
+The lock path can deadlock if a mutator never finishes — say it awaits something that never resolves. To bound the worst case, every mutation on a scope with no store has a budget. You set it with the `request` key on `defineFlow`:
 
 ```ts
 defineFlow({
@@ -279,7 +279,7 @@ When a mutator's queue wait + execution exceeds the budget, the call rejects wit
 
 The timeout is a bounded-error safety net, not a cancellation primitive. The in-flight mutator keeps running after the caller's promise rejects; if it eventually returns, the lock still commits its result and bumps the version. So a caller that retries on `ScopeMutationTimeoutError` may end up applying the mutation twice. If you need at-most-once semantics, write idempotent mutators (e.g. set/replace, not increment) or guard the retry on top.
 
-That is also why the budget stops at scopes with no store. It is not applied to request, session, user, or org — anything that writes to a store. A write the caller has given up on is still able to reach the store, and by the time it gets there the runtime may have finished the request and written its final status. Letting the abandoned write land on top of that would replace a finished record with a stale one. An error you can catch is worth having when the cost of the timeout is a rejected call; it isn't when the cost is the stored record.
+That is also why the budget stops at scopes with no store. It is not applied to the request, session, user, or org scopes, which all write to a store. (The request scope is the per-request state container, not the `request` key on `defineFlow` where you set the budget.) A write the caller has given up on is still able to reach the store, and by the time it gets there the runtime may have finished the run and written its final status. Letting the abandoned write land on top of that would replace a finished record with a stale one. An error you can catch is worth having when the cost of the timeout is a rejected call; it isn't when the cost is the stored record.
 
 Set to `Infinity` to disable.
 
