@@ -72,51 +72,43 @@ export function seams(base: string): SeamRow[] {
   };
 
   // ---- One remove path (ER-19) --------------------------------------------------
+  // A worker the person hires is a row on their own roster (FIX-1788). The one
+  // place a row is deleted is Workforce's fire block, which both the roster
+  // flow's `fire` and the chief of staff's `fire` tool run.
   row("One remove path (ER-19)", (out) => {
-    const files = sources(["packages", "apps/kitchen-sink"]);
-    const deletes = grep(files, /inventory\w*\s*\.\s*delete\(|\binventory\.delete\(/i);
-    const removers = grep(files, /\b(removeHiredSeat|deleteOwnInventoryRow)\(/).filter((h) => !/^export (async )?function/.test(h.text));
-    out.push(`$ grep inventory deletes in packages/ apps/kitchen-sink (non-test): ${deletes.length}`);
+    const files = sources(["packages", "apps/kitchen-sink"]).filter((f) => /WORKERS_RESOURCE|WORKERS_PATTERN|workforceWorkers|workforce\/workers\//.test(readFileSync(join(REPO_ROOT, f), "utf8")));
+    const deletes = grep(files, /\.delete\(/);
+    out.push(`$ files that reach a person's worker rows (packages/, apps/kitchen-sink, non-test): ${files.join(", ")}`);
+    out.push(`$ grep .delete( in them: ${deletes.length}`);
     for (const h of deletes) out.push(`  ${h.file}:${h.line}: ${h.text}`);
-    out.push(`$ grep callers of removeHiredSeat / deleteOwnInventoryRow: ${removers.length}`);
-    for (const h of removers) out.push(`  ${h.file}:${h.line}: ${h.text}`);
-    const remove = "packages/workforce/src/roster/remove.ts";
-    const blocks = "packages/workforce/src/seat-hire-blocks.ts";
-    const strayDeletes = deletes.filter((h) => h.file !== remove);
-    const [fireFrom, fireTo] = rangeOf(blocks, /const fireVerb\b/, /^  const \w+/);
-    const [settleFrom, settleTo] = rangeOf(blocks, /const settle = async/, /^  const \w+/);
-    const inBlocks = removers.filter((h) => h.file === blocks);
-    const fireCalls = inBlocks.filter((h) => /removeHiredSeat\(/.test(h.text) && h.line >= fireFrom && h.line <= fireTo);
-    const hireUndo = inBlocks.filter((h) => /deleteOwnInventoryRow\(/.test(h.text) && h.line >= settleFrom && h.line <= settleTo);
-    const elsewhereInBlocks = inBlocks.filter((h) => !fireCalls.includes(h) && !hireUndo.includes(h));
-    const appCallers = removers.filter((h) => h.file !== remove && h.file !== blocks);
-    const appDirect = appCallers.filter((h) => !/removeHiredSeat\(/.test(h.text));
-    out.push(`fire block ${blocks}:${fireFrom}-${fireTo} calls removeHiredSeat ${fireCalls.length} time(s)`);
-    out.push(`a hire taking back its own just-published row (settle ${settleFrom}-${settleTo}): ${hireUndo.length} (an undo of the hire's own write, not a removal of a hired seat)`);
-    out.push(`apps going through removeHiredSeat: ${appCallers.filter((h) => /removeHiredSeat\(/.test(h.text)).map((h) => `${h.file}:${h.line}`).join(", ") || "none"}`);
-    if (strayDeletes.length > 0) out.push(`FAIL: an inventory row is deleted outside ${remove}`);
-    if (fireCalls.length !== 1) out.push("FAIL: the fire block does not call the one removal exactly once");
-    if (elsewhereInBlocks.length > 0) out.push("FAIL: the seat-hire blocks remove a seat outside fire");
-    if (appDirect.length > 0) out.push("FAIL: an app deletes a seat's inventory row without the one removal");
-    return strayDeletes.length === 0 && fireCalls.length === 1 && elsewhereInBlocks.length === 0 && appDirect.length === 0;
+    const blocks = "packages/workforce/src/workers/hire-blocks.ts";
+    const [fireFrom, fireTo] = rangeOf(blocks, /const fire = handler\(/, /^  return \{/);
+    const inFire = deletes.filter((h) => h.file === blocks && h.line >= fireFrom && h.line <= fireTo);
+    out.push(`the fire block (${blocks}:${fireFrom}-${fireTo}) deletes ${inFire.length} time(s)`);
+    if (inFire.length !== 1) out.push("FAIL: the fire block does not delete the worker's row exactly once");
+    if (deletes.length !== inFire.length) out.push("FAIL: a worker's row is deleted outside the fire block");
+    return inFire.length === 1 && deletes.length === inFire.length;
   });
 
-  // ---- One orphan read (ER-5) ----------------------------------------------------
-  row("One orphan read (ER-5)", (out) => {
-    const files = sources(["packages", "apps/kitchen-sink", "labs"]);
-    const classifies = grep(files, /reason:\s*"kind-gone"/);
-    const callers = grep(files, /\bcheckHiredSeatRow\(/).filter((h) => !/^export (async )?function/.test(h.text));
-    out.push(`$ grep 'reason: "kind-gone"': ${classifies.map((h) => `${h.file}:${h.line}`).join(", ")}`);
-    out.push(`$ grep checkHiredSeatRow( callers: ${callers.map((h) => `${h.file}:${h.line}`).join(", ")}`);
-    const blocks = "packages/workforce/src/seat-hire-blocks.ts";
-    const [from, to] = rangeOf(blocks, /const brokenSeats = handler\(/, /^  const \w+/);
-    const inBroken = callers.filter((h) => h.file === blocks && h.line >= from && h.line <= to);
-    const host = readFileSync(join(REPO_ROOT, "packages/shift-manager/teams/devteam/host.mts"), "utf8");
-    const viaCapability = /createSeatHireCapability\(/.test(host);
-    out.push(`brokenSeats (${blocks}:${from}-${to}) calls it ${inBroken.length} time(s); the DevTeam host installs createSeatHireCapability: ${viaCapability}`);
-    const ok = classifies.length === 1 && classifies[0]!.file === "packages/workforce/src/roster/check.ts" && inBroken.length === 1 && viaCapability;
-    if (!ok) out.push("FAIL: kind-gone is classified other than by roster/check.ts, or CoS's brokenSeats does not resolve to it");
-    return ok;
+  // ---- One load path (ER-5) ------------------------------------------------------
+  // There is no orphan to read: a stored worker that can't run is refused when
+  // its turn loads it (FIX-1788 BR-19, BR-22). One path decides it, so a hire's
+  // check and a turn refuse the same things: every refusal is thrown by
+  // `resolveWorker`, and the hire's check and the turn both go through `mint`.
+  row("One load path (ER-5)", (out) => {
+    const refusals = grep(sources(["packages", "apps/kitchen-sink"]), /new WorkerTurnRefusedError\(/);
+    const model = "packages/workforce/src/workers/installation.ts";
+    const [turnFrom, turnTo] = rangeOf(model, /const resolveWorker = async/, /^  const \w+ = /);
+    const [checkFrom, checkTo] = rangeOf(model, /const configurationProblems = /, /^  const \w+ = /);
+    const mints = grep([model], /\bmint\(/);
+    const inTurn = mints.filter((h) => h.line >= turnFrom && h.line <= turnTo);
+    const inCheck = mints.filter((h) => h.line >= checkFrom && h.line <= checkTo);
+    out.push(`$ grep 'new WorkerTurnRefusedError(' (packages/, apps/kitchen-sink, non-test): ${refusals.map((h) => `${h.file}:${h.line}`).join(", ")}`);
+    out.push(`resolveWorker (${model}:${turnFrom}-${turnTo}) calls mint ${inTurn.length} time(s); configurationProblems (${checkFrom}-${checkTo}) ${inCheck.length}`);
+    const stray = refusals.filter((h) => h.file !== model || h.line < turnFrom || h.line > turnTo);
+    if (refusals.length === 0 || stray.length > 0) out.push("FAIL: a turn's worker is refused somewhere other than resolveWorker");
+    if (inTurn.length !== 1 || inCheck.length !== 1) out.push("FAIL: the hire's check and the turn don't both decide through mint");
+    return refusals.length > 0 && stray.length === 0 && inTurn.length === 1 && inCheck.length === 1;
   });
 
   // ---- The DevTeam tree and host -------------------------------------------------
@@ -127,8 +119,9 @@ export function seams(base: string): SeamRow[] {
       return m === null ? [] : m[1]!.split(",").map((t) => t.trim()).filter(Boolean);
     };
     const cos = toolsOf(join(tree, "org/workers/chief-of-staff/WORKER.md"));
-    // PLAN's six, plus `post-to-mailbox`: FIX-1719's S6 gives CoS "discover, post to mailboxes".
-    const want = ["hire", "fire", "rehire", "brokenSeats", "createProject", "setWorkstreams", "post-to-mailbox"];
+    // PLAN's six less `rehire` and `brokenSeats`, which FIX-1788 retired; `post-to-mailbox` (FIX-1719's S6
+    // gives CoS "discover, post to mailboxes"); and `setRepository` (FIX-1762).
+    const want = ["hire", "fire", "createProject", "setWorkstreams", "setRepository", "post-to-mailbox"];
     out.push(`CoS tools: [${cos.join(", ")}]`);
     const cosOk = JSON.stringify([...cos].sort()) === JSON.stringify([...want].sort());
     if (!cosOk) out.push(`FAIL: wanted [${want.join(", ")}]`);
@@ -142,7 +135,7 @@ export function seams(base: string): SeamRow[] {
         if (!existsSync(doc)) continue;
         const tools = toolsOf(doc);
         out.push(`${team}.${w} tools: [${tools.join(", ")}]`);
-        if (tools.some((t) => ["hire", "fire", "rehire", "brokenSeats"].includes(t))) hirers.push(`${team}.${w}`);
+        if (tools.some((t) => ["hire", "fire"].includes(t))) hirers.push(`${team}.${w}`);
       }
     }
     if (hirers.length > 0) out.push(`FAIL: team seats naming a hire tool: ${hirers.join(", ")}`);
@@ -227,13 +220,14 @@ export function seams(base: string): SeamRow[] {
   row("Docs published (ER-18)", (out) => {
     const has = (page: string, re: RegExp) => existsSync(join(REPO_ROOT, page)) && re.test(readFileSync(join(REPO_ROOT, page), "utf8"));
     const owned: Array<[string, string, RegExp]> = [
-      ["the shared section, projects and workstreams (FIX-1718)", "apps/docs/docs/workforce/overview.md", /^## Projects, workstreams, and the seats that run them\n[\s\S]*?\bproject groups workstreams\b/im],
-      ["the shared section, org seat and mailbox (FIX-1719)", "apps/docs/docs/workforce/overview.md", /^## Projects, workstreams, and the seats that run them\n[\s\S]*?chief of staff[\s\S]*?(approve)/im],
+      ["the shared section, projects and workstreams (FIX-1718)", "apps/docs/docs/workforce/overview.md", /^## Projects and the chief of staff\n[\s\S]*?\bproject\b\W* groups workstreams\b/im],
+      ["the shared section, org seat and mailbox (FIX-1719)", "apps/docs/docs/workforce/overview.md", /^## Projects and the chief of staff\n[\s\S]*?chief of staff[\s\S]*?(approve)/im],
       ["A room per project (FIX-1718)", "apps/docs/docs/workforce/mailboxes.md", /^## A room per project$/m],
       ["Asking CoS for a project (FIX-1718)", "apps/docs/docs/workforce/projects.md", /^# Projects$[\s\S]*chief of staff/m],
       ["Shift Manager's PROJECTS (FIX-1718)", "packages/shift-manager/README.md", /^## What you see$[\s\S]*?PROJECTS/m],
-      ["The CoS page (FIX-1719)", "apps/docs/docs/workforce/chief-of-staff.md", /^# The chief of staff$[\s\S]*?^## Adding one$[\s\S]*?askBefore/m],
-      ["Repairing a seat whose kind is gone (FIX-1621)", "apps/docs/docs/workforce/durable-hire.md", /^## Repairing a seat whose kind is gone$/m],
+      ["The CoS page (FIX-1719)", "apps/docs/docs/workforce/chief-of-staff.md", /^# The chief of staff$[\s\S]*?^## Adding one$[\s\S]*?^## What asks first$[\s\S]*?"reason": "human_approval"/m],
+      // FIX-1621's repair of a seat whose kind is gone was retired by FIX-1788: a worker is a row its owner fires or edits.
+      ["Changing or firing a worker (FIX-1788, in place of FIX-1621)", "apps/docs/docs/workforce/durable-hire.md", /^## Changing or firing a worker$[\s\S]*?`fire` deletes the row/m],
     ];
     let ok = true;
     for (const [what, page, re] of owned) {

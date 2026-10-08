@@ -11,8 +11,9 @@
  */
 import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Browser, Page } from "playwright";
+import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import {
   labRoutes,
   openShiftManager,
@@ -26,6 +27,10 @@ import {
 
 /** The seat Shift Manager and the Lab find the chief of staff by. */
 export const COS = "chief-of-staff";
+/** The flow a person's roster is read through (Workforce's roster flow). */
+const ROSTER_FLOW = "workforce-roster";
+/** Where a person's own workers are stored: one row per worker, in their scope. */
+const WORKERS_PATTERN = "workforce/workers/*";
 /** How long one turn of the chief of staff may take: a real model answers it. */
 export const TURN_MS = 240_000;
 
@@ -58,7 +63,7 @@ export interface Turn {
 export class RunRecord {
   readonly steps = new Map<string, { verdict: Verdict; notes: string[] }>();
   readonly turns: Turn[] = [];
-  readonly boots: Array<{ label: string; store: string; problems: string[] }> = [];
+  readonly boots: Array<{ label: string; store: string; config: string }> = [];
   readonly screenshots: string[] = [];
   constructor(readonly label: string, readonly shots: string) {}
 
@@ -103,16 +108,21 @@ export class World {
   routes!: { owner: LabRoutes; member: LabRoutes; outsider: LabRoutes };
   page!: Page;
   pageErrors: string[] = [];
+  /** The profile config the Lab is served from now: the commit's, or a scratch copy's. */
+  config: string;
   private closePage: (() => Promise<void>) | undefined;
   constructor(
     readonly browser: Browser,
     readonly people: People,
     readonly lab: { config: string; pages: string; scratch: string; store: string; env?: Record<string, string>; root?: string; tsx?: string },
     readonly record: RunRecord,
-  ) {}
+  ) {
+    this.config = lab.config;
+  }
 
-  /** Start (or restart, on the same store) the Lab, and open the owner's page. Records the boot's problems. */
+  /** Start (or restart, on the same store) the Lab, and open the owner's page. Records the boot. */
   async boot(label: string, config = this.lab.config): Promise<void> {
+    this.config = config;
     this.served = await startShiftManager({
       scratch: this.lab.scratch,
       label: label.replace(/\s+/g, "-"),
@@ -133,9 +143,7 @@ export class World {
     this.page = opened.page;
     this.pageErrors = opened.errors;
     this.closePage = () => opened.context.close();
-    // Give the Lab a moment to finish writing what it prints after it serves.
-    await sleep(500);
-    this.record.boots.push({ label, store: this.lab.store, problems: bootProblems(this.served.log()) });
+    this.record.boots.push({ label, store: this.lab.store, config });
   }
 
   /** Stop the Lab: the next {@link boot} is a restart on the same store. */
@@ -156,11 +164,6 @@ export class World {
   async as(who: "member" | "outsider") {
     return personPage(this.browser, this.served.origin, this.people[who], false);
   }
-}
-
-/** The lines a boot printed naming a stored seat it skipped (FIX-1621's start report, as the DevTeam host prints it). */
-export function bootProblems(log: string): string[] {
-  return log.split("\n").filter((l) => /skipped a hired seat/.test(l));
 }
 
 // ---- what the store holds -------------------------------------------------------
@@ -187,16 +190,38 @@ export async function readInventory(routes: LabRoutes, mailboxSession: string): 
   return routes.collection(mailboxSession, "inventory/seats/*");
 }
 
+/** One of the person's own workers, as their roster row stores it. */
+export type WorkerRow = { id: string; flow: string; description: string | null };
+
 /**
- * The organization's hired roster, read through a session whose flow declares
- * it (the person's conversation with the chief of staff). `undefined` when no
- * such session exists: a Lab with no chief of staff has no flow that mounts it.
+ * The person's own workers: the rows in their scope, read through their
+ * session of Workforce's roster flow, as Shift Manager's Roster reads them.
+ * The newest such session is used; with none yet, one is opened (it names no
+ * worker and changes nothing). A row's id is its key, the last segment of its
+ * topic.
  */
-export async function readRoster(routes: LabRoutes, sessionId: string | null): Promise<Array<Record<string, any>> | undefined> {
-  if (sessionId === null) return undefined;
-  const ref = await routes.refOf(sessionId, "workforce/roster/*").catch(() => undefined);
-  if (ref === undefined) return undefined;
-  return routes.collection(sessionId, "workforce/roster/*");
+export async function readWorkers(routes: LabRoutes): Promise<WorkerRow[]> {
+  const listed = (await routes.sessions()).filter((s) => s.flowKind === ROSTER_FLOW && s.parentSessionId == null).sort((a, b) => b.createdAt - a.createdAt);
+  let sessionId = listed[0]?.id;
+  if (sessionId === undefined) {
+    const made = await routes.call("POST", `/${ROSTER_FLOW}/sessions`, { userId: routes.user.userId });
+    if (made.status !== 201) throw new Error(`no roster session for ${routes.user.userId}: ${made.status} ${JSON.stringify(made.body)}`);
+    sessionId = String(made.body.session.id);
+  }
+  const ref = await routes.refOf(sessionId, WORKERS_PATTERN);
+  if (ref === undefined) throw new Error(`the roster session ${sessionId} declares no ${WORKERS_PATTERN}`);
+  const rows: WorkerRow[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < 100; page += 1) {
+    const body = await routes.get(`/sessions/${encodeURIComponent(sessionId)}/resources/${encodeURIComponent(ref)}?limit=200${cursor === undefined ? "" : `&cursor=${encodeURIComponent(cursor)}`}`);
+    for (const item of (body.items ?? []) as Array<{ topic: string; clientData?: Record<string, unknown> }>) {
+      const data = item.clientData ?? {};
+      rows.push({ id: item.topic.slice(item.topic.lastIndexOf("/") + 1), flow: String(data.flow), description: typeof data.description === "string" ? data.description : null });
+    }
+    if (body.nextCursor === undefined || body.nextCursor === null || body.nextCursor === cursor) break;
+    cursor = body.nextCursor;
+  }
+  return rows;
 }
 
 /** Every line of a project's room after `after`, read through one talk session's `read` action. */
@@ -232,6 +257,20 @@ export async function teamsSeats(world: World): Promise<string[]> {
   await world.page.getByTestId("teams").waitFor();
   await world.page.locator("[data-testid=teams] [data-testid=worker]").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
   return world.page.locator("[data-testid=teams] [data-testid=worker]").evaluateAll((els) => els.map((e) => e.getAttribute("data-seat-id") ?? ""));
+}
+
+/**
+ * The person's own workers Roster draws (each marked theirs), on a fresh load
+ * of the page, once Roster has read their roster: by worker id, with the row's
+ * text, which names the flow it runs on.
+ */
+export async function rosterOwn(world: World): Promise<Array<{ id: string; text: string }>> {
+  const read = world.page.waitForResponse((r) => r.url().includes("/resources/") && /workforceWorkers|workforce%2Fworkers/.test(r.url()), { timeout: 20_000 });
+  await world.open("/roster");
+  await world.page.getByTestId("roster").waitFor();
+  await read;
+  await sleep(500);
+  return world.page.locator("[data-testid=roster-worker][data-own=true]").evaluateAll((els) => els.map((e) => ({ id: e.getAttribute("data-seat-id") ?? "", text: (e as HTMLElement).innerText.replace(/\s+/g, " ").trim() })));
 }
 
 /** PROJECTS as drawn: each group's project id and its workstream ids. */
@@ -290,6 +329,22 @@ export function textOf(item: StoredItem | undefined): string {
   return JSON.stringify(c ?? "");
 }
 
+/** The workers the tree beside the profile the Lab is served from now declares, each with its `WORKER.md` frontmatter. */
+export async function treeWorkers(world: World): Promise<Array<{ id: string; declared: Record<string, unknown> }>> {
+  return (await readDeclaredRoster(join(dirname(world.config), "workforce"))).workers;
+}
+
+/**
+ * The flow the chief of staff runs on, as its `WORKER.md` names it, in the
+ * tree beside the profile the Lab is served from now. A worker has no flow
+ * address of its own: its sessions are sessions of this flow, naming it.
+ */
+export async function cosFlowOf(world: World): Promise<string> {
+  const flow = (await treeWorkers(world)).find((w) => w.id === COS)?.declared.flow;
+  if (typeof flow !== "string") throw new Error(`the tree beside ${world.config} declares no "${COS}" with a flow`);
+  return flow;
+}
+
 /**
  * Say `words` to the chief of staff in the Chief of Staff view, as the person
  * whose page `world.page` is, and wait for the turn to end (completed, or
@@ -345,10 +400,16 @@ async function sayOnce(world: World, step: string, words: string): Promise<Turn 
   turn.sessionId = sessionId || null;
   if (sessionId === "") return { ...turn, status: "no-session" };
   const owner = world.routes.owner;
+  // The conversation is a session of the chief of staff's flow, bound to it as its worker when it was created.
+  const flow = await cosFlowOf(world);
+  const session = (await owner.get(`/sessions/${encodeURIComponent(sessionId)}`)).session as { flowKind?: string; state?: Record<string, unknown> } | undefined;
+  if (session?.flowKind !== flow || session.state?.workerId !== COS) {
+    return { ...turn, status: `wrong-session: ${sessionId} is on "${session?.flowKind}" naming worker "${String(session?.state?.workerId)}", not on "${flow}" naming "${COS}"` };
+  }
   const userItem = (await owner.items(sessionId, "message")).filter((m) => m.role === "user" && textOf(m).includes(words)).at(-1);
   turn.requestId = userItem?.requestId ?? null;
   if (turn.requestId === null) return { ...turn, status: "line-not-held" };
-  turn.status = await owner.settle(COS, turn.requestId, TURN_MS);
+  turn.status = await owner.settle(flow, turn.requestId, TURN_MS);
   const all = await owner.items(sessionId, "tool_output,message,error");
   const mine = all.filter((i) => i.requestId === turn.requestId);
   turn.tools = mine
