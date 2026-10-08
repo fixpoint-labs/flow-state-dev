@@ -95,9 +95,11 @@ organizations has a separate roster in each.
 
 Each worker the user hires or forks is one row in their user scope at `workforce/workers/<id>`.
 A standard worker isn't stored: it is read from your files each time, so a deploy that changes a
-file changes it for everyone. On the built-in `agent` flow, what a worker remembers is kept per
-worker, so two of one user's workers never read each other's notes. On a flow you write, that is
-up to you: see [Where a worker's data lives](./workers-on-disk.md#where-a-workers-data-lives).
+file changes it for everyone. On the built-in `agent` flow, each worker has its own skills, and
+its own working memory in each conversation. Long-term memory, if your app adds it, is kept per
+person: one person's workers on `agent` share it, and another person's workers can't read it. On a
+flow you write, that is up to you: see
+[Where a worker's data lives](./workers-on-disk.md#where-a-workers-data-lives).
 
 ## After a hire, refresh the roster
 

@@ -116,7 +116,7 @@ A board hands tasks to standard workers only: whoever drains it opens the task's
 
 ## What a worker keeps
 
-A conversation keeps its recent turns, each worker keeps its own skills for each person, and memory, once you add it, is kept per person.
+A conversation keeps its recent turns, each worker keeps its own skills for each person, and long-term memory, once you add it, is kept per person and shared by that person's workers.
 
 ![A conversation holds recent turns, a worker's skills are kept per person, and memory is kept per person](./built-in-worker-memory.svg)
 
@@ -276,10 +276,16 @@ tools: [memory/recall]
 
 ### Whose memory it is
 
-Memory is stored in the person's user scope, in the organization they're signed in to, so it never
-reaches another person or another organization. Every worker on `agent` runs on one shared copy,
-so one person's workers on it share that memory: tell one of them something and another may
-recall it. Their skills are the exception, kept apart per worker by the built-in itself.
+Every worker on `agent` runs on one shared copy, so what a worker remembers depends on the tier:
+
+- **Long-term memory** (episodic, semantic and digest) is kept per person, in their user scope in
+  the organization they're signed in to. One person's workers on `agent` share it: tell one of
+  them something and another may recall it. It never crosses people: another person's workers
+  can't read it. That is at the tiers' default `user` scope; a tier you set to `org` scope is
+  shared with the whole organization.
+- **Working memory** is kept per conversation. A conversation runs one worker for its whole life,
+  so it is that worker's own.
+- **Skills** are kept per worker, for each person, by the built-in itself.
 
 `isolateUserState: true` keeps the `agent` flow's user-scoped storage apart from every other
 flow's. It doesn't separate workers on `agent`: they share the one copy it keys on.

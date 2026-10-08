@@ -266,8 +266,9 @@ one for yourself, [fork it](./durable-hire.md#forking-a-worker).
 
 Each flow a worker names runs as one copy, shared by every worker that names it. A hundred
 workers on `agent` are one registered flow, not a hundred. What makes them different is their
-configuration, which the flow reads on each turn, and, on `agent`, their memory, which is kept per
-worker.
+configuration, which the flow reads on each turn, and, on `agent`, their skills, which are kept
+per worker. Long-term memory on `agent` is kept per person and shared by that person's workers on
+it; it never reaches another person.
 
 Hand the records to an installation, then ask `hireWorkforce` for the flows to register:
 

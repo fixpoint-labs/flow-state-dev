@@ -691,9 +691,10 @@ select it (`capabilities: { memory: [recall] }`) with no `tools:` line. A worker
 lists `memory/recall` in its `tools:`. The key has to match the tool's own name; a catalog key that
 doesn't is refused when the kind is built.
 
-Memory is kept in the person's user scope, so it never reaches another person or organization. Every
-worker on `agent` shares the one copy, so one person's workers on it share what it remembers; only
-the skills drawer is kept per worker. Keeping a capability's data apart per worker is the app's,
+Every worker on `agent` shares the one copy. Long-term memory (episodic, semantic and digest) is
+kept in the person's user scope, so one person's workers on `agent` share it, and it never reaches
+another person or organization. Working memory is kept per conversation, and each conversation runs
+one worker. Skills are kept per worker. Keeping a capability's data apart per worker is the app's,
 as for any data a worker flow keeps per user ([Workers as data](#workers-as-data)).
 
 Every problem with a standard worker is a startup misconfiguration: `hireWorkforce` collects them
