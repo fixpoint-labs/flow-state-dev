@@ -528,6 +528,27 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     });
   }
 
+  it("closes an overdue round when the person's post is the only wake", async () => {
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 300, reportCancel: false });
+    const id = await host.conversation("alice", "desk");
+    expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await quiet(host);
+    const [stale] = (await host.sessionState(id)).openRounds;
+    // With no delegates left, the next post makes no delivery, so no answer wakes anything.
+    for (const worker of ["eng.em", "eng.coder"]) await act(host, id, "removeDelegate", { worker });
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await post(host, id, "anyone?");
+    await quiet(host);
+    // The stale round closed once, and its one routing ran: nobody can take the EM's answer now.
+    expect((await recordsOf(host, id, stale.postId)).map((record: any) => [record.round, record.by])).toEqual([
+      [0, "everyone"],
+      [1, "unplaced"]
+    ]);
+    expect((await host.sessionState(id)).openRounds).toEqual([]);
+  });
+
   it("closes an overdue round on the conversation's next wake, once, and the new post routes as well", async () => {
     // The coder's run is cancelled and says nothing, as one whose process stopped would.
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 300, reportCancel: false });
