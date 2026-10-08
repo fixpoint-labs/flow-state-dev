@@ -73,6 +73,30 @@ const forceWrite = handler({
 });
 
 /** Every entry of `apollo` at org scope, as stored: key, state and content. */
+/**
+ * The owner's own entry, made with no session named: what an open leaves
+ * behind when it stalls after making the entry and before naming its session.
+ */
+const plantStalledOpen = handler({
+  name: "plant-stalled-open",
+  inputSchema: z.object({ id: z.string(), lead: z.string() }),
+  outputSchema: z.object({}),
+  resources: WORKSTREAM_RESOURCES,
+  execute: async (input, ctx) => {
+    const entries = ctx.resources[WORKSTREAMS_RESOURCE] as unknown as ResourceCollectionRef;
+    const at = new Date().toISOString();
+    await entries.create(workstreamEntryKey("apollo", ctx.session.identity.userId!, input.id), {
+      title: input.id,
+      lead: input.lead,
+      sessionId: null,
+      openedAt: at,
+      updatedAt: at,
+      writtenBy: { userId: ctx.session.identity.userId! }
+    } as never);
+    return {};
+  }
+});
+
 const readAll = handler({
   name: "read-all-entries",
   inputSchema: z.object({ visibility: z.enum(["shared", "private"]).default("shared"), project: z.string().default("apollo") }),
@@ -98,7 +122,8 @@ async function boot(): Promise<ProjectsHost & { lab: (user: string) => Promise<s
         ...projects.actions,
         ...workstreams.actions,
         forceWrite: { block: forceWrite },
-        readAll: { block: readAll }
+        readAll: { block: readAll },
+        plantStalledOpen: { block: plantStalledOpen }
       };
     },
     leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
@@ -272,6 +297,53 @@ describe("opening a workstream", () => {
       lead: "alice-other"
     });
     expect(refusal(other)).toContain("lead-differs");
+  });
+
+  it("hands out only the session the entry names, when an open that stalled past the wait left a second one", async () => {
+    const h = await boot();
+    await h.hire("alice", "alice-lead", "lead");
+    const address = { project: apollo, id: "checkout" };
+    const ref = workstreamRef(address);
+    // The first open, from one conversation, made the entry and stalled before naming its session.
+    await h.ok("alice", "lab", await h.lab("alice"), "plantStalledOpen", { id: "checkout", lead: "alice-lead" });
+    // Its session comes into being while the entry names none, so it passes the create check.
+    const stalled = await h.openSession("alice", "lead", { workerId: "alice-lead", workstreamId: ref });
+    // The second open, from another conversation, waits out the stall and names its own.
+    const second = (await h.ok("alice", "lab", await h.lab("alice"), "openWorkstream", {
+      project: apollo,
+      id: "checkout",
+      title: "Checkout",
+      lead: "alice-lead"
+    })) as any;
+    const named = second.workstream.sessionId as string;
+    expect(named).not.toBe(stalled);
+    // The stalled session is the most recent: it took a turn after the entry named the other.
+    await h.ok("alice", "lead", stalled, "run", { message: "still here" });
+    expect((await h.sessionsWith("workstreamId", ref)).map((s) => s.id).sort()).toEqual([named, stalled].sort());
+
+    const client = createWorkforceClient({ userId: "alice", fetcher: h.fetcherFor("alice") });
+    expect((await client.findWorkerSession({ worker: "alice-lead", workstreamId: address }))?.id).toBe(named);
+    expect((await client.ensureWorkerSession({ worker: "alice-lead", workstreamId: address })).id).toBe(named);
+  });
+
+  it("hands out no session for a workstream whose entry names none yet, and starts none", async () => {
+    const h = await boot();
+    await h.hire("alice", "alice-lead", "lead");
+    const address = { project: apollo, id: "checkout" };
+    await h.ok("alice", "lab", await h.lab("alice"), "plantStalledOpen", { id: "checkout", lead: "alice-lead" });
+    const stray = await h.openSession("alice", "lead", { workerId: "alice-lead", workstreamId: workstreamRef(address) });
+
+    const client = createWorkforceClient({ userId: "alice", fetcher: h.fetcherFor("alice") });
+    expect(await client.findWorkerSession({ worker: "alice-lead", workstreamId: address })).toBeUndefined();
+    await expect(client.ensureWorkerSession({ worker: "alice-lead", workstreamId: address })).rejects.toThrow(
+      /no lead session yet.*openWorkstream/
+    );
+    // A workstream that isn't there at all gets the same answer, and nothing is created for either.
+    await expect(
+      client.ensureWorkerSession({ worker: "alice-lead", workstreamId: { project: apollo, id: "nowhere" } })
+    ).rejects.toThrow(/no lead session yet/);
+    expect((await h.sessionsWith("workstreamId", workstreamRef(address))).map((s) => s.id)).toEqual([stray]);
+    expect(await h.sessionsWith("workstreamId", "shared/apollo/nowhere")).toEqual([]);
   });
 
   it("refuses a workstream session created by hand that its entry doesn't name, and finds the real one by its workstream", async () => {

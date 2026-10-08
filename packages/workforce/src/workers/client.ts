@@ -22,6 +22,8 @@ import {
   deriveWorkerSessionId,
   type WorkerSessionCriteria
 } from "./derive-session-id";
+import { ownerSegment } from "@flow-state-dev/core/types";
+import { workstreamsAccessor, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
 import { ROSTER_FLOW_KIND, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
 
 /** The transport options `createSessionClient` takes, plus the user the client acts for. */
@@ -57,14 +59,17 @@ export interface WorkforceClient {
    * The user's most recent session with the worker the criteria name, on the
    * worker's current flow, or `undefined` when there is none. Matches on the
    * criteria's keys: a session that carries a criteria key the call doesn't
-   * name is not returned.
+   * name is not returned. With `workstreamId`, the one session the user's
+   * entry for that workstream names, or `undefined` while it names none.
    */
   findWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary | undefined>;
   /**
    * What {@link findWorkerSession} returns, or a new session with the worker
    * when there is none, created on the worker's flow at an id derived from
    * the user, the organization, the flow and the criteria. Two calls at once
-   * get the same session.
+   * get the same session. With `workstreamId` it never creates one: a
+   * workstream's open starts its lead's session, and until the entry names
+   * it this throws.
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
 }
@@ -149,7 +154,26 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     return found.flow;
   };
 
-  const find = async (criteria: WorkerSessionCriteria, flow: string): Promise<SessionSummary | undefined> => {
+  /**
+   * The session the user's own entry for `workstream` names, or `null` when it
+   * names none or there is no entry. Read through the roster session, whose
+   * flow declares the entries with a browser read.
+   */
+  const namedLeadSession = async (rosterId: string, workstream: WorkstreamAddress): Promise<string | null> => {
+    const item = await resources.getCollectionItemState(
+      rosterId,
+      workstreamsAccessor(workstream.project.visibility),
+      workstreamStorageKey(workstream, ownerSegment(userId))
+    );
+    const sessionId = (item?.clientData as { sessionId?: unknown } | undefined)?.sessionId;
+    return typeof sessionId === "string" ? sessionId : null;
+  };
+
+  const find = async (
+    criteria: WorkerSessionCriteria,
+    flow: string,
+    rosterId: string
+  ): Promise<SessionSummary | undefined> => {
     const filter = criteriaState(criteria);
     const named = new Set(Object.keys(filter));
     const rows = await sessions.listSessions({
@@ -169,22 +193,36 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       const state = stateOf(row);
       return CRITERIA_STATE_KEYS.every((key) => named.has(key) || !Object.hasOwn(state, key));
     });
-    return mostRecent(matching);
+    if (criteria.workstreamId === undefined) return mostRecent(matching);
+    // A workstream's entry names its lead's session, and is the one source of
+    // it: an open that stalled can leave another session linked to the same
+    // workstream, which is never handed out.
+    const leadSession = await namedLeadSession(rosterId, criteria.workstreamId);
+    return leadSession === null ? undefined : matching.find((row) => row.id === leadSession);
   };
 
   return {
     roster: async () => readRoster((await roster()).id),
     findWorkerSession: async (criteria) => {
       const { id } = await roster();
-      return find(criteria, flowOf(await readRoster(id), criteria.worker));
+      return find(criteria, flowOf(await readRoster(id), criteria.worker), id);
     },
     ensureWorkerSession: async (criteria) => {
       // One roster read per call, and the roster session's organization from
       // the same lookup.
       const { id, orgId } = await roster();
       const flow = flowOf(await readRoster(id), criteria.worker);
-      const existing = await find(criteria, flow);
+      const existing = await find(criteria, flow, id);
       if (existing !== undefined) return existing;
+      if (criteria.workstreamId !== undefined) {
+        // Only a workstream's open starts its lead's session and names it on
+        // the entry; one started here would be a second session nobody names.
+        const { project, id: workstream } = criteria.workstreamId;
+        throw new Error(
+          `Workstream "${workstream}" in project "${project.id}" has no lead session yet for "${criteria.worker}": ` +
+            `openWorkstream starts it.`
+        );
+      }
       const sessionId = await deriveWorkerSessionId({ userId, orgId, flow, criteria });
       try {
         return await sessions.createSession({

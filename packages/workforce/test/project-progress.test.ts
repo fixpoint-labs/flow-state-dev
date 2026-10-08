@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
   defineProjectBlocks,
   defineWorkstreamBlocks,
+  DONE_STATUS,
   projectProgress,
   STALE_AFTER_MS,
   WORKSTREAM_OPENED_ENTRY,
@@ -37,21 +38,33 @@ const entry = (over: Partial<ProgressEntry>): ProgressEntry => ({
 });
 
 describe("projectProgress", () => {
-  it("counts workstreams by status and objectives met of total, done ones included", () => {
+  it("counts workstreams by whatever status labels they carry, and objectives met of total, done ones included", () => {
     const progress = projectProgress(
       [
         entry({ id: "a", status: "on-track", objectives: [{ met: true }, { met: false }] }),
-        entry({ id: "b", owner: "bob", status: "at-risk", objectives: [{ met: false }] }),
-        entry({ id: "c", status: "blocked" }),
+        entry({ id: "b", owner: "bob", status: "waiting on legal", objectives: [{ met: false }] }),
+        entry({ id: "c", status: "waiting on legal" }),
         entry({ id: "d", status: "done", objectives: [{ met: true }, { met: true }] })
       ],
       NOW
     );
-    expect(progress).toMatchObject({
-      workstreams: 4,
-      byStatus: { "on-track": 1, "at-risk": 1, blocked: 1, done: 1 },
-      objectives: { met: 3, total: 5 }
-    });
+    expect(progress.workstreams).toBe(4);
+    // Only the labels present, each counted: no fixed set of statuses.
+    expect(progress.byStatus).toEqual({ "on-track": 1, "waiting on legal": 2, done: 1 });
+    expect(progress.objectives).toEqual({ met: 3, total: 5 });
+  });
+
+  it("gives `done` alone its meaning: a label that only looks finished is still open", () => {
+    const progress = projectProgress(
+      [
+        entry({ id: "shipped", status: "shipped", due: "2026-09-01", updatedAt: at(NOW - 30 * DAY) }),
+        entry({ id: "finished", status: "done", due: "2026-08-01", updatedAt: at(NOW - 30 * DAY) })
+      ],
+      NOW
+    );
+    expect(DONE_STATUS).toBe("done");
+    expect(progress.nextDue).toBe("2026-09-01");
+    expect(progress.stale.map((s) => s.id)).toEqual(["shipped"]);
   });
 
   it("takes the earliest due date of a workstream that isn't done, overdue included", () => {
@@ -201,7 +214,7 @@ describe("readProject", () => {
     ]);
     expect(out.progress).toMatchObject({
       workstreams: 3,
-      byStatus: { "on-track": 1, "at-risk": 1, blocked: 0, done: 1 },
+      byStatus: { "on-track": 1, "at-risk": 1, done: 1 },
       objectives: { met: 1, total: 3 },
       nextDue: "2026-11-01",
       stale: [{ owner: "bob", id: "search" }]
@@ -211,6 +224,25 @@ describe("readProject", () => {
       ["brief", "claimTokens", "id", "members", "ownerUserId", "repository", "sessions", "status", "title", "workstreams"].sort()
     );
     expect(out.project.workstreams).toEqual([]);
+  });
+
+  it("keeps a held-out status word as written, counts it in progress, and refuses an empty or overlong one", async () => {
+    const h = await boot();
+    await h.hire("alice", "alice-lead", "lead");
+    const lab = await h.lab("alice");
+    await h.ok("alice", "lab", lab, "openWorkstream", { project: apollo, id: "checkout", title: "Checkout", lead: "alice-lead" });
+    const held = "PERIWINKLE-7319";
+    const updated = (await h.ok("alice", "lab", lab, "updateWorkstream", { project: apollo, id: "checkout", status: held })) as any;
+    expect(updated.workstream.status).toBe(held);
+    const { out } = await h.countedRead("mallory", apollo);
+    expect(out.workstreams.map((w: any) => w.status)).toEqual([held]);
+    expect(out.progress.byStatus).toEqual({ [held]: 1 });
+
+    for (const status of ["", "   ", "x".repeat(81)]) {
+      const refused = await h.act("alice", "lab", lab, "updateWorkstream", { project: apollo, id: "checkout", status });
+      expect(refused.settled).not.toBe("completed");
+    }
+    expect((await h.countedRead("alice", apollo)).out.workstreams[0].status).toBe(held);
   });
 
   it("lands two owners' updates at once, neither waiting on the other (BR-20)", async () => {

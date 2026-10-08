@@ -30,12 +30,10 @@ import { ownerSegment } from "@flow-state-dev/core";
 import { z } from "zod";
 import { sharedResource, writtenBySchema } from "../shared-resource";
 import { projectAddressSchema, type ProjectVisibility } from "./collections";
-import { WORKSTREAM_STATUSES } from "./project-progress";
+import { WORKSTREAM_STATUS_MAX_LENGTH } from "./project-progress";
+import { PRIVATE_WORKSTREAMS_RESOURCE, WORKSTREAMS_RESOURCE, workstreamsAccessor } from "./workstream-ref";
 
-/** The resource-map ref of a shared project's workstream entries, at org scope. */
-export const WORKSTREAMS_RESOURCE = "workstreams";
-/** The resource-map ref of a private project's workstream entries, at the owner's user scope. */
-export const PRIVATE_WORKSTREAMS_RESOURCE = "privateWorkstreams";
+export { PRIVATE_WORKSTREAMS_RESOURCE, WORKSTREAMS_RESOURCE, workstreamsAccessor };
 
 /** The entries' key pattern. **Pinned**: persisted, and FIX-1792 and FIX-1794 read it. */
 export const WORKSTREAMS_PATTERN = "workstreams/[project]/[owner]/[workstream]";
@@ -43,8 +41,14 @@ export const WORKSTREAMS_PATTERN = "workstreams/[project]/[owner]/[workstream]";
 /** The storage prefix of every entry, before the project's id. */
 const STORAGE_PREFIX = "workstreams/";
 
-/** Where a workstream stands. A done workstream stays listed, as done. */
-export const workstreamStatusSchema = z.enum(WORKSTREAM_STATUSES);
+/**
+ * Where a workstream stands: a short label in the owner's own words
+ * (`"on-track"`, `"waiting on legal"`), trimmed, not empty, at most
+ * {@link WORKSTREAM_STATUS_MAX_LENGTH} characters. One label has a meaning,
+ * `"done"` (`DONE_STATUS`): a done workstream stays listed, is never stale and is
+ * never the next due date.
+ */
+export const workstreamStatusSchema = z.string().trim().min(1).max(WORKSTREAM_STATUS_MAX_LENGTH);
 
 /** @see workstreamStatusSchema */
 export type WorkstreamStatus = z.infer<typeof workstreamStatusSchema>;
@@ -74,7 +78,8 @@ const entryShape = {
   lead: z.string().min(1),
   /** The lead's workstream session, the owner's. `null` until the open that made the entry has made it. */
   sessionId: z.string().nullable().default(null),
-  status: workstreamStatusSchema.default("on-track"),
+  /** A label in the owner's words; `"done"` marks it finished. Stored trimmed. */
+  status: z.string().min(1).max(WORKSTREAM_STATUS_MAX_LENGTH).default("on-track"),
   due: workstreamDueSchema.nullable().default(null),
   objectives: z.array(workstreamObjectiveSchema).default([]),
   /** When it was opened, by the server's clock. */
@@ -132,11 +137,6 @@ export const WORKSTREAM_RESOURCES = {
   [WORKSTREAMS_RESOURCE]: SHARED_ENTRIES,
   [PRIVATE_WORKSTREAMS_RESOURCE]: PRIVATE_ENTRIES
 } as const;
-
-/** The accessor a project's entries are declared under at `visibility`. */
-export function workstreamsAccessor(visibility: ProjectVisibility): string {
-  return visibility === "private" ? PRIVATE_WORKSTREAMS_RESOURCE : WORKSTREAMS_RESOURCE;
-}
 
 /**
  * A workstream's address: its project's address and its id. Its owner is the

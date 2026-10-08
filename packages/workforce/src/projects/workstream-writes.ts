@@ -378,7 +378,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
   const updateWorkstreamTool = handler({
     name: "updateWorkstream",
     description:
-      "Update the workstream you lead: its status (on-track, at-risk, blocked or done), due date, objectives (the whole list, each met or not) and your latest report. Every reader of the project sees it.",
+      "Update the workstream you lead: its status (a short label in your own words; \"done\" marks it finished), due date, objectives (the whole list, each met or not) and your latest report. Every reader of the project sees it.",
     inputSchema: updateOwnWorkstreamInputSchema,
     outputSchema: updateWorkstreamOutputSchema,
     resources: WORKSTREAM_RESOURCES,

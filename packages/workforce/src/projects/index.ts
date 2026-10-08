@@ -104,7 +104,8 @@ export {
 export {
   projectProgress,
   STALE_AFTER_MS,
-  WORKSTREAM_STATUSES,
+  DONE_STATUS,
+  WORKSTREAM_STATUS_MAX_LENGTH,
   type ProgressEntry,
   type ProjectProgress
 } from "./project-progress";

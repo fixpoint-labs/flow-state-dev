@@ -18,7 +18,7 @@ import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/t
 import { z } from "zod";
 import { projectAddressSchema, projectRowSchema, projectVisibilitySchema } from "./collections";
 import { projectAt, PROJECT_ROW_RESOURCES } from "./project-address";
-import { projectProgress, WORKSTREAM_STATUSES } from "./project-progress";
+import { projectProgress } from "./project-progress";
 import {
   WORKSTREAM_RESOURCES,
   workstreamEntriesPrefix,
@@ -39,7 +39,8 @@ export type ReadProjectInput = z.infer<typeof readProjectInputSchema>;
 /** A project's progress, as `readProject` answers it. @see projectProgress */
 export const projectProgressSchema = z.object({
   workstreams: z.number().int(),
-  byStatus: z.object(Object.fromEntries(WORKSTREAM_STATUSES.map((status) => [status, z.number().int()]))),
+  /** How many workstreams carry each status label, for the labels present. */
+  byStatus: z.record(z.number().int()),
   objectives: z.object({ met: z.number().int(), total: z.number().int() }),
   nextDue: z.string().nullable(),
   stale: z.array(z.object({ owner: z.string(), id: z.string(), updatedAt: z.string() }))

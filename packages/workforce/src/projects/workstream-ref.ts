@@ -7,6 +7,26 @@
  * the server share one spelling.
  */
 
+/** The resource-map ref of a shared project's workstream entries, at org scope. */
+export const WORKSTREAMS_RESOURCE = "workstreams";
+/** The resource-map ref of a private project's workstream entries, at the owner's user scope. */
+export const PRIVATE_WORKSTREAMS_RESOURCE = "privateWorkstreams";
+
+/** The accessor a project's entries are declared under at `visibility`. */
+export function workstreamsAccessor(visibility: "shared" | "private"): string {
+  return visibility === "private" ? PRIVATE_WORKSTREAMS_RESOURCE : WORKSTREAMS_RESOURCE;
+}
+
+/**
+ * The storage key of `ownerSegment`'s entry for `address`:
+ * `workstreams/<projectId>/<ownerSegment>/<workstreamId>`.
+ *
+ * @param ownerSegment The owner's key segment, `ownerSegment(userId)` from core.
+ */
+export function workstreamStorageKey(address: WorkstreamAddress, ownerSegment: string): string {
+  return `workstreams/${address.project.id}/${ownerSegment}/${address.id}`;
+}
+
 /** A workstream's address: its project's address and its id. Its owner is whoever asks. */
 export type WorkstreamAddress = {
   /** The project's address: where it lives, and its id. */
