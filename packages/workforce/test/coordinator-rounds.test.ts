@@ -537,7 +537,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
 
   for (const wake of ["delegateAnswer", "delegateMissed"] as const) {
     it(`closes an overdue round when a ${wake === "delegateAnswer" ? "repeated answer" : "missed report"} wakes the conversation`, async () => {
-      const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 1_000, reportCancel: false });
+      const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, reportCancel: false });
       const id = await host.conversation("alice", "desk");
       expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
       expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
@@ -556,7 +556,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
   }
 
   it("closes an overdue round when the person's post is the only wake", async () => {
-    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 1_000, reportCancel: false });
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, reportCancel: false });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
     expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
@@ -578,7 +578,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
 
   it("closes an overdue round on the conversation's next wake, once, and the new post routes as well", async () => {
     // The coder's run is cancelled and says nothing, as one whose process stopped would.
-    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 1_000, reportCancel: false });
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, reportCancel: false });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
     expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);

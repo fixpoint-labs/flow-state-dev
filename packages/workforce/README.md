@@ -2208,8 +2208,9 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   wakes after the deadline: a person's post, an answer, or another delegate's report. That wake
   closes the round and sends its answers on. With no later activity in the conversation, the
   answers that landed stay, and nothing goes on.
-- **Open rounds.** A conversation keeps at most 50 rounds open at once. Opening one more stops
-  tracking the oldest: its answers land once and go no further, and its close never runs.
+- **Open rounds.** A conversation keeps at most 50 rounds open at once. A post that would open one
+  more is still delivered, but its round isn't opened: its answers land once and go no further,
+  and its routing record's `note` says so. The open rounds keep going on as before.
 - **Delegates per conversation.** Each conversation starts from a copy of the defaults, and its
   changes stay in it. Change them with the `addDelegate({ worker, note? })`,
   `removeDelegate({ worker })` and `setFallback({ worker | null })` actions, and read them with
@@ -2229,8 +2230,8 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   naming only `{ worker }` never returns a delegate's session.
 - **The record.** Every routing decision leaves one `coordinator-route` component item: the post,
   the round, the policy, `by` (`judgment`, `held`, `evaluated`, `fallback`, `round-robin`,
-  `everyone` or `unplaced`) and what became of each delegate. Render it apart from the
-  conversation's lines.
+  `everyone` or `unplaced`), what became of each delegate, and a `note` when the post's round was
+  refused at the cap on open rounds. Render it apart from the conversation's lines.
 
 Call `installation.standardWorkerProblems()` once your worker flows are defined to refuse a broken
 standard worker at load, such as a coordinator whose `rounds:` is above 3.
@@ -2267,7 +2268,7 @@ the root exports, and reaches no Node built-in.
 | `workforceManifestSources({ roster, inventory })` | The seat and mailbox sources on their own, for an app assembling its own manifest registry. |
 | `createWorkerInstallation({ standardWorkers?, workerFlows?, seatBlocks?, packageBlocks?, documents?, references?, skills?, packages? })` | The worker model's one module (see [Workers as data](#workers-as-data)). Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
-| `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive number throws. |
+| `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. On a post whose answer can go back out, it also tells the coordinator when it has no answer: at once when its turn fails, and at the round's deadline while its turn is still running. The turn isn't stopped; a later answer still lands once. |
 | `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated post's run is cancelled before its answer went back, it tells the coordinator, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
