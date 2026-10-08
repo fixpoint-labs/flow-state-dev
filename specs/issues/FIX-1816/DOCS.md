@@ -5,6 +5,10 @@
 The epic owns the shared opening ([FIX-1815 DOCS.md](../../epics/FIX-1815/DOCS.md)); this issue
 publishes it, with the names and limits below. Prose is proposed reader-facing text.
 
+"A worker that is itself working a task" and `wait_unavailable` below put FIX-1817 S1's
+single test, a turn the gate serves, in reader terms (BR-5a). They define nothing of their own;
+reconcile the wording to that test as shipped.
+
 ## UPDATE · `apps/docs/docs/server/background-work.md` · new section after "Starting a job on another flow"
 
 > ### Waiting for the answer

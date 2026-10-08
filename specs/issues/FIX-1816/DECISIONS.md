@@ -73,7 +73,7 @@ Each is a smaller first version, not a reversal; each can come back as its own i
 
 | Cut | Why |
 |---|---|
-| No ask from a turn that is itself working a task row: `waitForResponse` is refused there | Depth is one by construction, so the epic's depth cap (ER-4) holds structurally, and mutual asks, a parked asker row and its lease rules all go with it |
+| No ask from a task turn, by [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817) S1's single test (a turn the gate serves; BR-5a): `waitForResponse` is refused there | Depth is one by construction, so the epic's depth cap (ER-4) holds structurally, and mutual asks, a parked asker row and its lease rules all go with it |
 | The goal's nesting leg | Leg 1 alone proves the restart, the filing once and the waker; with nesting cut there is nothing for a second leg to prove |
 | A testing helper that answers an ask | Checks run on SQLite with a cold restart; no app has asked for the helper yet |
 | A cancel reaching into a run under way through a failed lease renewal | Cancelling the row and dropping its later ending meets ER-4; stopping a run under way stays [FIX-1659](https://linear.app/fixpoint-labs/issue/FIX-1659)'s |
@@ -119,12 +119,17 @@ reads as an opt-in option on the call; D4's fire-and-forget default is unchanged
 
 ## Cross-spec alignment
 
-Decided by the epic coordinator after the cross-spec pass with [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817), after this spec merged. None changes direction.
+Decided by the epic coordinator after the cross-spec pass with [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817), after this spec merged ([#2900](https://github.com/fixpoint-labs/flow-state-dev/pull/2900)). Four alignments, and one direction change.
 
-- **An asked row gets no `parkOnQuestion` in v1**, by epic ER-22 ([#2904](https://github.com/fixpoint-labs/flow-state-dev/pull/2904), owned by [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817)); FIX-1817's S1 and S7 carve-out follows in its own alignment PR after its spec merges. The colleague answers with what it has, or fails (BR-5b). A product-shape rule: the gate's fence does not depend on it.
-- **The ask gate fences on the row's identity and its terminal ending, not on a per-attempt claim ticket.** The board's ticket already stops a stale attempt from settling the row (ER-6), so the gate admits the ending of whichever attempt settles it, after a board retry too, and never an intermediate failure that was retried (BR-12, BR-12a, PLAN S3).
+**Alignments** (no change of direction):
+
+- **An asked row gets no `parkOnQuestion` in v1**, by epic ER-22 ([#2904](https://github.com/fixpoint-labs/flow-state-dev/pull/2904), owned by FIX-1817); FIX-1817's S1 and S7 carve-out follows in its own alignment PR after its spec merges. The colleague answers with what it has, or fails (BR-5b). A product-shape rule: the gate's fence does not depend on it.
 - **D1's tool-count check is "`waitForResponse` adds no tool"**, not "still eight": FIX-1817 adds `answerTask` and `parkOnQuestion` (PLAN S4, D1 check).
 - **`waitForResponse` with `followUpOf` on one call is allowed**: the assignee check runs against the root task's worker, and FIX-1817's busy-follow-up, BR-21 and BR-25 refusals come before filing, so nothing parks (BR-4a).
-- **BR-5a's "task turn" is FIX-1817 S1's single test**, a turn the gate serves, cited rather than defined again (BR-5a, PLAN S4).
+- **BR-5a's "task turn" is FIX-1817 S1's single test**, a turn the gate serves, cited rather than defined again (BR-5a, PLAN S4, the cut above, DOCS).
+
+**Direction change, for the product owner's sign-off on this PR:**
+
+- **The ask gate binds to the row's identity and its terminal ending, not to the row's claim ticket** (BR-12, BR-12a, PLAN S3). As merged, the gate held the claim ticket. A board retry after a failed attempt gets a new per-attempt ticket, so a gate fenced on the old one would refuse the real ending and strand the asker until the timeout. The board's ticket already stops a stale attempt from settling the row (ER-6), so the gate needs only "this row ended", and it admits the ending of whichever attempt settles it, never an intermediate failure that was retried. If wrong: an ask whose colleague fails once and then succeeds times out instead of answering.
 
 **Open: none.**
