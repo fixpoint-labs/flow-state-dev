@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 432" role="img" aria-label="D1: where a run&#x27;s held work is kept. Chosen: a per-run slice of a worktree-overlay collection in the project&#x27;s scope, the owner&#x27;s user scope for a private project and the org&#x27;s for a shared one. Instead of: one collection in the run record&#x27;s user scope. It comes down to a private project&#x27;s work: in the run record&#x27;s scope it would follow whoever ran it, not the project. The price: two declarations that move whenever FIX-1793&#x27;s project storage moves. Both are server-only with no browser read. Locks in: held work moves when project storage moves. Flips if: projects stop having a visibility."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="432"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where is a run&#x27;s held work kept?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">In the project&#x27;s scope, per run</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">In the run record&#x27;s user scope</text>
+  </g>
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A PRIVATE</text>
+    <text class="t-lbl" x="32" y="169">PROJECT&#x27;S WORK</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Stays its owner&#x27;s alone</text>
+    <text class="t-s" x="248" y="179">same place as its files</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Follows the runner</text>
+    <text class="t-s" x="612" y="179">not the project&#x27;s rule</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="236">WHAT IT</text>
+    <text class="t-lbl" x="32" y="249">COSTS</text>
+    <text class="mark minus" x="228" y="238">−</text>
+    <text class="t-b" x="248" y="237">Two declarations</text>
+    <text class="t-s" x="248" y="255">follow FIX-1793&#x27;s, scope by scope</text>
+    <text class="mark plus" x="592" y="238">+</text>
+    <text class="t-b" x="612" y="237">One declaration</text>
+    <text class="t-s" x="612" y="255">one scope for every run</text>
+    <line class="row" x1="16" y1="260" x2="924" y2="260"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="294">WHO CAN</text>
+    <text class="t-lbl" x="32" y="307">READ IT</text>
+    <text class="mark tie" x="228" y="296">=</text>
+    <text class="t-b" x="248" y="295">The run&#x27;s attempts only</text>
+    <text class="t-s" x="248" y="313">no browser read</text>
+    <text class="mark tie" x="592" y="296">=</text>
+    <text class="t-b" x="612" y="295">The same</text>
+    <text class="t-s" x="612" y="313">no browser read</text>
+    <line class="row" x1="16" y1="318" x2="924" y2="318"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="342" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="363">LOCKS IN</text>
+    <text class="t-b" x="32" y="383">Held work moves when project storage moves</text>
+    <text class="t-s" x="32" y="401">worktree-overlay sits beside project-files</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="342" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="363">FLIPS IF</text>
+    <text class="t-b" x="494" y="383">Projects stop having a visibility</text>
+    <text class="t-s" x="494" y="401">then one scope is simpler</text>
+  </g>
+</svg>

@@ -1,0 +1,96 @@
+<svg viewBox="0 0 940 432" role="img" aria-label="Q1, open: what counts as one turn of lost work. Recommended: hold the work at the end of each attempt, when it parks and when it fails. Alternative: also hold every few minutes while an attempt runs. It comes down to what a crash costs: an attempt can be long, so an attempt-end hold can lose a long attempt whole, while a timed hold loses a few minutes. The price of the timed hold: reading the checkout while the agent edits it, and a timer on every run. Both use the same hold, so the timer can be added later. Locks in: a crash loses at most the attempt in flight. Flips if: attempts routinely run past thirty minutes."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="432"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">Q1 · OPEN · FOR JAKE</text>
+    <text class="t-q" x="32" y="52">A run&#x27;s machine dies mid-work. How much may be lost?</text>
+  </g>
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">Hold when each attempt ends</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">ALTERNATIVE</text>
+    <text class="t-h c-lost" x="592" y="112">Also hold every few minutes</text>
+  </g>
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT A CRASH</text>
+    <text class="t-lbl" x="32" y="169">COSTS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark minus" x="228" y="162">−</text>
+    <text class="t-b" x="248" y="161">The attempt in flight</text>
+    <text class="t-s" x="248" y="179">a long attempt is lost whole</text>
+    <text class="mark plus" x="592" y="162">+</text>
+    <text class="t-b" x="612" y="161">A few minutes</text>
+    <text class="t-s" x="612" y="179">whatever the attempt&#x27;s length</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="236">READS WHILE</text>
+    <text class="t-lbl" x="32" y="249">THE AGENT EDITS</text>
+    <text class="mark plus" x="228" y="238">+</text>
+    <text class="t-b" x="248" y="237">Never</text>
+    <text class="t-s" x="248" y="255">held when the agent has stopped</text>
+    <text class="mark minus" x="592" y="238">−</text>
+    <text class="t-b" x="612" y="237">Every few minutes</text>
+    <text class="t-s" x="612" y="255">a half-written file can be held</text>
+    <line class="row" x1="16" y1="260" x2="924" y2="260"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="294">ADDING THE</text>
+    <text class="t-lbl" x="32" y="307">OTHER LATER</text>
+    <text class="mark tie" x="228" y="296">=</text>
+    <text class="t-b" x="248" y="295">Additive</text>
+    <text class="t-s" x="248" y="313">the same hold, on a timer</text>
+    <text class="mark tie" x="592" y="296">=</text>
+    <text class="t-b" x="612" y="295">Removable</text>
+    <text class="t-s" x="612" y="313">drop the timer</text>
+    <line class="row" x1="16" y1="318" x2="924" y2="318"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="342" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="363">LOCKS IN</text>
+    <text class="t-b" x="32" y="383">A crash loses at most the attempt in flight</text>
+    <text class="t-s" x="32" y="401">matches the issue&#x27;s own word, turn</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="342" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="363">FLIPS IF</text>
+    <text class="t-b" x="494" y="383">Attempts routinely run past thirty minutes</text>
+    <text class="t-s" x="494" y="401">then the timer belongs in this slice</text>
+  </g>
+</svg>
