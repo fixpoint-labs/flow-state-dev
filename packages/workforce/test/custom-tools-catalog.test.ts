@@ -24,7 +24,10 @@ import { defineResource } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
+import type { GeneratorModel, GeneratorModelCallOptions, ModelResolver } from "@flow-state-dev/core/types";
 import { mintSeats, type HireOptions } from "../src/hire";
+import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
+import { createWorkerInstallation } from "../src/workers/installation";
 import type { WorkerManifest } from "../src/manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 
@@ -226,5 +229,101 @@ describe("a catalog tool's declared stores are installed on the kind", () => {
     expect(Object.keys(withCatalog.resources ?? {}).sort()).toEqual(
       Object.keys(without.resources ?? {}).sort(),
     );
+  });
+});
+
+/**
+ * A framework block whose own name isn't the key a worker's `tools:` spells
+ * goes in the catalog renamed with `.as({ name })`. The one-name check reads
+ * the copy's name, so it passes under the new name with no Workforce change,
+ * and a key that still disagrees is refused as before.
+ */
+describe("a block renamed with .as() to its catalog key", () => {
+  const description = "Hire a worker of your own onto your roster.";
+  const hireBlock = () => createWorkerHireBlocks(createWorkerInstallation()).hire;
+
+  it("accepts Workforce's own hire block renamed to the key", () => {
+    expect(hireBlock().name).toBe("workforce-hire");
+    expect(() =>
+      defineAgentWorkerFlow({ catalog: { hire: hireBlock().as({ name: "hire", description }) } }),
+    ).not.toThrow();
+  });
+
+  // The control: the same entry without `.as()` is today's refusal, so the
+  // acceptance above is the rename's doing, not a loosened check.
+  it("refuses the same block passed as it is", () => {
+    expect(() => defineAgentWorkerFlow({ catalog: { hire: hireBlock() } })).toThrow(/workforce-hire/);
+  });
+
+  it("refuses a key that differs from the .as() name, naming both spellings", () => {
+    let message = "";
+    try {
+      defineAgentWorkerFlow({ catalog: { hire: hireBlock().as({ name: "hireWorker" }) } });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain('"hire"');
+    expect(message).toContain("hireWorker");
+  });
+
+  it("refuses two different copies under one key from a capability and the catalog; one shared copy is fine", () => {
+    const blocks = createWorkerHireBlocks(createWorkerInstallation());
+    const grant = (tool: unknown) =>
+      defineCapability({ name: "roster-tools", presets: { roster: { tools: [tool as never] }, default: ["roster"] } });
+
+    const fromCapability = blocks.hire.as({ name: "hire" });
+    const fromCatalog = blocks.hire.as({ name: "hire" });
+    expect(() =>
+      defineAgentWorkerFlow({ uses: [grant(fromCapability)], catalog: { hire: fromCatalog } }),
+    ).toThrow(/catalog key "hire"/);
+
+    const shared = blocks.hire.as({ name: "hire" });
+    expect(() => defineAgentWorkerFlow({ uses: [grant(shared)], catalog: { hire: shared } })).not.toThrow();
+  });
+
+  it("offers the renamed block to a worker naming it, with the new description, and runs it", async () => {
+    let flows: Record<string, unknown> = {};
+    const installation = createWorkerInstallation({ workerFlows: () => flows as never });
+    const renamed = createWorkerHireBlocks(installation).hire.as({ name: "hire", description });
+    const kind = defineAgentWorkerFlow({ installation, catalog: { hire: renamed } });
+    flows = { [AGENT_KIND]: kind };
+    const [seat] = hire([record({ id: "desk.hr", declared: { tools: ["hire"] } })], { [AGENT_KIND]: kind });
+
+    // A step model that calls `hire` once, recording what it was offered and
+    // what the call returned.
+    const seen: GeneratorModelCallOptions[] = [];
+    const model: GeneratorModel = {
+      modelId: "step-model",
+      async generate() {
+        throw new Error("legacy generate must not be called");
+      },
+      async generateStep(options) {
+        seen.push(options);
+        return seen.length === 1
+          ? { toolCalls: [{ toolCallId: "c1", toolName: "hire", args: { id: "night-desk" } }], finishReason: "tool-calls" }
+          : { text: "hired", finishReason: "stop" };
+      },
+    };
+    const resolver = Object.assign(() => model, { resolveId: (id: string) => id }) as unknown as ModelResolver;
+    const runtime = await createTestContext({
+      flow: { ...seat!, cardinality: "singleton" },
+      orgId: "test-org",
+      org: { state: {} },
+      sessionId: "test-session",
+      sequencerName: seat!.actions.run!.block.name,
+      declaredResources: seat!.actions.run!.block.declaredResources,
+      modelResolver: resolver,
+    });
+    const result = await executeBlock({
+      block: seat!.actions.run!.block,
+      input: { message: "hire night-desk" },
+      ctx: runtime.ctx,
+    });
+
+    expect(result.error).toBeUndefined();
+    const offered = (seen[0]?.tools ?? []).find((tool) => tool.name === "hire");
+    expect(offered?.description).toBe(description);
+    const toolResult = JSON.stringify(seen[1]?.messages ?? []);
+    expect(toolResult).toContain("night-desk");
   });
 });
