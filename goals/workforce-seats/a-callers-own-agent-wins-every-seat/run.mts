@@ -91,8 +91,7 @@ async function settled(stores: StoreRegistry, requestId: string): Promise<string
   return undefined;
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const dir = mkdtempSync(join(tmpdir(), "fsd-caller-agent-"));
 

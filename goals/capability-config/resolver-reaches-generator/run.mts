@@ -35,9 +35,8 @@ function assembledContext(gen: ReturnType<typeof generator>): string[] {
   return out;
 }
 
-await runGoal(() => {
+await runGoal((failures) => {
   const { note } = loadFixture<{ note: string }>(import.meta.url);
-  const failures: string[] = [];
 
   // A capability with typed open config plus a flag preset. The resolver reads
   // the active preset set (owns override-vs-add) and maps config → context.

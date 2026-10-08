@@ -345,8 +345,7 @@ async function runBoardUntilSettled(lab: Lab, budgetMs: number): Promise<Task | 
   return row;
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   /** One line per control, each naming what went red and on which clause. */
   const controls: string[] = [];

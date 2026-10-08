@@ -77,8 +77,7 @@ function treeFiles(dir: string): string[] {
   });
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   mkdirSync(join(OUTBOX, ".."), { recursive: true });
   writeFileSync(OUTBOX, "", "utf8");
 

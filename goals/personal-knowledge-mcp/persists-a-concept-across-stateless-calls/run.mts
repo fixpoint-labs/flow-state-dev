@@ -63,7 +63,7 @@ async function postMcp(
   return { status: res.status, json };
 }
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   // Set before the FIRST (dynamic) import of the lab's config/flow modules —
   // both read `process.env.KB_MCP_SECRET` at module-evaluation time to build
   // the bearer-secret resolver and the fail-closed prod-profile guard.
@@ -92,7 +92,6 @@ await runGoal(async () => {
 
   const handle = await serve(flowstate, { port: 0, host: "127.0.0.1" });
   const baseUrl = `http://127.0.0.1:${handle.port}/api/flows/knowledge/mcp`;
-  const failures: string[] = [];
 
   try {
     // Request A: create the concept.

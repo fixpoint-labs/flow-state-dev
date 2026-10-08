@@ -890,8 +890,7 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
 
 // ---------------------------------------------------------------------------
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   await fixtureLegs(failures, evidence);
   appLegs(failures, evidence);

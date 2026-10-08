@@ -165,9 +165,8 @@ function hasNewCompletingPr(
   });
 }
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const fixture = loadFixture<Fixture>(import.meta.url);
-  const failures: string[] = [];
 
   // **The dispatcher's whole repository rule, not a local copy of part of it.**
   // This runner kept path equality after `fsdev.config.ts` moved to repository

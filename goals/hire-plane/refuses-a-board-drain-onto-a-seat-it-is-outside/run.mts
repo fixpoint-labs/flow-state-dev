@@ -129,8 +129,7 @@ const owner: Who = { user: fixture.ownerUser, org: fixture.ownerOrg };
 const peer: Who = { user: fixture.peerUser, org: fixture.ownerOrg };
 const foreign: Who = { user: fixture.foreignUser, org: fixture.otherOrg };
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
   /** A fresh process per leg: the ledger is org-scoped, so a teammate's leg would see the owner's settled rows. */
   const boot = async () => {

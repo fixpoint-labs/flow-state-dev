@@ -377,7 +377,7 @@ async function grade(
 
 // ---- the goal ----------------------------------------------------------------
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const devteam = await readDeclaredRoster(LABS.devteam.tree);
   const mailbox = devteam.mailboxes[0]!;
   const boardName = (mailbox.declared.boards as string[])[0]!;
@@ -387,7 +387,6 @@ await runGoal(async () => {
   const asker = (await readDeclaredRoster(LABS.asker.tree)).workers[0]!;
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
-  const failures: string[] = [];
   const evidence: string[] = [];
   const served = { devteam: await startLab("devteam", pages), asker: await startLab("asker", pages) };
   const browser = await launchChromium();

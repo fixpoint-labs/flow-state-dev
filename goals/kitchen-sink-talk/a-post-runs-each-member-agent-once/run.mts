@@ -146,8 +146,7 @@ async function conversationsOf(page: Page, origin: string, seat: Seat): Promise<
 
 // ---------------------------------------------------------------------------
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
   const run = randomUUID().replace(/-/g, "").slice(0, 10);

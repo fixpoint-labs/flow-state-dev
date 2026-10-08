@@ -215,8 +215,7 @@ interface Case {
   seen: Map<Tab, { rowAt?: number; order?: string[]; most: number }>;
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
   const run = randomUUID().replace(/-/g, "").slice(0, 10);

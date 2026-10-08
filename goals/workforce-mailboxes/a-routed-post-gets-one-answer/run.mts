@@ -409,8 +409,7 @@ async function liveLeg(fail: (leg: string, line: string) => void, evidence: stri
   }
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
 

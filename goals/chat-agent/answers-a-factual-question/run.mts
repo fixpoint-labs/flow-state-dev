@@ -37,7 +37,7 @@ const fixture = loadFixture<{ message: string; mustContain: string }>(
   "question.json",
 );
 
-await runGoal(() => {
+await runGoal((failures) => {
   // Drive the real path with a real model; capture the full stream + result.
   // No --model flag: the env's intent ladder / model resolver decides what runs
   // (this container may pin it via FSDEV_DEFAULT_MODEL). We record whatever the
@@ -77,7 +77,6 @@ await runGoal(() => {
   const inAssistant = assistant.toLowerCase().includes(needle);
   const inOutput = output.toLowerCase().includes(needle);
 
-  const failures: string[] = [];
   // The check passes only when the held-out answer is actually present in the
   // answer text. An assistant message with no/other content does NOT pass — this
   // is the anti-game guard: emitting a message item is not enough.
