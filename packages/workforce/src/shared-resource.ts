@@ -2,7 +2,8 @@
  * Shared resources: what a worker writes for every member of its org to read,
  * each entry naming who wrote it.
  *
- * A shared resource is an org-scoped collection whose every entry carries a
+ * A shared resource is a collection, org-scoped unless it is declared at user
+ * scope, whose every entry carries a
  * required `writtenBy: { userId, workerId? }`. Required in the resource's own
  * schema, so an entry written without it is refused by the store's validation
  * however it was written. The worker contract refuses a worker flow that
@@ -99,8 +100,18 @@ export function declaresWrittenBy(stateSchema: unknown): boolean {
 }
 
 /**
- * Declare a shared resource: an org-scoped collection whose every entry names
- * who wrote it.
+ * The collection options {@link sharedResource} passes through. The pattern
+ * and the state schema are the helper's; the scope is the organization's
+ * unless the entries are one user's (`"user"`).
+ */
+export type SharedResourceOptions = Omit<
+  Parameters<typeof defineResourceCollection>[0],
+  "pattern" | "stateSchema" | "scope"
+> & { scope?: "org" | "user" };
+
+/**
+ * Declare a shared resource: a collection whose every entry names who wrote
+ * it. Org-scoped unless `options.scope` says otherwise.
  *
  * ```ts
  * const notes = sharedResource("team-notes/*", { text: z.string() });
@@ -109,13 +120,17 @@ export function declaresWrittenBy(stateSchema: unknown): boolean {
  *
  * @param pattern The collection's key pattern, as `defineResourceCollection` takes it.
  * @param shape The entry's own fields. `writtenBy` is added, required.
+ * @param options The rest of the collection's declaration (`ownerWrites`,
+ *   `client`, `flowIsolation`, `prefetchMode`, a `"user"` scope), passed
+ *   through to `defineResourceCollection`.
  */
-export function sharedResource<T extends z.ZodRawShape>(pattern: string, shape: T) {
+export function sharedResource<T extends z.ZodRawShape>(pattern: string, shape: T, options: SharedResourceOptions = {}) {
   const resource = defineResourceCollection({
+    ...options,
     pattern,
-    scope: "org",
+    scope: options.scope ?? "org",
     stateSchema: z.object({ ...shape, [WRITTEN_BY_KEY]: writtenBySchema })
-  });
+  } as Parameters<typeof defineResourceCollection>[0]);
   Object.defineProperty(resource, SHARED_RESOURCE, { value: resource.stateSchema, enumerable: false });
   return resource;
 }
@@ -158,13 +173,6 @@ export async function writeShared(
   key: string,
   data: Record<string, unknown>
 ): Promise<void> {
-  const userId = ctx.session.identity.userId;
-  if (typeof userId !== "string" || userId.length === 0) {
-    throw new Error(
-      `writeShared can't write "${key}" to "${accessor}": the session has no user, so the entry ` +
-        `could name nobody.`
-    );
-  }
   const collection = ctx.resources[accessor] as WritableCollection | undefined;
   if (collection === undefined || typeof collection.create !== "function") {
     throw new Error(
@@ -172,10 +180,37 @@ export async function writeShared(
         `that name. Add it to the block's \`resources\`.`
     );
   }
+  await collection.create(key, signedAs(ctx, data, `writeShared can't write "${key}" to "${accessor}"`), {
+    replace: true
+  });
+}
+
+/**
+ * `data` with `writtenBy` stamped from the session, as {@link writeShared}
+ * stamps it: the session's user and, when a worker is running, the worker. A
+ * `writtenBy` in `data` is dropped. For a writer that needs its own write,
+ * such as a compare-and-swap update that recomputes on retry.
+ *
+ * @param ctx The block's context.
+ * @param data The entry's own fields.
+ * @throws When the session has no user, so nothing could be named.
+ */
+export function withWrittenBy<T extends Record<string, unknown>>(
+  ctx: Pick<SharedWriteContext, "session">,
+  data: T
+): T & { [WRITTEN_BY_KEY]: WrittenBy } {
+  return signedAs(ctx, data, "A shared entry can't be written") as T & { [WRITTEN_BY_KEY]: WrittenBy };
+}
+
+function signedAs(ctx: Pick<SharedWriteContext, "session">, data: Record<string, unknown>, refusing: string) {
+  const userId = ctx.session.identity.userId;
+  if (typeof userId !== "string" || userId.length === 0) {
+    throw new Error(`${refusing}: the session has no user, so the entry could name nobody.`);
+  }
   const workerId = verifiedWorkerOf(ctx.session);
   const writtenBy: WrittenBy = workerId !== undefined ? { userId, workerId } : { userId };
   const entry: Record<string, unknown> = { ...data };
   delete entry[WRITTEN_BY_KEY];
   entry[WRITTEN_BY_KEY] = writtenBy;
-  await collection.create(key, entry, { replace: true });
+  return entry;
 }

@@ -47,6 +47,16 @@ export const WORKER_ID_STATE_KEY = "workerId";
 export const FILING_SESSION_STATE_KEY = "filingSessionId";
 
 /**
+ * The session-state field that names the workstream a worker session leads:
+ * the workstream's project address plus its id, as `workstreamRef` writes it
+ * (`<visibility>/<projectId>/<workstreamId>`). Set when a workstream's open
+ * creates its lead's session; readonly, and checked at create against the
+ * creating user's own entry. **Pinned**: the criteria key `findWorkerSession`
+ * and `ensureWorkerSession` take (FIX-1793).
+ */
+export const WORKSTREAM_STATE_KEY = "workstreamId";
+
+/**
  * The roster flow's kind: a flow that runs no worker and declares the two
  * worker collections, so a client can read a user's roster through a session
  * of its own. Its own kind, so a listing of a worker flow's sessions never

@@ -16,14 +16,13 @@ import {
   type ClientFetch,
   type SessionSummary
 } from "@flow-state-dev/client";
-import { deriveWorkerSessionId, type WorkerSessionCriteria } from "./derive-session-id";
 import {
-  FILING_SESSION_STATE_KEY,
-  ROSTER_FLOW_KIND,
-  STANDARD_WORKERS_RESOURCE,
-  WORKERS_RESOURCE,
-  WORKER_ID_STATE_KEY
-} from "./keys";
+  CRITERIA_STATE_KEYS,
+  criteriaState,
+  deriveWorkerSessionId,
+  type WorkerSessionCriteria
+} from "./derive-session-id";
+import { ROSTER_FLOW_KIND, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
 
 /** The transport options `createSessionClient` takes, plus the user the client acts for. */
 export type WorkforceClientOptions = {
@@ -68,24 +67,6 @@ export interface WorkforceClient {
    * get the same session.
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
-}
-
-/**
- * The session-state keys a worker session's criteria are stored under. A
- * lookup returns only sessions that carry no key here it didn't name.
- */
-const CRITERIA_STATE_KEYS: Readonly<Record<keyof WorkerSessionCriteria, string>> = {
-  worker: WORKER_ID_STATE_KEY,
-  filingSessionId: FILING_SESSION_STATE_KEY
-};
-
-/** The criteria as the session-state fields they name, with their values. */
-function criteriaState(criteria: WorkerSessionCriteria): Record<string, string> {
-  const state: Record<string, string> = {};
-  for (const [key, value] of Object.entries(criteria)) {
-    if (typeof value === "string") state[CRITERIA_STATE_KEYS[key as keyof WorkerSessionCriteria]] = value;
-  }
-  return state;
 }
 
 function stateOf(session: SessionSummary): Record<string, unknown> {
@@ -176,13 +157,17 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       userId,
       state: filter,
       // A coordinator's delivery opens its delegate's session as a dispatch run
-      // of the conversation, so a lookup for one includes those. A lookup that
-      // doesn't name the conversation keeps to the sessions a person started.
-      ...(criteria.filingSessionId === undefined ? {} : { include: "dispatch-runs" as const })
+      // of the conversation, and a workstream's open opens its lead's session
+      // as a dispatch run of the session that opened it, so a lookup for
+      // either includes those. A lookup that names neither keeps to the
+      // sessions a person started.
+      ...(criteria.filingSessionId === undefined && criteria.workstreamId === undefined
+        ? {}
+        : { include: "dispatch-runs" as const })
     });
     const matching = rows.filter((row) => {
       const state = stateOf(row);
-      return Object.values(CRITERIA_STATE_KEYS).every((key) => named.has(key) || !Object.hasOwn(state, key));
+      return CRITERIA_STATE_KEYS.every((key) => named.has(key) || !Object.hasOwn(state, key));
     });
     return mostRecent(matching);
   };

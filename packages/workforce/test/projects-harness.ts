@@ -24,6 +24,7 @@ import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { defineWorkerRosterFlow } from "../src/workers/roster-flow";
+import { ROSTER_FLOW_KIND } from "../src/workers/keys";
 
 export const ORG = "acme";
 export const OTHER_ORG = "beta";
@@ -91,7 +92,7 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     lab: lab() as unknown as FlowInstance,
     lead: lead() as unknown as FlowInstance,
     quiet: quiet() as unknown as FlowInstance,
-    roster: roster() as unknown as FlowInstance,
+    [ROSTER_FLOW_KIND]: roster() as unknown as FlowInstance,
     ...(extras.mailbox === false ? {} : { [MAILBOX_KIND]: mailboxFlow() as unknown as FlowInstance })
   };
   const state = createFlowState({
@@ -181,14 +182,46 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
 
   /** Hire a worker on `flow` onto `user`'s roster, through the roster flow. */
   const hire = async (user: string, id: string, flow: string, org = ORG) => {
-    const rosterSession = await openSession(user, "roster", undefined, org);
-    return ok(user, "roster", rosterSession, "hire", { id, flow, description: `${user}'s ${id}` }, org);
+    const rosterSession = await openSession(user, ROSTER_FLOW_KIND, undefined, org);
+    return ok(user, ROSTER_FLOW_KIND, rosterSession, "hire", { id, flow, description: `${user}'s ${id}` }, org);
   };
 
   /** A session record as stored. */
   const sessionRecord = (sessionId: string) => runtime.stores.session.get(sessionId);
 
-  return { stores, runtime, installation, call, openSession, tryOpenSession, act, ok, listed, hire, sessionRecord };
+  /** A `fetch` that reaches this host's router as `userId`, for `createWorkforceClient`. */
+  const fetcherFor =
+    (userId: string, org = ORG) =>
+    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input), "http://localhost");
+      const headers = new Headers(init?.headers);
+      headers.set("x-user", userId);
+      headers.set("x-org", org);
+      const request = new Request(url, { ...init, headers });
+      const path = url.pathname.replace(/^\/api\/flows\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+      const method = (init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
+      return router[method](request, { params: { path } });
+    };
+
+  /** Every session in the store that names `field` = `value` in its state. */
+  const sessionsWith = (field: string, value: string) =>
+    runtime.stores.session.list({ parentage: "all", state: { [field]: value } });
+
+  return {
+    stores,
+    runtime,
+    installation,
+    call,
+    openSession,
+    tryOpenSession,
+    act,
+    ok,
+    listed,
+    hire,
+    sessionRecord,
+    fetcherFor,
+    sessionsWith
+  };
 }
 
 export type ProjectsHost = Awaited<ReturnType<typeof bootProjectsHost>>;

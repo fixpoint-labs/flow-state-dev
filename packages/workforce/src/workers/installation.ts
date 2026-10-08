@@ -41,8 +41,22 @@ import {
 } from "../hire";
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
-import { deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
-import { FILING_SESSION_STATE_KEY, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE, WORKER_ID_STATE_KEY } from "./keys";
+import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
+import {
+  FILING_SESSION_STATE_KEY,
+  STANDARD_WORKERS_RESOURCE,
+  WORKERS_RESOURCE,
+  WORKER_ID_STATE_KEY,
+  WORKSTREAM_STATE_KEY
+} from "./keys";
+import {
+  PRIVATE_WORKSTREAMS_RESOURCE,
+  WORKSTREAM_RESOURCES,
+  WORKSTREAMS_RESOURCE,
+  workstreamEntryKey,
+  workstreamsAccessor
+} from "../projects/workstream-collections";
+import { parseWorkstreamRef } from "../projects/workstream-ref";
 import { defineStandardWorkerCollection, standardWorkerFlow } from "./standard-workers";
 import { defineWorkerCollection, parseWorkerRow, type WorkerRow } from "./worker-row";
 import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
@@ -176,25 +190,31 @@ export class WorkerTurnRefusedError extends Error {
 export type WorkerSessionStateShape = {
   readonly [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString>;
   readonly [FILING_SESSION_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
 };
 
 /** The installation's worker model. Build it once, at boot. */
 export interface WorkerInstallation extends WorkerGrants {
   /**
-   * The two worker collections: the user's own workers, and the standard
-   * ones projected from the files. A worker flow spreads them into its
-   * `resources`, and so does every block that calls {@link resolveWorker} or
-   * writes a worker.
+   * The two worker collections, the user's own workers and the standard ones
+   * projected from the files, and the workstream entries the create check
+   * reads a workstream session's link from. A worker flow spreads them into
+   * its `resources`, and so does every block that calls {@link resolveWorker}
+   * or writes a worker.
    */
   readonly resources: {
     readonly [WORKERS_RESOURCE]: ReturnType<typeof defineWorkerCollection>;
     readonly [STANDARD_WORKERS_RESOURCE]: ReturnType<typeof defineStandardWorkerCollection>;
+    readonly [WORKSTREAMS_RESOURCE]: (typeof WORKSTREAM_RESOURCES)[typeof WORKSTREAMS_RESOURCE];
+    readonly [PRIVATE_WORKSTREAMS_RESOURCE]: (typeof WORKSTREAM_RESOURCES)[typeof PRIVATE_WORKSTREAMS_RESOURCE];
   };
   /**
    * The session-state fields a worker flow declares, readonly: spread them
    * into the flow's session `stateSchema`, beside the flow's own fields.
    * `workerId` names the session's worker; `filingSessionId`, when a
-   * coordinator's delivery set it, names the conversation it was opened for.
+   * coordinator's delivery set it, names the conversation it was opened for;
+   * `workstreamId`, when a workstream's open set it, names the workstream the
+   * session leads.
    */
   readonly sessionStateShape: WorkerSessionStateShape;
   /** The create check a worker flow declares as `session.createCheck`. */
@@ -340,12 +360,14 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
 
   const resources = {
     [WORKERS_RESOURCE]: defineWorkerCollection(),
-    [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_KIND)
+    [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_KIND),
+    ...WORKSTREAM_RESOURCES
   } as const;
 
   const sessionStateShape = {
     [WORKER_ID_STATE_KEY]: z.string().min(1).readonly(),
-    [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional()
+    [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional(),
+    [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional()
   } as const;
 
   /** Every resource a worker may be granted: the documents and the references. */
@@ -467,12 +489,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         userId: input.principal.userId,
         orgId: input.principal.orgId,
         flow: input.flow.kind,
-        criteria: {
-          worker: workerId,
-          ...(typeof input.state[FILING_SESSION_STATE_KEY] === "string"
-            ? { filingSessionId: input.state[FILING_SESSION_STATE_KEY] }
-            : {})
-        }
+        criteria: criteriaOfState(workerId, input.state)
       });
       if (own !== input.sessionId) {
         return {
@@ -499,6 +516,42 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
     if (found.found === "own" && found.standardOnly) {
       return { ok: false, message: `Worker "${workerId}" ${standardOnlyReason(found.flow, false)}.` };
+    }
+    const workstream = input.state[WORKSTREAM_STATE_KEY];
+    return typeof workstream === "string" ? workstreamLinkCheck(input, workerId, workstream) : { ok: true };
+  };
+
+  /**
+   * A session that names a workstream is that workstream's lead session: the
+   * creating user's own entry must exist, name this worker as its lead, and
+   * name no other session. Read at the creator's own scope, so another user's
+   * entry is never the one found.
+   */
+  const workstreamLinkCheck = async (
+    input: SessionCreateCheckInput,
+    workerId: string,
+    ref: string
+  ): Promise<SessionCreateCheckResult> => {
+    const address = parseWorkstreamRef(ref);
+    if (address === undefined) {
+      return { ok: false, message: `"${WORKSTREAM_STATE_KEY}" "${ref}" names no workstream: it is <visibility>/<project>/<workstream>.` };
+    }
+    const entry = await input.readCollectionItem(
+      workstreamsAccessor(address.project.visibility),
+      workstreamEntryKey(address.project.id, input.principal.userId, address.id)
+    );
+    if (entry === undefined) {
+      return {
+        ok: false,
+        status: 404,
+        message: `You have no workstream "${address.id}" in ${address.project.visibility} project "${address.project.id}". Open it first.`
+      };
+    }
+    if (entry.lead !== workerId) {
+      return { ok: false, status: 403, message: `Workstream "${address.id}" is led by "${String(entry.lead)}", not "${workerId}".` };
+    }
+    if (typeof entry.sessionId === "string" && entry.sessionId !== input.sessionId) {
+      return { ok: false, status: 403, message: `Workstream "${address.id}" already has its lead's session, "${entry.sessionId}".` };
     }
     return { ok: true };
   };

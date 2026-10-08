@@ -73,6 +73,48 @@ export {
 export { ProjectRefusedError, type ProjectRefusalReason } from "./project-refusal";
 
 export {
+  definePrivateWorkstreamsCollection,
+  defineWorkstreamsCollection,
+  PRIVATE_WORKSTREAMS_RESOURCE,
+  workstreamAddressSchema,
+  workstreamDueSchema,
+  workstreamEntriesPrefix,
+  workstreamEntryKey,
+  workstreamEntrySchema,
+  workstreamIdProblem,
+  workstreamObjectiveSchema,
+  workstreamPlaceOf,
+  WORKSTREAM_RESOURCES,
+  WORKSTREAMS_PATTERN,
+  WORKSTREAMS_RESOURCE,
+  workstreamStatusSchema,
+  type WorkstreamEntry,
+  type WorkstreamEntryPlace,
+  type WorkstreamObjective,
+  type WorkstreamStatus
+} from "./workstream-collections";
+
+export { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
+
+export { leadsWorkstreams, WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./workstream-lead";
+
+export {
+  defineWorkstreamBlocks,
+  openWorkstreamInputSchema,
+  openWorkstreamOutputSchema,
+  updateOwnWorkstreamInputSchema,
+  updateWorkstreamInputSchema,
+  updateWorkstreamOutputSchema,
+  workstreamViewSchema,
+  type OpenWorkstreamInput,
+  type OpenWorkstreamOutput,
+  type UpdateWorkstreamInput,
+  type WorkstreamBlocks,
+  type WorkstreamBlocksOptions,
+  type WorkstreamView
+} from "./workstream-writes";
+
+export {
   projectWorkspace,
   projectWorkspaceCapability,
   type ProjectWorkspaceOptions,
