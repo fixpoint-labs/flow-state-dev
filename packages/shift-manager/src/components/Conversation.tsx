@@ -25,7 +25,7 @@ import { SessionItemsProvider } from "./flow-state/session-items-context";
 import { shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
 import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
-import { openConversation, useSeatConversation } from "../lib/conversation";
+import { delegateOf, openConversation, useSeatConversation } from "../lib/conversation";
 import { useFollowLatest } from "../lib/follow";
 import { useLab } from "../lib/lab-data";
 import type { Seat } from "../lib/reads";
@@ -222,7 +222,7 @@ export function Conversation({
                       {item.type === "message" && role === "assistant" ? (
                         // v2's label over each of the seat's messages: its name and the time it was written (v2:135).
                         <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
-                          {name.toUpperCase()}
+                          {(delegateOf(seat, item) ?? name).toUpperCase()}
                           <span className="tracking-normal" data-look="message-time">
                             {clockTime(item.ts)}
                           </span>

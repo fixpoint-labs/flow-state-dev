@@ -52,9 +52,10 @@ const REQUEST_PAGES = 20;
 /**
  * Run one action on a talk session (or, with no session, on a new one the
  * Lab creates for this person) and return what it answered, with the session
- * it ran in.
+ * it ran in. Also how the Shift Coordinator's delegate actions run
+ * (`delegates.ts`): any action whose answer a view reads back.
  */
-async function runTalkAction(
+export async function runTalkAction(
   clients: LabClients,
   kind: string,
   sessionId: string | undefined,

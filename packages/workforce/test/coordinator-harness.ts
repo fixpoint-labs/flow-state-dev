@@ -25,7 +25,7 @@ import {
   type MockGeneratorInstance
 } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { defineCoordinatorFlow } from "../src/coordinator/coordinator-flow";
+import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../src/coordinator/coordinator-flow";
 import { delegatedPostEntry } from "../src/coordinator/delegated-post";
 import { COORDINATOR_ROUTE } from "../src/coordinator/coordinator-keys";
 import type { WorkerManifest } from "../src/manifest";
@@ -116,6 +116,8 @@ export type HostOptions = {
   standard?: WorkerManifest[];
   /** The judgment turn's scripted model. Omitted, a judgment turn has no script and fails. */
   judgment?: MockGeneratorInstance;
+  /** The options the judgment turn is built with: the agent kind's catalog and capabilities. */
+  agent?: CoordinatorFlowOptions["agent"];
   stores?: StoreRegistry;
 };
 
@@ -130,7 +132,12 @@ export function bootHost(options: HostOptions = {}) {
   });
   const helper = helperFlow(installation, heard);
   const quiet = quietFlow(installation);
-  const coordinator = defineCoordinatorFlow({ installation, delegateFlows: [helper], routeModel: "typesafe-ai/jev" });
+  const coordinator = defineCoordinatorFlow({
+    installation,
+    delegateFlows: [helper],
+    routeModel: "typesafe-ai/jev",
+    ...(options.agent === undefined ? {} : { agent: options.agent })
+  });
   flows = { helper, quiet, coordinator };
 
   const blocks = createWorkerHireBlocks(installation);

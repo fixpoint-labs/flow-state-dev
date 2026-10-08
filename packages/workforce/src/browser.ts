@@ -10,6 +10,9 @@
  *
  * `test/browser-subpath-safe.test.ts` walks this entry's import graph, through
  * the workspace packages it reaches, and fails on any Node built-in.
+ *
+ * The coordinator's names come from its leaf keys module: an app tells a
+ * coordinator's conversation, its routing records and its own turn apart by them.
  */
 
 export {
@@ -29,3 +32,4 @@ export {
   type WorkerSessionCriteria
 } from "./workers/derive-session-id";
 export { ROSTER_FLOW_KIND, WORKER_ID_STATE_KEY } from "./workers/keys";
+export { COORDINATOR_JUDGMENT, COORDINATOR_KIND, COORDINATOR_ROUTE } from "./coordinator/coordinator-keys";

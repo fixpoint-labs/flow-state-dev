@@ -26,6 +26,8 @@ import { useEffect, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { AskCard } from "../components/AskCard";
 import { Conversation, ConversationFrame } from "../components/Conversation";
+import { DelegatesPanel } from "../components/DelegatesPanel";
+import { conversationSession, COORDINATOR_FLOW } from "../lib/conversation";
 import { useSessionItems } from "../components/flow-state/session-items-context";
 import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
@@ -296,6 +298,9 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
   const streams = streamCounts(snapshot);
   const states = seatStates(snapshot);
   const onCall = [...states.seats.values()].filter((state) => state.status === "on call");
+  // The delegates panel: only for a chief of staff that runs on the coordinator flow.
+  const found = snapshot.inventory.ok ? chiefOfStaffOf(snapshot.inventory.value.seats) : undefined;
+  const cos = found?.kind === "one" && found.seat.kind === COORDINATOR_FLOW ? found.seat : undefined;
   return (
     <div className="p-3" data-testid="cos-panel">
       <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">STREAMS</p>
@@ -357,6 +362,12 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
           ))}
         </ul>
       )}
+      {cos !== undefined ? (
+        <>
+          <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
+          <DelegatesPanel key={cos.id} seat={cos} sessionId={conversationSession(snapshot.sessions, cos)} />
+        </>
+      ) : null}
     </div>
   );
 }

@@ -18,7 +18,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
-import { pickedTeam, seatStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type SeatState, type ShiftStatus } from "../lib/derive";
+import { chiefOfStaffOf, pickedTeam, seatStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type SeatState, type ShiftStatus } from "../lib/derive";
 import { readStatus } from "../lib/columns";
 import { themeLabel, type ThemeLook } from "../lib/theme";
 import { useLab } from "../lib/lab-data";
@@ -239,7 +239,12 @@ export function RosterView({
   const ownIds = new Set(own.map((seat) => seat.id));
   const team = pickedTeam(seats, asked);
   const states = seatStates(withOwn);
-  const shown = [...states.seats.values()].filter((s) => team === null || s.seat.team === team);
+  // The chief of staff first: the coordinator the person's work goes through.
+  const cos = chiefOfStaffOf(seats);
+  const first = cos.kind === "one" ? cos.seat.id : undefined;
+  const shown = [...states.seats.values()]
+    .filter((s) => team === null || s.seat.team === team)
+    .sort((a, b) => Number(b.seat.id === first) - Number(a.seat.id === first));
   const counts = shiftCounts(states, team ?? undefined);
   const unread = Object.entries(snapshot.boards).flatMap(([workstreamId, boards]) => (boards.ok ? [] : [{ workstreamId, failure: boards.failure }]));
   const title = [lookName ?? "Roster", ...(team === null ? [] : [team])].join(" · ");

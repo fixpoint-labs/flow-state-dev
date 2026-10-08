@@ -2165,8 +2165,14 @@ const coordinatorFlow = defineCoordinatorFlow({
   installation,
   delegateFlows: [researchFlow],     // the flows a delivery can reach
   routeModel: "openai/gpt-5.4-mini", // best fit's one evaluator call
+  agent: { catalog, uses },          // what you give defineAgentWorkerFlow: the judgment turn is the agent's
 });
 ```
+
+The judgment turn is the built-in agent's own turn. A coordinator worker's `model`, `tools`,
+`skills` and `capabilities` read the way an `agent` worker's do, against the catalog and
+capabilities you pass as `agent`. The four delegate tools and `handOff` are on every coordinator,
+whatever its `tools:` line grants.
 
 A coordinator's file names its defaults:
 
@@ -2225,8 +2231,10 @@ import {
 ```
 
 It exports `createWorkforceClient`, `deriveWorkerSessionId`, `isDerivedWorkerSessionId`,
-`ROSTER_FLOW_KIND`, `WORKER_ID_STATE_KEY`, `MAILBOX_POST_COMPONENT`, `mailboxTranscriptLineSchema`
-and `MailboxTranscriptLine`, the same values the root exports, and reaches no Node built-in.
+`ROSTER_FLOW_KIND`, `WORKER_ID_STATE_KEY`, `MAILBOX_POST_COMPONENT`, `mailboxTranscriptLineSchema`,
+`MailboxTranscriptLine`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` and `COORDINATOR_JUDGMENT` (the
+coordinator's own turn's answer name, which its messages carry as `agentName`), the same values
+the root exports, and reaches no Node built-in.
 
 ## Exports
 
@@ -2239,7 +2247,7 @@ and `MailboxTranscriptLine`, the same values the root exports, and reaches no No
 | `workforceManifestSources({ roster, inventory })` | The seat and mailbox sources on their own, for an app assembling its own manifest registry. |
 | `createWorkerInstallation({ standardWorkers?, workerFlows?, seatBlocks?, packageBlocks?, documents?, references?, skills?, packages? })` | The worker model's one module (see [Workers as data](#workers-as-data)). Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
-| `defineCoordinatorFlow({ installation, delegateFlows, routeModel, defaultModel? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
+| `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options. |
 | `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `kinds` holds. |

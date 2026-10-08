@@ -13,12 +13,28 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ClientHttpError, type SessionSummary } from "@flow-state-dev/client";
-import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import { COORDINATOR_JUDGMENT, COORDINATOR_KIND, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import type { LabClients } from "./connection";
 import { newSessionId } from "./ids";
 import { useLab } from "./lab-data";
 import { describeFailure, workerOf, type Failure, type Seat } from "./reads";
 import { readSessionItems, RunReadError, type SessionItems } from "./run";
+
+/** The flow a coordinator seat runs on, whose conversations carry its delegates' answers. */
+export const COORDINATOR_FLOW = COORDINATOR_KIND;
+
+/**
+ * The delegate a message in a coordinator's conversation came from, by its
+ * worker id, or `undefined` when the coordinator wrote it. A delegate's answer
+ * lands in the coordinator's conversation under the delegate's name; the
+ * coordinator's own turn stamps its messages with its answer generator's
+ * name.
+ */
+export function delegateOf(seat: Pick<Seat, "kind">, item: { readonly agentName?: string }): string | undefined {
+  if (seat.kind !== COORDINATOR_FLOW) return undefined;
+  const author = item.agentName;
+  return author === undefined || author.startsWith(COORDINATOR_JUDGMENT) ? undefined : author;
+}
 
 /**
  * The id of the person's conversation with `seat`: their newest session on

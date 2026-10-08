@@ -104,8 +104,9 @@ describe("Roster (V3)", () => {
       ["eng.coder", "on shift"],
       ["eng.reviewer", "on call"],
       ["ops.asker", "on call"],
-      ["ops.idle", "off shift"],
+      // The chief of staff first in its group: the coordinator the person's work goes through (FIX-1791 BR-33).
       ["chief-of-staff", "off shift"],
+      ["ops.idle", "off shift"],
     ]);
     expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^1 on shift · 2 on call · 2 off shift · 3 waiting on you/);
   });

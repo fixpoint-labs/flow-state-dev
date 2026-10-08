@@ -259,7 +259,10 @@ describe("a conversation's delegates (V2)", () => {
       } as never,
       "any"
     );
-    const refused = await host.act("alice", "unlinked", "addDelegate", { worker: "eng.coder" });
+    // Refused by the turn's worker load, before the action runs.
+    const refused = await host.act("alice", "unlinked", "addDelegate", { worker: "eng.coder" }).catch((error: unknown) => ({
+      error
+    }));
     expect(messageOf(refused.error)).toMatch(/names no worker/);
     expect((await host.sessionState("unlinked")).delegates ?? null).toBeNull();
   });

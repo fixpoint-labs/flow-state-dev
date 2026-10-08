@@ -46,7 +46,6 @@ import {
   defineFlow,
   dispatcher,
   evaluator,
-  generator,
   handler,
   router,
   sequencer
@@ -66,6 +65,7 @@ import {
   type DeliveryDelegate,
   type DeliveryLedger
 } from "../delivery-ledger";
+import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
 import { FILING_SESSION_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import type { WorkerInstallation } from "../workers/installation";
 import { coordinatorConfigProblems, coordinatorConfigSchema, type CoordinatorConfig } from "./coordinator-config";
@@ -73,9 +73,9 @@ import { createDelegateCheck, takesDelegatedPost } from "./coordinator-check";
 import {
   COORDINATOR_SERVER_OWNED,
   changeDelegates,
+  currentDelegates,
   coordinatorSessionStateSchema,
   coordinatorStateShape,
-  currentDelegates,
   delegateLabel,
   delegateRecordSchema,
   readDelegates,
@@ -119,8 +119,14 @@ export interface CoordinatorFlowOptions {
    * the package names no default, and an evaluator takes no intent.
    */
   routeModel: string | EvaluationModel;
-  /** The model the judgment turn runs on when the worker names none. Defaults to `"intent/chat"`. */
-  defaultModel?: string;
+  /**
+   * What the judgment turn is built with: the options the app gives the
+   * built-in `agent` flow (its tool catalog, capabilities, skills and model
+   * choices). Judgment is the agent's own turn, so a coordinator worker's
+   * `model`, `tools`, `skills` and `capabilities` read the way an `agent`
+   * worker's do, against the same catalog. Omitted, the agent's defaults.
+   */
+  agent?: Omit<AgentWorkerFlowOptions, "installation" | "taskLists">;
 }
 
 /** The door's input: what the person says. */
@@ -140,9 +146,6 @@ const postStateSchema = z.object({
   /** This conversation's id and incarnation, read from its session record when the post opened. */
   filingSessionId: z.string(),
   policy: z.string(),
-  model: z.string().optional(),
-  instructions: z.string().optional(),
-  teamInstructions: z.string().optional(),
   defaults: z.object({ delegates: z.array(z.string()), fallback: z.string().optional() }),
   /** What each hand-off of the judgment turn came to. */
   handOffs: z.array(routedDelegateSchema)
@@ -257,7 +260,6 @@ function missReason(miss: BestFitMiss): string {
  */
 export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const { installation } = options;
-  const defaultModel = options.defaultModel ?? "intent/chat";
   for (const flow of options.delegateFlows) {
     if (!takesDelegatedPost(flow)) {
       throw new Error(
@@ -554,9 +556,6 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         coordinator: worker.id,
         filingSessionId: await filingSessionIdOf(ctx.session),
         policy: config.routing,
-        ...(config.model === undefined ? {} : { model: config.model }),
-        ...(config.instructions === undefined ? {} : { instructions: config.instructions }),
-        ...(config.teamInstructions === undefined ? {} : { teamInstructions: config.teamInstructions }),
         defaults: { delegates: [...defaults.delegates], ...(defaults.fallback === undefined ? {} : { fallback: defaults.fallback }) },
         handOffs: []
       };
@@ -579,6 +578,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     requestStateSchema,
     execute: async (input, ctx) => {
       const post = postOf(ctx as never);
+      // Read now, through the versioned read: an add earlier in this turn is on it.
       const listed = currentDelegates(ctx.session.state, post.defaults);
       const record = listed.delegates.find((candidate) => sameDelegate(candidate, { worker: input.worker }));
       if (record === undefined) {
@@ -626,20 +626,21 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     .stepIf((value: unknown) => deliveryRequestSchema.safeParse(value).success, deliverOne)
     .step(noteHandOff);
 
-  const judgmentGenerator = generator({
-    name: COORDINATOR_JUDGMENT,
-    inputSchema: doorInputSchema,
-    requestStateSchema,
-    itemVisibility: { client: true, history: true },
-    history: true,
-    prompt: [
-      (_input: unknown, ctx: BlockContext) => postOf(ctx).teamInstructions,
-      (_input: unknown, ctx: BlockContext) => postOf(ctx).instructions
-    ],
-    model: (_input: unknown, ctx: BlockContext) => postOf(ctx).model ?? defaultModel,
-    tools: [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool, handOffTool],
-    user: (input: DoorInput) => input.message
-  } as never) as BlockDefinition<any, any>;
+  /**
+   * The judgment turn: the built-in agent's own turn, shared rather than
+   * copied, run as this conversation's worker. It reads the worker's
+   * instructions, model, tools, skills and capabilities as an `agent` worker's
+   * are read, and carries the four delegate tools and the hand-off on every
+   * coordinator, whatever the worker's `tools:` line grants.
+   */
+  const turn = agentWorkerTurn(
+    { ...(options.agent ?? {}), installation },
+    {
+      kind: COORDINATOR_KIND,
+      answerName: COORDINATOR_JUDGMENT,
+      extraTools: [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool, handOffTool]
+    }
+  );
 
   /** The judgment turn's one record: each hand-off it made, or that it answered itself. */
   const recordJudgment = handler({
@@ -664,7 +665,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   });
 
   const judgmentTurn = sequencer({ name: "coordinator-judgment-turn", inputSchema: doorInputSchema })
-    .step(judgmentGenerator)
+    .step(turn.run)
     .tap(recordJudgment);
 
   // --- best fit ------------------------------------------------------------
@@ -910,11 +911,16 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   const flow = defineFlow({
     kind: COORDINATOR_KIND,
-    configSchema: coordinatorConfigSchema(),
+    configSchema: coordinatorConfigSchema(turn.settings),
+    // The agent turn's binding: the documents a worker may be granted, the
+    // per-turn visibility rule, and the request `onStarted` that loads this
+    // turn's worker on this flow before anything reads a setting.
+    ...turn.bound,
     session: { ...installation.session(coordinatorStateShape), serverOwned: COORDINATOR_SERVER_OWNED },
-    resources,
+    resources: { ...resources, ...(turn.bound.resources ?? {}) },
     actions: {
-      run: { inputSchema: doorInputSchema, block: door, userMessage: (input: DoorInput) => input.message },
+      // The session names its worker, so a turn whose input carries any other key is refused.
+      run: { inputSchema: doorInputSchema.strict(), block: door, userMessage: (input: DoorInput) => input.message },
       [ADD_DELEGATE]: {
         inputSchema: addInputSchema,
         block: addDelegateAction,
@@ -946,10 +952,14 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   /**
    * The mint, with the refusals the configuration schema can't carry across
-   * keys: a fallback that isn't a default, a default named twice.
+   * keys: the agent turn's own (a tool two presets both carry, a package
+   * shadowing a catalog tool), then a fallback that isn't a default and a
+   * default named twice.
    */
   const mint = (mintOptions?: Parameters<typeof flow>[0]) => {
     const instance = flow(mintOptions);
+    const turnProblem = turn.mintProblems(instance.config as never);
+    if (turnProblem !== undefined) throw new Error(turnProblem);
     const problems = coordinatorConfigProblems(instance.config as unknown as CoordinatorConfig);
     if (problems.length > 0) throw new Error(`This coordinator ${problems.join(", and ")}.`);
     return instance;

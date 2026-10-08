@@ -19,6 +19,7 @@ export {
 } from "./coordinator-config";
 export {
   ADD_DELEGATE,
+  COORDINATOR_JUDGMENT,
   COORDINATOR_KIND,
   COORDINATOR_ROUTE,
   DELEGATED_POST_ENTRY,

@@ -27,7 +27,9 @@
  *          delivery is not delivered, refused by its create check.
  */
 import { describe, expect, it } from "vitest";
+import { handler } from "@flow-state-dev/core";
 import { mockGenerator } from "@flow-state-dev/testing";
+import { z } from "zod";
 import { bootHost, messageOf, standardWorkers } from "./coordinator-harness";
 
 const heardBy = (host: ReturnType<typeof bootHost>) => host.heard.map((h) => h.worker);
@@ -315,5 +317,68 @@ describe("judgment (V7)", () => {
     const id = await host.conversation("alice", "chief");
     await post(host, id, "anything");
     expect(host.heard).toEqual([]);
+  });
+});
+
+describe("judgment is the agent's own turn (S8)", () => {
+  /** A catalog tool an `agent` worker names in `tools:`, and a coordinator worker can too. */
+  const ping = handler({
+    name: "ping",
+    description: "Answers pong.",
+    inputSchema: z.object({}),
+    outputSchema: z.object({ pong: z.boolean() }),
+    execute: () => ({ pong: true })
+  });
+
+  const toolOutputs = async (host: ReturnType<typeof bootHost>, id: string) =>
+    (await host.items(id)).all.filter((item: any) => item.type === "tool_output").map((item: any) => item.blockName);
+
+  it("reads the worker's model and its tools: line from the agent catalog, beside the delegate tools", async () => {
+    const judgment = mockGenerator({
+      script: [
+        {
+          toolCalls: [
+            { toolCallId: "p1", toolName: "ping", args: {} },
+            { toolCallId: "l1", toolName: "listDelegates", args: {} }
+          ]
+        },
+        { text: "Done." }
+      ]
+    });
+    const host = bootHost({
+      judgment,
+      agent: { catalog: { ping } },
+      standard: standardWorkers({ chief: { model: "test/judge", tools: ["ping"] } })
+    });
+    const id = await host.conversation("alice", "chief");
+    await post(host, id, "ping, then list");
+    expect(judgment.calls[0]!.model).toBe("test/judge");
+    expect(await toolOutputs(host, id)).toEqual(["ping", "listDelegates"]);
+    // The worker's own instructions are the turn's prompt, as an agent worker's are.
+    expect(JSON.stringify(judgment.calls[0]!.input)).toContain("Route the work.");
+  });
+
+  it("keeps the delegate tools when the worker's tools: line grants nothing, and fences everything else", async () => {
+    const judgment = mockGenerator({
+      script: [
+        {
+          toolCalls: [
+            { toolCallId: "p1", toolName: "ping", args: {} },
+            { toolCallId: "h1", toolName: "handOff", args: { worker: "eng.em" } }
+          ]
+        },
+        { text: "Handed off." }
+      ]
+    });
+    const host = bootHost({ judgment, agent: { catalog: { ping } }, standard: standardWorkers({ chief: { tools: [] } }) });
+    const id = await host.conversation("alice", "chief");
+    await post(host, id, "hand it on");
+    expect(await toolOutputs(host, id)).toEqual(["handOff"]);
+    expect(heardBy(host)).toEqual(["eng.em"]);
+  });
+
+  it("refuses a coordinator worker whose tools: line names a tool the agent catalog doesn't carry", async () => {
+    const host = bootHost({ agent: { catalog: { ping } }, standard: standardWorkers({ chief: { tools: ["pong"] } }) });
+    expect(host.installation.standardWorkerProblems().join("\n")).toMatch(/worker "chief" — .*pong/);
   });
 });
