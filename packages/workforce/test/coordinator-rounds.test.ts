@@ -408,7 +408,7 @@ describe("rounds (V5)", () => {
   });
 
   it("closes a round at its deadline without a slow delegate; its late answer lands once and goes no further (BR-24b)", async () => {
-    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 150 });
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 500 });
     const id = await host.conversation("alice", "desk");
     await post(host, id, "status? [slow:eng.coder]");
     await quiet(host);

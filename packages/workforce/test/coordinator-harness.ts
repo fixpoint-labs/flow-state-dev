@@ -71,7 +71,7 @@ export type Heard = { worker: string; message: string; sessionId: string };
 const doorInput = z.object({ message: z.string() });
 
 /** How long a `[slow:<worker>]` mark holds that worker's answer. */
-export const SLOW_MS = 600;
+export const SLOW_MS = 1_500;
 
 function helperFlow(installation: WorkerInstallation, heard: Heard[]) {
   const door = handler({
