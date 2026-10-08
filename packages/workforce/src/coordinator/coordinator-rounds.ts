@@ -114,7 +114,11 @@ export function endRound(rounds: readonly OpenRound[], postId: string, round: nu
 }
 
 /** Remove the open round at `at`, as closed. */
-function closeAt(rounds: readonly OpenRound[], at: number, ledger: DeliveryLedger): { rounds: OpenRound[]; closed: ClosedRound } {
+function closeAt(
+  rounds: readonly OpenRound[],
+  at: number,
+  ledger: DeliveryLedger
+): { rounds: OpenRound[]; closed: ClosedRound } {
   const open = rounds[at]!;
   return {
     rounds: rounds.filter((_r, i) => i !== at),

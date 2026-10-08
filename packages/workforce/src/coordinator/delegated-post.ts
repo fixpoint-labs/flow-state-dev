@@ -54,7 +54,9 @@ export type DelegatedAnswer = z.infer<typeof delegatedAnswerSchema>;
  * deadline: why its turn failed, or, with no `failed`, that the deadline came
  * while its turn was still running. Closed, like the answer.
  */
-export const delegatedMissSchema = z.object({ token: z.string().min(1), failed: z.string().min(1).optional() }).strict();
+export const delegatedMissSchema = z
+  .object({ token: z.string().min(1), failed: z.string().min(1).optional() })
+  .strict();
 
 export type DelegatedMiss = z.infer<typeof delegatedMissSchema>;
 
@@ -97,6 +99,10 @@ const deliveryStateSchema = z.object({
     .optional(),
   [ENDED_STATE]: z.boolean().optional()
 });
+
+/** The delivery this request answers, as `markDelivery` noted it. */
+const notedDelivery = (ctx: { readonly request: { readonly state: unknown } }) =>
+  (ctx.request.state as z.infer<typeof deliveryStateSchema>)[DELIVERY_STATE];
 
 /** How often the deadline watch looks whether the turn has ended. */
 const WATCH_INTERVAL_MS = 100;
@@ -191,7 +197,7 @@ const watchDeadline = sequencer({ name: "delegated-post-deadline", inputSchema: 
   .step(waitForDeadline)
   .stepIf(
     (watched: { late: boolean }) => watched.late,
-    (_watched: { late: boolean }, ctx) => ({ token: (ctx.request.state as z.infer<typeof deliveryStateSchema>)[DELIVERY_STATE]!.token }),
+    (_watched: { late: boolean }, ctx) => ({ token: notedDelivery(ctx)!.token }),
     missDelegatedPost
   );
 
@@ -213,11 +219,9 @@ const failAgain = handler({
 const reportFailure = sequencer({ name: "delegated-post-report-failure", inputSchema: z.unknown() })
   .tap(markEnded)
   .tapIf(
-    (_error: unknown, ctx) =>
-      !ctx.signal.aborted &&
-      (ctx.request.state as z.infer<typeof deliveryStateSchema>)[DELIVERY_STATE]?.deadlineAt !== undefined,
+    (_error: unknown, ctx) => !ctx.signal.aborted && notedDelivery(ctx)?.deadlineAt !== undefined,
     (error: unknown, ctx) => ({
-      token: (ctx.request.state as z.infer<typeof deliveryStateSchema>)[DELIVERY_STATE]!.token,
+      token: notedDelivery(ctx)!.token,
       failed: error instanceof Error ? error.message : String(error)
     }),
     missDelegatedPost

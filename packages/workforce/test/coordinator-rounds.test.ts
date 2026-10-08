@@ -177,6 +177,12 @@ function pairDesk(routing: string, rounds: number) {
 }
 
 describe("a round, on its own (V5)", () => {
+  it("refuses a round deadline that isn't a positive number of milliseconds", () => {
+    for (const roundDeadlineMs of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => bootHost({ roundDeadlineMs })).toThrow(/roundDeadlineMs must be a positive number of milliseconds/);
+    }
+  });
+
   const delegate = { worker: "eng.em" };
   const opened = (round = 0) => openDelivery([], { postId: "p1", round, delegate }, "t1").ledger;
 

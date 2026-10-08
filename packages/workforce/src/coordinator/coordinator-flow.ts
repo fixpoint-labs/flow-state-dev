@@ -327,7 +327,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   }
   const deadlineMs = options.roundDeadlineMs ?? ROUND_DEADLINE_MS;
   if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
-    throw new Error(`defineCoordinatorFlow: roundDeadlineMs must be a positive number of milliseconds, not ${deadlineMs}.`);
+    throw new Error(
+      `defineCoordinatorFlow: roundDeadlineMs must be a positive number of milliseconds, not ${deadlineMs}.`
+    );
   }
   const postFlows = new Set(options.delegateFlows.map((flow) => flow.kind));
   const check = createDelegateCheck(installation, postFlows);
@@ -826,7 +828,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         if (pickBy !== undefined) options[label] = pickBy;
       }
       const hold =
-        post.round === 0 ? coordinatorSessionStateSchema.shape[HOLD_STATE].parse(ctx.session.state[HOLD_STATE] ?? null) : null;
+        post.round === 0
+          ? coordinatorSessionStateSchema.shape[HOLD_STATE].parse(ctx.session.state[HOLD_STATE] ?? null)
+          : null;
       const held = hold === null ? undefined : delegateLabel(hold.delegate);
       const fallback = listed.fallback === null ? undefined : delegateLabel(listed.fallback);
       return {
@@ -886,7 +890,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         return { place: "judgment", reason, skipped: bestFit.skipped };
       }
       const target = bestFit.byLabel[placed.member]!;
-      if (holds) await ctx.session.patchState({ [HOLD_STATE]: { postId: post.postId, delegate: target.delegate } } as never);
+      if (holds) {
+        await ctx.session.patchState({ [HOLD_STATE]: { postId: post.postId, delegate: target.delegate } } as never);
+      }
       return {
         place: "deliver",
         by: placed.by,
@@ -960,7 +966,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     (_placed: unknown, ctx: BlockContext) => ({ message: turnMessage(postOf(ctx)) })
   );
 
-  /** A fixed policy found nobody to take the post: recorded, and on a person's post said in the conversation (BR-19). */
+  /**
+   * A fixed policy found nobody to take the post: recorded, and on a person's
+   * post said in the conversation.
+   */
   const recordNobody = handler({
     name: "coordinator-record-nobody",
     inputSchema: placedSchema,
@@ -1075,7 +1084,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         }
         const others = othersOf(post.answers, record);
         if (others.length === 0) {
-          skipped.push({ ...bare(record), outcome: "skipped", reason: `no other delegate answered in round ${post.round - 1}` });
+          const reason = `no other delegate answered in round ${post.round - 1}`;
+          skipped.push({ ...bare(record), outcome: "skipped", reason });
           continue;
         }
         picks.push(deliveryOf(post, record, checked.worker.flow, passedOn(others)));
@@ -1132,12 +1142,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     // An answer that landed outside an open round, and no round closed: nothing goes on.
     if (event.landed?.kept !== true && event.closed === undefined) return undefined;
     const { config } = await coordinatorOf(ctx);
+    const { routing, rounds } = config;
+    const landed = event.landed;
     const afterAnswer =
-      event.landed === undefined
-        ? undefined
-        : routeOnAfterAnswer(event.landed.delivery, event.landed.body, event.landed.kept, config.routing, config.rounds);
+      landed === undefined ? undefined : routeOnAfterAnswer(landed.delivery, landed.body, landed.kept, routing, rounds);
     if (afterAnswer !== undefined) return afterAnswer;
-    return event.closed === undefined ? undefined : routeOnAfterClose(event.closed, config.routing, config.rounds);
+    return event.closed === undefined ? undefined : routeOnAfterClose(event.closed, routing, rounds);
   };
 
   const routeOnOutputSchema = z.object({ routeOn: routeOnSchema.optional() });
@@ -1312,19 +1322,27 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
           ctx.session.atomicState(mutator as never),
         (state: Readonly<Record<string, unknown>>): { state: Record<string, unknown>; result: Marked } => {
           const marked = markMissed((state[DELIVERIES_STATE] ?? []) as DeliveryLedger, miss.token, why);
-          if (!marked.marked) return { state: {}, result: { marked: false, unknown: marked.reason === "unknown-token" } };
+          if (!marked.marked) {
+            return { state: {}, result: { marked: false, unknown: marked.reason === "unknown-token" } };
+          }
           const rounds = (state[ROUNDS_STATE] ?? []) as OpenRound[];
           const { postId, round } = marked.delivery;
           const closing = closeRound(rounds, marked.ledger, postId, round, now);
           return {
-            state: { [DELIVERIES_STATE]: marked.ledger, ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: closing.rounds }) },
+            state: {
+              [DELIVERIES_STATE]: marked.ledger,
+              ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: closing.rounds })
+            },
             result: { marked: true, unknown: false, ...(closing.closed === undefined ? {} : { closed: closing.closed }) }
           };
         }
       );
       if (outcome === undefined) throw new Error("The missed delivery could not be marked.");
-      if (outcome.unknown) throw new Error("No delivery in this conversation carries that token, so the report was refused.");
-      const routeOn = outcome.closed === undefined ? undefined : await routeOnFor(ctx as never, { closed: outcome.closed });
+      if (outcome.unknown) {
+        throw new Error("No delivery in this conversation carries that token, so the report was refused.");
+      }
+      const routeOn =
+        outcome.closed === undefined ? undefined : await routeOnFor(ctx as never, { closed: outcome.closed });
       return { missed: outcome.marked, ...(routeOn === undefined ? {} : { routeOn }) };
     }
   });
