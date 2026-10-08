@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 432" role="img" aria-label="Q1, open: what counts as one turn of lost work. Recommended: hold the work at the end of each attempt, when it parks and when it fails. Alternative: also hold every few minutes while an attempt runs. It comes down to what a crash costs: an attempt can be long, so an attempt-end hold can lose a long attempt whole, while a timed hold loses a few minutes. The price of the timed hold: reading the checkout while the agent edits it, and a timer on every run. Both use the same hold, so the timer can be added later. Locks in: a crash loses at most the attempt in flight. Flips if: attempts routinely run past thirty minutes."
+<svg viewBox="0 0 940 432" role="img" aria-label="Q1, decided by Jake at the merge of the spec: what counts as one turn of lost work. Chosen: hold the work at the end of each attempt, when it parks and when it fails. Instead of: also hold every few minutes while an attempt runs. It comes down to what a crash costs: an attempt can be long, so an attempt-end hold can lose a long attempt whole, while a timed hold loses a few minutes. The price of the timed hold: reading the checkout while the agent edits it, and a timer on every run. Both use the same hold, so the timer can be added later. Locks in: a crash loses at most the attempt in flight. Flips if: attempts routinely run past thirty minutes."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -35,15 +35,15 @@
   <rect class="bg" x="0" y="0" width="940" height="432"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q1 · OPEN · FOR JAKE</text>
+    <text class="t-lbl" x="32" y="32">Q1 · DECIDED AT MERGE</text>
     <text class="t-q" x="32" y="52">A run&#x27;s machine dies mid-work. How much may be lost?</text>
   </g>
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
     <text class="t-h c-code" x="228" y="112">Hold when each attempt ends</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="592" y="93">ALTERNATIVE</text>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Also hold every few minutes</text>
   </g>
   <g id="row-0">

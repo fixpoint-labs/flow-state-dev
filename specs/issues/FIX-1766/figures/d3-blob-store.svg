@@ -1,0 +1,96 @@
+<svg viewBox="0 0 940 432" role="img" aria-label="D3, open, for Jake: where the bytes of each held snapshot live. Recommended: a blob store beside FSD&#x27;s store, a two-method port on the workspace host with a folder as its default. Alternative: the pack base64-encoded in a lazy resource collection. It comes down to unrelated reads: the blob store is only put and get by exact key, while FSD&#x27;s state routes read a whole scope&#x27;s content at once and would load every pack. Where it runs: the blob store is a new port and needs a shared disk or a bucket adapter across machines; the collection works wherever FSD&#x27;s store runs, shared Postgres included. Size and engine work: raw bytes and no engine change, against a third larger and routes to patch. Locks in: a held-work store the operator wires, only on hosts that turn holding on. Flips if: the first deployment to opt in runs on shared Postgres with no shared disk and no bucket."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="432"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · OPEN · FOR JAKE</text>
+    <text class="t-q" x="32" y="52">Where do the bytes of each held snapshot live?</text>
+  </g>
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">A blob store beside FSD&#x27;s store</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">ALTERNATIVE</text>
+    <text class="t-h c-lost" x="592" y="112">Base64 in a resource collection</text>
+  </g>
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">UNRELATED</text>
+    <text class="t-lbl" x="32" y="169">READS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Never load a pack</text>
+    <text class="t-s" x="248" y="179">put and get by exact key, no list</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Load every pack in the scope</text>
+    <text class="t-s" x="612" y="179">state routes read a whole scope at once</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="236">WHERE IT</text>
+    <text class="t-lbl" x="32" y="249">RUNS</text>
+    <text class="mark minus" x="228" y="238">−</text>
+    <text class="t-b" x="248" y="237">A new port, a folder by default</text>
+    <text class="t-s" x="248" y="255">across machines: shared disk or a bucket adapter</text>
+    <text class="mark plus" x="592" y="238">+</text>
+    <text class="t-b" x="612" y="237">Wherever FSD&#x27;s store runs</text>
+    <text class="t-s" x="612" y="255">shared Postgres included</text>
+    <line class="row" x1="16" y1="260" x2="924" y2="260"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="294">SIZE AND</text>
+    <text class="t-lbl" x="32" y="307">ENGINE WORK</text>
+    <text class="mark plus" x="228" y="296">+</text>
+    <text class="t-b" x="248" y="295">Raw bytes, no engine change</text>
+    <text class="t-s" x="248" y="313">scope is the key&#x27;s prefix</text>
+    <text class="mark minus" x="592" y="296">−</text>
+    <text class="t-b" x="612" y="295">A third larger, routes to patch</text>
+    <text class="t-s" x="612" y="313">scope from FIX-1793&#x27;s declarations</text>
+    <line class="row" x1="16" y1="318" x2="924" y2="318"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="342" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="363">LOCKS IN</text>
+    <text class="t-b" x="32" y="383">A held-work store the operator wires</text>
+    <text class="t-s" x="32" y="401">only on hosts that turn holding on</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="342" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="363">FLIPS IF</text>
+    <text class="t-b" x="494" y="383">The first opt-in runs on shared Postgres</text>
+    <text class="t-s" x="494" y="401">with no shared disk and no bucket</text>
+  </g>
+</svg>

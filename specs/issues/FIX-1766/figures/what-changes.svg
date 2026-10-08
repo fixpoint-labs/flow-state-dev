@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="What changes. Today, on the left: a coding run's checkout, with its commits and uncommitted edits, exists only on machine A's disk. When A is lost, the next attempt on machine B starts from the base, and the work is gone. After, on the right: at the end of each turn, the paths git reports dirty and one bundle of unpushed commits are held in FSD's store, in the worktree-overlay collection, in the project's scope; the run record keeps the base, the head, a hash for each held path and which machine the run is on. When A is lost, machine B clones the remote at the recorded base, applies the bundle and the held files, and checks them against the run record: a match is ready, a mismatch parks the row for the run's owner. The git remote is only read; nothing is written to it."
+<svg viewBox="0 0 940 420" role="img" aria-label="What changes. Today, on the left: a coding run&#x27;s checkout, with its commits and uncommitted edits, exists only on machine A&#x27;s disk. When A is lost, the next attempt on machine B starts from the base, and the work is gone. After, on the right, on a host whose operator turned holding on: at the end of each turn, a snapshot of the working tree and the unpushed commits are written as one git pack to the held-work store, under a new key in the project&#x27;s scope; only then does the run record switch to it, naming the base, the head, the snapshot, the pack&#x27;s key and which machine the run is on. When A is lost, machine B clones the remote at the recorded base, unpacks the pack, checks out the snapshot and checks the rebuilt tree against the recorded snapshot: a match is ready, a mismatch parks the row for the run&#x27;s owner. The git remote is only read; nothing is written to it. With holding off, nothing on the right happens."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,20 +43,20 @@
 
   <g id="after">
     <rect class="pane" x="332" y="16" width="592" height="388" rx="6"/>
-    <text class="t-lbl" x="348" y="38">AFTER</text>
+    <text class="t-lbl" x="348" y="38">AFTER · HOLDING ON</text>
 
     <rect class="n-gone" x="356" y="60" width="200" height="80" rx="5"/>
     <text class="t-b" x="372" y="84">Machine A · lost</text>
     <text class="t-s" x="372" y="103">checkout/ on the run's branch</text>
-    <text class="t-c" x="372" y="122">held at each turn's end</text>
+    <text class="t-c" x="372" y="122">snapshot at each turn's end</text>
 
     <rect class="n-new" x="596" y="56" width="308" height="132" rx="5"/>
-    <text class="t-lbl" x="612" y="76">FSD'S STORE · THE PROJECT'S SCOPE</text>
-    <text class="t-b" x="612" y="98">worktree-overlay · this run</text>
-    <text class="t-s" x="612" y="116">dirty paths · tombstones · 1 bundle</text>
+    <text class="t-lbl" x="612" y="76">HELD-WORK STORE · THE PROJECT'S SCOPE</text>
+    <text class="t-b" x="612" y="98">one git pack per hold · new key</text>
+    <text class="t-s" x="612" y="116">unpushed commits · working-tree snapshot</text>
     <text class="t-s" x="612" y="132">never the whole repository</text>
-    <text class="t-b" x="612" y="158">run record</text>
-    <text class="t-s" x="612" y="176">base · head · hashes · machine · state</text>
+    <text class="t-b" x="612" y="158">run record · switched last</text>
+    <text class="t-s" x="612" y="176">base · head · snapshot · pack key · machine</text>
     <path class="wire-n" d="M556 100 L596 100"/>
 
     <rect class="n-acc" x="356" y="200" width="200" height="56" rx="5"/>
@@ -65,8 +65,8 @@
 
     <rect class="n-new" x="596" y="236" width="308" height="80" rx="5"/>
     <text class="t-b" x="612" y="260">Machine B · next attempt</text>
-    <text class="t-s" x="612" y="279">clone at base · apply bundle and files</text>
-    <text class="t-s" x="612" y="297">check against the run record</text>
+    <text class="t-s" x="612" y="279">clone at base · unpack · check out snapshot</text>
+    <text class="t-s" x="612" y="297">rebuilt tree must equal the snapshot</text>
     <path class="wire" d="M556 240 L596 262"/>
     <path class="wire-n" d="M750 188 L750 236"/>
 
@@ -79,6 +79,7 @@
     <path class="wire-n" d="M666 316 L666 340"/>
     <path class="wire" d="M834 316 L834 340"/>
     <text class="t-s" x="356" y="300">At most the turn in flight</text>
-    <text class="t-s" x="356" y="316">is lost with machine A.</text>
+    <text class="t-s" x="356" y="316">is lost with machine A,</text>
+    <text class="t-s" x="356" y="332">even mid-hold.</text>
   </g>
 </svg>
