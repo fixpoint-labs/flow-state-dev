@@ -2,11 +2,13 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-What was decided, what is still open, and what each choice locks in. Jake made the product calls
-on 2026-10-04 (FSD guarantees this; FSD's storage, not a hidden git ref), approved Q1, D1 and D2
-by merging [#2878](https://github.com/fixpoint-labs/flow-state-dev/pull/2878), and on 2026-10-08
-asked for the git snapshot shape, made holding optional, and asked whether the bytes belong in
-blob storage. The FSD Architect set the fences on 2026-10-08, recorded below as given.
+What was decided and what each choice locks in. Jake made the product calls on 2026-10-04 (FSD
+guarantees this; FSD's storage, not a hidden git ref), approved Q1, D1 and D2 by merging
+[#2878](https://github.com/fixpoint-labs/flow-state-dev/pull/2878), on 2026-10-08 asked for the
+git snapshot shape and made holding optional, approved D3 by merging
+[#2881](https://github.com/fixpoint-labs/flow-state-dev/pull/2881), and then approved the store's
+`delete`, deleting superseded packs, and parking on a host with holding off. The FSD Architect set
+the fences on 2026-10-08, recorded below as given.
 
 ## The tree
 
@@ -19,15 +21,14 @@ flowchart TD
   I --> D2["D2 · a mismatch parks for the run's owner"]
   D2 -.->|"rejected"| X2["the operator<br/>cannot read a private project's work"]
   I --> OI["Opt-in · holding is off unless the host turns it on"]
-  I --> D3["D3 · open · the pack's bytes in a blob store"]
-  D3 -.->|"alternative"| X3["base64 in a lazy resource collection<br/>scope-wide reads would load every pack"]
+  I --> D3["D3 · decided · the pack's bytes in a blob store"]
+  D3 -.->|"rejected"| X3["base64 in a lazy resource collection<br/>scope-wide reads would load every pack"]
 ```
 
-Solid edges are what you sign; D3 is the one fork still open. Dashed edges lost, or are D3's
-alternative, and the label says why.
+Solid edges are what was signed. Dashed edges lost, and the label says why.
 
 <a name="d3"></a>
-## D3 · Open · The held snapshot's bytes: a blob store beside FSD's store, or text in FSD's store?
+## D3 · Decided at #2881's merge · The held snapshot's bytes: a blob store beside FSD's store, or text in FSD's store?
 
 **In plain terms.** Each hold produces one file: a compressed git pack of the run's unpushed
 commits and its working tree, usually kilobytes, at most a few megabytes, sized by what the run
@@ -39,11 +40,12 @@ or we encode the pack as text and keep it in FSD's store beside the project's fi
 **The trade-off.**
 
 - **(a) A blob store.** The bytes never enter FSD's text store, so no unrelated read ever loads
-  them, nothing is inflated, and the store can only put and get one exact key: there is nothing
-  to list and no route to read it through. The price is a new, two-method port the operator
-  wires. Its default is a folder, which survives a lost machine only if the folder is on shared
-  storage, so a real multi-machine deployment needs an S3 or Vercel Blob adapter, about twenty
-  lines the operator writes until a package ships one.
+  them, nothing is inflated, and the store can only put, get and delete one exact key: there is
+  nothing to list and no route to read it through. The price is a new, three-method port the
+  operator wires. Its default is a folder, which survives a lost machine when it is shared
+  storage, an NFS mount for one; without a shared disk, an S3 or Vercel Blob adapter, about
+  twenty lines the operator writes until a package ships one. Its `put` must be atomic, never
+  showing a partial object, because BR-30 depends on it: the folder does temp file and rename.
 - **(b) Text in a resource collection,** read lazily by exact key. It works today wherever FSD's
   store works, shared Postgres included, and scope and access come from FIX-1793's declarations.
   The price: a third larger, and FSD's state routes read every content row in a user's or an
@@ -59,15 +61,16 @@ or we encode the pack as text and keep it in FSD's store beside the project's fi
 | Vercel | a Vercel Blob adapter, only for a host that can lose its disk | works |
 | DevTeam Lab, goal check | the folder store beside the host roots | works |
 
-**My recommendation: (a), a blob store.** Holding is opt-in ([below](#opt-in)), so the only
-operators who wire it run hosts that can lose their disk, and those operators already have
-object storage. It keeps megabytes of pack out of every scope-wide read for good, rather than
-until someone patches the routes. The seam is the smallest that works: `HeldWorkStore` on the
-workspace host (`put(key, bytes)`, `get(key)`; no list, no delete), with `fileHeldWorkStore({ dir })`
-as the shipped default. It sits on the host, not in the engine's reserved `blobs` slot, because
-the host is built at boot outside any flow and depends only on core; when the engine's binary
-store ships ([FIX-367](https://linear.app/fixpoint-labs/issue/FIX-367)), a short adapter turns it
-into a `HeldWorkStore`.
+**Chosen: (a), a blob store.** Holding is opt-in ([below](#opt-in)), so the only operators who
+wire it run hosts that can lose their disk, and those operators already have object storage. It
+keeps megabytes of pack out of every scope-wide read for good, rather than until someone patches
+the routes. The seam is the smallest that works: `HeldWorkStore` on the workspace host
+(`put(key, bytes)`, `get(key)`, `delete(key)`, all required; deleting a missing key does nothing;
+no list), with `fileHeldWorkStore({ dir })` as the shipped default. It sits on the host, not in the
+engine's reserved `blobs` slot, because the host is built at boot outside any flow and depends
+only on core. When the engine's binary store ships ([FIX-367](https://linear.app/fixpoint-labs/issue/FIX-367)),
+a short adapter turns it into a `HeldWorkStore`; operators still wire a `HeldWorkStore`, and only
+the default adapter changes.
 
 **Scope and access under (a).** D1 holds unchanged. The key is
 `worktree-overlay/<user|org>/<scopeId>/<projectId>/<run>/<snapshot>.pack`; Workforce picks the
@@ -76,15 +79,15 @@ route reads the store. The host reads only the exact key on the run record, and 
 key sits under the prefix the run source answered for this attempt, from this attempt's own
 context ([BR-14, BR-15](BUSINESS-RULES.md#where-held-work-lives)).
 
-**What would change my mind:** the first deployment that will turn holding on runs on shared
-Postgres with no shared disk and no bucket, and you want it working without its operator writing
-an adapter. Then (b), or (a) plus a Postgres adapter in this slice.
+**What would reopen it:** the first deployment that will turn holding on runs on Postgres alone,
+with no shared disk for the folder and no bucket, and must work without its operator writing an
+adapter. Then (b), or (a) plus a Postgres adapter in this slice.
 
 **If wrong:** cheap now, dearer later. The pack and the record's pointer are the same either way;
 only where the bytes land changes, PR 1's port against PR 2's collection. Once packs are stored,
 moving them is a sweep like FIX-1768's.
 
-![D3, open: where the held snapshot's bytes live. Recommended: a blob store, a two-method port on the workspace host with a folder as the default. Alternative: the pack base64-encoded in a lazy resource collection. Decides it: unrelated reads; FSD's state routes read a whole scope's content, so they would load every pack. Price: a new port and an adapter per multi-machine deployment, against a third more bytes and an engine change in a hot path. Locks in: a held-work store the operator wires. Flips if: the first deployment to opt in has shared Postgres and no shared disk or bucket](figures/d3-blob-store.svg)
+![D3, decided: where the held snapshot's bytes live. Chosen: a blob store, a three-method port on the workspace host with a folder as the default. Instead of: the pack base64-encoded in a lazy resource collection. Decides it: unrelated reads; FSD's state routes read a whole scope's content, so they would load every pack. Price: a new port, and an adapter where there is no shared disk, against a third more bytes and an engine change in a hot path. Locks in: a held-work store the operator wires. Flips if: the first deployment to opt in runs on Postgres alone, with no shared disk or bucket](figures/d3-blob-store.svg)
 
 It comes down to unrelated reads: in the collection, every scope-wide read would load every pack.
 
@@ -151,7 +154,7 @@ It comes down to a private project's work: the run record's scope would follow t
 |---|---|
 | **Instead of** | The Lab's operator, who runs the hosts |
 | **Because** | The owner is the one person who can read the held work in every case: a private project's work is theirs alone, and a workstream's runs are its owner's ([FIX-1793 BR-34](../FIX-1793/BUSINESS-RULES.md#coding-runs)). The run's question already goes to that person through harness-manager's ask, so no new channel is built. The operator gets a log line naming the run and what disagreed, never file contents |
-| **Locks in** | A parked mismatch waits for the owner's answer. After it, the next attempt starts from the base with the held snapshot laid beside the checkout in `held/`. The mismatched pack is never overwritten: every hold writes a new key. Nothing held is deleted in this slice |
+| **Locks in** | A parked mismatch waits for the owner's answer. After it, the next attempt starts from the base with the held snapshot laid beside the checkout in `held/`. The mismatched pack is never overwritten; it is deleted only once a later hold has switched the record away from it |
 
 ![D2: who is asked when held work does not match the run record. Chosen: the run's owner. Instead of: the operator. Decides it: who can read the work, a private project's owner alone. Price: an owner may have to fetch the operator for a broken remote. Locks in: a mismatch waits for its owner. Flips if: the operator can read every project's work](figures/d2-owner-asked.svg)
 
@@ -176,10 +179,14 @@ Recorded as constraints, not decisions this spec makes:
   one pack. It writes no ref, never touches the agent's index, and carries deletions, renames,
   binary files, exec bits and symlinks by construction. The rebuild checks one thing that matters:
   the rebuilt tree equals the recorded snapshot's. From jhoffner's [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/2878#issuecomment-6066140305), finding 1.
-- **The record switches last, to a new key.** Each hold writes its pack under a new,
-  content-addressed key and only then points the record at it, so a machine that dies mid-hold
-  leaves the record on the previous good snapshot. The orphaned pack is FIX-1768's (or a sweep's)
-  to delete; a hold never deletes. Finding 2.
+- **The record switches last, to a new key, and the pack it replaced goes after.** Each hold
+  writes its pack under a new, content-addressed key, points the record at it, and only then
+  deletes the pack the record named before, and no other. A machine that dies before the switch
+  leaves the record on the previous good pack; one that dies after it, before the delete, leaves
+  the old pack behind. Either way one orphan, which FIX-1768's sweep removes. A run's storage is
+  one live pack, plus at most one orphan for each hold a crash cut short. Finding 2 of each second
+  look, [#2878](https://github.com/fixpoint-labs/flow-state-dev/pull/2878#issuecomment-6066140305)
+  and [#2881](https://github.com/fixpoint-labs/flow-state-dev/pull/2881#issuecomment-6068041468).
 - **Rebuilt files come back unstaged.** The rebuild resets the branch to the recorded head with
   the index at the head (`reset --mixed`), so edits read as unstaged and new files as untracked.
   Which edits were staged is not kept. The review proposed `--soft`, which would stage every
@@ -214,3 +221,6 @@ Recorded as constraints, not decisions this spec makes:
   projection became one git snapshot per hold under a new key, switched to last; holding became
   an opt-in host option, off by default; D3 opened on where the bytes live. The record of the
   change is [EVOLUTION.md → The 2026-10-08 amendment](EVOLUTION.md#the-2026-10-08-amendment).
+- **Merged** ([#2881](https://github.com/fixpoint-labs/flow-state-dev/pull/2881)), D3 with it; then
+  amended from its second look: the store's `delete`, superseded packs deleted after the switch,
+  and an off host parking. [EVOLUTION.md → The store-lifecycle amendment](EVOLUTION.md#the-store-lifecycle-amendment).
