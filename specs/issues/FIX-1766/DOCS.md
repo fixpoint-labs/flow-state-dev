@@ -5,9 +5,7 @@
 Proposed reader-facing prose. Implementation reconciles it against what ships, then publishes it
 per [PLAN.md → Docs](PLAN.md#docs). Voice: `CLAUDE.md` → "Writing Style". Watch for: em-dashes,
 "seamless", and the word *checkpoint*, which in these docs already means a durable action's
-saved step. Product copy says *held work*; `checkpoint` stays only as the method's name. Written
-for [D3](DECISIONS.md#d3)'s recommendation; if it goes the other way, "held-work store" becomes
-"a collection in your app's store".
+saved step. Product copy says *held work*; `checkpoint` stays only as the method's name.
 
 ## UPDATE · `apps/docs/docs/workforce/projects.md` · "Coding work in a project", after its second paragraph
 
@@ -43,7 +41,8 @@ for [D3](DECISIONS.md#d3)'s recommendation; if it goes the other way, "held-work
 Remove the **One host's storage** bullet. Add:
 
 > - **Holding work across machines is opt-in.** Without a held-work store on the workspace host,
->   a run's work lives on that machine's disk, as before.
+>   a run's work lives on that machine's disk, as before. A run whose work was held elsewhere
+>   waits for its owner on such a host instead of starting over.
 > - **One turn of work can be lost.** A run's work is held at the end of each turn, so a machine
 >   that dies mid-turn loses what that turn did. On a repository the operator listed in
 >   `localRepositories`, nothing is held: the work lives on that machine's disk.
@@ -66,9 +65,12 @@ Remove the **One host's storage** bullet. Add:
 > localWorkspaceHost({ root, remotes, source, heldWork: fileHeldWorkStore({ dir: "/shared/held-work" }) });
 > ```
 >
-> A `HeldWorkStore` has two methods, `put(key, bytes)` and `get(key)`. `fileHeldWorkStore` keeps
-> each key as a file; for hosts on different machines, put its folder on shared storage or write
-> a store over S3 or Vercel Blob. A host on a disk that is kept doesn't need one.
+> A `HeldWorkStore` has four methods, `put(key, bytes)`, `get(key)`, `delete(key)` and
+> `list(prefix)`, which returns the keys under a prefix. Deleting a missing key does nothing, and
+> `put` must never expose a partly written object.
+> `fileHeldWorkStore` keeps each key as a file; for hosts on different machines, put its folder on
+> shared storage such as NFS, or write a store over S3 or Vercel Blob. A host on a disk that is
+> kept doesn't need one.
 >
 > The source names where a run's held work goes, with `heldPrefix` on a repository answer. Without
 > a store or a prefix, `checkpoint` returns `null` and does nothing else.
@@ -78,8 +80,8 @@ Remove the **One host's storage** bullet. Add:
 > It never touches the repository's own index, writes no ref, and never contacts the remote.
 > Ignored files and files over 10 MB are left out and named in what it returns: the base, head
 > and snapshot commits, and the pack's key, hash and size. Record it on your run, last, after
-> `checkpoint` returns; every hold uses a new key, so a run that crashes mid-hold still points at
-> the last good one.
+> `checkpoint` returns, then pass the key it replaced to `host.dropHeld(place, key)`. Every hold
+> uses a new key, so a run that crashes mid-hold still points at the last good one.
 >
 > Hand that record back to `provision`. The place it returns says where it came from in
 > `origin`: `new` for a first provision, `live` for a place that is live on this host and
@@ -89,7 +91,8 @@ Remove the **One host's storage** bullet. Add:
 > with the changes unstaged, and checks the rebuilt tree against the snapshot. When anything
 > disagrees, `provision` rejects with `HeldWorkMismatchError`, naming the field, with nothing
 > changed. That is not a `WorkspaceRefusedError`: a refusal won't clear on a retry, while a
-> mismatch waits for a person to decide. A directory for the place that this host holds but the
+> mismatch waits for a person to decide. A host without a held-work store rejects a recorded hold
+> the same way, with `field: "disabled"`. A directory for the place that this host holds but the
 > record doesn't name is moved aside and kept.
 >
 > A host's identity is its root's: hosts that share a root share their places.
@@ -97,7 +100,7 @@ Remove the **One host's storage** bullet. Add:
 ## UPDATE · `packages/workspace/README.md` · API table
 
 > | `localWorkspaceHost` | … `checkpoint` holds a repository run's work in `heldWork`, when the host has one; `provision` takes the run's recorded place and hold, and rebuilds a lost place from them. |
-> | `HeldWorkStore` | Where held work goes: `put(key, bytes)`, `get(key)`. |
+> | `HeldWorkStore` | Where held work goes: `put(key, bytes)`, `get(key)`, `delete(key)`, `list(prefix)`. |
 > | `fileHeldWorkStore({ dir })` | A `HeldWorkStore` over a folder. |
 > | `HeldWorkMismatchError` | A rebuilt place disagreed with the run's record; `field` names what. |
 
