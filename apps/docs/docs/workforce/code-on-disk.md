@@ -7,7 +7,7 @@ description: "Put your flow kinds, blocks and capabilities in the workforce tree
 
 # Code on disk
 
-A `WORKER.md` says which flow kind a worker runs. The kind itself is TypeScript, and something has to hand it to `hireWorkforce`.
+A `WORKER.md` says which flow a worker runs on. The flow itself is TypeScript, and something has to hand it to the installation.
 
 You can write that map yourself. You can also put each file where the convention looks for it and let `fsdev gen` write the map, which means adding a kind is adding a file.
 
@@ -41,7 +41,25 @@ workforce/
             page-oncall.ts    ← a block this one worker may name
 ```
 
-Each file default-exports one thing: a flow for the two `flows/` folders, a `BlockDefinition` for a `blocks/` folder, and a capability or a resource for a `resources/` folder. A worker kind needs `cardinality: "collection"`, because a [seat](./workers-on-disk.md#a-workers-identity) — one hired worker — mints its own copy under its own id. A mailbox kind needs the default, `singleton`, because a mailbox is a session on one shared copy.
+Each file default-exports one thing: a `workerFlow(...)` builder for `flows/workers/`, a flow for `flows/mailboxes/`, a `BlockDefinition` for a `blocks/` folder, and a capability or a resource for a `resources/` folder. A worker flow is built on the installation that runs its workers, which a file can't import, so it exports a builder and the installation builds it once, with itself:
+
+```ts
+// workforce/flows/workers/request-triage.ts
+import { defineFlow } from "@flow-state-dev/core";
+import { workerConfigSchema, workerFlow } from "@flow-state-dev/workforce";
+
+export default workerFlow((installation) =>
+  defineFlow({
+    kind: "request-triage",
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources },
+    actions: { run: { inputSchema, block: triage(installation), userMessage: (input) => input.message } },
+  }),
+);
+```
+
+Every worker on the flow runs on that one copy. A mailbox flow is a plain flow, a session on one shared copy too.
 
 `resources/` is the one folder that takes both code and Markdown. A `.ts` file there is what this page covers; a `.md` file is a [document](./documents-on-disk.md), and what a capability in one does for a worker is [Capabilities on disk](./capabilities-on-disk.md).
 
@@ -97,18 +115,19 @@ Each export feeds a parameter that already exists:
 
 | Export | Goes to |
 | --- | --- |
-| `kinds` | `hireWorkforce`'s `workerFlows` |
+| `kinds` | `createWorkerInstallation`'s `workerFlows` |
 | `mailboxKinds` | `mailboxInstances` |
 | `blocks` | a task board's `workers`, or a worker kind's [tool catalog](./built-in-worker.md#tools) |
-| `seatBlocks` | `hireWorkforce` again |
-| `packageBlocks` | `hireWorkforce`, for the [packages](./packages-on-disk.md) a worker holds |
+| `seatBlocks` | `createWorkerInstallation` again |
+| `packageBlocks` | `createWorkerInstallation`, for the [packages](./packages-on-disk.md) a worker holds |
 | `resourceModules` | `splitResourceModules`, whose halves go to the kind's `uses` and the flow's resource map |
 
 ```ts
-import { hireWorkforce } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
 import { kinds, seatBlocks } from "./workforce/workforce.gen";
 
-const seats = hireWorkforce(workers, { workerFlows: kinds, seatBlocks });
+const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: kinds, seatBlocks });
+const flows = hireWorkforce(installation);
 ```
 
 The startup line names no kinds. Adding one means adding a file.
@@ -143,7 +162,7 @@ Files that are not TypeScript are skipped: a README, a JSON sample, a note besid
 
 **TypeScript files are not.** Every `.ts` and `.tsx` file in one of the code folders is a declaration, so these folders are for declarations only. A `fixture.ts` sitting beside a kind registers a kind called `fixture`. A file whose name carries a second dot — `request-triage.test.ts`, `helpers.fixture.ts` — is refused outright, because the basename becomes the kind name and a dot is not legal in one. Keep tests and fixtures beside the code they exercise, outside every folder on this page: the two `flows/` folders, every `blocks/` folder, and every `resources/` folder.
 
-Not everything is caught by the walk, and what it misses is caught later rather than not at all. A file that exports the wrong shape fails your own `tsc`, naming the generated module and the assignment, because the maps are typed. A flow whose declared `kind` disagrees with its basename is refused at the hire, naming both.
+Not everything is caught by the walk, and what it misses is caught later rather than not at all. A file that exports the wrong shape fails your own `tsc`, naming the generated module and the assignment, because the maps are typed. A flow whose declared `kind` disagrees with its basename is refused by `hireWorkforce`, naming both.
 
 ## Blocks a worker can call
 
@@ -165,14 +184,18 @@ A name is resolved nearest first: the worker's own folder, then its team's, then
 The org-level half is one line in your app, on the option the built-in kind already takes:
 
 ```ts
-import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import { createWorkerInstallation, defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
 import { blocks, kinds, seatBlocks } from "./workforce/workforce.gen";
 
-const agent = defineAgentWorkerFlow({ catalog: blocks });
-const seats = hireWorkforce(workers, { workerFlows: { ...kinds, agent }, seatBlocks });
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: () => ({ ...kinds, agent: defineAgentWorkerFlow({ installation, catalog: blocks }) }),
+  seatBlocks,
+});
+const flows = hireWorkforce(installation);
 ```
 
-The other two ride `seatBlocks`, which needs no option on the kind: a worker's registered blocks are that worker's, so they travel with the rest of what the hire step already gives one seat at a time.
+The other two ride `seatBlocks`, which needs no option on the flow: a worker's registered blocks are that worker's, resolved into its configuration on each turn.
 
 Then a worker names what it wants:
 
@@ -185,7 +208,7 @@ tools: [triage, page-oncall]
 
 Two rules are checked before any worker runs:
 
-- **One tool has one name.** The file's basename, the map key and the block's own `name` must agree. A worker authorises by the key and the model is handed the block's `name`, so a disagreement is a worker authorising one tool and a model calling another. Refused when the kind is built for the catalog, at the hire for a worker's own folder.
+- **One tool has one name.** The file's basename, the map key and the block's own `name` must agree. A worker authorises by the key and the model is handed the block's `name`, so a disagreement is a worker authorising one tool and a model calling another. Refused when the kind is built for the catalog, and by `hireWorkforce` for a worker's own folder.
 - **A block in a worker's own folder may read a store, not declare one.** Resources belong to the kind, and every worker of a kind shares them, so a store declared from inside one worker's folder would arrive for all of its siblings. Declare the store on the kind — through `defineAgentWorkerFlow`'s `uses` — and the block reads it as usual. The refusal names the block and both fixes.
 
 ## A hand-written map
@@ -194,7 +217,7 @@ Passing `workerFlows` yourself works, and an app that never runs `fsdev gen` nee
 
 ## Related pages
 
-- [Workers on disk](./workers-on-disk.md) — the folder tree, `WORKER.md`, `readWorkforce`, and `hireWorkforce`.
+- [Workers on disk](./workers-on-disk.md) — the folder tree, `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
 - [Capabilities on disk](./capabilities-on-disk.md) — what a `.ts` file in a `resources/` folder gives a worker, and how a worker's file picks among its presets.
 - [Documents on disk](./documents-on-disk.md) — the `.md` half of a `resources/` folder.
 - [The built-in worker](./built-in-worker.md) — the `agent` kind, its catalog, and its tools.

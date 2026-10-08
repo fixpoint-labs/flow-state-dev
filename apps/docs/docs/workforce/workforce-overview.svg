@@ -33,8 +33,8 @@
 
   <rect x="0" y="0" width="920" height="560" rx="16" class="bg"/>
 
-  <text x="28" y="36" class="title">Worker file, seat, session: where each lives</text>
-  <text x="28" y="58" class="muted">A worker file describes a worker; the seat you hire from it is what runs.</text>
+  <text x="28" y="36" class="title">Worker file, worker, session: where each lives</text>
+  <text x="28" y="58" class="muted">A worker file describes a worker; one shared copy of its flow runs it.</text>
 
   <!-- Repo -->
   <rect x="28" y="84" width="248" height="300" rx="14" class="wall-file"/>
@@ -64,9 +64,9 @@
   <text x="326" y="184" class="muted">readWorkforce: reads the files</text>
 
   <rect x="312" y="218" width="288" height="78" rx="10" class="card-sess"/>
-  <text x="326" y="240" class="h">Seat engineering.lead</text>
-  <text x="326" y="260" class="muted">hireWorkforce: a flow kind, configured,</text>
-  <text x="326" y="276" class="muted">with its own id. Reads no files.</text>
+  <text x="326" y="240" class="h">One copy per flow</text>
+  <text x="326" y="260" class="muted">hireWorkforce: agent, once, for every</text>
+  <text x="326" y="276" class="muted">worker on it. Reads no files.</text>
 
   <rect x="312" y="316" width="288" height="52" rx="10" class="card"/>
   <text x="326" y="338" class="h">Registry</text>
@@ -82,23 +82,23 @@
   <text x="652" y="126" class="muted">Kept across restarts when persistent</text>
 
   <rect x="652" y="142" width="224" height="104" rx="10" class="card"/>
-  <text x="666" y="166" class="h">Sessions on the seat</text>
+  <text x="666" y="166" class="h">Sessions naming a worker</text>
   <text x="666" y="188" class="p">Each person's conversation,</text>
   <text x="666" y="206" class="p">its state and resources</text>
   <text x="666" y="230" class="muted">Never written into the file</text>
 
   <rect x="652" y="258" width="224" height="110" rx="10" class="card"/>
-  <text x="666" y="282" class="h">Roster row</text>
-  <text x="666" y="302" class="muted">Only for a seat hired while</text>
-  <text x="666" y="318" class="muted">the app runs. Read back at</text>
-  <text x="666" y="334" class="muted">the next start.</text>
-  <text x="666" y="356" class="muted">See Hiring at runtime</text>
+  <text x="666" y="282" class="h">A user's own worker</text>
+  <text x="666" y="302" class="muted">A row in their own data,</text>
+  <text x="666" y="318" class="muted">hired or forked while the</text>
+  <text x="666" y="334" class="muted">app runs. Nobody else's.</text>
+  <text x="666" y="356" class="muted">See Hiring and forking</text>
 
   <!-- Not a copy -->
   <rect x="28" y="404" width="864" height="136" rx="12" class="box"/>
-  <text x="44" y="428" class="h">Not a copy</text>
-  <text x="44" y="452" class="p">A seat is the flow kind plus an id and settings. The kind is unchanged, and many seats can run on it.</text>
-  <text x="44" y="472" class="p">You open a session against a seat the way you open one against any flow. Its sessions belong to the seat, not to the file.</text>
-  <text x="44" y="492" class="p">A mailbox is a session on the shared mailbox kind. Its members are seats; the mailbox is not one.</text>
-  <text x="44" y="520" class="muted">A task's assignee can name any worker that takes tasks. The board runs the list; Workforce finds the worker.</text>
+  <text x="44" y="428" class="h">One copy, many workers</text>
+  <text x="44" y="452" class="p">A worker is an id and settings. Every worker on a flow shares its one registered copy.</text>
+  <text x="44" y="472" class="p">A session names its worker when it is created, and nothing changes it. It runs on the worker's flow.</text>
+  <text x="44" y="492" class="p">A mailbox is a session on the shared mailbox kind. Its members are workers; the mailbox is not one.</text>
+  <text x="44" y="520" class="muted">A task's assignee can name a standard worker that takes tasks. The board runs the list; Workforce finds the worker.</text>
 </svg>

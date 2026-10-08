@@ -105,8 +105,8 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Team** | workforce | A folder of workers under `teams/<name>/`, with an optional `TEAM.md` whose body every worker on the team reads. A team is not a flow and has no address. | Workers |
 | **Org worker** | workforce | A worker under `org/workers/<name>/`. It belongs to no team. | Worker |
 | **Built-in worker** | workforce | The `agent` kind every worker runs on unless its file names another `flow:`. See [The built-in worker](./workforce/built-in-worker.md). | Flow (collection), generator, skills |
-| **Hire** | workforce | `hireWorkforce` turns each worker record into a flow instance. Your app registers what comes back. | Flow instance |
-| **Roster** | workforce | The workers you hire. The ones hired while the app runs are kept as rows, so they come back after a restart. See [Hiring while the app runs](./workforce/durable-hire.md). | Org resource collection |
+| **Hire** | workforce | A user adds a worker of their own, as a row in their data. `hireWorkforce` gives back one copy of each worker flow, which your app registers. | Flow instance |
+| **Roster** | workforce | A user's workers: their own, and the standard ones your files declare. See [Hiring and forking](./workforce/durable-hire.md). | Org resource collection |
 | **Fire** | workforce | Removes a worker hired while the app runs. A worker declared in a file leaves when its folder is deleted. | Roster row, inventory row |
 | **Mailbox** | workforce | One `MAILBOX.md`: a named session on the shared `mailbox` flow, with members, a charter and a transcript. See [Mailboxes](./workforce/mailboxes.md). | Session, flow |
 | **Member** | workforce | A worker id on a mailbox's member list. A post wakes each member whose flow kind handles posts, or only the chosen one on a routed mailbox. | Worker address |

@@ -289,6 +289,20 @@ Resource collections take the same flags, declared once on the collection and ap
 
 The generic tools address resources by their scope-qualified uri (for example `session/files/readme.md`), the same handle the [search tools](/docs/resources/searching) return — so a result from `globResources` or `grepResourceContent` feeds straight into `readResourceContentTool`.
 
+A flow can also narrow what the model reaches on a single turn. Give it a `resourceVisibility` rule, and the built-in resource tools, the `discover` door, and any tool you build on them treat a resource the rule hides as one that doesn't exist: it isn't listed, searched, read or written, and asking for it by its uri gets the same answer as asking for a missing one. A resource the rule marks read-only is read but not written. With no rule, the model reaches what it reaches today.
+
+```ts
+defineFlow({
+  kind: "desk",
+  resources: { handbook, payroll },
+  // Called on every listing and lookup: keep it synchronous, and decide from what your server wrote, never the turn's input.
+  resourceVisibility: (ctx, { name }) => (name === "payroll" && !isFinance(ctx) ? "hidden" : "visible"),
+  actions: { /* … */ },
+});
+```
+
+The rule decides what the model sees, not what your code does: a block that reads a resource by reference, as `ctx.resources.payroll`, still reads it. Workforce sets the rule for you, so a worker's model reaches only the documents its `WORKER.md` grants, even when many workers share one flow.
+
 ## Resource collections
 
 Static resources have a fixed name. Resource collections let you create typed sets of resources dynamically at runtime — useful when the number of instances isn't known ahead of time (file collections, per-topic knowledge, dynamic workspaces).

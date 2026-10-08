@@ -67,6 +67,7 @@ A capability and a resource have two destinations, so `splitResourceModules` sep
 
 ```ts
 import {
+  createWorkerInstallation,
   defineAgentWorkerFlow,
   hireWorkforce,
   resourcesFromDocs,
@@ -77,10 +78,12 @@ import { resourceModules } from "./workforce/workforce.gen";
 
 const { capabilities, resources } = splitResourceModules(resourceModules);
 
-const agent = defineAgentWorkerFlow({ uses: capabilities });
-
 const { workers } = await readWorkforce("./workforce");
-const seats = hireWorkforce(workers, { workerFlows: { agent } });
+const installation = createWorkerInstallation({
+  standardWorkers: workers,
+  workerFlows: () => ({ agent: defineAgentWorkerFlow({ installation, uses: capabilities }) }),
+});
+const flows = hireWorkforce(installation);
 ```
 
 `capabilities` goes to the worker kind's `uses`, which is the same option you would pass a hand-written capability to. `resources` merges into the flow's resource map beside the Markdown documents:

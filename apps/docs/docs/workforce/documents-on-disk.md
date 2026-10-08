@@ -192,11 +192,18 @@ A reported file is a document your app was supposed to have. Log a warning and c
 
 ## Installing the documents
 
-`resourcesFromDocs` and `referencesFromDocs` each turn records into a resource map keyed by ref. Spread both into the flow's own map:
+`resourcesFromDocs` and `referencesFromDocs` each turn records into a resource map keyed by ref. Hand both to the installation, and spread `installation.documents`, which holds both, into the worker flow's own map:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
-import { hireWorkforce, referencesFromDocs, resourcesFromDocs, workerConfigSchema } from "@flow-state-dev/workforce";
+import {
+  createWorkerInstallation,
+  hireWorkforce,
+  referencesFromDocs,
+  resourcesFromDocs,
+  workerConfigSchema,
+  workerFlow,
+} from "@flow-state-dev/workforce";
 import {
   readReferencesDirectory,
   readResourcesDirectory,
@@ -213,47 +220,50 @@ for (const { errors } of [roster, references, resources]) {
   if (errors.length) throw new Error(`workforce: ${errors.length} entries failed to load`);
 }
 
-const documentMap = resourcesFromDocs(resources.documents);
-const referenceMap = referencesFromDocs(references.documents);
-
-export const supportFlow = defineFlow({
-  kind: "support",
-  cardinality: "collection",
-  configSchema: workerConfigSchema(),
-  actions: {
-    answer: {
-      inputSchema: z.object({ message: z.string() }),
-      block: answerQuestion,
-      userMessage: (input) => input.message,
+const supportFlow = workerFlow((installation) =>
+  defineFlow({
+    kind: "support",
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ticket: ticketResource, ...installation.resources, ...installation.documents },
+    // Each turn's model reaches only the documents its worker is granted.
+    resourceVisibility: installation.resourceVisibility,
+    actions: {
+      answer: {
+        inputSchema: z.object({ message: z.string() }),
+        block: answerQuestion(installation), // loads the turn's worker with installation.resolveWorker
+        userMessage: (input) => input.message,
+      },
     },
-  },
-  resources: { ticket: ticketResource, ...documentMap, ...referenceMap },
-});
+  }),
+);
 
-export const seats = hireWorkforce(roster.workers, {
+const installation = createWorkerInstallation({
+  standardWorkers: roster.workers,
   workerFlows: { support: supportFlow },
-  documents: documentMap,
-  references: referenceMap,
+  documents: resourcesFromDocs(resources.documents),
+  references: referencesFromDocs(references.documents),
 });
+export const flows = hireWorkforce(installation);
 ```
 
 Every file-declared document is installed at `org` scope. A `resources/` entry carries the file's body as its starting content; a `references/` entry points at the file itself, which is read whenever an execution context is built. Editing a reference in your repository reaches agents on the next request, and a read already in flight keeps the body it started with.
 
 Every request runs in an organization, so a block reads a document straight off `ctx.resources`. [Authentication](/docs/server/authentication#every-request-runs-in-an-organization) covers where that organization comes from. Each organization gets its own copy of a `resources/` document, so what one organization's agents write is not what another's read.
 
-`documents` and `references` tell the hire which entries on a kind's map are which. [Which seats reach which reference](#who-reaches-what) is worked out against the `references` map, so a kind holding references has to be hired with it. Omit it, or pass one that is missing a reference the kind installed, and `hireWorkforce` throws, naming every reference it was not given. The whole roster is refused, so no seat is hired:
+`documents` and `references` tell the installation which entries are which. [Which workers reach which reference](#who-reaches-what) is worked out against the `references` map, so a flow holding references needs it. Omit it, or pass one that is missing a reference the flow declares, and `hireWorkforce` throws, naming every reference it was not given. Nothing is registered:
 
 ```
-hireWorkforce refused 1 of 1 worker; nothing was hired:
-  - worker "engineering.ada" — is hired onto a kind holding 4 reference(s) that hireWorkforce
-    was not given: "code-of-conduct", "teams/engineering/handbook",
+hireWorkforce: 1 standard worker problem(s); nothing was registered:
+  - worker "engineering.ada" — runs on a flow holding 4 reference(s) its installation was not
+    given: "code-of-conduct", "teams/engineering/handbook",
     "teams/engineering/workers/ada/runbook", "teams/support/escalation". … Pass the same map you
-    installed on the kind: hireWorkforce(workers, { references: referencesFromDocs(refs) })
+    declared on the flow: createWorkerInstallation({ references: referencesFromDocs(refs) })
 ```
 
-A kind holding no references needs no map, and a roster hires the same whether you pass one or not. A ref passed in both maps is refused too, naming it.
+A flow holding no references needs no map. A ref passed in both maps is refused too, naming it.
 
-Spread the maps rather than passing one on its own. A flow copy created with `supportFlow({ resources })` *replaces* the definition's map instead of merging with it, so a copy handed only `documentMap` loses whatever the flow kind declared.
+Every worker on `support` shares its one copy, so the flow declares every document any of them may be granted. The `resourceVisibility` rule narrows each turn: the model reaches the documents its worker's file grants, read-only where the grant is, and every other one answers as if it didn't exist. Your own block code that names a document, as `ctx.resources.handbook`, isn't narrowed.
 
 Both functions throw rather than collecting. A record that cannot become a resource stops startup, naming the ref.
 
@@ -288,24 +298,22 @@ const engineering = resourcesFromDocs(
 );
 ```
 
-A worker's folder is also only part of the name. Putting a `resources/` document under `workers/ada/` addresses it to that seat. It does not keep it from the others. Seats hired into one kind share that kind's flow definition, so by default every one of them reads the same row.
+A worker's folder is also only part of the name. Putting a `resources/` document under `workers/ada/` addresses it to that worker. It does not keep it from the others. Every worker on a flow shares that flow's one copy, so by default every one of them reads the same row.
 
-Filtering decides what a whole kind installs. To narrow one seat within a kind, the seat's own file names the documents it may touch under `resources:`, and can take one read-only: see [what a `WORKER.md` says](./workers-on-disk.md#what-a-workermd-says). A seat naming a document its kind was not installed with is refused at the hire, so the filter holds.
+Filtering decides what a whole flow installs. To narrow one worker within a flow, the worker's own file names the documents it may touch under `resources:`, and can take one read-only: see [what a `WORKER.md` says](./workers-on-disk.md#what-a-workermd-says). Its model then reaches only those, on every turn: a document it isn't granted answers as one that doesn't exist. A worker naming a document the app didn't declare is refused, so the filter holds.
 
-### Giving one seat a document of its own
+### Keeping a document per person
 
-A `resources/` document whose frontmatter carries `flowIsolation: true` gets one row per seat:
+A `resources/` document whose frontmatter carries `flowIsolation: true` gets one row per person, per flow, instead of one the person's other flows share:
 
 ```md
 ---
-description: This seat's own working notes.
+description: Working notes, one copy per person.
 flowIsolation: true
 ---
 ```
 
-The seat that writes it reads it back. A sibling seat asking for the same document gets its own empty copy, not an error and not the first seat's copy.
-
-That line is the boundary, not the folder it sits in. A `resources/` document in a worker's folder without it is shared across every seat of the kind, the same as a team's scratchpad. A `references/` file cannot declare it; its boundary is where the file sits.
+A person's workers on one flow share that row, since they share the flow's copy. To keep a document to one worker, grant it in that worker's `resources:` and leave it out of the others'. A `references/` file cannot declare `flowIsolation`; its boundary is where the file sits.
 
 ### Letting a model read a document
 
@@ -380,4 +388,4 @@ A document that needs a state schema of its own, a `render` function, [reactive 
 - It does not read `WORKER.md` or any `skills/` folder. Those are [Workers on disk](./workers-on-disk.md) and [Skills](../skills/overview.md). It reads a worker folder only to find a document folder inside it.
 - It does not put a document on an agent's bash mount. A mount carries collections; a document is a single resource, so a shell on the sandbox will not find the handbook as a file. That holds for a reference too, even though its content is a file on your disk.
 - It does not re-read a reference within a request. The file is read when an execution context is built, so an edit reaches the next request rather than a read already running.
-- For a `resources/` document, it does not decide which seat may read which one. `flowIsolation` gives each seat its own copy; nothing there refuses a read. A `references/` document is the exception, and [Who reaches what](#who-reaches-what) is the rule.
+- For a `resources/` document, the folder doesn't decide which worker may read which one. A worker's `resources:` list does, for its model. A `references/` document is the exception, and [Who reaches what](#who-reaches-what) is the rule.
