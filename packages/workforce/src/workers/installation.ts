@@ -40,7 +40,7 @@ import {
 } from "../hire";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
-import { STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE, WORKER_ID_STATE_KEY } from "./keys";
+import { FILING_SESSION_STATE_KEY, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE, WORKER_ID_STATE_KEY } from "./keys";
 import { defineStandardWorkerCollection, standardWorkerFlow } from "./standard-workers";
 import { defineWorkerCollection, parseWorkerRow, type WorkerRow } from "./worker-row";
 import { markVerifiedWorker } from "./verified-worker";
@@ -151,6 +151,12 @@ export class WorkerTurnRefusedError extends Error {
   }
 }
 
+/** The readonly session-state fields every worker flow declares. */
+export type WorkerSessionStateShape = {
+  readonly [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString>;
+  readonly [FILING_SESSION_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+};
+
 /** The installation's worker model. Build it once, at boot. */
 export interface WorkerInstallation {
   /**
@@ -164,10 +170,12 @@ export interface WorkerInstallation {
     readonly [STANDARD_WORKERS_RESOURCE]: ReturnType<typeof defineStandardWorkerCollection>;
   };
   /**
-   * The session-state field a worker flow declares, readonly: spread it into
-   * the flow's session `stateSchema`, beside the flow's own fields.
+   * The session-state fields a worker flow declares, readonly: spread them
+   * into the flow's session `stateSchema`, beside the flow's own fields.
+   * `workerId` names the session's worker; `filingSessionId`, when a
+   * coordinator's delivery set it, names the conversation it was opened for.
    */
-  readonly sessionStateShape: { readonly [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString> };
+  readonly sessionStateShape: WorkerSessionStateShape;
   /** The create check a worker flow declares as `session.createCheck`. */
   readonly createCheck: SessionCreateCheck;
   /**
@@ -177,7 +185,7 @@ export interface WorkerInstallation {
   session<TShape extends z.ZodRawShape = Record<never, never>>(
     extraShape?: TShape
   ): {
-    stateSchema: z.ZodObject<{ [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString> } & TShape>;
+    stateSchema: z.ZodObject<WorkerSessionStateShape & TShape>;
     createCheck: SessionCreateCheck;
   };
   /**
@@ -287,7 +295,10 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_KIND)
   } as const;
 
-  const sessionStateShape = { [WORKER_ID_STATE_KEY]: z.string().min(1).readonly() } as const;
+  const sessionStateShape = {
+    [WORKER_ID_STATE_KEY]: z.string().min(1).readonly(),
+    [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional()
+  } as const;
 
   /**
    * What `hireWorkforce` would refuse this worker for, or the instance it
@@ -399,7 +410,12 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         userId: input.principal.userId,
         orgId: input.principal.orgId,
         flow: input.flow.kind,
-        criteria: { worker: workerId }
+        criteria: {
+          worker: workerId,
+          ...(typeof input.state[FILING_SESSION_STATE_KEY] === "string"
+            ? { filingSessionId: input.state[FILING_SESSION_STATE_KEY] }
+            : {})
+        }
       });
       if (own !== input.sessionId) {
         return {

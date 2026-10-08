@@ -30,6 +30,7 @@ import { delegatedPostEntry } from "../src/coordinator/delegated-post";
 import { COORDINATOR_ROUTE } from "../src/coordinator/coordinator-keys";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
+import { createWorkforceClient } from "../src/workers/client";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { defineWorkerRosterFlow } from "../src/workers/roster-flow";
@@ -241,7 +242,22 @@ export function bootHost(options: HostOptions = {}) {
     return { records, messages, all };
   };
 
-  return { installation, stores, state, heard, route, judgment, create, conversation, act, hire, fire, settled, sessionState, items };
+  /** An app's workforce client for `userId`, talking to this host's router. */
+  const client = (userId: string) =>
+    createWorkforceClient({
+      userId,
+      fetcher: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const router = (await state.getRouter()) as any;
+        const url = new URL(String(input), "http://localhost");
+        const headers = new Headers(init?.headers);
+        headers.set("x-user", userId);
+        const path = url.pathname.replace(/^\/api\/flows\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+        const method = (init?.method ?? "GET").toUpperCase();
+        return router[method](new Request(url, { ...init, headers }), { params: { path } });
+      }
+    });
+
+  return { installation, stores, state, heard, route, judgment, create, conversation, act, hire, fire, settled, sessionState, items, client };
 }
 
 function textOf(item: any): string {

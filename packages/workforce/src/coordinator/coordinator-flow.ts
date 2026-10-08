@@ -66,7 +66,7 @@ import {
   type DeliveryDelegate,
   type DeliveryLedger
 } from "../delivery-ledger";
-import { WORKER_ID_STATE_KEY } from "../workers/keys";
+import { FILING_SESSION_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import type { WorkerInstallation } from "../workers/installation";
 import { coordinatorConfigProblems, coordinatorConfigSchema, type CoordinatorConfig } from "./coordinator-config";
 import { createDelegateCheck, takesDelegatedPost } from "./coordinator-check";
@@ -137,6 +137,8 @@ const postStateSchema = z.object({
   from: z.string(),
   round: z.number().int().min(0),
   coordinator: z.string(),
+  /** This conversation's id and incarnation, read from its session record when the post opened. */
+  filingSessionId: z.string(),
   policy: z.string(),
   model: z.string().optional(),
   instructions: z.string().optional(),
@@ -159,7 +161,9 @@ const deliveryRequestSchema = z.object({
   flow: z.string(),
   body: z.string(),
   from: z.string(),
-  coordinator: z.string()
+  coordinator: z.string(),
+  /** The delivering conversation's id and incarnation, which the delegate's session carries. */
+  filingSessionId: z.string()
 });
 
 type DeliveryRequest = z.infer<typeof deliveryRequestSchema>;
@@ -179,12 +183,52 @@ const dispatchFailedSchema = z.object({ dispatchFailed: z.string() });
 const delegateListOutputSchema = z.object({
   delegates: z.array(delegateRecordSchema),
   fallback: deliveryDelegateSchema.nullable(),
-  max: z.number()
+  max: z.number(),
+  /**
+   * This conversation's `filingSessionId`: what each of its delegates' sessions
+   * carries, and what `findWorkerSession({ worker, filingSessionId })` takes.
+   */
+  filingSessionId: z.string()
 });
 
+/** A conversation's delegates, and the conversation's `filingSessionId`. */
+type Listed = { list: DelegateList; filingSessionId: string };
+
 /** A delegate list as the actions and tools answer it. */
-function listOutput(list: DelegateList) {
-  return { delegates: list.delegates, fallback: list.fallback, max: MAX_DELEGATES };
+function listOutput(listed: Listed) {
+  return {
+    delegates: listed.list.delegates,
+    fallback: listed.list.fallback,
+    max: MAX_DELEGATES,
+    filingSessionId: listed.filingSessionId
+  };
+}
+
+/** Hex of the first 8 bytes of the SHA-256 of `text`. */
+async function shortDigest(text: string): Promise<string> {
+  const bytes = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
+  let hex = "";
+  for (const byte of bytes.subarray(0, 8)) hex += byte.toString(16).padStart(2, "0");
+  return hex;
+}
+
+/**
+ * A conversation's `filingSessionId`: its id plus its incarnation, read from
+ * the server-written session record, never from a caller. A conversation
+ * deleted and created again under the same id gets a new lineage, so a new
+ * value. The lineage id itself stays server-side; the value carries a digest
+ * of it.
+ */
+async function filingSessionIdOf(session: { identity: { id: string }; lineageId?: string }): Promise<string> {
+  if (session.lineageId === undefined) {
+    throw new Error(
+      `Session "${session.identity.id}" has no lineageId, so the coordinator refuses it. ` +
+        "Each delegate's session is filed under its conversation's id and lineageId; without the lineageId, " +
+        "a conversation deleted and created again under this id would pick up its predecessor's delegates. " +
+        "Sessions without one aren't supported: run the conversation on a host that sets ctx.session.lineageId."
+    );
+  }
+  return `${session.identity.id}~${await shortDigest(session.lineageId)}`;
 }
 
 /** The defaults a worker's configuration names. */
@@ -238,7 +282,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     return { worker, config, defaults: defaultsOf(config) };
   };
 
-  type Changed = { ok: true; list: DelegateList } | { ok: false; message: string };
+  type Changed = ({ ok: true } & Listed) | { ok: false; message: string };
+
+  /** A change's outcome, with the conversation's `filingSessionId` beside a list that landed. */
+  const withFiling = async (ctx: BlockContext, outcome: Awaited<ReturnType<typeof changeDelegates>>): Promise<Changed> =>
+    outcome.ok ? { ok: true, list: outcome.list, filingSessionId: await filingSessionIdOf(ctx.session) } : outcome;
 
   const addInputSchema = z.object({ worker: z.string().min(1), note: z.string().min(1).optional() }).strict();
   const nameInputSchema = z.object({ worker: z.string().min(1) }).strict();
@@ -249,24 +297,24 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const checked = await check(ctx, input.worker, "add");
     if (!checked.ok) return checked;
     const record: DelegateRecord = { worker: input.worker, ...(input.note === undefined ? {} : { note: input.note }) };
-    return changeDelegates(ctx.session, defaults, { add: record });
+    return withFiling(ctx, await changeDelegates(ctx.session, defaults, { add: record }));
   };
   const change = async (ctx: BlockContext, delegateChange: DelegateChange): Promise<Changed> => {
     const { defaults } = await coordinatorOf(ctx);
-    return changeDelegates(ctx.session, defaults, delegateChange);
+    return withFiling(ctx, await changeDelegates(ctx.session, defaults, delegateChange));
   };
-  const list = async (ctx: BlockContext): Promise<DelegateList> => {
+  const list = async (ctx: BlockContext): Promise<Listed> => {
     const { defaults } = await coordinatorOf(ctx);
-    return readDelegates(ctx.session, defaults);
+    return { list: await readDelegates(ctx.session, defaults), filingSessionId: await filingSessionIdOf(ctx.session) };
   };
 
   /** Throw a refusal, for the actions. */
   const orRefuse = (changed: Changed) => {
     if (!changed.ok) throw new Error(changed.message);
-    return listOutput(changed.list);
+    return listOutput(changed);
   };
   /** Hand a refusal back as a value, for the tools: a model can read it and recover. */
-  const orTell = (changed: Changed) => (changed.ok ? listOutput(changed.list) : { refused: changed.message });
+  const orTell = (changed: Changed) => (changed.ok ? listOutput(changed) : { refused: changed.message });
 
   const toolOutputSchema = z.union([delegateListOutputSchema, z.object({ refused: z.string() })]);
   const blockBase = { resources, sessionStateSchema: coordinatorSessionStateSchema };
@@ -388,7 +436,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         // links it. A session that exists keeps its own.
         session: {
           key: (delivery: DeliveryDispatch) => delivery.sessionKey,
-          state: (delivery: DeliveryDispatch) => ({ [WORKER_ID_STATE_KEY]: delivery.delegate.worker })
+          state: (delivery: DeliveryDispatch) => ({
+            [WORKER_ID_STATE_KEY]: delivery.delegate.worker,
+            [FILING_SESSION_STATE_KEY]: delivery.filingSessionId
+          })
         },
         payload: (delivery: DeliveryDispatch) => ({
           token: delivery.token,
@@ -481,7 +532,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     flow,
     body: post.body,
     from: post.from,
-    coordinator: post.coordinator
+    coordinator: post.coordinator,
+    filingSessionId: post.filingSessionId
   });
 
   const openPost = handler({
@@ -500,6 +552,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         from: ctx.session.identity.userId ?? "",
         round: 0,
         coordinator: worker.id,
+        filingSessionId: await filingSessionIdOf(ctx.session),
         policy: config.routing,
         ...(config.model === undefined ? {} : { model: config.model }),
         ...(config.instructions === undefined ? {} : { instructions: config.instructions }),

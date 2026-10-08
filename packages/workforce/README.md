@@ -2377,7 +2377,11 @@ rounds: 0                # the default; at most 3
   `createWorkerInstallation` refuses the file otherwise.
 - **Delivery.** Each delegate gets its own session per conversation, created naming the delegate
   as its worker, and reused for that conversation's later posts. Its answer lands in the
-  conversation under the delegate's name, once, however many times it is sent.
+  conversation under the delegate's name, once, however many times it is sent. The session
+  carries the conversation's `filingSessionId`, which `listDelegates` returns, so an app finds it
+  with `findWorkerSession({ worker, filingSessionId })`. A conversation deleted and created again
+  under the same id has a new `filingSessionId`, and its delegates get new sessions. A lookup
+  naming only `{ worker }` never returns a delegate's session.
 - **The record.** Every routing decision leaves one `coordinator-route` component item: the post,
   the round, the policy, `by` (`judgment`, `held`, `evaluated`, `fallback` or `unplaced`) and what
   became of each delegate. Render it apart from the conversation's lines.
@@ -2437,7 +2441,7 @@ before fire removed inventory rows is left out that way.
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |
 | `defineWorkerRosterFlow(installation, actions?)` | The roster flow (`workforce-roster`), which declares the two worker collections so a client reads a user's roster through one session of it. Mount the hire blocks on it as actions. |
-| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession({ worker })` and `ensureWorkerSession({ worker })`, over the session and resource clients. From `./browser` only. |
+| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession({ worker, filingSessionId? })` and `ensureWorkerSession({ worker, filingSessionId? })`, over the session and resource clients. From `./browser` only. |
 | `deriveWorkerSessionId({ userId, orgId, flow, criteria })` / `isDerivedWorkerSessionId(id)` | The id `ensureWorkerSession` creates a session at, and the shape a worker flow's create check reserves for the user it derives to. |
 | `WorkerTurnRefusedError` | What `resolveWorker` throws when a turn can't run as the session's worker; nothing is written. |
 | `defineWorkerCollection()` / `workerRowSchema` / `parseWorkerRow(value)` | The user's worker collection at `workforce/workers/*`, user scope, and its row. |
