@@ -386,7 +386,9 @@ describe("a run's work is held at every save point (BR-1, BR-6, Q1)", () => {
     await run.act("seed");
     await run.act("drain");
     await run.settled("parked");
-    expect((await run.record()).held?.key).toBe((await run.keys())[0]);
+    const keys = await run.keys();
+    expect(keys).toHaveLength(1);
+    expect((await run.record()).held?.key).toBe(keys[0]);
   });
 
   it("when the harness fails", async () => {
@@ -394,7 +396,9 @@ describe("a run's work is held at every save point (BR-1, BR-6, Q1)", () => {
     await run.act("seed");
     await run.act("drain");
     await run.settled("errored");
-    expect((await run.record()).held?.key).toBe((await run.keys())[0]);
+    const keys = await run.keys();
+    expect(keys).toHaveLength(1);
+    expect((await run.record()).held?.key).toBe(keys[0]);
   });
 
   it("writes the pack, then switches the record, then drops only the key it replaced", async () => {

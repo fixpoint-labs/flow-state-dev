@@ -170,6 +170,8 @@ A **lease** keeps two attempts out of one tree: a lock file beside the checkout,
 
 The lease is not a mutex. Checking the lock and removing it are two steps, so a lock whose holder has died is reclaimed after a stale window rather than instantly. The manager refuses a configuration that shortens that window below the longest a live attempt can hold the lock.
 
+The checkout doesn't have to stay on one machine. When the workspace host has a held-work store and the source names where a run's work is held, the manager holds it at the end of each turn, and an attempt that lands on another machine rebuilds the checkout from it. The run record shows which machine the run is on, where its place stands (`provisioning`, `ready`, `lost`, `restoring` or `refused`), and when its work was last held or why it wasn't.
+
 ## The deadline
 
 `runTimeoutMs` bounds **the harness step**. The manager composes it into the step's abort signal and fires that signal when the deadline passes. That is the manager's half, and all it promises.
@@ -220,7 +222,8 @@ record instead of deriving them again.
 
 ## Limits
 
-- **One host's storage.** Checkouts and their leases are on a local filesystem, so a retry inherits the last attempt's work because that work is on disk. On a multi-host deployment the recorded checkout names nothing on the machine that picks the retry up.
+- **Holding work across machines is opt-in.** Without a held-work store on the workspace host, a run's work lives on that machine's disk, as before. A run whose work was held elsewhere waits for its owner on such a host instead of starting over.
+- **One turn of work can be lost.** A run's work is held at the end of each turn, so a machine that dies mid-turn loses what that turn did. On a repository the operator listed in `localRepositories`, nothing is held: the work lives on that machine's disk.
 - **No retention policy.** Run records and question rows grow without bound. Fine for a board driving a few tasks; a long-lived one needs pruning, which is not built.
 - **A harness that can't resume can't be sent a message.** A run whose harness never confirms a coding session is refused with *this run's harness can't continue with a message*.
 - **Git worktrees for a repository.** A run on a repository works in a `git worktree` of it. Where the repository comes from is up to the workspace host you pass as `workspace`; see the package README's "Running a project's work". For a mailbox board a project holds, Workforce's `projectWorkspace` is that source: see [A project's code and files](../workforce/projects.md#coding-work-in-a-project).

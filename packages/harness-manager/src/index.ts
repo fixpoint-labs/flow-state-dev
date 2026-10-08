@@ -48,6 +48,7 @@ export {
   harnessTaskInputSchema,
   HarnessAttemptFailed,
   HarnessAttemptSuperseded,
+  HarnessRunParked,
   HarnessRunRefused,
   RUNS,
   type ManagerOptions,
@@ -81,9 +82,13 @@ export {
   readRunRow,
   runRecordCollection,
   runRecordStateSchema,
+  heldSchema,
+  placeStateSchema,
   runTopic,
   runTopicPrefix,
   type RunRecordState,
+  type HeldRecord,
+  type PlaceState,
   type CollectionHoldingContext,
 } from "./run-record";
 
