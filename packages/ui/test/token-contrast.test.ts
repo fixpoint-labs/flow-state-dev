@@ -51,7 +51,7 @@ function contrast(a: string | Rgb, b: string | Rgb): number {
   return (hi! + 0.05) / (lo! + 0.05);
 }
 
-/** `a` blended toward `b` by `t` (0–1), per channel in sRGB, as `color-mix(in srgb, …)` and alpha compositing both do. */
+/** `a` blended toward `b` by `t` (0–1), per sRGB component, as `color-mix(in srgb, …)` and alpha compositing both do. */
 function mix(a: string, b: string, t: number): Rgb {
   const [x, y] = [hslToRgb(a), hslToRgb(b)];
   return x.map((c, i) => c * (1 - t) + y[i]! * t) as Rgb;
