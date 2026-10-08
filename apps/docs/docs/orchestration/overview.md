@@ -29,7 +29,7 @@ Read it bottom-up.
 
 **Patterns.** The common shapes are already built for you, in `@flow-state-dev/patterns`. `parallelTasks` fans out once and collects. `supervisor` adds a review step before each result is written back. `planAndExecute` re-plans across drains. Each is a thin composition over the task board. Start here; drop to the board only when your coordination doesn't match one of them.
 
-**Who does the work.** A board worker can be a plain block you wrote, a tool assigned by its catalog key, or an agent: a persona, a model, and a set of tools, declared in a skill's frontmatter and assigned board tasks by name. See [Agents](./agents) for the three and when each fits.
+**Who does the work.** A board worker is any block you register on the board: a generator with a persona and tools, or a plain handler. See [Agents](./agents).
 
 Hired workers are [Workforce](../workforce/overview): describe a roster, hire it, and register the copies. Those workers are addresses you open a session against, and names a task can be given to.
 
@@ -43,9 +43,9 @@ Which path you take depends on who decides the shape of the work.
 
 **Code-first.** You define the board in TypeScript: its workers, its initial tasks, its dependency graph. Then you mount it as a step in a flow. You know the shape of the work up front, or your code decides it. This is the `taskBoard(...)` factory.
 
-**Agent-first.** A generator decides what work to run at runtime. A skill that declares `agents:` installs a private task board, the `taskTools` capability (eight tools, `addTask` and `completeTask` among them), and a `runBoard` tool. The generator plans the work as tasks (`addTask` with an `assignee` naming one of the skill's agents, plus `deps`) and executes the whole graph by calling `runBoard`, which drains the board under concurrency and dependency gating. An assignee can also name one of the generator's own tools, which runs as a direct call with no model turn. [Authoring a delegating skill](/guides/agents-command-the-board) walks this path end to end; [Delegation](../skills/delegation) is the reference for the fields and the knobs.
+**Agent-first.** A generator decides what work to run at runtime. Give it the `taskTools` capability over a board (eight tools, `addTask` and `completeTask` among them) and it plans the work as tasks, with an `assignee` and `deps` on each, for the board's workers to take.
 
-Both paths drive the same substrate, and a worker can enqueue follow-up work mid-run either way. In a code-defined board, a worker resolves the collection with `getOrCreateTaskCollection` and calls `addTask`. Under a delegation skill, the `taskTools` resolve that skill's own board, and `runBoard` drains it.
+Both paths drive the same substrate, and a worker can enqueue follow-up work mid-run either way. In a code-defined board, a worker resolves the collection with `getOrCreateTaskCollection` and calls `addTask`. A model calls the `addTask` task tool.
 
 ## Where work blocks, and where it doesn't
 
@@ -59,14 +59,13 @@ A drain normally runs inside the request that mounted it, so every worker's task
 
 - **[Task board](./task-board)** — the primitive, its termination modes, and when to reach for it.
 - **[Configuration](./configuration)** — field catalog for `taskBoard`, `goalSeekLoop`, `createSkillsLibrary`, and `skills.with`.
-- **[Build a research team](/guides/building-a-research-team)** — a guide that goes from an empty flow to a running multi-agent board, both the code-first and agent-first way.
+- **[Build a research team](/guides/building-a-research-team)** — a guide that goes from an empty flow to a running multi-agent board.
 - **[Task substrate](./task-substrate)** — the `Task` and `TaskCollection` contracts underneath it all.
 
 ## Related pages
 
 - [Patterns overview](../patterns/overview) — the coordination patterns built on the task board.
-- [Agents](./agents) — the three things that can do a unit of work on a board.
-- [Delegation](../skills/delegation) — the agent-first path and the `taskTools` surface.
+- [Agents](./agents) — board workers and personas.
 - [Workforce](../workforce/overview) — describing workers in folders and hiring them as addressable flow copies. A hired worker is an address you open a session against, and a name you can give a task to.
 - [Mailboxes](../workforce/mailboxes) — several agents on one topic, with one durable transcript and nobody owning a row.
 - [Harness manager](./harness-manager) — a board worker that drives a coding agent to a settled verdict.

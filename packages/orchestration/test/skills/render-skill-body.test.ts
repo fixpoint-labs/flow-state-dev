@@ -12,9 +12,7 @@
  * CALL, `allowed-tools` decides nothing — `library.ts` validates the names
  * against the catalog and then contributes the whole catalog, or, under
  * `registerCatalogTools: false` (the stock worker posture), none of it. The
- * generator's own `tools:` is the boundary. (It is not inert everywhere: a
- * skill declaring `agents:` gates its delegation task seats with this list.
- * The note is silent on that, and so are these tests.)
+ * generator's own `tools:` is the boundary.
  *
  * **These tests assert the note's complete text, not patterns it must avoid.**
  * An earlier draft asserted things like `not.toMatch(/tools are available/i)`,

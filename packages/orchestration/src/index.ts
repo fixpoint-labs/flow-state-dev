@@ -5,8 +5,8 @@
  *   - Task substrate (`./tasks`) — the `Task` schema + state machine, the
  *     storage-agnostic `TaskCollection`, the dispatcher catalog, workers,
  *     loop helpers, and flow policy.
- *   - Skills (`./skills`) — user-editable `SKILL.md` folders materialized into
- *     runnable pattern boards, plus the agent-callable `taskTools` surface.
+ *   - Skills (`./skills`) — user-editable `SKILL.md` folders bound into a
+ *     generator's context, plus the agent-callable `taskTools` surface.
  *
  * The task-board primitive is a separate subpath export
  * (`@flow-state-dev/orchestration/task-board`) so a board can be pulled in
@@ -19,8 +19,8 @@
 export * from "./tasks";
 export * from "./skills";
 
-// Cross-cutting helper shared by `skills` and the `workforce` package. Lives
-// under `./shared` rather than `./skills` because neither layer owns it.
+// Cross-cutting catalog-key helper. Lives under `./shared` rather than
+// `./skills` because no one layer owns it.
 export { resolveCatalogTools } from "./shared/resolve-catalog-tools";
 
 // The frontmatter dialect the hand-written convention files share.

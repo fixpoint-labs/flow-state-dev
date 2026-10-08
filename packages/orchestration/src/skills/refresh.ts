@@ -17,7 +17,7 @@
  *    write the source, then delete every key the source does not carry. An
  *    overwrite-only refresh writes the source's files over the old ones and
  *    leaves everything else, so a supporting file WITHDRAWN upstream survives
- *    and stays reachable through `prompt-ref`. Withdrawn instructions that
+ *    and stays reachable by its path. Withdrawn instructions that
  *    outlive the withdrawal are the defect this exists to close.
  *
  * Whole-folder replacement is this path's rule and **not** `ensureSeeded`'s. A

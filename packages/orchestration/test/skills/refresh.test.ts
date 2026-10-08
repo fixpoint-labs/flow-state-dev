@@ -3,7 +3,7 @@
  *
  * The half worth testing hard is the DELETING half. An overwrite-only refresh
  * passes every "the body changed" assertion and still leaves a supporting file
- * the source withdrew sitting in the folder, reachable through `prompt-ref` —
+ * the source withdrew sitting in the folder, reachable by its path —
  * so the tests that matter here are the ones about what is gone, plus the
  * mirror-image one about `ensureSeeded` never deleting anything.
  */
@@ -42,7 +42,7 @@ describe("refreshSeededSkills", () => {
 
   // The defect the whole-folder rule exists to close: a file the source has
   // since dropped must not outlive the withdrawal. An overwrite-only refresh
-  // leaves it, and it stays resolvable through `prompt-ref`.
+  // leaves it, and it stays resolvable by its path.
   it("deletes a supporting file the source no longer carries", async () => {
     const c = createMockSkillsCollection();
     await ensureSeeded(c, [withTwoFiles]);

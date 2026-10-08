@@ -96,7 +96,7 @@ describe("createSkillsCapability", () => {
     ]);
   });
 
-  it("does not auto-compose a delegation surface via `uses` (inline-only)", () => {
+  it("composes no other capability via `uses` (inline-only)", () => {
     const cap = createSkillsCapability();
     expect(cap.uses).toBeUndefined();
   });

@@ -478,10 +478,7 @@ function seatBlockProblems(registry: Record<string, BlockDefinition<any, any>>):
  * — the worker → team → org precedence, with the first two already collapsed
  * onto the registry. What resolved there becomes a live block on
  * {@link SEAT_TOOLS_KEY}; what did not stays a NAME on `tools`, which is what
- * the kind checks its catalog against and what the delegation fence narrows a
- * board worker to. A colocated tool therefore does not travel through a
- * delegation, and that falls out of where the name landed rather than from a
- * second rule.
+ * the kind checks its catalog against.
  *
  * A `tools:` that is not an array of strings is left exactly as the author
  * wrote it: the kind's own schema is what refuses a malformed setting, and

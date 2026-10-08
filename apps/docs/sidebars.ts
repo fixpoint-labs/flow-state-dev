@@ -218,9 +218,7 @@ const sidebars: SidebarsConfig = {
           items: [
             "orchestration/goal-seek-loop",
             "orchestration/flow-policy",
-            "orchestration/context-supply",
             "skills/authoring",
-            "skills/delegation",
           ],
         },
       ],

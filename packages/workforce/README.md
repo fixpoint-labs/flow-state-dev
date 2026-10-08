@@ -622,9 +622,7 @@ both presets, and suggests selecting one of them or writing a `tools:` line. A w
 line is hired whatever its presets' tools are named, and gets exactly its list.
 
 A skill does not widen the grant: a skill's `allowed-tools` are validated against the catalog but
-never registered, and a skill's delegated workers are seated from the names the holding worker
-listed, so tools a worker got by selecting a preset, and the blocks of its packages, do not travel
-to its delegates. Everything else
+never registered. Everything else
 a capability brings — context, storage, helpers — arrives whatever `tools:` says.
 
 What does reach a worker without appearing in `tools:` is a **control**, which is framework
@@ -632,8 +630,6 @@ machinery rather than a tool from the app's catalog, switched on by the worker's
 
 - the **skill loader**, when a worker sets `skills.activateTool: true` — it pulls a skill the worker
   already holds into the turn;
-- the **delegation surface**, when a skill the worker holds declares `agents:`, which puts the task
-  board's eight tools plus `runBoard` on the worker;
 - the **controls a capability preset declares**, when the worker selects that preset in its
   `capabilities:` key — a preset's `controlTools` reach the worker even with `tools: []`.
 
@@ -1932,7 +1928,7 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
   are each refused, and nothing is half written. The same owner re-sending an id gets the row back
   (`created: false`) and its talk session bound if it wasn't.
 - **`setWorkstreams { projectId, workstreams }`** replaces the list. Members only.
-- **`setRepository { projectId, repository }`** sets, changes or clears (`null`) the repository and
+- **`setRepository { project: { visibility, id }, repository }`** sets, changes or clears (`null`) the repository and
   returns `{ project }`. Members only. Nothing else on the row moves, and of two members setting it
   at once one value is kept whole. A value must be a remote, the address you'd pass to `git clone`:
   both writes refuse a path, a value starting with `-`, a control character, a remote-helper address (`ext::…`), a user
@@ -1940,7 +1936,7 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
   repeat the value. `git@host:org/repo` and `ssh://git@host/org/repo` are accepted. Stored rows
   aren't re-parsed on read: treat a missing `repository` as `null`, or read through
   `projectRowSchema.parse`.
-- **`readProjectFiles { projectId }`** returns `{ files: [{ path, size }] }` (size in UTF-8 bytes,
+- **`readProjectFiles { project: { visibility, id } }`** returns `{ files: [{ path, size }] }` (size in UTF-8 bytes,
   never the body, since the output is logged as the tool result), the files the
   project keeps in the org's `project-files` collection (`defineProjectFilesCollection()`), at
   `project-files/<projectId>/<path>`. Members only. The collection is org-scoped, shared, lazy, and

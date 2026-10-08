@@ -32,23 +32,17 @@
 
 import { z } from "zod";
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
-import { findBundledFile } from "./internal/bundled-files";
-import { applyAgentPromptFile } from "./internal/agent-prompt-file";
-import { specsCollide } from "./internal/agent-key-reconcile";
 import type {
-  BlockContext,
   DeclaredResourceEntry,
   ResourceScope,
 } from "@flow-state-dev/core/types";
 import type { CapabilityConfigResolveCtx } from "@flow-state-dev/core/capability";
 import type {
-  AgentSpec,
   GeneratorTool,
   InitialSkill,
   ItemVisibility,
   PresetDef,
   SkillContextMode,
-  SkillFile,
   ToolCatalog,
 } from "@flow-state-dev/core";
 import { activeSkillsArraySchema } from "./active-skill-state";
@@ -64,17 +58,7 @@ import {
   type InitialSkillsSource,
 } from "./initial-skills";
 import { buildLoadCatalogContext, createLoadSkillTool } from "./load-tool";
-import { parseSkillMd, validateSkillName } from "./skill-md";
-import {
-  buildDelegationGuidance,
-  buildDelegationTools,
-  type DelegationSurfaceDeps,
-  type DelegationAgentSource,
-} from "./delegation-surface";
-import {
-  DELEGATION_BOARD_FIELD,
-  delegationBoardSchema,
-} from "./task-tools-capability";
+import { parseSkillMd, SkillAgentsRemovedError, validateSkillName } from "./skill-md";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -134,60 +118,6 @@ export interface SkillsLibraryOptions {
    * `itemVisibility`. See `createSkillsCapability` for the multi-agent rationale.
    */
   itemVisibility?: ItemVisibility | readonly ItemVisibility[];
-  /**
-   * Model id for delegation agents that don't declare their own `model:`.
-   * Falls back to a neutral default when omitted.
-   */
-  workerModelId?: string;
-  /**
-   * Lifetime task ceiling for the delegation board (FIX-931). Counts every task
-   * ever created on the board, terminal ones included, and is never refunded by
-   * draining. Default 500; `null` is explicitly unbounded.
-   *
-   * A delegation board's ledger does not survive a suspend/resume — tasks and
-   * counts start from zero after a resume. See the lifetime section in
-   * `tasks/collection/task-caps.ts`.
-   */
-  maxTotalTasks?: number | null;
-  /**
-   * Enqueue-burst ceiling for the delegation board (FIX-931): how many tasks a
-   * coordinator (or a fanning-out worker) may add while others are still
-   * `pending`. Default 100; `null` is explicitly unbounded.
-   *
-   * Checked at creation, so it refreshes as tasks drain and `pending` can sit
-   * above it. See the lifetime section in `tasks/collection/task-caps.ts`.
-   */
-  maxEnqueuedTasks?: number | null;
-  /**
-   * Agent registry for delegation agents declared with `agent-ref:`. Agents
-   * materialize at runtime (the tool surface resolves async), so registry
-   * lookups can await. A statically-`active` skill with an `agent-ref` agent
-   * and no registry fails loud at build time.
-   */
-  agentRegistry?: import("@flow-state-dev/core").AgentRegistry;
-  /** Turns a resolved Agent into a board worker generator (pairs with `agentRegistry`). */
-  materializeAgent?: import("@flow-state-dev/core").MaterializeAgentFn;
-  /** Optional capability catalog forwarded to `materializeAgent`. */
-  capabilityCatalog?: Record<string, DefinedCapability>;
-  /**
-   * Ceiling on which `catalog` keys this library may seat a DELEGATED BOARD
-   * WORKER with, resolved once per execution. Return the allowed keys; return
-   * `undefined` (the default) for no ceiling.
-   *
-   * It exists because a bound skill's `agents:` reaches the catalog through a
-   * path the host generator's own tool list does not run through: board workers
-   * are separate generators, seated from the skill's `allowed-tools` (or, when
-   * it declares none, from the whole catalog). A caller that already fences
-   * what its host may call — `registerCatalogTools: false` plus its own tool
-   * mapping — would otherwise find that fence walked around by a skill it
-   * merely *holds*, which is a wider surface than the one it granted.
-   *
-   * The ceiling only ever narrows: a key not in the catalog is still not
-   * seated, and an empty array means no catalog seats at all. It is read once
-   * per execution and is expected to be constant for that execution (a flow's
-   * config is), so the delegation build's per-execution memo stays sound.
-   */
-  toolSeatFence?: (ctx: BlockContext) => readonly string[] | undefined;
 }
 
 /** The per-generator binding configuration (`skills.with({ ... })`). */
@@ -219,31 +149,6 @@ export interface SkillsBindingConfig {
     scope: "request" | "session" | "user" | "org";
     field: string;
   };
-  /**
-   * Explicit override of the default delegation-install rule (install iff a
-   * bound skill declares `agents:`, FIX-918):
-   *
-   * - `false` — force-OFF, even when a bound skill declares `agents:`.
-   * - `true` — force-ON, even when NO skill declares `agents:` (FIX-940). The
-   *   full surface installs (board + taskTools + runBoard) with an empty roster;
-   *   its only worker is the on-demand default floor, so a skill can delegate
-   *   without hand-writing a roster. When agents ARE declared, `true` is
-   *   redundant with the default (they behave identically).
-   * - omitted — derived from the presence of `agents:`.
-   *
-   * Whenever the surface installs — rosterless or roster-carrying — the default
-   * worker is wired as the board's fallback, so a task whose `assignee` is unset
-   * runs on it instead of erroring. With agents declared, an assignee naming
-   * none of them is rejected by `addTask` up front (FIX-924), so the floor is
-   * reached deliberately rather than by a typo; a rosterless board has nothing
-   * to validate against and accepts any assignee.
-   */
-  delegation?: boolean;
-  /**
-   * Opt out of the delegation guidance context (the static "how to orchestrate"
-   * playbook + live agent roster). Default on when delegation installs.
-   */
-  guidance?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,10 +160,6 @@ interface IndexedSkill {
   contextMode: SkillContextMode;
   /** `disable-model-invocation` — the skill can't be exposed to the model. */
   disableModelInvocation?: boolean;
-  /** Declared delegation agents (FIX-918). Presence turns on delegation. */
-  agents?: Record<string, AgentSpec>;
-  /** Bundled skill files — used to resolve `prompt-ref` agent bodies at build time. */
-  files?: SkillFile[];
 }
 
 function indexInitialSkills(
@@ -278,13 +179,19 @@ function indexInitialSkills(
         allowedTools: parsed.state.allowedTools,
         contextMode: parsed.state.contextMode ?? "inline",
         disableModelInvocation: parsed.state.disableModelInvocation,
-        ...(parsed.state.agents ? { agents: parsed.state.agents } : {}),
-        ...(skill.files ? { files: skill.files } : {}),
       });
-    } catch {
-      // A malformed or invalidly-named bundled skill is a seeding-time concern;
-      // skip it here so config resolution fails loud on a binding to it (via
-      // the "unknown skill" path) rather than silently accepting it.
+    } catch (err) {
+      // A skill that declares `agents:` is refused here, at construction: the
+      // seeder would only warn and retry on every hydrate, and a skill that
+      // never seeds reads to its author as one that silently vanished.
+      if (err instanceof SkillAgentsRemovedError) {
+        throw new Error(`createSkillsLibrary(): bundled skill "${skill.name}": ${err.message}`, {
+          cause: err,
+        });
+      }
+      // Any other malformed or invalidly-named bundled skill is a seeding-time
+      // concern; skip it here so config resolution fails loud on a binding to
+      // it (via the "unknown skill" path) rather than silently accepting it.
     }
   }
   return index;
@@ -305,8 +212,6 @@ const bindingConfigSchema = z
       })
       .strict()
       .optional(),
-    delegation: z.boolean().optional(),
-    guidance: z.boolean().optional(),
   })
   // `.strict()` so a typo'd key (`actve`) fails loud instead of being silently
   // stripped and building a generator without the intended binding.
@@ -399,9 +304,7 @@ export function createSkillsLibrary(
   // the rendered `allowed-tools` note name a tool the generator never
   // registered. On THIS path the declared list never becomes a restriction —
   // nothing here narrows the generator to it, so the rendered note states it
-  // as the skill's intent and disclaims any read as a grant (FIX-1451). It is
-  // a restriction on the delegation path (`resolveToolSeats` seats exactly
-  // these keys); that is a separate question from what this generator calls.
+  // as the skill's intent and disclaims any read as a grant (FIX-1451).
   const validateDeclaredTools = (name: string): void => {
     const declared = index.get(name)?.allowedTools;
     if (!declared) return;
@@ -438,7 +341,7 @@ export function createSkillsLibrary(
     // Two buckets (FIX-1393): `tools` is the app-catalog grant, which a
     // consuming block's `tools:` fences. `controlTools` are the framework
     // controls a block only holds because its own config asked for them — the
-    // loader and the delegation surface — which the fence never touches.
+    // loader — which the fence never touches.
     const tools: GeneratorTool[] = [];
     const controlTools: GeneratorTool[] = [];
     const contextEntries: PresetDef["context"] = [];
@@ -464,7 +367,6 @@ export function createSkillsLibrary(
     }
 
     const dynamic = resolveCtx.presets.has("dynamicActivation");
-    const hasActivationPath = dynamic || Boolean(cfg.activeState);
     const contributesRuntimeTools = dynamic || Boolean(cfg.activeState && cfg.allowed);
 
     // Whole-catalog dynamic mode (no `allowed`): the load tool can select any
@@ -484,8 +386,7 @@ export function createSkillsLibrary(
     // whole catalog as a safe superset. The skill's own `allowed-tools` does
     // not scope this registration — it renders as an intent note (FIX-1451),
     // not a fence; registering the superset keeps a live post-seeding edit to
-    // that list from pointing the model at an unregistered tool. (It DOES
-    // scope delegation seats, built separately below.)
+    // that list from pointing the model at an unregistered tool.
     //
     // `registerCatalogTools: false` opts out of this registration only —
     // `validateDeclaredTools` above still runs unconditionally, so a caller
@@ -558,186 +459,14 @@ export function createSkillsLibrary(
       ownStateFields.activeSkills = activeSkillsArraySchema;
     }
 
-    // -----------------------------------------------------------------------
-    // Delegation (FIX-918) — derived from a bound skill's `agents:`.
-    // -----------------------------------------------------------------------
-    // A bound skill that declares `agents:` installs the delegation surface:
-    // a private own-state task board, the `taskTools` ledger, the `runBoard`
-    // drain, and (unless opted out) a guidance context. Delegation is
-    // board-commanded — there are NO per-agent host tools. `delegation: false`
-    // force-suppresses it.
-    //
-    // Agents materialize at RUNTIME: the contributed tool surface is an async
-    // function the generator resolves per execution with its full context, so
-    // `agent-ref` agents (async registry lookups) and runtime-activated agent
-    // skills are first-class. Static wiring errors still fail loud at build
-    // time via the validation pass below.
-    const delegationOn = cfg.delegation !== false;
-    // `delegation: true` is the explicit rosterless opt-in (FIX-940): the floor
-    // keeps the surface installed with an empty roster, and it stays installed
-    // even if the roster later empties mid-turn. Merely deriving delegation from
-    // a declared roster does NOT set this — an emptied derived roster tears the
-    // surface down as before.
-    const allowEmptyRoster = cfg.delegation === true;
-    const staticAgentSkills = delegationOn
-      ? active
-          .map((name) => ({ name, entry: index.get(name)! }))
-          .filter(
-            (s) =>
-              // A `disable-model-invocation` skill is invisible to the model —
-              // its body is suppressed even when force-bound via `active` (see
-              // render-skill-body.ts). The delegation surface (task tools +
-              // guidance roster) is model-facing too, so a disabled skill must
-              // not install it, or a draft/private skill would be reachable
-              // through addTask/runBoard.
-              !s.entry.disableModelInvocation &&
-              s.entry.agents &&
-              Object.keys(s.entry.agents).length > 0,
-          )
-      : [];
-
-    // Build-time validation for the static set — divergent same-key agents and
-    // missing wiring surface here, not mid-request. Agent keys are the board's
-    // assignee routing keys, not tool names, so they don't collide with tools —
-    // the only cross-skill hazard is two active skills declaring the same key
-    // with different specs.
-    const seenAgentSpecs = new Map<string, AgentSpec>();
-    for (const { name: skillName, entry } of staticAgentSkills) {
-      for (const [agentKey, spec] of Object.entries(entry.agents!)) {
-        // `prompt-ref` identity is the hydrated file (body + frontmatter),
-        // not the path string. Comparing the raw entry would treat two
-        // skills with the same path as identical even when the files disagree.
-        let identity = spec;
-        if (spec.promptRef !== undefined) {
-          const file = findBundledFile(entry.files, spec.promptRef);
-          if (file === undefined) {
-            throw new Error(
-              `skills: delegation agent "${agentKey}" (skill "${skillName}") declares ` +
-                `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
-            );
-          }
-          identity = applyAgentPromptFile(spec, file.content, agentKey);
-        }
-        const prior = seenAgentSpecs.get(agentKey);
-        if (prior) {
-          // Two active skills may share an agent (e.g. a common synthesizer).
-          // An IDENTICAL spec dedupes into one board worker; a different spec
-          // under the same key is a real collision.
-          if (!specsCollide(prior, identity)) continue;
-          throw new Error(
-            `skills: delegation agent "${agentKey}" (skill "${skillName}") declares a ` +
-              `different spec than another active skill's agent under the same key. Rename the agent key.`,
-          );
-        }
-        seenAgentSpecs.set(agentKey, identity);
-        if (
-          spec.agentRef !== undefined &&
-          (!options.agentRegistry || !options.materializeAgent)
-        ) {
-          throw new Error(
-            `skills: delegation agent "${agentKey}" (skill "${skillName}") uses ` +
-              `agent-ref "${spec.agentRef}", but createSkillsLibrary() was given no ` +
-              `\`agentRegistry\`/\`materializeAgent\` to resolve it with.`,
-          );
-        }
-      }
-    }
-
-    // Runtime activations can bring agents too: whole-catalog mode admits any
-    // bundled (or later-imported) skill, an `allowed` list only its entries.
-    // Own-state can't be added mid-run, so the board field is pre-declared for
-    // any binding that MIGHT resolve an agent-declaring skill (harmless if
-    // unused — it defaults to an empty record).
-    const dynamicAgentEligible =
-      hasActivationPath &&
-      (cfg.allowed
-        ? cfg.allowed.some((name) => {
-            const entry = index.get(name);
-            return Boolean(
-              entry &&
-                !entry.disableModelInvocation &&
-                entry.agents &&
-                Object.keys(entry.agents).length > 0,
-            );
-          })
-        : // Whole-catalog mode: intentionally broader than strictly needed. We
-          // can't tell yet whether any activation WILL bring agents, and own-state
-          // fields can't be added mid-run, so the board field is pre-declared
-          // defensively for any binding that MIGHT resolve one (harmless if unused —
-          // it defaults to an empty record) (FIX-928, D4).
-          true);
-    const delegationPossible =
-      delegationOn && (staticAgentSkills.length > 0 || dynamicAgentEligible || allowEmptyRoster);
-    if (delegationPossible) {
-      ownStateFields[DELEGATION_BOARD_FIELD] = delegationBoardSchema;
-    }
-
     if (Object.keys(ownStateFields).length > 0) {
       contributions.stateSchema = z.object(ownStateFields);
     }
 
-    if (delegationPossible) {
-      const surfaceDeps: DelegationSurfaceDeps = {
-        catalog,
-        ...(options.agentRegistry ? { agentRegistry: options.agentRegistry } : {}),
-        ...(options.materializeAgent
-          ? { materializeAgent: options.materializeAgent }
-          : {}),
-        ...(options.capabilityCatalog
-          ? { capabilityCatalog: options.capabilityCatalog }
-          : {}),
-        ...(options.workerModelId !== undefined
-          ? { defaultModelId: options.workerModelId }
-          : {}),
-        // Same forwarding shape as workerModelId: omit when unset so the
-        // delegation surface applies its own defaults, and pass `null` through
-        // verbatim (it is the explicit unbounded opt-out, not an omission).
-        ...(options.maxTotalTasks !== undefined
-          ? { maxTotalTasks: options.maxTotalTasks }
-          : {}),
-        ...(options.maxEnqueuedTasks !== undefined
-          ? { maxEnqueuedTasks: options.maxEnqueuedTasks }
-          : {}),
-        collectionKey,
-        location,
-        staticSources: staticAgentSkills.map(
-          ({ name, entry }): DelegationAgentSource => ({
-            skillName: name,
-            agents: entry.agents!,
-            ...(entry.files ? { files: entry.files } : {}),
-            // The skill's tool seats (FIX-925). `validateDeclaredTools` has
-            // already failed the build on a key that isn't in the catalog, so
-            // every entry reaching the board here resolves.
-            ...(entry.allowedTools ? { allowedTools: entry.allowedTools } : {}),
-          }),
-        ),
-        bundledAgentIndex: buildBundledAgentIndex(index),
-        ...(options.toolSeatFence ? { toolSeatFence: options.toolSeatFence } : {}),
-        ...(cfg.allowed ? { allowedNames: cfg.allowed } : {}),
-        dynamicEligible: dynamicAgentEligible,
-        allowEmptyRoster,
-      };
-      // The catalog superset is known now and stays fenceable. The loader plus
-      // the delegation surface (taskTools + runBoard, resolved per execution)
-      // are controls — a skill that declared `agents:` is why they are here,
-      // and `tools:` must not cut a worker off from the board it was given.
-      if (tools.length > 0) contributions.tools = [...new Set(tools)];
-      const staticControls = [...new Set(controlTools)];
-      contributions.controlTools = (async (blockCtx) => [
-        ...staticControls,
-        ...(await buildDelegationTools(blockCtx as never, surfaceDeps)),
-      ]) as PresetDef["controlTools"];
-      // Guidance context — the "how to delegate" playbook + live roster,
-      // resolved at render time so runtime activations appear too.
-      if (cfg.guidance !== false) {
-        contextEntries.push(buildDelegationGuidance(surfaceDeps) as never);
-      }
-    } else {
-      // De-dupe by identity so a tool declared by both `active` and `allowed`
-      // is contributed once.
-      if (tools.length > 0) contributions.tools = [...new Set(tools)];
-      if (controlTools.length > 0) contributions.controlTools = [...new Set(controlTools)];
-    }
+    // De-dupe by identity so a tool declared by both `active` and `allowed`
+    // is contributed once.
+    if (tools.length > 0) contributions.tools = [...new Set(tools)];
+    if (controlTools.length > 0) contributions.controlTools = [...new Set(controlTools)];
 
     // Group the reader + catalog under a single `<skills>` tag.
     contributions.context = [{ skills: contextEntries } as never];
@@ -768,36 +497,3 @@ export function createSkillsLibrary(
     },
   });
 }
-
-// ---------------------------------------------------------------------------
-// Delegation helpers (FIX-918)
-// ---------------------------------------------------------------------------
-
-/**
- * Project the bundled index down to agent-declaring skills, so a runtime
- * activation of a bundled skill materializes without a manifest read.
- *
- * `allowedTools` rides along because it is the skill's **tool seats**
- * (FIX-925), not only the rendered intent note — a bundled activation must
- * carry the same seat scope a manifest read would give it.
- */
-function buildBundledAgentIndex(
-  index: Map<string, IndexedSkill>,
-): Map<string, BundledAgentEntry> {
-  const out = new Map<string, BundledAgentEntry>();
-  for (const [name, entry] of index) {
-    if (!entry.agents || Object.keys(entry.agents).length === 0) continue;
-    out.set(name, {
-      agents: entry.agents,
-      ...(entry.files ? { files: entry.files } : {}),
-      ...(entry.allowedTools ? { allowedTools: entry.allowedTools } : {}),
-    });
-  }
-  return out;
-}
-
-/** What `buildBundledAgentIndex` projects per skill — the surface's own shape. */
-type BundledAgentEntry = Pick<
-  DelegationAgentSource,
-  "agents" | "files" | "allowedTools"
->;

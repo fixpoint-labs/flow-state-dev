@@ -499,13 +499,9 @@ describe("what a zero-configuration seat pays for", () => {
 // The fence — a seat's own skill must not widen what it can call
 // ---------------------------------------------------------------------------
 
-describe("the tools fence, against a seat's own delegating skill", () => {
-  /** A skill that declares a delegation agent, and so installs the board. */
-  const delegating = skill("delegate", "MARKER-DELEGATE: addTask then runBoard.", [
-    "agents:",
-    "  analyst:",
-    "    prompt: You analyse.",
-  ]);
+describe("the tools fence, against a seat's own skill", () => {
+  /** A skill the seat holds, invoked by slash so its body is in the turn. */
+  const held = skill("held", "MARKER-HELD: use what you have.");
 
   function countedSecret() {
     let calls = 0;
@@ -532,143 +528,17 @@ describe("the tools fence, against a seat's own delegating skill", () => {
     const { tool: secret, calls } = countedSecret();
     const kind = defineAgentWorkerFlow({ catalog: { secret } });
     const [seat] = hire(
-      [record({ id: "qa.tester", body: "You test.", skills: [delegating] })],
+      [record({ id: "qa.tester", body: "You test.", skills: [held] })],
       { [AGENT_KIND]: kind },
     );
 
     const { result } = await runTurn(
       seat!,
-      "/delegate do it",
+      "/held do it",
       answerMocks([callTool("secret"), { text: "done" }]),
     );
 
     expect(result.error).toBeUndefined();
     expect(calls()).toBe(0);
-  });
-
-  // The new exposure: the seat's OWN skill declares `agents:`, so the
-  // delegation surface installs — and a board worker must not be seated with a
-  // tool the seat's `tools:` never named.
-  it("does not seat a delegated board worker with a tool the seat never named", async () => {
-    const { tool: secret, calls } = countedSecret();
-    const kind = defineAgentWorkerFlow({ catalog: { secret } });
-    const [seat] = hire(
-      [record({ id: "qa.tester", body: "You test.", skills: [delegating] })],
-      { [AGENT_KIND]: kind },
-    );
-
-    const { result, generators } = await runTurn(
-      seat!,
-      "/delegate do it",
-      answerMocks([
-        {
-          toolCalls: [
-            {
-              toolCallId: "call-1",
-              toolName: "addTask",
-              args: { goal: "run the secret tool", assignee: "secret" },
-            },
-          ],
-        },
-        { toolCalls: [{ toolCallId: "call-2", toolName: "runBoard", args: {} }] },
-        { text: "done" },
-      ]),
-    );
-
-    expect(result.error).toBeUndefined();
-    // Nothing reached the tool. Whether `addTask` refused the assignee or the
-    // drain found no worker for it, the fence held.
-    expect(calls()).toBe(0);
-    expect(answered(generators).calls.length).toBeGreaterThan(0);
-  });
-
-  // The same fence, one layer in. A tool seat is not the only way a skill's
-  // `agents:` reaches the catalog: a DECLARED agent is a generator of its own,
-  // and its `tools:` list resolves against whatever catalog the library was
-  // built with. If the seat's fence is not applied there too, a `tools: []`
-  // worker delegates to an agent that calls what the worker itself cannot.
-  //
-  // Asserted on the tool's own `execute`, never on a registration list: a name
-  // the generator never registered resolves to a synthesized result inside the
-  // mock's tool loop instead of throwing, so a weaker assertion passes whether
-  // or not the fence holds.
-  it("does not let a declared agent call a tool the seat never named", async () => {
-    const { tool: secret, calls } = countedSecret();
-    const delegatingWithTooledAgent = skill(
-      "delegate",
-      "MARKER-DELEGATE: addTask then runBoard.",
-      ["agents:", "  analyst:", "    prompt: You analyse.", "    tools: [secret]"],
-    );
-
-    const kind = defineAgentWorkerFlow({ catalog: { secret } });
-    const [seat] = hire(
-      [record({ id: "qa.tester", body: "You test.", skills: [delegatingWithTooledAgent] })],
-      { [AGENT_KIND]: kind },
-    );
-
-    const { result } = await runTurn(seat!, "/delegate do it", {
-      ...answerMocks([
-        {
-          toolCalls: [
-            {
-              toolCallId: "call-1",
-              toolName: "addTask",
-              args: { goal: "use the secret tool", assignee: "analyst" },
-            },
-          ],
-        },
-        { toolCalls: [{ toolCallId: "call-2", toolName: "runBoard", args: {} }] },
-        { text: "done" },
-      ]),
-      // The declared agent's own generator. Scripted to reach for the tool it
-      // was handed — which is the whole question.
-      skillWorker_delegate_analyst: mockGenerator({
-        name: "skillWorker_delegate_analyst",
-        script: [
-          { toolCalls: [{ toolCallId: "call-3", toolName: "secret", args: {} }] },
-          { text: "analysed" },
-        ] as never,
-      }),
-    });
-
-    expect(result.error).toBeUndefined();
-    expect(calls()).toBe(0);
-  });
-
-  // ...and the fence narrows rather than closes: a tool the seat DID name stays
-  // assignable, or this would be a fence that just broke delegation.
-  it("still seats a board worker with a tool the seat did name", async () => {
-    const { tool: secret } = countedSecret();
-    const kind = defineAgentWorkerFlow({ catalog: { secret } });
-    const [seat] = hire(
-      [
-        record({
-          id: "qa.tester",
-          declared: { tools: ["secret"] },
-          body: "You test.",
-          skills: [delegating],
-        }),
-      ],
-      { [AGENT_KIND]: kind },
-    );
-
-    const { result } = await runTurn(
-      seat!,
-      "/delegate do it",
-      answerMocks([
-        {
-          toolCalls: [
-            {
-              toolCallId: "call-1",
-              toolName: "addTask",
-              args: { goal: "run it", assignee: "secret" },
-            },
-          ],
-        },
-        { text: "done" },
-      ]),
-    );
-
-    expect(result.error).toBeUndefined();
   });
 });

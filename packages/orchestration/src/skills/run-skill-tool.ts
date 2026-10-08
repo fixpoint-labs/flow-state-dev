@@ -169,8 +169,8 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
       if (state.contextMode !== undefined && state.contextMode !== "inline") {
         throw new Error(
           `Skill "${input.name}" was stored with \`context: ${state.contextMode}\`, ` +
-            `which was removed (FIX-918). Re-import the skill: declare \`workers:\` for ` +
-            `delegation, or expose a task-board/goalSeekLoop block as an allowed tool.`,
+            `which was removed (FIX-918). Re-import the skill without it, or expose a ` +
+            `task-board/goalSeekLoop block as an allowed tool.`,
         );
       }
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ensureSeeded } from "../../src/skills/seeding";
 import { createMockSkillsCollection } from "./mocks";
 import type { InitialSkill } from "@flow-state-dev/core";
@@ -131,28 +131,50 @@ describe("ensureSeeded", () => {
   });
 
   // Regression (FIX-918 migration): a pre-migration manifest still carrying a
-  // legacy `contextMode: "pattern"` (and no `agents`) must be re-seeded when the
-  // source SKILL.md has migrated to `agents:` — otherwise renderActiveSkillBody
-  // skips the stale non-inline manifest and the migrated body never renders.
-  it("re-seeds a stale pre-FIX-918 pattern manifest when the source migrated to agents:", async () => {
-    const agentSkill: InitialSkill = {
+  // legacy `contextMode: "pattern"` must be re-seeded once the source SKILL.md
+  // dropped it — otherwise renderActiveSkillBody skips the stale non-inline
+  // manifest and the migrated body never renders.
+  it("re-seeds a stale pre-FIX-918 pattern manifest when the source dropped the mode", async () => {
+    const migrated: InitialSkill = {
       name: "team-skill",
-      skillMd: `---\ndescription: Agent team skill\nagents:\n  briefer:\n    prompt: You write briefs.\n---\n\nPlan with addTask, then runBoard.`,
+      skillMd: `---\ndescription: Brief skill\n---\n\nWrite the brief.`,
     };
 
     const c = createMockSkillsCollection();
-    await ensureSeeded(c, [agentSkill]);
+    await ensureSeeded(c, [migrated]);
 
     // Hand-roll the stale legacy shape on a fresh (mirrored) collection.
     const c2 = createMockSkillsCollection();
     for (const [k, v] of c._store) c2._store.set(k, { ...v, state: { ...v.state } });
     const manifest = c2._store.get("skills/team-skill/SKILL.md")!;
-    manifest.state = { description: "Agent team skill", contextMode: "pattern" };
+    manifest.state = { description: "Brief skill", contextMode: "pattern" };
 
-    await ensureSeeded(c2, [agentSkill]);
+    await ensureSeeded(c2, [migrated]);
     const restored = c2._store.get("skills/team-skill/SKILL.md")!.state;
-    // Migrated: the legacy mode is gone and the agents map is now present.
     expect(restored.contextMode).toBeUndefined();
-    expect(restored.agents).toBeDefined();
+  });
+});
+
+describe("ensureSeeded — a source that still declares `agents:`", () => {
+  // A catalog resolved per execution has no construction step to refuse at,
+  // so seeding is where such a skill meets the refusal. It is not written, and
+  // the log says why — seeding never blocks a turn on one bad source.
+  it("does not seed it, and logs that `agents:` was removed, naming the skill", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const c = createMockSkillsCollection();
+      await ensureSeeded(c, [
+        {
+          name: "team-skill",
+          skillMd: `---\ndescription: Team skill\nagents:\n  briefer:\n    prompt: You write briefs.\n---\n\nPlan with addTask, then runBoard.`,
+        },
+      ]);
+      expect(c._store.has("skills/team-skill/SKILL.md")).toBe(false);
+      expect(warn.mock.calls.map((call) => String(call[0])).join("\n")).toMatch(
+        /failed to seed "team-skill": SKILL\.md `agents:` was removed from skills/,
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

@@ -164,7 +164,7 @@ To keep one, name it in the list yourself. Capabilities that expect that hand yo
 
 The rest of what a capability installs is untouched. Context formatters, resources, state schemas, and helpers arrive either way.
 
-Some capabilities also contribute **controls**: tools that are there because the block's own configuration asked for them, like the skill loader a block switches on, or the task board a delegating skill installs. A control is usually built inside the capability and never exported, so no `tools:` list could name it. Those reach the model whatever `tools:` says.
+Some capabilities also contribute **controls**: tools that are there because the block's own configuration asked for them, like the skill loader a block switches on. A control is usually built inside the capability and never exported, so no `tools:` list could name it. Those reach the model whatever `tools:` says.
 
 ## Type inference from capability declarations
 

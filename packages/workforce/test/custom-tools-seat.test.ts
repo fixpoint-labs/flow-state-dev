@@ -387,11 +387,10 @@ describe("what a seat's own map is refused for", () => {
   });
 });
 
-describe("a colocated tool does not travel through delegation", () => {
-  // The delegation fence narrows a board worker to the delegating seat's own
-  // `tools:` list. A name that resolved to the seat's own folder leaves that
-  // list, so the fence keeps its exact current meaning and a colocated tool
-  // cannot be handed to somebody else's seat.
+describe("a colocated tool stays off the catalog list", () => {
+  // `tools:` on the bag carries only the names the kind checks against its
+  // catalog. A name that resolved to the seat's own folder leaves that list
+  // and rides on `seatTools` instead.
   it("leaves only the catalog half in the bag's `tools`", () => {
     const own = countingBlock("check-inventory");
     const app = countingBlock("desk-note");

@@ -473,9 +473,9 @@ describe("claimedBy — the emission boundary (the leak this PR must not ship)",
    * genuinely stamped, and asserted on the emitted item rather than on the
    * stored row — the row is *supposed* to carry it.
    *
-   * `client: true` is set explicitly, because that is the configuration the
-   * delegation surface ships and a redaction conditional on a visibility flag
-   * would pass a test run without one.
+   * `client: true` is set explicitly, because that is the configuration a
+   * client-visible board ships with, and a redaction conditional on a
+   * visibility flag would pass a test run without one.
    */
   it("does not publish the coordinate to a client-visible change stream", async () => {
     const block = handler({

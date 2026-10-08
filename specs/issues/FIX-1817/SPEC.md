@@ -69,8 +69,10 @@ keeps taking turns, and the row above it changes only through the board.
 + await coordinator.sendAction("addTask_tasks", { goal: "Now open the PR", followUpOf: taskId }, { sessionId })
 ```
 
-The coordinator's model gets `answerTask` beside the eight task tools, and `addTask` takes
-`followUpOf`. A worker in a task session gets one tool, `parkOnQuestion`.
+The coordinator's model gets `answerTask` in its one set of task tools, and `addTask` takes
+`followUpOf`. A worker in a task session gets one tool, `parkOnQuestion`, unless the task was
+asked (filed with `waitForResponse`, [FIX-1816](../FIX-1816/BUSINESS-RULES.md#asking)): in v1 an asked colleague
+answers with what it has, or fails ([ER-22](../../epics/FIX-1815/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
 
 ## How an answer gets back
 

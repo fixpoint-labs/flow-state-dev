@@ -214,6 +214,5 @@ Surfacing more prior work costs longer prompts and more interference between unr
 
 ## See also
 
-- [Context supply](./context-supply) — the other input lever: what prior *conversation* a delegated agent inherits, versus flow policy's tool-call observations
 - [Plan and Execute](../patterns/plan-and-execute) — the default `recentTrajectory({ n: 8 })` pin lives here
 - [Supervisor](../patterns/supervisor) — pins `declaredDepsOnly`

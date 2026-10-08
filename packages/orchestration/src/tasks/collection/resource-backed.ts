@@ -252,8 +252,7 @@ function readTaskState<TInput, TOutput>(
  * every `resolveResourceCollection` call, so instance identity buys
  * per-request and per-scope-instance isolation for free — two sessions,
  * users, or orgs holding a same-named board get separate records. A string
- * key would merge them. Same keying as `skills/seeding.ts` and
- * `skills/internal/delegation-memo.ts`.
+ * key would merge them. Same keying as `skills/seeding.ts`.
  *
  * A `WeakMap` because the record's lifetime is the collection handle's: when
  * the execution context is collected, so is the record. Nothing to clear on

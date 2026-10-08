@@ -702,7 +702,7 @@ describe("a project's repository", () => {
     const without = ({ repository, ...rest }: Record<string, unknown>) => rest;
 
     for (const repository of ["https://github.com/acme/storefront.git", "git@github.com:acme/shop.git", null]) {
-      const out = await h.ok("bob", "lab", bobLab, "setRepository", { projectId: "apollo", repository });
+      const out = await h.ok("bob", "lab", bobLab, "setRepository", { project: { visibility: "shared", id: "apollo" }, repository });
       expect(out.project.repository).toBe(repository);
       const row = (await h.inspectRow("apollo")).row;
       expect(row.repository).toBe(repository);
@@ -748,7 +748,7 @@ describe("a project's repository", () => {
     const before = (await h.inspectRow("apollo")).row;
     const lab = await h.openSession("alice", "lab");
     for (const [what, repository] of REFUSED_REPOSITORIES) {
-      const set = await h.act("alice", "lab", lab, "setRepository", { projectId: "apollo", repository });
+      const set = await h.act("alice", "lab", lab, "setRepository", { project: { visibility: "shared", id: "apollo" }, repository });
       const create = await h.act("alice", "lab", lab, "createProject", { id: "fresh", title: "Fresh", repository });
       for (const result of [set, create]) {
         expect(result.settled, what).not.toBe("completed");
@@ -765,7 +765,7 @@ describe("a project's repository", () => {
     await apollo(h);
     const lab = await h.openSession("alice", "lab");
     for (const [i, repository] of ACCEPTED_REPOSITORIES.entries()) {
-      const set = await h.ok("alice", "lab", lab, "setRepository", { projectId: "apollo", repository });
+      const set = await h.ok("alice", "lab", lab, "setRepository", { project: { visibility: "shared", id: "apollo" }, repository });
       expect(set.project.repository).toBe(repository);
       const created = await h.ok("alice", "lab", lab, "createProject", { id: `p${i}`, title: "P", repository });
       expect(created.project.repository).toBe(repository);
@@ -805,7 +805,7 @@ describe("a project's repository", () => {
     const resent = await h.ok("alice", "lab", lab, "createProject", { id: "old", title: "Old" });
     expect(resent).toMatchObject({ created: false, project: { id: "old", repository: null } });
 
-    const written = await h.ok("alice", "lab", lab, "setRepository", { projectId: "old", repository: "git@github.com:acme/old.git" });
+    const written = await h.ok("alice", "lab", lab, "setRepository", { project: { visibility: "shared", id: "old" }, repository: "git@github.com:acme/old.git" });
     expect(written.project).toMatchObject({ id: "old", title: "Old", ownerUserId: "alice", repository: "git@github.com:acme/old.git" });
   });
 
@@ -821,8 +821,8 @@ describe("a project's repository", () => {
     // write `sessions` on the same row, so every write contends with the rest.
     const outcomes = await Promise.all([
       ...people.flatMap((user, i) => [
-        h.act(user, "lab", labs[i]!, "setRepository", { projectId: "race", repository: values[i] }),
-        h.act(user, "lab", labs[i]!, "setRepository", { projectId: "race", repository: values[i] })
+        h.act(user, "lab", labs[i]!, "setRepository", { project: { visibility: "shared", id: "race" }, repository: values[i] }),
+        h.act(user, "lab", labs[i]!, "setRepository", { project: { visibility: "shared", id: "race" }, repository: values[i] })
       ]),
       ...people.map((user, i) => h.act(user, MAILBOX_KIND, talks[i]!, "join", { projectId: "race" }))
     ]);
@@ -839,12 +839,12 @@ describe("a project's repository", () => {
     const before = (await h.inspectRow("apollo")).row;
     const malloryLab = await h.openSession("mallory", "lab");
     const outsider = await h.act("mallory", "lab", malloryLab, "setRepository", {
-      projectId: "apollo",
+      project: { visibility: "shared", id: "apollo" },
       repository: "https://github.com/mallory/evil.git"
     });
     expect(outsider.settled).not.toBe("completed");
     expect(refusal(outsider)).toContain("not-a-member");
-    const nowhere = await h.act("mallory", "lab", malloryLab, "setRepository", { projectId: "nope", repository: null });
+    const nowhere = await h.act("mallory", "lab", malloryLab, "setRepository", { project: { visibility: "shared", id: "nope" }, repository: null });
     expect(refusal(nowhere)).toContain("no-such-project");
     expect((await h.inspectRow("apollo")).row).toEqual(before);
     expect((await h.inspectRow("nope")).row).toBeNull();
@@ -869,14 +869,14 @@ describe("a project's files", () => {
     await h.ok("alice", "lab", lab, "seedProjectFile", { key: "apollo2/plan.md", content: "not apollo's" });
 
     const bobLab = await h.openSession("bob", "lab");
-    const read = await h.ok("bob", "lab", bobLab, "readProjectFiles", { projectId: "apollo" });
+    const read = await h.ok("bob", "lab", bobLab, "readProjectFiles", { project: { visibility: "shared", id: "apollo" } });
     // Path and UTF-8 byte size only: the output is logged as the tool result, so a body never rides in it.
     expect([...read.files].sort((a: { path: string }, b: { path: string }) => a.path.localeCompare(b.path))).toEqual([
       { path: "notes.md", size: 7 },
       { path: "src/index.ts", size: 10 }
     ]);
     expect(JSON.stringify(read)).not.toContain("# Notes");
-    expect((await h.ok("alice", "lab", lab, "readProjectFiles", { projectId: "apollo2" })).files).toEqual([
+    expect((await h.ok("alice", "lab", lab, "readProjectFiles", { project: { visibility: "shared", id: "apollo2" } })).files).toEqual([
       { path: "plan.md", size: 12 }
     ]);
   });
@@ -886,7 +886,7 @@ describe("a project's files", () => {
     await apollo(h);
     const lab = await h.openSession("alice", "lab");
     await h.ok("alice", "lab", lab, "seedProjectFile", { key: "apollo/café.md", content: "café" });
-    expect((await h.ok("alice", "lab", lab, "readProjectFiles", { projectId: "apollo" })).files).toEqual([
+    expect((await h.ok("alice", "lab", lab, "readProjectFiles", { project: { visibility: "shared", id: "apollo" } })).files).toEqual([
       { path: "café.md", size: 5 }
     ]);
   });
@@ -898,11 +898,11 @@ describe("a project's files", () => {
     await h.ok("alice", "lab", lab, "seedProjectFile", { key: "apollo/notes.md", content: "secret plan" });
 
     const malloryLab = await h.openSession("mallory", "lab");
-    const outsider = await h.act("mallory", "lab", malloryLab, "readProjectFiles", { projectId: "apollo" });
+    const outsider = await h.act("mallory", "lab", malloryLab, "readProjectFiles", { project: { visibility: "shared", id: "apollo" } });
     expect(outsider.settled).not.toBe("completed");
     expect(refusal(outsider)).toContain("not-a-member");
     expect(refusal(outsider)).not.toContain("secret plan");
-    expect(refusal(await h.act("mallory", "lab", malloryLab, "readProjectFiles", { projectId: "nope" }))).toContain(
+    expect(refusal(await h.act("mallory", "lab", malloryLab, "readProjectFiles", { project: { visibility: "shared", id: "nope" } }))).toContain(
       "no-such-project"
     );
     expect((await h.call("GET", "mallory", ["sessions", malloryLab, "resources", "project-files"])).status).toBe(403);

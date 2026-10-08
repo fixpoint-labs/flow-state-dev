@@ -219,9 +219,9 @@ describe("projectWorkspace", () => {
       projectId: "storefront"
     });
 
-    await h.run("alice", "lab", "setRepository", { projectId: "storefront", repository: "git@github.com:acme/shop.git" });
+    await h.run("alice", "lab", "setRepository", { project: { visibility: "shared", id: "storefront" }, repository: "git@github.com:acme/shop.git" });
     expect((await h.run("alice", "lab", "askSource", {})).answer).toMatchObject({ kind: "repo", repo: "git@github.com:acme/shop.git" });
-    await h.run("alice", "lab", "setRepository", { projectId: "storefront", repository: null });
+    await h.run("alice", "lab", "setRepository", { project: { visibility: "shared", id: "storefront" }, repository: null });
     expect((await h.run("alice", "lab", "askSource", {})).answer).toEqual({ kind: "files", projectId: "storefront" });
   });
 

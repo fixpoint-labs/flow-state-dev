@@ -43,23 +43,6 @@ describe("skillStateSchema", () => {
       skillStateSchema.parse({ description: "x", custom: "anything" }),
     ).not.toThrow();
   });
-
-  // The schema is intentionally permissive (passthrough) so it never drops
-  // author-declared fields the framework hasn't explicitly modeled. A
-  // delegation skill's `agents:` map (FIX-918) must survive a parse
-  // round-trip rather than being wiped by state normalization.
-  it("round-trips a delegation `agents` map via passthrough", () => {
-    const state = {
-      description: "Multi-angle research",
-      contextMode: "inline" as const,
-      agents: {
-        analyst: { promptRef: "./reference/analyst.md" },
-      },
-    };
-    const parsed = skillStateSchema.parse(state);
-    expect(parsed.contextMode).toBe("inline");
-    expect((parsed as { agents?: unknown }).agents).toEqual(state.agents);
-  });
 });
 
 describe("skillFileKey", () => {
@@ -69,8 +52,8 @@ describe("skillFileKey", () => {
     );
   });
 
-  // Regression: a pattern-skill worker spec with `prompt-ref: ./reference/x.md`
-  // was producing `comp-analysis/./reference/x.md` and missing the seeded file.
+  // Regression: a reference to `./reference/x.md` was producing
+  // `comp-analysis/./reference/x.md` and missing the seeded file.
   it("strips leading './' so authors can use either form", () => {
     expect(skillFileKey("comp-analysis", "./reference/x.md")).toBe(
       "comp-analysis/reference/x.md",
