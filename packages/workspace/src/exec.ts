@@ -38,6 +38,8 @@ export interface RunOptions {
    */
   signal?: AbortSignal;
   maxBuffer?: number;
+  /** Written to the process's standard input, which is then closed. */
+  input?: string | Uint8Array;
 }
 
 /** Run `file` with `args`, resolving with its output or rejecting on a non-zero exit. */
@@ -46,13 +48,15 @@ export async function run(
   args: string[],
   options: RunOptions,
 ): Promise<{ stdout: string; stderr: string }> {
-  const result = await execFileAsync(file, args, {
+  const pending = execFileAsync(file, args, {
     cwd: options.cwd,
     timeout: options.timeoutMs,
     maxBuffer: options.maxBuffer ?? 8 * 1024 * 1024,
     env: options.env === undefined ? process.env : { ...process.env, ...options.env },
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
+  if (options.input !== undefined) pending.child.stdin?.end(options.input);
+  const result = await pending;
   return { stdout: String(result.stdout), stderr: String(result.stderr) };
 }
 

@@ -41,19 +41,42 @@
  * other rather than racing. The lock and marker names start with `.`, and a
  * place segment may not, so no place is ever named over them.
  *
- * Checkpoint and restore are declared and do nothing yet: holding a
- * repository's uncommitted work across a lost machine is a later slice, and
- * the seam is here so that slice adds behaviour rather than a method.
+ * **Held work is off unless the operator gives the host a held-work store**
+ * (`heldWork`). With one, and a source that names a `heldPrefix` for a run cut
+ * from a remote, `checkpoint` holds the run's commits and files in the store
+ * and `provision` rebuilds a lost checkout from them (`./held-work`). Without
+ * either, neither does anything, and the host is what it was:
+ *
+ * ```
+ * <root>/.host-id                   this host's identity; hosts sharing a root share it
+ * <root>/<place…>/held/             a held snapshot laid out for a person, after a mismatch
+ * <root>/<place…>/checkout.stale-…  a checkout another host's record replaced, kept
+ * ```
  */
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
+import {
+  asideName,
+  assertHeldPrefix,
+  type Git,
+  HeldWorkMismatchError,
+  type HeldWork,
+  type HeldWorkMismatchField,
+  type HeldWorkStore,
+  packFromBase,
+  placeKeyPrefix,
+  type RecordedHold,
+  scratchDir,
+  sha256,
+  snapshotWorkingTree,
+} from "./held-work";
 import { createHostPlace } from "./host-place";
 import { acquireLock, HOST_LOCK_BOUNDS, releaseLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
 import { allowedProtocols, checkRemote, redactRemote, type AllowedRemote } from "./remotes";
-import type { RunFiles, RunSource, RunSourceAnswer } from "./run-source";
+import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport, Place } from "./types";
 import { gitAnsweredNo, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
 
@@ -81,6 +104,10 @@ const PROVISIONING_MARKER = ".checkout.provisioning";
  */
 const LOCAL_MARKER_SUFFIX = ".provisioning";
 const LOCAL_LOCK_SUFFIX = ".place.lock";
+/** This host's identity, in its root. Dot-prefixed, so no place is named over it. */
+const HOST_ID_FILE = ".host-id";
+/** Where a held snapshot is laid out for a person, beside the checkout. */
+const HELD_DIR = "held";
 
 /**
  * The host would not provision this run, and says why — before anything was
@@ -130,6 +157,17 @@ export interface LocalWorkspaceHostOptions {
   provisionTimeoutMs?: number;
   /** The clock the provision budget is measured on. For tests. */
   now?: () => number;
+  /**
+   * Where a run's held work goes. Absent by default, and then holding is off:
+   * `checkpoint` returns `null` and starts no process, and `provision` does
+   * what it always did, except that it rejects a recorded hold it cannot use
+   * (`HeldWorkMismatchError`, `field: "disabled"`).
+   *
+   * With a store, a repository run cut from a remote whose source names a
+   * `heldPrefix` is held at each `checkpoint`, and rebuilt from it by
+   * `provision` on any host sharing the store.
+   */
+  heldWork?: HeldWorkStore;
 }
 
 /** Which place a run gets, named by its caller. */
@@ -152,7 +190,41 @@ export interface PlaceRequest {
    * left out of the kept files: `save` never writes it to the collection.
    */
   ignored?: IgnoredDirectory;
+  /**
+   * What the run's record says about the place, from an earlier provision.
+   * Omitted on a first provision, and on a record written before held work
+   * existed: the place is provisioned as it always was.
+   */
+  recorded?: RecordedPlace;
+  /**
+   * Told when the recorded place is not live here (`lost`), and when the
+   * host starts rebuilding it from held work (`restoring`), so the caller
+   * can record each before it happens. Awaited.
+   */
+  progress?: (state: "lost" | "restoring") => void | Promise<void>;
 }
+
+/** What a run's record says about its place. Every field may be absent. */
+export interface RecordedPlace {
+  /** The host the place was last ready on. See `WorkspaceHost.hostId`. */
+  host?: string | null;
+  /** The run's last hold, as `checkpoint` returned it. */
+  held?: RecordedHold | null;
+  /** The remote the run was cut from. A rebuild refuses another (`field: "remote"`). */
+  remote?: string | null;
+  /** The run's branch. A rebuild refuses another (`field: "branch"`). */
+  branch?: string | null;
+  /** The branch the run was cut from, for a hold on a place provisioned before holding was on. */
+  baseRef?: string | null;
+}
+
+/**
+ * Where a repository place came from. `new`: cut for the first time. `live`:
+ * on this host already, handed back as it was. `held`: rebuilt from held
+ * work. `base`: recorded elsewhere with nothing held, so cut again from the
+ * base.
+ */
+export type PlaceOrigin = "new" | "live" | "held" | "base";
 
 /** A provisioned place. Hand it back to `save`, `checkpoint`, `restore` and `release`. */
 export interface WorkspacePlace {
@@ -187,6 +259,25 @@ export interface WorkspacePlace {
     /** The commit it was cut at. Only when `created`, and only for a clone. */
     baseCommit?: string;
   };
+  /** Where a repository place came from. */
+  origin?: PlaceOrigin;
+  /**
+   * Present only when holding applies to this place: the host has a held-work
+   * store, the source named a `heldPrefix`, and the branch came from a remote.
+   */
+  holding?: {
+    /** Every key this place's holds use starts with it. */
+    keyPrefix: string;
+    /** The commit holds pack from. */
+    base: string;
+    /** The host that provisioned it. */
+    host: string;
+  };
+  /**
+   * Where a held snapshot was laid out beside the checkout, after its owner
+   * answered a mismatch. Absent when it could not be read.
+   */
+  heldDir?: string;
 }
 
 /** Provision, save and release the places runs work in. */
@@ -207,7 +298,9 @@ export interface WorkspaceHost {
    * Make (or hand back) the place for one run.
    *
    * Rejects with a `WorkspaceRefusedError` for a refused source or remote,
-   * before any git process or directory exists.
+   * before any git process or directory exists. Rejects with a
+   * `HeldWorkMismatchError` when the recorded held work disagrees with the
+   * record or this host cannot use it, with nothing held changed.
    */
   provision(answer: RunSourceAnswer, request: PlaceRequest): Promise<WorkspacePlace>;
   /**
@@ -217,9 +310,33 @@ export interface WorkspaceHost {
    * are the newer provision's to save.
    */
   save(place: WorkspacePlace): Promise<FlushReport>;
-  /** Hold uncommitted repository work durably. Declared for a later slice; does nothing yet. */
-  checkpoint(place: WorkspacePlace): Promise<void>;
-  /** Bring held work back to a lost place. Declared for a later slice; does nothing yet. */
+  /**
+   * This host's identity: kept in `<root>/.host-id`, so hosts sharing a root
+   * share it. Record it as the place's host.
+   */
+  hostId(): string;
+  /** Whether holding applies to a run with this answer. `false` on a host with no held-work store. */
+  holds(answer: RunSourceAnswer): boolean;
+  /**
+   * Hold the place's work: snapshot its working tree on top of its head, pack
+   * every object from its base to that snapshot, and `put` the pack under a
+   * new key. Writes no ref, never touches the checkout's own index, and never
+   * contacts the remote.
+   *
+   * `null` unless holding applies to the place. When the snapshot equals
+   * `recorded`'s, nothing is written and the result says `unchanged`.
+   * Record the result after this resolves, then `dropHeld` the key it replaced.
+   */
+  checkpoint(
+    place: WorkspacePlace,
+    recorded?: Pick<HeldWork, "snapshot" | "sha256" | "bytes"> | null,
+  ): Promise<HeldWork | null>;
+  /**
+   * Delete one held pack of this place. Refuses a key outside the place's
+   * prefix; resolves when the key is already gone.
+   */
+  dropHeld(place: WorkspacePlace, key: string): Promise<void>;
+  /** Does nothing: `provision` rebuilds a lost place from held work. */
   restore(place: WorkspacePlace): Promise<void>;
   /**
    * Let the place go. The directory is kept; the live link to its kept files
@@ -251,10 +368,59 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   const holders = new Map<string, string>();
   /** The tail of each place's and each clone's queue, in this process. */
   const queues = new Map<string, Promise<unknown>>();
+  const heldWork = options.heldWork;
+  let id: string | undefined;
 
   async function git(cwd: string, args: string[], timeoutMs: number): Promise<string> {
     const { stdout } = await run("git", args, { cwd, timeoutMs, env });
     return stdout.trim();
+  }
+
+  /** Git for held work: one budget, extra environment and input per call. */
+  function heldGit(left: () => number): Git {
+    return async (cwd, args, extra) => {
+      const { stdout } = await run("git", args, {
+        cwd,
+        timeoutMs: left(),
+        env: { ...env, ...extra?.env },
+        ...(extra?.input !== undefined ? { input: extra.input } : {}),
+      });
+      return stdout.trim();
+    };
+  }
+
+  /**
+   * This host's identity, made once and kept in the root. Written to a
+   * temporary file and linked into place, so a host reading it never sees a
+   * partial id, and two hosts racing to make it agree on the first.
+   */
+  function hostId(): string {
+    if (id !== undefined) return id;
+    mkdirSync(root, { recursive: true });
+    const path = join(root, HOST_ID_FILE);
+    if (!existsSync(path)) {
+      const temporary = `${path}.${randomUUID()}`;
+      writeFileSync(temporary, randomUUID());
+      try {
+        linkSync(temporary, path);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      } finally {
+        rmSync(temporary, { force: true });
+      }
+    }
+    id = readFileSync(path, "utf8").trim();
+    return id;
+  }
+
+  /** Holding applies: a store, a prefix, and a branch cut from a remote. */
+  function holds(answer: RunSourceAnswer): boolean {
+    return (
+      heldWork !== undefined &&
+      answer.kind === "repo" &&
+      answer.heldPrefix !== undefined &&
+      localRepository(answer.repo) === undefined
+    );
   }
 
   /**
@@ -584,16 +750,44 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         );
       }
       const repo = await provisionLocalCheckout(local, answer.baseRef, dir, branch, request.ignored, deadline);
-      return { kind: "repo", dir, cwd: dir, repo };
+      return { kind: "repo", dir, cwd: dir, repo, origin: repo.created ? "new" : "live" };
     }
 
     // Judged before anything is created or spawned.
     const remote = checkRemote(answer.repo, allow);
     if ("reason" in remote) throw new WorkspaceRefusedError(remote.reason, remote.message);
 
+    const holding = holds(answer);
+    if (holding) assertHeldPrefix(answer.heldPrefix!);
+    // **A hold this host cannot use waits for a person**, rather than the run
+    // starting over from its base and losing the turns that were held. Only
+    // where the run has no live checkout here, so the attempt the owner's
+    // answer starts is not stopped again; and not once the owner has answered.
+    const held = request.recorded?.held;
+    if (heldWork === undefined && held != null && held.parked !== true && !existsSync(join(dir, CHECKOUT_DIR, ".git"))) {
+      throw new HeldWorkMismatchError(
+        "disabled",
+        `the run's work is held (${held.key}), but this host has no held-work store to rebuild it ` +
+          `from. Not starting it over from its base: that would drop the held work.`,
+      );
+    }
+
     return await locked(join(dir, LOCK_SUFFIX), deadline, async () => {
-      const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline);
-      const place: WorkspacePlace = { kind: "repo", dir, cwd: join(dir, CHECKOUT_DIR), repo };
+      let repo: NonNullable<WorkspacePlace["repo"]>;
+      let origin: PlaceOrigin;
+      let extra: Pick<WorkspacePlace, "holding" | "heldDir"> = {};
+      if (holding) {
+        const made = await provisionHolding(answer as RepoRunSource & { heldPrefix: string }, remote, request, dir, branch, deadline);
+        ({ repo, origin } = made);
+        extra = {
+          holding: { keyPrefix: placeKeyPrefix(answer.heldPrefix!, request.place), base: made.base, host: hostId() },
+          ...(made.heldDir !== undefined ? { heldDir: made.heldDir } : {}),
+        };
+      } else {
+        repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline);
+        origin = repo.created ? "new" : "live";
+      }
+      const place: WorkspacePlace = { kind: "repo", dir, cwd: join(dir, CHECKOUT_DIR), repo, origin, ...extra };
       if (answer.projectId !== undefined && answer.files !== undefined) {
         await provisionFiles(dir, PROJECT_DIR, answer.projectId, answer.files);
         place.filesDir = join(dir, PROJECT_DIR);
@@ -601,6 +795,198 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       }
       return place;
     });
+  }
+
+  /**
+   * Provision a place holding applies to: hand back the live one, cut a new
+   * one, or rebuild a lost one from what the record says was held. Called
+   * holding the place's lock.
+   */
+  async function provisionHolding(
+    answer: RepoRunSource & { heldPrefix: string },
+    remote: AllowedRemote,
+    request: PlaceRequest,
+    dir: string,
+    branch: string,
+    deadline: number,
+  ): Promise<{ repo: NonNullable<WorkspacePlace["repo"]>; origin: PlaceOrigin; base: string; heldDir?: string }> {
+    const recorded = request.recorded;
+    const held = recorded?.held ?? null;
+    const checkout = join(dir, CHECKOUT_DIR);
+    const keyPrefix = placeKeyPrefix(answer.heldPrefix, request.place);
+    const left = () => remainingBudget(deadline, now);
+
+    // Checked before anything moves: a mismatch changes nothing.
+    if (recorded?.remote != null && recorded.remote !== answer.repo) {
+      throw mismatch("remote", `the run's record names another remote than "${redactRemote(answer.repo)}".`);
+    }
+    if (recorded?.branch != null && recorded.branch !== branch) {
+      throw mismatch("branch", `the run's record names branch "${recorded.branch}", not "${branch}".`);
+    }
+    if (held !== null && !(held.key.startsWith(keyPrefix) && !held.key.slice(keyPrefix.length).includes("/"))) {
+      throw mismatch("scope", `the recorded held work (${held.key}) is not under this run's prefix (${keyPrefix}).`);
+    }
+
+    // **Live here: used as it is**, exactly as without holding. So is a place
+    // the record has never named: a first provision, or a record from before
+    // holding was on.
+    const live = existsSync(join(checkout, ".git"));
+    if (recorded?.host == null || (recorded.host === hostId() && live)) {
+      const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline);
+      const base =
+        repo.baseCommit ?? held?.base ?? (await mergeBase(checkout, recorded?.baseRef ?? answer.baseRef, left));
+      return { repo, origin: repo.created ? "new" : "live", base };
+    }
+
+    // **Lost**: recorded on another host, or gone from this one. A checkout
+    // here is moved aside and kept, never deleted.
+    await request.progress?.("lost");
+    if (existsSync(checkout)) renameSync(checkout, asideName(checkout, now()));
+    const clone = join(root, CLONES_DIR, `${remote.cloneKey}.git`);
+    const cloneLock = join(root, CLONES_DIR, `${remote.cloneKey}${LOCK_SUFFIX}`);
+
+    if (held === null || held.parked === true) {
+      // Nothing held, or held work its owner has answered for: start again
+      // from the base, and lay the snapshot out beside the checkout.
+      if (existsSync(clone)) await locked(cloneLock, deadline, () => branchAside(clone, branch, [], left));
+      const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline);
+      let heldDir: string | undefined;
+      if (held !== null) {
+        heldDir = await locked(cloneLock, deadline, () => layOutHeld(clone, held, dir, left)).catch(() => undefined);
+      }
+      return { repo, origin: "base", base: repo.baseCommit!, ...(heldDir !== undefined ? { heldDir } : {}) };
+    }
+
+    await request.progress?.("restoring");
+    await locked(cloneLock, deadline, async () => {
+      const made = await ensureClone(remote, clone, left);
+      if (!made.fresh) await refresh(clone, remote, left);
+      await unpackHeld(clone, held, left);
+      await rebuild(clone, checkout, branch, held, left);
+    });
+    return {
+      repo: {
+        remote: remote.url,
+        clone,
+        branch,
+        created: true,
+        ...(answer.baseRef !== undefined ? { baseRef: answer.baseRef } : {}),
+        baseCommit: held.base,
+      },
+      origin: "held",
+      base: held.base,
+    };
+  }
+
+  /**
+   * Add the recorded pack's objects to the clone, checking it is the pack the
+   * record names and that it holds the commits the record names.
+   */
+  async function unpackHeld(clone: string, held: RecordedHold, left: () => number): Promise<void> {
+    const g = heldGit(left);
+    if (!(await hasCommit(g, clone, held.base))) {
+      throw mismatch("base", `the run's base commit ${held.base} is not on the remote.`);
+    }
+    const bytes = await heldWork!.get(held.key);
+    if (bytes === undefined) throw mismatch("pack", `the held pack ${held.key} is missing from the held-work store.`);
+    if (sha256(bytes) !== held.sha256) {
+      throw mismatch("pack", `the held pack ${held.key} is not the one recorded: its hash differs.`);
+    }
+    try {
+      await g(clone, ["index-pack", "--stdin"], { input: bytes });
+    } catch {
+      throw mismatch("pack", `the held pack ${held.key} could not be read as a git pack.`);
+    }
+    if (!(await hasCommit(g, clone, held.head))) {
+      throw mismatch("head", `the run's head commit ${held.head} is in neither the held pack nor the remote.`);
+    }
+    if (!(await hasCommit(g, clone, held.snapshot)) || (await g(clone, ["rev-parse", `${held.snapshot}^`])) !== held.head) {
+      throw mismatch("snapshot", `the held snapshot ${held.snapshot} is not in the held pack on top of the run's head.`);
+    }
+  }
+
+  /**
+   * Cut the branch at the base, check the snapshot's tree out over it, and
+   * move the branch to the head with the changes left unstaged. Undone when
+   * the rebuilt tree is not the snapshot's.
+   */
+  async function rebuild(
+    clone: string,
+    checkout: string,
+    branch: string,
+    held: RecordedHold,
+    left: () => number,
+  ): Promise<void> {
+    const g = heldGit(left);
+    await branchAside(clone, branch, [held.base, held.head], left);
+    mkdirSync(dirname(checkout), { recursive: true });
+    await g(clone, ["worktree", "add", "--quiet", "-B", branch, checkout, held.base]);
+    const scratch = scratchDir();
+    try {
+      await g(checkout, ["read-tree", "-u", "--reset", held.snapshot]);
+      // `read-tree` moved the files, not the branch. This moves the branch
+      // from the base to the head, and the index with it, and leaves the
+      // files alone: the run's changes read as unstaged, new files as
+      // untracked.
+      await g(checkout, ["reset", "--quiet", "--mixed", held.head]);
+      const rebuilt = await snapshotWorkingTree(g, checkout, scratch);
+      const expected = await g(clone, ["rev-parse", `${held.snapshot}^{tree}`]);
+      if (rebuilt.tree !== expected || rebuilt.head !== held.head) {
+        throw mismatch("tree", `the rebuilt checkout does not match the held snapshot ${held.snapshot}.`);
+      }
+    } catch (error) {
+      rmSync(checkout, { recursive: true, force: true });
+      await g(clone, ["worktree", "prune"]).catch(() => undefined);
+      await g(clone, ["branch", "-D", branch]).catch(() => undefined);
+      throw error;
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }
+
+  /**
+   * Lay the held snapshot out in `<dir>/held/` for a person to pick from.
+   * Rejects when the pack cannot be read.
+   */
+  async function layOutHeld(clone: string, held: RecordedHold, dir: string, left: () => number): Promise<string> {
+    await unpackHeld(clone, held, left);
+    const g = heldGit(left);
+    const heldDir = join(dir, HELD_DIR);
+    if (existsSync(heldDir)) renameSync(heldDir, asideName(heldDir, now()));
+    mkdirSync(heldDir, { recursive: true });
+    const scratch = scratchDir();
+    try {
+      const index = { GIT_INDEX_FILE: join(scratch, "index") };
+      await g(clone, ["read-tree", held.snapshot], { env: index });
+      await g(clone, [`--work-tree=${heldDir}`, "checkout-index", "--all", "--force"], { env: index });
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+    return heldDir;
+  }
+
+  /**
+   * Rename the clone's `branch` aside, unless it is absent or points at one
+   * of `keep`. What this host held on it from an earlier stay is kept, never
+   * deleted.
+   */
+  async function branchAside(clone: string, branch: string, keep: string[], left: () => number): Promise<void> {
+    const g = heldGit(left);
+    await g(clone, ["worktree", "prune"]);
+    let tip: string;
+    try {
+      tip = await g(clone, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+    } catch (error) {
+      if (gitAnsweredNo(error)) return;
+      throw error;
+    }
+    if (keep.includes(tip)) return;
+    await g(clone, ["branch", "-m", branch, asideName(branch, now())]);
+  }
+
+  /** The base of a place provisioned before holding was on: where its branch left the remote's. */
+  async function mergeBase(checkout: string, baseRef: string | null | undefined, left: () => number): Promise<string> {
+    return await heldGit(left)(checkout, ["merge-base", "HEAD", `refs/remotes/origin/${baseRef ?? "HEAD"}`]);
   }
 
   /** Make this provision the one a directory's kept files answer to. */
@@ -635,7 +1021,49 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     locate,
     provision,
     save,
-    async checkpoint() {},
+    hostId,
+    holds,
+    async checkpoint(place, recorded) {
+      const holding = place.holding;
+      if (heldWork === undefined || holding === undefined || place.kind !== "repo") return null;
+      const deadline = now() + provisionTimeoutMs;
+      return await locked(join(place.dir, LOCK_SUFFIX), deadline, async () => {
+        const g = heldGit(() => remainingBudget(deadline, now));
+        const scratch = scratchDir();
+        try {
+          const snap = await snapshotWorkingTree(g, place.cwd, scratch);
+          const common = {
+            base: holding.base,
+            head: snap.head,
+            snapshot: snap.snapshot,
+            key: `${holding.keyPrefix}${snap.snapshot}.pack`,
+            skipped: snap.skipped,
+          };
+          // The same snapshot is the same key: putting it again would rewrite
+          // the live pack, and the caller's drop of "the previous key" would
+          // then delete it.
+          if (recorded != null && recorded.snapshot === snap.snapshot) {
+            return { ...common, sha256: recorded.sha256, bytes: recorded.bytes, unchanged: true };
+          }
+          const pack = await packFromBase(g, place.cwd, holding.base, snap.snapshot, scratch);
+          await heldWork.put(common.key, pack);
+          return { ...common, sha256: sha256(pack), bytes: pack.byteLength, unchanged: false };
+        } finally {
+          rmSync(scratch, { recursive: true, force: true });
+        }
+      });
+    },
+    async dropHeld(place, key) {
+      const holding = place.holding;
+      if (heldWork === undefined || holding === undefined) {
+        throw new Error(`holding does not apply to the place at ${place.dir}, so it has no held work to drop.`);
+      }
+      const rest = key.slice(holding.keyPrefix.length);
+      if (!key.startsWith(holding.keyPrefix) || rest === "" || rest.includes("/")) {
+        throw new Error(`refusing to drop ${key}: it is not a held pack of the place at ${place.dir}.`);
+      }
+      await heldWork.delete(key);
+    },
     async restore() {},
     async release(place) {
       if (place.filesDir === undefined || holders.get(place.filesDir) !== place.holder) return;
@@ -643,6 +1071,21 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       holders.delete(place.filesDir);
     },
   };
+}
+
+function mismatch(field: HeldWorkMismatchField, message: string): HeldWorkMismatchError {
+  return new HeldWorkMismatchError(field, message);
+}
+
+/** Whether `commit` is a commit in the repository at `cwd`. A probe that failed is raised, never read as no. */
+async function hasCommit(g: Git, cwd: string, commit: string): Promise<boolean> {
+  try {
+    await g(cwd, ["rev-parse", "--verify", "--quiet", `${commit}^{commit}`]);
+    return true;
+  } catch (error) {
+    if (gitAnsweredNo(error)) return false;
+    throw error;
+  }
 }
 
 /** The remote could not be read; say which one, and never with a credential. */
