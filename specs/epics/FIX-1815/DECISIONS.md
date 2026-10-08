@@ -27,31 +27,33 @@ Q3, D3 and D4 have no rejected sibling worth a node: their cards name what lost.
 <a name="q1"></a>
 ## Q1 · Two issues and a closure, or all four? (decided 2026-10-08)
 
-**Decided by the product owner**, in session on 2026-10-08: "cut both". Already carried out in
-Linear: FIX-1818 is Canceled, folded into [ER-6](BUSINESS-RULES.md#what-no-child-may-do), and its
-"ask the delegate" and delivery-ledger question moves into FIX-1816's spec. FIX-1819 is in Backlog,
-unparented, still blocked by FIX-1816, revisited after ask ships. The closure FIX-1820 is blocked
-by FIX-1816 and FIX-1817 only. The card below is the ask as it was put.
+**Decided by the product owner**, in session on 2026-10-08: "cut both". The epic holds two
+issues and a closure.
 
-**Plain terms.** The epic as filed has four issues. Two of them do not move the outcome.
-FIX-1818 moves both kinds onto one answer-once check. FIX-1819 decides whether skills get
+**Plain terms.** The epic as filed had four issues. Two of them did not move the outcome.
+FIX-1818 moved both kinds onto one answer-once check. FIX-1819 decided whether skills get
 helpers back, and that answer may be "no".
 
-**The trade-off.** Cut, the epic holds only what the goal needs. The one-check rule becomes
-epic rule [ER-6](BUSINESS-RULES.md#what-no-child-may-do), which FIX-1816's spec obeys, and the
-question that remains, whether "ask the delegate" becomes an ask and so FIX-1791's ledger token
-goes, moves into FIX-1816's spec. Kept, both block the closure, and one of them may close with
-nothing built.
+**What was decided.**
 
-**My recommendation: cut both.** If ask rides the board row's claim ticket or the delivery ledger
-(`packages/workforce/src/delivery-ledger.ts`, on `main`), there is no second check to retire, so
-FIX-1818 has no work of its own. FIX-1819 goes to Backlog, unparented, and comes back after ask
-ships. Neither cut changes the outcome, so the coordinator acts on them after this gate.
+1. **FIX-1818 is cut.** It is Canceled in Linear. Its one-check rule became epic rule
+   [ER-6](BUSINESS-RULES.md#what-no-child-may-do), which FIX-1816's spec obeys. Its remaining
+   question, whether "ask the delegate" becomes an ask and so FIX-1791's ledger token goes, moved
+   into FIX-1816's spec.
+2. **FIX-1819 is cut.** It is in Backlog, unparented, still blocked by FIX-1816, and revisited
+   after ask ships.
+3. **The closure FIX-1820** is blocked by FIX-1816 and FIX-1817 only.
 
-**What would change my mind.** FIX-1816's spec finds that ask can ride neither existing check.
-Then FIX-1818's work is real and it rejoins as a child.
+**Why, as it was weighed.** Cut, the epic holds only what the goal needs; kept, both would have
+blocked the closure, and one of them might have closed with nothing built. If ask rides the board
+row's claim ticket or the delivery ledger (`packages/workforce/src/delivery-ledger.ts`, on
+`main`), there is no second check to retire, so FIX-1818 had no work of its own. Neither cut
+changed the outcome.
 
-**What being wrong costs.** One issue re-filed later. Nothing is built twice in between, because
+**What would reopen it.** FIX-1816's spec finds that ask can ride neither existing check. Then
+FIX-1818's work is real and it rejoins as a child.
+
+**What it costs.** At most one issue re-filed later. Nothing is built twice in between, because
 ER-6 forbids a third check.
 
 ![Q1, decided: two issues and a closure, beside four as filed. Decides it: whether the extra two move the outcome; neither does. Price: the one-check rule becomes a rule, not an issue, and the skill question waits. Flips if ask can ride neither existing check](figures/q1-the-set.svg)
@@ -107,26 +109,28 @@ It comes down to what each wake does: a new turn and a resumed turn share a patt
 ## Q3 · FIX-1780 says Done, but its notices never shipped (decided 2026-10-08)
 
 **Decided as an engineering call**, absorbed by the coordinator under the epic-pm posture on
-2026-10-08: FIX-1780 stays Done. A correcting comment is posted on FIX-1780, saying S1 to S5 moved
-to FIX-1794 P2 and S5a is what shipped, and a related relation to FIX-1794 is added. The card
-below is the ask as it was put.
+2026-10-08: FIX-1780 stays Done, with a correcting comment and a relation to FIX-1794.
 
 **Plain terms.** FIX-1780 promised `onTaskSettled`, the signal a filer hears when its task ends.
 Linear marks it Done. Only its S5a shipped (#2761). S1 to S5 never did, and FIX-1794's evolution
 record moved them to FIX-1794 P2. The feasibility spike read "Done" and cited a signal that does
 not exist.
 
-**The trade-off.** A comment corrects the record and leaves one owner. A reopen or a new issue
-gives the same signal a second owner beside FIX-1794 P2.
+**What was decided.**
 
-**My recommendation: keep Done, add a comment and a relation to FIX-1794** saying S1 to S5 moved
-there and S5a is what shipped. Canceled would misstate S5a.
+1. **FIX-1780 stays Done.** Canceled would misstate S5a, which shipped.
+2. **A correcting comment is posted on FIX-1780**, saying S1 to S5 moved to FIX-1794 P2 and S5a
+   is what shipped.
+3. **A related relation to FIX-1794 is added**, so the next reader finds the owner.
 
-**What would change my mind.** The product owner reads "Done" as "everything in the
-description shipped". Then move it to Canceled with the same comment.
+**Why, as it was weighed.** A comment corrected the record and left one owner. A reopen or a new
+issue would have given the same signal a second owner beside FIX-1794 P2.
 
-**What being wrong costs.** The next reader builds on a signal that is not there, as the spike
-did.
+**What would reopen it.** The product owner reads "Done" as "everything in the description
+shipped". Then FIX-1780 moves to Canceled with the same comment.
+
+**What it costs.** Done stays half true on its face; the comment carries the rest. Without it,
+the next reader builds on a signal that is not there, as the spike did.
 
 ![Q3, decided: FIX-1780's record gets a correcting comment, beside a reopen and a new issue. Decides it: who owns the signal; only the comment keeps one owner. Price: Done stays half true. Flips if Done must mean everything shipped](figures/q3-fix-1780.svg)
 
@@ -226,5 +230,6 @@ first move inside FIX-1816's spec, not here.
   built once by FIX-1794 P2 and lifted by FIX-1816; FIX-1816 builds its own resume-owed marker on
   FIX-1802's pattern; the inputs land FIX-1814, FIX-1794 P2, FIX-1802 P1.
 - **Merged (Oct 8)**: #2891, by the product owner.
-- **Q1 and Q3 decided (Oct 8)**: the product owner cut FIX-1818 and FIX-1819; FIX-1780 stays Done
-  with a correcting comment and a relation to FIX-1794. Recorded by a follow-up PR from `main`.
+- **Q1 and Q3 decided (Oct 8)**: Q1 by the product owner, in session: FIX-1818 and FIX-1819
+  cut. Q3 as an engineering call by the coordinator under epic-pm: FIX-1780 stays Done with a
+  correcting comment and a relation to FIX-1794. Recorded by a follow-up PR from `main`.
