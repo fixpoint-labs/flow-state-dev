@@ -285,7 +285,7 @@ await runGoal(async () => {
     }
 
     // ---- (c) a remote the host does not allow -----------------------------
-    const set = await lab.projectAct!("setRepository", { projectId: "platform", repository: fixture.disallowedRemote });
+    const set = await lab.projectAct!("setRepository", { project: { visibility: "shared", id: "platform" }, repository: fixture.disallowedRemote });
     if (set.error !== undefined) throw new Error(`setRepository was refused — ${set.error}`);
     const beforeC = failures.length;
     const clonesBefore = existsSync(join(root, ".clones")) ? readdirSync(join(root, ".clones")).filter((e) => e.endsWith(".git")) : [];

@@ -84,6 +84,7 @@ import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
 import { delegatedPostEntry } from "./coordinator/delegated-post";
+import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
 import { mailboxTaskLists } from "./mailbox/mailbox-board";
 import {
   mailboxNotifyInputSchema,
@@ -1422,7 +1423,11 @@ function defineAgentFlowAround(
         // A coordinator's delivery: one turn of `run` on the post, its reply
         // handed back to the delivering conversation with the delivery's
         // token. That is what makes an agent worker a delegate that takes posts.
-        [DELEGATED_POST_ENTRY]: delegatedPostEntry(run)
+        [DELEGATED_POST_ENTRY]: delegatedPostEntry(run),
+        // A workstream's open: creates the lead's workstream session, linked
+        // at create, and runs nothing. That is what lets an agent worker lead
+        // a workstream.
+        [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry()
       }
     },
     ...(options.taskLists === undefined

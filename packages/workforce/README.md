@@ -1928,7 +1928,7 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
   are each refused, and nothing is half written. The same owner re-sending an id gets the row back
   (`created: false`) and its talk session bound if it wasn't.
 - **`setWorkstreams { projectId, workstreams }`** replaces the list. Members only.
-- **`setRepository { projectId, repository }`** sets, changes or clears (`null`) the repository and
+- **`setRepository { project: { visibility, id }, repository }`** sets, changes or clears (`null`) the repository and
   returns `{ project }`. Members only. Nothing else on the row moves, and of two members setting it
   at once one value is kept whole. A value must be a remote, the address you'd pass to `git clone`:
   both writes refuse a path, a value starting with `-`, a control character, a remote-helper address (`ext::…`), a user
@@ -1936,7 +1936,7 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
   repeat the value. `git@host:org/repo` and `ssh://git@host/org/repo` are accepted. Stored rows
   aren't re-parsed on read: treat a missing `repository` as `null`, or read through
   `projectRowSchema.parse`.
-- **`readProjectFiles { projectId }`** returns `{ files: [{ path, size }] }` (size in UTF-8 bytes,
+- **`readProjectFiles { project: { visibility, id } }`** returns `{ files: [{ path, size }] }` (size in UTF-8 bytes,
   never the body, since the output is logged as the tool result), the files the
   project keeps in the org's `project-files` collection (`defineProjectFilesCollection()`), at
   `project-files/<projectId>/<path>`. Members only. The collection is org-scoped, shared, lazy, and

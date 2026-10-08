@@ -1,32 +1,26 @@
 /**
  * `readProjectFiles`: a member's read of the files a project keeps.
  *
- * The `project-files` collection has no browser read, so this is how a person
- * reads them. It checks the session's owner against the row's `members` first
- * (`membership-gate.ts`), then lists only `project-files/<projectId>/…`,
- * filtered at the source (BP-033), never the whole collection. It returns each
- * file's path and size, never its body: a handler's output is logged as the
- * tool result, so a body here would land whole in the session log and the
- * model's context.
+ * The `project-files` collections have no browser read, so this is how a
+ * person reads them. It finds the project by its address (a private one only
+ * in the caller's own user scope), checks the session's owner against the
+ * row's `members` (`membership-gate.ts`), then lists only
+ * `project-files/<projectId>/…` at that visibility, filtered at the source
+ * (BP-033), never the whole collection. It returns each file's path and size,
+ * never its body: a handler's output is logged as the tool result, so a body
+ * here would land whole in the session log and the model's context.
  */
 
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import {
-  defineProjectFilesCollection,
-  defineProjectsCollection,
-  PROJECT_FILES_RESOURCE,
-  projectFilesPrefix,
-  PROJECTS_RESOURCE,
-  type ProjectFile,
-  type ProjectRow
-} from "./collections";
+import { projectAddressSchema, projectFilesPrefix } from "./collections";
 import { isMember } from "./membership-gate";
+import { projectAt, projectFilesAt, PROJECT_FILE_RESOURCES, PROJECT_ROW_RESOURCES } from "./project-address";
 import { ProjectRefusedError } from "./project-refusal";
 
-/** What reading a project's files takes. */
-export const readProjectFilesInputSchema = z.object({ projectId: z.string().min(1) }).strict();
+/** What reading a project's files takes: the project's address. */
+export const readProjectFilesInputSchema = z.object({ project: projectAddressSchema }).strict();
 
 /** @see readProjectFilesInputSchema */
 export type ReadProjectFilesInput = z.infer<typeof readProjectFilesInputSchema>;
@@ -41,32 +35,25 @@ export type ReadProjectFilesOutput = z.infer<typeof readProjectFilesOutputSchema
 
 const utf8 = new TextEncoder();
 
-/** The collection's storage prefix, stripped from a ref's `path`. */
-const COLLECTION_PREFIX = `${PROJECT_FILES_RESOURCE}/`;
+/** The storage prefix both visibilities' file collections share (`project-files/**`), stripped from a ref's `path`. */
+const COLLECTION_PREFIX = "project-files/";
 
 /** Read a project's files. Members only; `no-such-project` and `not-a-member` otherwise. */
 export const readProjectFiles = handler({
   name: "project-read-files",
   inputSchema: readProjectFilesInputSchema,
   outputSchema: readProjectFilesOutputSchema,
-  resources: {
-    [PROJECTS_RESOURCE]: defineProjectsCollection(),
-    [PROJECT_FILES_RESOURCE]: defineProjectFilesCollection()
-  },
+  resources: { ...PROJECT_ROW_RESOURCES, ...PROJECT_FILE_RESOURCES },
   execute: async (input, rawCtx): Promise<ReadProjectFilesOutput> => {
     const ctx = rawCtx as unknown as BlockContext;
-    const projects = ctx.resources[PROJECTS_RESOURCE] as unknown as ResourceCollectionRef<ProjectRow>;
-    const files = ctx.resources[PROJECT_FILES_RESOURCE] as unknown as ResourceCollectionRef<ProjectFile>;
-    const row = await projects.getOptional(input.projectId);
-    if (row === undefined) {
-      throw new ProjectRefusedError("no-such-project", `this organization has no project "${input.projectId}".`);
-    }
+    const { visibility, id } = input.project;
+    const row = await projectAt(ctx, input.project);
     if (!isMember(row.state, ctx.session.identity.userId)) {
-      throw new ProjectRefusedError("not-a-member", `only project "${input.projectId}"'s members may read its files.`);
+      throw new ProjectRefusedError("not-a-member", `only project "${id}"'s members may read its files.`);
     }
-    const prefix = projectFilesPrefix(input.projectId);
+    const prefix = projectFilesPrefix(id);
     const out: ReadProjectFilesOutput["files"] = [];
-    for (const ref of await files.list(prefix)) {
+    for (const ref of await projectFilesAt(ctx, visibility).list(prefix)) {
       const content = await ref.readContent();
       if (content === null) continue;
       out.push({ path: ref.path.slice(COLLECTION_PREFIX.length + prefix.length), size: utf8.encode(content).length });

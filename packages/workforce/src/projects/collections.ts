@@ -1,6 +1,6 @@
 /**
- * Projects — the organization's `projects` rows, and the collections a
- * project's room, its workstream claims and its files live in.
+ * Projects — the `projects` rows, and the collections a project's room, its
+ * workstream claims and its files live in.
  *
  *   projects/<id>                       one row per project: title, brief, owner, members, workstreams, repository, talk sessions
  *   room-lines/<projectId>/<seq>        one row per line of the project's room, created and never edited
@@ -12,9 +12,19 @@
  * `MAILBOX.md` and no inventory row can name it; the row is the project's one
  * record, and it lists the workstreams (declared mailboxes) it holds.
  *
- * Every collection here is org-scoped and shared across flows
- * (`flowIsolation: false`, spelled out for the reason the inventory spells it
- * out: left undefined, an app that sets `isolateOrgState` for an unrelated
+ * **Shared and private.** A shared project is a row of the organization's
+ * `projects`. A private project is the same row, with the same schema, kept in
+ * its owner's user scope: `projects/*` and `project-files/**` are declared a
+ * second time at user scope ({@link definePrivateProjectsCollection},
+ * {@link definePrivateProjectFilesCollection}). Where a project lives is its
+ * visibility, never a field on the row, so the two can't disagree, and a
+ * project's address is its visibility plus its id ({@link projectAddressSchema}):
+ * a user's private `apollo` and the organization's shared `apollo` are two
+ * projects. Rooms and claims are shared projects' only.
+ *
+ * Every collection here is shared across flows (`flowIsolation: false`,
+ * spelled out for the reason the inventory spells it out: left undefined, an
+ * app that sets `isolateOrgState` or `isolateUserState` for an unrelated
  * reason would give each flow its own copy, and every reader but the writer
  * would read empty).
  *
@@ -43,6 +53,10 @@ export const ROOM_SEQ_RESOURCE = "room-seq";
 export const WORKSTREAM_CLAIMS_RESOURCE = "workstream-claims";
 /** The resource-map ref of the project files. */
 export const PROJECT_FILES_RESOURCE = "project-files";
+/** The resource-map ref of the private projects: `projects/*` at the owner's user scope. */
+export const PRIVATE_PROJECTS_RESOURCE = "privateProjects";
+/** The resource-map ref of the private projects' files: `project-files/**` at the owner's user scope. */
+export const PRIVATE_PROJECT_FILES_RESOURCE = "privateProjectFiles";
 /** The resource-map ref of the seat answers a room holds. Not re-exported from the package root. */
 export const ROOM_ANSWERS_RESOURCE = "room-answers";
 /** The resource-map ref of the deliveries a room's fan-out made. Not re-exported from the package root. */
@@ -53,6 +67,27 @@ export const ROOM_DELIVERIES_RESOURCE = "room-deliveries";
  * can never take it, or its page would be the No project page.
  */
 export const NO_PROJECT_ID = "unassigned";
+
+/**
+ * Where a project lives: `"shared"` in the organization, `"private"` in its
+ * owner's user scope. A create that names none makes a shared project.
+ */
+export const projectVisibilitySchema = z.enum(["shared", "private"]);
+
+/** @see projectVisibilitySchema */
+export type ProjectVisibility = z.infer<typeof projectVisibilitySchema>;
+
+/**
+ * A project's address: its visibility and its id. Every project read and
+ * write after the create takes one, and picks the collection from it. A
+ * private address only ever reaches the caller's own user scope.
+ */
+export const projectAddressSchema = z
+  .object({ visibility: projectVisibilitySchema, id: z.string().min(1) })
+  .strict();
+
+/** @see projectAddressSchema */
+export type ProjectAddress = z.infer<typeof projectAddressSchema>;
 
 /** One member's talk session on a project: the session, and whose it is. */
 export const projectSessionLinkSchema = z.object({
@@ -89,7 +124,10 @@ export const projectRowSchema = z.object({
   status: z.string().default("active"),
   /** The user who created it, as the engine recorded the creating session's owner. */
   ownerUserId: z.string().min(1),
-  /** Who may read and post the room. Always includes the owner. */
+  /**
+   * On a shared project, who may read and post the room and open workstreams.
+   * Always includes the owner. A private project has only its owner.
+   */
   members: z.array(z.string()).default([]),
   /** Full mailbox ids of the declared mailboxes this project holds, from any team. */
   workstreams: z.array(z.string()).default([]),
@@ -243,6 +281,28 @@ export type ProjectsCollectionOptions = {
 export const PROJECTS_COLLECTION = defineResourceCollection({
   pattern: "projects/*",
   scope: "org",
+  flowIsolation: SHARED_ACROSS_FLOWS,
+  stateSchema: projectRowSchema,
+  client: { state: { read: true }, expose: PROJECT_CLIENT_FIELDS }
+});
+
+/**
+ * The private projects, at `projects/*` in each user's own scope: the same
+ * row as a shared project's, which only its owner lists or reads. User scope
+ * is one cell per user per organization, so a private project shows only in
+ * the organization it was made in.
+ *
+ * Install it beside {@link defineProjectsCollection} wherever projects are
+ * read or written; the project blocks hold both. Readable by a browser, which
+ * reads its own user's rows only.
+ */
+export function definePrivateProjectsCollection() {
+  return PRIVATE_PROJECTS_COLLECTION;
+}
+
+const PRIVATE_PROJECTS_COLLECTION = defineResourceCollection({
+  pattern: "projects/*",
+  scope: "user",
   flowIsolation: SHARED_ACROSS_FLOWS,
   stateSchema: projectRowSchema,
   client: { state: { read: true }, expose: PROJECT_CLIENT_FIELDS }
@@ -407,6 +467,23 @@ export function defineProjectFilesCollection() {
 const PROJECT_FILES_COLLECTION = defineResourceCollection({
   pattern: "project-files/**",
   scope: "org",
+  flowIsolation: SHARED_ACROSS_FLOWS,
+  prefetchMode: "lazy",
+  stateSchema: projectFileSchema
+});
+
+/**
+ * The private projects' files, at `project-files/<projectId>/<path>` in each
+ * user's own scope: a private project's files, which only its owner reads.
+ * Lazy and with no browser read, like {@link defineProjectFilesCollection}.
+ */
+export function definePrivateProjectFilesCollection() {
+  return PRIVATE_PROJECT_FILES_COLLECTION;
+}
+
+const PRIVATE_PROJECT_FILES_COLLECTION = defineResourceCollection({
+  pattern: "project-files/**",
+  scope: "user",
   flowIsolation: SHARED_ACROSS_FLOWS,
   prefetchMode: "lazy",
   stateSchema: projectFileSchema

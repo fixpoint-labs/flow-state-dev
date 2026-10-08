@@ -132,7 +132,7 @@ async function projects(lab: Lab): Promise<Record<string, { repository?: string 
 describe("the chief of staff's repository writes wait for a person", () => {
   it("setRepository: nothing changes while it waits or on Deny; Approve writes it", async () => {
     const lab = await open();
-    const call = { toolName: "setRepository", args: { projectId: "storefront", repository: ASKED } };
+    const call = { toolName: "setRepository", args: { project: { visibility: "shared", id: "storefront" }, repository: ASKED } };
     const asked = await ask(lab, call, "move storefront to the new repository");
     expect(asked.suspension.message).toContain(ASKED);
     expect((await projects(lab)).storefront?.repository).toBe(FIRST);
@@ -167,7 +167,7 @@ describe("the chief of staff's repository writes wait for a person", () => {
     const lab = await open();
     const asked = await ask(
       lab,
-      { toolName: "setRepository", args: { projectId: "storefront", repository: "https://bot:s3cret-token@github.com/acme/storefront.git" } },
+      { toolName: "setRepository", args: { project: { visibility: "shared", id: "storefront" }, repository: "https://bot:s3cret-token@github.com/acme/storefront.git" } },
       "use the token remote",
     );
     expect(asked.suspension.message).not.toContain("s3cret-token");

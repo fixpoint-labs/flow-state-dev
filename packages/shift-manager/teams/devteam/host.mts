@@ -306,7 +306,7 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks) {
       inputSchema: setRepositoryInputSchema,
       outputSchema: setRepositoryOutputSchema,
     })
-      .tap(askRepository((input) => input.projectId))
+      .tap(askRepository((input) => input.project?.id))
       .step(blocks.setRepository),
   };
 }
@@ -367,7 +367,11 @@ const askFire = handler({
 
 /** What a repository ask reads off a write's input. */
 const repositoryAskInputSchema = z
-  .object({ id: z.string().optional(), projectId: z.string().optional(), repository: z.string().nullable().optional() })
+  .object({
+    id: z.string().optional(),
+    project: z.object({ id: z.string() }).passthrough().optional(),
+    repository: z.string().nullable().optional(),
+  })
   .passthrough();
 
 /**
