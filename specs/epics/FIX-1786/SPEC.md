@@ -42,7 +42,7 @@ out of it; a custom worker flow's privacy is its author's, not a registration ch
 |---|---|
 | **The real need** | Jake's PRD: one rule set, where a worker's own state and user-scoped data are private to one user, while shared resources and org scope, which a flow writes by its author's choice, are shared (Jake, 2026-10-06). The model is the problem, not its docs. Under it sits a hole: an org-locked hire reaches every member |
 | **Smaller, and rejected** | "The terms are renamed." FIX-1796 alone meets it, and the org-locked hire still reaches everyone. Or "workers are private": FIX-1788 alone, while boards and projects stay org rows any member's session drains |
-| **Bigger, and not this epic's** | Channels · user-to-user communication · transcript resources · files as migrations · long-lived session memory (FIX-1775) · removing flow instances and owner pins from the engine ([FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798), after FIX-1788) |
+| **Bigger, and not this epic's** | Channels · user-to-user communication · transcript resources · files as migrations · long-lived session memory (FIX-1775) · removing flow instances and owner pins from the engine ([FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798), after FIX-1788) · hand-offs that wait for their answer, assigned work that keeps its session open until it's done and never locks, one answer-once fence for both, and a skill's private team rethought: the follow-up epic, [FIX-1815](https://linear.app/fixpoint-labs/issue/FIX-1815), "Hand-offs: ask, assign, and sessions that stay open" ([D10](DECISIONS.md#d10)) |
 | **Not done if** | Every child is Done and the closure check hasn't run · it ran with one user · Bob opens, names or writes any of Alice's workers, sessions, boards or workstream sessions · a task in Alice's chain runs as anyone else · one of Alice's boards claims another's rows · a user changes a standard worker · leg b never made a private project · a `MAILBOX.md` is left in the repo · Workforce still registers a flow instance or sets an owner pin · a retired term is left in an export or a published page ([ER-12](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) · a bug the closure run found is open |
 
 ```mermaid
@@ -76,10 +76,10 @@ makes leg c's PASS mean something.
 ![What's in the box: workers, coordinators and projects, each private to one user; composed from what ships; the app's own standard install and users; below a fence, what is not built, from channels to a session shared between users](figures/end-state.svg)
 
 Everything in the box composes what ships, plus seven Layer 1 mechanism changes, two public
-renames and one public removal ([D3](DECISIONS.md#d3)). The fifth mechanism change is T1, the task tools' roster read per
+renames and two public removals ([D3](DECISIONS.md#d3)). The fifth mechanism change is T1, the task tools' roster read per
 call, built by FIX-1794 (amended) ([D8](DECISIONS.md#d8)); the sixth is the skills library taking
 its key per run, built by FIX-1788; the seventh is a per-turn rule in core for which of a shared copy's
-resources the model reaches, so a worker's document grants hold through every tool, built by FIX-1788; the removal is discovery's `mailboxes` domain, FIX-1792's. The fence is the PRD's out-of-scope list and the locks the Architect
+resources the model reaches, so a worker's document grants hold through every tool, built by FIX-1788. The removals are discovery's `mailboxes` domain, FIX-1792's, and skill sub-agents, FIX-1814's ([D10](DECISIONS.md#d10)). The fence is the PRD's out-of-scope list and the locks the Architect
 carried: what would turn a privacy refactor into a collaboration product. The library in the
 box builds after the MVP.
 
@@ -99,13 +99,14 @@ blocked by FIX-1787 ([ER-23](BUSINESS-RULES.md#how-the-set-is-run)).
 | [FIX-1793](https://linear.app/fixpoint-labs/issue/FIX-1793) · projects and workstreams | Private or shared projects; workstream resources an owner writes and the org reads; a project coordinator; rooms removed | Leg b, and the one new engine rule | Spec merged ([#2823](https://github.com/fixpoint-labs/flow-state-dev/pull/2823)) · private and shared projects in, and a shared project's members open its workstreams ([Q2](DECISIONS.md#q2)) |
 | [FIX-1794](https://linear.app/fixpoint-labs/issue/FIX-1794) · assignment chain | Tasks assigned from delegates, down the owner's boards, run as the owner, and followed through; T1, the task tools' roster read per call, amended in [#2839](https://github.com/fixpoint-labs/flow-state-dev/pull/2839) ([D8](DECISIONS.md#d8)) | Today a drain runs as whoever triggers it | Backlog · spec route · carries FIX-1777's "runs as the filer" rule, FIX-1774's leg e and FIX-1780's follow-through |
 | [FIX-1802](https://linear.app/fixpoint-labs/issue/FIX-1802) · filing and the split | Orchestration's task tools for any worker whose delegates can take a task; a filed task's worker files pieces in turn, five boards deep and 100 tasks a chain by default | The split is in the MVP, and the DevTeam's workstream is led by an ordinary worker that files ([D8](DECISIONS.md#d8)) | Backlog · joined 2026-10-06 · spec being written, no PR yet |
+| [FIX-1814](https://linear.app/fixpoint-labs/issue/FIX-1814) · remove skill sub-agents | A skill's `agents:` key, the skills library's `delegation` option, and the private board it installs with its own eight task tools and `runBoard`, removed; the Skills → Delegation page goes; a `SKILL.md` that still declares `agents:` is refused loudly ([D10](DECISIONS.md#d10)) | Otherwise a worker holding such a skill and a task-taking delegate carries two sets of task tools, and every turn fails | In Development · joined 2026-10-08 · no spec: the product owner reviews the code · blocks FIX-1794's P2, FIX-1802 and the closure |
 | [FIX-1792](https://linear.app/fixpoint-labs/issue/FIX-1792) · `MAILBOX.md` to `WORKER.md` | 33 charters converted, all 16 boards in 15 files: 11 files keep a session board, the DevTeam's feature becomes a workstream, kitchen-sink's escalations board goes with its feature, and manager-queue-lab's two board-in-a-seat-folder trees go with the leg they served, old mailbox data dropped ([D9](DECISIONS.md#d9)); project claims and a project row's mailbox list removed | One way to declare a worker | Backlog · spec route |
 | [FIX-1796](https://linear.app/fixpoint-labs/issue/FIX-1796) · terminology | The retired terms gone from code, docs and the glossary, a task board's seat renamed assignee among them ([D7](DECISIONS.md#d7)) | One term, one thing | Backlog · spec route |
 | [FIX-1797](https://linear.app/fixpoint-labs/issue/FIX-1797) · closure · **required** | The QA plan, an early leg-c run when FIX-1788 merges, and the runs on one `main` commit | Proves the whole | Backlog · blocked by every other child except FIX-1795, which builds after the MVP ([ER-27](BUSINESS-RULES.md#how-the-set-is-run)) |
 
-The inventory, ten refactor children and a closure (FIX-1802 joined with [D8](DECISIONS.md#d8));
-none of the ten started, and none of the
-inventory's merge-first PRs has landed. Whether nine is really eight: FIX-1790 could ride in
+The inventory, eleven refactor children and a closure (FIX-1802 joined with [D8](DECISIONS.md#d8),
+and FIX-1814 with [D10](DECISIONS.md#d10) on 2026-10-08). At the snapshot none of the ten then in
+the set had started, and none of the inventory's merge-first PRs had landed. Whether nine is really eight: FIX-1790 could ride in
 FIX-1788, but it changes a persisted key every flow uses, so it keeps its own review; D9 took
 away its operator step, not the key change. The collapse trigger, FIX-1789's contract needing only
 a registration list, didn't fire: its spec found three checks, attribution and a drawer move
@@ -125,6 +126,8 @@ flowchart LR
   P -->|"workstreams, and the claims to remove"| M
   H -->|"the conversation board"| M
   H -->|"the board and its depth limit"| S["FIX-1802 · filing and the split"]
+  R["FIX-1814 · remove skill sub-agents"] -->|"one set of task tools"| H
+  R -->|"one set of task tools"| S
   S -->|"filing for any worker"| M
   M --> T["FIX-1796 · terminology"]
   H --> T
@@ -135,7 +138,9 @@ flowchart LR
 An edge is what one issue hands the next. FIX-1787 blocks every node and is left off the
 graph. The closure waits on all of them except the library, which builds after the MVP and
 hands the terms sweep nothing: it is new code, written in the new terms
-([ER-25](BUSINESS-RULES.md#how-the-set-is-run)). The dashed edge is an input from FIX-1763's set.
+([ER-25](BUSINESS-RULES.md#how-the-set-is-run)). FIX-1814 hands the chain and the split a turn
+with one set of task tools ([ER-32](BUSINESS-RULES.md#what-no-child-may-do)), and builds now,
+beside the others. The dashed edge is an input from FIX-1763's set.
 The widest windows are two at once: the contract beside per-org keys, and projects beside the
 chain and then the split.
 
@@ -151,6 +156,9 @@ chain and then the split.
   assignee, a rename with no change in behaviour ([D7](DECISIONS.md#d7)). Orchestration's task tools are consumed as
   they ship except T1, built by FIX-1794 (amended): the roster is read per call, and the app's
   actions check it too ([D8](DECISIONS.md#d8)).
+- **Skills** stay, without sub-agents. FIX-1814 removes a skill's `agents:` key and the private
+  board it built, with its own task tools ([D10](DECISIONS.md#d10)). The task board, its tools and
+  its hand-off stay, and they are what a worker delegates through.
 - **Flow instances and owner pins** stay in the engine untouched, with no deprecation markers, until FIX-1798 removes them ([D9](DECISIONS.md#d9)); Workforce stops using them.
   Their removal is [FIX-1798](https://linear.app/fixpoint-labs/issue/FIX-1798), outside this epic.
 - **Memory**: the memory package's tiers, and long-lived session memory, which is FIX-1775's.
@@ -193,11 +201,20 @@ seventh mechanism change. The [kill line](#the-goal-and-how-well-know-its-met) i
 FIX-1805 milestone needs a Layer 1 change beyond D3's seven to keep a worker's own state per user,
 the epic goes back to the objective gate.
 
+**Answered by the product owner, 2026-10-08.** [D10](DECISIONS.md#d10) · skill sub-agents are
+removed rather than kept beside delegation: they are half-baked, and their private board puts a
+second set of task tools on a delegating worker's turn, which fails every time. FIX-1814 joins the
+set, [D3](DECISIONS.md#d3) counts a second public removal, and a `SKILL.md` that declares `agents:`
+is refused loudly, ER-31's one exception. Hand-offs take one word per thing: a hand-off
+(orchestration), an ask or an assign, and delegation and delegates (Workforce); "mailbox" is
+kept back. Ask is the follow-up epic's, [FIX-1815](https://linear.app/fixpoint-labs/issue/FIX-1815).
+If wrong: a skill author waits for FIX-1815 for a team of their own.
+
 Engineering calls I
 made as EM, for the record: [D2](DECISIONS.md#d2) to [D5](DECISIONS.md#d5). Rules:
 [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).
 
-Epic · the inventory, ten children and a closure · Workforce: Shift Manager ·
+Epic · the inventory, eleven children and a closure · Workforce: Shift Manager ·
 [FIX-1786](https://linear.app/fixpoint-labs/issue/FIX-1786) · Goals 2 and 4
 ([`docs/objectives.md`](../../../docs/objectives.md)): it moves Workforce wholly onto the session,
 user and org scopes and adds the one rule they lack (owner writes, org reads), the Workforce half

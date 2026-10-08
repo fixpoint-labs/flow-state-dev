@@ -138,5 +138,10 @@ rises, and the docs state the cost per piece.
   the session's delegates per call, the list the assignee check reads; FIX-1791 BR-11's refusal
   reaches every standard worker (BR-10a); a create seeding delegates gets a 400.
   ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
+- **Amended after merge (skill sub-agents removed, 2026-10-08)** — the product owner removed skill
+  sub-agents, whose private board put a second set of task tools on a worker's turn
+  ([epic D10](../../epics/FIX-1786/DECISIONS.md#d10)). S1 composes the tools through the shared
+  worker turn, one instance; V1 gains the must-test; P1 waits on FIX-1814; the page is "Delegating
+  work". ([EVOLUTION.md](EVOLUTION.md#amendment-handoff))
 
 **Open: none.**

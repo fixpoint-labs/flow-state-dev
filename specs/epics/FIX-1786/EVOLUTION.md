@@ -4,8 +4,8 @@
 
 Lineage that spans more than one child. Two predecessor epics are superseded in part, one
 lock is amended, and today's code differs from the target in the ways the second table checks.
-This epic's own D3 was amended after merge twice, as [the binding section](#amendment-binding) and
-[the visibility section](#amendment-visibility) record.
+This epic's own D3 was amended after merge three times, as [the binding section](#amendment-binding),
+[the visibility section](#amendment-visibility) and [the hand-off section](#amendment-handoff) record.
 Child-specific lineage belongs in each child's own evolution record.
 
 ## Predecessor designs
@@ -134,3 +134,39 @@ copy per flow, and keeps the per-worker minting P4 removes.
 changes that build D3's third mechanism and kept the count at six. This one adds a mechanism and
 moves the count, with its own alternatives. Folding it in would blur which amendment changed
 what. No stored data changes.
+
+<a name="amendment-handoff"></a>
+## Amended after merge: one word per thing for hand-offs; skill sub-agents removed (2026-10-08)
+
+**The problem.** A skill that lists sub-agents under `agents:` makes the skills library build a
+private task board inside the request, with its own copy of the eight task tools and `runBoard`.
+FIX-1794's P2 puts the same eight on the coordinator, which since FIX-1791 runs the built-in
+agent's shared worker turn, and FIX-1802's S1 puts them on `agent`. A worker holding such a skill
+and a task-taking delegate would carry two tools of each name, and core refuses that on every
+turn. The product owner decided on 2026-10-08 to remove sub-agents rather than guard around them,
+and to give hand-offs one word per thing. The epic records it as [D10](DECISIONS.md#d10);
+[FIX-1814](https://linear.app/fixpoint-labs/issue/FIX-1814), which has no spec, does the removal.
+Original epic review: [#2795](https://github.com/fixpoint-labs/flow-state-dev/pull/2795).
+
+**The predecessor it supersedes.** No retained spec exists for it, so the sources are the
+Linear issues and the shipped files.
+
+| Prior intent and precise source | Treatment | Reason / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| Skill sub-agents: a skill's `agents:` key installs a delegation surface, a private board with the eight task tools and `runBoard` ([FIX-918](https://linear.app/fixpoint-labs/issue/FIX-918)); a task assigned straight to a tool the skill allows ([FIX-925](https://linear.app/fixpoint-labs/issue/FIX-925)); an on-demand default worker, the floor ([FIX-940](https://linear.app/fixpoint-labs/issue/FIX-940)). `packages/orchestration/src/skills/delegation-surface.ts` header, `apps/docs/docs/skills/delegation.md` | **Superseded**: removed by FIX-1814 | The product owner, 2026-10-08: half-baked (is it an agent or one generator loop, does it have memory, why is there no agent concept), and its second set of task tools fails a delegating worker's turn | Delegation on the conversation's board (FIX-1794, FIX-1802). A skill's private team is rethought in the follow-up epic, [FIX-1815](https://linear.app/fixpoint-labs/issue/FIX-1815) ([FIX-1819](https://linear.app/fixpoint-labs/issue/FIX-1819)) | A `SKILL.md` that still declares `agents:` is refused loudly, saying sub-agents were removed: [ER-31](BUSINESS-RULES.md#what-no-child-may-do)'s one exception. The task board, its eight task tools and its hand-off are untouched |
+
+**What changed in this set.**
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| [D3](DECISIONS.md#d3): "seven mechanisms, two renames and a removal", in its title, *Because* and *Locks in* | **Amended** to two public removals; *Locks in* names FIX-1814's | A published orchestration surface leaves, so ER-22 counts it | Seven mechanism changes. The kill line is untouched: it is about a worker's own state |
+| The count elsewhere: D1's *Locks in* and its figure, the tree, D7's *Locks in*, the box's text and figure, [ER-22](BUSINESS-RULES.md#what-no-child-may-do), the plan's FIX-1792 row | **Amended** to two removals | One count across the set | The two public renames |
+| [ER-31](BUSINESS-RULES.md#what-no-child-may-do) and [D9](DECISIONS.md#d9)'s *Not reached*: no refusal of an old shape by name | **Amended** with one exception, the loud refusal of `agents:` | The product owner's later, more specific call, which wins as D9 won over BP-030 | Every other refusal by name stays out |
+| A second set of task tools on a turn: unstated | **Added** as [ER-32](BUSINESS-RULES.md#what-no-child-may-do), with a must-test in FIX-1794's V3 and FIX-1802's V1 | Asked for by the engineering lead and the cycle PM | — |
+| [D8](DECISIONS.md#d8)'s "the board's eight tools a skill's delegation surface installs today" | **Amended** in wording | The surface goes | The grant and the tools |
+| The concept's vocabulary: a delegate as "a worker a coordinator can hand posts to"; "mailbox" retired | **Amended**: hand-off, ask, assign and delegation added; a delegate is a worker a conversation may delegate to; "mailbox" retired and kept back for a future untrusted inbox. [ER-12](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt) keeps "delegation" to Workforce's meaning in published pages | One word per thing | Every other term |
+| The set table, the graph, the path, the plan and DOCS's ownership | **Amended**: FIX-1814 joins, blocking FIX-1794's P2, FIX-1802 and the closure; FIX-1802's page is "Delegating work"; FIX-1815 named as the follow-up epic | D10, ER-27 | — |
+| The *How it got here* entries and the earlier amendment sections that count one removal | **Kept as written** | They record what was decided then | A new *How it got here* entry |
+
+FIX-1802, FIX-1794 and FIX-1796 carry their own entries for this amendment. FIX-1791 and
+FIX-1792 state nothing it makes false, so they are unchanged. No stored data changes.

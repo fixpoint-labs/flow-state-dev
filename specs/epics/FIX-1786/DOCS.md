@@ -29,8 +29,10 @@ what Workforce does, never what it used to do. Each child's own `DOCS.md` carrie
 > and nobody can edit them. To change one for yourself, fork it: you get a worker of your own
 > that starts from its configuration.
 >
-> A **coordinator** is a worker that hands work to other workers on your roster, its
-> **delegates**. It picks by its own judgment, by best fit, in turn, or sends to everyone.
+> A worker can hand work to other workers on your roster, its **delegates**. That is
+> **delegation**, and every hand-over is checked against your roster. A **coordinator** is the
+> worker built for it: it picks a delegate for each message by its own judgment, by best fit, in
+> turn, or sends to everyone.
 
 ![Private and shared, one org and two users: each user's workers and private projects sit in their own private area; a channel, a shared project and the worker library sit in the shared area; standard workers come from the installation's files](figures/concept-1-private-and-shared.svg)
 
@@ -74,10 +76,16 @@ doesn't change when the template does."
 | REMOVE `mailboxes.md`. No upgrading page: there are no consumers to upgrade ([D9](DECISIONS.md#d9)) | FIX-1792 | Its `DOCS.md` |
 | `projects.md` opening above; the room figures removed; `shift-manager/overview.md`'s Project view | FIX-1793 | Its `DOCS.md` |
 | Giving a task to a worker, down the chain | FIX-1794 | Its `DOCS.md` |
-| CREATE `filing-work.md`: any worker files tasks for its delegates, and splits a task down the chain; the coordinators page's filing paragraph points there | FIX-1802 | Its `DOCS.md` |
+| CREATE `delegating-work.md` ("Delegating work"): any worker files tasks for its delegates, and splits a task down the chain; the coordinators page's filing paragraph points there | FIX-1802 | Its `DOCS.md` |
+| REMOVE `skills/delegation.md` (Skills → Delegation), and every line elsewhere that teaches skill sub-agents (`agents:`) | FIX-1814, which has no spec ([D10](DECISIONS.md#d10)) | Its PR |
 | CREATE `library.md`; the library's lines in the overview opening and its figure | FIX-1795, with its build after the MVP | Its `DOCS.md` and the note above |
 | `glossary.md` → the Workforce section, and assignee, defined once in the task-board section with no seat row ([D7](DECISIONS.md#d7)); `orchestration/task-board.md`'s seat, "Seats that hand off" among it, renamed assignee; every remaining retired term | FIX-1796 | Its `DOCS.md` |
 
 Each specific publishes with its implementation. The overview opening waits until the
 behaviour it promises is on `main`; it doesn't publish because this spec merged. No unchanged
 page is copied here.
+
+**One word per thing, on every page ([D10](DECISIONS.md#d10), ER-12).** "Delegation" means
+Workforce's only: handing work to a worker on the user's roster, checked against that roster. A
+page about orchestration says hand-off. "Mailbox" isn't used. Once FIX-1814 removes the Skills →
+Delegation page, no published page uses "delegation" for skills.

@@ -9,7 +9,8 @@ only after the epic's record of D1, its [D6](../../epics/FIX-1786/DECISIONS.md#d
 **P1 may start before FIX-1791 merges**: it touches only orchestration, on its own two-flow
 fixtures, and reads no delegate or worker. The epic's path, where FIX-1794 builds after
 FIX-1791, mirrors this exception. P2 starts only after FIX-1788 and FIX-1791 merge (epic D4,
-ER-23).
+ER-23), and after FIX-1814 removes skill sub-agents and their second set of task tools
+(*amended after merge*, epic [D10](../../epics/FIX-1786/DECISIONS.md#d10)).
 
 ## Surfaces
 
@@ -56,7 +57,7 @@ them go with FIX-1792's conversion, which moves each board onto S1 or a workstre
 | PR | Delivers | Depends on |
 |---|---|---|
 | P1 · the conversation ledger | S1, S2, on orchestration fixtures with two flows and two users | The epic's D6 merged · FIX-1787's merge-first rows · not FIX-1791 |
-| P2 · filing and the chain | T1, S3–S7, S9 (S8 and S10 are FIX-1802's) | P1 · FIX-1788 and FIX-1791 merged |
+| P2 · filing and the chain | T1, S3–S7, S9 (S8 and S10 are FIX-1802's) | P1 · FIX-1788, FIX-1791 and FIX-1814 merged |
 | P3 · Shift Manager, the goal, the docs | S11–S13, VG | P2 |
 
 ```mermaid
@@ -80,7 +81,7 @@ flowchart TD
 |---|---|---|
 | V1 | S1 | BR-11 for every operation S1 lists, two sessions on one flow and on two flows; BR-13 with two users; BR-14 after delete and recreate; a partition function that reads input is refused at construction or has no input to read |
 | V2 | S2 | A cross-flow child settles, renews and parks its row in the named partition; an envelope naming another of the user's partitions fails the claim check (BR-21); the task entry is not a public action. BR-15 across a flow: kill a claimed cross-flow child, let its lease lapse, and the next run of its board reclaims the row through the partitioned path and runs it once more, within the abandonment allowance |
-| V3 | S4, T1 | BR-1–BR-9 through the actions and the tools alike; BR-2 with two users, one answer for Bob's worker and a missing one; BR-3 after firing a delegate between filing and hand-over; a delegate added mid-conversation is accepted on the next call (T1); `assignTask` on a running task declined, `cancelTask` on one lands and the worker's late result is declined |
+| V3 | S4, T1 | BR-1–BR-9 through the actions and the tools alike; BR-2 with two users, one answer for Bob's worker and a missing one; BR-3 after firing a delegate between filing and hand-over; a delegate added mid-conversation is accepted on the next call (T1); `assignTask` on a running task declined, `cancelTask` on one lands and the worker's late result is declined. **Must-test** (*amended after merge*; the engineering lead and the cycle PM; epic [ER-32](../../epics/FIX-1786/BUSINESS-RULES.md#what-no-child-may-do)): the coordinator, which runs the built-in agent's shared worker turn, with task-taking delegates and with a skill loaded and without, carries each of the eight task tools exactly once on its turn, and `runBoard` at most once (none, since FIX-1814 removed the skills library's). A control that adds a second `createTaskToolsCapability` instance to the same turn must throw core's duplicate-name refusal ("has two tools named") |
 | V4 | S5 | BR-10 with no drain call in the test; the filing returns before the run starts. BR-10a: a refused wake, and a kill between the add and the dispatch, each leave the add stored with the marker on the row, and a re-file of the same id then starts the task, once; so does the next filing of another task |
 | V5 | S6 S7 | BR-22–BR-29: each ending once, re-read after a grace period; a redelivered notice; a mid-turn notice; a notice to a deleted conversation. BR-26a: kill after the ending's write and before the notice's dispatch; the next run of the board delivers the notice exactly once, and the marker is cleared |
 | V6 | S8: FIX-1802's (its V3); not run here. As written for it: | BR-31, BR-32 with one piece completed and one errored; a reassign in the turn the errored notice woke keeps the task open; the parent settles through its binding after a restart between park and the last piece's notice, and a coordinate on the input or payload is ignored. The settle-owed marker: the turn the last piece's notice woke fails, and the next touch of that board settles the parent, once; a kill after the settle and before the clear settles nothing twice |
@@ -117,6 +118,7 @@ new terms (worker, delegate, conversation; not seat, mailbox or member).
 | Every owed start, owed notice and (with the split) owed parent settle is a marker on the row, written in the same write as what owes it, and cleared only by what it owes | A crash between the write and the dispatch otherwise strands the task, or its ending goes unheard |
 | The filing never waits for the run, and never fails because the start did | A coding run inside a tool call holds the coordinator; a failed add invites a second filing |
 | The assignee check runs at filing and at hand-over | A delegate fired between the two must not run |
+| The task tools go on the coordinator's turn once, from one capability instance (epic ER-32; *amended after merge*) | Core refuses two tools of one name, so a second instance fails every turn; FIX-1802 composes through the same shared turn |
 | No engine change, and no worker or delegate name in orchestration (ER-22, the layer split). The only task-tool change is T1 (*amended after merge*) | S1's partition is a function the composing layer supplies; so are T1's roster and the resolver |
 | Nothing new builds on mailbox boards | FIX-1792's conversion must not grow |
 

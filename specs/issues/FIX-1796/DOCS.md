@@ -30,6 +30,13 @@ A task board's seat becomes assignee ([D1](DECISIONS.md#d1)). The glossary defin
 here, and has no seat row.
 
 > | **Assignee** | orchestration | Who a task goes to: an entry in a task board's workers, or a name the board's assignee check accepts, such as one of a Workforce worker's delegates. A task's `assignee` names it, and it runs the task inline or hands it off to a dispatch run in another session. A task whose assignee names no entry goes to the default assignee, or fails. See [Task board](./orchestration/task-board.md). | Board worker, task |
+> | **Hand-off** | orchestration | Work leaves the current request for another session, and exactly one answer comes back later. A task whose assignee hands it off is one: the board tracks it until it's done. In Workforce, a hand-off to one of your workers is a delegation. | Dispatch, task |
+
+*Amended after merge (epic [D10](../../epics/FIX-1786/DECISIONS.md#d10)):* the glossary gains
+Hand-off here and Delegation in the Workforce section, and Delegate says what it means for any
+worker. "Ask", a hand-off that waits for its answer, enters with the follow-up epic that builds it,
+[FIX-1815](https://linear.app/fixpoint-labs/issue/FIX-1815); the glossary defines only what has
+shipped (BR-17).
 
 ## REPLACE · `glossary.md` · "Workforce: workers, mailboxes, projects"
 
@@ -45,7 +52,8 @@ here, and has no seat row.
 > | **Fork** | workforce | Copies a standard worker into a worker of your own, starting from its configuration. | Worker |
 > | **Roster** | workforce | The workers one user has, standard ones included. | Workers |
 > | **Coordinator** | workforce | A worker that hands each post to other workers on the same roster, its delegates. It picks by its own judgment, by best fit, in turn, or sends to everyone. See [Coordinators](./workforce/coordinators.md). | Worker, the coordinator flow |
-> | **Delegate** | workforce | A worker a coordinator can hand posts to. Always on the same user's roster. Each answers in its own session. | Worker |
+> | **Delegate** | workforce | A worker a conversation may delegate to. A worker's file lists its delegates under `delegates:`, and each conversation starts from that list. Always on the same user's roster; each works in its own session. | Worker |
+> | **Delegation** | workforce | Handing work to one of your delegates: a hand-off to a worker on your roster, checked against your roster. A coordinator delegates a question as a post; any worker with a delegate that takes tasks delegates a task. See [Delegating work](./workforce/delegating-work.md). | Hand-off, roster |
 > | **Door** | workforce | The one public action that takes a message to a worker. | Action |
 > | **Project** | workforce | A body of work, private to you or shared with your org. See [Projects](./workforce/projects.md). | One row, in user or org scope |
 > | **Workstream** | workforce | One area of a shared project, with one owner. Its entry is read by the org and written only by its owner; its lead works it in a workstream session. | A resource row, a session |
@@ -93,10 +101,11 @@ Workforce: it goes with the mailbox (FIX-1792), or, if it is still there, moves 
 pages in the new terms. Any other line where a seat means a Workforce worker says worker.
 
 The same goes for the board's seat elsewhere: `orchestration/agents.md`'s tool seats are tool
-assignees, `orchestration/configuration.md` names the renamed fence, `skills/delegation.md`'s
-floor is the default assignee in prose, `fundamentals/flows.md`'s "a seat on a task board" is an
-assignee, and the orchestration README's "Handing tasks off through a dispatcher seat" says
-assignee.
+assignees and `orchestration/configuration.md` names the renamed fence, where those lines outlive
+FIX-1814; `fundamentals/flows.md`'s "a seat on a task board" is an assignee, and the orchestration
+README's "Handing tasks off through a dispatcher seat" says assignee. `skills/delegation.md` is
+not renamed or kept: FIX-1814 deletes it with skill sub-agents, and with it the only page that
+used "delegation" for skills (*amended after merge*, epic [D10](../../epics/FIX-1786/DECISIONS.md#d10)).
 
 ## UPDATE · `apps/docs/docs/orchestration/discovery.md` · description and opening
 

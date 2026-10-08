@@ -181,5 +181,10 @@ The `mailboxes` domain is not decided here: FIX-1792 removes it ([its PLAN S9](h
   against each other ([epic](../../epics/FIX-1786/DECISIONS.md#how-it-got-here)): an assignee is
   who a task goes to: an entry in the board's `workers` map, or a name the board's assignee check
   accepts (in Workforce, a delegate). ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
+- **Amended after merge (one word per thing for hand-offs, 2026-10-08)** — the product owner
+  removed skill sub-agents and named hand-offs ([epic D10](../../epics/FIX-1786/DECISIONS.md#d10)).
+  The glossary gains Hand-off and Delegation, and Delegate is corrected. Nothing here renames or
+  keeps the Skills → Delegation page or the names only skill sub-agents used: FIX-1814 deletes
+  them. ([EVOLUTION.md](EVOLUTION.md#amendment-handoff))
 
 **Open: none.**

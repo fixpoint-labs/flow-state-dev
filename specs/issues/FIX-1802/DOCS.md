@@ -6,19 +6,25 @@ Reader-facing prose this issue publishes in P3, reconciled against shipped names
 wording first. FIX-1794's draft puts filing on the coordinators page and defers its "Splitting
 work" section here; this issue moves filing to a page of its own, since any worker can file now,
 and leaves the coordinators page a pointer. Voice: [`CLAUDE.md`](../../../CLAUDE.md) → "Writing
-Style". Watch for: "task session" and "delegate" defined on first use, no issue numbers, no
-em-dash as a connector.
+Style". Watch for: "task session", "delegate" and "delegation" defined on first use, and
+"delegation" in Workforce's meaning only (epic [D10](../../epics/FIX-1786/DECISIONS.md#d10)); no
+issue numbers, no em-dash as a connector.
 
-## CREATE · `apps/docs/docs/workforce/filing-work.md`
+*Amended after merge (epic D10):* the page is "Delegating work", at `delegating-work.md`, so its
+name is the word the docs use for handing work to a delegate.
 
-Sidebar: `workforce/filing-work`, right after `workforce/coordinators` in `apps/docs/sidebars.ts`
-(FIX-1791 adds that page after `workforce/built-in-worker`). Front matter `sidebar_label: Filing work`.
+## CREATE · `apps/docs/docs/workforce/delegating-work.md`
 
-> # Filing work
+Sidebar: `workforce/delegating-work`, right after `workforce/coordinators` in `apps/docs/sidebars.ts`
+(FIX-1791 adds that page after `workforce/built-in-worker`). Front matter `sidebar_label: Delegating work`.
+
+> # Delegating work
 >
-> Some work is a question, and a post gets it answered. Some work has to be done: a change made,
-> a report written, a run that takes an hour. For that, a worker **files a task**: a row on a
-> board, handed to one of its **delegates**, the workers it is allowed to hand work to. The
+> A worker can hand work to other workers on your roster, its **delegates**. That is
+> **delegation**, and every hand-over is checked against your roster. A
+> [coordinator](./coordinators.md) hands a question on as a post, and the delegate answers it.
+> Work that has to be done instead, like a change made, a report written or a run that takes an
+> hour, goes as a **task**: the worker files it on a board, for one of its delegates. The
 > delegate works it in a new session of its own, a **task session**, and the worker that filed
 > it hears how it ended.
 >
@@ -111,7 +117,7 @@ files tasks on its own when you ask it for work" with:
 
 > A post gets an answer. When work has to be done instead, a coordinator can file a **task** for
 > one of its delegates that takes tasks. Filing works the same for every worker,
-> so it has [a page of its own](./filing-work.md); what follows is how it looks from a
+> so it has [a page of its own](./delegating-work.md); what follows is how it looks from a
 > coordinator.
 
 FIX-1794's "Splitting work" subsection is not published there; it is the section above.
@@ -119,7 +125,7 @@ FIX-1794's "Splitting work" subsection is not published there; it is the section
 ## UPDATE · `apps/docs/docs/workforce/workers-on-disk.md` · "What a WORKER.md says", after the `packages:` paragraph
 
 > `delegates:` names the workers this worker hands work to. When one of them takes tasks, the
-> worker gets the tools to [file tasks](./filing-work.md) for them. A worker on your own flow also
+> worker gets the tools to [file tasks](./delegating-work.md) for them. A worker on your own flow also
 > needs the flow to carry the task tools.
 
 ## UPDATE · `packages/workforce/README.md` · after FIX-1794's paragraph on tasks
@@ -129,7 +135,7 @@ FIX-1794's "Splitting work" subsection is not published there; it is the section
 > `taskToolActions` in the flow's actions, over the session's board (the built-in `agent` and
 > `coordinator` flows carry them). A task's worker can split it the same way, up to five boards
 > deep and 100 tasks under one top task, a cap the app can raise on `hireWorkforce`. See
-> [Filing work](../../apps/docs/docs/workforce/filing-work.md).
+> [Delegating work](../../apps/docs/docs/workforce/delegating-work.md).
 
 The task session's lookup key is `filingSessionId` everywhere (FIX-1791, FIX-1794 and this spec).
 
@@ -143,4 +149,4 @@ roster `taskToolActions` takes there.
 
 This issue publishes the new page and the three updates above. The coordinators page and FIX-1794's
 sections are FIX-1791's and FIX-1794's; this issue only replaces the paragraph named. FIX-1796's
-glossary defines "filing" and "task session" from this page.
+glossary defines "filing", "task session" and "delegation" from this page.

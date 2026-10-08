@@ -50,3 +50,22 @@ spec changed:
 | What | Treatment | Why | What is retained |
 |---|---|---|---|
 | BR-18, D1's *Locks in* and the glossary row: an assignee is "a named entry in a board's `workers` map" | **Amended**: who a task goes to, an entry in that map or a name the board's assignee check accepts (in Workforce, a delegate) | Workforce boards route every row through one `defaultWorker`, and the assignee is a delegate name (FIX-1794, FIX-1802); epic D7 matches | The word, assignee (the product owner, 2026-10-07) |
+
+<a name="amendment-handoff"></a>
+## Amended after merge (one word per thing for hand-offs, 2026-10-08)
+
+**The decision.** The product owner removed skill sub-agents and gave hand-offs one word per thing
+([epic D10](../../epics/FIX-1786/DECISIONS.md#d10)): a hand-off is orchestration's, delegation is
+Workforce's, a delegate is a worker a conversation may delegate to, and "mailbox" is kept back for
+a future untrusted inbox. In published docs, "delegation" means Workforce's meaning only.
+[FIX-1814](https://linear.app/fixpoint-labs/issue/FIX-1814) removes skill sub-agents. This spec
+changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| DOCS's glossary: no Hand-off or Delegation row; Delegate as "a worker a coordinator can hand posts to" | **Amended**: Hand-off in the task-board section, Delegation in the Workforce section, and Delegate for any worker | Epic D10's vocabulary; any worker with task-taking delegates delegates tasks (epic D8) | One row per idea (BR-17, BR-19) |
+| S1's internals list: `toolSeats`, `hasToolSeats`, `TOOL_SEAT_NOTE`, `test/skills/delegation-tool-seats.test.ts` | **Removed** from the rename list | They live only in the skills library's delegation surface, which FIX-1814 deletes ("don't rename what a sibling is about to delete") | Every other name S1 lists |
+| S3 and DOCS: `skills/delegation.md`'s floor renamed the default assignee | **Removed** | FIX-1814 deletes the page | `orchestration/agents.md`'s and `configuration.md`'s tool seats, where they outlive FIX-1814 |
+| The pinned tool-assignee names | **Amended** with a note: renamed only where still on `main` when P1 builds | FIX-925's tool seat is part of the surface FIX-1814 removes | The names, for whatever survives |
+
+This spec had no plan for a `subAgents` name, so none goes.
