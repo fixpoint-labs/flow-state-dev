@@ -61,7 +61,10 @@ import { z } from "zod";
 import {
   CHECKOUT_CLEANUP_TIMEOUT_MS,
   GIT_TIMEOUT_MS,
+  HeldWorkMismatchError,
   WorkspaceRefusedError,
+  type HeldWork,
+  type RecordedPlace,
   type RunSourceAnswer,
   type WorkspaceHost,
   type WorkspacePlace,
@@ -70,14 +73,27 @@ import { NETWORK_CALL_TIMEOUT_MS } from "./timeouts";
 import { MAX_TIMER_MS } from "./guards";
 import {
   RUNS,
+  assertPlaceAndHeld,
+  heldSchema,
+  placeStateSchema,
   openRunRow,
   readRunRow,
   runRecordCollection,
   runTopic,
   writeRunRow,
   type AttemptIdentity,
+  type HeldRecord,
+  type PlaceState,
   type RunRowWrite,
 } from "./run-record";
+import {
+  failedHeldRecord,
+  heldPromptSection,
+  heldRecordOf,
+  mismatchQuestion,
+  recordedHoldOf,
+  withHoldRetries,
+} from "./held";
 import { askMarkerPath, readAskMarker } from "./ask";
 import {
   HARNESS_RUN_OWNER_KEY,
@@ -518,6 +534,16 @@ const managerStateSchema = z.object({
    * provisioned, and again once its kept files were saved and released.
    */
   place: z.custom<WorkspacePlace>().nullable().default(null),
+  /**
+   * The run record's `place` when this attempt opened: the host the run was
+   * last ready on. Handed to `provision` and never written back from here.
+   */
+  recordedPlace: z.object({ host: z.string(), state: placeStateSchema }).nullable().default(null),
+  /**
+   * The run record's `held`, read when the attempt opened and kept current by
+   * every hold this attempt writes: the key a new hold replaces.
+   */
+  held: heldSchema.nullable().default(null),
 });
 
 /** The manager's own result. Two outcomes; there is deliberately no third. */
@@ -551,6 +577,24 @@ export class HarnessRunRefused extends Error {
   constructor(message: string) {
     super(message);
     this.name = "HarnessRunRefused";
+  }
+}
+
+/**
+ * The run's held work could not be used, so the row was parked for the run's
+ * owner before any harness ran (BR-19, BR-29).
+ *
+ * Not a failed attempt: the row already waits on a person, and the board's
+ * recorders leave a parked row alone. Thrown only to stop the chain before
+ * the harness; the record's outcome stays `running`, as on any park.
+ */
+export class HarnessRunParked extends Error {
+  constructor(readonly field: string) {
+    super(
+      `[harness-manager] the run's held work does not match its record (${field}); ` +
+        `parked for the run's owner before the harness ran.`,
+    );
+    this.name = "HarnessRunParked";
   }
 }
 
@@ -1220,6 +1264,155 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
   };
 
   /**
+   * Hold the run's repository work, where the host holds it: write the pack,
+   * then switch the record to it, then drop the pack the record named before
+   * (BR-6). Beside every save point: turn end, park, failure.
+   *
+   * Answers `false` when the hold failed, after recording why and keeping the
+   * last good hold on the record (BR-7); the caller decides whether that fails
+   * the attempt (BR-8). The pack and the record write are each tried a few
+   * times first. A displaced attempt's record write is refused like every
+   * other one (BR-9), and nothing is dropped. With holding off, nothing runs.
+   */
+  const holdWork = async (ctx: BlockContext): Promise<boolean> => {
+    const state = harnessCtxState(ctx);
+    const place = state?.place;
+    if (place == null || place.holding === undefined) return true;
+    const identity = identityFrom(state, boardCollectionId);
+    const previous = state?.held ?? null;
+    const recorded = recordedHoldOf(previous);
+    const writeHeld = (held: HeldRecord, where: string) =>
+      withHoldRetries(
+        () => fenced(writeRunRow(ctx, identity, { held }), where),
+        (error) => !(error instanceof HarnessAttemptSuperseded),
+      );
+
+    let hold: HeldWork | null;
+    try {
+      hold = await withHoldRetries(() =>
+        host.checkpoint(place, recorded === null ? null : { snapshot: recorded.snapshot, sha256: recorded.sha256, bytes: previous!.bytes ?? 0 }),
+      );
+    } catch (cause) {
+      const failed = failedHeldRecord(previous, identity.attempt, Date.now(), cause instanceof Error ? cause.message : String(cause));
+      await writeHeld(failed, "a failed hold was recorded");
+      await ctx.sequencer!.patchState({ held: failed });
+      return false;
+    }
+    if (hold === null || hold.unchanged) return true;
+
+    // **The record switches after the pack is stored, to a key no earlier
+    // hold used**: a machine dying before this write leaves the record on the
+    // last good pack, and one dying after it leaves an orphan, never a gap.
+    const held = heldRecordOf(hold, identity.attempt, Date.now());
+    await writeHeld(held, "the run's work was held");
+    await ctx.sequencer!.patchState({ held });
+
+    // **Last, and only the key the record named before**: never the one just
+    // written, and never one that parked the run, which stays as evidence. A
+    // failed drop leaves an orphan for the sweep, not a failed hold.
+    if (previous?.key != null && previous.key !== held.key && !previous.parked) {
+      await host.dropHeld(place, previous.key).catch(() => undefined);
+    }
+    return true;
+  };
+
+  /**
+   * Write where the run's place stands, where the host holds work. With
+   * holding off this is never called and the record gains no `place`.
+   */
+  const recordPlace = async (ctx: BlockContext, placeHost: string, placeState: PlaceState): Promise<void> => {
+    await fenced(
+      writeRunRow(ctx, identityFrom(harnessCtxState(ctx), boardCollectionId), {
+        place: { host: placeHost, state: placeState },
+      }),
+      `the place was recorded ${placeState}`,
+    );
+  };
+
+  /**
+   * Provision the run's place through the host, handing it what the record
+   * says, and write `place.state` around it in the order the rules give:
+   * `provisioning`, then `lost` and `restoring` when the host reports them,
+   * then `ready` naming this host (BR-25). Until it is ready the record keeps
+   * naming the host the place was last ready on, so a machine that dies mid-
+   * rebuild never reads as the run's live place.
+   *
+   * A refusal settles the row as before. Held work that disagrees with the
+   * record parks the row for the run's owner, before any harness runs.
+   */
+  const provisionPlace = async (
+    ctx: BlockContext,
+    answer: RunSourceAnswer,
+    location: RunLocation,
+  ): Promise<WorkspacePlace> => {
+    const state = managerState(harnessCtxState(ctx));
+    const holding = host.holds(answer);
+    const recordedHost = state.recordedPlace?.host ?? null;
+    const held = recordedHoldOf(state.held);
+    // Off, and nothing held: exactly the call the host always got.
+    const recorded: RecordedPlace | undefined =
+      holding || held !== null
+        ? { host: recordedHost, held, remote: state.remote, branch: state.branch, baseRef: state.baseRef }
+        : undefined;
+    const before = recordedHost ?? (holding ? host.hostId() : null);
+    if (holding) await recordPlace(ctx, before!, "provisioning");
+    try {
+      const place = await host.provision(answer, {
+        place: placeFor(location),
+        branch: state.branch!,
+        ignored: ASK_MARKER_IGNORED,
+        ...(recorded !== undefined ? { recorded } : {}),
+        ...(holding ? { progress: (reported: "lost" | "restoring") => recordPlace(ctx, before!, reported) } : {}),
+      });
+      if (holding) await recordPlace(ctx, host.hostId(), "ready");
+      return place;
+    } catch (cause) {
+      if (cause instanceof WorkspaceRefusedError) {
+        if (holding) await recordPlace(ctx, before!, "refused").catch(() => undefined);
+        throw new HarnessRunRefused(refusedMessage("host", cause));
+      }
+      if (cause instanceof HeldWorkMismatchError) await parkOnMismatch(ctx, cause, before);
+      throw cause;
+    }
+  };
+
+  /**
+   * Park the row for the run's owner: its held work cannot be used here. The
+   * place goes `lost`, the pack is marked so nothing ever drops it, the owner
+   * is asked through the run's own inbox, and the operator's log names the run
+   * and the field, never the work's contents (BR-19, BR-29, D2).
+   */
+  const parkOnMismatch = async (
+    ctx: BlockContext,
+    mismatch: HeldWorkMismatchError,
+    placeHost: string | null,
+  ): Promise<never> => {
+    const state = managerState(harnessCtxState(ctx));
+    const identity = identityFrom(state, boardCollectionId);
+    const held = state.held === null ? null : { ...state.held, parked: true };
+    await fenced(
+      writeRunRow(ctx, identity, {
+        ...(placeHost !== null ? { place: { host: placeHost, state: "lost" as const } } : {}),
+        held,
+      }),
+      "the mismatch was recorded",
+    );
+    await ctx.sequencer!.patchState({ held });
+
+    const question = mismatchQuestion(mismatch.field, state.held?.attempt ?? null);
+    const topicKey = questionTopic(state.issue!, state.phase!, identity.attempt, questionFingerprint(question));
+    await askQuestion(ctx, topicKey, { question, askedBy: identity.taskId, askedAt: Date.now() });
+    const board = await boardTasks(ctx);
+    await board.awaitReview(identity.taskId, question);
+    await announce({ question: topicKey });
+    console.warn(
+      `[harness-manager] run ${identity.topic} (task ${identity.taskId}, attempt ${identity.attempt}): ` +
+        `held work does not match its record (${mismatch.field}); parked for the run's owner.`,
+    );
+    throw new HarnessRunParked(mismatch.field);
+  };
+
+  /**
    * Open the row — BEFORE the attempt waits for anything.
    *
    * The checkout path is derived here rather than read back, so a task woken in
@@ -1353,12 +1546,22 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // keeps the repository its record names (see `pinnedAnswer`). With a
       // fixed `sourceRepo` this is the path `checkoutPathFor` derives.
       const recorded = await readRunRow(ctx, topic);
+      try {
+        assertPlaceAndHeld(recorded);
+      } catch (corrupt) {
+        throw new HarnessAttemptFailed((corrupt as Error).message);
+      }
       const pinned = {
         remote: recorded?.remote ?? null,
         baseRef: recorded?.baseRef ?? null,
         filesOnly: recorded?.filesOnly ?? null,
       };
-      await ctx.sequencer!.patchState({ ...pinned, place: null });
+      await ctx.sequencer!.patchState({
+        ...pinned,
+        place: null,
+        recordedPlace: recorded?.place ?? null,
+        held: recorded?.held ?? null,
+      });
       const answer = pinnedAnswer(await host.source(ctx), pinned);
       if (answer.kind === "refused") throw new HarnessRunRefused(refusedMessage("source", answer));
       const workspacePath = host.locate(answer, { place: placeFor(location) }).cwd;
@@ -1556,12 +1759,13 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
             `Stopping before the agent runs.`,
         );
       }
-      const place = await host
-        .provision(answer, { place: placeFor(location), branch: state.branch!, ignored: ASK_MARKER_IGNORED })
-        .catch((cause: unknown) => {
-          throw cause instanceof WorkspaceRefusedError ? new HarnessRunRefused(refusedMessage("host", cause)) : cause;
-        });
+      const place = await provisionPlace(ctx, answer, location);
       await ctx.sequencer!.patchState({ place });
+      // A checkout rebuilt or started over on another machine has no vendor
+      // conversation to continue: that lives on the machine it ran on.
+      if (place.origin === "held" || place.origin === "base") {
+        await ctx.sequencer!.patchState({ previousSessionId: null });
+      }
 
       // **The repository and base the run started on, kept on its record**
       // the first time it is provisioned, so a later change to its source
@@ -1590,8 +1794,10 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // attempt takes is marked taken before any session can be named
       // (`continueOnceStarted` in `./door`, pinned in `message-door.spec.ts`).
       const turns = await takeTurns(ctx, state.issue!, state.phase!, input.attempts);
+      const restored = heldPromptSection(place, state.held);
+      const withRestored = restored === undefined ? prompt : `${prompt}\n\n${restored}`;
       return {
-        prompt: turns.length === 0 ? prompt : `${prompt}\n\n${turnsPromptSection(turns)}`,
+        prompt: turns.length === 0 ? withRestored : `${withRestored}\n\n${turnsPromptSection(turns)}`,
       };
     },
   });
@@ -1733,7 +1939,9 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
 
       // **The run's kept files, saved at the end of its turn** — before any
       // arm, so a run that parks on a question, completes, or fails its check
-      // has saved what it wrote either way.
+      // has saved what it wrote either way. Its repository work is held first,
+      // while the place is still in hand: a save lets the place go.
+      const held = await holdWork(ctx);
       const saved = await saveKeptFiles(ctx);
 
       // **The ask, before any arm.** Reading THIS attempt's marker path — never
@@ -1831,6 +2039,13 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
             throw new HarnessAttemptFailed(
               `the ${state.phase} phase is done, but the run's kept files could not be saved, ` +
                 `so it is not completed on work that exists only in its workspace`,
+            );
+          }
+          // **Nor on work held nowhere** (BR-8): the retry holds it.
+          if (!held) {
+            throw new HarnessAttemptFailed(
+              `the ${state.phase} phase is done, but the run's work could not be held, ` +
+                `so it is not completed on work that exists only on this machine`,
             );
           }
           // No question to withdraw: arm 1 returned on every attempt that asked
@@ -1934,10 +2149,17 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // already saved has released it, so this is a no-op for both. Its own
       // failure, a superseded attempt's refusal included, must not replace
       // the error this handler is unwinding.
+      // Its repository work is held the same way, first, while the place is
+      // in hand; a hold `decide` already wrote is unchanged and writes nothing.
+      await holdWork(ctx as BlockContext).catch(() => undefined);
       await saveKeptFiles(ctx).catch(() => undefined);
 
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state;
+      // **A run parked on its held work is waiting, not failed.** The row is
+      // already parked for its owner and the board leaves it alone; the
+      // record's outcome stays `running`, as on any park.
+      if (error instanceof HarnessRunParked) throw error;
       // A failure BEFORE the row was opened has no identity to fence against —
       // and cannot have left stale metadata either, since nothing was written.
       if (state?.topic != null && state.taskId != null && state.attempt != null) {
