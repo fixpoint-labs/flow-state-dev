@@ -20,7 +20,7 @@ import { defineResource } from "@flow-state-dev/core/types";
 import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
-import { hireWorkforce, type HireOptions } from "../src/hire";
+import { mintSeats, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 
@@ -30,7 +30,7 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
 
 function refusalOf(manifests: WorkerManifest[], options: HireOptions): string {
   try {
-    hireWorkforce(manifests, options);
+    mintSeats(manifests, options);
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -82,7 +82,7 @@ async function runSeat(seat: FlowInstance, toolName: string) {
 describe("a seat's own blocks are registered, not granted", () => {
   it("lets a seat call a block from its own folder once its `tools:` names it", async () => {
     const check = countingBlock("check-inventory");
-    const [seat] = hireWorkforce(
+    const [seat] = mintSeats(
       [record({ id: "support.clerk", declared: { tools: ["check-inventory"] }, body: "Clerk." })],
       {
         workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
@@ -104,7 +104,7 @@ describe("a seat's own blocks are registered, not granted", () => {
   // stays at zero here is the fence holding, not a broken harness.
   it("does NOT let a seat call a registered block its `tools:` never named", async () => {
     const check = countingBlock("check-inventory");
-    const [seat] = hireWorkforce([record({ id: "support.quiet", body: "Quiet." })], {
+    const [seat] = mintSeats([record({ id: "support.quiet", body: "Quiet." })], {
       workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
       seatBlocks: { "support.quiet": { "check-inventory": check } },
     });
@@ -118,7 +118,7 @@ describe("a seat's own blocks are registered, not granted", () => {
   // "this seat reaches nothing", which must stay literally true.
   it("reaches nothing with an explicit empty `tools:` and a full folder", async () => {
     const check = countingBlock("check-inventory");
-    const [seat] = hireWorkforce(
+    const [seat] = mintSeats(
       [record({ id: "support.empty", declared: { tools: [] }, body: "Empty." })],
       {
         workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
@@ -146,7 +146,7 @@ describe("a seat's own blocks are registered, not granted", () => {
     }) as BlockDefinition;
     calls["summarize-theirs"] = 0;
 
-    const [alpha] = hireWorkforce(
+    const [alpha] = mintSeats(
       [
         record({ id: "support.alpha", declared: { tools: ["summarize"] }, body: "A." }),
         record({ id: "support.beta", declared: { tools: ["summarize"] }, body: "B." }),
@@ -181,7 +181,7 @@ describe("a seat's own blocks are registered, not granted", () => {
     }) as BlockDefinition;
     calls["desk-note-app"] = 0;
 
-    const [seat] = hireWorkforce(
+    const [seat] = mintSeats(
       [record({ id: "support.desk", declared: { tools: ["desk-note"] }, body: "Desk." })],
       {
         workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { "desk-note": app } }) },
@@ -197,7 +197,7 @@ describe("a seat's own blocks are registered, not granted", () => {
   // A seat with no folder must behave exactly as it does today — including
   // keeping the catalog refusal it already has.
   it("changes nothing for a seat with no folder", () => {
-    const [seat] = hireWorkforce([record({ id: "support.plain", body: "Plain." })], {
+    const [seat] = mintSeats([record({ id: "support.plain", body: "Plain." })], {
       workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
     });
     expect(seat!.config).toMatchObject({ seatTools: [] });
@@ -241,7 +241,7 @@ describe("what a seat's own map is refused for", () => {
   // bare throw over any non-empty map.
   it("does not refuse when the key and the block's name agree", () => {
     expect(() =>
-      hireWorkforce([record({ id: "support.clerk", body: "Clerk." })], {
+      mintSeats([record({ id: "support.clerk", body: "Clerk." })], {
         workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
         seatBlocks: { "support.clerk": { "check-inventory": countingBlock("check-inventory") } },
       }),
@@ -309,7 +309,7 @@ describe("what a seat's own map is refused for", () => {
     const kind = defineAgentWorkerFlow({
       uses: [defineCapability({ name: "shared-ledger", resources: { shared } })],
     });
-    const [seat] = hireWorkforce(
+    const [seat] = mintSeats(
       [record({ id: "support.reader", declared: { tools: ["read-shared"] }, body: "Reader." })],
       { workerFlows: { [AGENT_KIND]: kind }, seatBlocks: { "support.reader": { "read-shared": reads } } },
     );
@@ -330,7 +330,7 @@ describe("what a seat's own map is refused for", () => {
 
   // BP-035's second path: the option absent entirely must behave as before.
   it("hires with no `seatBlocks` option at all", () => {
-    const [seat] = hireWorkforce([record({ id: "support.plain", body: "Plain." })]);
+    const [seat] = mintSeats([record({ id: "support.plain", body: "Plain." })]);
     expect(seat!.config).toMatchObject({ seatTools: [] });
   });
 
@@ -342,7 +342,7 @@ describe("what a seat's own map is refused for", () => {
   // actually being hired; entries addressed to anyone else are not this call's
   // business.
   it("hires a subset without objecting to map entries for the workers left out", () => {
-    const [seat] = hireWorkforce(
+    const [seat] = mintSeats(
       [record({ id: "support.clerk", declared: { tools: ["check-inventory"] }, body: "Clerk." })],
       {
         workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
@@ -395,7 +395,7 @@ describe("a colocated tool does not travel through delegation", () => {
   it("leaves only the catalog half in the bag's `tools`", () => {
     const own = countingBlock("check-inventory");
     const app = countingBlock("desk-note");
-    const [seat] = hireWorkforce(
+    const [seat] = mintSeats(
       [
         record({
           id: "support.clerk",

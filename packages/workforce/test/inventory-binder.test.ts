@@ -378,21 +378,6 @@ function bind(
 }
 
 describe("what one boot writes", () => {
-  it("counts only the seat rows that landed: a row the boot may not replace is left and not counted", async () => {
-    // Another process hired `eng.lead`'s address after this boot read its
-    // roster: the boot's row for it is left, and the binding says one seat.
-    const lab = await host([record("eng.standup")], { inventory: true });
-    try {
-      const hired ={ id: "eng.lead", kind: "agent", door: "userMessage", hired: true, incarnation: "i-live" };
-      await lab.runtime.stores.resourceState.set("org", ORG_ID, "inventory/seats/eng.lead", hired as never, "any" as never);
-      const result = await bind(lab);
-      expect(result.problems).toEqual([]);
-      expect(result.seats).toBe(1);
-      expect((await lab.read()).seats.find((row) => row.id === "eng.lead")).toEqual(hired);
-    } finally {
-      await lab.dispose();
-    }
-  });
 
   it("gives every seat and every open mailbox a row, read back from a flow that is not a mailbox (BR-8, BR-14, BR-21)", async () => {
     const roster = [record("eng.standup"), record("eng.retro", { members: ["eng.lead"] })];
@@ -410,7 +395,7 @@ describe("what one boot writes", () => {
         id: "eng.coder",
         kind: "coder",
         door: null,
-        hired: null,
+        hired: false,
         incarnation: null
       });
 
@@ -448,7 +433,7 @@ describe("what one boot writes", () => {
         id: "eng.lead",
         kind: "agent",
         door: null,
-        hired: null,
+        hired: false,
         incarnation: null
       });
     } finally {

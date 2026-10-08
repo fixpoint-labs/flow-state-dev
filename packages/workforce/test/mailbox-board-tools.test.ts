@@ -29,11 +29,11 @@ import {
   mailboxBoardTaskTools,
   mailboxInstances,
   defineAgentWorkerFlow,
-  hireWorkforce,
   openMailboxes,
   workerConfigSchema,
-  type MailboxManifest
+  type MailboxManifest,
 } from "../src/index";
+import { mintSeats } from "../src/hire";
 // Package-internal: the board module's joins and resolvers are not public
 // surface, so a test reaches them where they live.
 import { resolveMailboxBoard } from "../src/mailbox/mailbox-board";
@@ -109,7 +109,7 @@ async function lab(script: Array<Record<string, unknown>>) {
   const [mailbox] = mailboxInstances(roster);
   const triage = mailboxBoard("eng.feature", "triage");
 
-  const [seat] = hireWorkforce(
+  const [seat] = mintSeats(
     [{ id: "eng.coder", declared: { flow: AGENT_KIND, tools: [] }, body: "Coder." }],
     { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [mailboxBoardTaskTools(triage)] }) } }
   );
@@ -243,7 +243,7 @@ describe("a seat holding two boards", () => {
     // also the shape a fixed capability name and eight fixed tool names make
     // impossible: the capability collides at build, and the tools collide at
     // the generator's own uniqueness assert.
-    const [seat] = hireWorkforce(
+    const [seat] = mintSeats(
       [{ id: "eng.coder", declared: { flow: AGENT_KIND, tools: [] }, body: "Coder." }],
       {
         workerFlows: {
@@ -334,7 +334,7 @@ describe("the seat's `tools:` fence", () => {
     // Both cases above already ran on a seat whose record says `tools: []`.
     // This one states the claim directly, on the hired seat, so a reader does
     // not have to infer it from a passing tool call.
-    const [seat] = hireWorkforce(
+    const [seat] = mintSeats(
       [{ id: "eng.fenced", declared: { flow: AGENT_KIND, tools: [] }, body: "Fenced." }],
       {
         workerFlows: {
@@ -485,7 +485,7 @@ describe("a mailbox-board tool colocated in a seat's own folder", () => {
 
     let message = "";
     try {
-      hireWorkforce([{ id: "eng.colo", declared: { flow: AGENT_KIND }, body: "Colo." }], {
+      mintSeats([{ id: "eng.colo", declared: { flow: AGENT_KIND }, body: "Colo." }], {
         workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow() },
         seatBlocks: { "eng.colo": { "file-triage": colocated } }
       });

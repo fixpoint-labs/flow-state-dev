@@ -19,7 +19,6 @@ import {
   packageResourceMessage,
   type PackageManifest
 } from "./manifest";
-import { splitSeatAddress } from "./roster/address";
 import { parseDeclaredSeatId } from "./seat-references";
 
 /** One package a seat holds, with the blocks its address carries on the generated map. */
@@ -49,26 +48,17 @@ export interface HeldPackages {
  *   worker-level entry must name this seat's worker and a team-level one its
  *   team; any other is refused, and nothing is held.
  * @param packageBlocks The generated map, keyed by package address.
- * @param orgId The organization a hired seat's address carries, passed only
- *   when `seatId` IS that address (a record with no `seatId`): peeling it off a
- *   bare seat id would misread a team named like the org. The org is peeled off with
- *   `splitSeatAddress`, so an org seat hired as `<org>.<worker>` reads as the
- *   org seat it is. Without it, the declared id is the address's last two
- *   segments, which is right for every id the tree declares.
  */
 export function resolveHeldPackages(
   seatId: string,
   declared: unknown,
   reach: readonly PackageManifest[] | undefined,
-  packageBlocks: Record<string, Record<string, BlockDefinition<any, any>>>,
-  orgId?: string
+  packageBlocks: Record<string, Record<string, BlockDefinition<any, any>>>
 ): HeldPackages {
   const problems: string[] = [];
-  // A hired record with no `seatId` passes its address and the org to peel off
-  // it. What remains is parsed whole, never cut down: `a.b.c` matches neither
-  // shape, and its last two segments would read as a seat on team `b`.
-  const declaredPart = (orgId === undefined ? undefined : splitSeatAddress(orgId, seatId)) ?? seatId;
-  const declaredId = parseDeclaredSeatId(declaredPart);
+  // Parsed whole, never cut down: `a.b.c` matches neither shape, and its
+  // last two segments would read as a seat on team `b`.
+  const declaredId = parseDeclaredSeatId(seatId);
   // With nothing in reach and no line, there is nothing to place: a hand-built
   // record keyed some other way is not this step's to refuse.
   if (declaredId === undefined && (reach ?? []).length === 0 && declared === undefined) {

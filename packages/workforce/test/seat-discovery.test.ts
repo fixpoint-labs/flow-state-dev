@@ -21,7 +21,7 @@ import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext, runForTest } from "@flow-state-dev/testing";
 import { createWorkforceCapability } from "../src/workforce-capability";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 
 /**
@@ -151,7 +151,7 @@ describe("the `discover:` worker-file key", () => {
 
   function hire(manifests: WorkerManifest[]) {
     const kind = defineAgentWorkerFlow({ uses: [capabilityWithThreeDomains()] });
-    return hireWorkforce(manifests, { workerFlows: { agent: kind as never } });
+    return mintSeats(manifests, { workerFlows: { agent: kind as never } });
   }
 
   it("carries a seat's list onto its settings", () => {

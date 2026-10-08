@@ -113,23 +113,6 @@ describe("the seats source", () => {
     expect(entry!.purpose).toBe('The seat "a.b". Its file declares no description.');
   });
 
-  it("FIX-1526 · a roster row with no file is the declared half, so Discover lists a runtime hire", async () => {
-    const { seats } = sourcesOf(EMPTY, { seats: "seatRows" }, "hiredRows");
-    const ctx = ctxWith(
-      {
-        seatRows: [{ id: "acme.eng.ada", kind: "agent" }],
-        hiredRows: [
-          { seatId: "eng.ada", flow: "agent", settings: {}, instructions: "You take support tickets." },
-        ],
-      },
-      "acme",
-    );
-
-    const entries = await seats!.entries(ctx);
-    expect(entries.map((entry) => entry.id)).toEqual(["acme.eng.ada"]);
-    expect(entries[0]!.purpose).toBe("You take support tickets.");
-  });
-
   it("FIX-1526 · an inventory row whose roster row was fired is withheld", async () => {
     const { seats } = sourcesOf(EMPTY, { seats: "seatRows" }, "hiredRows");
     const ctx = ctxWith(
@@ -188,24 +171,6 @@ describe("the seats source", () => {
     );
 
     expect((await seats!.entries(ctx)).map((entry) => entry.id)).toEqual(["eng.lead"]);
-  });
-
-  it("skips a roster row whose seat id cannot be an address, and lists its siblings", async () => {
-    // `~` marks a user-owned seat's address, so a stored seat id starting with
-    // it cannot be minted. Same failure as the dev-org row, one segment later.
-    const { seats } = sourcesOf(EMPTY, { seats: "seatRows" }, "hiredRows");
-    const ctx = ctxWith(
-      {
-        seatRows: [{ id: "acme.eng.ada", kind: "agent" }],
-        hiredRows: [
-          { seatId: "~eng.bo", flow: "agent", settings: {} },
-          { seatId: "eng.ada", flow: "agent", settings: {}, instructions: "You take support tickets." },
-        ],
-      },
-      "acme",
-    );
-
-    expect((await seats!.entries(ctx)).map((entry) => entry.id)).toEqual(["acme.eng.ada"]);
   });
 
   it("withholds a roster row stamped for another organization", async () => {

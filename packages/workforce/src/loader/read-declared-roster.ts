@@ -148,7 +148,7 @@ export interface DeclaredRoster {
  *   // The refusal line is yours: this library does not decide what is fatal.
  *   throw new Error(roster.problems.map((p) => `${p.layer} ${p.path}`).join(", "));
  * }
- * const seats = hireWorkforce(roster.workers);
+ * const flows = hireWorkforce(createWorkerInstallation({ standardWorkers: roster.workers }));
  */
 export async function readDeclaredRoster(root: string): Promise<DeclaredRoster> {
   // Serially, not in parallel. The three share a root that either opens or

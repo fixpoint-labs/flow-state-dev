@@ -5,7 +5,7 @@
  * Compose it into a worker kind's `uses` and the kind's catalog gains one
  * tool, `post-to-mailbox`. That is a grant the kind offers, not one a seat
  * holds: a seat names the tool in its `tools:` before the model can call it,
- * the same fence `createSeatHireCapability`'s `hire` sits behind. Posting is an
+ * the same fence the roster's `hire` sits behind as a tool. Posting is an
  * effect other people read, so it is never a control every seat holds.
  *
  * ## Who the line is from
@@ -54,6 +54,7 @@
  * before.
  */
 
+import { verifiedWorkerOf } from "./workers/verified-worker";
 import { defineCapability, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -114,6 +115,24 @@ export const routedTurnStateSchema = z.object({ [ROUTED_TURN_STATE]: routedTurnS
  * generator resolves the tool.
  */
 export const seatIdConfigSchema = z.object({ [SEAT_ID_KEY]: z.string().min(1) });
+
+/**
+ * The worker a turn on a copy that runs every worker signs as: the one the
+ * turn loaded with `resolveWorker`. Refuses a turn that loaded none, since a
+ * line nobody signed can't be posted as a worker.
+ */
+export function workerIdOfTurn(ctx: { readonly session: object }): string {
+  const workerId = verifiedWorkerOf(ctx.session);
+  if (workerId === undefined) throw new Error("This turn loaded no worker, so it can't post as one.");
+  return workerId;
+}
+
+/**
+ * Who a line is signed by: `copy`, the `seatId` of a copy minted for one
+ * worker, checked against the copy's config before the model is offered the
+ * tool; `worker`, the worker the turn loaded on a copy that runs every worker.
+ */
+type Signer = "copy" | "worker";
 
 /** What {@link postAsSeat} is handed: the tool's input, and the seat's name to post under. */
 const postAsSeatInputSchema = z.object({ mailbox: z.string(), body: z.string(), author: z.string() });
@@ -192,7 +211,7 @@ export const answerRoutedPost = sequencer({ name: "answer-in-mailbox", inputSche
 type ToolLine = PostAsSeatInput & { postId?: string; token?: string; as: "answer" | "post" | "answered" };
 
 /** The tool's line as the seat, and what it is against the turn's routed post. */
-const toolLine = handler({
+const toolLineFor = (signer: Signer) => handler({
   name: "post-to-mailbox-line",
   inputSchema: postToMailboxInputSchema,
   outputSchema: postAsSeatInputSchema.extend({
@@ -201,9 +220,11 @@ const toolLine = handler({
     as: z.enum(["answer", "post", "answered"]),
   }),
   requestStateSchema: routedTurnStateSchema,
-  flowConfigSchema: seatIdConfigSchema,
+  ...(signer === "copy" ? { flowConfigSchema: seatIdConfigSchema } : {}),
   execute: async (input: PostToMailboxInput, ctx): Promise<ToolLine> => {
-    const line = { ...input, author: ctx.flow.config.seatId };
+    const author =
+      signer === "copy" ? String((ctx.flow.config as Record<string, unknown>)[SEAT_ID_KEY]) : workerIdOfTurn(ctx);
+    const line = { ...input, author };
     const routed = ctx.request.state.mailboxRoutedPost;
     if (routed === undefined || routed.mailboxId !== input.mailbox) return { ...line, as: "post" };
     if (routed.handed === true) return { ...line, as: "answered" };
@@ -231,7 +252,7 @@ const toAnswer = (line: ToolLine): AnswerAsSeatInput => ({
  * a routed post whose answer the turn has handed over already, nothing and a
  * note saying so.
  */
-const postToMailbox = sequencer({
+const postToMailboxFor = (signer: Signer) => sequencer({
   name: POST_TO_MAILBOX_TOOL,
   description:
     "Post a line to a mailbox you are a member of, under your own name. " +
@@ -239,7 +260,7 @@ const postToMailbox = sequencer({
   inputSchema: postToMailboxInputSchema,
   outputSchema: postToMailboxResultSchema,
 })
-  .step(toolLine)
+  .step(toolLineFor(signer))
   .stepIf((line: ToolLine) => line.as === "answer", toAnswer, answerRoutedPost)
   .stepIf((value: ToolLine | { sessionId: string }) => "as" in value && value.as === "post", toPost, postAsSeat)
   .map((value: { sessionId: string } | { mailbox: string }) =>
@@ -264,7 +285,22 @@ const postToMailbox = sequencer({
 export const mailboxPostCapability: DefinedCapability = defineCapability({
   name: MAILBOX_POST_CAPABILITY,
   presets: {
-    tools: { tools: [postToMailbox] },
+    tools: { tools: [postToMailboxFor("copy")] },
+    default: ["tools"],
+  },
+});
+
+/**
+ * The same capability for a copy that runs every worker, which has no
+ * `seatId` of its own: each line is signed by the worker the turn loaded.
+ * `defineAgentWorkerFlow({ installation })` puts it in place of
+ * {@link mailboxPostCapability}; an app's own worker flow on an installation
+ * uses it directly.
+ */
+export const workerMailboxPostCapability: DefinedCapability = defineCapability({
+  name: MAILBOX_POST_CAPABILITY,
+  presets: {
+    tools: { tools: [postToMailboxFor("worker")] },
     default: ["tools"],
   },
 });

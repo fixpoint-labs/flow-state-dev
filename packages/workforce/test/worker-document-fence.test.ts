@@ -32,7 +32,7 @@ import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { readResourcesDirectory } from "../src/loader";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
 import { resourcesFromDocs } from "../src/resources-from-docs";
 import { DERIVED_RESOURCE_KEYS, type WorkerManifest } from "../src/manifest";
@@ -128,7 +128,7 @@ async function hireTwoSeatsOver(root: string) {
   // The production factory, not a hand-built pair of instances: what makes the
   // fence work is that `hireWorkforce` mints one flow INSTANCE ID per seat, and
   // a hand-built pair would be assuming exactly the thing under test.
-  const seats = hireWorkforce(manifests, { workerFlows: { recon: reconFlow } });
+  const seats = mintSeats(manifests, { workerFlows: { recon: reconFlow } });
   expect(seats.map((s) => s.id)).toEqual([ALICE, BOB]);
 
   // Both seats really carry the documents. Without this, a roster hired into

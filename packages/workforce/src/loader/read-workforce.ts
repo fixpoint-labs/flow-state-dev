@@ -118,7 +118,7 @@ export interface ReadWorkforceResult {
  * if (errors.length > 0 || skillErrors.length > 0 || teamErrors.length > 0) {
  *   throw new Error("short roster");
  * }
- * const seats = hireWorkforce(workers, { seatBlocks, packageBlocks });
+ * const flows = hireWorkforce(createWorkerInstallation({ standardWorkers: workers, seatBlocks, packageBlocks }));
  */
 export async function readWorkforce(root: string): Promise<ReadWorkforceResult> {
   const { workers, errors } = await readWorkforceDirectory(root);

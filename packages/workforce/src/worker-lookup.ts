@@ -2,47 +2,29 @@
  * Which worker a name on a task means: the one lookup the hand-over, the
  * filing check and the wake all ask.
  *
- * A task names its worker the way `discover` lists it — `eng.coder`, or the
- * id a worker was hired under. The lookup answers with the flow id of the one
- * worker holding that name for the running request: a worker the files
- * declare, a worker hired for the organization, or one the running member
- * hired for themselves. The organization comes from the run, and the member
- * is the one who filed the task: the session owner when a door checks a name,
- * and the filer the ledger stamped on the row (`task.createdBy`) at hand-over,
- * whoever runs the drain. Neither comes from the task's own fields, so a name
- * cannot reach another organization's worker or a teammate's own (BP-031).
+ * A task names its worker by id, as `discover` lists it (`eng.coder`). A task
+ * on a board is handed to a standard worker: one the installation's files
+ * declare, which every user has. The lookup answers with the flow it runs on,
+ * whose one registered copy runs it, and the hand-over opens the task's
+ * session naming the worker in its starting state, which the flow's create
+ * check confirms. A user's own worker isn't handed board tasks: the session
+ * would be created by whoever drains the board, who can't name another
+ * user's worker.
  *
- * **It reads the host's live registry, not the list it booted with.** A hire
- * registers its worker the moment it lands and a fire releases it, so a name
- * resolves for a worker hired a moment ago and stops resolving the moment the
- * worker is fired, with no restart and nothing to rebuild.
- *
- * A name two workers hold for one caller (the organization's and the caller's
- * own) is refused as ambiguous, naming both. Never resolved by precedence: a
- * task filed for one would silently run on the other.
+ * The lookup reads the installation, not a list it booted with, so a worker
+ * the files no longer declare stops resolving at the next boot.
  */
 
-import type { BlockContext, FlowInstance, TaskFlowTarget, TaskStateTarget } from "@flow-state-dev/core/types";
-import { seatAddress } from "./roster/address";
+import type { BlockContext, TaskFlowTarget, TaskStateTarget } from "@flow-state-dev/core/types";
+import { AGENT_KIND } from "./agent-worker-flow";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
+import type { WorkerInstallation } from "./workers/installation";
 import { WORKER_ID_STATE_KEY } from "./workers/keys";
-
+import { standardWorkerFlow } from "./workers/standard-workers";
 
 export interface WorkerLookupOptions {
-  /**
-   * The flow registered at an id right now — the host registry's own getter
-   * (`(id) => runtime.registry.get(id)`), the same one the hire tool takes as
-   * `instanceAt`. Read on every lookup; never a copy.
-   */
-  instanceAt: (id: string) => FlowInstance | undefined;
-  /**
-   * The ids of the workers the files declare, as `hireWorkforce` registered
-   * them. A declared worker is registered at its own id; this list is what
-   * tells it apart from any other flow registered at that id (a mailbox, say).
-   * Pass a getter when the lookup is built before the workers are hired; it
-   * is read on every lookup.
-   */
-  declared: Iterable<string> | (() => Iterable<string>);
+  /** The installation whose standard workers a task can name. */
+  installation: WorkerInstallation;
 }
 
 /** What the lookup answers for one name. */
@@ -50,43 +32,37 @@ export type WorkerLookupAnswer =
   | { found: true; flowId: string }
   | {
       found: false;
-      reason: "not-found" | "ambiguous";
+      reason: "not-found";
       /** One sentence naming the worker, for the refusal a door or a hand-over shows. */
       message: string;
     }
   | {
       found: false;
-      /** The name means exactly one worker, but its kind declares no task entry. */
+      /** The name means a worker, but its flow declares no task entry. */
       reason: "takes-no-tasks";
-      /** The one worker the name means, for a caller that wants it for something other than a task. */
+      /** The flow the worker runs on, for a caller that wants it for something other than a task. */
       flowId: string;
       message: string;
     };
 
-/** The lookup, and the two shapes the framework plugs it in as. */
+/** The lookup, and the shapes the framework plugs it in as. */
 export interface WorkerLookup {
-  /**
-   * Which worker `name` means for the request `ctx` runs.
-   *
-   * @param member Whose own workers count. Defaults to the session owner, the
-   *   filer when a door checks a name; pass `null` to count none.
-   */
-  find(name: string, ctx: BlockContext, member?: string | null): WorkerLookupAnswer;
+  /** Which worker `name` means: the flow it runs on, or why there is none. */
+  find(name: string, ctx?: BlockContext): WorkerLookupAnswer;
   /**
    * The per-task target for a list's fallback:
-   * `dispatcher({ action: "work", session: "per-task", flowKind: lookup.flowKind })`.
-   * A name nobody holds answers nothing, which refuses the hand-over
-   * `flow-not-found` naming it; an ambiguous name, or a worker whose kind
-   * takes no tasks, throws its own sentence. Either way the claim is still
-   * held, so the task fails through the list's ordinary error path.
+   * `dispatcher({ action: "work", session: "per-task", flowKind: lookup.flowKind, state: lookup.state })`.
+   * A name no worker holds answers nothing, which refuses the hand-over
+   * `flow-not-found` naming it; a worker whose flow takes no tasks throws its
+   * own sentence. Either way the claim is still held, so the task fails
+   * through the list's ordinary error path.
    */
   flowKind: TaskFlowTarget;
   /**
-   * The per-task child state for a list's fallback, beside {@link flowKind}:
-   * `dispatcher({ ..., flowKind: lookup.flowKind, state: lookup.state })`.
-   * Names the worker the task names, so a worker flow's create check
-   * confirms it when the task's session is created (FIX-1788 BR-18). Read from
-   * the task the board hands over, never from its input.
+   * The per-task child state, beside {@link flowKind}: names the worker the
+   * task names, so the worker flow's create check confirms it when the task's
+   * session is created. Read from the task the board hands over, never from
+   * its input.
    */
   state: TaskStateTarget;
   /**
@@ -104,100 +80,46 @@ export interface WorkerLookup {
 }
 
 /**
- * Build the worker lookup over the host's live registry.
+ * Build the worker lookup over an installation.
  *
- * @param options The registry getter and the declared worker ids.
- * @returns `find` for the filing check and the wake, `flowKind` for a list's fallback.
+ * @param options The installation.
+ * @returns `find` for the filing check and the wake, `flowKind` and `state` for a list's fallback.
  */
 export function createWorkerLookup(options: WorkerLookupOptions): WorkerLookup {
-  const { instanceAt } = options;
-  const isDeclared = (id: string): boolean => {
-    const source = options.declared;
-    for (const declaredId of typeof source === "function" ? source() : source) {
-      if (declaredId === id) return true;
-    }
-    return false;
-  };
+  const { installation } = options;
 
-  const find = (name: string, ctx: BlockContext, member?: string | null): WorkerLookupAnswer => {
-    // Read exactly as the hire tool reads them when it mints the address, so
-    // the address looked up is the one a hire registered: `identity.orgId`
-    // first (`identity.id` is the org's storage key, which can carry the flow),
-    // and the session owner as the member unless the caller names the filer.
-    const orgId = ctx.org?.identity.orgId ?? ctx.org?.identity.id;
-    const userId = member === undefined ? ctx.session.identity.userId : member ?? undefined;
-
-    // Every worker this caller could mean by the name. The addresses carry the
-    // organization and the owner, so another organization's hire and a
-    // teammate's own are simply never asked about.
-    const held: Array<{ id: string; whose: string }> = [];
-    if (isDeclared(name) && instanceAt(name) !== undefined) {
-      held.push({ id: name, whose: "declared in the files" });
-    }
-    if (typeof orgId === "string" && orgId.length > 0) {
-      const org = addressOrUndefined(orgId, name);
-      if (org !== undefined && instanceAt(org) !== undefined) {
-        held.push({ id: org, whose: "hired for the organization" });
-      }
-      if (typeof userId === "string" && userId.length > 0) {
-        const own = addressOrUndefined(orgId, name, userId);
-        if (own !== undefined && instanceAt(own) !== undefined) {
-          held.push({ id: own, whose: "your own" });
-        }
-      }
-    }
-
-    if (held.length === 0) {
+  const find = (name: string): WorkerLookupAnswer => {
+    const worker = installation.standardWorker(name);
+    if (worker === undefined) {
       return { found: false, reason: "not-found", message: `No worker is named "${name}".` };
     }
-    if (held.length > 1) {
-      return {
-        found: false,
-        reason: "ambiguous",
-        message:
-          `"${name}" names ${held.length} workers: ${held.map((h) => `one ${h.whose}`).join(" and ")}. ` +
-          `Fire or rename one of them so the name means one worker.`,
-      };
-    }
-    const [only] = held;
-    const flow = instanceAt(only!.id)!;
-    if (!Object.prototype.hasOwnProperty.call(flow.task?.actions ?? {}, WORKER_TASK_ENTRY)) {
+    const flowId = standardWorkerFlow(worker, AGENT_KIND)!;
+    const flow = installation.workerFlows()[flowId]?.flow as { task?: { actions?: Record<string, unknown> } } | undefined;
+    if (!Object.prototype.hasOwnProperty.call(flow?.task?.actions ?? {}, WORKER_TASK_ENTRY)) {
       return {
         found: false,
         reason: "takes-no-tasks",
-        flowId: only!.id,
-        message: `"${name}" takes no tasks: its kind "${flow.kind}" declares no \`${WORKER_TASK_ENTRY}\` task entry.`,
+        flowId,
+        message: `"${name}" takes no tasks: its flow "${flowId}" declares no \`${WORKER_TASK_ENTRY}\` task entry.`
       };
     }
-    return { found: true, flowId: only!.id };
+    return { found: true, flowId };
   };
 
-  // At hand-over the run is the drain's, so the member is the filer the
-  // ledger recorded, never the drainer: a teammate's drain must not route a
-  // task to the teammate's own worker. No recorded filer counts no own worker.
-  const flowKind: TaskFlowTarget = (task, ctx) => {
-    const answer = find(task.assignee, ctx, task.filedBy ?? null);
+  const flowKind: TaskFlowTarget = (task) => {
+    const answer = find(task.assignee);
     if (answer.found) return answer.flowId;
     if (answer.reason === "not-found") return undefined;
     throw new Error(`[workforce] task "${task.taskId}" could not be handed over: ${answer.message}`);
   };
 
-  const filingCheck: WorkerLookup["filingCheck"] = (aliases = {}) => (name, listId, ctx) => {
+  const filingCheck: WorkerLookup["filingCheck"] = (aliases = {}) => (name, listId) => {
     if (Object.hasOwn(aliases, listId) && aliases[listId]!.includes(name)) return undefined;
-    const answer = find(name, ctx);
+    const answer = find(name);
     return answer.found ? undefined : answer.message;
   };
 
   const state: TaskStateTarget = (task) => ({ [WORKER_ID_STATE_KEY]: task.assignee });
 
   return { find, flowKind, state, filingCheck };
-}
-
-/** A hired worker's address, or `undefined` for a name no address can carry. */
-function addressOrUndefined(orgId: string, name: string, userId?: string): string | undefined {
-  try {
-    return seatAddress(orgId, name, userId);
-  } catch {
-    return undefined;
-  }
 }

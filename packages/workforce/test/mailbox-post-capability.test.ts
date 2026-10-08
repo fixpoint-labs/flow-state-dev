@@ -39,13 +39,13 @@ import {
   mailboxPostCapability,
   defineAgentWorkerFlow,
   defineMailboxFlow,
-  hireWorkforce,
   wakeMemberSeats,
   workerConfigSchema,
   type WorkerManifest,
 } from "../src/index";
-import { hiredSeatManifest, toHiredSeatRow } from "../src/roster/rows";
+import { mintSeats } from "../src/hire";
 import { postedLines } from "./mailbox-post-lines";
+import { createWorkerInstallation } from "../src/workers/installation";
 
 const USER_ID = "devuser";
 
@@ -161,7 +161,7 @@ async function mailboxRequests(runtime: FlowStateRuntime, sessionId: string, cou
 
 describe("post-to-mailbox", () => {
   it("lands one line in a mailbox the seat belongs to, under the seat's own id (BR-1, BR-3)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
+    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -186,7 +186,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("wakes no co-member when the seat posts through the tool, and still wakes them on a public claim of that seat", async () => {
-    const [otto, iris] = hireWorkforce([seat("support.otto"), seat("support.iris", undefined)], { workerFlows: { agent } });
+    const [otto, iris] = mintSeats([seat("support.otto"), seat("support.iris", undefined)], { workerFlows: { agent } });
     const mailbox = defineMailboxFlow({ notify: wakeMemberSeats([otto!, iris!]) })();
     const state = createFlowState({
       flows: { [MAILBOX_KIND]: mailbox, [otto!.id]: otto!, [iris!.id]: iris! },
@@ -233,7 +233,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("refuses an author from the model, and any other key; nothing is posted (BR-4)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
+    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -253,7 +253,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("is refused by the mailbox when the seat is not a member; the turn completes and nothing is written (BR-5)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
+    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -273,7 +273,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("fails the call by name for an id nobody opened, and for a session of another kind; nothing is written (BR-6)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
+    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -293,7 +293,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("offers nothing to a seat whose tools: does not name it (BR-7)", async () => {
-    const [iris] = hireWorkforce([seat("support.iris", [])], { workerFlows: { agent } });
+    const [iris] = mintSeats([seat("support.iris", [])], { workerFlows: { agent } });
     const state = host([iris!]);
     try {
       const runtime = await state.getRuntime();
@@ -309,7 +309,7 @@ describe("post-to-mailbox", () => {
   });
 
   it("refuses an empty body at the tool's input (BR-8)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
+    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!]);
     try {
       const runtime = await state.getRuntime();
@@ -319,28 +319,6 @@ describe("post-to-mailbox", () => {
       expect(String(turn.error)).toMatch(/body/);
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(await runtime.stores.request.list({ sessionId: "support.desk" })).toEqual([]);
-    } finally {
-      await state.dispose();
-    }
-  });
-
-  it("posts a runtime-hired seat's line under its record id, not its address (BR-16)", async () => {
-    const hired = hiredSeatManifest(
-      "acme",
-      toHiredSeatRow({ seatId: "support.pat", flow: "agent", settings: { tools: [POST_TO_MAILBOX_TOOL] } }),
-    );
-    if (!("manifest" in hired)) throw new Error(hired.problem);
-    const [pat] = hireWorkforce([hired.manifest], { workerFlows: { agent } });
-    expect(pat!.id).not.toBe("support.pat");
-    const state = host([pat!]);
-    try {
-      const runtime = await state.getRuntime();
-      await bind(runtime.stores, "support.desk", ["support.otto", "support.pat"], MAILBOX_KIND, "acme");
-
-      const turn = await say(runtime, pat!, postTurn({ mailbox: "support.desk", body: "new here" }), "acme");
-      expect(turn.error).toBeUndefined();
-      await mailboxRequests(runtime, "support.desk", 1);
-      expect((await postedLines(runtime.stores, "support.desk")).map((l) => l.author)).toEqual(["support.pat"]);
     } finally {
       await state.dispose();
     }
@@ -385,8 +363,56 @@ describe("post-to-mailbox", () => {
     }
   });
 
+  it("on one copy that runs every worker, lands the line under the worker the turn loaded (FIX-1788)", async () => {
+    let flows: Record<string, unknown> = {};
+    const installation = createWorkerInstallation({
+      standardWorkers: [seat("support.otto"), seat("support.iris")],
+      workerFlows: () => flows as never,
+    });
+    const shared = defineAgentWorkerFlow({ uses: [mailboxPostCapability], installation });
+    flows = { agent: shared };
+    const copy = shared({ id: "agent" }) as unknown as FlowInstance;
+    const state = host([copy]);
+    try {
+      const runtime = await state.getRuntime();
+      const router = await state.getRouter();
+      await bind(runtime.stores, "support.desk", ["support.otto", "support.iris"]);
+      for (const worker of ["support.iris", "support.otto"]) {
+        const sessionId = `talk-${worker}`;
+        const created = await router.POST(
+          new Request("http://localhost/api/flows/agent/sessions", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ userId: USER_ID, sessionId, state: { workerId: worker } }),
+          }),
+          { params: { path: ["agent", "sessions"] } },
+        );
+        expect(created.status).toBe(201);
+        const turn = await runAction({
+          orgId: DEFAULT_ORG_ID,
+          flow: copy,
+          actionName: "run",
+          input: { message: postTurn({ mailbox: "support.desk", body: `from ${worker}` }) },
+          userId: USER_ID,
+          sessionId,
+          stores: runtime.stores,
+          runtimeConfig: { ...runtime.runtimeConfig },
+        });
+        expect(turn.error).toBeUndefined();
+      }
+      await mailboxRequests(runtime, "support.desk", 2);
+      const lines = await postedLines(runtime.stores, "support.desk");
+      expect(lines.map((line) => [line.author, line.body]).sort()).toEqual([
+        ["support.iris", "from support.iris"],
+        ["support.otto", "from support.otto"],
+      ]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
   it("fails the call naming the external dispatcher; nothing is written (BR-19)", async () => {
-    const [otto] = hireWorkforce([seat("support.otto")], { workerFlows: { agent } });
+    const [otto] = mintSeats([seat("support.otto")], { workerFlows: { agent } });
     const state = host([otto!], { external: true });
     try {
       const runtime = await state.getRuntime();

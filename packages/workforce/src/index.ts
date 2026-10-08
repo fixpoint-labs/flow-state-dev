@@ -57,31 +57,14 @@ export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
 export {
-  HIRED_ROSTER_PRIVATE_RESOURCE,
-  HIRED_ROSTER_RESOURCE,
-  SEAT_INVENTORY_RESOURCE
-} from "./seat-hire-keys";
-export {
-  createSeatHireCapability,
-  createSeatHireBlocks,
-  hiredSeatOwnerPinFromRosterOwner,
-  registerHiredSeat,
-  SEAT_HIRE_CAPABILITY,
-  type HiredSeatOwnerPin,
-  type SeatHireAskData,
-  type SeatHireAskVerb,
-  type SeatHireBlocks,
-  type SeatHireCapabilityOptions,
-  type SeatHireToolOptions,
-} from "./seat-hire-capability";
-export {
   mailboxPostCapability,
+  workerMailboxPostCapability,
   MAILBOX_POST_CAPABILITY,
   POST_TO_MAILBOX_TOOL,
   postToMailboxInputSchema,
   type PostToMailboxInput,
 } from "./mailbox-post-capability";
-export { hireWorkforce, unattendedBoardWarnings, type HireOptions, type WorkerFlowEntry } from "./hire";
+export { unattendedBoardWarnings, type HireOptions, type WorkerFlowEntry } from "./hire";
 export { workerFlowProblems } from "./worker-flow-contract";
 export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } from "./shared-resource";
 export { WORKER_TASK_ENTRY } from "./worker-task-entry";
@@ -143,6 +126,5 @@ export {
 export type { WorkerManifest, TeamManifest, ResourceDoc, PackageManifest } from "./manifest";
 export * from "./mailbox";
 export * from "./inventory";
-export * from "./roster";
 export * from "./projects";
 export * from "./workers";
