@@ -746,7 +746,8 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
   /**
    * Persist the current items for an in-progress request.
    * Non-blocking from the caller's perspective — the backend handles async flushing.
-   * Callers should call flushItems() before writing terminal status.
+   * The write that settles a request carries its final items itself (see
+   * {@link RequestStore.set}); this is the path for items while it runs.
    *
    * Merge-by-id contract (FIX-811): persisting items MUST union the supplied
    * items into the stored set by `id` (last-write-wins per id), never replacing
@@ -769,8 +770,9 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
   persistItems(requestId: string, items: OutputItem[]): void;
 
   /**
-   * Wait for all pending item persistence writes to complete.
-   * Called before the terminal patchRequestRecord.
+   * Wait for all pending item persistence writes to complete, so none lands
+   * after a later write. Draining these is all it does: a settling `set`
+   * lands its own items and does not depend on a flush before it.
    */
   flushItems(requestId: string): Promise<void>;
 
