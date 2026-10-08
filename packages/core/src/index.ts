@@ -120,18 +120,8 @@ export type {
   SkillState,
   SkillsCollectionMeta,
   ToolCatalog,
-  AgentSpec,
 } from "./types/skill";
 
-export type {
-  Agent,
-  AgentOverrides,
-  AgentRegistry,
-  MaterializeAgentFn,
-  MaterializeAgentOptions,
-  PersonaInlineConfig,
-  PersonaSource,
-} from "./types/agent";
 export { defineCapability, getBaseCapability } from "./capability";
 
 /**

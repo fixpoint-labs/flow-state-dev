@@ -367,10 +367,7 @@ export type {
   SkillState,
   SkillsCollectionMeta,
   ToolCatalog,
-  AgentSpec,
 } from "./skill";
-
-export type { Agent, AgentOverrides, AgentRegistry } from "./agent";
 
 export type {
   JsonObject,

@@ -400,13 +400,12 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   workers: TaskWorker<TInput, TOutput> | TaskSeatRegistry;
 
   /**
-   * Optional default worker — the **delegation floor** (FIX-940).
+   * Optional default worker — the board's **floor** (FIX-940).
    * Registry path only: wired as the worker router's `fallback`, it runs
    * any task whose `assignee` is unknown or absent. Omit it and a
    * registry miss still fails the task per `onError` exactly as before;
    * declared workers are never routed through it (reached only on a
-   * genuine miss). Non-delegation consumers (blackboard, patterns) leave
-   * it unset.
+   * genuine miss). Blackboard and the patterns leave it unset.
    */
   defaultWorker?: TaskSeat;
 

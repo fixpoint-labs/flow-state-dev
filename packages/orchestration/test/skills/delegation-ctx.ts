@@ -1,10 +1,10 @@
 /**
- * Shared execution-context fixture for the delegation tests.
+ * Shared execution-context fixture for the task-tools tests.
  *
- * Every delegation test drives the same object graph: an executive generator
- * that owns a delegation board on its own state, with `self` and `parent`
- * aliased to that same ref by default (pass `self: false` to opt out). For why
- * the alias matters, see delegation-caps.test.ts.
+ * Every task-tools test drives the same object graph: an executive generator
+ * that owns a board on its own state (the `DELEGATION_BOARD_FIELD` the default
+ * own-state resolver reads), with `self` and `parent` aliased to that same ref
+ * by default (pass `self: false` to opt out).
  */
 import { createMockSkillsCollection } from "./mocks";
 import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";

@@ -63,12 +63,12 @@
  *
  *   The trap, because this bullet gets cited: `backing: "state"` takes any
  *   `StateRef`, not only a sequencer's. `StateBackingSpec.state` accepts any
- *   `StateRef` (`get-or-create.ts`), and the delegation surface passes
- *   `ctx.self` — the executive GENERATOR's own state (`delegation-surface.ts`).
+ *   `StateRef` (`get-or-create.ts`), and the task tools' default own-state
+ *   resolver passes a GENERATOR's own state (`defaultOwnStateResolver`).
  *   Only a sequencer block checkpoints: the lone `state_snapshot` emitter bails
  *   when `ctx.sequencer` is undefined, and that resolves only through a parent
  *   whose `kind === "sequencer"`. A generator's own-state container is rebuilt
- *   from `stateSchema` per scope entry with no persist callback, so a DELEGATION
+ *   from `stateSchema` per scope entry with no persist callback, so such a
  *   board's ledger — and its counts — start over. Durable non-sequencer block
  *   state is FIX-917's deferred follow-up.
  * - **Resource-backed** — no cap is enforced. The nearest durable analogue
@@ -136,7 +136,7 @@ export type TaskCapKind = "total" | "enqueued";
 /**
  * A task creation was refused because it would cross one of the collection's
  * caps. Thrown from `addTask`/`addTasks` after the CAS write no-ops, so nothing
- * is inserted. The delegation `addTask` tool catches this and returns a soft
+ * is inserted. The `addTask` task tool catches this and returns a soft
  * error; internal batch callers (seed, replan) let it propagate.
  */
 export class TaskCapExceededError extends Error {
@@ -182,7 +182,7 @@ export interface TaskCapOptions {
    * **What omission does depends on where you are constructing.** Only the
    * DEFAULTING SURFACES turn an omitted axis into
    * {@link DEFAULT_MAX_TOTAL_RETRIES}: `taskBoard`'s declarative branch, the
-   * task-board capability, and the delegation surface — everything that routes
+   * task-board capability, and `eventActors` — everything that routes
    * through {@link resolveTaskCapDefaults}. Constructing a collection DIRECTLY
    * (`createStateBackedTaskCollection`, `getOrCreateTaskCollection({ backing:
    * "state" })`) applies no default: an omitted axis is passed
@@ -304,7 +304,7 @@ export function validateTaskCaps(label: string, caps: TaskCapOptions): void {
  * ONE place 500/100 is turned into a concrete configuration.
  *
  * Every site that constructs a collection on a caller's behalf (`taskBoard`'s
- * declarative branch, the delegation surface) goes through here rather than
+ * declarative branch, `eventActors`) goes through here rather than
  * spelling out its own defaulting. Two sites holding one definition is how a
  * default silently diverges: they agree the day they are written and nothing
  * fails when one is later changed alone.
@@ -355,7 +355,7 @@ export function resolveTaskCapDefaults(label: string, caps: TaskCapOptions): Tas
 
 /**
  * The retry-budget opt-out a surface passes when its tasks can never retry
- * (FIX-948) — the delegation board and `eventActors`.
+ * (FIX-948) — `eventActors`.
  *
  * It is `null`, not omission, and the difference is the whole point. Omitting
  * the axis means "take the default", so every defaulting site downstream —

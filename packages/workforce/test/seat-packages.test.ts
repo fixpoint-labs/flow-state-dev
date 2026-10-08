@@ -260,13 +260,13 @@ describe("a package in a worker's own folder", () => {
     expect(unlisted.system).toContain(REFUNDS_TEXT);
   });
 
-  it("keeps a package block out of the list the delegation fence reads (BR-30)", () => {
+  it("keeps a package block off the seat's catalog `tools` list", () => {
     const seat = hire([
       record({ id: "support.clerk", packages: clerkReach }),
       record({ id: "support.lister", declared: { tools: ["ledger"] }, packages: siblingReach })
     ], { workerFlows: { [AGENT_KIND]: defineAgentWorkerFlow({ catalog: { ledger } }) } });
 
-    // No line: nothing listed, so the fence (which reads `tools`) sees nothing.
+    // No line: nothing listed, so `tools` stays absent.
     expect(seat("support.clerk").config).not.toHaveProperty("tools");
     // The package's blocks reached the built worker on its own key instead.
     const held = (seat("support.clerk").config as Record<string, unknown>)[SEAT_PACKAGES_KEY] as Array<{

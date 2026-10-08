@@ -11,8 +11,6 @@
  */
 
 import type { GeneratorTool } from "../blocks/generator";
-import type { ItemVisibility } from "../items/types";
-import type { AgentOverrides } from "./agent";
 
 /**
  * A bag of executable tools that skills may reference by string key.
@@ -20,10 +18,6 @@ import type { AgentOverrides } from "./agent";
  * Tools are executable code and cannot round-trip through a resource
  * collection — apps register them once and skills reference them by name
  * via `allowed-tools` in frontmatter. Unknown refs are warned and skipped.
- *
- * On a delegating skill the catalog also supplies the board's **tool assignees**
- * (FIX-925): every tool the skill allows is assignable to a task by its
- * catalog key, with no per-skill re-declaration. See `SkillState.agents`.
  */
 export type ToolCatalog = Record<string, GeneratorTool>;
 
@@ -35,76 +29,10 @@ export type ToolCatalog = Record<string, GeneratorTool>;
  *   `prepareStep` machinery.
  *
  * Both non-inline modes were removed in FIX-918: `fork` (an isolated subagent)
- * and `pattern` (a session-global multi-agent dispatcher). Delegation is now a
- * capability derived from a skill's `workers:` field (see
- * `createSkillsLibrary`), not an execution mode. The type is kept as a
- * one-value union so its readers keep compiling and a future mode has a seam.
+ * and `pattern` (a session-global multi-agent dispatcher). The type is kept as
+ * a one-value union so its readers keep compiling and a future mode has a seam.
  */
 export type SkillContextMode = "inline";
-
-/**
- * A single agent entry under a skill's `agents:` map (FIX-918). A skill
- * describes its team as agents — prompt-driven participants — and the board
- * commands them: work is assigned as tasks and executed by draining the board.
- *
- * An agent is defined one of two ways (exactly one resolution field is set,
- * validated at parse time):
- *   - **inline** — `prompt` (body in the skill entry, optional `tools`/`model`/
- *     `visibility` beside it) or `promptRef` (a Markdown file whose YAML
- *     frontmatter owns those fields). Travels inside the skill folder.
- *   - **registry** — `agentRef` (+ optional `agentOverrides`), resolving a
- *     named agent through the supplied AgentRegistry.
- *
- * There is no `blockRef`, and no tool resolution kind: a tool is already
- * assignable by its catalog key (FIX-925), so declaring one here would only
- * re-name something the board can already route to.
- */
-export interface AgentSpec {
-  /** Inline agent: prompt body (the persona). Substitutions apply at activation. */
-  prompt?: string;
-  /** Inline agent: skill-folder-relative path to a persona prompt file. */
-  promptRef?: string;
-  /**
-   * Optional one-line summary for the coordinator. Authorable on the
-   * prompt-file frontmatter and on a programmatic spec. Not a `SKILL.md`
-   * `agents:` field — `parseSkillMd` refuses it there, and `serializeSkillMd`
-   * does not emit it (the file is the source of truth for `prompt-ref`; an
-   * inline `prompt:` uses the first body line). The coordinator prefers this over the first body line.
-   */
-  description?: string;
-  /** Registry agent: agent registry key — resolves through the supplied AgentRegistry. */
-  agentRef?: string;
-  /** REPLACE-semantic overrides applied to the resolved registry agent. Requires agentRef. */
-  agentOverrides?: AgentOverrides;
-  /** Tool catalog keys an inline agent may call directly (incl. `taskTools`). */
-  tools?: string[];
-  /** Visibility controlling client delivery and history inclusion. Defaults to `{ client: true, history: false }`. */
-  itemVisibility?: ItemVisibility;
-  /** Model id override for an inline agent. Falls back to the deps' default. */
-  model?: string;
-  /**
-   * How much prior context the materialized agent inherits (FIX-920). INPUT
-   * policy only — it controls what the agent *reads*, via the generator
-   * `history` slot; it does not touch the output axis (`itemVisibility.history`)
-   * or flow-policy / `priorWork` (tool-call observations).
-   *
-   * - **absent (the default):** the agent is isolated — it sees only its task
-   *   input, no conversation history slot. Today's behavior.
-   * - `"conversation"`: the agent inherits the parent conversation up to the
-   *   point it was dispatched (the fork point), then diverges. The window is
-   *   **bounded by default** (not the full history window). Its own steps still
-   *   stay out of the host's history (output keeps `itemVisibility.history:
-   *   false`), so the host context window is preserved — fork-like sub-execution.
-   *
-   * There is no `"isolated"` value: absence already means isolated, so a
-   * sentinel would be a redundant no-op. Only honorable for inline
-   * (`prompt`/`promptRef`) agents; setting it on an `agentRef` agent fails loud
-   * (that agent owns its own context). Named `contextSupply` (not `contextMode`)
-   * to avoid colliding with the skill-level `SkillContextMode` in this file and
-   * a higher layer's agent-level `contextMode`.
-   */
-  contextSupply?: "conversation";
-}
 
 /**
  * Parsed state for a `skills/{name}/SKILL.md` resource. Derived from the
@@ -134,25 +62,13 @@ export interface SkillState {
 
   /**
    * From `allowed-tools`. The tools the skill is written around. **It never
-   * widens access** — but what it narrows depends on the path, so the two
-   * have to be kept apart (FIX-1451).
-   *
-   * **Direct model tool access — decides nothing.** It registers nothing:
+   * widens access, and it decides nothing** (FIX-1451). It registers nothing:
    * `createSkillsLibrary` validates these names against the catalog and then
    * contributes the *whole* catalog, or, under `registerCatalogTools: false`,
    * contributes none of it. Either way this subset is not the unit. What the
    * generator may call is its own `tools:` when it declares one (declaring it
    * at all raises the fence) and otherwise whatever its capabilities
    * contribute.
-   *
-   * **Delegation tool assignees — does gate.** When the skill declares `agents:`,
-   * `resolveToolSeats` makes exactly the catalog keys listed here assignable; a
-   * skill that declares none makes the whole catalog assignable. So this list
-   * restricts which tools can be a task assignee. It still never widens:
-   * tool assignees are drawn from the catalog the holder already reached, and
-   * are narrowed again by `toolSeatFence`.
-   *
-   * Authoring metadata for the first path, a real restriction for the second.
    */
   allowedTools?: string[];
 
@@ -181,23 +97,6 @@ export interface SkillState {
 
   /** Unknown kebab-case frontmatter keys preserved as camelCase for round-trip. */
   _preservedFields?: Record<string, unknown>;
-
-  /**
-   * Declared delegation agents, parsed from the `agents:` frontmatter field
-   * (FIX-918). A bound skill that declares `agents:` turns on the delegation
-   * surface in `createSkillsLibrary`: a private task board, `taskTools`, and a
-   * board-drain tool. The skill assigns work as tasks (`addTask` with an
-   * `assignee` naming a participant) and executes the graph by draining the
-   * board — there are no per-agent host tools. `prompt`/`promptRef` agents are
-   * portable data (inline, code-free); `agentRef` references a registered agent.
-   *
-   * These are the board's *agent* assignees. Its **tool** assignees are not declared
-   * here at all (FIX-925): every tool the skill allows — `allowedTools` when it
-   * declares one, the whole catalog when it doesn't — is assignable by its
-   * catalog key on the same assignee namespace. Declared agent keys win a
-   * collision, so an agent can shadow a tool's name.
-   */
-  agents?: Record<string, AgentSpec>;
 }
 
 /**

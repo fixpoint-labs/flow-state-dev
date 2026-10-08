@@ -10,9 +10,7 @@ build on each other:
   `supervisor`, `parallelTasks`, and `planAndExecute` (in `@flow-state-dev/patterns`)
   are built on.
 - **Skills** — user-editable `SKILL.md` folders injected as inline instructions,
-  optionally with an `agents:` field that installs a private delegation board,
-  the `taskTools` surface, and `runBoard` — the skill assigns work as tasks and
-  drains the board.
+  plus `taskTools`, the eight tools a model uses to plan on a task board.
 
 Layering: `core → orchestration → patterns`. This package depends only on
 `@flow-state-dev/core` and never imports from `patterns` or `workforce`.
@@ -606,7 +604,7 @@ the loop lands with a typed `goal-seek-loop-termination` item rather than hangin
 The board must be request- or resource-backed. `parallelTasks` and `planAndExecute`
 are expressed on it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
 
-## Skills and delegation
+## Skills
 
 A skill is inline instructions injected into a generator's prompt. Bind skills to
 **one** generator with `createSkillsLibrary` — no shared bag, no cross-agent bleed —
@@ -665,28 +663,10 @@ stays additive.
 the wrong one is how stale instructions survive.** Both write a source skill over
 one that is already there, but `overwrite` enumerates nothing — it writes the
 files the source *has* and leaves everything else, so a supporting file the source
-has since **dropped** stays in the folder and stays resolvable through
-`prompt-ref`. `refreshSeededSkills` prunes it. Reach for `overwrite` when you mean
+has since **dropped** stays in the folder and stays resolvable by its path.
+`refreshSeededSkills` prunes it. Reach for `overwrite` when you mean
 "write these on top" (a migration, a test fixture); reach for refresh when you mean
 "make this match the source".
-
-A skill that declares an `agents:` field turns on **delegation** (or force it on
-with `delegation: true` even with no `agents:`). An agent is a prompt-driven
-teammate — defined inline (`prompt` / `prompt-ref`) inside the skill, or referenced
-from the registry (`agent-ref`).
-
-The board's other seats are the skill's **tools**, and nothing declares them: every
-key in its `allowed-tools` (or the whole catalog, when it declares none) is
-assignable by that key. The board calls the tool directly with the task's `input`
-as its arguments — no model turn — and records what it returns. A tool task gets
-dependency ordering from `deps` but not an upstream task's output; a step that must
-read one is an agent.
-
-Those seats come from the **skill**, which is the wrong owner when the host did not
-choose the skills it holds. `toolSeatFence` is the host's ceiling: return the keys a
-board worker may be seated with for this execution, and the seats are narrowed to
-them — an empty array means none. It only narrows, and it leaves the declared agent
-roster alone.
 
 A binding that contributes the catalog contributes all of it, never the subset a
 skill's `allowed-tools` names. It contributes the catalog when it preloads skills
@@ -694,44 +674,24 @@ skill's `allowed-tools` names. It contributes the catalog when it preloads skill
 pairs `activeState` with `allowed`; an `activeState` binding with neither
 contributes no catalog tools at all. `registerCatalogTools: false` turns that
 grant off while leaving the validation on, for a host that owns tool registration
-itself; pair it with `toolSeatFence` so a held skill's delegated workers cannot
-reach past the same fence.
+itself.
 
-Every delegation board also gets an on-demand **default worker**: it materializes on
-demand and runs any task whose assignee is unset, so a task with no named agent still
-runs, and an empty roster still delegates.
+A skill can't declare a team of its own. A `SKILL.md` with an `agents:` block is
+refused when it loads; give the work to workers on a task board instead.
 
-Every tool that writes an `assignee` checks it: `addTask`, `assignTask`,
-and `updateTask` reject a name that is neither a declared agent nor an assignable
-tool, returning the available ones so the caller can correct it, instead of letting a
-mistyped name fall through to the default worker at drain time. A board with no
-agents and an empty catalog has no roster to check and accepts any assignee.
+### Task tools
 
-Binding the skill installs a private
-task board (own-state, scoped to that generator), the eight `taskTools` (`addTask`,
+`taskTools` are the eight tools a model uses to plan on a task board: `addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
-`listTasks`), `runBoard`, and a guidance context. The generator orchestrates by
-planning a graph with `addTask` (assignee, deps, structured input) and calling
-`runBoard` once: the board drains under concurrency with dependency gating and
-returns every task's output. There is no per-agent tool the generator calls
-directly; draining the board is the sole execution path. Agents materialize at
-runtime, so `agent-ref` agents resolve through the library's
-`agentRegistry`/`materializeAgent` options and runtime-activated skills contribute
-their tools too. With no delegation board resolvable, a stray `taskTools` call
-returns `{ ok: false, error: "no_delegation_board" }` rather than throwing.
-
-The board is bounded by default: `addTask` is refused past 100 tasks enqueued at once
-(`{ ok: false, error: "enqueued_task_cap_exceeded" }` — drain with `runBoard` to
-free slots, though tasks stranded behind a failed dep stay `pending` and hold
-theirs) or 500 over the board's lifetime (`total_task_cap_exceeded`, never
-refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
-`maxTotalTasks` (`null` = unbounded). It carries no retry budget: a task created
-through the delegation `addTask` tool takes no `maxAttempts`, so it runs once and
-never retries.
+and `listTasks`. `createTaskToolsCapability(resolver, roster?)` points them at a
+board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse
+an assignee it does not name. `taskToolActions` exposes the same eight as flow
+actions. With no board resolvable, a call returns
+`{ ok: false, error: "no_delegation_board" }` rather than throwing.
 
 > **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
-> collection, so they cover boards the skills library installs and boards
-> `taskBoard` builds itself — not the capability surface on its own. Wiring the
+> collection, so they cover boards `taskBoard` builds itself — not the capability
+> surface on its own. Wiring the
 > exported `taskTools` singleton by hand (`uses: [taskTools]`) resolves the host
 > generator's own-state board through a bare, **uncapped** collection: `addTask`
 > there is unbounded. For a bounded board on that path, build the
@@ -740,9 +700,7 @@ never retries.
 > resolver for it to `createTaskToolsCapability(resolver)`. That resolver must
 > target the host generator's own state via `ctx.parent` (each tool runs as a
 > child block, so `ctx.sequencer` is the wrong container) and name the board's
-> `stateKey` — see
-> [Delegation](https://flow-state.dev/docs/skills/delegation#board-and-overrides)
-> for the full recipe.
+> `stateKey` (`DELEGATION_BOARD_FIELD`).
 
 **Every `taskTools` call reports a problem the same way.** A status change the
 task's current status does not permit is a recoverable tool result too, not a
@@ -787,7 +745,7 @@ advisory options described under [TaskCollection](#taskcollection) above, and a
 refused transition on such a call is a returned `declined` verdict rather than a
 throw, so it never reaches this `catch`.
 
-At the delegation `taskTools` boundary a `declined` verdict **does** become a tool
+At the `taskTools` boundary a `declined` verdict **does** become a tool
 result: `assignTask`, `cancelTask`, and an `updateTask` carrying an assignee answer
 `{ ok: false, error: "terminal_task_write_declined: …" }` on a finished task rather
 than reporting a success that did not happen. `ok: true` from those tools means "the
@@ -795,29 +753,13 @@ backing reported no decline", not "the write happened" — for the two built-in
 backings those coincide, but a custom ref that reports nothing is carried past
 rather than having a verdict synthesized for it.
 
-```ts
-// "research-lead" declares agents: → delegation installs automatically.
-generator({ uses: [skills.with({ active: ["research-lead"] })] });
-```
-
-An inline agent may set `context-supply: conversation` to inherit the parent
-conversation up to the point it is dispatched (fork-like), bounded to the last 8
-whole turns (a turn count, not a token budget), while its own steps
-stay out of the host's history (output keeps `history: false`). Omitting the
-field is the default: the agent is isolated and sees only its task input — there
-is no `isolated` value to set. Write it on the skill entry for an inline
-`prompt:`, or in the prompt file's YAML frontmatter for `prompt-ref`. Setting it
-on an `agent-ref` agent, or on a `prompt-ref` skill entry, fails loud. See
-[Context supply](https://flow-state.dev/docs/orchestration/context-supply).
-
 For a graph fixed in code (seeded `initialTasks`, custom collection, tuned
 dispatcher), put a `taskBoard(...).drain` or a `goalSeekLoop` in the generator's
 `tools:` — any block can be a tool, and only the finalized result re-enters the
 caller's history.
 
 See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
-`active` / `allowed` / `activeState` surface and
-[Delegation](https://flow-state.dev/docs/skills/delegation) for the `agents:` shape.
+`active` / `allowed` / `activeState` surface.
 
 ### skillsManifestSource
 
@@ -858,13 +800,11 @@ the available tools keyed by name (`Record<string, GeneratorTool>`); and
 warns (`[skills] agent "x": unknown tool "y" — skipped`) and is dropped rather
 than throwing, so one bad key in a user-authored `SKILL.md` does not take down
 the agent; only own properties count, so a key like `constructor` misses. It
-lives on the package root because the skills worker-materializer and
-`@flow-state-dev/workforce` both need this lookup and the miss path has to stay
-identical between them.
+lives on the package root so every caller resolving a `tools:` list shares one
+miss path.
 
 ## Documentation
 
-- [Authoring a delegating skill](https://flow-state.dev/guides/agents-command-the-board)
 - [Orchestration overview](https://flow-state.dev/docs/orchestration/overview)
 - [Task substrate](https://flow-state.dev/docs/orchestration/task-substrate)
 - [Task board](https://flow-state.dev/docs/orchestration/task-board)

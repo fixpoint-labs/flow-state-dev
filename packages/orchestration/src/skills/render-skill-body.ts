@@ -20,11 +20,6 @@
  * promised tools the generator could not call, and claimed exclusivity over
  * tools it could.
  *
- * (`allowed-tools` is not inert everywhere — when a skill declares `agents:`
- * it gates which catalog keys become delegation task seats, per
- * `resolveToolSeats`. That is a different question from what the generator
- * may call, so the note stays silent about it rather than blurring the two.)
- *
  * The fix is phrasing, not plumbing, because the honest sentence is the only
  * one this function is in a position to write. It is handed a collection, a
  * name, a mount path and an argument string — it cannot see the consuming

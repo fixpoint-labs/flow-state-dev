@@ -5,7 +5,7 @@
  * YAML frontmatter (kebab-case) followed by a Markdown body. The spec's
  * fields — `name`, `description`, `license`, `compatibility`, `metadata`,
  * `allowed-tools` — are parsed and validated to its rules; the framework's own
- * fields (`keywords`, `agents`, `context`, …) are additive. Frontmatter is
+ * fields (`keywords`, `context`, …) are additive. Frontmatter is
  * converted to camelCase for TypeScript ergonomics; the inverse mapping is
  * preserved so we can round-trip back to disk without losing fields. Unknown
  * frontmatter keys are preserved on `state._preservedFields` so user data
@@ -20,12 +20,7 @@
  * file an author writes by hand so the two never drift apart.
  */
 
-import type {
-  AgentOverrides,
-  AgentSpec,
-  Skill,
-  SkillState,
-} from "@flow-state-dev/core";
+import type { Skill, SkillState } from "@flow-state-dev/core";
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import {
   parseFrontmatterYaml,
@@ -33,13 +28,6 @@ import {
   parseScalar,
   splitFrontmatter,
 } from "../shared/frontmatter";
-import {
-  AGENT_TUNING_KEYS,
-  parseAgentTuning,
-  presentTuningKeys,
-  presentTuningOnSpec,
-  promptRefDualWriteError,
-} from "./internal/agent-prompt-file";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -78,8 +66,6 @@ const KNOWN_KEYS = new Set([
   "when_to_use",
   "argument-hint",
   "keywords",
-  // Delegation agents (FIX-918)
-  "agents",
   // Claude-Code-only fields we explicitly capture/warn about
   "user-invocable",
   "paths",
@@ -93,24 +79,6 @@ const KNOWN_KEYS = new Set([
   "compatibility",
   "metadata",
 ]);
-
-/** Agent-spec sub-keys recognized at parse time. */
-const AGENT_KNOWN_KEYS = new Set([
-  "prompt",
-  "prompt-ref",
-  "agent-ref",
-  "agent-overrides",
-  "tools",
-  "visibility",
-  "model",
-  "context-supply",
-]);
-
-/** Sub-keys of `agent-overrides`. */
-const AGENT_OVERRIDES_KEYS = new Set(["tools", "model", "visibility"]);
-
-/** Mutually-exclusive agent resolution fields. Exactly one must be set. */
-const AGENT_RESOLUTION_FIELDS = ["prompt", "prompt-ref", "agent-ref"] as const;
 
 /**
  * Claude-Code fields we silently ignore at runtime but warn about so users
@@ -178,207 +146,35 @@ export function validateSkillName(name: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Delegation agents parser (FIX-918)
+// Removed fields
 // ---------------------------------------------------------------------------
 
 /**
- * Pattern an assignee key must match. Kebab/snake/camel-case, ASCII
- * alphanumeric.
+ * Thrown for a `SKILL.md` that declares `agents:` — skill sub-agents, removed
+ * in FIX-1814.
  *
- * Uppercase is admitted (FIX-925) because this predicate no longer gates only
- * hand-authored `agents:` keys: the board's tool seats are catalog keys, and a
- * tool catalog is app code whose keys are camelCase by convention (`httpGet`,
- * `webSearch`). A lowercase-only pattern would filter exactly those out of the
- * worker registry, leaving the coordinator a tool it was told about and can't
- * assign to.
+ * Its own class so a caller that otherwise skips a malformed skill can tell
+ * this one apart and refuse it instead: `createSkillsLibrary` rethrows it at
+ * construction rather than skipping a bundled skill that declares `agents:`.
+ * It is the one removed shape refused by name; every other malformed skill
+ * keeps its old path.
  */
-const AGENT_KEY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
-
-/**
- * True when `key` is a legal assignee key — a declared agent's, or a catalog
- * tool's. The leading-alphanumeric requirement is load-bearing beyond tidiness:
- * the delegation board reserves underscore-led names for routes nothing may
- * claim — the floor's worker key (`__floor__`) and the absent-assignee sentinel
- * (`__no_assignee__`, `task-board/blocks/worker-step.ts`). The same anchor keeps
- * `__proto__` out of the plain-object worker registry, where it would hit the
- * prototype setter instead of creating an own key. Widening the character class
- * (as FIX-925 did for uppercase) is safe; dropping the anchor is not.
- *
- * Exported because this parser is NOT the only way an agent map reaches the
- * board: `delegation-surface.ts` also reads `agents` off a live skill manifest,
- * whose state schema is `.passthrough()` and does not describe `agents` at all,
- * so a manifest written out-of-band (an app block holding the collection ref, a
- * store-level write, a migration) never passes through here. That reader
- * re-checks with this predicate in `validateAgentKeys`, which filters the roster
- * once so the board's worker registry and the coordinator's guidance are built
- * from the same list. Relax the pattern and both call sites — and the two
- * reserved names above — must be revisited together.
- */
-export function isValidAgentKey(key: string): boolean {
-  return AGENT_KEY_PATTERN.test(key);
+export class SkillAgentsRemovedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SkillAgentsRemovedError";
+  }
 }
 
 /**
- * Parse the `agents:` frontmatter field into a typed agent map. Declaring
- * `agents:` is what turns on the delegation surface in `createSkillsLibrary`:
- * the skill assigns work as tasks and drains its board; the board runs the
- * agents. Each entry is one of two shapes — inline (`prompt`/`prompt-ref`) or
- * a registry reference (`agent-ref`). A `prompt-ref` entry is the seat name;
- * generator config lives in the prompt file's YAML frontmatter.
+ * Why a skill may not declare a team (`agents:`, or its older name `workers:`),
+ * so the two refusals cannot drift apart.
  */
-function parseAgentsField(v: unknown): Record<string, AgentSpec> {
-  if (typeof v !== "object" || v === null || Array.isArray(v)) {
-    throw new Error("SKILL.md `agents:` must be a mapping of agent key → spec");
-  }
-  const out: Record<string, AgentSpec> = {};
-  for (const [key, value] of Object.entries(v)) {
-    if (!isValidAgentKey(key)) {
-      throw new Error(
-        `SKILL.md agent key "${key}" must match /^[a-z0-9][a-z0-9_-]*$/`,
-      );
-    }
-    out[key] = parseAgentSpec(key, value);
-  }
-  if (Object.keys(out).length === 0) {
-    throw new Error("SKILL.md `agents:` must contain at least one entry");
-  }
-  return out;
-}
-
-function parseAgentSpec(key: string, v: unknown): AgentSpec {
-  if (typeof v !== "object" || v === null || Array.isArray(v)) {
-    throw new Error(`SKILL.md agent \`${key}\` must be a mapping`);
-  }
-  const obj = v as Record<string, unknown>;
-
-  // `block-ref` was removed in FIX-918 (mirrors the pattern/fork migration
-  // throw). An arbitrary app block is a *tool*, not an agent — fail loud rather
-  // than silently dropping the field, so an author migrating a PR #854 skill
-  // is pointed at the replacement.
-  if ("block-ref" in obj) {
-    throw new Error(
-      `SKILL.md agent \`${key}\`: \`block-ref\` was removed (FIX-918). An arbitrary app ` +
-        `block is a tool, not an agent — reference a prompt-driven participant with ` +
-        `\`agent-ref\` (registry) or define one inline with \`prompt\`/\`prompt-ref\`.`,
-    );
-  }
-
-  for (const k of Object.keys(obj)) {
-    if (!AGENT_KNOWN_KEYS.has(k)) {
-      throw new Error(
-        `SKILL.md agent \`${key}\`: unknown field \`${k}\` (allowed: ${[...AGENT_KNOWN_KEYS].join(", ")})`,
-      );
-    }
-  }
-
-  const setResolution = AGENT_RESOLUTION_FIELDS.filter((f) => f in obj && obj[f] !== null && obj[f] !== undefined);
-  if (setResolution.length === 0) {
-    throw new Error(
-      `SKILL.md agent \`${key}\`: exactly one of \`prompt\`, \`prompt-ref\`, \`agent-ref\` required`,
-    );
-  }
-  if (setResolution.length > 1) {
-    throw new Error(
-      `SKILL.md agent \`${key}\`: fields ${setResolution.map((f) => `\`${f}\``).join(", ")} are mutually exclusive — set exactly one`,
-    );
-  }
-  // The exactly-one check above only proves the field is *present* and non-null.
-  // A non-string value (e.g. `prompt: 123`, `agent-ref: false`) would pass it but
-  // leave the AgentSpec with no usable resolution below, failing confusingly at
-  // materialization instead of here. Reject it at parse time with a clear error.
-  const resolutionField = setResolution[0]!;
-  const resolutionValue = obj[resolutionField];
-  if (typeof resolutionValue !== "string" || resolutionValue.trim() === "") {
-    throw new Error(
-      `SKILL.md agent \`${key}\`: \`${resolutionField}\` must be a non-empty string`,
-    );
-  }
-
-  if ("agent-overrides" in obj && !("agent-ref" in obj)) {
-    throw new Error(
-      `SKILL.md agent \`${key}\`: \`agent-overrides\` requires \`agent-ref\``,
-    );
-  }
-
-  // `prompt-ref`: the prompt file owns generator config. Leftover skill-entry
-  // tuning is dual-write — reject and point at the file's frontmatter.
-  if ("prompt-ref" in obj) {
-    const leftover = presentTuningKeys(obj);
-    if (leftover.length > 0) {
-      throw new Error(promptRefDualWriteError(key, leftover, String(obj["prompt-ref"])));
-    }
-  }
-
-  // Inline tuning fields (`tools`/`model`/`visibility`) apply only to inline
-  // `prompt:` agents. On an `agent-ref` spec the materializer resolves the
-  // registered agent and applies `agent-overrides` — these top-level fields
-  // are silently ignored, so the agent would run with its default surface
-  // instead of the skill-authored one. Reject them and point at
-  // `agent-overrides`.
-  if ("agent-ref" in obj) {
-    const inlineTuning = AGENT_TUNING_KEYS.filter(
-      (k) => k !== "context-supply" && k in obj,
-    );
-    if (inlineTuning.length > 0) {
-      throw new Error(
-        `SKILL.md agent \`${key}\`: ${inlineTuning.map((k) => `\`${k}\``).join(", ")} ` +
-          `can't be set alongside \`agent-ref\` — put them under \`agent-overrides\` instead.`,
-      );
-    }
-  }
-
-  const spec: AgentSpec = {};
-  if (typeof obj["prompt"] === "string") spec.prompt = obj["prompt"];
-  if (typeof obj["prompt-ref"] === "string") spec.promptRef = obj["prompt-ref"];
-  if (typeof obj["agent-ref"] === "string") spec.agentRef = obj["agent-ref"];
-
-  if ("agent-overrides" in obj) {
-    spec.agentOverrides = parseAgentOverrides(key, obj["agent-overrides"]);
-  }
-
-  // FIX-920: `context-supply` applies to prompt/prompt-ref agents — an
-  // agent-ref agent owns its own context, so setting it there is a fail-loud
-  // error rather than a silent no-op (mirrors the inline-tuning rejection).
-  if ("context-supply" in obj && "agent-ref" in obj) {
-    throw new Error(
-      `SKILL.md agent \`${key}\`: \`context-supply\` applies to prompt/prompt-ref agents; ` +
-        `agent-ref agents own their own context.`,
-    );
-  }
-
-  // Inline `prompt:` may still carry tools/model/visibility/context-supply on
-  // the skill entry (the tiny one-line persona). `prompt-ref` already rejected
-  // those keys above, so this only lands on `prompt:`.
-  const tuning = parseAgentTuning(obj, `SKILL.md agent \`${key}\``);
-  if (tuning.tools !== undefined) spec.tools = tuning.tools;
-  if (tuning.model !== undefined) spec.model = tuning.model;
-  if (tuning.itemVisibility !== undefined) spec.itemVisibility = tuning.itemVisibility;
-  if (tuning.contextSupply !== undefined) spec.contextSupply = tuning.contextSupply;
-
-  return spec;
-}
-
-function parseAgentOverrides(agentKey: string, v: unknown): AgentOverrides {
-  if (typeof v !== "object" || v === null || Array.isArray(v)) {
-    throw new Error(`SKILL.md agent \`${agentKey}\`: \`agent-overrides\` must be a mapping`);
-  }
-  const obj = v as Record<string, unknown>;
-  for (const k of Object.keys(obj)) {
-    if (!AGENT_OVERRIDES_KEYS.has(k)) {
-      throw new Error(
-        `SKILL.md agent \`${agentKey}\`: unknown agent-overrides field \`${k}\` (allowed: ${[...AGENT_OVERRIDES_KEYS].join(", ")})`,
-      );
-    }
-  }
-  const tuning = parseAgentTuning(
-    obj,
-    `SKILL.md agent \`${agentKey}\` agent-overrides`,
+function teamFieldRemoved(key: "agents" | "workers"): string {
+  return (
+    `SKILL.md \`${key}:\` was removed from skills. A skill no longer runs a team of its own: ` +
+    `delegate to workers through the task board instead, and delete the \`${key}:\` block.`
   );
-  const out: AgentOverrides = {};
-  if (tuning.tools !== undefined) out.tools = tuning.tools;
-  if (tuning.model !== undefined) out.model = tuning.model;
-  if (tuning.itemVisibility !== undefined) out.itemVisibility = tuning.itemVisibility;
-  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -529,12 +325,12 @@ export function parseSkillMd(
     const v = raw["context"];
     if (v === "fork" || v === "pattern") {
       // FIX-918 removed both non-inline modes. Fail loud rather than silently
-      // downgrade to inline (which would run a would-be sub-agent's work in the
-      // parent's context — the opposite of what the author asked for).
+      // downgrade to inline (which would run work meant for its own context in
+      // the parent's — the opposite of what the author asked for).
       throw new Error(
         v === "fork"
-          ? `SKILL.md \`context: fork\` was removed. For sub-agent isolation, declare \`agents:\` and let the skill delegate; history-inheriting sub-agents are planned separately.`
-          : `SKILL.md \`context: pattern\` was removed. Declare \`agents:\` for delegation, or expose a task-board/goalSeekLoop block as an allowed tool.`,
+          ? `SKILL.md \`context: fork\` was removed. To run work in a context of its own, hand it to a worker through the task board.`
+          : `SKILL.md \`context: pattern\` was removed. Expose a task-board/goalSeekLoop block as an allowed tool instead.`,
       );
     }
     if (v === "inline") {
@@ -582,24 +378,21 @@ export function parseSkillMd(
   // migration pointer rather than silently reinterpreting the file as inline.
   if ("pattern" in raw && raw["pattern"] !== null && raw["pattern"] !== undefined) {
     throw new Error(
-      `SKILL.md \`pattern:\` was removed (FIX-918). Declare delegation \`agents:\` (a skill with agents gets a task board; assign work as tasks and drain the board), or expose a task-board/goalSeekLoop block as an allowed tool for deterministic multi-step recipes.`,
+      `SKILL.md \`pattern:\` was removed. Expose a task-board/goalSeekLoop block as an allowed tool for deterministic multi-step recipes.`,
     );
   }
 
-  // Legacy `workers:` frontmatter — renamed to `agents:` in FIX-918. Fail loud
-  // with a migration pointer rather than silently preserving the key (which
-  // would leave the skill with no declared agents and no delegation surface).
+  // Legacy `workers:` frontmatter — renamed to `agents:` in FIX-918, which
+  // FIX-1814 then removed. Fail loud rather than silently preserving the key.
   if ("workers" in raw && raw["workers"] !== null && raw["workers"] !== undefined) {
-    throw new Error(
-      `SKILL.md \`workers:\` was renamed to \`agents:\` (FIX-918). Rename the frontmatter key; each entry is an agent defined inline (\`prompt\`/\`prompt-ref\`) or referenced from the registry (\`agent-ref\`).`,
-    );
+    throw new Error(teamFieldRemoved("workers"));
   }
 
-  // Delegation agents (FIX-918). Declaring `agents:` is what turns on the
-  // delegation surface in createSkillsLibrary — a private task board the skill
-  // assigns work to and drains.
-  if ("agents" in raw && raw["agents"] !== null && raw["agents"] !== undefined) {
-    state.agents = parseAgentsField(raw["agents"]);
+  // `agents:` (skill sub-agents) — removed in FIX-1814. Refused on any
+  // presence, an empty value included: preserving it would round-trip a team
+  // nothing runs, and dropping it would let the body ask for one silently.
+  if ("agents" in raw) {
+    throw new SkillAgentsRemovedError(teamFieldRemoved("agents"));
   }
 
   // Warn about ignored Claude-Code fields.
@@ -680,10 +473,6 @@ export function serializeSkillMd(state: SkillState, body: string): string {
     lines.push(`keywords: [${state.keywords.map((k: string) => yamlScalar(k)).join(", ")}]`);
   }
 
-  if (state.agents) {
-    serializeAgents(lines, state.agents);
-  }
-
   if (state._preservedFields) {
     for (const [k, v] of Object.entries(state._preservedFields)) {
       lines.push(`${camelToKebab(k)}: ${yamlValue(v)}`);
@@ -693,55 +482,6 @@ export function serializeSkillMd(state: SkillState, body: string): string {
   lines.push("---", "", body);
   // Avoid trailing newlines beyond a single one for stable round-trip.
   return lines.join("\n").replace(/\n+$/, "\n");
-}
-
-/** Serialize a skill's `agents:` map (delegation, FIX-918). */
-function serializeAgents(
-  lines: string[],
-  agents: Record<string, AgentSpec>,
-): void {
-  lines.push("agents:");
-  for (const [key, spec] of Object.entries(agents)) {
-    lines.push(`  ${key}:`);
-    if (spec.promptRef !== undefined) {
-      const leftover = presentTuningOnSpec(spec);
-      if (leftover.length > 0) {
-        throw new Error(promptRefDualWriteError(key, leftover, spec.promptRef));
-      }
-      lines.push(`    prompt-ref: ${yamlScalar(spec.promptRef)}`);
-    }
-    if (spec.prompt !== undefined) {
-      // Use literal block scalar for prompts so multi-line values survive
-      // a round-trip exactly.
-      lines.push("    prompt: |");
-      for (const ln of spec.prompt.split("\n")) lines.push(`      ${ln}`);
-    }
-    if (spec.agentRef !== undefined) lines.push(`    agent-ref: ${yamlScalar(spec.agentRef)}`);
-    if (spec.agentOverrides) {
-      lines.push("    agent-overrides:");
-      if (spec.agentOverrides.tools)
-        lines.push(`      tools: [${spec.agentOverrides.tools.map((t) => yamlScalar(t)).join(", ")}]`);
-      if (spec.agentOverrides.model !== undefined)
-        lines.push(`      model: ${yamlScalar(spec.agentOverrides.model)}`);
-      if (spec.agentOverrides.itemVisibility !== undefined) {
-        lines.push("      visibility:");
-        lines.push(`        client: ${spec.agentOverrides.itemVisibility.client}`);
-        lines.push(`        history: ${spec.agentOverrides.itemVisibility.history}`);
-      }
-    }
-    // A `prompt-ref` spec that passed the leftover check above has no
-    // skill-entry tuning left to write. Inline `prompt:` still does.
-    if (spec.tools)
-      lines.push(`    tools: [${spec.tools.map((t) => yamlScalar(t)).join(", ")}]`);
-    if (spec.itemVisibility !== undefined) {
-      lines.push("    visibility:");
-      lines.push(`      client: ${spec.itemVisibility.client}`);
-      lines.push(`      history: ${spec.itemVisibility.history}`);
-    }
-    if (spec.model !== undefined) lines.push(`    model: ${yamlScalar(spec.model)}`);
-    if (spec.contextSupply !== undefined)
-      lines.push(`    context-supply: ${spec.contextSupply}`);
-  }
 }
 
 function yamlScalar(value: string): string {

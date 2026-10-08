@@ -440,8 +440,7 @@ export const duplicateSkillNameMessage = (
  * the app's catalog, first match wins; the first two resolve to a block the
  * hire step already holds, and they ride here, already resolved. The names that
  * fell through to the app's catalog stay in `tools:`, which is what the kind
- * checks its catalog against and what the delegation fence narrows a board
- * worker to.
+ * checks its catalog against.
  *
  * Spelled `seatTools` rather than `seatBlocks` because the two are different
  * things and one name for both is the collision this package refuses rather
