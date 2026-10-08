@@ -636,20 +636,15 @@ one status. Three things run the sweep that clears the third case:
    heartbeat window, never tighten it, so a poke cannot reap a run the
    server still considers alive.
 
-All three converge on the same write — re-read the record, check
-`status === "in_progress"`, write `interrupted` — so running them together is
-safe in outcome. Two things that re-check does *not* buy are worth naming,
-because the surrounding code reads as though it does.
-
-**It narrows the terminal-overwrite window; it does not close it.** The read and
-the write are separate store round-trips, and the write is a whole-record `set`
-with `expectedVersion: "any"`. A record that reaches a terminal status in
-between is overwritten by the stale snapshot the sweep read, stamped
-`interrupted` — along with anything else persisted in that window.
-`RequestStore.setFieldsIfStatus` is the verb that makes the predicate and the
-write one atomic step, and is what the abort route already uses; FIX-1128 tracks
-moving the sweep onto it. The staleness threshold below is what keeps the window
-narrow in practice, not the re-check.
+All three converge on the same write: re-read the record, then move it from
+`in_progress` to `interrupted` through `RequestStore.setFieldsIfStatus`, the
+conditional write the abort route also uses. The status check and the write are
+one atomic step inside the store, fenced to the incarnation the sweep read. A
+request that reaches a terminal status between the sweep's read and its write
+keeps that status and every field its run wrote; the sweep writes nothing over
+it, still removes the stale active entry, and does not return the request as
+interrupted, so no caller offers it for retry. Running the three together is
+therefore safe in outcome. One thing it does *not* buy is worth naming.
 
 **The two startup sweeps are not ordered.** `createFlowState`'s runs from
 runtime init and `createFlowRouteHandlers`' starts when the router is built,

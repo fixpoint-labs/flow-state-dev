@@ -130,6 +130,51 @@ describe("detectInterruptedRequests", () => {
     expect(entry).toBeUndefined();
   });
 
+  it("leaves a request that finishes between the sweep's read and its write as it finished", async () => {
+    // The sweep reads `in_progress`, then the run's own terminal write lands
+    // before the sweep writes. A finished run read back as `interrupted` is a
+    // resumable status, so a retry would re-run work that already completed.
+    await stores.activeRequests.register({
+      orgId: DEFAULT_ORG_ID,
+      requestId: "req_race",
+      flowKind: "chat",
+      actionName: "run",
+      userId: "user_1",
+      startedAt: Date.now() - 60_000,
+      lastHeartbeatAt: Date.now() - 60_000
+    });
+    await stores.request.set("req_race", makeRequestRecord("req_race"), "any");
+
+    // Hand the sweep the `in_progress` snapshot, then commit the terminal
+    // write the way a run settles: a whole-record `set` with "any".
+    const readRecord = stores.request.get.bind(stores.request);
+    let finishedAt = 0;
+    stores.request.get = async (id: string) => {
+      const snapshot = await readRecord(id);
+      if (id === "req_race" && snapshot?.status === "in_progress") {
+        finishedAt = Date.now();
+        await stores.request.set(
+          id,
+          { ...snapshot, status: "completed", result: { output: "done" }, updatedAt: finishedAt },
+          "any"
+        );
+      }
+      return snapshot;
+    };
+
+    const interrupted = await detectInterruptedRequests({ stores, staleThresholdMs: 30_000 });
+
+    const record = await readRecord("req_race");
+    expect(record?.status).toBe("completed");
+    expect(record?.result).toEqual({ output: "done" });
+    expect(record?.interruptedAt).toBeUndefined();
+    expect(record?.updatedAt).toBe(finishedAt);
+    // Not returned as interrupted, so no caller offers it for retry.
+    expect(interrupted).toHaveLength(0);
+    // The run is over either way, so its stale entry is still removed.
+    expect(await stores.activeRequests.get("req_race")).toBeUndefined();
+  });
+
   it("does not mark already completed requests", async () => {
     await stores.activeRequests.register({
       orgId: DEFAULT_ORG_ID,

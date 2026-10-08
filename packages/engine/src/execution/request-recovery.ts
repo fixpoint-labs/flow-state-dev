@@ -101,18 +101,31 @@ export async function detectInterruptedRequests(options: {
     if (requestRecord !== undefined && !isOrgAttributed(requestRecord)) continue;
 
     if (requestRecord !== undefined && requestRecord.status === "in_progress") {
-      await stores.request.set(
+      // Atomic and fenced (FIX-1128): written only while the record is still
+      // `in_progress`, and only to the request this sweep read. A run that
+      // settles between the read above and this write keeps its own terminal
+      // record, fields and all; the sweep writes nothing over it.
+      const now = Date.now();
+      const write = await stores.request.setFieldsIfStatus(
         entry.requestId,
         {
-          ...requestRecord,
           // The same settlement every other final-status writer uses; an
           // interrupted request carries no result.
           ...settledRecordFields({ status: "interrupted" }),
-          interruptedAt: Date.now(),
-          updatedAt: Date.now()
+          interruptedAt: now
         },
-        "any"
+        ["in_progress"],
+        now,
+        resolveRequestIncarnation(requestRecord)
       );
+
+      if (!write.applied) {
+        // The run ended (or the id was taken) after the read. It is not
+        // interrupted, so it is not returned for retry; its stale entry is
+        // removed all the same, since nothing runs it any more.
+        await stores.activeRequests.deregister(entry.requestId);
+        continue;
+      }
 
       logRuntimeEvent(logger, "warn", "[flow-state] detected interrupted request", {
         requestId: entry.requestId,

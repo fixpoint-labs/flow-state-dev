@@ -410,6 +410,9 @@ export function createPostgresRequestStore(
       // persist `version` unchanged, so a version-checked write still validates
       // after a terminal commit and resurrects a dead record.
       //
+      // A status move writes `status` into both the blob and the indexed
+      // column, in the same UPDATE the predicate gates.
+      //
       // `updatedAt` is merged into the blob as well as the indexed column.
       // `get()` reads the blob, so writing only the column would leave the
       // returned record's `updatedAt` stale — list ordering and the record
@@ -423,7 +426,9 @@ export function createPostgresRequestStore(
          ),
          applied AS (
            UPDATE requests r
-              SET data = r.data || $2::jsonb || jsonb_build_object('updatedAt', $3::bigint),
+              SET data = (CASE WHEN $6::boolean THEN r.data - 'result' ELSE r.data END)
+                         || $2::jsonb || jsonb_build_object('updatedAt', $3::bigint),
+                  status = COALESCE($7::text, r.status),
                   updated_at = $3
              FROM locked l
             WHERE r.id = l.id AND l.status = ANY($4::text[])
@@ -433,7 +438,18 @@ export function createPostgresRequestStore(
          SELECT l.status AS status, l.incarnation AS incarnation,
                 EXISTS (SELECT 1 FROM applied) AS applied
            FROM locked l`,
-        [id, JSON.stringify(fields), updatedAt, [...allowedStatuses], expectedIncarnation ?? null]
+        [
+          id,
+          JSON.stringify(fields),
+          updatedAt,
+          [...allowedStatuses],
+          expectedIncarnation ?? null,
+          // A status move (FIX-1128) clears the stored result first, so an
+          // `undefined` result (dropped by JSON.stringify) removes it, and
+          // moves the indexed column with the body.
+          fields.status !== undefined,
+          fields.status ?? null
+        ]
       );
 
       // No row means no record: `rows`, not `rowCount` — a PGlite-backed

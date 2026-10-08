@@ -7,11 +7,13 @@
  * died or got cut off — its registry heartbeat stopped, but the persisted
  * request record still says `in_progress`.
  *
- * The sweeper is idempotent and race-safe: `detectInterruptedRequests`
- * already guards on `requestRecord.status === "in_progress"` before writing,
- * so a request that just transitioned to a terminal status will not be
- * overwritten. Choose `staleThresholdMs >= 2 * heartbeatIntervalMs` to keep
- * the safety window comfortable for healthy executors.
+ * The sweeper is idempotent, and it never overwrites a finished request:
+ * `detectInterruptedRequests` writes `interrupted` through the store's
+ * conditional `setFieldsIfStatus`, which applies only while the record is
+ * still `in_progress`, checked and written in one atomic step. What the
+ * threshold guards is the other mistake, marking a live request that is only
+ * slow: choose `staleThresholdMs >= 2 * heartbeatIntervalMs` so a healthy
+ * executor's heartbeat always lands inside it.
  */
 import { detectInterruptedRequests } from "./request-recovery";
 import type { StoreRegistry } from "../stores/types";

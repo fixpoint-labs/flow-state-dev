@@ -291,14 +291,20 @@ export type RequestActionResult = {
  * - `state` — has its own versioned verbs (`patchField` / `incField` / `pushToArray`).
  * - `items` — lives in a child table on the persistent adapters, written via `persistItems`.
  * - `updatedAt` — supplied as an explicit argument, mirroring the delta verbs.
- * - `result` — written only with the final status, in that same write
- *   (FIX-1661), never on its own.
- * - `status` and the indexed access-path fields (`flowKind`, `flowId`, `userId`,
- *   `sessionId`, `orgId`, `tenantId`) — denormalized into columns by the SQL adapters. `status`
- *   is additionally what the predicate reads, and a verb that both predicates on
- *   and rewrites status would be reasoning about two different values under one name.
+ * - The indexed access-path fields (`flowKind`, `flowId`, `userId`,
+ *   `sessionId`, `orgId`, `tenantId`) — denormalized into columns by the SQL
+ *   adapters.
+ *
+ * `status` and `result` are writable only together, as a
+ * {@link ConditionalStatusTransition}: a final status always lands with the
+ * result built for it (FIX-1661), so a write carries both or neither.
  */
-export type ConditionalRequestFields = Partial<
+export type ConditionalRequestFields =
+  | (ConditionalRequestBodyFields & { status?: never; result?: never })
+  | (ConditionalRequestBodyFields & ConditionalStatusTransition);
+
+/** The record-body half of {@link ConditionalRequestFields}. */
+type ConditionalRequestBodyFields = Partial<
   Omit<
     RequestRecord,
     | "id"
@@ -318,6 +324,21 @@ export type ConditionalRequestFields = Partial<
     | "tenantId"
   >
 >;
+
+/**
+ * A status change a {@link RequestStore.setFieldsIfStatus} write may carry
+ * (FIX-1128): the record moves to `status` only while its current status is
+ * one the predicate allows, decided in the same atomic step.
+ *
+ * Build it with `settledRecordFields`, which pairs a status with its result.
+ * A `result` of `undefined` removes any stored result, the same as a
+ * whole-record final-status write does. Adapters that index `status` in a
+ * column update the column in the same write.
+ */
+export type ConditionalStatusTransition = {
+  status: RequestStatus;
+  result: RequestActionResult | undefined;
+};
 
 /**
  * Outcome of {@link RequestStore.setFieldsIfStatus}.
@@ -818,6 +839,13 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * Deliberately general — the predicate and the field set are parameters, not
    * an abort-shaped `markAborted()` — because the same shape is
    * *"change these fields only if the record is still in this state."*
+   *
+   * `fields` may also move the status (a {@link ConditionalStatusTransition},
+   * FIX-1128): the record moves from an allowed status to `fields.status` in
+   * the same atomic step, with the paired `result`. This is how the
+   * stale-request sweep marks a request `interrupted` without overwriting one
+   * that finished between its read and its write. The returned `status` is
+   * still the status found, before the move.
    *
    * Distinct from {@link DeltaStoreOps.patchField}, which addresses the
    * record's `state` slice under a *version* predicate. This addresses

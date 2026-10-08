@@ -951,6 +951,65 @@ export function createRequestStoreConformanceTests(
         });
       });
 
+      // A status transition is the write the stale-request sweep makes: it
+      // moves `in_progress` to `interrupted` only while the record is still
+      // `in_progress`. The status and its `result` land together, and the new
+      // status must be visible to a status-filtered listing, which the SQL
+      // adapters answer from an indexed column rather than the record body.
+      it("moves the status with its result when the predicate holds, visible to a status listing", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_transition";
+          await store.set(
+            requestId,
+            { ...makeRecord(requestId, "in_progress", []), result: { output: "stale" } },
+            "any"
+          );
+
+          const result = await store.setFieldsIfStatus(
+            requestId,
+            { status: "interrupted", result: undefined, interruptedAt: 123 },
+            ["in_progress"],
+            Date.now()
+          );
+
+          expect(result).toEqual({ applied: true, status: "in_progress" });
+          const stored = await store.get(requestId);
+          expect(stored?.status).toBe("interrupted");
+          expect(stored?.interruptedAt).toBe(123);
+          // An `undefined` result clears the stored one, as a whole-record
+          // final-status write does: an interrupted request carries none.
+          expect(stored?.result).toBeUndefined();
+          const listed = await store.list({ status: "interrupted" });
+          expect(listed.map((r) => r.id)).toContain(requestId);
+          const stillRunning = await store.list({ status: "in_progress" });
+          expect(stillRunning.map((r) => r.id)).not.toContain(requestId);
+        });
+      });
+
+      it("does not move the status of a record already terminal", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_transition_terminal";
+          await store.set(
+            requestId,
+            { ...makeRecord(requestId, "completed", []), result: { output: "done" } },
+            "any"
+          );
+
+          const result = await store.setFieldsIfStatus(
+            requestId,
+            { status: "interrupted", result: undefined, interruptedAt: 123 },
+            ["in_progress"],
+            Date.now()
+          );
+
+          expect(result).toEqual({ applied: false, status: "completed" });
+          const stored = await store.get(requestId);
+          expect(stored?.status).toBe("completed");
+          expect(stored?.result).toEqual({ output: "done" });
+          expect(stored?.interruptedAt).toBeUndefined();
+        });
+      });
+
       it("does not apply to an unknown request and reports no status", async () => {
         await withStore(async (store) => {
           const result = await store.setFieldsIfStatus(

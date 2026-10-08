@@ -300,6 +300,9 @@ export function createSQLiteRequestStore(
   const updateDataStmt = db.prepare(
     "UPDATE requests SET data = ?, updated_at = ? WHERE id = ?"
   );
+  const updateStatusDataStmt = db.prepare(
+    "UPDATE requests SET status = ?, data = ?, updated_at = ? WHERE id = ?"
+  );
 
   /**
    * The stored abort flag, or `undefined` when the request or the key is
@@ -428,8 +431,15 @@ export function createSQLiteRequestStore(
         if (!allowedStatuses.includes(row.status)) {
           return { applied: false, status: row.status };
         }
-        const next = { ...record, ...fields, updatedAt };
-        updateDataStmt.run(JSON.stringify(next), updatedAt, id);
+        const next: RequestRecord = { ...record, ...fields, updatedAt };
+        if (fields.status !== undefined) {
+          // A status move (FIX-1128): the indexed column moves with the body,
+          // and an `undefined` result removes the stored one.
+          if (fields.result === undefined) delete next.result;
+          updateStatusDataStmt.run(fields.status, JSON.stringify(next), updatedAt, id);
+        } else {
+          updateDataStmt.run(JSON.stringify(next), updatedAt, id);
+        }
         return { applied: true, status: row.status };
       }).immediate();
     },
