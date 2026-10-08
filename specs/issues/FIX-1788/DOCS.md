@@ -86,8 +86,9 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 >
 > Each worker the user hires or forks is one row in their user scope at `workforce/workers/<id>`.
 > A standard worker isn't stored: it is read from your files each time, so a deploy that changes
-> a file changes it for everyone. On the built-in `agent` flow, what a worker remembers is kept per
-> worker, so two of one user's workers never read each other's notes. On a flow you write, that is
+> a file changes it for everyone. On the built-in `agent` flow, each worker keeps its own skills,
+> and its own working memory in each conversation. Long-term memory, once you add it, is kept per
+> user: that user's workers share it, and no other user reaches it. On a flow you write, that is
 > up to you: see [Where a worker's data lives](./workers-on-disk.md#where-a-workers-data-lives).
 >
 > ## After a hire, refresh the roster
@@ -103,7 +104,7 @@ Title *Hiring, forking and firing workers*, sidebar label *Hiring and forking*. 
 >
 > Each flow a worker names runs as one copy, shared by every worker that names it. A hundred
 > workers on `agent` are one registered flow, not a hundred. What makes them different is their
-> configuration, which the flow reads on each turn, and, on `agent`, their memory, which is kept
+> configuration, which the flow reads on each turn, and, on `agent`, their skills, which are kept
 > per worker.
 
 ## UPDATE · `apps/docs/docs/workforce/workers-on-disk.md` · a new section "Talking to a worker", before "What this does not do"
@@ -230,3 +231,8 @@ The rule's real name replaces the description when P4 publishes.
 FIX-1788 publishes these with P4, after its checks pass. `built-in-worker.md` is FIX-1789's;
 the overview opening and the glossary are FIX-1796's. There is no upgrade section: nothing reads
 a hire made before this release ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)).
+
+`built-in-worker.md`'s "What isolation does and does not give you" says `isolateUserState` keeps
+each worker's memory apart. Once workers share one copy that stops being true: the flag keys by
+the flow's id, not the worker's. FIX-1789's pass on that page should say long-term memory is kept
+per user ([D8](DECISIONS.md#d8)).

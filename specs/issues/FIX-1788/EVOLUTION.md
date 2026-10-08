@@ -154,3 +154,29 @@ Original review: [#2812](https://github.com/fixpoint-labs/flow-state-dev/pull/28
 built on core's document tools would still see every document on the copy, a silent breach no
 test catches. C, a copy per worker for the workers that hold grants: it contradicts S10, one copy
 per flow, and keeps the per-worker minting P4 removes.
+
+<a name="amendment-memory"></a>
+## Amended after merge: long-term memory is per user on a shared built-in flow (2026-10-08)
+
+**The problem.** BR-23 said two of Alice's workers on `agent` each read only their own private
+notes, and the goal, the "after" column and the docs draft said each worker keeps its own memory.
+None of them said which memory. The skills drawer and working memory are per worker on one
+shared copy. Long-term memory (episodic, semantic, digest) is not: the memory package keeps it in
+the user's scope by default, and nothing in it knows which worker a turn runs as. The product owner chose B on
+2026-10-08: long-term memory is the user's, shared by their workers, and never reachable by
+another user ([D8](DECISIONS.md#d8)). Original review:
+[#2812](https://github.com/fixpoint-labs/flow-state-dev/pull/2812).
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| BR-23: "each reads only its own" private notes, on every built-in worker flow | **Narrowed** by [D8](DECISIONS.md#d8) to each worker's skills and its working memory in each conversation; long-term memory is the user's | Long-term memory per worker needs the memory package to pick its store per turn: an eighth Layer 1 change, in tiers the epic leaves to FIX-1775 | Per-worker skills through S7's per-run key; no other user reaches any of it |
+| D6's *Locks in*: "BR-23 covers the built-in worker flows" | **Amended**: it covers skills and working memory; long-term memory is D8's | Follows from D8 | D6's call |
+| S7 and V6 | **Amended**: they say long-term memory stays the user's; V6 checks BR-23 as narrowed | Follows from D8 | The skills library's per-run key |
+| SPEC: the "runs several workers on one flow" row, the goal, *Not done if*, the signal and two figure labels; `what-changes.svg`'s last case | **Amended** to skills and working memory | They said "memory" without a tier | The goal's size |
+| DOCS: "what a worker remembers is kept per worker" and "their memory, which is kept per worker" | **Amended**; a note asks FIX-1789's `built-in-worker.md` pass to drop `isolateUserState`'s per-worker promise, since the flag keys by the flow's id | Follows from D8 | — |
+
+**Rejected.** A, long-term memory per worker: the memory package would pick its store on every
+turn from the worker the turn runs as. That is an eighth Layer 1 mechanism change beyond the seven
+the epic's [D3](../../epics/FIX-1786/DECISIONS.md#d3) counts, and memory tiers are outside the
+epic's box: the memory epic, FIX-1775, is not this epic's. Follow-up:
+[FIX-1810](https://linear.app/fixpoint-labs/issue/FIX-1810/separate-long-term-memory-per-worker-on-a-shared-agent-flow).
