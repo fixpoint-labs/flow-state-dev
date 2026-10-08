@@ -94,8 +94,8 @@ A dated snapshot. Live state is Linear and the implementation PRs. Nothing has s
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1816](https://linear.app/fixpoint-labs/issue/FIX-1816) · ask | Park and resume: a turn waits on a dispatched worker and resumes with its answer, bounded by a timeout and a depth cap ([D5](DECISIONS.md#d5) rows L1 to L3, L5, L7, L8); lifts the child-finished signal into `orchestration` (L4) | Leg a. Its spec also decides "ask the delegate" and FIX-1537 | Todo · spec route, first |
-| [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817) · assign stays open | An answered park resumes the same task session; a finished session answers and takes a follow-up task (L9) | Leg b | Todo · spec route · build waits on FIX-1802, which follows FIX-1794 P2 ([ER-15](BUSINESS-RULES.md#how-the-set-is-run)) |
+| [FIX-1816](https://linear.app/fixpoint-labs/issue/FIX-1816) · ask | Park and resume: an ask is a task on the asker's own board, with `waitForResponse`; the turn resumes with its answer, bounded by a fixed timeout, depth 1 by construction ([D5](DECISIONS.md#d5) rows L1 to L3, L5, L7, L8); lifts the child-finished signal into `orchestration` (L4) | Leg a. Its spec also decides "ask the delegate" and FIX-1537 | Todo · spec route, first |
+| [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817) · assign stays open | An answered park resumes the same task session; a finished session answers and takes a follow-up task (L9); an asked task cannot park on a question ([ER-22](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) | Leg b | Todo · spec route · build waits on FIX-1802, which follows FIX-1794 P2 ([ER-15](BUSINESS-RULES.md#how-the-set-is-run)) |
 | [FIX-1820](https://linear.app/fixpoint-labs/issue/FIX-1820) · closure · **required** | The QA plan and the goal fixture, run on one `main` commit | Proves the whole | Backlog · blocked by every other child |
 
 Two children and a closure, after [Q1](DECISIONS.md#q1)'s cuts; FIX-1818 and FIX-1819 are under
@@ -139,7 +139,9 @@ the reverse.
 Decided, for the record: [Q1](DECISIONS.md#q1), two issues and a closure, the product owner's
 answer on 2026-10-08 ("cut both"). [Q2](DECISIONS.md#q2), who builds the shared waking parts,
 settled by the two coordinators on 2026-10-08. [Q3](DECISIONS.md#q3), FIX-1780 stays Done with a
-correcting comment, an engineering call on 2026-10-08. Engineering calls I made as EM: [D1](DECISIONS.md#d1) to [D5](DECISIONS.md#d5).
+correcting comment, an engineering call on 2026-10-08. [The cross-spec pass](DECISIONS.md#decided-in-the-cross-spec-pass),
+authorized by the product owner on 2026-10-08: no `parkOnQuestion` for an asked task (ER-22, a
+coordinator call the product owner can overrule), and three consistency fixes. Engineering calls I made as EM: [D1](DECISIONS.md#d1) to [D5](DECISIONS.md#d5).
 Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).
 
 Epic · two children and a closure · Workforce: Shift Manager ·

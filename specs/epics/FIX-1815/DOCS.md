@@ -7,6 +7,9 @@ text; names in `code` are working names until FIX-1816's spec fixes them.
 
 ## UPDATE · `apps/docs/docs/server/background-work.md` · new section after "Starting a job on another flow"
 
+Ask's limits and names are canonical in [FIX-1816's `DOCS.md`](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1816/DOCS.md);
+the timeout sentence below matches it, and any other number defers to it.
+
 > ### Waiting for the answer
 >
 > A dispatch returns before the work it started has run. That is right for a job that outlives
@@ -18,10 +21,10 @@ text; names in `code` are working names until FIX-1816's spec fixes them.
 > open in between, so a server restart while the turn waits loses nothing: the turn resumes after
 > the restart, and the asked work ran once.
 >
-> Every ask has a time limit of ten minutes. The server checks it on its regular sweep, so a turn
-> whose answer never came resumes with a timeout error within ten to twenty minutes, instead of
-> waiting forever. A turn that is itself working a task can't ask, so asks never nest. Cancelling
-> the turn that asked also cancels the work it is waiting on.
+> Every ask has a time limit: a turn whose answer never came resumes with a timeout error within
+> twenty minutes, instead of waiting forever. A turn that is itself working a task can't ask, so
+> asks never nest. The worker you asked answers with what it has, or fails; it can't stop on a
+> question back to you. Cancelling the turn that asked also cancels the work it is waiting on.
 >
 > Each wake replays the asking turn once, so an ask costs one extra replay. Use one when the
 > answer changes what this turn does next. When it doesn't, dispatch the work, or assign it as a
