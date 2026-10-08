@@ -1381,6 +1381,63 @@ export async function createExecutionContext<
     return mergeOwnKeyRecords(...results);
   };
 
+  // The request record is persisted BEFORE any resource state is read
+  // (FIX-1002). The context captures a version for every key it loads, and
+  // request-record presence is what answers "may a live run still hold this
+  // version?". Persisting after the load left a window where this run held a
+  // version that no record accounted for — on every entry path without a host
+  // stub in front (the default concurrency mode, `fsdev run`, BullMQ cron). It
+  // also means a run refused the id below never reads resource state at all.
+  // A setup failure from here on is settled `failed` by `runAction`, so an
+  // early claim does not strand an `in_progress` row.
+  let requestRecord = loadedRequest;
+  if (requestRecord === undefined) {
+    // Bare session id (not the namespaced session key) — request history
+    // isolates by the `tenantId` field, and recovery re-derives the key from
+    // (bare sessionId + tenantId). See FIX-682. Shared with the enqueue-time
+    // materialization in `createInboundTransportHost` so the host stub and the
+    // worker-built record are identical by construction (FIX-828).
+    requestRecord = createInitialRequestRecord<TRequestState>(
+      {
+        requestId,
+        flowKind: flow.kind,
+        flowId: flow.id,
+        actionName: options.actionName,
+        userId,
+        sessionId,
+        tenantId: options.tenantId,
+        orgId: orgRecord?.orgId,
+        source: options.source,
+        metadata: options.metadata,
+        input: options.input,
+        requestState: options.requestState
+      },
+      now
+    );
+    // Written create-if-absent: the admission read above saw no record, but
+    // a concurrent direct run on another instance reusing this caller-supplied
+    // id may have written one since, and both must not execute. The loser is
+    // refused here, before the action runs; a same-owner hand-off (a retry
+    // reusing its id) keeps the last-write-wins overwrite it always had. The
+    // same fence the transport host applies to its enqueue-time stub, and
+    // another principal's record is refused the same way.
+    // The record as written: a same-owner hand-off carries the incarnation
+    // the store already held, and this context must run as that request.
+    requestRecord = (await claimRequestRecord(
+      stores,
+      flow,
+      requestRecord as RequestRecord
+    )) as typeof requestRecord;
+  } else if (requestRecord.source === undefined) {
+    // Pre-FIX-438 records read from a store that hasn't been migrated
+    // default to the HTTP source. New writes always carry the field.
+    requestRecord = { ...requestRecord, source: "http" };
+  }
+
+  if (requestRecord === undefined) {
+    throw new Error(`Request "${requestId}" could not be initialized`);
+  }
+
   const wave1Start = Date.now();
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
     loadScopeContentByBuckets("session", sessionFlowLevelConfigs),
@@ -1449,54 +1506,6 @@ export async function createExecutionContext<
   recordWavePreload("user", userFlowLevelConfigs, "flow-eager", wave1PerRecord);
   if (resolvedOrgKey !== undefined) {
     recordWavePreload("org", orgFlowLevelConfigs, "flow-eager", wave1PerRecord);
-  }
-
-  let requestRecord = loadedRequest;
-  if (requestRecord === undefined) {
-    // Bare session id (not the namespaced session key) — request history
-    // isolates by the `tenantId` field, and recovery re-derives the key from
-    // (bare sessionId + tenantId). See FIX-682. Shared with the enqueue-time
-    // materialization in `createInboundTransportHost` so the host stub and the
-    // worker-built record are identical by construction (FIX-828).
-    requestRecord = createInitialRequestRecord<TRequestState>(
-      {
-        requestId,
-        flowKind: flow.kind,
-        flowId: flow.id,
-        actionName: options.actionName,
-        userId,
-        sessionId,
-        tenantId: options.tenantId,
-        orgId: orgRecord?.orgId,
-        source: options.source,
-        metadata: options.metadata,
-        input: options.input,
-        requestState: options.requestState
-      },
-      now
-    );
-    // Written create-if-absent: the admission read above saw no record, but
-    // a concurrent direct run on another instance reusing this caller-supplied
-    // id may have written one since, and both must not execute. The loser is
-    // refused here, before the action runs; a same-owner hand-off (a retry
-    // reusing its id) keeps the last-write-wins overwrite it always had. The
-    // same fence the transport host applies to its enqueue-time stub, and
-    // another principal's record is refused the same way.
-    // The record as written: a same-owner hand-off carries the incarnation
-    // the store already held, and this context must run as that request.
-    requestRecord = (await claimRequestRecord(
-      stores,
-      flow,
-      requestRecord as RequestRecord
-    )) as typeof requestRecord;
-  } else if (requestRecord.source === undefined) {
-    // Pre-FIX-438 records read from a store that hasn't been migrated
-    // default to the HTTP source. New writes always carry the field.
-    requestRecord = { ...requestRecord, source: "http" };
-  }
-
-  if (requestRecord === undefined) {
-    throw new Error(`Request "${requestId}" could not be initialized`);
   }
 
   const requestRef: { current: RequestRecord } = {
