@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 392" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: eight cross-cutting rules by five columns. Ask returns the real answer across a restart and runs once: FIX-1816 builds, FIX-1817 consumes, the closure FIX-1820 proves. An answered park resumes the same session: FIX-1817 builds, the closure proves. A finished session answers and takes a follow-up task: FIX-1817 builds, FIX-1765 consumes and settles the reply semantics with it, the closure proves. Every ask is bounded: FIX-1816 builds, the closure proves. One child-finished signal: FIX-1786 builds, recommended under Q2, FIX-1816 and FIX-1817 consume. One resume-owed marker: FIX-1786 builds, recommended under Q2, FIX-1816 and FIX-1817 consume. One answer-once check, and ask adds none: FIX-1816 decides, FIX-1817 consumes. Dispatch stays fire-and-forget by default: FIX-1816 decides, FIX-1817 consumes.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .hd    { fill:var(--surface-2); }
+    .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .rec   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; stroke-dasharray:4 3; }
+    .use   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:0.8; }
+    .prv   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:0.8; }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-r   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-c   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; text-anchor:middle; }
+    .c-own { fill:var(--code); font-weight:700; }
+    .c-use { fill:var(--accent); }
+    .c-prv { fill:var(--prose); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="392"/>
+  <g id="header">
+    <rect class="hd" x="16" y="14" width="908" height="44" rx="4"/>
+    <text class="t-lbl" x="28" y="40">RULE · ER</text>
+    <text class="t-col" x="396" y="33" text-anchor="middle">FIX-1816</text><text class="t-lbl" x="396" y="48" text-anchor="middle">ask</text>
+    <text class="t-col" x="514" y="33" text-anchor="middle">FIX-1817</text><text class="t-lbl" x="514" y="48" text-anchor="middle">assign open</text>
+    <text class="t-col" x="632" y="33" text-anchor="middle">FIX-1820</text><text class="t-lbl" x="632" y="48" text-anchor="middle">closure</text>
+    <text class="t-col" x="750" y="33" text-anchor="middle">FIX-1786</text><text class="t-lbl" x="750" y="48" text-anchor="middle">1794 P2 · 1802</text>
+    <text class="t-col" x="868" y="33" text-anchor="middle">FIX-1765</text><text class="t-lbl" x="868" y="48" text-anchor="middle">composer epic</text>
+  </g>
+  <g id="r1"><text class="t-r" x="28" y="85">Ask: real answer, after a restart, runs once · ER-1</text>
+    <rect class="own" x="344" y="69" width="104" height="24" rx="3"/><text class="t-c c-own" x="396" y="85">BUILDS</text>
+    <rect class="use" x="462" y="69" width="104" height="24" rx="3"/><text class="t-c c-use" x="514" y="85">consumes</text>
+    <rect class="prv" x="580" y="69" width="104" height="24" rx="3"/><text class="t-c c-prv" x="632" y="85">proves</text>
+    <line class="row" x1="16" y1="100" x2="924" y2="100"/></g>
+  <g id="r2"><text class="t-r" x="28" y="119">Answered park resumes the same session · ER-2</text>
+    <rect class="own" x="462" y="103" width="104" height="24" rx="3"/><text class="t-c c-own" x="514" y="119">BUILDS</text>
+    <rect class="prv" x="580" y="103" width="104" height="24" rx="3"/><text class="t-c c-prv" x="632" y="119">proves</text>
+    <line class="row" x1="16" y1="134" x2="924" y2="134"/></g>
+  <g id="r3"><text class="t-r" x="28" y="153">Finished session answers, takes a follow-up · ER-3</text>
+    <rect class="own" x="462" y="137" width="104" height="24" rx="3"/><text class="t-c c-own" x="514" y="153">BUILDS</text>
+    <rect class="prv" x="580" y="137" width="104" height="24" rx="3"/><text class="t-c c-prv" x="632" y="153">proves</text>
+    <rect class="use" x="816" y="137" width="104" height="24" rx="3"/><text class="t-c c-use" x="868" y="153">consumes</text>
+    <line class="row" x1="16" y1="168" x2="924" y2="168"/></g>
+  <g id="r4"><text class="t-r" x="28" y="187">Every ask is bounded · ER-4</text>
+    <rect class="own" x="344" y="171" width="104" height="24" rx="3"/><text class="t-c c-own" x="396" y="187">BUILDS</text>
+    <rect class="prv" x="580" y="171" width="104" height="24" rx="3"/><text class="t-c c-prv" x="632" y="187">proves</text>
+    <line class="row" x1="16" y1="202" x2="924" y2="202"/></g>
+  <g id="r5"><text class="t-r" x="28" y="221">One child-finished signal · ER-7</text>
+    <rect class="use" x="344" y="205" width="104" height="24" rx="3"/><text class="t-c c-use" x="396" y="221">consumes</text>
+    <rect class="use" x="462" y="205" width="104" height="24" rx="3"/><text class="t-c c-use" x="514" y="221">consumes</text>
+    <rect class="rec" x="698" y="205" width="104" height="24" rx="3"/><text class="t-c c-own" x="750" y="221">BUILDS · Q2</text>
+    <line class="row" x1="16" y1="236" x2="924" y2="236"/></g>
+  <g id="r6"><text class="t-r" x="28" y="255">One resume-owed marker · ER-7</text>
+    <rect class="use" x="344" y="239" width="104" height="24" rx="3"/><text class="t-c c-use" x="396" y="255">consumes</text>
+    <rect class="use" x="462" y="239" width="104" height="24" rx="3"/><text class="t-c c-use" x="514" y="255">consumes</text>
+    <rect class="rec" x="698" y="239" width="104" height="24" rx="3"/><text class="t-c c-own" x="750" y="255">BUILDS · Q2</text>
+    <line class="row" x1="16" y1="270" x2="924" y2="270"/></g>
+  <g id="r7"><text class="t-r" x="28" y="289">One answer-once check; ask adds none · ER-6</text>
+    <rect class="own" x="344" y="273" width="104" height="24" rx="3"/><text class="t-c c-own" x="396" y="289">DECIDES</text>
+    <rect class="use" x="462" y="273" width="104" height="24" rx="3"/><text class="t-c c-use" x="514" y="289">consumes</text>
+    <line class="row" x1="16" y1="304" x2="924" y2="304"/></g>
+  <g id="r8"><text class="t-r" x="28" y="323">Dispatch stays fire-and-forget · ER-5</text>
+    <rect class="own" x="344" y="307" width="104" height="24" rx="3"/><text class="t-c c-own" x="396" y="323">DECIDES</text>
+    <rect class="use" x="462" y="307" width="104" height="24" rx="3"/><text class="t-c c-use" x="514" y="323">consumes</text>
+    <line class="row" x1="16" y1="338" x2="924" y2="338"/></g>
+  <g id="legend">
+    <rect class="own" x="28" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="48" y="366">ONE OWNER PER ROW</text>
+    <rect class="rec" x="210" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="230" y="366">OWNER RECOMMENDED, OPEN UNDER Q2</text>
+    <rect class="use" x="500" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="520" y="366">MUST NOT RE-DECIDE</text>
+    <rect class="prv" x="680" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="700" y="366">CLOSURE PROVES IT</text>
+  </g>
+</svg>

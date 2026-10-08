@@ -1,0 +1,66 @@
+# FIX-1815 · Plan
+
+[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
+
+An epic plan sequences the work and says what each piece entails. It does not say how to build
+any piece; that is each issue's own plan. IDs cross-reference [DECISIONS.md](DECISIONS.md)
+(Q-n, D-n, L-n) and [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n).
+
+## The path
+
+![The path in phases, not dates, as of 8 October 2026. Two input lanes from FIX-1786: FIX-1794 P2's notices, in development, and FIX-1802's settle-owed marker, on hold. This spec is in review at the now line. After the gate, the ask and assign specs run at once, with the closure's QA plan. Ask builds its own pieces first and integrates the signal and marker once they land; assign builds only after both inputs merge. The closure run follows both. The two proposed cuts have lanes and no bars. The critical path runs through FIX-1802's hold, assign's build and the closure run](figures/path.svg)
+
+The axis is order, not dates: nothing has started. Both specs run at once after the gate. The
+critical path goes through FIX-1802's hold, not through any work in this epic, which is why
+[Q2](DECISIONS.md#q2) is the sequencing question.
+
+## What each issue entails
+
+| Issue | Route | Consumes | Delivers | Releases | Size |
+|---|---|---|---|---|---|
+| **FIX-1816** ask | spec → impl PRs | Generator suspend and resume (`generator-resume.ts`) · `ctx.runOnce` · FIX-1794 P2's notices (L4) · FIX-1802's marker (L3) · an existing answer-once check (ER-6) | L1, L2, L5 to L8; the answers to the kill line (ER-17), "ask the delegate", and FIX-1537 (ER-18) | FIX-1817's use of the resume verb · the closure's leg a | Large: a Layer 1 seam across four packages |
+| **FIX-1817** assign stays open | spec → impl PR | FIX-1794 P2's `parked` notice and session binding · FIX-1802's "run my board" replay · FIX-1816's resume verb where it applies | L9 · the reply semantics with FIX-1765 (ER-14) | The closure's leg b | Medium |
+| **FIX-1818** one fence | *proposed cut* (Q1) | — | ER-6, as a rule | — | — |
+| **FIX-1819** skill helpers | *proposed cut* (Q1) · Backlog, unparented | — | — | — | — |
+| **FIX-1820** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child merged, on one `main` commit | The goal fixture under `goals/` on a durable store · a QA report · a bug child per failure | The wrap | Medium, and repeats per retest |
+
+## Where it is
+
+[The set table](SPEC.md#the-set--as-of-2026-10-08) is the review-time snapshot; its Linear links
+carry live state. The two inputs, as of 2026-10-08: FIX-1794 is in development, and its P2 has
+no PR. FIX-1802's spec is in review (#2839), and its build is on hold for a delegation amendment
+owned by session fix-1786-pm (`fixpoint-labs/agent-mailbox#38`).
+
+## What unblocks what, from here
+
+1. **This spec is approved and merged** → the FIX-1816 and FIX-1817 specs start together, and
+   FIX-1820's QA plan beside them. The coordinator acts on Q1's cuts.
+2. **FIX-1816's spec is approved** → if it names no caller, the kill line fires: FIX-1816 stops,
+   and the set is FIX-1817 and the closure. Otherwise FIX-1816 builds L1, L2 and L5 to L8.
+3. **FIX-1794 P2 and FIX-1802 merge on `main`** → FIX-1816 integrates L3 and L4, and FIX-1817's
+   build starts (ER-15).
+4. **FIX-1816 and FIX-1817 merge** → the closure's first run.
+5. **A closure run finds bugs** → each one becomes a child of this epic that blocks FIX-1820,
+   and the whole plan runs again on a fresh `main` commit.
+
+## Coordination seams to watch
+
+| Seam | Between | Rule |
+|---|---|---|
+| The resume verb | FIX-1816 builds it · FIX-1817 may use it for an answered park | One verb. FIX-1817 does not add a second path into a parked session |
+| The board row's markers | FIX-1816 · FIX-1817 · FIX-1802 | One marker family (ER-7). A new owed state is an amendment request to FIX-1786 |
+| The `parked` notice | FIX-1794 P2 produces it · FIX-1817 consumes it | FIX-1817 does not change the notice; it changes what the answer wakes |
+| The finished task's session | FIX-1817 · FIX-1764 and FIX-1765 | ER-14: the reply semantics are settled together |
+| `escalate.ts` | FIX-1816's kill line · FIX-1792's conversion of its board | FIX-1816's spec reads it after FIX-1792's conversion, not before |
+
+## Not children, deliberately
+
+FIX-1794 and FIX-1802 (inputs, FIX-1786's) · FIX-1791 (its delivery ledger, consumed) · FIX-1780
+(Q3) · FIX-1537 and FIX-1312 (ER-18) · FIX-1659 (a reassign's held claim, unrelated to
+cancellation) · FIX-1764 and FIX-1765 (the composer). Linked, never re-parented.
+
+## Wrap
+
+When ER-16 holds: run the lessons pass, dispatch docs polish over the pages in
+[DOCS.md](DOCS.md), and report the outcome from Linear and implementation evidence. A
+meaningful design change after merge goes through a follow-up PR from `main`.
