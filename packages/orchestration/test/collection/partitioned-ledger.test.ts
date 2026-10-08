@@ -248,6 +248,27 @@ describe("a partition function", () => {
     expect(seen).toEqual({ sessionId: "s_1", userId: "alice", orgId: "acme" });
   });
 
+  it("carries the session's lineage id, so a partition can name one incarnation of the session (FIX-1794 P2)", async () => {
+    // A session deleted and created again under the same id gets a new
+    // lineage id from the server, so `sessionId` plus it names one birth.
+    // Without it a partition built from server-set data alone hands a
+    // recreated conversation its predecessor's rows (BR-14).
+    const birth = (lineageId: string) => ({
+      ...ctxFor(),
+      session: { identity: { type: "session", id: "s_1", userId: "alice" }, lineageId },
+    });
+    const seen: Array<Record<string, unknown>> = [];
+    const byIncarnation = (view: Parameters<typeof resolveTaskPartition>[1] extends (v: infer V) => unknown ? V : never) => {
+      seen.push(view as unknown as Record<string, unknown>);
+      return `${view.sessionId}~${view.lineageId}`;
+    };
+    const first = await resolveTaskPartition(LEDGER, byIncarnation, birth("lin_a") as unknown as BlockContext);
+    const recreated = await resolveTaskPartition(LEDGER, byIncarnation, birth("lin_b") as unknown as BlockContext);
+    expect(first).toBe("s_1~lin_a");
+    expect(recreated).toBe("s_1~lin_b");
+    expect(seen[0]).toEqual({ sessionId: "s_1", userId: "alice", lineageId: "lin_a" });
+  });
+
   it.each([[""], [undefined], [42]])("refuses a returned %j", async (value) => {
     await expect(
       resolveTaskPartition(LEDGER, () => value as never, ctxFor())

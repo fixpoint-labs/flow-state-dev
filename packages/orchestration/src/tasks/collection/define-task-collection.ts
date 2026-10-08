@@ -30,6 +30,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import { taskSchema } from "../schema/task";
+import type { TaskEndingRecorder } from "./ending";
 import type { TaskPartitionFn } from "./partition";
 import { assertSafeCollectionId } from "./safe-key";
 
@@ -53,6 +54,8 @@ export type DefinedTaskCollection = DefinedResourceCollection & {
     readonly id: string;
     /** Present when the ledger keeps one set of rows per partition. */
     readonly partitionBy?: TaskPartitionFn;
+    /** Present when every ending written to the ledger goes through a recorder. */
+    readonly recordEnding?: TaskEndingRecorder;
   };
 };
 
@@ -95,6 +98,20 @@ export interface DefineTaskCollectionOptions<
    */
   partitionBy?: TaskPartitionFn;
   /**
+   * Hand every write that records how a task ended to this function, inside
+   * that same atomic write, and keep the `metadata` it returns on the row: a
+   * completion, a failure (for good, or with attempts left), a park, a cancel,
+   * and the claim path settling a row whose worker died too often. Whatever it
+   * adds lands with the ending or not at all, so a debt the ending creates (a
+   * conversation to tell) can't be lost between the two. See `TaskEnding` for
+   * what each ending carries.
+   *
+   * It must be a pure function of the row and the ending: a write that loses a
+   * version race runs it again against the fresher row. Only `metadata` is
+   * taken from what it returns; the transition decides every other field.
+   */
+  recordEnding?: TaskEndingRecorder;
+  /**
    * Schema for each task's `input` payload. Optional; defaults to
    * `z.unknown()`. This is the typed payload a worker receives, not the whole
    * task — the rest of the `Task` envelope is validated automatically.
@@ -114,6 +131,11 @@ export function defineTaskCollection<
 ): DefinedTaskCollection {
   assertSafeCollectionId(options.id);
   if (options.partitionBy !== undefined) assertPartitionable(options);
+  if (options.recordEnding !== undefined && typeof options.recordEnding !== "function") {
+    throw new Error(
+      `[tasks] defineTaskCollection "${options.id}": recordEnding must be a function of the row and its ending`
+    );
+  }
 
   // Type the envelope as a bare `ZodTypeAny` before handing it to
   // `defineResourceCollection` so the extended `taskSchema` doesn't inflate the
@@ -143,6 +165,7 @@ export function defineTaskCollection<
     __taskCollection: {
       id: options.id,
       ...(options.partitionBy !== undefined ? { partitionBy: options.partitionBy } : {}),
+      ...(options.recordEnding !== undefined ? { recordEnding: options.recordEnding } : {}),
     },
   }) as unknown as DefinedTaskCollection;
 }

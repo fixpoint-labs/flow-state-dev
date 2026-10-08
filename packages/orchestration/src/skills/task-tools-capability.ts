@@ -155,6 +155,29 @@ export interface WorkerRoster {
   describe(): string;
 }
 
+/**
+ * Where the task tools read their roster from: a fixed {@link WorkerRoster}, or
+ * a function of the running context that returns one, read on every call
+ * (FIX-1794 T1).
+ *
+ * The function form is for a board whose team changes while it is in use, a
+ * conversation's delegates being the case it was built for: a member added
+ * between two calls is checked against on the second, and one removed is
+ * refused. Read from the running context the way a resolver reads its board,
+ * so the roster a call is checked against is the one its own session holds.
+ */
+export type WorkerRosterSource =
+  | WorkerRoster
+  | ((ctx: BlockContext) => WorkerRoster | Promise<WorkerRoster>);
+
+/** The roster a call is checked against: the fixed one, or the function's answer for this context. */
+async function rosterFor(
+  source: WorkerRosterSource | undefined,
+  ctx: BlockContext,
+): Promise<WorkerRoster | undefined> {
+  return typeof source === "function" ? source(ctx) : source;
+}
+
 const unknownAssigneeError = (assignee: string, roster: WorkerRoster) => ({
   ok: false as const,
   error:
@@ -429,7 +452,7 @@ const claimGuard = (
 
 function buildTaskTools(
   resolve: TaskCollectionResolver,
-  roster?: WorkerRoster,
+  roster?: WorkerRosterSource,
   nameSuffix?: string,
   /**
    * Capabilities each tool composes. Only {@link taskToolActions} passes one: a
@@ -493,7 +516,13 @@ function buildTaskTools(
     const collection = await resolve(ctx);
     if (!collection) return noBoardError;
     if (!collection.get(taskId)) return taskNotFoundError(taskId);
-    const bad = checkAssignee(options?.assignee, roster);
+    // Read only when there is an assignee to check: a status change or a
+    // label write asks nothing of the roster, so a per-call roster is not
+    // read for it.
+    const bad =
+      options?.assignee === undefined
+        ? undefined
+        : checkAssignee(options.assignee, await rosterFor(roster, ctx));
     if (bad) return bad;
     // Read once, so the ticket the write presented is the ticket the refusal is
     // rendered against even if the scope somehow changed mid-call.
@@ -583,7 +612,10 @@ function buildTaskTools(
       // "board full" to a caller whose real problem is the assignee, which it
       // would then still hit after fixing it. `checkAssignee` is a pure
       // pre-flight, so running it first costs nothing.
-      const bad = checkAssignee(input.assignee, roster);
+      const bad =
+        input.assignee === undefined
+          ? undefined
+          : checkAssignee(input.assignee, await rosterFor(roster, ctx));
       if (bad) return bad;
       try {
         const task = await collection.addTask({
@@ -780,13 +812,14 @@ function buildTaskTools(
  * generator's `tools:` array rather than composing the capability via `uses:`).
  * Defaults to the own-state board resolver.
  *
- * @param roster Optional roster of the board's workers. Supply it and
+ * @param roster Optional roster of the board's workers, fixed or read per call
+ *   from the running context ({@link WorkerRosterSource}). Supply it and
  *   `addTask`/`assignTask`/`updateTask` reject an assignee it does not name.
  *   Omit it and assignment is unvalidated, as before.
  */
 export function buildTaskToolsList(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
-  roster?: WorkerRoster,
+  roster?: WorkerRosterSource,
   nameSuffix?: string,
 ) {
   return buildTaskTools(resolveCollection, roster, nameSuffix);
@@ -803,13 +836,14 @@ export function buildTaskToolsList(
  * @param resolveCollection Optional board resolver. Defaults to the host
  *   generator's own-state board via `ctx.parent`. Pass a resolver targeting a
  *   shared board instead (or a drain board for a fan-out worker).
- * @param roster Optional roster for assignee validation. Supply it so a
+ * @param roster Optional roster for assignee validation, fixed or read per call
+ *   from the running context ({@link WorkerRosterSource}). Supply it so a
  *   fan-out worker enqueuing follow-up tasks mid-drain is held to the same
  *   roster the executive is.
  */
 export function createTaskToolsCapability(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
-  roster?: WorkerRoster,
+  roster?: WorkerRosterSource,
 ): DefinedCapability {
   return defineCapability({
     name: "taskTools",
@@ -884,12 +918,19 @@ export interface TaskToolActionsBoard {
  *
  * Two forms:
  *
- * - `taskToolActions(board)` — a `taskBoard()` handle. Its rows are reached
- *   through the board's own resolver, and each action composes the board's
- *   capability, so the flow need not declare the collection again.
- * - `taskToolActions(collectionId, resolve)` — for a caller that resolves a
- *   durable ledger itself (a Workforce mailbox does, to fence each action to
- *   its own session).
+ * - `taskToolActions(board, roster?)` — a `taskBoard()` handle. Its rows are
+ *   reached through the board's own resolver, and each action composes the
+ *   board's capability, so the flow need not declare the collection again.
+ * - `taskToolActions(collectionId, resolve, roster?)` — for a caller that
+ *   resolves a durable ledger itself (a Workforce mailbox does, to fence each
+ *   action to its own session).
+ *
+ * Pass a `roster` and the actions check assignees the way the model's tools
+ * do: `addTask`, `assignTask` and `updateTask` refuse one the roster does not
+ * name, with the same `unknown_assignee` answer, and write nothing. It may be a
+ * function of the running context, read per call ({@link WorkerRosterSource}),
+ * for a board whose team changes while it is in use. Without one, any assignee
+ * is accepted, as before.
  *
  * These are public actions: anyone who can call the flow can call them.
  *
@@ -901,19 +942,26 @@ export interface TaskToolActionsBoard {
  *   sequencer-backed ledger is gone when the request that filed its rows ends,
  *   so a later action could never find them.
  */
-export function taskToolActions(board: TaskToolActionsBoard): Record<string, ActionConfig>;
+export function taskToolActions(
+  board: TaskToolActionsBoard,
+  roster?: WorkerRosterSource,
+): Record<string, ActionConfig>;
 export function taskToolActions(
   collectionId: string,
   resolve: TaskCollectionResolver,
+  roster?: WorkerRosterSource,
 ): Record<string, ActionConfig>;
 export function taskToolActions(
   boardOrId: TaskToolActionsBoard | string,
-  resolveCollection?: TaskCollectionResolver,
+  resolveOrRoster?: TaskCollectionResolver | WorkerRosterSource,
+  rosterForId?: WorkerRosterSource,
 ): Record<string, ActionConfig> {
   let collectionId: string;
   let resolve: TaskCollectionResolver;
   let uses: DefinedCapability[] | undefined;
+  let roster: WorkerRosterSource | undefined;
   if (typeof boardOrId === "string") {
+    const resolveCollection = resolveOrRoster as TaskCollectionResolver | undefined;
     if (resolveCollection === undefined) {
       throw new Error(
         `taskToolActions("${boardOrId}") needs a resolver for the ledger as its second argument.`,
@@ -921,8 +969,10 @@ export function taskToolActions(
     }
     collectionId = boardOrId;
     resolve = resolveCollection;
+    roster = rosterForId;
   } else {
     collectionId = boardOrId.collectionId;
+    roster = resolveOrRoster as WorkerRosterSource | undefined;
     if (boardOrId.backing !== "resource") {
       throw new Error(
         `taskToolActions: board "${collectionId}" is ${boardOrId.backing}-backed, and its tasks ` +
@@ -941,7 +991,7 @@ export function taskToolActions(
     uses = [boardOrId.capability];
   }
   return Object.fromEntries(
-    buildTaskTools(resolve, undefined, taskToolSuffix(collectionId), uses, true).map((tool) => [
+    buildTaskTools(resolve, roster, taskToolSuffix(collectionId), uses, true).map((tool) => [
       tool.name,
       { block: tool, description: tool.description },
     ]),

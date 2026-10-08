@@ -126,6 +126,7 @@ import {
   unparkPatch,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
+import { applyEndingRecorder, type TaskEnding, type TaskEndingRecorder } from "./ending";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
 
@@ -218,6 +219,12 @@ export interface ResourceBackedOptions {
    * writes only through it.
    */
   partition?: string;
+  /**
+   * The ledger's ending recorder (`defineTaskCollection({ recordEnding })`),
+   * run inside every write that records how a task ended. Its `metadata`
+   * lands in that same write. See `./ending`.
+   */
+  recordEnding?: TaskEndingRecorder;
 }
 
 /**
@@ -444,6 +451,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * both spam every subscribed client with a re-claim that did not happen and
    * wake every idle worker on the board into a full collection scan. The
    * store's own `resource_change` still fires, unchanged.
+   *
+   * `ending` names the ending this write records, for a write that records one
+   * (FIX-1794 P2): the row as the transition builds it is handed to the
+   * ledger's ending recorder in the same write, so whatever it marks lands with
+   * the ending. Read off the `task` this invocation saw, like the patch.
    */
   async function transitionRef(
     id: string,
@@ -451,7 +463,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions,
-    requireFrom?: TaskStatus
+    requireFrom?: TaskStatus,
+    ending?: (task: Task<TInput, TOutput>) => TaskEnding
   ): Promise<TaskWriteOutcome> {
     const ref = mirror.get(id);
     if (ref === undefined) {
@@ -483,9 +496,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         // anything captured outside would describe an attempt that never
         // committed — deriving it from `current` is what makes a replay correct
         // with nothing to reset (FIX-989).
+        const transitioned = applyTransition(task, { ...patch(task), status: targetStatus }, now());
         const next = stampWrite(
           task,
-          applyTransition(task, { ...patch(task), status: targetStatus }, now()),
+          ending === undefined
+            ? transitioned
+            : applyEndingRecorder(options.recordEnding, transitioned, ending(task)),
           guards?.write
         );
         return {
@@ -670,10 +686,16 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
               };
             }
             // The abandonment settlement is a committed write too, so it
-            // advances the record the same way (FIX-989).
+            // advances the record the same way (FIX-989). It is an ending
+            // the board made on its own, so it goes through the ledger's
+            // recorder like any other (FIX-1794 P2).
+            const abandoned = applyAbandonmentSettlement(task, at, DEFAULT_MAX_ABANDONMENTS);
             const settled = stampWrite(
               task,
-              applyAbandonmentSettlement(task, at, DEFAULT_MAX_ABANDONMENTS)
+              applyEndingRecorder(options.recordEnding, abandoned, {
+                kind: "errored",
+                error: abandoned.error ?? "",
+              })
             );
             return {
               state: settled as unknown as JsonObject,
@@ -739,7 +761,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           claimedBy: undefined,
           error: undefined,
         }),
-        options
+        options,
+        undefined,
+        () => ({ kind: "completed", output })
       );
     },
 
@@ -781,7 +805,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
                 ...(counts ? { retryLedger: grantRetry(task as Task) } : {}),
               };
             },
-            options
+            options,
+            undefined,
+            () => ({ kind: "retried", error })
           );
         }
       }
@@ -795,7 +821,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           leaseUntil: undefined,
           claimedBy: undefined,
         }),
-        options
+        options,
+        undefined,
+        () => ({ kind: "errored", error })
       );
     },
 
@@ -834,13 +862,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // being parked behind the attempt that already ended it. `ifAllowed` is
       // forced on that path only, the way `unpark` forces its own fence.
       const forTurn = options?.forTurn === true;
+      // A park for a person's turn asks nobody anything, and neither does one
+      // its holder marks `quiet`: the recorder is told which this is.
+      const quiet = forTurn || options?.quiet === true;
       return transitionRef(
         id,
         "parked",
         "review_requested",
         () => parkPatch(feedback, forTurn) as Partial<Task<TInput, TOutput>>,
         forTurn ? { ...options, ifAllowed: true } : options,
-        forTurn ? "in_progress" : undefined
+        forTurn ? "in_progress" : undefined,
+        () => ({ kind: "parked", ...(feedback !== undefined ? { question: feedback } : {}), quiet })
       );
     },
 
@@ -888,7 +920,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         // construction" is this method's contract and a caller cannot switch it
         // off. Unchanged behaviour: cancelling an already-settled task is a
         // no-op, and it emits no `resource_change` for the write it skipped.
-        { ...options, ifAllowed: true }
+        { ...options, ifAllowed: true },
+        undefined,
+        () => ({ kind: "cancelled", ...(reason !== undefined ? { reason } : {}) })
       );
     },
 
