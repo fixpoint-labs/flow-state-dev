@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 432" role="img" aria-label="D1: where a run&#x27;s held work is kept. Chosen: a per-run slice of a worktree-overlay collection in the project&#x27;s scope, the owner&#x27;s user scope for a private project and the org&#x27;s for a shared one. Instead of: one collection in the run record&#x27;s user scope. It comes down to a private project&#x27;s work: in the run record&#x27;s scope it would follow whoever ran it, not the project. The price: two declarations that move whenever FIX-1793&#x27;s project storage moves. Both are server-only with no browser read. Locks in: held work moves when project storage moves. Flips if: projects stop having a visibility."
+<svg viewBox="0 0 940 432" role="img" aria-label="D1: where a run&#x27;s held work is kept. Chosen: in the project&#x27;s scope, per run: under the owner&#x27;s user prefix for a private project and the org&#x27;s for a shared one. Instead of: one place in the run record&#x27;s user scope. It comes down to a private project&#x27;s work: in the run record&#x27;s scope it would follow whoever ran it, not the project. The price: a key prefix picked by the project&#x27;s visibility, following FIX-1793&#x27;s rule for its files. No route reads it. Locks in: held work moves when project storage moves. Flips if: projects stop having a visibility."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -62,10 +62,10 @@
     <text class="t-lbl" x="32" y="236">WHAT IT</text>
     <text class="t-lbl" x="32" y="249">COSTS</text>
     <text class="mark minus" x="228" y="238">−</text>
-    <text class="t-b" x="248" y="237">Two declarations</text>
-    <text class="t-s" x="248" y="255">follow FIX-1793&#x27;s, scope by scope</text>
+    <text class="t-b" x="248" y="237">A prefix picked by visibility</text>
+    <text class="t-s" x="248" y="255">follows FIX-1793&#x27;s rule for files</text>
     <text class="mark plus" x="592" y="238">+</text>
-    <text class="t-b" x="612" y="237">One declaration</text>
+    <text class="t-b" x="612" y="237">One fixed prefix</text>
     <text class="t-s" x="612" y="255">one scope for every run</text>
     <line class="row" x1="16" y1="260" x2="924" y2="260"/>
   </g>
@@ -74,17 +74,17 @@
     <text class="t-lbl" x="32" y="307">READ IT</text>
     <text class="mark tie" x="228" y="296">=</text>
     <text class="t-b" x="248" y="295">The run&#x27;s attempts only</text>
-    <text class="t-s" x="248" y="313">no browser read</text>
+    <text class="t-s" x="248" y="313">no route reads it</text>
     <text class="mark tie" x="592" y="296">=</text>
     <text class="t-b" x="612" y="295">The same</text>
-    <text class="t-s" x="612" y="313">no browser read</text>
+    <text class="t-s" x="612" y="313">no route reads it</text>
     <line class="row" x1="16" y1="318" x2="924" y2="318"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="342" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="363">LOCKS IN</text>
     <text class="t-b" x="32" y="383">Held work moves when project storage moves</text>
-    <text class="t-s" x="32" y="401">worktree-overlay sits beside project-files</text>
+    <text class="t-s" x="32" y="401">the same visibility rule as the project&#x27;s files</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="342" width="446" height="74" rx="5"/>
