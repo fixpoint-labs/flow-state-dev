@@ -73,6 +73,7 @@ import { pinRejectsCaller } from "../context/instance-pin";
 import { createInstanceCallerResolver, type InstanceCallerResolver } from "./instance-caller";
 import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
+import { createAskResumeOperation } from "../context/ask-resume-operation";
 
 export type RequestContext = {
   method: string;
@@ -293,6 +294,20 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.dispatchOperation === undefined
   ) {
     runtimeConfig.requestHost.dispatchOperation = createDispatchOperation({ host });
+  }
+
+  // Same last-resort terms for the ask resume, and only with durable execution:
+  // a router mounted without a `FlowState` can still serve asks.
+  if (
+    runtimeConfig.requestHost !== undefined &&
+    runtimeConfig.requestHost.askResume === undefined &&
+    runtimeConfig.durabilityProvider !== undefined
+  ) {
+    runtimeConfig.requestHost.askResume = createAskResumeOperation({
+      provider: runtimeConfig.durabilityProvider,
+      stores,
+      continueRequest: (opts) => host.continueRequest(opts)
+    });
   }
 
   // Same last-resort terms, one field over: the exact-address lookup a

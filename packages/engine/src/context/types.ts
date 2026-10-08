@@ -14,6 +14,7 @@ import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
 import type { ParentTaskBinding } from "./create-request-host";
 import type { DispatchOperation } from "./dispatch-operation";
+import type { AskResumeOperation } from "./ask-resume-operation";
 import type { RuntimeConfig } from "../runtime-config";
 
 export type RequestRuntime = {
@@ -165,6 +166,12 @@ export type RequestHostConstructionInputs = {
   resolveFlow?: (address: string) => FlowInstance | undefined;
   /** The parent-board row this request was dispatched for, stamped at spawn. */
   parentTask?: ParentTaskBinding;
+  /**
+   * Resumes a turn parked on an ask gate (`RequestHost.resumeAsk`). Installed
+   * by the host only when it has a durability provider, on the same terms as
+   * `dispatchOperation`. Absent → the verb is absent.
+   */
+  askResume?: AskResumeOperation;
   /** The stale-request sweeper's threshold. */
   staleThresholdMs?: number;
   /** The sweeper's cadence. Undefined or 0 → liveness is refused. */

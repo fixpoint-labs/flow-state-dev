@@ -65,6 +65,8 @@ import type {
   FlowInstance,
   LivenessAnswers,
   RequestHost,
+  ResumeAskInput,
+  ResumeAskResult,
   SettleParentTaskInput,
   SettleParentTaskResult,
 } from "@flow-state-dev/core/types";
@@ -88,6 +90,7 @@ import {
 import { pinRejectsCaller } from "./instance-pin";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
+import type { AskResumeOperation } from "./ask-resume-operation";
 
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
 export type ParentTaskBinding = {
@@ -141,6 +144,11 @@ export type RequestHostInputs = {
   effectiveRuntimeConfig?: RuntimeConfig;
   /** Absent unless this request was dispatched for a parent-board task. */
   parentTask?: ParentTaskBinding;
+  /**
+   * Resumes an ask gate in this request's session. Absent when the host has no
+   * durable execution, and then so is `resumeAsk`.
+   */
+  askResume?: AskResumeOperation;
   /**
    * The running request's trusted dispatch stamp, already read through
    * {@link readDispatchStamp}. A `{ from: true }` target delivers into
@@ -635,6 +643,25 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   };
 
   const host: RequestHost = { parentTask, settleParentTask };
+
+  // The fifth verb: present only where a host wired the resume, which it does
+  // only with durable execution — nothing can park on an ask without it. The
+  // identity comes from here, never from the block that calls the verb.
+  const askResume = inputs.askResume;
+  if (askResume !== undefined) {
+    host.resumeAsk = (input: ResumeAskInput): Promise<ResumeAskResult> =>
+      askResume({
+        gateId: input.gateId,
+        outcome: input.outcome,
+        owner: {
+          sessionId: identity.sessionId,
+          userId: identity.userId,
+          tenantId: identity.tenantId,
+          orgId: identity.orgId,
+          flow
+        }
+      });
+  }
 
   if (gate.enabled) {
     const staleThresholdMs = gate.staleThresholdMs;

@@ -939,6 +939,7 @@ export async function createExecutionContext<
           dispatchOperation: options.requestHost.dispatchOperation,
           resolveFlow: options.requestHost.resolveFlow,
           parentTask: options.requestHost.parentTask,
+          askResume: options.requestHost.askResume,
           effectiveRuntimeConfig: options.effectiveRuntimeConfig,
           dispatchStamp: readDispatchStamp(options.source, options.metadata),
           liveness: {
@@ -3548,7 +3549,7 @@ export async function createExecutionContext<
             "ctx.suspend() requires a DurabilityProvider. Configure one in your server options."
           );
         }
-        const suspensionId = generateId("susp");
+        const suspensionId = suspendOpts.suspensionId ?? generateId("susp");
         throw new SuspensionError({ ...suspendOpts, suspensionId });
       },
       saveCheckpoint: undefined,

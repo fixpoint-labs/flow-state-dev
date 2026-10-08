@@ -73,7 +73,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 ## Dispatched work (child sessions)
 
 - Dispatched work runs in a **child session** (`dsx_` prefix, derived from tenant + principal + parent session + lineage + the session key), not a new scope level; `sharedToLineage` is how a session-scoped resource spans parent and children
-- `RequestHost` is three verbs: `parentTask`, `settleParentTask`, `livenessOf?` (absent when the liveness gate refused). Identity is never a parameter
+- `RequestHost` is four verbs: `parentTask`, `settleParentTask`, `livenessOf?` (absent when the liveness gate refused), `resumeAsk?` (resumes a turn in this session parked on an ask gate; absent without durable execution; the public resume route never resumes an ask gate). Identity is never a parameter
 - Locality is decided by the effective dispatcher (`isInProcessDispatcher`), **not** by `worker.mode`
 - `worker-only` constructs no dispatcher → dispatched work runs **in-process and is not durable**
 - `dispose()`'s **drain** covers in-process dispatched children only, bounded by `dispatchDrainTimeoutMs` (the old `detachedDrainTimeoutMs` spelling is refused); a queued job is not drained — but closing the worker afterwards waits, unbounded, for any job this process has claimed (`colocated` and `worker-only` both consume)

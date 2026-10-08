@@ -11,6 +11,7 @@ import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
 import { isPublicReentryAllowed } from "./public-reentry";
+import { isAskGate } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
   callerReachesRequest,
@@ -153,7 +154,11 @@ export async function handleResumeSuspension(
   }
 
   const suspension = await provider.loadSuspension(route.requestId, suspensionId);
-  if (suspension === null) {
+  // An ask gate is never resumed from here, whatever source the asking turn
+  // arrived on: its answer is the asked task's ending, and only the asker's
+  // own conversation (`RequestHost.resumeAsk`) delivers it. Answered exactly as a missing gate, so a caller cannot tell the two
+  // apart, and cannot hand the turn a forged answer.
+  if (suspension === null || isAskGate(suspension)) {
     return jsonResponse(404, {
       error: `Suspension "${suspensionId}" not found`
     });

@@ -47,6 +47,7 @@ import {
   type InProcessPrincipalQuestion
 } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
+import { createAskResumeOperation, type AskResumeOperation } from "../context/ask-resume-operation";
 import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter
@@ -1001,6 +1002,7 @@ class InternalFlowState<TSettings extends object>
     // BEFORE the worker wiring and before any router exists, so every later copy
     // of `requestHost` carries it. See `#installDispatchOperation`.
     this.#installDispatchOperation(runtimeConfig, stores);
+    this.#installAskResume(runtimeConfig, stores);
 
     this.#detectInterruptedOnStartup(stores, staleThresholdMs, queuedGraceMs);
 
@@ -1055,6 +1057,39 @@ class InternalFlowState<TSettings extends object>
       }
       operation ??= this.#buildDispatchOperation(runtimeConfig, stores);
       return operation(spec);
+    };
+  }
+
+  /**
+   * Install the ask resume (`RequestHost.resumeAsk`) on the shared config, on
+   * the same terms and for the same reason as the dispatch operation above.
+   * Only with durable execution: without it nothing can park on an ask, and
+   * the verb stays absent.
+   */
+  #installAskResume(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
+    const requestHost = runtimeConfig.requestHost;
+    const provider = runtimeConfig.durabilityProvider;
+    if (requestHost === undefined || provider === undefined) return;
+    if (requestHost.askResume !== undefined) return;
+
+    let operation: AskResumeOperation | undefined;
+    requestHost.askResume = (input) => {
+      // Closed with admission when `dispose()` begins, as a dispatch is: the
+      // gate stays pending, and the next touch after a restart resumes it.
+      if (this.#disposed) {
+        return Promise.resolve({
+          ok: false,
+          refused: "busy",
+          detail: "the runtime is shutting down and is no longer resuming work"
+        });
+      }
+      operation ??= createAskResumeOperation({
+        provider,
+        stores,
+        continueRequest: (options) =>
+          this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options)
+      });
+      return operation(input);
     };
   }
 
