@@ -14,6 +14,9 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-08 | `9ea11deff` (P4, regrouped on main `ea91beb49`) | scripted | PASS | a: Alice forked `my-desk` and hired `scribe`; four workers answered as their own configuration on one copy per flow, `scribe` through the second process with no restart, and read no other worker's skill. b: every reach for Alice's workers, and every way to run a session as another worker, refused. |
+| 2026-10-08 | `9ea11deff`, `GOAL_CONTROL=org-scoped-workers` | scripted | FAIL (expected) | `b:reads-worker`: Bob reads `my-desk`, `scribe` on his roster; `b:create` with it. Leg a passed. |
+| 2026-10-08 | `9ea11deff`, `GOAL_CONTROL=no-create-check` | scripted | FAIL (expected) | `b:create`: Bob's create naming Alice's `scribe` wrote a session; `b:other-flow` with it. Leg a passed. |
 | 2026-10-07 | fix/FIX-1788-p4 (pre-PR) | scripted | PASS | a: Alice forked `my-desk` and hired `scribe`; four workers answered as their own configuration on one copy per flow (`agent`, `research`, `workforce-roster`), `scribe` through the second process with no restart, and read no other worker's skill. b: every reach for Alice's workers, and every way to run a session as another worker, refused. |
 | 2026-10-07 | fix/FIX-1788-p4 (pre-PR), `GOAL_CONTROL=org-scoped-workers` | scripted | FAIL (expected) | `b:reads-worker` — Bob reads `my-desk`, `scribe` on his roster; `b:create` with it. Leg a passed. |
 | 2026-10-07 | fix/FIX-1788-p4 (pre-PR), `GOAL_CONTROL=no-create-check` | scripted | FAIL (expected) | `b:create` — Bob's create naming Alice's `scribe` wrote a session; `b:other-flow` with it. Leg a passed. |

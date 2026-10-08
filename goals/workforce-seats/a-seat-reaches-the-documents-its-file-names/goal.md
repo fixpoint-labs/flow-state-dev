@@ -59,6 +59,8 @@ rule and nothing else.
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-08 | `9ea11deff` (P4, regrouped on main `ea91beb49`) | n/a | PASS | Same as below: three workers on one `desk` copy, each reaching only its own grants; another worker's document answered as a missing one; the typo tree registered nothing. |
+| 2026-10-08 | `9ea11deff`, `GOAL_CONTROL=no-visibility-rule` | n/a | FAIL (expected) | `the first worker's model lists the second's document: engineering.lead lists ["payroll"]`, with (b) to (e) red beside it. |
 | 2026-10-08 | `865abc573` + this change | n/a | PASS | One `desk` copy ran three workers: `engineering.lead` lists `["handbook"]` and writes nothing, `engineering.cfo` lists and writes `["payroll"]`, `engineering.chief` lists and writes both, through read, glob, grep, discover and the app's `peek`. Another worker's document read, wrote and was looked up as a missing one. The typo tree registered nothing, naming `engineering.typo`. |
 | 2026-10-08 | `865abc573` + this change, `GOAL_CONTROL=no-visibility-rule` | n/a | FAIL (expected) | `the first worker's model lists the second's document: engineering.lead lists ["payroll"]`, with every worker listing both documents, reading and writing the other's, and the three sets equal. |
 | 2026-09-19 | claude/fix-1381-l4c9yh | n/a | PASS | All six legs. The lead reached `handbook` and wrote nothing; the CFO reached and wrote `payroll`; the seat declaring nothing reached and wrote both. All three kept `audit-log`. The typo tree refused the whole roster naming `engineering.typo` and `hanbdook`, and the good seat's address 404'd afterwards. |
