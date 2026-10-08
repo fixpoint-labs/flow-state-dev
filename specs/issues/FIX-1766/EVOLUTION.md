@@ -58,8 +58,8 @@ on it came after. Jake approved its first three findings ("go", 2026-10-08).
 
 | Merged intent, at `b644fd56c` | Treatment | Why | Replacement |
 |---|---|---|---|
-| `HeldWorkStore` is `put` and `get`; no list, no delete | **Amended**: `delete(key)` required, a missing key a no-op; still no list | Finding 1: adding a method later breaks every adapter written now | D3, S1, pinned names |
-| A hold never deletes; orphans and every superseded pack wait for FIX-1768 | **Superseded**: after the switch, the hold deletes the pack it replaced | Finding 2: every pack holds the whole run, so ten turns stored ten | BR-6, BR-30, guardrails, control `delete-first` on leg d |
+| `HeldWorkStore` is `put` and `get`; no list, no delete | **Amended**: `delete(key)` and `list(prefix)`, both required, a missing key a no-op; `list` unused in this slice | Finding 1: adding a method later breaks every adapter written now, and FIX-1768's orphan sweep needs `list` | D3, S1, pinned names |
+| A hold never deletes; orphans and every superseded pack wait for FIX-1768 | **Superseded**: after the switch, the hold deletes the pack it replaced, unless that pack parked | Finding 2: every pack holds the whole run, so ten turns stored ten; a parked pack is evidence, as a mismatch overwrites and deletes nothing | BR-6, BR-30, guardrails, control `delete-first` on leg d |
 | BR-29: an off host provisions from the base and logs | **Superseded**: it parks for the owner, `field: "disabled"` | Finding 3: a mixed fleet restarted runs silently | BR-28, BR-29, the vocabulary table, S4, goal leg f |
 | D3's flip case and adapter cost | **Amended** | Finding 4: a shared NFS folder works; `put` must be atomic | D3 |
 | D3 open, and "If D3 goes the other way" | **Decided** at #2881's merge; the branch removed | — | D3 |
@@ -70,6 +70,6 @@ on it came after. Jake approved its first three findings ("go", 2026-10-08).
 | Slice | Issue | What it builds on |
 |---|---|---|
 | 3 | [FIX-1767](https://linear.app/fixpoint-labs/issue/FIX-1767) | The `heldWork` option: a sandbox that preserves its state leaves it off and needs nothing from this slice; one that can lose its disk passes a `HeldWorkStore` (a Vercel Blob one, likely) and holds work the same way · `heldPrefix` on a run source's answer · `held.snapshot` and the pack's key on the run record as the fallback when its snapshot is stale, expired or in another region · the `place.state` words and `origin` values, which it reports unchanged · the restore check, applied to a snapshot before it is trusted |
-| 4 | [FIX-1768](https://linear.app/fixpoint-labs/issue/FIX-1768) | `held.snapshot` on the record, so a push can prove it carried everything held (the snapshot's tree, committed) and "nothing unpushed is deleted" is checkable · one prefix per run, `worktree-overlay/…/<projectId>/<run>/`, to drop after the pull request merges, by `HeldWorkStore.delete` on each key it knows · orphans from a crash mid-hold, whose keys no record names: sweeping them needs the run's prefix listed, so FIX-1768 adds a `list` to the port if it sweeps them · moved-aside directories to release |
+| 4 | [FIX-1768](https://linear.app/fixpoint-labs/issue/FIX-1768) | `held.snapshot` on the record, so a push can prove it carried everything held (the snapshot's tree, committed) and "nothing unpushed is deleted" is checkable · one prefix per run, `worktree-overlay/…/<projectId>/<run>/`, to drop after the pull request merges, by `HeldWorkStore.list` on that prefix and `delete` on each key, which also takes orphans from a crash mid-hold and packs that parked, since no record names them · no change to the port · moved-aside directories to release |
 
 Neither is started here; both are blocked by this issue in Linear.

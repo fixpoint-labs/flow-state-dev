@@ -40,8 +40,8 @@ or we encode the pack as text and keep it in FSD's store beside the project's fi
 **The trade-off.**
 
 - **(a) A blob store.** The bytes never enter FSD's text store, so no unrelated read ever loads
-  them, nothing is inflated, and the store can only put, get and delete one exact key: there is
-  nothing to list and no route to read it through. The price is a new, three-method port the
+  them, nothing is inflated, and the store can only put, get and delete one exact key, or list
+  keys under a prefix: no route reads it. The price is a new, four-method port the
   operator wires. Its default is a folder, which survives a lost machine when it is shared
   storage, an NFS mount for one; without a shared disk, an S3 or Vercel Blob adapter, about
   twenty lines the operator writes until a package ships one. Its `put` must be atomic, never
@@ -65,8 +65,9 @@ or we encode the pack as text and keep it in FSD's store beside the project's fi
 wire it run hosts that can lose their disk, and those operators already have object storage. It
 keeps megabytes of pack out of every scope-wide read for good, rather than until someone patches
 the routes. The seam is the smallest that works: `HeldWorkStore` on the workspace host
-(`put(key, bytes)`, `get(key)`, `delete(key)`, all required; deleting a missing key does nothing;
-no list), with `fileHeldWorkStore({ dir })` as the shipped default. It sits on the host, not in the
+(`put(key, bytes)`, `get(key)`, `delete(key)`, `list(prefix)`, all required; deleting a missing
+key does nothing; `list` returns keys only, under the prefix it is given, and this slice never
+calls it), with `fileHeldWorkStore({ dir })` as the shipped default. It sits on the host, not in the
 engine's reserved `blobs` slot, because the host is built at boot outside any flow and depends
 only on core. When the engine's binary store ships ([FIX-367](https://linear.app/fixpoint-labs/issue/FIX-367)),
 a short adapter turns it into a `HeldWorkStore`; operators still wire a `HeldWorkStore`, and only
@@ -87,7 +88,7 @@ adapter. Then (b), or (a) plus a Postgres adapter in this slice.
 only where the bytes land changes, PR 1's port against PR 2's collection. Once packs are stored,
 moving them is a sweep like FIX-1768's.
 
-![D3, decided: where the held snapshot's bytes live. Chosen: a blob store, a three-method port on the workspace host with a folder as the default. Instead of: the pack base64-encoded in a lazy resource collection. Decides it: unrelated reads; FSD's state routes read a whole scope's content, so they would load every pack. Price: a new port, and an adapter where there is no shared disk, against a third more bytes and an engine change in a hot path. Locks in: a held-work store the operator wires. Flips if: the first deployment to opt in runs on Postgres alone, with no shared disk or bucket](figures/d3-blob-store.svg)
+![D3, decided: where the held snapshot's bytes live. Chosen: a blob store, a four-method port on the workspace host with a folder as the default. Instead of: the pack base64-encoded in a lazy resource collection. Decides it: unrelated reads; FSD's state routes read a whole scope's content, so they would load every pack. Price: a new port, and an adapter where there is no shared disk, against a third more bytes and an engine change in a hot path. Locks in: a held-work store the operator wires. Flips if: the first deployment to opt in runs on Postgres alone, with no shared disk or bucket](figures/d3-blob-store.svg)
 
 It comes down to unrelated reads: in the collection, every scope-wide read would load every pack.
 
@@ -154,7 +155,7 @@ It comes down to a private project's work: the run record's scope would follow t
 |---|---|
 | **Instead of** | The Lab's operator, who runs the hosts |
 | **Because** | The owner is the one person who can read the held work in every case: a private project's work is theirs alone, and a workstream's runs are its owner's ([FIX-1793 BR-34](../FIX-1793/BUSINESS-RULES.md#coding-runs)). The run's question already goes to that person through harness-manager's ask, so no new channel is built. The operator gets a log line naming the run and what disagreed, never file contents |
-| **Locks in** | A parked mismatch waits for the owner's answer. After it, the next attempt starts from the base with the held snapshot laid beside the checkout in `held/`. The mismatched pack is never overwritten; it is deleted only once a later hold has switched the record away from it |
+| **Locks in** | A parked mismatch waits for the owner's answer. After it, the next attempt starts from the base with the held snapshot laid beside the checkout in `held/`. A pack that parked is never overwritten or deleted: it stays as evidence until FIX-1768's sweep |
 
 ![D2: who is asked when held work does not match the run record. Chosen: the run's owner. Instead of: the operator. Decides it: who can read the work, a private project's owner alone. Price: an owner may have to fetch the operator for a broken remote. Locks in: a mismatch waits for its owner. Flips if: the operator can read every project's work](figures/d2-owner-asked.svg)
 
@@ -181,12 +182,18 @@ Recorded as constraints, not decisions this spec makes:
   the rebuilt tree equals the recorded snapshot's. From jhoffner's [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/2878#issuecomment-6066140305), finding 1.
 - **The record switches last, to a new key, and the pack it replaced goes after.** Each hold
   writes its pack under a new, content-addressed key, points the record at it, and only then
-  deletes the pack the record named before, and no other. A machine that dies before the switch
-  leaves the record on the previous good pack; one that dies after it, before the delete, leaves
-  the old pack behind. Either way one orphan, which FIX-1768's sweep removes. A run's storage is
-  one live pack, plus at most one orphan for each hold a crash cut short. Finding 2 of each second
-  look, [#2878](https://github.com/fixpoint-labs/flow-state-dev/pull/2878#issuecomment-6066140305)
+  deletes the pack the record named before, and no other, unless that pack parked. A machine that
+  dies before the switch leaves the record on the previous good pack; one that dies after it,
+  before the delete, leaves the old pack behind. A run's storage is one live pack, plus any
+  orphans left by crashes and any pack that parked, which FIX-1768's sweep removes via `list`.
+  Finding 2 of each second look, [#2878](https://github.com/fixpoint-labs/flow-state-dev/pull/2878#issuecomment-6066140305)
   and [#2881](https://github.com/fixpoint-labs/flow-state-dev/pull/2881#issuecomment-6068041468).
+- **Three calls made while amending, 2026-10-08.** A hold whose snapshot equals the recorded one
+  writes, switches and deletes nothing: with fixed commit dates its key is the live key, and
+  deleting "the previous pack" would delete it (BR-6). Harness-manager deletes through a host
+  method, `dropHeld(place, key)`, because the switch happens outside the host (PLAN S2). An off
+  host parks only when it has no live place for the run, so it does not park again on the
+  checkout the owner's answer started (BR-29).
 - **Rebuilt files come back unstaged.** The rebuild resets the branch to the recorded head with
   the index at the head (`reset --mixed`), so edits read as unstaged and new files as untracked.
   Which edits were staged is not kept. The review proposed `--soft`, which would stage every

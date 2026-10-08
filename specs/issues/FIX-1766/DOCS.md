@@ -65,8 +65,9 @@ Remove the **One host's storage** bullet. Add:
 > localWorkspaceHost({ root, remotes, source, heldWork: fileHeldWorkStore({ dir: "/shared/held-work" }) });
 > ```
 >
-> A `HeldWorkStore` has three methods, `put(key, bytes)`, `get(key)` and `delete(key)`; deleting
-> a missing key does nothing, and `put` must never expose a partly written object.
+> A `HeldWorkStore` has four methods, `put(key, bytes)`, `get(key)`, `delete(key)` and
+> `list(prefix)`, which returns the keys under a prefix. Deleting a missing key does nothing, and
+> `put` must never expose a partly written object.
 > `fileHeldWorkStore` keeps each key as a file; for hosts on different machines, put its folder on
 > shared storage such as NFS, or write a store over S3 or Vercel Blob. A host on a disk that is
 > kept doesn't need one.
@@ -99,7 +100,7 @@ Remove the **One host's storage** bullet. Add:
 ## UPDATE · `packages/workspace/README.md` · API table
 
 > | `localWorkspaceHost` | … `checkpoint` holds a repository run's work in `heldWork`, when the host has one; `provision` takes the run's recorded place and hold, and rebuilds a lost place from them. |
-> | `HeldWorkStore` | Where held work goes: `put(key, bytes)`, `get(key)`, `delete(key)`. |
+> | `HeldWorkStore` | Where held work goes: `put(key, bytes)`, `get(key)`, `delete(key)`, `list(prefix)`. |
 > | `fileHeldWorkStore({ dir })` | A `HeldWorkStore` over a folder. |
 > | `HeldWorkMismatchError` | A rebuilt place disagreed with the run's record; `field` names what. |
 

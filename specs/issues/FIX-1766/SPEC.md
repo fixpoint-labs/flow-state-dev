@@ -119,10 +119,11 @@ that survives a restart but not a lost machine, and a Lab still runs on one.
 
 **This amendment** (Jake, "go", 2026-10-08, on jhoffner's [second look at #2881](https://github.com/fixpoint-labs/flow-state-dev/pull/2881#issuecomment-6068041468)); merging it confirms:
 
-1. **The held-work store gets `delete`.** `put`, `get` and `delete`, all required. If wrong:
-   FIX-1768 would break every adapter written before it.
+1. **The held-work store gets `delete` and `list`.** `put`, `get`, `delete` and `list`, all
+   required. If wrong: FIX-1768 would break every adapter written before it.
 2. **[A superseded pack is deleted after the record switches](DECISIONS.md#decided-not-asked)**,
-   never before. If wrong: every turn's pack stays until slice 4, on the operator's bill.
+   never before, and never one that parked. If wrong: every turn's pack stays until slice 4, on
+   the operator's bill.
 3. **[A host with holding off parks a run whose work is held](BUSINESS-RULES.md#holding-off)**
    for its owner, instead of restarting it from the base. If wrong: in a mixed fleet a run
    silently loses its held turns.

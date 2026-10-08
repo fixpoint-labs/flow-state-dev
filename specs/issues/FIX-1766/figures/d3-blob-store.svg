@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 432" role="img" aria-label="D3, decided at the merge of #2881: where the bytes of each held snapshot live. Chosen: a blob store beside FSD&#x27;s store, a three-method port on the workspace host with a folder as its default. Instead of: the pack base64-encoded in a lazy resource collection. It comes down to unrelated reads: the blob store is only put, get and delete by exact key, while FSD&#x27;s state routes read a whole scope&#x27;s content at once and would load every pack. Where it runs: the blob store is a new port and needs a shared folder, such as NFS, or a bucket adapter across machines; the collection works wherever FSD&#x27;s store runs, shared Postgres included. Size and engine work: raw bytes and no engine change, against a third larger and routes to patch. Locks in: a held-work store the operator wires, only on hosts that turn holding on. Flips if: the first deployment to opt in runs on Postgres alone, with no shared disk and no bucket."
+<svg viewBox="0 0 940 432" role="img" aria-label="D3, decided at the merge of #2881: where the bytes of each held snapshot live. Chosen: a blob store beside FSD&#x27;s store, a four-method port on the workspace host with a folder as its default. Instead of: the pack base64-encoded in a lazy resource collection. It comes down to unrelated reads: the blob store reads bytes only by exact key, and its list returns keys only, while FSD&#x27;s state routes read a whole scope&#x27;s content at once and would load every pack. Where it runs: the blob store is a new port and needs a shared folder, such as NFS, or a bucket adapter across machines; the collection works wherever FSD&#x27;s store runs, shared Postgres included. Size and engine work: raw bytes and no engine change, against a third larger and routes to patch. Locks in: a held-work store the operator wires, only on hosts that turn holding on. Flips if: the first deployment to opt in runs on Postgres alone, with no shared disk and no bucket."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -54,7 +54,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Never load a pack</text>
-    <text class="t-s" x="248" y="179">put, get, delete by exact key; no list</text>
+    <text class="t-s" x="248" y="179">bytes by exact key; list returns keys only</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Load every pack in the scope</text>
     <text class="t-s" x="612" y="179">state routes read a whole scope at once</text>
