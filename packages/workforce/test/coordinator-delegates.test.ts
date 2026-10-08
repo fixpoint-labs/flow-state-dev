@@ -81,6 +81,9 @@ describe("a conversation's delegates (V2)", () => {
 
     const removed = await host.act("alice", first, "removeDelegate", { worker: "eng.coder" });
     expect(workersOf(removed.output)).toEqual(["eng.em", "support.general"]);
+    // The change stays in the conversation it was made in...
+    expect(workersOf((await host.act("alice", first, "listDelegates", {})).output)).toEqual(["eng.em", "support.general"]);
+    // ...and nowhere else.
     const other = await host.act("alice", second, "listDelegates", {});
     expect(workersOf(other.output)).toEqual(["eng.em", "eng.coder", "support.general"]);
     // The configuration is not written: a third conversation starts from the file.
