@@ -78,7 +78,7 @@ import { assertScope, createProjection, type Projection } from "./projection";
 import { allowedProtocols, checkRemote, redactRemote, type AllowedRemote } from "./remotes";
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport, Place } from "./types";
-import { gitAnsweredNo, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
+import { gitAnsweredNo, ignoredProblem, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
 const CHECKOUT_DIR = "checkout";
@@ -411,6 +411,15 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     }
     id = readFileSync(path, "utf8").trim();
     return id;
+  }
+
+  /**
+   * A checkout is live here when it has a `.git` and no provisioning marker
+   * beside it: a `worktree add` killed part-way leaves both, and that tree is
+   * not the run's place.
+   */
+  function isLive(dir: string): boolean {
+    return existsSync(join(dir, CHECKOUT_DIR, ".git")) && !existsSync(join(dir, PROVISIONING_MARKER));
   }
 
   /** Holding applies: a store, a prefix, and a branch cut from a remote. */
@@ -764,7 +773,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     // where the run has no live checkout here, so the attempt the owner's
     // answer starts is not stopped again; and not once the owner has answered.
     const held = request.recorded?.held;
-    if (heldWork === undefined && held != null && held.parked !== true && !existsSync(join(dir, CHECKOUT_DIR, ".git"))) {
+    if (heldWork === undefined && held != null && held.parked !== true && !isLive(dir)) {
       throw new HeldWorkMismatchError(
         "disabled",
         `the run's work is held (${held.key}), but this host has no held-work store to rebuild it ` +
@@ -830,7 +839,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     // **Live here: used as it is**, exactly as without holding. So is a place
     // the record has never named: a first provision, or a record from before
     // holding was on.
-    const live = existsSync(join(checkout, ".git"));
+    const live = isLive(dir);
     if (recorded?.host == null || (recorded.host === hostId() && live)) {
       const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline);
       const base =
@@ -868,7 +877,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       const made = await ensureClone(remote, clone, left);
       if (!made.fresh) await refresh(clone, remote, left);
       await unpackHeld(clone, held, left);
-      await rebuild(clone, checkout, branch, held, left);
+      await rebuild(clone, checkout, branch, held, request.ignored, left);
     });
     return {
       repo: {
@@ -890,7 +899,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
    */
   async function unpackHeld(clone: string, held: RecordedHold, left: () => number): Promise<void> {
     const g = heldGit(left);
-    if (!(await hasCommit(g, clone, held.base))) {
+    // On the remote as just fetched: reachable from one of its branches, not
+    // merely an object this clone kept from before a force-push.
+    if (!(await hasCommit(g, clone, held.base)) || (await g(clone, ["for-each-ref", "--contains", held.base, "--format=%(refname)", "refs/remotes/origin/"])) === "") {
       throw mismatch("base", `the run's base commit ${held.base} is not on the remote.`);
     }
     const bytes = await heldWork!.get(held.key);
@@ -921,6 +932,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     checkout: string,
     branch: string,
     held: RecordedHold,
+    ignored: IgnoredDirectory | undefined,
     left: () => number,
   ): Promise<void> {
     const g = heldGit(left);
@@ -939,6 +951,13 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       const expected = await g(clone, ["rev-parse", `${held.snapshot}^{tree}`]);
       if (rebuilt.tree !== expected || rebuilt.head !== held.head) {
         throw mismatch("tree", `the rebuilt checkout does not match the held snapshot ${held.snapshot}.`);
+      }
+      // The same check a new or handed-back checkout gets: a run that dropped
+      // the ignore rule, or began tracking the caller's files, is refused
+      // here rather than handed to the harness.
+      if (ignored !== undefined) {
+        const problem = await ignoredProblem(checkout, ignored, (args) => g(checkout, args));
+        if (problem !== undefined) throw new Error(problem);
       }
     } catch (error) {
       rmSync(checkout, { recursive: true, force: true });
