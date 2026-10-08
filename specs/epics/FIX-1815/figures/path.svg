@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 352" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 8 October 2026, in phases rather than dates. Two input lanes from FIX-1786: FIX-1794 has P1 in development and P2, the notices and their marker, still to build; FIX-1802 has its spec in review, then its build on hold for a delegation amendment, then its build. This spec is in review at the now line. After the gate, the ask and assign specs run at once, beside the closure&#x27;s QA plan. Ask builds its own Layer 1 pieces first, then integrates the signal and the marker once the inputs merge. Assign builds only after the inputs merge. The closure runs on one main commit after both. FIX-1818 and FIX-1819 have lanes and no bars: both are proposed cuts. The critical path, dashed red, runs through FIX-1802&#x27;s hold and build, assign&#x27;s build and the closure run.">
+     aria-label="The path as of 8 October 2026, in phases rather than dates. Two input lanes from FIX-1786: FIX-1794 has P1 merged and P2, the notices and their marker, still to build; FIX-1802 has its spec merged, then its build waiting on FIX-1814, which removes skill sub-agents, then its build. FIX-1794 P2 waits on FIX-1814 too. This spec is in review at the now line. After the gate, the ask and assign specs run at once, beside the closure&#x27;s QA plan. Ask builds its own Layer 1 pieces first, then integrates the signal and the marker once the inputs merge. Assign builds only after the inputs merge. The closure runs on one main commit after both. FIX-1818 and FIX-1819 have lanes and no bars: both are proposed cuts. The critical path, dashed red, runs through FIX-1802&#x27;s wait on FIX-1814 and its build, assign&#x27;s build and the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -40,13 +40,13 @@
   </g>
   <g id="fix-1794">
     <text class="t-in" x="16" y="72">FIX-1794 P2 · input</text>
-    <rect class="flight" x="206" y="59" width="66" height="20" rx="3"/><text class="t-w" x="212" y="73">P1 in dev</text>
-    <rect class="input" x="290" y="59" width="310" height="20" rx="3"/><text class="t-s" x="296" y="73">P2 · notices and their marker</text>
+    <rect class="flight" x="206" y="59" width="66" height="20" rx="3"/><text class="t-w" x="212" y="73">P1 merged</text>
+    <rect class="input" x="290" y="59" width="310" height="20" rx="3"/><text class="t-s" x="296" y="73">P2 · notices, marker · after FIX-1814</text>
   </g>
   <g id="fix-1802">
     <text class="t-in" x="16" y="106">FIX-1802 · input</text>
-    <rect class="flight" x="206" y="93" width="66" height="20" rx="3"/><text class="t-w" x="212" y="107">in review</text>
-    <rect class="hold" x="290" y="93" width="190" height="20" rx="3"/><text class="t-g" x="296" y="107">build on hold · mailbox#38</text>
+    <rect class="flight" x="206" y="93" width="66" height="20" rx="3"/><text class="t-w" x="212" y="107">spec done</text>
+    <rect class="hold" x="290" y="93" width="190" height="20" rx="3"/><text class="t-g" x="296" y="107">build waits on FIX-1814</text>
     <rect class="input" x="490" y="93" width="110" height="20" rx="3"/><text class="t-s" x="496" y="107">build · marker</text>
   </g>
   <g id="fix-1815">

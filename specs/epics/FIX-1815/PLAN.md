@@ -8,10 +8,10 @@ any piece; that is each issue's own plan. IDs cross-reference [DECISIONS.md](DEC
 
 ## The path
 
-![The path in phases, not dates, as of 8 October 2026. Two input lanes from FIX-1786: FIX-1794 P2's notices, in development, and FIX-1802's settle-owed marker, on hold. This spec is in review at the now line. After the gate, the ask and assign specs run at once, with the closure's QA plan. Ask builds its own pieces first and integrates the signal and marker once they land; assign builds only after both inputs merge. The closure run follows both. The two proposed cuts have lanes and no bars. The critical path runs through FIX-1802's hold, assign's build and the closure run](figures/path.svg)
+![The path in phases, not dates, as of 8 October 2026. Two input lanes from FIX-1786: FIX-1794 P2's notices and FIX-1802's settle-owed marker, both specced and both waiting on FIX-1814. This spec is in review at the now line. After the gate, the ask and assign specs run at once, with the closure's QA plan. Ask builds its own pieces first and integrates the signal and marker once they land; assign builds only after both inputs merge. The closure run follows both. The two proposed cuts have lanes and no bars. The critical path runs through FIX-1802's wait on FIX-1814, assign's build and the closure run](figures/path.svg)
 
 The axis is order, not dates: nothing has started. Both specs run at once after the gate. The
-critical path goes through FIX-1802's hold, not through any work in this epic, which is why
+critical path goes through FIX-1802's wait on FIX-1814, not through any work in this epic, which is why
 [Q2](DECISIONS.md#q2) is the sequencing question.
 
 ## What each issue entails
@@ -27,9 +27,12 @@ critical path goes through FIX-1802's hold, not through any work in this epic, w
 ## Where it is
 
 [The set table](SPEC.md#the-set--as-of-2026-10-08) is the review-time snapshot; its Linear links
-carry live state. The two inputs, as of 2026-10-08: FIX-1794 is in development, and its P2 has
-no PR. FIX-1802's spec is in review (#2839), and its build is on hold for a delegation amendment
-owned by session fix-1786-pm (`fixpoint-labs/agent-mailbox#38`).
+carry live state. This section is the one dated status for the two inputs; the rest of the set
+links here. As of 2026-10-08: FIX-1794's spec (#2828) and its P1 (#2845) are merged, and P2 has no
+PR. FIX-1802's spec is merged (#2839), though Linear still reads In Spec Review. FIX-1786's
+delegation amendment merged as #2889 and left both markers as specified. P2 and FIX-1802's build
+are on hold until [FIX-1814](https://linear.app/fixpoint-labs/issue/FIX-1814), which removes skill
+sub-agents, merges (`fixpoint-labs/agent-mailbox#38`); FIX-1814 is in development.
 
 ## What unblocks what, from here
 

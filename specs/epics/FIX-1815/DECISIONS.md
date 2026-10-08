@@ -58,8 +58,7 @@ It comes down to the outcome: neither extra issue moves it, and both would block
 is a durable note that a waiting turn is owed a wake, so a restart cannot lose it. FIX-1786
 already specifies both: FIX-1794 P2's `completed`, `errored` and `parked` notices with their
 pending-notice marker (its S6 and S7), and FIX-1802's settle-owed marker (its BR-17). Neither is
-on `main`. FIX-1794 is in development; FIX-1802's build is on hold for a delegation amendment
-(session fix-1786-pm, `fixpoint-labs/agent-mailbox#38`).
+on `main`, and both builds wait on FIX-1814 ([where it is](PLAN.md#where-it-is)).
 
 **The trade-off.** If FIX-1786 builds them, nothing already approved changes, but this epic's
 builds wait on FIX-1786's pace, including that hold. If this epic builds them, ask can ship
@@ -193,3 +192,6 @@ first move inside FIX-1816's spec, not here.
 
 - **Filed (Oct 8)**: the epic and four children, after the spike and the product owner's three calls.
 - **Drafted (Oct 8)**: the closure FIX-1820 filed; two cuts proposed (Q1); the build owner raised (Q2).
+- **In review (Oct 8)**: FIX-1786's delegation amendment (#2889) merged. It keeps FIX-1794 P2's
+  notices and FIX-1802's settle-owed marker as specified, so Q2's flip condition did not fire; the
+  two inputs now wait on FIX-1814.
