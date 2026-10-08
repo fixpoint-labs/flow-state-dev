@@ -289,10 +289,12 @@ exposes, so an argument would let a displaced child read the successor's
 attempt and settle over work it no longer owns. A settlement whose ticket no
 longer matches the row refuses `fence-rejected`.
 
-The request host the child sees is three verbs, closed: `parentTask()` reads
+The request host the child sees is four verbs, closed: `parentTask()` reads
 the one row this request was dispatched for, `settleParentTask()` settles it,
-and `livenessOf?()` asks whether requests this session dispatched are still
-running. Identity is never a parameter to any of them.
+`livenessOf?()` asks whether requests this session dispatched are still
+running, and `resumeAsk?()` resumes a turn in this session parked on an ask
+gate (present only with durable execution). Identity is never a parameter to
+any of them.
 
 ## The rule that decides everything
 

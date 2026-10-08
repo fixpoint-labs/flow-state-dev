@@ -751,7 +751,11 @@ Which of the host's verbs answer depends on the deployment:
 - `settleParentTask({ outcome: "complete" | "fail", output?, error? })` — settle that row. Resolves `{ ok: true }`, or `{ ok: false, refused: "no-parent-task" | "fence-rejected", detail }`. `fence-rejected` means this request's claim on the row was superseded, so nothing was written.
 - `livenessOf(requestIds)` — per-id `boolean` answers for requests this request dispatched. **Absent** unless the deployment can support a trustworthy answer: a request registry shared across processes, request heartbeats enabled, and a stale sweeper running. The default in-memory registry is per-process, so it is absent there. `false` means no live registration was found, never "definitely dead".
 
-The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `SettleParentTaskResult`, and `LivenessAnswers`. Nothing on the interface names a store, a flow, a session record, or a task row, and no verb takes an identity or a session id: each closes over the running request's own. To start work in another session, use a [`dispatcher()`](#dispatches-entries-and-dispatcher) block; the flow checks its address when it is defined.
+- `resumeAsk({ gateId, outcome })` — resume a turn in **this** conversation that is parked on an ask gate (see `parkOnAsk`), with `{ answered: true, answer }` or `{ answered: false, error: { code, message } }`. The parked request continues under its own id; the call returns once it has started. Resolves `{ ok: true }`, or `{ ok: false, refused: "gate-not-found" | "already-resolved" | "busy", detail }`. A gate resolves once. **Absent** without durable execution.
+
+The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `SettleParentTaskResult`, `LivenessAnswers`, `ResumeAskInput`, and `ResumeAskResult`.
+
+`parkOnAsk(ctx, { gateId, binding: { board, taskId } })` parks the running turn on an ask gate and returns the answer once its conversation resumes it; an ask that ended without one throws `AskEndedError` with `code` `wait_timed_out`, `wait_task_failed` or `wait_task_cancelled`, which a generator's tool surfaces to the model as a failed call. The public resume route never resumes an ask gate. Nothing on the interface names a store, a flow, a session record, or a task row, and no verb takes an identity or a session id: each closes over the running request's own. To start work in another session, use a [`dispatcher()`](#dispatches-entries-and-dispatcher) block; the flow checks its address when it is defined.
 
 ## Key design decisions
 

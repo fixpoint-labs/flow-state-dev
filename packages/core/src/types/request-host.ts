@@ -25,9 +25,13 @@
  * parent session. Another user's session is not a value a capability can produce,
  * and neither is another parent session's child.
  *
- * The seam is **closed at four verbs**. Adding a fifth is a decision someone
- * reviews, not a surface that grows by transitivity.
+ * The seam is **closed at five verbs**. The fifth, `resumeAsk`, was added by a
+ * reviewed decision (an ask: a hand-off that waits for its answer). Adding a
+ * sixth is a decision someone reviews, not a surface that grows by
+ * transitivity.
  */
+
+import type { AskOutcome } from "./ask-gate";
 
 /** How a parent-board row is being settled. */
 export type ParentTaskOutcome = "complete" | "fail";
@@ -62,6 +66,35 @@ export type SettleParentTaskResult =
  * you own first.
  */
 export type LivenessAnswers = Readonly<Record<string, boolean>>;
+
+/** Arguments to {@link RequestHost.resumeAsk}. */
+export type ResumeAskInput = {
+  /** The ask gate's id, as the asked row records it. */
+  readonly gateId: string;
+  /** The answer, or the error naming how the ask ended. */
+  readonly outcome: AskOutcome;
+};
+
+/**
+ * Outcome of a resume. A refusal resumes nothing:
+ *
+ * - `gate-not-found` — no ask gate with that id is on record in this session.
+ *   A gate in another session, another principal's, and a gate that is not an
+ *   ask (a person's approval) all answer this, so the verb is not an oracle.
+ *   So does a gate whose turn has since finished: a finished turn's gates are
+ *   cleaned up with it. Not-found is therefore never proof that the gate is
+ *   yet to be created.
+ * - `already-resolved` — the gate was resumed before and its turn has not
+ *   finished. The first answer stands.
+ * - `busy` — another resume of the same turn holds its lease right now.
+ */
+export type ResumeAskResult =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly refused: "gate-not-found" | "already-resolved" | "busy";
+      readonly detail: string;
+    };
 
 /**
  * Request-bound operations the engine binds to the running request and attaches
@@ -116,6 +149,21 @@ export interface RequestHost {
    * See {@link LivenessAnswers} for what a `false` answer does and does not mean.
    */
   livenessOf?(requestIds: readonly string[]): Promise<LivenessAnswers>;
+
+  /**
+   * Resume a turn parked on an ask gate **in this session**, with the answer or
+   * an error. The parked request continues under its own id, as a same-request
+   * continuation; this returns once that continuation has started, not when it
+   * finishes.
+   *
+   * Takes the gate's id and nothing else: never a session or a request id. The
+   * running session is closed over, so one conversation cannot resume another's
+   * turn. A gate resolves once; every later call is refused `already-resolved`.
+   *
+   * **Absent when the host has no durable execution**, because nothing can
+   * park there in the first place.
+   */
+  resumeAsk?(input: ResumeAskInput): Promise<ResumeAskResult>;
 }
 
 /**

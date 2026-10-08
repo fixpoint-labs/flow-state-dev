@@ -36,6 +36,12 @@ export interface SuspendOptions {
    * `ctx.suspend()` instead of aborting. The resume route enforces this set.
    */
   allow?: ResumeAction[];
+  /**
+   * The suspension's id, when the caller must record it before the turn parks
+   * (an ask gate's row carries it). Must be unique within the request and the
+   * same on every replay of the call that suspends. Omit to have one minted.
+   */
+  suspensionId?: string;
 }
 
 /**

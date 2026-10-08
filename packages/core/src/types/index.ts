@@ -31,11 +31,16 @@ export type {
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
+  ResumeAskInput,
+  ResumeAskResult,
   SettleParentTaskInput,
   SettleParentTaskResult
 } from "./request-host";
 
 export { NoRequestHostError, requireRequestHost } from "./request-host";
+
+export type { AskEndingErrorCode, AskGateBinding, AskOutcome, ParkOnAskInput } from "./ask-gate";
+export { ASK_GATE_REASON, AskEndedError, parkOnAsk, parseAskOutcome } from "./ask-gate";
 
 export type {
   SessionCreateCheck,
