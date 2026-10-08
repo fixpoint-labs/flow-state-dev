@@ -152,6 +152,14 @@ You don't order builds by hand. The one explicit edge in `turbo.json` is
 dependency of `engine`, so the default graph traversal would otherwise see a
 `engine ⇄ testing` cycle.
 
+A test task's cache key covers only its own package's files. A test that reads
+a file outside the package, such as a docs page it quotes, must declare that
+file in the package's own `turbo.json` (`"extends": ["//"]`, then
+`tasks.test.inputs: ["$TURBO_DEFAULT$", "$TURBO_ROOT$/<path>"]`). Without it, an
+edit to that file alone replays the cached pass, and CI goes green on a test
+that fails. `packages/workforce` and two guide examples under
+`examples/guides/` do this for the `apps/docs` pages their tests read.
+
 To build the DevTool static assets (for `fsdev dev`), run
 `pnpm --filter @flow-state-dev/devtool build:assets`. It builds the DevTool app
 and its workspace dependencies through Turborepo, so no prior build step is
