@@ -9,7 +9,9 @@
  *   and records every delivery it hears; a message carrying `[fail]` makes its
  *   turn throw, so the delivery is never answered. `[fail:<worker>]` fails only
  *   that worker's turn, and `[slow:<worker>]` holds only that worker's answer
- *   for {@link SLOW_MS}.
+ *   for {@link SLOW_MS}. `[hang:<worker>]` holds that worker's first delivery
+ *   until its run is cancelled (`cancelDelegate`). Its request `onFinished`
+ *   reports a cancelled run unless the host turns that off (`reportCancel`).
  * - `quiet` takes nothing: its workers can't be delegates.
  *
  * Models are scripted: the best-fit evaluator by block name
@@ -29,7 +31,7 @@ import {
 } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineCoordinatorFlow, type CoordinatorFlowOptions } from "../src/coordinator/coordinator-flow";
-import { delegatedPostEntry } from "../src/coordinator/delegated-post";
+import { delegatedPostEntry, delegatedPostOnFinished } from "../src/coordinator/delegated-post";
 import { COORDINATOR_ROUTE } from "../src/coordinator/coordinator-keys";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
@@ -73,7 +75,11 @@ const doorInput = z.object({ message: z.string() });
 /** How long a `[slow:<worker>]` mark holds that worker's answer. */
 export const SLOW_MS = 1_500;
 
-function helperFlow(installation: WorkerInstallation, heard: Heard[]) {
+/** The longest a `[hang:<worker>]` mark waits to be cancelled. */
+const HANG_MS = 10_000;
+
+function helperFlow(installation: WorkerInstallation, heard: Heard[], reportCancel: boolean) {
+  const hung = new Set<string>();
   const door = handler({
     name: "helper-run",
     inputSchema: doorInput,
@@ -85,6 +91,17 @@ function helperFlow(installation: WorkerInstallation, heard: Heard[]) {
         throw new Error(`${worker.id} could not answer`);
       }
       if (input.message.includes(`[slow:${worker.id}]`)) await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
+      // The first delivery to this worker waits until its run is cancelled.
+      if (input.message.includes(`[hang:${worker.id}]`) && !hung.has(worker.id)) {
+        hung.add(worker.id);
+        await new Promise<void>((_resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error(`${worker.id} was never cancelled`)), HANG_MS);
+          ctx.signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new Error(`${worker.id} was cancelled`));
+          });
+        });
+      }
       return `${worker.id} heard: ${input.message}`;
     }
   });
@@ -93,6 +110,7 @@ function helperFlow(installation: WorkerInstallation, heard: Heard[]) {
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
+    ...(reportCancel ? { request: { onFinished: delegatedPostOnFinished } } : {}),
     actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
     internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } }
   });
@@ -135,6 +153,12 @@ export type HostOptions = {
   agent?: CoordinatorFlowOptions["agent"];
   /** How long a round waits for its answers. */
   roundDeadlineMs?: number;
+  /**
+   * Whether `helper` reports a cancelled run (`delegatedPostOnFinished` as its
+   * request `onFinished`). Off, a cancelled delegate says nothing, as one whose
+   * process stopped would. On by default.
+   */
+  reportCancel?: boolean;
   stores?: StoreRegistry;
 };
 
@@ -147,7 +171,7 @@ export function bootHost(options: HostOptions = {}) {
     standardWorkers: options.standard ?? standardWorkers(),
     workerFlows: () => flows as never
   });
-  const helper = helperFlow(installation, heard);
+  const helper = helperFlow(installation, heard, options.reportCancel ?? true);
   const quiet = quietFlow(installation);
   const coordinator = defineCoordinatorFlow({
     installation,
@@ -237,6 +261,36 @@ export function bootHost(options: HostOptions = {}) {
     act(userId, `roster-${userId}`, "hire", input, "roster");
   const fire = async (userId: string, id: string) => act(userId, `roster-${userId}`, "fire", { id }, "roster");
 
+  /**
+   * Cancel `worker`'s running delegated-post request, as `userId` would through
+   * the app's abort route, once it is running. Returns the route's status.
+   */
+  const cancelDelegate = async (userId: string, worker: string) => {
+    const runtime = await state.getRuntime();
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const running = (await runtime.stores.request.list({})).find(
+        (request) =>
+          request.status === "in_progress" &&
+          request.actionName === "onDelegatedPost" &&
+          heard.some((h) => h.worker === worker && h.sessionId === request.sessionId)
+      );
+      if (running !== undefined) {
+        const router = (await state.getRouter()) as any;
+        const res: Response = await router.POST(
+          new Request(`http://localhost/api/flows/helper/requests/${running.id}/abort`, {
+            method: "POST",
+            headers: { "x-user": userId }
+          }),
+          { params: { path: ["helper", "requests", running.id, "abort"] } }
+        );
+        return res.status;
+      }
+      if (Date.now() > deadline) throw new Error(`no delegated post to ${worker} is running`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+
   /** Every request in the store, once none is still running. */
   const settled = async () => {
     const deadline = Date.now() + 5_000;
@@ -282,7 +336,24 @@ export function bootHost(options: HostOptions = {}) {
       }
     });
 
-  return { installation, stores, state, heard, route, judgment, create, conversation, act, hire, fire, settled, sessionState, items, client };
+  return {
+    installation,
+    stores,
+    state,
+    heard,
+    route,
+    judgment,
+    create,
+    conversation,
+    act,
+    hire,
+    fire,
+    cancelDelegate,
+    settled,
+    sessionState,
+    items,
+    client
+  };
 }
 
 function textOf(item: any): string {

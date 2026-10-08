@@ -14,7 +14,9 @@
  * deadline. Then the entry also tells the coordinator when it has no answer:
  * at once when its turn fails, and at the deadline while its turn is still
  * running. The turn is not stopped: its answer, if it comes, still lands, and
- * goes no further. A post with no deadline reports nothing but its answer.
+ * goes no further. A run cancelled before its answer went back reports that
+ * too, from the flow's request `onFinished` ({@link delegatedPostOnFinished}).
+ * A post with no deadline reports nothing but its answer.
  *
  * A flow declares the entry with {@link delegatedPostEntry}, around the turn
  * it runs for any message. That is what makes its workers delegates that take
@@ -23,7 +25,12 @@
 import { dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { COORDINATOR_KIND, DELEGATE_ANSWER_ACTION, DELEGATE_MISSED_ACTION } from "./coordinator-keys";
+import {
+  COORDINATOR_KIND,
+  DELEGATED_POST_ENTRY,
+  DELEGATE_ANSWER_ACTION,
+  DELEGATE_MISSED_ACTION
+} from "./coordinator-keys";
 
 /** What a delegate is handed. */
 export const delegatedPostSchema = z.object({
@@ -92,12 +99,15 @@ const missDelegatedPost = dispatcher({
 const DELIVERY_STATE = "delegatedPost";
 /** Request state: whether the turn has ended, answered or failed, so the deadline watch can stop. */
 const ENDED_STATE = "delegatedPostEnded";
+/** Request state: whether the answer went back, so a cancel after it reports nothing. */
+const ANSWERED_STATE = "delegatedPostAnswered";
 
 const deliveryStateSchema = z.object({
   [DELIVERY_STATE]: z
     .object({ token: z.string(), coordinator: z.string(), deadlineAt: z.number().optional() })
     .optional(),
-  [ENDED_STATE]: z.boolean().optional()
+  [ENDED_STATE]: z.boolean().optional(),
+  [ANSWERED_STATE]: z.boolean().optional()
 });
 
 /** The delivery this request answers, as `markDelivery` noted it. */
@@ -133,6 +143,18 @@ const markEnded = handler({
   requestStateSchema: deliveryStateSchema,
   execute: async (_value: unknown, ctx) => {
     await ctx.request.patchState({ [ENDED_STATE]: true });
+    return {};
+  }
+});
+
+/** Note that the answer went back to the coordinator. */
+const markAnswered = handler({
+  name: "delegated-post-answered",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({}),
+  requestStateSchema: deliveryStateSchema,
+  execute: async (_value: unknown, ctx) => {
+    await ctx.request.patchState({ [ANSWERED_STATE]: true });
     return {};
   }
 });
@@ -243,6 +265,7 @@ export function delegatedPostEntry(turn: BlockDefinition<any, any>) {
     .step(toAnswer)
     .tap(markEnded)
     .step(answerDelegatedPost)
+    .tap(markAnswered)
     .rescue([{ block: reportFailure }]);
   return {
     inputSchema: delegatedPostSchema,
@@ -250,3 +273,28 @@ export function delegatedPostEntry(turn: BlockDefinition<any, any>) {
     userMessage: (post: DelegatedPost) => delegatedPostMessage(post)
   };
 }
+
+/** What a flow's request `onFinished` hook is handed. */
+const requestFinishedSchema = z.object({ actionName: z.string(), status: z.string() }).passthrough();
+
+type RequestFinished = z.infer<typeof requestFinishedSchema>;
+
+/**
+ * A delegate flow's request `onFinished`: when a delegated post's run was
+ * cancelled before its answer went back, tell the coordinator, so the round
+ * doesn't wait for its deadline. It acts only on the {@link DELEGATED_POST_ENTRY}
+ * entry, on a post with a deadline, and on an `aborted` request. Set it as the
+ * flow's `request.onFinished`; the built-in `agent` flow does.
+ */
+export const delegatedPostOnFinished = sequencer({
+  name: "delegated-post-finished",
+  inputSchema: requestFinishedSchema
+}).stepIf(
+  (finished: RequestFinished, ctx) =>
+    finished.status === "aborted" &&
+    finished.actionName === DELEGATED_POST_ENTRY &&
+    notedDelivery(ctx)?.deadlineAt !== undefined &&
+    (ctx.request.state as z.infer<typeof deliveryStateSchema>)[ANSWERED_STATE] !== true,
+  (_finished: RequestFinished, ctx) => ({ token: notedDelivery(ctx)!.token, failed: "its run was cancelled" }),
+  missDelegatedPost
+);

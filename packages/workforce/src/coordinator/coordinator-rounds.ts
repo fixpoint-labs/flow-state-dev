@@ -21,7 +21,14 @@
  * lands after its round closed lands once and routes nowhere. The deadline is
  * set by the round's first delivery, and every delivery in the round carries
  * it, so a delegate still working at the deadline says so then
- * (`delegated-post.ts`).
+ * (`delegated-post.ts`). A delegate that never says anything (its run was
+ * cancelled with no report, or its process stopped) holds its round only
+ * until the conversation's next wake after the deadline: every wake closes
+ * each overdue round ({@link closeOverdue}).
+ *
+ * At most {@link MAX_OPEN_ROUNDS} rounds stay open per conversation. Opening
+ * one more stops tracking the oldest: its close never runs, and its answers
+ * land once and go no further.
  *
  * A delegate gets at most one delivery per post per round under every policy
  * (the delivery ledger), so a post costs at most delegates × (rounds + 1)
@@ -151,6 +158,34 @@ export function closeRound(
   const open = rounds[at]!;
   const done = open.opening === 0 && deliveriesOf(ledger, postId, round).every(deliveryEnded);
   return done || pastDeadline(open, now) ? closeAt(rounds, at, ledger) : { rounds: [...rounds] };
+}
+
+/**
+ * Close every open round whose deadline has passed, whatever is still out.
+ * Each wake of the conversation runs it (a person's post, an answer, a missed
+ * report, the end of a routing), so a round whose delegate never reported,
+ * because its run was cancelled or its process stopped, still closes once
+ * the conversation next wakes after its deadline.
+ */
+export function closeOverdue(
+  rounds: readonly OpenRound[],
+  ledger: DeliveryLedger,
+  now: number
+): { rounds: OpenRound[]; closed: ClosedRound[] } {
+  let remaining: OpenRound[] = [...rounds];
+  const closed: ClosedRound[] = [];
+  for (let at = remaining.findIndex((open) => pastDeadline(open, now)); at >= 0; ) {
+    const closing = closeAt(remaining, at, ledger);
+    remaining = closing.rounds;
+    closed.push(closing.closed);
+    at = remaining.findIndex((open) => pastDeadline(open, now));
+  }
+  return { rounds: remaining, closed };
+}
+
+/** Whether any open round's deadline has passed: the cheap read before a sweep writes anything. */
+export function anyOverdue(rounds: readonly OpenRound[], now: number): boolean {
+  return rounds.some((open) => pastDeadline(open, now));
 }
 
 /**

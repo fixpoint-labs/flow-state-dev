@@ -51,7 +51,10 @@
  * internal {@link ROUTE_ON_ACTION}, which the conversation dispatches into
  * itself, through the same policy steps as a person's post. A delegate with
  * no answer says so on {@link DELEGATE_MISSED_ACTION}, so a round doesn't wait
- * on a failed turn, and closes at its deadline whatever is still out.
+ * on a failed or cancelled turn, and closes at its deadline whatever is still
+ * out. Every wake of the conversation (a person's post, an answer, a missed
+ * report, the end of a routing) also closes each round past its deadline, so
+ * a delegate that never reports holds its round only until the next wake.
  */
 import {
   choice,
@@ -125,7 +128,9 @@ import {
 } from "./coordinator-keys";
 import { emitCoordinatorRoute, routedDelegateSchema, type RoutedDelegate } from "./coordinator-route";
 import {
+  anyOverdue,
   beginRound,
+  closeOverdue,
   closeRound,
   endRound,
   landAnswer,
@@ -1133,62 +1138,114 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   /**
    * Where answers go next, by this conversation's policy and limit now: an
-   * answer as it lands, or a round's answers as it closes.
+   * answer as it lands, and each closed round's answers.
    */
-  const routeOnFor = async (
+  const routeOnsFor = async (
     ctx: BlockContext,
-    event: { landed?: { delivery: DeliveryRecord; body: string; kept: boolean }; closed?: ClosedRound }
-  ): Promise<RouteOn | undefined> => {
+    event: { landed?: { delivery: DeliveryRecord; body: string; kept: boolean }; closed: readonly ClosedRound[] }
+  ): Promise<RouteOn[]> => {
     // An answer that landed outside an open round, and no round closed: nothing goes on.
-    if (event.landed?.kept !== true && event.closed === undefined) return undefined;
+    if (event.landed?.kept !== true && event.closed.length === 0) return [];
     const { config } = await coordinatorOf(ctx);
     const { routing, rounds } = config;
     const landed = event.landed;
-    const afterAnswer =
-      landed === undefined ? undefined : routeOnAfterAnswer(landed.delivery, landed.body, landed.kept, routing, rounds);
-    if (afterAnswer !== undefined) return afterAnswer;
-    return event.closed === undefined ? undefined : routeOnAfterClose(event.closed, routing, rounds);
+    return [
+      landed === undefined ? undefined : routeOnAfterAnswer(landed.delivery, landed.body, landed.kept, routing, rounds),
+      ...event.closed.map((closed) => routeOnAfterClose(closed, routing, rounds))
+    ].filter((routeOn): routeOn is RouteOn => routeOn !== undefined);
   };
 
-  const routeOnOutputSchema = z.object({ routeOn: routeOnSchema.optional() });
-  const hasRouteOn = (value: { routeOn?: RouteOn }) => value.routeOn !== undefined;
-  const toRouteOn = (value: { routeOn?: RouteOn }) => value.routeOn!;
+  /** Answers going on, as a step's output carries them: absent when there are none. */
+  const routeOnsOutput = (routeOns: RouteOn[]) => (routeOns.length > 0 ? { routeOns } : {});
+  const routeOnsOutputSchema = z.object({ routeOns: z.array(routeOnSchema).optional() });
+  const hasRouteOns = (value: { routeOns?: RouteOn[] }) => (value.routeOns?.length ?? 0) > 0;
 
-  /** A routing is done adding deliveries to its round: close the round if nothing is still out. */
-  const endRouting = handler({
-    name: "coordinator-end-routing",
+  /** Send each of a step's answers on, into this conversation. */
+  const sendOn = sequencer({
+    name: "coordinator-send-on",
+    inputSchema: z.object({ routeOns: z.array(routeOnSchema) })
+  }).forEach((value: { routeOns: RouteOn[] }) => value.routeOns, routeOnDispatch);
+
+  /** The state an atomic write reads rounds from. */
+  const roundsIn = (state: Readonly<Record<string, unknown>>) => ({
+    rounds: (state[ROUNDS_STATE] ?? []) as OpenRound[],
+    ledger: (state[DELIVERIES_STATE] ?? []) as DeliveryLedger
+  });
+
+  /**
+   * Every wake of the conversation starts here: each open round whose
+   * deadline has passed closes, and its answers go on. A round whose delegate
+   * never reported holds only until the next wake after its deadline.
+   */
+  const sweepOverdue = handler({
+    name: "coordinator-sweep-overdue",
     inputSchema: z.unknown(),
-    outputSchema: routeOnOutputSchema,
+    outputSchema: routeOnsOutputSchema,
     ...blockBase,
-    requestStateSchema,
     execute: async (_value: unknown, ctx) => {
-      const post = postOf(ctx as never);
-      const isThisRound = (open: OpenRound) => open.postId === post.postId && open.round === post.round;
-      // A round at the limit was never opened, and one closed at its deadline is gone: nothing to end.
-      if (!((ctx.session.state[ROUNDS_STATE] ?? []) as OpenRound[]).some(isThisRound)) return {};
       const now = Date.now();
+      if (!anyOverdue((ctx.session.state[ROUNDS_STATE] ?? []) as OpenRound[], now)) return {};
       const closed = await withOutcome(
         (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
           ctx.session.atomicState(mutator as never),
         (state: Readonly<Record<string, unknown>>) => {
-          const rounds = (state[ROUNDS_STATE] ?? []) as OpenRound[];
-          if (!rounds.some(isThisRound)) return { state: {}, result: null };
-          const ledger = (state[DELIVERIES_STATE] ?? []) as DeliveryLedger;
-          const ended = closeRound(endRound(rounds, post.postId, post.round), ledger, post.postId, post.round, now);
-          return { state: { [ROUNDS_STATE]: ended.rounds }, result: ended.closed ?? null };
+          const { rounds, ledger } = roundsIn(state);
+          const swept = closeOverdue(rounds, ledger, now);
+          return { state: swept.closed.length === 0 ? {} : { [ROUNDS_STATE]: swept.rounds }, result: swept.closed };
         }
       );
-      const routeOn = await routeOnFor(ctx as never, closed === undefined || closed === null ? {} : { closed });
-      return routeOn === undefined ? {} : { routeOn };
+      return routeOnsOutput(await routeOnsFor(ctx as never, { closed: closed ?? [] }));
     }
   });
 
-  /** After a routing: end its round, and send the round's answers on if that closed it. */
+  const sweep = sequencer({ name: "coordinator-sweep", inputSchema: z.unknown() })
+    .step(sweepOverdue)
+    .tapIf(hasRouteOns, sendOn);
+
+  /**
+   * A routing is done adding deliveries to its round: close the round if
+   * nothing is still out, and every round past its deadline.
+   */
+  const endRouting = handler({
+    name: "coordinator-end-routing",
+    inputSchema: z.unknown(),
+    outputSchema: routeOnsOutputSchema,
+    ...blockBase,
+    requestStateSchema,
+    execute: async (_value: unknown, ctx) => {
+      const post = postOf(ctx as never);
+      const now = Date.now();
+      const isThisRound = (open: OpenRound) => open.postId === post.postId && open.round === post.round;
+      // A round at the limit was never opened, one closed at its deadline is
+      // gone, and nothing is overdue: nothing to write.
+      const open = (ctx.session.state[ROUNDS_STATE] ?? []) as OpenRound[];
+      if (!open.some(isThisRound) && !anyOverdue(open, now)) return {};
+      const closed = await withOutcome(
+        (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
+          ctx.session.atomicState(mutator as never),
+        (state: Readonly<Record<string, unknown>>) => {
+          const { rounds, ledger } = roundsIn(state);
+          const ended = rounds.some(isThisRound)
+            ? closeRound(endRound(rounds, post.postId, post.round), ledger, post.postId, post.round, now)
+            : { rounds };
+          const swept = closeOverdue(ended.rounds, ledger, now);
+          return {
+            state: { [ROUNDS_STATE]: swept.rounds },
+            result: [...(ended.closed === undefined ? [] : [ended.closed]), ...swept.closed]
+          };
+        }
+      );
+      return routeOnsOutput(await routeOnsFor(ctx as never, { closed: closed ?? [] }));
+    }
+  });
+
+  /** After a routing: end its round, and send the answers of each round that closed on. */
   const finishRouting = sequencer({ name: "coordinator-finish-routing", inputSchema: z.unknown() })
     .step(endRouting)
-    .tapIf(hasRouteOn, toRouteOn, routeOnDispatch);
+    .tapIf(hasRouteOns, sendOn);
 
   const door = sequencer({ name: "coordinator-run", inputSchema: doorInputSchema })
+    .tap(sweep)
     .step(openPost)
     .step(routeByPolicy)
     .tap(finishRouting);
@@ -1241,99 +1298,125 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * line under the delegate's name. A token no delivery carries is refused;
    * a second answer to one delivery writes nothing. In an open round the
    * answer is kept for what goes on, and the round closes if it was the last
-   * one out; in a round already closed, it lands and goes no further.
+   * one out; in a round already closed, it lands and goes no further. Like
+   * every wake, it also closes each round past its deadline.
    */
   const claimDelegateAnswer = handler({
     name: "coordinator-delegate-answer",
     inputSchema: delegatedAnswerSchema,
-    outputSchema: z.object({ landed: z.boolean(), routeOn: routeOnSchema.optional() }),
+    outputSchema: z.object({ landed: z.boolean(), routeOns: z.array(routeOnSchema).optional() }),
     ...blockBase,
     execute: async (answer: DelegatedAnswer, ctx) => {
       const now = Date.now();
-      type Claimed = { claim: AnswerClaim; kept: boolean; closed?: ClosedRound };
+      type Claimed = { claim: AnswerClaim; kept: boolean; closed: ClosedRound[] };
       const outcome = await withOutcome(
         (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
           ctx.session.atomicState(mutator as never),
         (state: Readonly<Record<string, unknown>>): { state: Record<string, unknown>; result: Claimed } => {
-          const claimed = claimAnswer((state[DELIVERIES_STATE] ?? []) as DeliveryLedger, answer.token);
-          if (!claimed.claimed) return { state: {}, result: { claim: claimed, kept: false } };
+          const { rounds, ledger } = roundsIn(state);
+          const claimed = claimAnswer(ledger, answer.token);
+          // A refused answer writes nothing, not even the sweep: its close would go unrouted.
+          if (!claimed.claimed && claimed.reason === "unknown-token") {
+            return { state: {}, result: { claim: claimed, kept: false, closed: [] } };
+          }
+          if (!claimed.claimed) {
+            const swept = closeOverdue(rounds, ledger, now);
+            return {
+              state: swept.closed.length === 0 ? {} : { [ROUNDS_STATE]: swept.rounds },
+              result: { claim: claimed, kept: false, closed: swept.closed }
+            };
+          }
           const hold = state[HOLD_STATE] as { postId: string; delegate: DeliveryDelegate } | null | undefined;
           const releases =
             hold !== null &&
             hold !== undefined &&
             hold.postId === claimed.delivery.postId &&
             sameDelegate(hold.delegate, claimed.delivery.delegate);
-          const rounds = (state[ROUNDS_STATE] ?? []) as OpenRound[];
           const landed = landAnswer(rounds, claimed.ledger, claimed.delivery, answer.body, now);
+          const swept = closeOverdue(landed.rounds, claimed.ledger, now);
           return {
             state: {
               [DELIVERIES_STATE]: claimed.ledger,
               ...(releases ? { [HOLD_STATE]: null } : {}),
-              ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: landed.rounds })
+              ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: swept.rounds })
             },
             result: {
               claim: claimed,
               kept: landed.kept,
-              ...(landed.closed === undefined ? {} : { closed: landed.closed })
+              closed: [...(landed.closed === undefined ? [] : [landed.closed]), ...swept.closed]
             }
           };
         }
       );
       if (outcome === undefined) throw new Error("The answer could not be claimed.");
       const { claim } = outcome;
+      if (!claim.claimed && claim.reason === "unknown-token") {
+        throw new Error("No delivery in this conversation carries that token, so the answer was refused.");
+      }
       if (!claim.claimed) {
-        if (claim.reason === "unknown-token") {
-          throw new Error("No delivery in this conversation carries that token, so the answer was refused.");
-        }
-        return { landed: false };
+        return { landed: false, ...routeOnsOutput(await routeOnsFor(ctx as never, { closed: outcome.closed })) };
       }
       ctx.emit.message(answer.body, { agentName: claim.delivery.delegate.worker });
-      const routeOn = await routeOnFor(ctx as never, {
+      const routeOns = await routeOnsFor(ctx as never, {
         landed: { delivery: claim.delivery, body: answer.body, kept: outcome.kept },
-        ...(outcome.closed === undefined ? {} : { closed: outcome.closed })
+        closed: outcome.closed
       });
-      return { landed: true, ...(routeOn === undefined ? {} : { routeOn }) };
+      return { landed: true, ...routeOnsOutput(routeOns) };
     }
   });
 
   const delegateAnswer = sequencer({ name: "coordinator-delegate-answered", inputSchema: delegatedAnswerSchema })
     .step(claimDelegateAnswer)
-    .tapIf(hasRouteOn, toRouteOn, routeOnDispatch);
+    .tapIf(hasRouteOns, sendOn);
 
   /**
-   * A delegate with no answer for a delivery: its turn failed, or its round's
-   * deadline came while it was still working. The delivery is marked missed,
-   * once, and its round closes if nothing else is out, or if its deadline has
-   * passed. The round's deadline is this conversation's own: the report only
-   * wakes it. A token no delivery carries is refused.
+   * A delegate with no answer for a delivery: its turn failed or its run was
+   * cancelled, or its round's deadline came while it was still working. The
+   * delivery is marked missed, once, and its round closes if nothing else is
+   * out, or if its deadline has passed. The round's deadline is this
+   * conversation's own: the report only wakes it. Like every wake, it also
+   * closes each round past its deadline. A token no delivery carries is
+   * refused.
    */
   const claimDelegateMiss = handler({
     name: "coordinator-delegate-missed",
     inputSchema: delegatedMissSchema,
-    outputSchema: z.object({ missed: z.boolean(), routeOn: routeOnSchema.optional() }),
+    outputSchema: z.object({ missed: z.boolean(), routeOns: z.array(routeOnSchema).optional() }),
     ...blockBase,
     execute: async (miss: DelegatedMiss, ctx) => {
       const now = Date.now();
       const why =
         miss.failed === undefined ? "it hadn't answered by the round's deadline" : `its turn failed: ${miss.failed}`;
-      type Marked = { marked: boolean; unknown: boolean; closed?: ClosedRound };
+      type Marked = { marked: boolean; unknown: boolean; closed: ClosedRound[] };
       const outcome = await withOutcome(
         (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
           ctx.session.atomicState(mutator as never),
         (state: Readonly<Record<string, unknown>>): { state: Record<string, unknown>; result: Marked } => {
-          const marked = markMissed((state[DELIVERIES_STATE] ?? []) as DeliveryLedger, miss.token, why);
-          if (!marked.marked) {
-            return { state: {}, result: { marked: false, unknown: marked.reason === "unknown-token" } };
+          const { rounds, ledger } = roundsIn(state);
+          const marked = markMissed(ledger, miss.token, why);
+          if (!marked.marked && marked.reason === "unknown-token") {
+            return { state: {}, result: { marked: false, unknown: true, closed: [] } };
           }
-          const rounds = (state[ROUNDS_STATE] ?? []) as OpenRound[];
+          if (!marked.marked) {
+            const swept = closeOverdue(rounds, ledger, now);
+            return {
+              state: swept.closed.length === 0 ? {} : { [ROUNDS_STATE]: swept.rounds },
+              result: { marked: false, unknown: false, closed: swept.closed }
+            };
+          }
           const { postId, round } = marked.delivery;
           const closing = closeRound(rounds, marked.ledger, postId, round, now);
+          const swept = closeOverdue(closing.rounds, marked.ledger, now);
           return {
             state: {
               [DELIVERIES_STATE]: marked.ledger,
-              ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: closing.rounds })
+              ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: swept.rounds })
             },
-            result: { marked: true, unknown: false, ...(closing.closed === undefined ? {} : { closed: closing.closed }) }
+            result: {
+              marked: true,
+              unknown: false,
+              closed: [...(closing.closed === undefined ? [] : [closing.closed]), ...swept.closed]
+            }
           };
         }
       );
@@ -1341,15 +1424,14 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       if (outcome.unknown) {
         throw new Error("No delivery in this conversation carries that token, so the report was refused.");
       }
-      const routeOn =
-        outcome.closed === undefined ? undefined : await routeOnFor(ctx as never, { closed: outcome.closed });
-      return { missed: outcome.marked, ...(routeOn === undefined ? {} : { routeOn }) };
+      const routeOns = await routeOnsFor(ctx as never, { closed: outcome.closed });
+      return { missed: outcome.marked, ...routeOnsOutput(routeOns) };
     }
   });
 
   const delegateMissed = sequencer({ name: "coordinator-delegate-missed-it", inputSchema: delegatedMissSchema })
     .step(claimDelegateMiss)
-    .tapIf(hasRouteOn, toRouteOn, routeOnDispatch);
+    .tapIf(hasRouteOns, sendOn);
 
   const flow = defineFlow({
     kind: COORDINATOR_KIND,

@@ -16,8 +16,10 @@
  *          everyone hands each delegate the others' answers when the round closes; judgment wakes
  *          the coordinator's turn once per closed round;
  *   BR-24a a judgment hand-off in a wake is the next round's, once per delegate;
- *   BR-24b a round closes without a delegate whose turn failed, at once, and without a slow one at
- *          its deadline; the late answer lands once and goes no further;
+ *   BR-24b a round closes without a delegate whose turn failed or whose run was cancelled, at once,
+ *          and without a slow one at its deadline; the late answer lands once and goes no further;
+ *          a round whose delegate says nothing closes on the conversation's next wake after its
+ *          deadline, once; past 50 open rounds the oldest is no longer tracked;
  *   BR-25  at the limit an answer goes nowhere and wakes nothing;
  *   BR-21, BR-22  an answer sent twice goes back out once; a report on a token no delivery carries
  *          is refused;
@@ -27,6 +29,7 @@
 import { describe, expect, it } from "vitest";
 import { mockGenerator } from "@flow-state-dev/testing";
 import {
+  MAX_OPEN_ROUNDS,
   beginRound,
   closeRound,
   endRound,
@@ -475,5 +478,91 @@ describe("rounds (V5)", () => {
     await expect(
       host.act("alice", id, "routeOn", { postId: "p", round: 1, answers: [{ worker: "eng.em", body: "x" }] })
     ).rejects.toThrow(/does not define action "routeOn"/);
+  });
+});
+
+describe("a delegate that never answers (V5, BR-24b)", () => {
+  /** The records of one post, by round. */
+  const recordsOf = async (host: Host, id: string, postId: string) =>
+    (await host.items(id)).records.filter((record: any) => record.postId === postId);
+
+  /** The coder heard the EM's answer to `post`, passed on in round 1. */
+  const passedToCoder = (host: Host, post: string) =>
+    host.heard.filter(
+      (h) => h.worker === "eng.coder" && h.message.startsWith(`eng.em, through desk: eng.em heard: alice, through desk: ${post}`)
+    );
+
+  it("reports a cancelled run, so its round closes at once and the other answer goes on", async () => {
+    // A deadline far off: only the report can close the round in time.
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
+    const id = await host.conversation("alice", "desk");
+    expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await quiet(host);
+
+    const cancelled = (await host.sessionState(id)).deliveries.find(
+      (d: any) => d.round === 0 && d.delegate.worker === "eng.coder"
+    );
+    expect(cancelled).toMatchObject({ answered: false, missed: "its turn failed: its run was cancelled" });
+    expect(passedToCoder(host, "status?")).toHaveLength(1);
+    expect((await host.sessionState(id)).openRounds).toEqual([]);
+  });
+
+  it("closes an overdue round on the conversation's next wake, once, before the new post routes", async () => {
+    // The coder's run is cancelled and says nothing, as one whose process stopped would.
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 300, reportCancel: false });
+    const id = await host.conversation("alice", "desk");
+    expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await quiet(host);
+    const [first] = (await host.sessionState(id)).openRounds;
+    expect(first).toMatchObject({ round: 0 });
+    // Nothing reported, so round 0 waits: nothing has gone on.
+    expect(passedToCoder(host, "status?")).toHaveLength(0);
+    const silent = (await host.sessionState(id)).deliveries.find(
+      (d: any) => d.round === 0 && d.delegate.worker === "eng.coder"
+    );
+    expect(silent).toMatchObject({ answered: false });
+    expect(silent.missed).toBeUndefined();
+
+    // Past the deadline, the person posts again.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await post(host, id, "and the release?");
+    await quiet(host);
+
+    // The overdue round closed once, and its one delivery went on: the coder got the EM's answer.
+    expect(passedToCoder(host, "status?")).toHaveLength(1);
+    const stale = await recordsOf(host, id, first.postId);
+    expect(stale.map((record: any) => [record.round, record.by])).toEqual([
+      [0, "everyone"],
+      [1, "everyone"]
+    ]);
+    expect(stale[1].delegates).toEqual([
+      { worker: "eng.coder", outcome: "delivered" },
+      { worker: "eng.em", outcome: "skipped", reason: "no other delegate answered in round 0" }
+    ]);
+    // The new post routed as usual: both delegates, then each the other's answer.
+    const fresh = (await host.items(id)).records.filter((record: any) => record.postId !== first.postId);
+    expect(fresh.map((record: any) => [record.round, record.by, record.delegates.length])).toEqual([
+      [0, "everyone", 2],
+      [1, "everyone", 2]
+    ]);
+    expect((await host.sessionState(id)).openRounds).toEqual([]);
+  });
+
+  it(`stops tracking the oldest open round past ${MAX_OPEN_ROUNDS}: its answers then go nowhere`, () => {
+    let rounds = beginRound([], "p0", 0);
+    for (let n = 1; n <= MAX_OPEN_ROUNDS; n += 1) rounds = beginRound(rounds, `p${n}`, 0);
+    expect(rounds).toHaveLength(MAX_OPEN_ROUNDS);
+    expect(rounds.some((open) => open.postId === "p0")).toBe(false);
+    expect(rounds[0]!.postId).toBe("p1");
+    // An answer to the dropped round lands in no open round, so it goes nowhere.
+    const claimed = claimAnswer(openDelivery([], { postId: "p0", round: 0, delegate: { worker: "eng.em" } }, "t0").ledger, "t0") as {
+      ledger: DeliveryLedger;
+      delivery: DeliveryRecord;
+    };
+    const landed = landAnswer(rounds, claimed.ledger, claimed.delivery, "late", Date.now());
+    expect(landed.kept).toBe(false);
+    expect(routeOnAfterAnswer(claimed.delivery, "late", landed.kept, "best-fit", 1)).toBeUndefined();
   });
 });

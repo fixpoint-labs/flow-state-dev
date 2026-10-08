@@ -10,6 +10,8 @@
  * block name (`agent-answer`).
  */
 import { describe, expect, it } from "vitest";
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   createMockModelResolver,
@@ -23,21 +25,41 @@ import { DELEGATED_POST_ENTRY } from "../src/coordinator/coordinator-keys";
 import { hireWorkforce } from "../src/workers/register";
 import { createWorkerInstallation } from "../src/workers/installation";
 
+/** A catalog tool that waits until its run is cancelled. */
+const wait = handler({
+  name: "wait",
+  description: "Waits.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({}),
+  execute: (_input, ctx) =>
+    new Promise<never>((_resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("never cancelled")), 10_000);
+      ctx.signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new Error("cancelled"));
+      });
+    })
+});
+
 /**
  * A best-fit desk whose one delegate, `otto`, is an `agent` worker; Alice
- * posts `message` to it.
+ * posts `message` to it. Otto may call the `wait` tool.
  */
 async function postToOtto(answer: MockGeneratorInstance, message: string, desk: Record<string, unknown> = {}) {
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({
     standardWorkers: [
       { id: "desk", declared: { flow: "coordinator", routing: "best-fit", delegates: ["otto"], ...desk }, body: "" },
-      { id: "otto", declared: { flow: "agent", description: "Answers questions." }, body: "You answer questions." }
+      {
+        id: "otto",
+        declared: { flow: "agent", description: "Answers questions.", tools: ["wait"] },
+        body: "You answer questions."
+      }
     ],
     workerFlows: () => flows as never
   });
   // The agent copy every agent worker shares, built on the installation.
-  const agentFlow = defineAgentWorkerFlow({ installation });
+  const agentFlow = defineAgentWorkerFlow({ installation, catalog: { wait } });
   const coordinator = defineCoordinatorFlow({ installation, delegateFlows: [agentFlow], routeModel: "typesafe-ai/jev" });
   flows = { agent: agentFlow, coordinator };
   const copies = hireWorkforce(installation);
@@ -93,7 +115,25 @@ async function postToOtto(answer: MockGeneratorInstance, message: string, desk: 
       .map((item) => ({ agentName: item.agentName, text: (item.content ?? []).map((p: any) => p.text ?? "").join("") }));
   const deliveries = async () =>
     (((await runtime.stores.session.get(sessionId))?.state ?? {}) as { deliveries?: any[] }).deliveries ?? [];
-  return { until, lines, deliveries };
+  /** Cancel otto's running delegated post through the abort route, as Alice. Returns the route's status. */
+  const cancelOtto = async () => {
+    const running = await until(
+      async () =>
+        (await runtime.stores.request.list({})).find(
+          (request) => request.status === "in_progress" && request.actionName === "onDelegatedPost"
+        ),
+      (found) => found !== undefined
+    );
+    const aborted: Response = await router.POST(
+      new Request(`http://localhost/api/flows/agent/requests/${running!.id}/abort`, {
+        method: "POST",
+        headers: { "x-user": "alice" }
+      }),
+      { params: { path: ["agent", "requests", running!.id, "abort"] } }
+    );
+    return aborted.status;
+  };
+  return { until, lines, deliveries, cancelOtto };
 }
 
 describe("the agent flow as a delegate (S9)", () => {
@@ -127,5 +167,24 @@ describe("the agent flow as a delegate (S9)", () => {
       })
     ]);
     expect(await conversation.lines()).toEqual([]);
+  });
+
+  it("reports a cancelled run back from its request's onFinished, when its answer could go back out (BR-24b)", async () => {
+    // Otto's turn calls `wait`, which holds until the run is cancelled.
+    const answer = mockGenerator({
+      name: "agent-answer",
+      script: [{ toolCalls: [{ toolCallId: "w1", toolName: "wait", args: {} }] }]
+    });
+    const conversation = await postToOtto(answer, "what's our refund policy?", { rounds: 1 });
+    // Once otto's turn is running: a run cancelled before its entry starts has
+    // no delivery noted to report, and the next wake's sweep closes its round.
+    await conversation.until(async () => answer.calls.length, (calls) => calls > 0);
+    expect(await conversation.cancelOtto()).toBe(204);
+    const deliveries = await conversation.until(conversation.deliveries, (found) =>
+      found.some((delivery) => delivery.missed !== undefined)
+    );
+    expect(deliveries).toEqual([
+      expect.objectContaining({ round: 0, answered: false, missed: "its turn failed: its run was cancelled" })
+    ]);
   });
 });

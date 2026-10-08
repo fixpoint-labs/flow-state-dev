@@ -2145,6 +2145,7 @@ import {
   createWorkerInstallation,
   defineCoordinatorFlow,
   delegatedPostEntry,
+  delegatedPostOnFinished,
   workerConfigSchema,
 } from "@flow-state-dev/workforce";
 
@@ -2153,6 +2154,7 @@ const researchFlow = defineFlow({
   configSchema: workerConfigSchema(),
   session: installation.session(),
   resources: { ...installation.resources },
+  request: { onFinished: delegatedPostOnFinished }, // reports a cancelled delegated post
   actions: { run: { inputSchema, block: door, userMessage: (i) => i.message } },
   internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } }, // takes delegated posts
 });
@@ -2195,10 +2197,19 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   `everyone` waits for the round to close, then sends each delegate the other delegates' answers
   in one delivery. `judgment` waits for the round to close, then runs the coordinator's turn once
   with the round's answers; its hand-offs in that turn go out in the next round. A round closes
-  when each of its delegates has answered or failed, or when its deadline passes
+  when each of its delegates has answered, failed or been cancelled, or when its deadline passes
   (`roundDeadlineMs`, five minutes by default). A delegate that answers after that has its answer
   land once, and the answer goes no further. Each delegate gets a post at most once per round, so
   a post costs at most delegates × (rounds + 1) delegate turns.
+- **When a delegate says nothing.** A delegate flow tells the coordinator about a failed turn, a
+  turn still running at the deadline, and, with `delegatedPostOnFinished` as its request
+  `onFinished`, a cancelled run. A delegate that says nothing at all, because its process stopped
+  or it was cancelled before its turn started, holds its round only until the conversation next
+  wakes after the deadline: a person's post, an answer, or another delegate's report. That wake
+  closes the round and sends its answers on. With no later activity in the conversation, the
+  answers that landed stay, and nothing goes on.
+- **Open rounds.** A conversation keeps at most 50 rounds open at once. Opening one more stops
+  tracking the oldest: its answers land once and go no further, and its close never runs.
 - **Delegates per conversation.** Each conversation starts from a copy of the defaults, and its
   changes stay in it. Change them with the `addDelegate({ worker, note? })`,
   `removeDelegate({ worker })` and `setFallback({ worker | null })` actions, and read them with
@@ -2258,6 +2269,7 @@ the root exports, and reaches no Node built-in.
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
 | `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive number throws. |
 | `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. On a post whose answer can go back out, it also tells the coordinator when it has no answer: at once when its turn fails, and at the round's deadline while its turn is still running. The turn isn't stopped; a later answer still lands once. |
+| `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated post's run is cancelled before its answer went back, it tells the coordinator, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `kinds` holds. |
 | `inventorySeats(installation)` | The standard workers as `openInventory` takes seats: each worker's id, its flow and that flow's actions. |
