@@ -153,6 +153,42 @@ When the LLM calls `deep-research`, the framework runs the full sequencer pipeli
 
 A tool can also pause for a human before it runs: call `ctx.suspend()` inside it to gate the call for approval, and the request resumes past it. See [Generator and router suspend/resume](/docs/advanced/generator-and-router-suspend-resume).
 
+#### Renaming a block for the model: `.as()`
+
+The model calls a tool by the block's `name` and decides when to call it from the block's `description`. A block you didn't write, from a pattern or another package, often has a name that reads wrong in your flow, or no description at all.
+
+`block.as({ name, description })` returns a copy of the block under a new name, a new description, or both. Everything else is the same block: its schemas, connectors, resources and rescue handlers come along.
+
+```ts
+import { generator } from "@flow-state-dev/core";
+import { notes } from "./notes";
+
+const assistant = generator({
+  name: "assistant",
+  model: "openai/gpt-5.4-mini",
+  tools: [
+    notes.write.as({
+      name: "saveNote",
+      description: "Save a note for the person. Use it when they ask you to remember something.",
+    }),
+  ],
+});
+```
+
+The new name is the copy's name everywhere, not only in what the model is offered. Tool pills, traces and a suspended call's resume all use `saveNote`. The original `notes.write` keeps its own name wherever you use it directly, so nothing recorded under it changes.
+
+Leave out `name` to keep it and only replace the description, or leave out `description` to keep the original's. A blank name is refused when the copy is built. Two copies of one block under two names are two tools; two blocks with the same name in one `tools` array are refused, as they always are. The same goes for a router's routes: a copy that only changes the description has the original's name, so a router can't list both.
+
+`.as()` returns a plain block, so on a sequencer finish adding steps first and rename last.
+
+`.as()` is not `.asTool()`. `.as()` changes what the block is called and adds nothing at run time. `.asTool()`, below, wraps a block so a sequencer step shows a tool pill. They stack: put `.as()` first, and the pill shows the new name.
+
+```ts
+fetchPrices: getPrices.as({ name: "fetchPrices" }).asTool({ agentName: "analyst" }),
+```
+
+The other order, `.asTool().as(...)`, renames only the wrapper's row in the trace, and the pill keeps the original name.
+
 #### Showing a deterministic call as a tool: `.asTool()`
 
 Sometimes you already know what the tool inputs are. An analyst-style flow may fetch its data up front (deterministic, parallel, no LLM in the loop) and only call the LLM for synthesis.
