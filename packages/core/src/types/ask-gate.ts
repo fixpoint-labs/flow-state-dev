@@ -115,8 +115,11 @@ export function parseAskOutcome(value: unknown): AskOutcome | undefined {
 export type ParkOnAskInput = {
   /**
    * The gate's id, chosen before the turn parks so the caller can record it
-   * first (the asked row carries it). Must be unique within the request, and
-   * the same on every replay of the call that parks.
+   * first (the asked row carries it). Must be **unique within the session**,
+   * not only the request: `RequestHost.resumeAsk` finds the gate by id across
+   * the conversation, and refuses `ambiguous` rather than guess between two
+   * parked turns that share one. And the same on every replay of the call
+   * that parks.
    */
   readonly gateId: string;
   readonly binding: AskGateBinding;

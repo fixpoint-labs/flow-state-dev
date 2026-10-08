@@ -172,25 +172,44 @@ export function createAskResumeOperation(deps: AskResumeDeps): AskResumeOperatio
       sessionId: owner.sessionId,
       userId: owner.userId
     });
-    const gate = candidates.find((s) => s.suspensionId === gateId && isAskGate(s));
-    if (gate === undefined) return notFound;
+    // Fence every candidate BEFORE choosing one, so a gate this conversation
+    // does not own can never mask the one it does. The suspension record
+    // carries no tenant or org; the request it parks does. Same session,
+    // principal, tenant, org and flow instance, or the gate is not this
+    // conversation's, and is treated exactly as one that does not exist.
+    const owned: SuspensionRecord[] = [];
+    for (const candidate of candidates) {
+      if (candidate.suspensionId !== gateId || !isAskGate(candidate)) continue;
+      const request = await deps.stores.request.get(candidate.requestId);
+      if (
+        request === undefined ||
+        request.sessionId !== owner.sessionId ||
+        request.userId !== owner.userId ||
+        (request.tenantId ?? undefined) !== owner.tenantId ||
+        (request.orgId ?? undefined) !== owner.orgId ||
+        !ownsRecord(owner.flow, request)
+      ) {
+        continue;
+      }
+      owned.push(candidate);
+    }
+    if (owned.length === 0) return notFound;
 
-    // The suspension record carries no tenant or org; the request it parks
-    // does. Same session, principal, tenant, org and flow instance, or the gate
-    // is not this conversation's — answered exactly as a gate that does not
-    // exist.
-    const request = await deps.stores.request.get(gate.requestId);
-    if (
-      request === undefined ||
-      request.sessionId !== owner.sessionId ||
-      request.userId !== owner.userId ||
-      (request.tenantId ?? undefined) !== owner.tenantId ||
-      (request.orgId ?? undefined) !== owner.orgId ||
-      !ownsRecord(owner.flow, request)
-    ) {
-      return notFound;
+    // A gate id is unique per request, not per session. Two turns of this
+    // conversation parked under one id cannot be told apart, and guessing
+    // would hand one ask's answer to the other: refuse, resume neither.
+    const pending = owned.filter((s) => s.status === "pending");
+    if (pending.length > 1) {
+      return {
+        ok: false,
+        refused: "ambiguous",
+        detail: `${pending.length} turns in this session are parked on ask gate "${gateId}"`
+      };
     }
 
+    // One pending gate is the one to resume; with none, any owned gate answers
+    // `already-resolved` through the same path.
+    const gate = pending[0] ?? owned[0]!;
     return resumeAskGate(deps, gate, outcome, `ask:${owner.sessionId}`);
   };
 }

@@ -87,12 +87,15 @@ export type ResumeAskInput = {
  * - `already-resolved` — the gate was resumed before and its turn has not
  *   finished. The first answer stands.
  * - `busy` — another resume of the same turn holds its lease right now.
+ * - `ambiguous` — more than one turn in this session is parked on a gate with
+ *   that id. Neither is resumed: guessing would hand one ask's answer to the
+ *   other. Gate ids must be unique within the session (see `parkOnAsk`).
  */
 export type ResumeAskResult =
   | { readonly ok: true }
   | {
       readonly ok: false;
-      readonly refused: "gate-not-found" | "already-resolved" | "busy";
+      readonly refused: "gate-not-found" | "already-resolved" | "busy" | "ambiguous";
       readonly detail: string;
     };
 

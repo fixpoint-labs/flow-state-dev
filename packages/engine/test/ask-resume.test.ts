@@ -352,6 +352,61 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
     expect((await h.provider.loadSuspension(requestId, GATE_ID))?.status).toBe("pending");
   });
 
+  it("two turns in one conversation parked on the same gate id: refused as ambiguous, neither resumed", async () => {
+    // Gate ids are unique per request, not per session. Guessing which turn
+    // an answer belongs to would hand one ask's answer to the other.
+    const askStep: StepFn = () => ({
+      toolCalls: [{ toolCallId: "c1", toolName: "ask_colleague", args: { question: "SOC 2?" } }],
+      finishReason: "tool-calls"
+    });
+    const { model } = stepModel([askStep, askStep]);
+    const flow = askFlow(model, { count: 0 });
+    const h = setup(flow);
+    const first = await startTurn(h, flow);
+    const second = await startTurn(h, flow);
+    expect(first.requestId).not.toBe(second.requestId);
+    for (const parked of [first, second]) {
+      expect((await h.stores.request.get(parked.requestId!))?.status).toBe("suspended");
+    }
+
+    const result = await touch(h, flow, { answered: true, answer: "whose?" });
+    expect(result).toMatchObject({ ok: false, refused: "ambiguous" });
+    expect(h.continued).toHaveLength(0);
+    for (const parked of [first, second]) {
+      expect((await h.stores.request.get(parked.requestId!))?.status).toBe("suspended");
+      expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
+    }
+  });
+
+  it("a newer gate with the same id that this conversation does not own does not mask the real one", async () => {
+    const { model, seen } = askingModel();
+    const flow = askFlow(model, { count: 0 });
+    const h = setup(flow);
+    const parked = await startTurn(h, flow);
+    const real = await h.provider.loadSuspension(parked.requestId!, GATE_ID);
+
+    // Same session id and principal, but the request it parks is another
+    // organization's. Newer, so a session-wide listing returns it first.
+    const foreignRequest = { ...(await h.stores.request.get(parked.requestId!))! };
+    await h.stores.request.set(
+      "req_foreign",
+      { ...foreignRequest, id: "req_foreign", orgId: "org_foreign" },
+      "any"
+    );
+    await h.provider.suspend({
+      ...real!,
+      requestId: "req_foreign",
+      createdAt: real!.createdAt + 60_000
+    });
+
+    const result = await touch(h, flow, { answered: true, answer: "the real one" });
+    expect(result).toEqual({ ok: true });
+    await h.continued[0];
+    expect((await h.stores.request.get(parked.requestId!))?.status).toBe("completed");
+    expect(toolResults(seen[1]!.messages).join("")).toContain("the real one");
+    expect((await h.provider.loadSuspension("req_foreign", GATE_ID))?.status).toBe("pending");
+  });
+
   it("another conversation cannot resume the turn, even holding the gate's id", async () => {
     const { model } = askingModel();
     const flow = askFlow(model, { count: 0 });
