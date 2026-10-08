@@ -3215,9 +3215,14 @@ export async function createExecutionContext<
       return value;
     })();
     runOnceInflight.set(key, promise as Promise<unknown>);
-    promise.finally(() => {
+    // Clear the slot on both outcomes. Not `promise.finally(...)`: that
+    // returns a second promise which re-rejects when fn() does, and with no
+    // handler attached it surfaces as an unhandled rejection even though
+    // the caller handles `promise` itself.
+    const clearInflight = () => {
       runOnceInflight.delete(key);
-    });
+    };
+    promise.then(clearInflight, clearInflight);
     return promise;
   };
 

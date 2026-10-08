@@ -388,4 +388,66 @@ describe("FIX-402: idempotency key + runOnce", () => {
     expect(result.error).toBeUndefined();
     expect(invocations).toBe(1);
   });
+
+  it("a rejecting fn reaches the caller and leaves no unhandled rejection behind", async () => {
+    // A long-lived Node host treats an unhandled rejection as fatal, so a
+    // failure inside runOnce must travel only through the promise the caller
+    // holds — the caller here catches it, so nothing may surface elsewhere.
+    const stores = createInMemoryStores();
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const boom = new Error("charge failed");
+      let caught: unknown;
+
+      const failing = handler({
+        name: "failing",
+        inputSchema: z.number(),
+        outputSchema: z.string(),
+        execute: async (_input, ctx: BlockContext) => {
+          try {
+            await ctx.runOnce!("charge", async () => {
+              throw boom;
+            });
+          } catch (err) {
+            caught = err;
+          }
+          return "handled";
+        }
+      });
+
+      const flow = defineFlow({
+        kind: "runonce-reject-flow",
+        actions: { run: { inputSchema: z.number(), block: failing } }
+      })();
+
+      const requestId = "req_runonce_reject";
+      const response = createResponseEmitter({ requestId, now: () => Date.now() });
+      const result = await runAction({
+        orgId: DEFAULT_ORG_ID,
+        flow,
+        actionName: "run",
+        input: 0,
+        userId: "user",
+        sessionId: "sess",
+        requestId,
+        stores,
+        responseEmitter: response,
+        runtimeConfig: {}
+      });
+
+      // Node reports unhandled rejections after the microtask queue drains;
+      // a macrotask turn guarantees the check has run.
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(result.error).toBeUndefined();
+      expect(caught).toBe(boom);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
 });
