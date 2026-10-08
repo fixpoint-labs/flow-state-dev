@@ -132,7 +132,9 @@ export {
   updateWorkstreamOutputSchema,
   type OpenWorkstreamInput,
   type OpenWorkstreamOutput,
+  type UpdateOwnWorkstreamInput,
   type UpdateWorkstreamInput,
+  type UpdateWorkstreamOutput,
   type WorkstreamBlocks,
   type WorkstreamBlocksOptions
 } from "./workstream-writes";

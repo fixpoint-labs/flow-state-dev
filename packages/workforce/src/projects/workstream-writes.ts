@@ -29,15 +29,15 @@
  */
 
 import { dispatcher, dispatchHandleSchema, handler, router, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, BlockDefinition, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockDefinition, ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { withWrittenBy } from "../shared-resource";
+import { withWrittenBy, type SharedWriteContext } from "../shared-resource";
 import type { WorkerInstallation } from "../workers/installation";
 import { WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "../workers/keys";
 import { retryOnConflict } from "./cas-retry";
-import { projectAddressSchema, type ProjectAddress } from "./collections";
+import { projectAddressSchema } from "./collections";
 import { isMember } from "./membership-gate";
-import { projectAt, PROJECT_ROW_RESOURCES } from "./project-address";
+import { projectAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { ProjectRefusedError } from "./project-refusal";
 import { isAlreadyExists } from "./store-errors";
 import {
@@ -46,7 +46,6 @@ import {
   workstreamEntryKey,
   workstreamEntrySchema,
   workstreamIdProblem,
-  workstreamsAccessor,
   workstreamStatusSchema,
   workstreamViewSchema,
   type WorkstreamEntry,
@@ -129,18 +128,39 @@ export type UpdateWorkstreamInput = z.infer<typeof updateWorkstreamInputSchema>;
 /** What the lead's tool takes: the changes. Its workstream is the one its session leads. */
 export const updateOwnWorkstreamInputSchema = z.object(changesShape).strict();
 
+/** @see updateOwnWorkstreamInputSchema */
+export type UpdateOwnWorkstreamInput = z.infer<typeof updateOwnWorkstreamInputSchema>;
+
 /** What an update returns: the entry as written. */
 export const updateWorkstreamOutputSchema = z.object({ workstream: workstreamViewSchema });
 
+/** @see updateWorkstreamOutputSchema */
+export type UpdateWorkstreamOutput = z.infer<typeof updateWorkstreamOutputSchema>;
+
 /** The workstream writes, and the same blocks as an `actions` map and a tool. */
 export type WorkstreamBlocks = {
-  openWorkstream: BlockDefinition<any, any>;
-  updateWorkstream: BlockDefinition<any, any>;
+  openWorkstream: BlockDefinition<
+    typeof openWorkstreamInputSchema,
+    typeof openWorkstreamOutputSchema,
+    OpenWorkstreamInput,
+    OpenWorkstreamOutput
+  >;
+  updateWorkstream: BlockDefinition<
+    typeof updateWorkstreamInputSchema,
+    typeof updateWorkstreamOutputSchema,
+    UpdateWorkstreamInput,
+    UpdateWorkstreamOutput
+  >;
   /** The lead's tool: updates the workstream its session leads. Give it to a lead's flow. */
-  updateWorkstreamTool: BlockDefinition<any, any>;
+  updateWorkstreamTool: BlockDefinition<
+    typeof updateOwnWorkstreamInputSchema,
+    typeof updateWorkstreamOutputSchema,
+    UpdateOwnWorkstreamInput,
+    UpdateWorkstreamOutput
+  >;
   actions: {
-    openWorkstream: { block: BlockDefinition<any, any>; description: string };
-    updateWorkstream: { block: BlockDefinition<any, any>; description: string };
+    openWorkstream: ActionConfig;
+    updateWorkstream: ActionConfig;
   };
 };
 
@@ -150,18 +170,16 @@ const SESSION_WAIT_MS = 50;
 
 const nowIso = () => new Date().toISOString();
 
+/** What a write reads off its block's context: the session's user, and the entries it declared. */
+type WriteContext = ResourcesContext & Pick<SharedWriteContext, "session">;
+
 /** The caller: the session's user, as the engine recorded it. */
-function ownerOf(ctx: BlockContext, what: string): string {
+function ownerOf(ctx: Pick<SharedWriteContext, "session">, what: string): string {
   const owner = ctx.session.identity.userId;
   if (owner === undefined || owner.length === 0) {
     throw new Error(`${what} needs a session with an owner: a workstream is its session's user's.`);
   }
   return owner;
-}
-
-/** The entries at `visibility`, as the calling block declared them. */
-function entriesAt(ctx: BlockContext, visibility: ProjectAddress["visibility"]): ResourceCollectionRef<WorkstreamEntry> {
-  return ctx.resources[workstreamsAccessor(visibility)] as unknown as ResourceCollectionRef<WorkstreamEntry>;
 }
 
 /** An entry as the writes answer it. */
@@ -235,8 +253,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     outputSchema: openStepSchema,
     resources,
     requestStateSchema: openingStateSchema,
-    execute: async (input: OpenWorkstreamInput, rawCtx): Promise<OpenStep> => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (input: OpenWorkstreamInput, ctx): Promise<OpenStep> => {
       const owner = ownerOf(ctx, "openWorkstream");
       assertWorkstreamId(input.id);
       const project = await projectAt(ctx, input.project);
@@ -246,7 +263,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
           `only project "${input.project.id}"'s members may open workstreams in it.`
         );
       }
-      const lead = await installation.rosterWorker(ctx as never, input.lead);
+      const lead = await installation.rosterWorker(ctx, input.lead);
       if (lead === undefined) throw new ProjectRefusedError("no-such-worker", `No worker "${input.lead}" on your roster.`);
       if (lead.problem !== undefined) {
         throw new ProjectRefusedError("no-such-worker", `Worker "${input.lead}" can't lead a workstream: ${lead.problem}.`);
@@ -259,10 +276,10 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       }
 
       const address: WorkstreamAddress = { project: input.project, id: input.id };
-      const entries = entriesAt(ctx, input.project.visibility);
+      const entries = workstreamsAt(ctx, input.project.visibility);
       const key = workstreamEntryKey(input.project.id, owner, input.id);
       const at = nowIso();
-      const fresh: Record<string, unknown> = {
+      const fresh: Omit<WorkstreamEntry, "writtenBy"> = {
         title: input.title,
         lead: input.lead,
         sessionId: null,
@@ -276,7 +293,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       let entry: ResourceRef<WorkstreamEntry> | undefined = await entries.getOptional(key);
       if (entry === undefined) {
         try {
-          entry = await entries.create(key, withWrittenBy(ctx, fresh) as never);
+          entry = await entries.create(key, withWrittenBy(ctx, fresh));
           opened = true;
         } catch (error) {
           if (!isAlreadyExists(error)) throw error;
@@ -292,7 +309,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       }
       const needsSession = entry.state.sessionId == null && !(await sessionNamedSoon(entry, opened));
       const opening: Opening = { address, owner, lead: input.lead, flow: lead.flow, opened, needsSession };
-      await ctx.request.patchState({ [OPENING_STATE]: opening } as never);
+      await ctx.request.patchState({ [OPENING_STATE]: opening });
       return { needsSession, flow: lead.flow, lead: input.lead, ref: workstreamRef(address) };
     }
   });
@@ -324,7 +341,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
       if (route === undefined) throw new Error(`No workstream session can be created on flow "${step.flow}".`);
       return route;
     }
-  } as never) as BlockDefinition<any, any>;
+  });
 
   /** Name the session on the entry, unless another open named one first, and answer the entry. */
   const finishOpen = handler({
@@ -333,19 +350,18 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     outputSchema: openWorkstreamOutputSchema,
     resources,
     requestStateSchema: openingStateSchema,
-    execute: async (value: unknown, rawCtx): Promise<OpenWorkstreamOutput> => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const opening = (ctx.request.state as Record<string, unknown>)[OPENING_STATE] as Opening | undefined;
+    execute: async (value: unknown, ctx): Promise<OpenWorkstreamOutput> => {
+      const opening = ctx.request.state[OPENING_STATE];
       if (opening === undefined) throw new Error("No workstream is being opened in this request.");
       const { address, owner } = opening;
-      const entries = entriesAt(ctx, address.project.visibility);
+      const entries = workstreamsAt(ctx, address.project.visibility);
       const entry = await entries.get(workstreamEntryKey(address.project.id, owner, address.id));
       const handle = dispatchHandleSchema.safeParse(value);
       if (opening.needsSession && handle.success) {
         await retryOnConflict(() =>
           entry.updateState((state) =>
             state.sessionId == null
-              ? (withWrittenBy(ctx, { ...state, sessionId: handle.data.sessionId, updatedAt: nowIso() }) as never)
+              ? withWrittenBy(ctx, { ...state, sessionId: handle.data.sessionId, updatedAt: nowIso() })
               : state
           )
         );
@@ -368,8 +384,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     inputSchema: updateWorkstreamInputSchema,
     outputSchema: updateWorkstreamOutputSchema,
     resources: WORKSTREAM_RESOURCES,
-    execute: async (input: UpdateWorkstreamInput, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (input: UpdateWorkstreamInput, ctx) => {
       const { project, id, owner, ...changes } = input;
       return { workstream: await updateEntry(ctx, { project, id }, owner ?? ownerOf(ctx, "updateWorkstream"), changes) };
     }
@@ -382,9 +397,8 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     inputSchema: updateOwnWorkstreamInputSchema,
     outputSchema: updateWorkstreamOutputSchema,
     resources: WORKSTREAM_RESOURCES,
-    execute: async (changes, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
-      const ref = (ctx.session.state as Record<string, unknown>)[WORKSTREAM_STATE_KEY];
+    execute: async (changes, ctx) => {
+      const ref = ctx.session.state[WORKSTREAM_STATE_KEY];
       const address = typeof ref === "string" ? parseWorkstreamRef(ref) : undefined;
       if (address === undefined) {
         throw new ProjectRefusedError("not-a-workstream-session", "this session leads no workstream, so there is none to update.");
@@ -449,13 +463,13 @@ function nextObjectives(
  * at the store refuses a write to anyone else's entry, whichever path asks.
  */
 async function updateEntry(
-  ctx: BlockContext,
+  ctx: WriteContext,
   address: WorkstreamAddress,
   owner: string,
   changes: Omit<UpdateWorkstreamInput, "project" | "id" | "owner">
 ): Promise<WorkstreamView> {
   assertWorkstreamId(address.id);
-  const entries = entriesAt(ctx, address.project.visibility);
+  const entries = workstreamsAt(ctx, address.project.visibility);
   const entry = await entries.getOptional(workstreamEntryKey(address.project.id, owner, address.id));
   if (entry === undefined) {
     throw new ProjectRefusedError(
@@ -473,7 +487,7 @@ async function updateEntry(
         ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)),
         ...(objectives === undefined ? {} : { objectives: nextObjectives(state.objectives, objectives, at, signed.writtenBy) }),
         updatedAt: at
-      }) as never;
+      });
     })
   );
   if (report !== undefined) await entry.writeContent(report);

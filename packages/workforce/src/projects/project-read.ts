@@ -14,19 +14,16 @@
  */
 
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { projectAddressSchema, projectRowSchema, projectVisibilitySchema } from "./collections";
-import { projectAt, PROJECT_ROW_RESOURCES } from "./project-address";
+import { projectAt, PROJECT_ROW_RESOURCES, workstreamsAt } from "./project-address";
 import { projectProgress } from "./project-progress";
 import {
   WORKSTREAM_RESOURCES,
   workstreamEntriesPrefix,
   workstreamEntrySchema,
   workstreamPlaceOf,
-  workstreamsAccessor,
   workstreamViewSchema,
-  type WorkstreamEntry,
   type WorkstreamView
 } from "./workstream-collections";
 
@@ -64,10 +61,9 @@ export const readProject = handler({
   inputSchema: readProjectInputSchema,
   outputSchema: readProjectOutputSchema,
   resources: { ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES },
-  execute: async (input, rawCtx): Promise<ReadProjectOutput> => {
-    const ctx = rawCtx as unknown as BlockContext;
+  execute: async (input, ctx): Promise<ReadProjectOutput> => {
     const row = await projectAt(ctx, input.project);
-    const entries = ctx.resources[workstreamsAccessor(input.project.visibility)] as unknown as ResourceCollectionRef<WorkstreamEntry>;
+    const entries = workstreamsAt(ctx, input.project.visibility);
     const workstreams: WorkstreamView[] = [];
     for (const ref of await entries.list(workstreamEntriesPrefix(input.project.id))) {
       const place = workstreamPlaceOf(ref.path);
