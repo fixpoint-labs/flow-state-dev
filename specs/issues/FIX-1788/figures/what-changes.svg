@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 486" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Two panels, today and after, then five cases. Today each hire registers its own copy of a flow, carrying a pin and its configuration, and a session runs on that copy at an address with the org and the owner in it. After, each flow is registered once; a worker is a row its owner holds, or a standard worker read from the files; a session names its worker when it is created and loads it on every turn. Cases: a worker hired for the whole org is reachable by every member today, and belongs to one user after. A hire on another process waits for a restart today, and is seen on the next turn after. A standard worker is changed by editing a file and restarting today, and forked into the user's own after. A session's worker is fixed by the copy's address today; after, it is named in the session's starting state when the session is created, checked by the server there, and never changed. Two workers on a built-in worker flow each have their own memory, before and after.">
+     aria-label="Two panels, today and after, then five cases. Today each hire registers its own copy of a flow, carrying a pin and its configuration, and a session runs on that copy at an address with the org and the owner in it. After, each flow is registered once; a worker is a row its owner holds, or a standard worker read from the files; a session names its worker when it is created and loads it on every turn. Cases: a worker hired for the whole org is reachable by every member today, and belongs to one user after. A hire on another process waits for a restart today, and is seen on the next turn after. A standard worker is changed by editing a file and restarting today, and forked into the user's own after. A session's worker is fixed by the copy's address today; after, it is named in the session's starting state when the session is created, checked by the server there, and never changed. Two of one user&#x27;s workers on a built-in worker flow each have their own skills, before and after; after, each also keeps its own working memory in each conversation, on the one copy, and long-term memory is the user&#x27;s, shared by their workers.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -77,9 +77,9 @@
     <line class="row" x1="16" y1="412" x2="924" y2="412"/>
   </g>
   <g id="case-5">
-    <text class="t-lbl" x="32" y="432">TWO WORKERS ON A BUILT-IN FLOW, EACH WITH PRIVATE NOTES</text>
-    <text class="t-same" x="32" y="452">Each reads only its own</text>
+    <text class="t-lbl" x="32" y="432">TWO WORKERS ON A BUILT-IN FLOW, EACH WITH ITS OWN SKILLS</text>
+    <text class="t-same" x="32" y="452">Each reads only its own, on its own copy</text>
     <text class="t-same" x="494" y="452">Each reads only its own, on the one copy</text>
-    <text class="t-s" x="494" y="470">kept per worker, not per copy</text>
+    <text class="t-s" x="494" y="470">and working memory · long-term memory is the user&#x27;s, shared</text>
   </g>
 </svg>

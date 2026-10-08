@@ -5,8 +5,9 @@
 What the model already decided is the epic's ([ER-1](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt),
 [D3](../../epics/FIX-1786/DECISIONS.md#d3)) and is not reopened here. These are the calls this
 issue makes about forks, about where a session learns its worker, about how private a
-custom worker flow is, and about how a worker's grants hold on a shared copy. D1 and D2, on hires made before this release, were withdrawn by
-[epic D9](../../epics/FIX-1786/DECISIONS.md#d9).
+custom worker flow is, about how a worker's grants hold on a shared copy, and about whose
+long-term memory is on a shared built-in flow. D1 and D2, on hires made before this release,
+were withdrawn by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9).
 
 ## The tree
 
@@ -23,11 +24,14 @@ flowchart TD
   D6 -.->|"rejected · an engine change beyond the epic's seven"| X7["the engine partitions"]
   I --> D7["D7 · core narrows what each turn's model reaches"]
   D7 -.->|"rejected · app tools see every document, or S10 breaks"| X8["Workforce-only tools · a copy per worker"]
+  I --> D8["D8 · long-term memory on a built-in flow is the user's"]
+  D8 -.->|"rejected · an eighth Layer 1 change, in memory"| X9["each worker's own · FIX-1810"]
 ```
 
 Solid edges are what was chosen. D3 and D4 are decided. D5 and D6 were approved by the product
 owner on 2026-10-07 and recorded after merge ([EVOLUTION.md](EVOLUTION.md#amendment-binding)), and
 so was D7, the same day, at S8's guardrail ([EVOLUTION.md](EVOLUTION.md#amendment-visibility)).
+D8 was chosen by the product owner on 2026-10-08 ([EVOLUTION.md](EVOLUTION.md#amendment-memory)).
 D1 and D2 were signed, then withdrawn by [epic D9](../../epics/FIX-1786/DECISIONS.md#d9), so the
 tree leaves them out.
 
@@ -124,7 +128,7 @@ Answered A by the product owner on 2026-10-07. Recorded after merge.
 |---|---|
 | **Instead of** | B: refuse at hire a custom worker flow that keeps data per user without keying it by worker · C: the engine keeps every flow-isolated resource on a worker flow apart per worker, by itself |
 | **Because** | The risk stays inside one user. Two of Alice's workers on one custom flow can read what it stores for her; nothing reaches Bob, whose data is keyed apart ([FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790)). The epic already says a custom worker flow's privacy is its author's, not a registration check ([epic SPEC](../../epics/FIX-1786/SPEC.md), [ER-2](../../epics/FIX-1786/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). B repeats [FIX-1789](https://linear.app/fixpoint-labs/issue/FIX-1789)'s schema-introspection holes: a check that reads a flow's declarations can't see what its code writes. C is an engine change beyond the epic's seven ([epic D3](../../epics/FIX-1786/DECISIONS.md#d3)) |
-| **Locks in** | BR-23 covers the built-in worker flows: `agent`'s skills drawer is kept per worker from P4, through the skills library's per-run key (S7), which fails closed when a run names no worker. Data a custom worker flow keeps per user is shared by that user's workers on it, and never crosses users. The docs show an author how to keep it per worker ([DOCS.md](DOCS.md)) |
+| **Locks in** | BR-23 covers the built-in worker flows, for each worker's skills and its working memory in each conversation: `agent`'s skills drawer is kept per worker from P4, through the skills library's per-run key (S7), which fails closed when a run names no worker. Long-term memory on a built-in flow is the user's, shared by their workers, not each worker's ([D8](#d8)). Data a custom worker flow keeps per user is shared by that user's workers on it, and never crosses users. The docs show an author how to keep it per worker ([DOCS.md](DOCS.md)) |
 
 ![D6: on a custom worker flow, who keeps one user's workers apart. The flow's author, chosen, beside refusing at hire and the engine partitioning. Decides it: what it costs to build, a docs section, against a check with FIX-1789's holes, and an engine change beyond the epic's seven. Price: two of one user's workers share what the flow stores, unless its author keys it. Tie: another user is never reached. Locks in BR-23 on the built-in flows; flips if one user's workers must never mix and authors won't key it themselves](figures/d6-custom-flow-privacy.svg)
 
@@ -153,6 +157,32 @@ It comes down to an app's own tools: under B they see every document on the copy
 **What would change my mind:** a model-facing path in core that can't honour the rule without
 knowing what a worker is. Then the rule is the wrong seam for Layer 1, and it goes back to the
 epic.
+
+<a name="d8"></a>
+## D8 · On a built-in worker flow, long-term memory is the user's, shared by their workers, not each worker's
+
+Option B, chosen by the product owner on 2026-10-08. Recorded after merge. Option A is
+[FIX-1810](https://linear.app/fixpoint-labs/issue/FIX-1810/separate-long-term-memory-per-worker-on-a-shared-agent-flow).
+
+| | |
+|---|---|
+| **The fork** | On `agent`, one copy shared by a user's workers: does each worker keep its own long-term memory (A), or is it the user's (B)? |
+| **Plain terms** | Alice runs a researcher and a writer on `agent`. Each keeps its own skills, and in each conversation its own working memory, what it holds in mind right now. What they remember across conversations, their long-term memory (episodic, semantic, digest), goes to one store that is Alice's. The writer can recall what the researcher learned. Bob never can |
+| **The trade-off** | B builds nothing: long-term memory is already kept per user, and the epic leaves memory as it is. The price is that one user's workers share what they remember: the writer can recall what the researcher learned, until [FIX-1810](https://linear.app/fixpoint-labs/issue/FIX-1810/separate-long-term-memory-per-worker-on-a-shared-agent-flow) ships. A keeps them apart, but the memory package would have to pick its store on every turn from the worker the turn runs as. That is an eighth Layer 1 mechanism change beyond the seven [epic D3](../../epics/FIX-1786/DECISIONS.md#d3) counts, in memory tiers the epic leaves alone: the memory epic, FIX-1775, is not this epic's ([epic SPEC](../../epics/FIX-1786/SPEC.md#what-stays-as-it-is)) |
+| **The call** | B, by the product owner. A is rejected for that cost and moves to FIX-1810 |
+| **Locks in** | BR-23 promises, on the built-in worker flows, each worker's own skills and its own working memory in each conversation, and long-term memory per user. Nothing in memory is keyed by worker. A user's long-term memory never reaches another user: it is kept per user and org ([FIX-1790](https://linear.app/fixpoint-labs/issue/FIX-1790)) |
+
+![D8: on a built-in worker flow, whose is long-term memory. The user's, shared by their workers, chosen, beside each worker's own. Decides it: what it costs to build, nothing new, against an eighth Layer 1 change in memory, FIX-1775's area. Price: one user's workers share what they remember; each keeps its own skills and working memory. Tie: another user is never reached. Locks in BR-23 as per-worker skills and working memory, long-term memory per user; FIX-1810 follows. Flips if one user's workers must not share what they remember](figures/d8-long-term-memory-per-user.svg)
+
+It comes down to cost: A is a Layer 1 change in a part of the system this epic leaves alone.
+
+**What would change it:** users whose workers must not share what they remember, such as one
+worker per client of a consultant. Or the memory epic giving memory a per-run store of its own,
+which would make A cheap. FIX-1810 is where A comes back.
+
+**What being wrong costs:** low. Until FIX-1810 lands, one user's workers recall what the others
+learned, and nothing crosses users. Moving to A later has no one's memories to split: there are
+no consumers yet ([epic D9](../../epics/FIX-1786/DECISIONS.md#d9)).
 
 ## Decided, not asked
 
@@ -197,6 +227,7 @@ BR-10 to BR-19c rule the sessions. What PLAN doesn't hold:
 | A worker noun in the engine | No consumer outside Workforce (epic [D3](../../epics/FIX-1786/DECISIONS.md#d3)); the worker is a readonly state field, which the engine knows only as readonly |
 | On a custom worker flow, refuse at hire · or partition in the engine | [D6](#d6): the first repeats FIX-1789's introspection holes, the second is an engine change beyond the epic's seven |
 | On one shared copy, Workforce's own document tools check grants · or a copy per worker that holds grants | [D7](#d7): the first leaves an app tool on core's document tools seeing every document; the second contradicts S10 |
+| On a built-in worker flow, long-term memory kept per worker | [D8](#d8): an eighth Layer 1 change, in memory, which the epic leaves alone. Follow-up: FIX-1810 |
 
 ## Settled
 
@@ -237,5 +268,10 @@ BR-10 to BR-19c rule the sessions. What PLAN doesn't hold:
   The product owner chose option A, a per-turn resource visibility rule in core that Workforce
   supplies ([D7](#d7)), the epic's seventh Layer 1 mechanism change. S8, BR-24, V7 and the
   guardrail say so. ([EVOLUTION.md](EVOLUTION.md#amendment-visibility))
+- **Amended after merge, long-term memory per user (2026-10-08)** — BR-23 promised a built-in
+  flow's workers their own memory without saying which. The product owner chose B: each worker
+  keeps its own skills and working memory, and long-term memory is the user's, shared by their
+  workers and never another user's ([D8](#d8)). A, long-term memory per worker, is FIX-1810.
+  BR-23, D6, S7, V6, the goal and the docs draft say so. ([EVOLUTION.md](EVOLUTION.md#amendment-memory))
 
 **Open:** none.
