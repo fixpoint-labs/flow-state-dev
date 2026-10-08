@@ -53,8 +53,7 @@
  * `uses`.
  */
 
-import { defineCapability } from "@flow-state-dev/core";
-import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { defineCapability, type LooseBlockContext } from "@flow-state-dev/core";
 import {
   collectionIdFor,
   principalFromContext,
@@ -68,7 +67,6 @@ import {
   defineProjectFilesCollection,
   definePrivateProjectFilesCollection,
   defineWorkstreamClaimsCollection,
-  PROJECTS_RESOURCE,
   projectRowSchema,
   WORKSTREAM_CLAIMS_RESOURCE,
   workstreamClaimSchema,
@@ -76,8 +74,16 @@ import {
   type ProjectVisibility
 } from "./collections";
 import { isMember } from "./membership-gate";
-import { projectFilesAccessor, projectRowsAccessor, PROJECT_FILE_RESOURCES, PROJECT_ROW_RESOURCES } from "./project-address";
-import { WORKSTREAM_RESOURCES, workstreamEntryKey, workstreamsAccessor } from "./workstream-collections";
+import {
+  collectionAt,
+  projectFilesAccessor,
+  projectRowsAt,
+  PROJECT_FILE_RESOURCES,
+  PROJECT_ROW_RESOURCES,
+  workstreamsAt,
+  type MissingCollection
+} from "./project-address";
+import { WORKSTREAM_RESOURCES, workstreamEntryKey } from "./workstream-collections";
 import { parseWorkstreamRef, type WorkstreamAddress } from "./workstream-ref";
 
 /**
@@ -144,8 +150,7 @@ export interface ProjectWorkspaceOptions {
 export function projectWorkspace(options: ProjectWorkspaceOptions = {}): RunSource {
   const workstream = options.board === undefined ? undefined : boardWorkstream(options.board.id);
 
-  const source: RunSource = async (looseCtx): Promise<RunSourceAnswer> => {
-    const ctx = looseCtx as unknown as BlockContext;
+  const source: RunSource = async (ctx): Promise<RunSourceAnswer> => {
     const link = ctx.session?.state?.[WORKSTREAM_STATE_KEY];
     if (typeof link === "string") return fromWorkstream(ctx, link);
     if (workstream === undefined) {
@@ -172,12 +177,12 @@ function boardWorkstream(boardId: string): string {
 }
 
 /** The bare user a run belongs to, not `identity.id`: that is the user record's storage key, which carries the org. */
-function runOwnerOf(ctx: BlockContext): string | undefined {
+function runOwnerOf(ctx: LooseBlockContext): string | undefined {
   return ctx.user?.identity?.userId;
 }
 
 /** A run for the workstream its session leads. */
-async function fromWorkstream(ctx: BlockContext, link: string): Promise<RunSourceAnswer> {
+async function fromWorkstream(ctx: LooseBlockContext, link: string): Promise<RunSourceAnswer> {
   const address: WorkstreamAddress | undefined = parseWorkstreamRef(link);
   const owner = ctx.session.identity.userId;
   if (address === undefined || owner === undefined || owner.length === 0) {
@@ -191,11 +196,11 @@ async function fromWorkstream(ctx: BlockContext, link: string): Promise<RunSourc
       `the run's owner${runOwner ? ` "${runOwner}"` : ""} is not workstream "${id}"'s owner "${owner}", so it may not work on its project's files.`
     );
   }
-  const entries = collectionOn(ctx, workstreamsAccessor(project.visibility));
+  const entries = workstreamsAt(ctx, project.visibility, notHeld);
   if ((await entries.getOptional(workstreamEntryKey(project.id, owner, id))) === undefined) {
     return refused("no-such-workstream", `"${owner}" has no workstream "${id}" in project "${project.id}".`);
   }
-  const stored = await collectionOn(ctx, projectRowsAccessor(project.visibility)).getOptional(project.id);
+  const stored = await projectRowsAt(ctx, project.visibility, notHeld).getOptional(project.id);
   if (stored === undefined) {
     return refused("no-such-project", `workstream "${id}" is in project "${project.id}", which doesn't exist.`);
   }
@@ -203,9 +208,9 @@ async function fromWorkstream(ctx: BlockContext, link: string): Promise<RunSourc
 }
 
 /** A run on a mailbox board a project lists: found through the workstream's claim. */
-async function fromClaim(ctx: BlockContext, workstream: string): Promise<RunSourceAnswer> {
-  const claims = collectionOn(ctx, WORKSTREAM_CLAIMS_RESOURCE);
-  const projects = collectionOn(ctx, PROJECTS_RESOURCE);
+async function fromClaim(ctx: LooseBlockContext, workstream: string): Promise<RunSourceAnswer> {
+  const claims = collectionAt(ctx, WORKSTREAM_CLAIMS_RESOURCE, notHeld);
+  const projects = projectRowsAt(ctx, "shared", notHeld);
 
   const claim = workstreamClaimSchema.safeParse((await claims.getOptional(workstream))?.state);
   if (!claim.success) {
@@ -235,10 +240,10 @@ async function fromClaim(ctx: BlockContext, workstream: string): Promise<RunSour
 }
 
 /** The answer for `project` at `visibility`: its repository, or its files, with its kept files beside either. */
-function answer(ctx: BlockContext, visibility: ProjectVisibility, project: ProjectRow): RunSourceAnswer {
+function answer(ctx: LooseBlockContext, visibility: ProjectVisibility, project: ProjectRow): RunSourceAnswer {
   const declaration = visibility === "private" ? definePrivateProjectFilesCollection() : defineProjectFilesCollection();
   const kept = {
-    collection: collectionOn(ctx, projectFilesAccessor(visibility)) as ResourceCollectionRef<ProjectedEntryState>,
+    collection: collectionAt<ProjectedEntryState>(ctx, projectFilesAccessor(visibility), notHeld),
     collectionId: collectionIdFor(declaration, principalFromContext(ctx))
   };
   return project.repository == null
@@ -251,14 +256,7 @@ function refused(reason: ProjectWorkspaceRefusalReason, message: string): RunSou
   return { kind: "refused", reason, message };
 }
 
-/** The collection at `accessor`, or a loud error naming the capability that installs it. */
-function collectionOn(ctx: BlockContext, accessor: string): ResourceCollectionRef {
-  const ref = (ctx.resources as Record<string, unknown> | undefined)?.[accessor];
-  if (ref === undefined) {
-    throw new Error(
-      `projectWorkspace: the block asking for a run's source does not hold "${accessor}". ` +
-        `Pass projectWorkspaceCapability on its \`uses\` (for harness-manager, \`harnessManager({ uses })\`).`
-    );
-  }
-  return ref as ResourceCollectionRef;
-}
+/** A run source's block that lacks a collection: name the capability that installs it. */
+const notHeld: MissingCollection = (accessor) =>
+  `projectWorkspace: the block asking for a run's source does not hold "${accessor}". ` +
+  `Pass projectWorkspaceCapability on its \`uses\` (for harness-manager, \`harnessManager({ uses })\`).`;
