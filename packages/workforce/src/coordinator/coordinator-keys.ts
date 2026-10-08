@@ -36,6 +36,20 @@ export const HAND_OFF = "handOff";
 export const DELEGATE_ANSWER_ACTION = "delegateAnswer";
 
 /**
+ * The internal entry a delegate reports a delivery it has no answer for on:
+ * its turn failed, or the round's deadline came first. Internal only, like
+ * {@link DELEGATE_ANSWER_ACTION}.
+ */
+export const DELEGATE_MISSED_ACTION = "delegateMissed";
+
+/**
+ * The internal entry a conversation sends answers back out on, in the round
+ * after the one they landed in. Only the conversation's own code dispatches to
+ * it, into its own session.
+ */
+export const ROUTE_ON_ACTION = "routeOn";
+
+/**
  * The internal entry a worker flow declares to take a delegated post. A
  * worker whose flow declares it can be a delegate that takes posts.
  */
@@ -47,6 +61,9 @@ export const MAX_DELEGATES = 25;
 /** The highest `rounds:` a coordinator may set. */
 export const MAX_ROUNDS = 3;
 
+/** How long a round waits for its answers before it closes without the rest, unless the flow sets its own. */
+export const ROUND_DEADLINE_MS = 5 * 60_000;
+
 /** Server-written session state: the conversation's delegate records, `null` until first read or changed. */
 export const DELEGATES_STATE = "delegates";
 /** Server-written session state: the conversation's fallback delegate record, or `null`. */
@@ -55,3 +72,7 @@ export const FALLBACK_STATE = "fallback";
 export const HOLD_STATE = "bestFitHold";
 /** Server-written session state: the delivery ledger. */
 export const DELIVERIES_STATE = "deliveries";
+/** Server-written session state: the delegate round robin gave the person's last post to. */
+export const ROUND_ROBIN_STATE = "roundRobin";
+/** Server-written session state: the rounds still open, each waiting for its answers. */
+export const ROUNDS_STATE = "openRounds";

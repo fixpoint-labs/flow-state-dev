@@ -7,12 +7,15 @@
  *
  * - `helper` takes delegated posts. Its door answers `<worker> heard: <message>`
  *   and records every delivery it hears; a message carrying `[fail]` makes its
- *   turn throw, so the delivery is never answered.
+ *   turn throw, so the delivery is never answered. `[fail:<worker>]` fails only
+ *   that worker's turn, and `[slow:<worker>]` holds only that worker's answer
+ *   for {@link SLOW_MS}.
  * - `quiet` takes nothing: its workers can't be delegates.
  *
  * Models are scripted: the best-fit evaluator by block name
- * (`coordinator-route`), answering from the post's `[route:<worker>]` mark and
- * failing a post with none; the judgment turn by its generator's block name
+ * (`coordinator-route`), answering from the post's first `[route:<worker>]`
+ * mark among the delegates it is offered, else its first mark, and failing a
+ * post with none; the judgment turn by its generator's block name
  * (`coordinator-judgment`), from the script a test hands in.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -67,6 +70,9 @@ export type Heard = { worker: string; message: string; sessionId: string };
 
 const doorInput = z.object({ message: z.string() });
 
+/** How long a `[slow:<worker>]` mark holds that worker's answer. */
+export const SLOW_MS = 600;
+
 function helperFlow(installation: WorkerInstallation, heard: Heard[]) {
   const door = handler({
     name: "helper-run",
@@ -75,7 +81,10 @@ function helperFlow(installation: WorkerInstallation, heard: Heard[]) {
     execute: async (input, ctx) => {
       const worker = await installation.resolveWorker(ctx, "helper");
       heard.push({ worker: worker.id, message: input.message, sessionId: ctx.session.identity.id });
-      if (input.message.includes("[fail]")) throw new Error(`${worker.id} could not answer`);
+      if (input.message.includes("[fail]") || input.message.includes(`[fail:${worker.id}]`)) {
+        throw new Error(`${worker.id} could not answer`);
+      }
+      if (input.message.includes(`[slow:${worker.id}]`)) await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
       return `${worker.id} heard: ${input.message}`;
     }
   });
@@ -100,13 +109,19 @@ function quietFlow(installation: WorkerInstallation) {
   });
 }
 
-/** The scripted best-fit evaluation: `[route:<worker>]` picks that worker, `[route:none]` an off-list one; no mark fails. */
+/**
+ * The scripted best-fit evaluation: the first `[route:<worker>]` mark naming a
+ * delegate it is offered picks that one, else the first mark picks its worker,
+ * `[route:none]` an off-list one; no mark fails.
+ */
 function scriptedRoute() {
   return mockEvaluationModel({
-    answers: ({ state }) => {
+    answers: ({ state, questions }) => {
       const text = (state as { post: { text: string } }).post.text;
-      const picked = /\[route:([a-z.-]+)\]/.exec(text)?.[1];
-      if (picked === undefined) throw new Error("the scripted route has no answer for this post");
+      const marks = [...text.matchAll(/\[route:([a-z.-]+)\]/g)].map((match) => match[1]!);
+      if (marks.length === 0) throw new Error("the scripted route has no answer for this post");
+      const offered = (questions as { member?: { criteria?: Record<string, string> } }).member?.criteria ?? {};
+      const picked = marks.find((mark) => Object.hasOwn(offered, mark)) ?? marks[0]!;
       return { member: { type: "choice", choice: picked === "none" ? "nobody.here" : picked } };
     }
   });
@@ -118,6 +133,8 @@ export type HostOptions = {
   judgment?: MockGeneratorInstance;
   /** The options the judgment turn is built with: the agent kind's catalog and capabilities. */
   agent?: CoordinatorFlowOptions["agent"];
+  /** How long a round waits for its answers. */
+  roundDeadlineMs?: number;
   stores?: StoreRegistry;
 };
 
@@ -136,7 +153,8 @@ export function bootHost(options: HostOptions = {}) {
     installation,
     delegateFlows: [helper],
     routeModel: "typesafe-ai/jev",
-    ...(options.agent === undefined ? {} : { agent: options.agent })
+    ...(options.agent === undefined ? {} : { agent: options.agent }),
+    ...(options.roundDeadlineMs === undefined ? {} : { roundDeadlineMs: options.roundDeadlineMs })
   });
   flows = { helper, quiet, coordinator };
 

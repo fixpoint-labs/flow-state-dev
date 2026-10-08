@@ -21,6 +21,9 @@
  *   person's last post, else one evaluator call, else the fallback delegate,
  *   else the coordinator's own judgment turn. Only when that turn fails is the
  *   post unplaced, recorded and said in the conversation.
+ * - `round-robin`: the next delegate in list order after the one the
+ *   person's last post went to.
+ * - `everyone`: each delegate.
  *
  * Every pick is checked against the user's roster when the post arrives
  * (`coordinator-check.ts`), so a fired delegate is skipped and recorded
@@ -40,6 +43,15 @@
  * name. The round, the delegate and the post come from the delivery the
  * token names, never from the answer. With `rounds: 0`, an answer routes
  * nowhere further.
+ *
+ * **How an answer goes back out** (`coordinator-rounds.ts`). Below the
+ * coordinator's `rounds:`, best fit and round robin route each answer again
+ * as it lands, never to its author; everyone and judgment send a round's
+ * answers on when the round closes. Either way the next round runs on the
+ * internal {@link ROUTE_ON_ACTION}, which the conversation dispatches into
+ * itself, through the same policy steps as a person's post. A delegate with
+ * no answer says so on {@link DELEGATE_MISSED_ACTION}, so a round doesn't wait
+ * on a failed turn, and closes at its deadline whatever is still out.
  */
 import {
   choice,
@@ -58,12 +70,14 @@ import {
   claimAnswer,
   delegateKey,
   deliveryDelegateSchema,
+  markMissed,
   mintDeliveryToken,
   openDelivery,
   settleDelivery,
   type AnswerClaim,
   type DeliveryDelegate,
-  type DeliveryLedger
+  type DeliveryLedger,
+  type DeliveryRecord
 } from "../delivery-ledger";
 import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
 import { FILING_SESSION_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
@@ -79,11 +93,15 @@ import {
   delegateLabel,
   delegateRecordSchema,
   readDelegates,
+  roundAnswerSchema,
+  roundRobinCursorSchema,
   sameDelegate,
+  turnOrder,
   type DelegateChange,
   type DelegateDefaults,
   type DelegateList,
-  type DelegateRecord
+  type DelegateRecord,
+  type OpenRound
 } from "./coordinator-delegates";
 import {
   ADD_DELEGATE,
@@ -92,16 +110,41 @@ import {
   COORDINATOR_ROUTE,
   DELEGATED_POST_ENTRY,
   DELEGATE_ANSWER_ACTION,
+  DELEGATE_MISSED_ACTION,
   DELIVERIES_STATE,
   HAND_OFF,
   HOLD_STATE,
   LIST_DELEGATES,
   MAX_DELEGATES,
   REMOVE_DELEGATE,
+  ROUND_DEADLINE_MS,
+  ROUND_ROBIN_STATE,
+  ROUNDS_STATE,
+  ROUTE_ON_ACTION,
   SET_FALLBACK
 } from "./coordinator-keys";
 import { emitCoordinatorRoute, routedDelegateSchema, type RoutedDelegate } from "./coordinator-route";
-import { delegatedAnswerSchema, type DelegatedAnswer } from "./delegated-post";
+import {
+  beginRound,
+  closeRound,
+  endRound,
+  landAnswer,
+  othersOf,
+  passedOn,
+  roundDeadline,
+  routeOnAfterAnswer,
+  routeOnAfterClose,
+  routeOnSchema,
+  wakeMessage,
+  type ClosedRound,
+  type RouteOn
+} from "./coordinator-rounds";
+import {
+  delegatedAnswerSchema,
+  delegatedMissSchema,
+  type DelegatedAnswer,
+  type DelegatedMiss
+} from "./delegated-post";
 
 /** What the coordinator flow is built from. */
 export interface CoordinatorFlowOptions {
@@ -127,6 +170,13 @@ export interface CoordinatorFlowOptions {
    * worker's do, against the same catalog. Omitted, the agent's defaults.
    */
   agent?: Omit<AgentWorkerFlowOptions, "installation" | "taskLists">;
+  /**
+   * How long a round waits for its answers, in milliseconds, before it
+   * closes without the ones still out and its answers go back out. Only a
+   * coordinator whose `rounds:` is above 0 has rounds to close. Defaults to
+   * five minutes ({@link ROUND_DEADLINE_MS}).
+   */
+  roundDeadlineMs?: number;
 }
 
 /** The door's input: what the person says. */
@@ -138,6 +188,7 @@ type DoorInput = z.infer<typeof doorInputSchema>;
 const POST_STATE = "coordinatorPost";
 
 const postStateSchema = z.object({
+  /** The person's post. Answers going back out keep its id, in a later round. */
   postId: z.string(),
   body: z.string(),
   from: z.string(),
@@ -148,7 +199,11 @@ const postStateSchema = z.object({
   policy: z.string(),
   defaults: z.object({ delegates: z.array(z.string()), fallback: z.string().optional() }),
   /** What each hand-off of the judgment turn came to. */
-  handOffs: z.array(routedDelegateSchema)
+  handOffs: z.array(routedDelegateSchema),
+  /** In a round after the person's post: the answers going back out. */
+  answers: z.array(roundAnswerSchema).optional(),
+  /** Who they never go back to: their author, under best fit and round robin. */
+  exclude: deliveryDelegateSchema.optional()
 });
 
 type PostState = z.infer<typeof postStateSchema>;
@@ -176,7 +231,9 @@ const deliveryDispatchSchema = deliveryRequestSchema.extend({
   token: z.string(),
   /** False when the ledger already settled this delivery: nothing is dispatched. */
   deliver: z.boolean(),
-  sessionKey: z.string()
+  sessionKey: z.string(),
+  /** Its round's deadline, when its answer can go back out. */
+  deadlineAt: z.number().int().optional()
 });
 
 type DeliveryDispatch = z.infer<typeof deliveryDispatchSchema>;
@@ -267,6 +324,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
           `so a delegate on it couldn't take a post. Declare it with delegatedPostEntry(...).`
       );
     }
+  }
+  const deadlineMs = options.roundDeadlineMs ?? ROUND_DEADLINE_MS;
+  if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+    throw new Error(`defineCoordinatorFlow: roundDeadlineMs must be a positive number of milliseconds, not ${deadlineMs}.`);
   }
   const postFlows = new Set(options.delegateFlows.map((flow) => flow.kind));
   const check = createDelegateCheck(installation, postFlows);
@@ -392,7 +453,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // Delivery: open in the ledger, dispatch to the delegate's flow, settle.
   // -------------------------------------------------------------------------
 
-  /** Open the delivery in the ledger, or find it already opened. */
+  /**
+   * Open the delivery in the ledger, or find it already opened. In a round
+   * below the limit it carries the round's deadline, which its round's first
+   * delivery sets.
+   */
   const openForDelivery = handler({
     name: "coordinator-open-delivery",
     inputSchema: deliveryRequestSchema,
@@ -400,15 +465,21 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     sessionStateSchema: coordinatorSessionStateSchema,
     execute: async (request: DeliveryRequest, ctx): Promise<DeliveryDispatch> => {
       const token = mintDeliveryToken();
+      const now = Date.now();
       const opened = await withOutcome(
         (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
           ctx.session.atomicState(mutator as never),
         (state: Readonly<Record<string, unknown>>) => {
           const ledger = (state[DELIVERIES_STATE] ?? []) as DeliveryLedger;
           const result = openDelivery(ledger, request, token);
+          const rounds = (state[ROUNDS_STATE] ?? []) as OpenRound[];
+          const timed = roundDeadline(rounds, request.postId, request.round, now, deadlineMs);
           return {
-            state: result.ledger === ledger ? {} : { [DELIVERIES_STATE]: result.ledger },
-            result: { token: result.delivery.token, deliver: result.deliver }
+            state: {
+              ...(result.ledger === ledger ? {} : { [DELIVERIES_STATE]: result.ledger }),
+              ...(timed.deadlineAt === undefined ? {} : { [ROUNDS_STATE]: timed.rounds })
+            },
+            result: { token: result.delivery.token, deliver: result.deliver, deadlineAt: timed.deadlineAt }
           };
         }
       );
@@ -417,7 +488,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         ...request,
         token: opened.token,
         deliver: opened.deliver,
-        sessionKey: `delegate:${delegateKey(request.delegate)}`
+        sessionKey: `delegate:${delegateKey(request.delegate)}`,
+        ...(opened.deadlineAt === undefined ? {} : { deadlineAt: opened.deadlineAt })
       };
     }
   });
@@ -447,7 +519,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
           token: delivery.token,
           body: delivery.body,
           from: delivery.from,
-          coordinator: delivery.coordinator
+          coordinator: delivery.coordinator,
+          ...(delivery.deadlineAt === undefined ? {} : { deadlineAt: delivery.deadlineAt })
         })
       })
     );
@@ -526,17 +599,61 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     return post;
   };
 
-  /** A delivery of this request's post to `delegate`, which runs on `flow`. */
-  const deliveryOf = (post: PostState, delegate: DeliveryDelegate, flow: string): DeliveryRequest => ({
+  /** A delegate record as a delivery names it: its worker, and its target when it has one. */
+  const bare = (delegate: DeliveryDelegate): DeliveryDelegate => ({
+    worker: delegate.worker,
+    ...(delegate.target === undefined ? {} : { target: delegate.target })
+  });
+
+  /**
+   * A delivery of this request's post to `delegate`, which runs on `flow`:
+   * the post as it stands, or `passed`, the answers this delegate is handed.
+   */
+  const deliveryOf = (
+    post: PostState,
+    delegate: DeliveryDelegate,
+    flow: string,
+    passed: { from: string; body: string } = post
+  ): DeliveryRequest => ({
     postId: post.postId,
     round: post.round,
-    delegate: { worker: delegate.worker, ...(delegate.target === undefined ? {} : { target: delegate.target }) },
+    delegate: bare(delegate),
     flow,
-    body: post.body,
-    from: post.from,
+    body: passed.body,
+    from: passed.from,
     coordinator: post.coordinator,
     filingSessionId: post.filingSessionId
   });
+
+  /** What the judgment turn reads: the person's post, or the answers going back out. */
+  const turnMessage = (post: PostState): string =>
+    post.answers === undefined ? post.body : wakeMessage(post.round - 1, post.answers);
+
+  /** The post state every routing of this conversation starts from. */
+  const postStateOf = async (
+    ctx: BlockContext,
+    opening: Pick<PostState, "postId" | "body" | "from" | "round"> & Partial<Pick<PostState, "answers" | "exclude">>
+  ) => {
+    const { worker, config, defaults } = await coordinatorOf(ctx);
+    // The first read seeds the conversation's copy of the defaults.
+    await readDelegates(ctx.session, defaults);
+    const post: PostState = {
+      ...opening,
+      coordinator: worker.id,
+      filingSessionId: await filingSessionIdOf(ctx.session),
+      policy: config.routing,
+      defaults: { delegates: [...defaults.delegates], ...(defaults.fallback === undefined ? {} : { fallback: defaults.fallback }) },
+      handOffs: []
+    };
+    // Below the limit, this round waits for its answers so they can go back out.
+    if (post.round < config.rounds) {
+      await ctx.session.atomicState((state) => ({
+        [ROUNDS_STATE]: beginRound((state[ROUNDS_STATE] ?? []) as OpenRound[], post.postId, post.round)
+      }));
+    }
+    await ctx.request.patchState({ [POST_STATE]: post } as never);
+    return post;
+  };
 
   const openPost = handler({
     name: "coordinator-open-post",
@@ -545,22 +662,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     ...blockBase,
     requestStateSchema,
     execute: async (input: DoorInput, ctx) => {
-      const { worker, config, defaults } = await coordinatorOf(ctx as never);
-      // The first read seeds the conversation's copy of the defaults.
-      await readDelegates(ctx.session, defaults);
-      const post: PostState = {
+      const post = await postStateOf(ctx as never, {
         postId: ctx.request.identity.id,
         body: input.message,
         from: ctx.session.identity.userId ?? "",
-        round: 0,
-        coordinator: worker.id,
-        filingSessionId: await filingSessionIdOf(ctx.session),
-        policy: config.routing,
-        defaults: { delegates: [...defaults.delegates], ...(defaults.fallback === undefined ? {} : { fallback: defaults.fallback }) },
-        handOffs: []
-      };
-      await ctx.request.patchState({ [POST_STATE]: post });
-      return { message: input.message, policy: config.routing };
+        round: 0
+      });
+      return { message: input.message, policy: post.policy };
     }
   });
 
@@ -685,7 +793,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   type BestFitCaseValue = z.infer<typeof bestFitCaseSchema>;
 
-  /** One roster read per post: every delegate checked now, the options, the holder and the fallback. */
+  /**
+   * One roster read per post: every delegate checked now, the options, the
+   * holder and the fallback. An answer going back out is never offered to its
+   * own author, and holds nothing: the hold is about a person's posts.
+   */
   const readBestFitCase = handler({
     name: "coordinator-best-fit-case",
     inputSchema: z.unknown(),
@@ -700,8 +812,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const byLabel: BestFitCaseValue["byLabel"] = {};
       const skipped: RoutedDelegate[] = [];
       for (const record of listed.delegates) {
+        if (post.exclude !== undefined && sameDelegate(record, post.exclude)) continue;
         const checked = await check(ctx as never, record.worker, "post");
-        const delegate = { worker: record.worker, ...(record.target === undefined ? {} : { target: record.target }) };
+        const delegate = bare(record);
         if (!checked.ok) {
           skipped.push({ ...delegate, outcome: "skipped", reason: checked.message });
           continue;
@@ -712,7 +825,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         const pickBy = record.note ?? checked.worker.description ?? undefined;
         if (pickBy !== undefined) options[label] = pickBy;
       }
-      const hold = coordinatorSessionStateSchema.shape[HOLD_STATE].parse(ctx.session.state[HOLD_STATE] ?? null);
+      const hold =
+        post.round === 0 ? coordinatorSessionStateSchema.shape[HOLD_STATE].parse(ctx.session.state[HOLD_STATE] ?? null) : null;
       const held = hold === null ? undefined : delegateLabel(hold.delegate);
       const fallback = listed.fallback === null ? undefined : delegateLabel(listed.fallback);
       return {
@@ -739,14 +853,16 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     })
   });
 
+  /** Where a fixed policy put the post: deliveries to make, best fit's miss for judgment, or nobody. */
   const placedSchema = z.union([
     z.object({
       place: z.literal("deliver"),
-      by: z.enum(["held", "evaluated", "fallback"]),
+      by: z.enum(["held", "evaluated", "fallback", "round-robin", "everyone"]),
       picks: z.array(deliveryRequestSchema),
       skipped: z.array(routedDelegateSchema)
     }),
-    z.object({ place: z.literal("judgment"), reason: z.string(), skipped: z.array(routedDelegateSchema) })
+    z.object({ place: z.literal("judgment"), reason: z.string(), skipped: z.array(routedDelegateSchema) }),
+    z.object({ place: z.literal("unplaced"), reason: z.string(), skipped: z.array(routedDelegateSchema) })
   ]);
 
   type Placed = z.infer<typeof placedSchema>;
@@ -762,13 +878,15 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const bestFit = bestFitCaseSchema.parse(ctx.parent?.input);
       const post = postOf(ctx as never);
       const placed = placeBestFit(bestFit.ladder as BestFitCase, answer);
+      // Only a person's post moves the hold.
+      const holds = post.round === 0;
       if (placed.by === "none") {
-        await ctx.session.patchState({ [HOLD_STATE]: null } as never);
+        if (holds) await ctx.session.patchState({ [HOLD_STATE]: null } as never);
         const reason = missReason(placed.miss) + (placed.fallbackUnreachable ? "; the fallback delegate can't be reached" : "");
         return { place: "judgment", reason, skipped: bestFit.skipped };
       }
       const target = bestFit.byLabel[placed.member]!;
-      await ctx.session.patchState({ [HOLD_STATE]: { postId: post.postId, delegate: target.delegate } } as never);
+      if (holds) await ctx.session.patchState({ [HOLD_STATE]: { postId: post.postId, delegate: target.delegate } } as never);
       return {
         place: "deliver",
         by: placed.by,
@@ -832,20 +950,44 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         delegates: [],
         none: why
       });
-      ctx.emit.message(`Nobody took this post: ${why}.`);
+      // A person's post is answered in the conversation; answers going back out aren't.
+      if (post.round === 0) ctx.emit.message(`Nobody took this post: ${why}.`);
       return { unplaced: why };
     }
   });
 
   const judgmentAfterBestFit = (judgmentTurn.rescue([{ block: unplaced }]) as BlockDefinition<any, any>).connectInput(
-    (_placed: unknown, ctx: BlockContext) => ({ message: postOf(ctx).body })
+    (_placed: unknown, ctx: BlockContext) => ({ message: turnMessage(postOf(ctx)) })
   );
+
+  /** A fixed policy found nobody to take the post: recorded, and on a person's post said in the conversation (BR-19). */
+  const recordNobody = handler({
+    name: "coordinator-record-nobody",
+    inputSchema: placedSchema,
+    outputSchema: z.object({ unplaced: z.string() }),
+    requestStateSchema,
+    execute: async (placed: Placed, ctx) => {
+      const post = postOf(ctx as never);
+      const reason = placed.place === "deliver" ? "no pick could be delivered" : placed.reason;
+      await emitCoordinatorRoute(ctx as never, {
+        postId: post.postId,
+        round: post.round,
+        policy: post.policy,
+        by: "unplaced",
+        delegates: placed.skipped,
+        none: reason
+      });
+      if (post.round === 0) ctx.emit.message(`Nobody took this post: ${reason}.`);
+      return { unplaced: reason };
+    }
+  });
 
   const afterPlace = router({
     name: "coordinator-best-fit-after",
     inputSchema: placedSchema,
-    routes: [deliverPicks, judgmentAfterBestFit],
-    execute: (placed: Placed) => (placed.place === "deliver" ? deliverPicks : judgmentAfterBestFit)
+    routes: [deliverPicks, judgmentAfterBestFit, recordNobody],
+    execute: (placed: Placed) =>
+      placed.place === "deliver" ? deliverPicks : placed.place === "judgment" ? judgmentAfterBestFit : recordNobody
   } as never) as BlockDefinition<any, any>;
 
   const bestFit = sequencer({ name: "coordinator-best-fit", inputSchema: z.unknown() })
@@ -853,51 +995,282 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     .step(decideBestFit)
     .step(afterPlace);
 
+  // --- round robin ---------------------------------------------------------
+
+  /**
+   * The next delegate in list order that can be reached. For a person's post
+   * the turn goes on from the delegate the last one went to, and moves on;
+   * for an answer going back out it goes on from the answer's author, never
+   * to it, and stays where it was.
+   */
+  const pickRoundRobin = handler({
+    name: "coordinator-round-robin-pick",
+    inputSchema: z.unknown(),
+    outputSchema: placedSchema,
+    ...blockBase,
+    requestStateSchema,
+    execute: async (_input: unknown, ctx): Promise<Placed> => {
+      const post = postOf(ctx as never);
+      const list = currentDelegates(ctx.session.state, post.defaults).delegates;
+      const author = post.exclude;
+      const after =
+        author === undefined
+          ? roundRobinCursorSchema.nullable().parse(ctx.session.state[ROUND_ROBIN_STATE] ?? null)
+          : { delegate: author, index: Math.max(0, list.findIndex((record) => sameDelegate(record, author))) };
+      const skipped: RoutedDelegate[] = [];
+      for (const record of turnOrder(list, after)) {
+        if (author !== undefined && sameDelegate(record, author)) continue;
+        const checked = await check(ctx as never, record.worker, "post");
+        if (!checked.ok) {
+          skipped.push({ ...bare(record), outcome: "skipped", reason: checked.message });
+          continue;
+        }
+        if (author === undefined) {
+          const index = list.findIndex((candidate) => sameDelegate(candidate, record));
+          await ctx.session.patchState({ [ROUND_ROBIN_STATE]: { delegate: bare(record), index } } as never);
+        }
+        return { place: "deliver", by: "round-robin", picks: [deliveryOf(post, record, checked.worker.flow)], skipped };
+      }
+      return {
+        place: "unplaced",
+        reason:
+          author === undefined
+            ? "no delegate in this conversation can be reached"
+            : "no other delegate in this conversation can be reached",
+        skipped
+      };
+    }
+  });
+
+  const roundRobin = sequencer({ name: "coordinator-round-robin", inputSchema: z.unknown() })
+    .step(pickRoundRobin)
+    .step(afterPlace);
+
+  // --- everyone ------------------------------------------------------------
+
+  /**
+   * Each delegate that can be reached. On a person's post each gets the post;
+   * when a round's answers go back out, each gets the others' answers from it,
+   * and one with no other answer to get is skipped.
+   */
+  const pickEveryone = handler({
+    name: "coordinator-everyone-pick",
+    inputSchema: z.unknown(),
+    outputSchema: placedSchema,
+    ...blockBase,
+    requestStateSchema,
+    execute: async (_input: unknown, ctx): Promise<Placed> => {
+      const post = postOf(ctx as never);
+      const picks: DeliveryRequest[] = [];
+      const skipped: RoutedDelegate[] = [];
+      for (const record of currentDelegates(ctx.session.state, post.defaults).delegates) {
+        const checked = await check(ctx as never, record.worker, "post");
+        if (!checked.ok) {
+          skipped.push({ ...bare(record), outcome: "skipped", reason: checked.message });
+          continue;
+        }
+        if (post.answers === undefined) {
+          picks.push(deliveryOf(post, record, checked.worker.flow));
+          continue;
+        }
+        const others = othersOf(post.answers, record);
+        if (others.length === 0) {
+          skipped.push({ ...bare(record), outcome: "skipped", reason: `no other delegate answered in round ${post.round - 1}` });
+          continue;
+        }
+        picks.push(deliveryOf(post, record, checked.worker.flow, passedOn(others)));
+      }
+      if (picks.length > 0) return { place: "deliver", by: "everyone", picks, skipped };
+      return {
+        place: "unplaced",
+        reason:
+          post.answers === undefined
+            ? "no delegate in this conversation can be reached"
+            : "no delegate that can be reached has another's answer to get",
+        skipped
+      };
+    }
+  });
+
+  const everyone = sequencer({ name: "coordinator-everyone", inputSchema: z.unknown() })
+    .step(pickEveryone)
+    .step(afterPlace);
+
   // --- the door ------------------------------------------------------------
+
+  const fixedPolicies: Readonly<Record<string, BlockDefinition<any, any>>> = {
+    "best-fit": bestFit,
+    "round-robin": roundRobin,
+    everyone
+  };
 
   const routeByPolicy = router({
     name: "coordinator-route-by-policy",
     inputSchema: z.object({ message: z.string(), policy: z.string() }),
-    routes: [judgmentTurn, bestFit],
-    execute: (opened: { policy: string }) => (opened.policy === "best-fit" ? bestFit : judgmentTurn)
+    routes: [judgmentTurn, bestFit, roundRobin, everyone],
+    execute: (opened: { policy: string }) => fixedPolicies[opened.policy] ?? judgmentTurn
   } as never) as BlockDefinition<any, any>;
+
+  // --- rounds --------------------------------------------------------------
+
+  /** Send answers back out in their next round: into this conversation, on its route-on entry. */
+  const routeOnDispatch = dispatcher({
+    name: "coordinator-route-on-dispatch",
+    action: ROUTE_ON_ACTION,
+    inputSchema: routeOnSchema,
+    session: { id: (_routeOn: RouteOn, ctx: BlockContext) => ctx.session.identity.id }
+  });
+
+  /**
+   * Where answers go next, by this conversation's policy and limit now: an
+   * answer as it lands, or a round's answers as it closes.
+   */
+  const routeOnFor = async (
+    ctx: BlockContext,
+    event: { landed?: { delivery: DeliveryRecord; body: string; kept: boolean }; closed?: ClosedRound }
+  ): Promise<RouteOn | undefined> => {
+    // An answer that landed outside an open round, and no round closed: nothing goes on.
+    if (event.landed?.kept !== true && event.closed === undefined) return undefined;
+    const { config } = await coordinatorOf(ctx);
+    const afterAnswer =
+      event.landed === undefined
+        ? undefined
+        : routeOnAfterAnswer(event.landed.delivery, event.landed.body, event.landed.kept, config.routing, config.rounds);
+    if (afterAnswer !== undefined) return afterAnswer;
+    return event.closed === undefined ? undefined : routeOnAfterClose(event.closed, config.routing, config.rounds);
+  };
+
+  const routeOnOutputSchema = z.object({ routeOn: routeOnSchema.optional() });
+  const hasRouteOn = (value: { routeOn?: RouteOn }) => value.routeOn !== undefined;
+  const toRouteOn = (value: { routeOn?: RouteOn }) => value.routeOn!;
+
+  /** A routing is done adding deliveries to its round: close the round if nothing is still out. */
+  const endRouting = handler({
+    name: "coordinator-end-routing",
+    inputSchema: z.unknown(),
+    outputSchema: routeOnOutputSchema,
+    ...blockBase,
+    requestStateSchema,
+    execute: async (_value: unknown, ctx) => {
+      const post = postOf(ctx as never);
+      const isThisRound = (open: OpenRound) => open.postId === post.postId && open.round === post.round;
+      // A round at the limit was never opened, and one closed at its deadline is gone: nothing to end.
+      if (!((ctx.session.state[ROUNDS_STATE] ?? []) as OpenRound[]).some(isThisRound)) return {};
+      const now = Date.now();
+      const closed = await withOutcome(
+        (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
+          ctx.session.atomicState(mutator as never),
+        (state: Readonly<Record<string, unknown>>) => {
+          const rounds = (state[ROUNDS_STATE] ?? []) as OpenRound[];
+          if (!rounds.some(isThisRound)) return { state: {}, result: null };
+          const ledger = (state[DELIVERIES_STATE] ?? []) as DeliveryLedger;
+          const ended = closeRound(endRound(rounds, post.postId, post.round), ledger, post.postId, post.round, now);
+          return { state: { [ROUNDS_STATE]: ended.rounds }, result: ended.closed ?? null };
+        }
+      );
+      const routeOn = await routeOnFor(ctx as never, closed === undefined || closed === null ? {} : { closed });
+      return routeOn === undefined ? {} : { routeOn };
+    }
+  });
+
+  /** After a routing: end its round, and send the round's answers on if that closed it. */
+  const finishRouting = sequencer({ name: "coordinator-finish-routing", inputSchema: z.unknown() })
+    .step(endRouting)
+    .tapIf(hasRouteOn, toRouteOn, routeOnDispatch);
 
   const door = sequencer({ name: "coordinator-run", inputSchema: doorInputSchema })
     .step(openPost)
-    .step(routeByPolicy);
+    .step(routeByPolicy)
+    .tap(finishRouting);
+
+  /**
+   * Open a round after the person's post: the answers going back out, routed
+   * by the conversation's policy now. When none of the closed round's
+   * deliveries was answered, nothing goes on: recorded, and done.
+   */
+  const openRouteOn = handler({
+    name: "coordinator-open-route-on",
+    inputSchema: routeOnSchema,
+    outputSchema: z.object({ message: z.string(), policy: z.string(), done: z.boolean() }),
+    ...blockBase,
+    requestStateSchema,
+    execute: async (routeOn: RouteOn, ctx) => {
+      if (routeOn.answers.length === 0) {
+        const { config } = await coordinatorOf(ctx as never);
+        await emitCoordinatorRoute(ctx as never, {
+          postId: routeOn.postId,
+          round: routeOn.round,
+          policy: config.routing,
+          by: config.routing === "judgment" ? "judgment" : "everyone",
+          delegates: [],
+          none: `no delegate answered in round ${routeOn.round - 1}`
+        });
+        return { message: "", policy: config.routing, done: true };
+      }
+      const post = await postStateOf(ctx as never, {
+        postId: routeOn.postId,
+        round: routeOn.round,
+        ...passedOn(routeOn.answers),
+        answers: routeOn.answers,
+        ...(routeOn.exclude === undefined ? {} : { exclude: routeOn.exclude })
+      });
+      return { message: turnMessage(post), policy: post.policy, done: false };
+    }
+  });
+
+  const routeOnEntry = sequencer({ name: "coordinator-route-on", inputSchema: routeOnSchema })
+    .step(openRouteOn)
+    .exitIf((opened: { done: boolean }) => opened.done)
+    .step(routeByPolicy)
+    .tap(finishRouting);
 
   // --- an answer -----------------------------------------------------------
 
   /**
    * A delegate's answer: claimed once by its delivery's token, landed as a
    * line under the delegate's name. A token no delivery carries is refused;
-   * a second answer to one delivery writes nothing.
+   * a second answer to one delivery writes nothing. In an open round the
+   * answer is kept for what goes on, and the round closes if it was the last
+   * one out; in a round already closed, it lands and goes no further.
    */
-  const delegateAnswer = handler({
+  const claimDelegateAnswer = handler({
     name: "coordinator-delegate-answer",
     inputSchema: delegatedAnswerSchema,
-    outputSchema: z.object({ landed: z.boolean() }),
-    sessionStateSchema: coordinatorSessionStateSchema,
+    outputSchema: z.object({ landed: z.boolean(), routeOn: routeOnSchema.optional() }),
+    ...blockBase,
     execute: async (answer: DelegatedAnswer, ctx) => {
-      const claim = await withOutcome(
+      const now = Date.now();
+      type Claimed = { claim: AnswerClaim; kept: boolean; closed?: ClosedRound };
+      const outcome = await withOutcome(
         (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
           ctx.session.atomicState(mutator as never),
-        (state: Readonly<Record<string, unknown>>): { state: Record<string, unknown>; result: AnswerClaim } => {
+        (state: Readonly<Record<string, unknown>>): { state: Record<string, unknown>; result: Claimed } => {
           const claimed = claimAnswer((state[DELIVERIES_STATE] ?? []) as DeliveryLedger, answer.token);
-          if (!claimed.claimed) return { state: {}, result: claimed };
+          if (!claimed.claimed) return { state: {}, result: { claim: claimed, kept: false } };
           const hold = state[HOLD_STATE] as { postId: string; delegate: DeliveryDelegate } | null | undefined;
           const releases =
             hold !== null &&
             hold !== undefined &&
             hold.postId === claimed.delivery.postId &&
             sameDelegate(hold.delegate, claimed.delivery.delegate);
+          const rounds = (state[ROUNDS_STATE] ?? []) as OpenRound[];
+          const landed = landAnswer(rounds, claimed.ledger, claimed.delivery, answer.body, now);
           return {
-            state: { [DELIVERIES_STATE]: claimed.ledger, ...(releases ? { [HOLD_STATE]: null } : {}) },
-            result: claimed
+            state: {
+              [DELIVERIES_STATE]: claimed.ledger,
+              ...(releases ? { [HOLD_STATE]: null } : {}),
+              ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: landed.rounds })
+            },
+            result: {
+              claim: claimed,
+              kept: landed.kept,
+              ...(landed.closed === undefined ? {} : { closed: landed.closed })
+            }
           };
         }
       );
-      if (claim === undefined) throw new Error("The answer could not be claimed.");
+      if (outcome === undefined) throw new Error("The answer could not be claimed.");
+      const { claim } = outcome;
       if (!claim.claimed) {
         if (claim.reason === "unknown-token") {
           throw new Error("No delivery in this conversation carries that token, so the answer was refused.");
@@ -905,9 +1278,60 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         return { landed: false };
       }
       ctx.emit.message(answer.body, { agentName: claim.delivery.delegate.worker });
-      return { landed: true };
+      const routeOn = await routeOnFor(ctx as never, {
+        landed: { delivery: claim.delivery, body: answer.body, kept: outcome.kept },
+        ...(outcome.closed === undefined ? {} : { closed: outcome.closed })
+      });
+      return { landed: true, ...(routeOn === undefined ? {} : { routeOn }) };
     }
   });
+
+  const delegateAnswer = sequencer({ name: "coordinator-delegate-answered", inputSchema: delegatedAnswerSchema })
+    .step(claimDelegateAnswer)
+    .tapIf(hasRouteOn, toRouteOn, routeOnDispatch);
+
+  /**
+   * A delegate with no answer for a delivery: its turn failed, or its round's
+   * deadline came while it was still working. The delivery is marked missed,
+   * once, and its round closes if nothing else is out, or if its deadline has
+   * passed. The round's deadline is this conversation's own: the report only
+   * wakes it. A token no delivery carries is refused.
+   */
+  const claimDelegateMiss = handler({
+    name: "coordinator-delegate-missed",
+    inputSchema: delegatedMissSchema,
+    outputSchema: z.object({ missed: z.boolean(), routeOn: routeOnSchema.optional() }),
+    ...blockBase,
+    execute: async (miss: DelegatedMiss, ctx) => {
+      const now = Date.now();
+      const why =
+        miss.failed === undefined ? "it hadn't answered by the round's deadline" : `its turn failed: ${miss.failed}`;
+      type Marked = { marked: boolean; unknown: boolean; closed?: ClosedRound };
+      const outcome = await withOutcome(
+        (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
+          ctx.session.atomicState(mutator as never),
+        (state: Readonly<Record<string, unknown>>): { state: Record<string, unknown>; result: Marked } => {
+          const marked = markMissed((state[DELIVERIES_STATE] ?? []) as DeliveryLedger, miss.token, why);
+          if (!marked.marked) return { state: {}, result: { marked: false, unknown: marked.reason === "unknown-token" } };
+          const rounds = (state[ROUNDS_STATE] ?? []) as OpenRound[];
+          const { postId, round } = marked.delivery;
+          const closing = closeRound(rounds, marked.ledger, postId, round, now);
+          return {
+            state: { [DELIVERIES_STATE]: marked.ledger, ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: closing.rounds }) },
+            result: { marked: true, unknown: false, ...(closing.closed === undefined ? {} : { closed: closing.closed }) }
+          };
+        }
+      );
+      if (outcome === undefined) throw new Error("The missed delivery could not be marked.");
+      if (outcome.unknown) throw new Error("No delivery in this conversation carries that token, so the report was refused.");
+      const routeOn = outcome.closed === undefined ? undefined : await routeOnFor(ctx as never, { closed: outcome.closed });
+      return { missed: outcome.marked, ...(routeOn === undefined ? {} : { routeOn }) };
+    }
+  });
+
+  const delegateMissed = sequencer({ name: "coordinator-delegate-missed-it", inputSchema: delegatedMissSchema })
+    .step(claimDelegateMiss)
+    .tapIf(hasRouteOn, toRouteOn, routeOnDispatch);
 
   const flow = defineFlow({
     kind: COORDINATOR_KIND,
@@ -944,8 +1368,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     },
     internal: {
       actions: {
-        // Here only, never in `actions`: an answer names its delivery.
-        [DELEGATE_ANSWER_ACTION]: { inputSchema: delegatedAnswerSchema, block: delegateAnswer, concurrency: "queue" }
+        // Here only, never in `actions`: an answer, and a report of none, name their delivery.
+        [DELEGATE_ANSWER_ACTION]: { inputSchema: delegatedAnswerSchema, block: delegateAnswer, concurrency: "queue" },
+        [DELEGATE_MISSED_ACTION]: { inputSchema: delegatedMissSchema, block: delegateMissed, concurrency: "queue" },
+        // Only this conversation's own code sends answers back out.
+        [ROUTE_ON_ACTION]: { inputSchema: routeOnSchema, block: routeOnEntry }
       }
     }
   } as never) as ReturnType<typeof defineFlow>;

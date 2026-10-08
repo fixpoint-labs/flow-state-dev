@@ -7,13 +7,13 @@
  *   conversation the first time its delegates are read or changed; never
  *   written back.
  * - `routing`: how a post finds its delegates. `judgment` (the default) is the
- *   coordinator's own turn deciding; `best-fit` is one evaluator call.
+ *   coordinator's own turn deciding; `best-fit` is one evaluator call;
+ *   `round-robin` is the next delegate in list order; `everyone` is each
+ *   delegate.
  * - `fallback`: the delegate a post best fit can't place goes to. One of
  *   `delegates`.
  * - `rounds`: how many times an answer goes back out. Zero by default, at most
- *   {@link MAX_ROUNDS}. Only zero is accepted for now: a coordinator doesn't
- *   send answers back out yet, so a higher value is refused rather than
- *   accepted and ignored.
+ *   {@link MAX_ROUNDS}.
  * - `model`, `tools`, `skills` and the rest: the agent turn's own, read the
  *   same way an `agent` worker's are.
  */
@@ -22,7 +22,7 @@ import { workerConfigSchema } from "../worker-config";
 import { MAX_DELEGATES, MAX_ROUNDS } from "./coordinator-keys";
 
 /** The routing policies a coordinator can name. */
-export const COORDINATOR_ROUTING = ["judgment", "best-fit"] as const;
+export const COORDINATOR_ROUTING = ["judgment", "best-fit", "round-robin", "everyone"] as const;
 
 export type CoordinatorRouting = (typeof COORDINATOR_ROUTING)[number];
 
@@ -47,7 +47,6 @@ function coordinatorShape() {
       .int()
       .min(0)
       .max(MAX_ROUNDS, { message: `rounds can be at most ${MAX_ROUNDS}` })
-      .refine((rounds) => rounds === 0, { message: "rounds above 0 aren't supported yet" })
       .default(0)
   };
 }
