@@ -90,7 +90,7 @@ import {
 import { pinRejectsCaller } from "./instance-pin";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
-import type { AskResumeOperation } from "../routes/ask-resume";
+import type { AskResumeOperation } from "./ask-resume-operation";
 
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
 export type ParentTaskBinding = {

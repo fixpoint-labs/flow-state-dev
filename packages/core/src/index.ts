@@ -153,7 +153,13 @@ export type {
  * The ask gate — what a turn parks on while a colleague answers, and how the
  * answer comes back as the result of the call that parked.
  */
-export { ASK_GATE_REASON, AskEndedError, parkOnAsk, parseAskOutcome } from "./types/ask-gate";
+export {
+  ASK_GATE_REASON,
+  AskEndedError,
+  isAskGate,
+  parkOnAsk,
+  parseAskOutcome
+} from "./types/ask-gate";
 export type {
   AskEndingErrorCode,
   AskGateBinding,

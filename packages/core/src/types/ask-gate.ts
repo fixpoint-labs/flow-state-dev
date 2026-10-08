@@ -16,9 +16,10 @@
  *
  * **Never resumed from outside the asking conversation.** The public resume
  * route answers not-found for an ask gate, whatever source the asking turn
- * arrived on. Only the asker's own conversation — a running request in the
- * same session, through `RequestHost.resumeAsk` — or the host's own durability
- * sweep resolves one.
+ * arrived on. Only the asker's own conversation resolves one: a running
+ * request in the same session, through `RequestHost.resumeAsk`. (The host's
+ * durability sweep resuming an overdue ask with `wait_timed_out` is FIX-1816
+ * P2's; no ask carries a deadline yet.)
  *
  * `core` cannot name `orchestration`'s board types, so the binding crosses as
  * two strings, and the answer as `unknown`.
@@ -28,6 +29,11 @@ import type { SuspendOptions } from "../errors/suspension-error";
 
 /** The suspension reason an ask gate carries. */
 export const ASK_GATE_REASON = "ask" as const;
+
+/** Whether a suspension is an ask gate. */
+export function isAskGate(suspension: { readonly reason: string }): boolean {
+  return suspension.reason === ASK_GATE_REASON;
+}
 
 /** What the parked turn waits on: one row on one board. */
 export type AskGateBinding = {
@@ -41,7 +47,8 @@ export type AskGateBinding = {
  * Why an ask ended without an answer. A model reads these, so they are
  * stable names.
  *
- * - `wait_timed_out` — the ask was still open at its deadline.
+ * - `wait_timed_out` — the ask was still open at its deadline. Reserved: the
+ *   deadline and the sweep that enforces it arrive in FIX-1816 P2.
  * - `wait_task_failed` — the asked task failed for good.
  * - `wait_task_cancelled` — the asked task was cancelled.
  */

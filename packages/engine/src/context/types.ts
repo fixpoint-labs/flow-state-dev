@@ -14,7 +14,7 @@ import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
 import type { ParentTaskBinding } from "./create-request-host";
 import type { DispatchOperation } from "./dispatch-operation";
-import type { AskResumeOperation } from "../routes/ask-resume";
+import type { AskResumeOperation } from "./ask-resume-operation";
 import type { RuntimeConfig } from "../runtime-config";
 
 export type RequestRuntime = {

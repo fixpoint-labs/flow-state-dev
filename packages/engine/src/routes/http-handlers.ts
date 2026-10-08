@@ -73,7 +73,7 @@ import { pinRejectsCaller } from "../context/instance-pin";
 import { createInstanceCallerResolver, type InstanceCallerResolver } from "./instance-caller";
 import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
-import { createAskResumeOperation } from "./ask-resume";
+import { createAskResumeOperation } from "../context/ask-resume-operation";
 
 export type RequestContext = {
   method: string;

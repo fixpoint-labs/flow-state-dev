@@ -47,7 +47,7 @@ import {
   type InProcessPrincipalQuestion
 } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
-import { createAskResumeOperation, type AskResumeOperation } from "../routes/ask-resume";
+import { createAskResumeOperation, type AskResumeOperation } from "../context/ask-resume-operation";
 import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter

@@ -1,13 +1,18 @@
 /**
- * The server-side resume of a turn parked on an ask gate.
+ * The server-side resume of a turn parked on an ask gate: the host operation
+ * behind `RequestHost.resumeAsk`, as `dispatch-operation.ts` is behind the
+ * dispatch seam.
  *
- * The public resume route (`resume-routes.ts`) takes a request id and caller-
- * supplied gate data, so it is closed to every ask gate. This is the other way
- * in, and the only one: a running request in the asker's own session resumes
- * the turn through `RequestHost.resumeAsk` (`create-request-host.ts` closes
- * over the session and finds the gate), and the host's durability sweep will
- * resume an ask past its deadline with a timeout error through the same
- * {@link resumeAskGate}.
+ * The public resume route (`routes/resume-routes.ts`) takes a request id and
+ * caller-supplied gate data, so it is closed to every ask gate. This is the
+ * other way in: a running request in the asker's own session resumes the turn
+ * through `RequestHost.resumeAsk` (`create-request-host.ts` closes over the
+ * session and finds the gate).
+ *
+ * **Not yet wired: timeouts.** No ask gate carries a deadline yet, and nothing
+ * resumes an overdue ask with `wait_timed_out`. That arrives with the
+ * durability sweep's ask branch (FIX-1816 P2, PLAN S7), which will call
+ * {@link resumeAskGate} too.
  *
  * The resume itself is the resume route's, minus everything a caller supplies:
  * load the gate under the request's lease, admit it only while it is an ask
@@ -15,7 +20,7 @@
  * the SAME request. The answer reaches the parked call as `ctx.suspend()`'s
  * return value, and a generator's tool returns it as its result.
  */
-import { ASK_GATE_REASON, parseAskOutcome } from "@flow-state-dev/core/types";
+import { isAskGate, parseAskOutcome } from "@flow-state-dev/core/types";
 import type {
   AskOutcome,
   ResumeAskResult,
@@ -27,15 +32,10 @@ import type { HostContinueRequestOptions } from "../transports/types";
 import type { ContinueRequestResult } from "../execution/request-continuation";
 import type { StoreRegistry } from "../stores/types";
 import { generateId } from "../utils/generate-id";
-import { ownsRecord, type OwnerIdentity } from "../context/record-owner";
+import { ownsRecord, type OwnerIdentity } from "./record-owner";
 
 /** How long the resume holds the request's lease before the run takes over. */
 const RESUME_LEASE_MS = 60_000;
-
-/** Whether a suspension is an ask gate. */
-export function isAskGate(suspension: Pick<SuspensionRecord, "reason">): boolean {
-  return suspension.reason === ASK_GATE_REASON;
-}
 
 /** What {@link resumeAskGate} needs from the host. */
 export type AskResumeDeps = {

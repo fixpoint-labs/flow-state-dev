@@ -40,7 +40,7 @@ import {
   runAction
 } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
-import { createAskResumeOperation, resumeAskGate } from "../src/routes/ask-resume";
+import { createAskResumeOperation, resumeAskGate } from "../src/context/ask-resume-operation";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
 import type { ExecutionResult } from "../src/execution/types";
 import type { RuntimeConfig } from "../src/runtime-config";
