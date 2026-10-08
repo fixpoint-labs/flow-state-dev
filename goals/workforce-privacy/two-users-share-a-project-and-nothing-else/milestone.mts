@@ -32,6 +32,8 @@ import { messageOf, type RunRecord } from "./record.mts";
 /** The worker collections, by the key pattern a session's manifest publishes. */
 const WORKERS = "workforce/workers/*";
 const STANDARD_WORKERS = "workforce/standard-workers/*";
+/** The worker flows whose talk action answers a free-text turn; the standard worker forked is picked among these. */
+const FREE_TEXT_FLOWS = ["agent", "coordinator"];
 
 const hex = (n = 2) => randomBytes(n).toString("hex");
 const WORDS = ["amber", "basalt", "cobalt", "delta", "ember", "fjord", "garnet", "harbor", "indigo", "juniper", "kestrel", "lagoon", "marble", "nimbus", "orchid", "pewter", "quill", "russet", "saffron", "tundra"];
@@ -125,12 +127,13 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
     facts.madeThrough = `\`${through.action}\` on \`${through.kind}\``;
     const own0 = roster0.filter((e) => !e.standard);
     if (own0.length > 0) r.fail("m1", `a fresh store already lists workers of Alice's own: ${own0.map((e) => e.id).join(", ")}`);
-    const talkable = roster0.filter((e) => e.standard && talkAction(actionsOf(e.flow)) !== undefined);
-    const onAgent = talkable.filter((e) => e.flow === "agent");
-    const pool = onAgent.length > 0 ? onAgent : talkable;
+    // Only a worker that answers a free-text turn can take the word and be
+    // asked for it. A `coder` worker's turn fails ("This task hasn't started")
+    // and an `em` one answers by rote, so neither grades the word.
+    const pool = roster0.filter((e) => e.standard && FREE_TEXT_FLOWS.includes(e.flow) && talkAction(actionsOf(e.flow)) !== undefined);
     facts.standard = pool[randomInt(Math.max(pool.length, 1))];
     if (facts.standard === undefined) {
-      r.fail("m1", `no standard worker on a flow with a talk action to fork (roster: ${roster0.map((e) => `${e.id}@${e.flow}`).join(", ")})`);
+      r.notRun("m1", `setup: no standard worker to fork answers a free-text turn: none is on ${FREE_TEXT_FLOWS.map((f) => `\`${f}\``).join(" or ")} with a talk action (roster: ${roster0.map((e) => `${e.id}@${e.flow}`).join(", ")})`);
     } else {
       const pick = facts.standard;
       const name = `${word()}-${hex()}`;

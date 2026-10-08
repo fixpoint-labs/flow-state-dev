@@ -6,7 +6,7 @@
 
 **Outcome:** two users of one Shift Manager install each build a private roster, work one shared project through workstreams they each own, and reach nothing of the other's except what was written to a shared resource or to org scope. The milestone proves the privacy half on the commit FIX-1788's last PR merges on, before anything else builds on it: Bob can't open, read, post to or create a session on anything of Alice's, and Alice in a second org sees none of her first org's workers, sessions or data.
 
-**Input:** Shift Manager's DevTeam install as the commit ships it, served by its own command over a fresh store. Alice is its owner and Bob its second member, each with their own verified bearer, each through the shipped clients (`createWorkforceClient`, the session, resource and action clients) and in their own browser context. Held out, picked at run time: which standard worker is forked, every worker's name, and the code word Alice gives hers. Another standard worker, name or word must pass too.
+**Input:** Shift Manager's DevTeam install as the commit ships it, served by its own command over a fresh store. Alice is its owner and Bob its second member, each with their own verified bearer, each through the shipped clients (`createWorkforceClient`, the session, resource and action clients) and in their own browser context. Held out, picked at run time: which standard worker is forked (any that answers a free-text turn, on the `agent` or `coordinator` flow; if none is, m1 is NOT RUN as a setup error), every worker's name, and the code word Alice gives hers. Another such worker, name or word must pass too.
 
 **Signal:** the milestone's steps, each PASS (PLAN → The milestone):
 
