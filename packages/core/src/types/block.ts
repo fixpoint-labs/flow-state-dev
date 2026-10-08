@@ -1161,6 +1161,9 @@ export interface BlockDefinition<
    *
    * Returns a plain block definition, so on a sequencer finish adding steps
    * first and rename last.
+   *
+   * Known limitation: a copy of a `dispatcher()` block still names its
+   * dispatches and dispatch refusals with the original name.
    */
   as(options: BlockAsOptions): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>;
 
