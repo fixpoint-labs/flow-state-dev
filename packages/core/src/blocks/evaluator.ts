@@ -487,7 +487,14 @@ export function evaluator<
     | ((input: TInput, ctx: BlockContext) => EvaluationInput | Promise<EvaluationInput>)
     | undefined;
 
-  const execute = async (input: TInput, ctx: BlockContext): Promise<EvaluatorOutput<TQuestions>> => {
+  const execute = async (
+    input: TInput,
+    ctx: BlockContext,
+    self: BlockDefinition<any, any>
+  ): Promise<EvaluatorOutput<TQuestions>> => {
+    // The running definition's name shadows the authored one: a `.as()` copy
+    // shares this closure, and its refusals must name the copy.
+    const blockName = self.name;
     const questions =
       typeof questionsSlot === "function" ? await questionsSlot(input, ctx) : questionsSlot;
     checkQuestions(blockName, questions);

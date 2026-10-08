@@ -1,6 +1,7 @@
 import { z, type ZodTypeAny } from "zod";
 import type {
   AsToolOpts,
+  BlockAsOptions,
   BlockConfig,
   BlockContext,
   BlockDefinition,
@@ -86,7 +87,13 @@ type ExecuteFn<
   TOutput = z.infer<TOutputSchema>,
 > = (
   input: TInput,
-  ctx: BlockContext
+  ctx: BlockContext,
+  /**
+   * The definition that is running. A builder reads its own name here, never
+   * from its construction-time config: a `.as()` copy shares the original's
+   * execute, and only this argument tells the two apart.
+   */
+  self: BlockDefinition<any, any>
 ) => Promise<TOutput> | TOutput;
 
 export type BuildBlockOptions<
@@ -162,6 +169,20 @@ function validateSchema<TValue>(
   throw new Error(`Block "${blockName}" ${kind} validation failed${pathSuffix}: ${issueMessage}`);
 }
 
+/**
+ * Stamp an informational output schema on a built block, without making the
+ * block validate against it. A sequencer reports the output type of its last
+ * step this way, so consumers (`parallel`, `forEach`, devtools) see the real
+ * type while the chain's own steps do the validating. `.as()` re-applies the
+ * stamp to its copy, which a plain rebuild from the config would drop.
+ *
+ * @internal
+ */
+export function stampInformationalOutputSchema(block: BlockDefinition<any, any>, schema: ZodTypeAny): void {
+  (block as { outputSchema: ZodTypeAny }).outputSchema = schema;
+  (block as { config: BlockConfig }).config = { ...block.config, outputSchema: schema };
+}
+
 export function buildBlock<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
@@ -169,7 +190,12 @@ export function buildBlock<
   TOutput = z.infer<TOutputSchema>,
 >(options: BuildBlockOptions<TInputSchema, TOutputSchema>): BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { kind, config } = options;
-  const internalExecute = options.execute ?? config.execute;
+  // An author's `config.execute` is called with `(input, ctx)` only; the third
+  // argument, the running definition, is for a builder's own execute.
+  const authoredExecute = config.execute;
+  const internalExecute: ExecuteFn<TInputSchema, TOutputSchema, TInput, TOutput> | undefined =
+    options.execute ??
+    (authoredExecute === undefined ? undefined : (input, ctx) => authoredExecute(input, ctx));
 
   if (Object.hasOwn(config, "middleware")) {
     throw new Error(
@@ -225,6 +251,34 @@ export function buildBlock<
     ...(options.childBlocks ?? []),
     ...(config.rescue ?? []).map((handler) => handler.block)
   ];
+
+  /**
+   * Rebuild this block with `overrides`, carrying everything else across.
+   *
+   * Every rebuild (`.connectInput`, `.mapModelOutput`, `.rescue`,
+   * `.connectOutput`, `.as`) goes through here and states only what it
+   * changes, so the forwarded set is written once. The resources and the
+   * dispatch address are read off `definition`, never `options`:
+   * `markDispatcher` stamps the finished block, so the construction-time
+   * `options` value predates the stamp, and rebuilding from it would hand back
+   * a block that has silently stopped being a dispatcher.
+   */
+  const rebuild = (
+    overrides: Partial<BuildBlockOptions<any, any, any, any>>
+  ): BlockRuntime<any, any, any, any> =>
+    buildBlock<any, any, any, any>({
+      kind,
+      config: runtimeConfig,
+      execute: internalExecute,
+      declaredResources: definition.declaredResources,
+      ownDeclaredResources: definition.ownDeclaredResources,
+      resolvedCapabilities: options.resolvedCapabilities,
+      childBlocks: options.childBlocks,
+      staticTools: options.staticTools,
+      dispatch: definition.dispatch,
+      modelOutputMapper: options.modelOutputMapper,
+      ...overrides
+    });
 
   const definition: BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> = {
     kind,
@@ -317,7 +371,10 @@ export function buildBlock<
           );
         }
         const validatedInput = validateSchema<TInput>(runtimeConfig.inputSchema, connectedInput, "input", runtimeConfig.name);
-        const output = await internalExecute(validatedInput, ctx);
+        // Hand execute the definition `buildBlock` built — never the receiver
+        // (`this`). A spread copy of a definition shares this closure, so it
+        // reports the name it was built with, not the one it was spread over.
+        const output = await internalExecute(validatedInput, ctx, definition);
         const validatedOutput = validateSchema<TOutput>(
           runtimeConfig.outputSchema,
           output,
@@ -374,47 +431,16 @@ export function buildBlock<
       }
     },
     connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema> {
-      const nextConfig = {
-        ...(runtimeConfig as unknown as BlockConfig<ZodTypeAny, TOutputSchema, unknown, TOutput>),
-        connectInput: mapper as unknown as ConnectorFn<unknown, unknown>
-      };
-
-      return buildBlock<ZodTypeAny, TOutputSchema, unknown, TOutput>({
-        kind,
-        config: nextConfig,
-        execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema, unknown, TOutput>,
-        declaredResources: definition.declaredResources,
-        ownDeclaredResources: definition.ownDeclaredResources,
-        resolvedCapabilities: options.resolvedCapabilities,
-        // Structure and the dispatch address ride every rebuild. The address is
-        // read off `definition`, never `options`: `markDispatcher` stamps the
-        // finished block, so the construction-time `options` value predates
-        // the stamp and rebuilding from it would hand back a block that has
-        // silently stopped being a dispatcher.
-        childBlocks: options.childBlocks,
-        staticTools: options.staticTools,
-        dispatch: definition.dispatch,
-        // `connectInput` preserves `TOutputSchema`, so any installed
-        // `mapModelOutput` mapper is still valid against the rebuilt block's
-        // output. Forward it through.
-        modelOutputMapper: options.modelOutputMapper,
-      });
+      // `connectInput` preserves `TOutputSchema`, so any installed
+      // `mapModelOutput` mapper stays valid and rides the rebuild.
+      return rebuild({
+        config: { ...runtimeConfig, connectInput: mapper as unknown as ConnectorFn<unknown, unknown> }
+      }) as BlockDefinition<ZodTypeAny, TOutputSchema>;
     },
     mapModelOutput(
       mapper: (output: TOutput, ctx: BlockContext) => string | Promise<string>
     ): BlockDefinition<TInputSchema, TOutputSchema> {
-      return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
-        kind,
-        config: runtimeConfig,
-        execute: internalExecute,
-        declaredResources: definition.declaredResources,
-        ownDeclaredResources: definition.ownDeclaredResources,
-        resolvedCapabilities: options.resolvedCapabilities,
-        childBlocks: options.childBlocks,
-        staticTools: options.staticTools,
-        dispatch: definition.dispatch,
-        modelOutputMapper: mapper,
-      });
+      return rebuild({ modelOutputMapper: mapper }) as BlockDefinition<TInputSchema, TOutputSchema>;
     },
     rescue(handlers: RescueHandlerSpec[]): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
       // Fold each rescue handler block's declared resources into this block's
@@ -427,18 +453,30 @@ export function buildBlock<
       // `handlers` REPLACES the installed set, and `buildBlock` re-derives
       // `childBlocks` from the config it is handed, so a replaced handler
       // drops out of the walkable graph by not being passed.
-      return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
-        kind,
+      return rebuild({
         config: { ...runtimeConfig, rescue: handlers },
-        execute: internalExecute,
         declaredResources: mergedResources,
-        ownDeclaredResources: options.ownDeclaredResources,
-        resolvedCapabilities: options.resolvedCapabilities,
-        childBlocks: options.childBlocks,
-        staticTools: options.staticTools,
-        dispatch: definition.dispatch,
-        modelOutputMapper: options.modelOutputMapper,
+        ownDeclaredResources: options.ownDeclaredResources
+      }) as BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>;
+    },
+    as(asOptions: BlockAsOptions): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+      // A rebuild, not a spread: the copy gets its own `run` closure, so the
+      // definition handed to execute — and every name a builder reads from
+      // it — is the copy. `??`, not `||`: a blank name reaches `buildBlock`,
+      // which refuses it as it refuses any blank-named block.
+      const copy = rebuild({
+        config: {
+          ...runtimeConfig,
+          name: asOptions.name ?? runtimeConfig.name,
+          description: asOptions.description ?? runtimeConfig.description
+        }
       });
+      // A sequencer stamps its tracked output schema on the built block after
+      // `buildBlock`, outside `runtimeConfig`; carry that stamp to the copy.
+      if (definition.outputSchema !== resolvedOutputSchema) {
+        stampInformationalOutputSchema(copy, definition.outputSchema);
+      }
+      return copy as BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>;
     },
     asTool(opts: AsToolOpts = {}): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
       const wrappedName = `${runtimeConfig.name}__as_tool`;
@@ -514,33 +552,21 @@ export function buildBlock<
     connectOutput<TTo>(
       mapper: (output: TOutput, ctx: BlockContext) => TTo | Promise<TTo>
     ): BlockDefinition<TInputSchema, ZodTypeAny> {
-      const mappedExecute: ExecuteFn<TInputSchema, ZodTypeAny, TInput, TTo> = async (input, ctx) => {
-        const output = await internalExecute(input, ctx);
+      const mappedExecute: ExecuteFn<TInputSchema, ZodTypeAny, TInput, TTo> = async (input, ctx, self) => {
+        const output = await internalExecute(input, ctx, self);
         return mapper(output as TOutput, ctx);
       };
 
-      const nextConfig: BlockConfig<TInputSchema, ZodTypeAny, TInput, TTo> = {
-        ...(runtimeConfig as unknown as BlockConfig<TInputSchema, ZodTypeAny, TInput, TTo>),
-        outputSchema: z.any() as ZodTypeAny,
-        onCompleted: undefined
-      };
-
-      // Intentionally do not forward `modelOutputMapper`: `connectOutput`
-      // changes the output type from `TOutput` to `TTo`, so the original
-      // mapper's `(output: TOutput) => string` signature no longer matches.
+      // Intentionally drop `modelOutputMapper`: `connectOutput` changes the
+      // output type from `TOutput` to `TTo`, so the original mapper's
+      // `(output: TOutput) => string` signature no longer matches.
       // Re-install via `.mapModelOutput(...)` after `.connectOutput(...)` if
       // a model-visible representation is still wanted on the rebuilt block.
-      return buildBlock<TInputSchema, ZodTypeAny, TInput, TTo>({
-        kind,
-        config: nextConfig,
+      return rebuild({
+        config: { ...runtimeConfig, outputSchema: z.any() as ZodTypeAny, onCompleted: undefined },
         execute: mappedExecute,
-        declaredResources: definition.declaredResources,
-        ownDeclaredResources: definition.ownDeclaredResources,
-        resolvedCapabilities: options.resolvedCapabilities,
-        childBlocks: options.childBlocks,
-        staticTools: options.staticTools,
-        dispatch: definition.dispatch,
-      });
+        modelOutputMapper: undefined
+      }) as BlockDefinition<TInputSchema, ZodTypeAny>;
     }
   };
 

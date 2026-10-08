@@ -160,7 +160,10 @@ export function handler<
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "handler",
     config: { ...config, stateSchema } as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
-    execute: config.execute as unknown as (input: TInput, ctx: BlockContext) => Promise<TOutput> | TOutput,
+    // The author's execute takes `(input, ctx)` and nothing more: the running
+    // definition `buildBlock` hands a builder's own execute stays internal.
+    execute: (input: TInput, ctx: BlockContext) =>
+      (config.execute as unknown as (input: TInput, ctx: BlockContext) => Promise<TOutput> | TOutput)(input, ctx),
     declaredResources,
     // A handler is a leaf — its OWN declarations equal its bubble-up set
     // (own `resources` + capability-injected resources, no descendants).

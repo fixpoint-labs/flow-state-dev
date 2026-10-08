@@ -2896,8 +2896,12 @@ export function generator<
     ownDeclaredResources: declaredResources,
     resolvedCapabilities,
     staticTools: Array.isArray(authoredTools) ? authoredTools : undefined,
-    execute: async (input: TInput, ctx) => {
-      const blockName = String(normalizedConfig.name);
+    execute: async (input: TInput, ctx, self) => {
+      // The running definition's name, read once: a `.as()` copy shares this
+      // closure, so the authored `normalizedConfig.name` would be the
+      // original's. Everything below (default agent name, tool attribution,
+      // errors) derives from this.
+      const blockName = self.name;
       // model is guaranteed non-undefined at this point — the construction-
       // time check above throws if neither the block nor any capability
       // contributed a model.
