@@ -182,7 +182,7 @@ export interface CoordinatorFlowOptions {
    */
   agent?: Omit<AgentWorkerFlowOptions, "installation" | "taskLists">;
   /**
-   * How long a round waits for its answers, in milliseconds, before it
+   * How long a round waits for its answers, in whole milliseconds, before it
    * closes without the ones still out and its answers go back out. Only a
    * coordinator whose `rounds:` is above 0 has rounds to close. Defaults to
    * five minutes ({@link ROUND_DEADLINE_MS}).
@@ -339,9 +339,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     }
   }
   const deadlineMs = options.roundDeadlineMs ?? ROUND_DEADLINE_MS;
-  if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+  if (!Number.isSafeInteger(deadlineMs) || deadlineMs <= 0) {
     throw new Error(
-      `defineCoordinatorFlow: roundDeadlineMs must be a positive number of milliseconds, not ${deadlineMs}.`
+      `defineCoordinatorFlow: roundDeadlineMs must be a positive whole number of milliseconds, not ${deadlineMs}.`
     );
   }
   const postFlows = new Set(options.delegateFlows.map((flow) => flow.kind));
@@ -825,12 +825,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    */
   const scanReachable = async (
     ctx: BlockContext,
-    records: readonly DelegateRecord[],
+    records: Iterable<DelegateRecord> | AsyncIterable<DelegateRecord>,
     exclude: DeliveryDelegate | undefined,
     visit: (record: DelegateRecord, worker: RosterWorker) => Visit
   ): Promise<RoutedDelegate[]> => {
     const skipped: RoutedDelegate[] = [];
-    for (const record of records) {
+    for await (const record of records) {
       if (exclude !== undefined && sameDelegate(record, exclude)) continue;
       const checked = await check(ctx as never, record.worker, "post");
       if (!checked.ok) {
@@ -1058,6 +1058,36 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   // --- round robin ---------------------------------------------------------
 
+  /** Where a delegate record stands in a list, or -1. */
+  const indexIn = (list: readonly DelegateRecord[], delegate: DeliveryDelegate) =>
+    list.findIndex((record) => sameDelegate(record, delegate));
+
+  /**
+   * Round robin's turns for a person's post, each claimed before it is
+   * checked: one versioned write moves the turn to the next delegate after
+   * where it stands now, so two posts at once never take the same turn. A
+   * delegate already tried is passed over; the turns end once each has been
+   * tried.
+   */
+  async function* claimTurns(ctx: BlockContext, list: readonly DelegateRecord[]): AsyncGenerator<DelegateRecord> {
+    const tried = new Set<string>();
+    for (;;) {
+      const claimed = await withOutcome(
+        (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
+          ctx.session.atomicState(mutator as never),
+        (state: Readonly<Record<string, unknown>>) => {
+          const cursor = roundRobinCursorSchema.nullable().parse(state[ROUND_ROBIN_STATE] ?? null);
+          const next = turnOrder(list, cursor).find((record) => !tried.has(delegateKey(record)));
+          if (next === undefined) return { state: {}, result: null };
+          return { state: { [ROUND_ROBIN_STATE]: { delegate: bare(next), index: indexIn(list, next) } }, result: next };
+        }
+      );
+      if (claimed === undefined || claimed === null) return;
+      tried.add(delegateKey(claimed));
+      yield claimed;
+    }
+  }
+
   /**
    * The next delegate in list order that can be reached. For a person's post
    * the turn goes on from the delegate the last one went to, and moves on;
@@ -1074,22 +1104,20 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const post = postOf(ctx as never);
       const list = currentDelegates(ctx.session.state, post.defaults).delegates;
       const author = post.exclude;
-      const after =
+      // A person's post claims each turn before checking it, so two posts at
+      // once take two turns; an answer going back out goes on from its author
+      // and leaves the turn where it is.
+      const order =
         author === undefined
-          ? roundRobinCursorSchema.nullable().parse(ctx.session.state[ROUND_ROBIN_STATE] ?? null)
-          : { delegate: author, index: Math.max(0, list.findIndex((record) => sameDelegate(record, author))) };
+          ? claimTurns(ctx as never, list)
+          : turnOrder(list, { delegate: author, index: Math.max(0, indexIn(list, author)) });
       let pick: { record: DelegateRecord; flow: string } | undefined;
-      const skipped = await scanReachable(ctx as never, turnOrder(list, after), author, (record, worker) => {
+      const skipped = await scanReachable(ctx as never, order, author, (record, worker) => {
         pick = { record, flow: worker.flow };
         return "stop";
       });
       if (pick !== undefined) {
-        const { record, flow } = pick;
-        if (author === undefined) {
-          const index = list.findIndex((candidate) => sameDelegate(candidate, record));
-          await ctx.session.patchState({ [ROUND_ROBIN_STATE]: { delegate: bare(record), index } } as never);
-        }
-        return { place: "deliver", by: "round-robin", picks: [deliveryOf(post, record, flow)], skipped };
+        return { place: "deliver", by: "round-robin", picks: [deliveryOf(post, pick.record, pick.flow)], skipped };
       }
       return {
         place: "unplaced",

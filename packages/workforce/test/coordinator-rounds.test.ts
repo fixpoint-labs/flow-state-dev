@@ -98,6 +98,25 @@ describe("round robin (V3)", () => {
     ]);
   });
 
+  it("gives two posts that arrive together two different turns (BR-17)", async () => {
+    const host = bootHost({ standard: standardWorkers({ desk: { routing: "round-robin" } }) });
+    const id = await host.conversation("alice", "desk");
+    // Each roster check takes a while, so both posts are choosing at once.
+    const read = host.installation.rosterWorker;
+    host.installation.rosterWorker = async (ctx, workerId) => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return read(ctx, workerId);
+    };
+    const [one, two] = await Promise.all([
+      host.act("alice", id, "run", { message: "one" }),
+      host.act("alice", id, "run", { message: "two" })
+    ]);
+    expect(one.error, messageOf(one.error)).toBeUndefined();
+    expect(two.error, messageOf(two.error)).toBeUndefined();
+    await host.settled();
+    expect([...heardBy(host)].sort()).toEqual(["eng.coder", "eng.em"]);
+  });
+
   it("runs nobody when no delegate can be reached, and says so (BR-19)", async () => {
     const host = bootHost({ standard: standardWorkers({ desk: { routing: "round-robin", fallback: undefined } }) });
     const id = await host.conversation("alice", "desk");
@@ -181,9 +200,9 @@ function pairDesk(routing: string, rounds: number) {
 }
 
 describe("a round, on its own (V5)", () => {
-  it("refuses a round deadline that isn't a positive number of milliseconds", () => {
-    for (const roundDeadlineMs of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(() => bootHost({ roundDeadlineMs })).toThrow(/roundDeadlineMs must be a positive number of milliseconds/);
+  it("refuses a round deadline that isn't a positive whole number of milliseconds", () => {
+    for (const roundDeadlineMs of [0, -1, 0.5, 1_500.25, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => bootHost({ roundDeadlineMs })).toThrow(/roundDeadlineMs must be a positive whole number of milliseconds/);
     }
   });
 
@@ -608,32 +627,44 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect(beginRound(rounds, "p0", 0)).toMatchObject({ opened: true, rounds: expect.arrayContaining([expect.objectContaining({ postId: "p0", opening: 2 })]) });
   });
 
-  it(`says in the record when a post's round is refused at ${MAX_OPEN_ROUNDS} open, and its answers go no further`, async () => {
-    const host = bootHost({ standard: pairDesk("everyone", 1) });
+  it(`refuses a post's round at ${MAX_OPEN_ROUNDS} open, says so in its record, and the open rounds still go on`, async () => {
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
     const id = await host.conversation("alice", "desk");
-    // Fill the conversation with rounds still within their deadline.
+    // A live round: the coder is still working on it.
+    expect((await host.act("alice", id, "run", { message: "status? [slow:eng.coder]" })).error).toBeUndefined();
+    const live = (await host.sessionState(id)).openRounds[0];
+    expect(live).toMatchObject({ round: 0 });
+    // Fill the rest of the conversation with rounds still within their deadline.
     const runtime = await host.state.getRuntime();
-    const session = (await runtime.stores.session.get(id))!;
-    const full = Array.from({ length: MAX_OPEN_ROUNDS }, (_, n) => ({
-      postId: `earlier-${n}`,
-      round: 0,
-      opening: 0,
-      deadlineAt: Date.now() + 60_000,
-      answers: []
-    }));
-    await runtime.stores.session.set(id, { ...session, state: { ...session.state, openRounds: full } } as never, session.version as never);
+    for (let written = false; !written; ) {
+      const session = (await runtime.stores.session.get(id))!;
+      const open = session.state.openRounds as unknown[];
+      const others = Array.from({ length: MAX_OPEN_ROUNDS - open.length }, (_, n) => ({
+        postId: `earlier-${n}`,
+        round: 0,
+        opening: 0,
+        deadlineAt: Date.now() + 60_000,
+        answers: []
+      }));
+      const state = { ...session.state, openRounds: [...open, ...others] };
+      written = (await runtime.stores.session.set(id, { ...session, state } as never, session.version as never)).ok;
+    }
 
-    await post(host, id, "ship it?");
+    // The new post is delivered as usual, but nothing waits for its answers.
+    expect((await host.act("alice", id, "run", { message: "ship it?" })).error).toBeUndefined();
     await quiet(host);
-    // Delivered as usual, but nothing waited for the answers: they went no further.
-    expect(host.heard).toHaveLength(2);
-    const [record] = (await host.items(id)).records;
-    expect(record).toMatchObject({
-      round: 0,
-      by: "everyone",
-      note: `this conversation already has ${MAX_OPEN_ROUNDS} rounds waiting for answers, so answers in round 0 go no further`
-    });
-    expect((await host.items(id)).records).toHaveLength(1);
-    expect((await host.sessionState(id)).openRounds).toHaveLength(MAX_OPEN_ROUNDS);
+    const records = (await host.items(id)).records;
+    const refused = records.filter((record: any) => record.postId !== live.postId);
+    expect(refused).toEqual([
+      expect.objectContaining({
+        round: 0,
+        by: "everyone",
+        note: `this conversation already has ${MAX_OPEN_ROUNDS} rounds waiting for answers, so answers in round 0 go no further`
+      })
+    ]);
+    // The live round was kept, and went on once the coder answered.
+    expect(records.filter((record: any) => record.postId === live.postId).map((record: any) => record.round)).toEqual([0, 1]);
+    expect(passedToCoder(host, "status?")).toHaveLength(1);
+    expect((await host.sessionState(id)).openRounds).toHaveLength(MAX_OPEN_ROUNDS - 1);
   });
 });
