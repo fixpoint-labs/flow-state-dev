@@ -13,7 +13,7 @@ surfaces a person works in. Layer 2 vocabulary is not here; it stays in
 |---|---|
 | **Winning when** | Jake runs his own work from Shift Manager: projects, workstreams, chat, attention and resources reached from one shell over live Workforce data, and DevForce and CyberForce run in it with no special wrapper |
 | **The read** | Nav surfaces a person reaches over live Workforce data, in the shared design system. Five named; all five are reached on `main`, graded by FIX-1663's closure on 01444863c. Attention (Inbox) and resources (Jump to) are interim forms until FIX-1652 |
-| **Now** | 1 done · 2 in flight · 7 not started. The shell (FIX-1649) is done; org primitives (FIX-1650) merged its closure, FIX-1720, as #2781 and has not wrapped. FIX-1786 was approved Oct 6; its five tensions with calls in force wait on the owner's answers ([Decisions](DECISIONS.md) → Open) |
+| **Now** | 1 done · 3 in flight · 6 not started. The shell (FIX-1649) is done; org primitives (FIX-1650) merged its closure, FIX-1720, as #2781 and has not wrapped. Hand-offs (FIX-1815) was approved Oct 8. FIX-1786 was approved Oct 6; its five tensions with calls in force wait on the owner's answers ([Decisions](DECISIONS.md) → Open) |
 | **Kill line** | If Shift Manager needs nouns of its own beside Workforce to be usable, the project is mis-shaped: the fix goes to Workforce, not into more epics here |
 
 ![The territory](figures/territory.svg)
@@ -21,7 +21,7 @@ surfaces a person works in. Layer 2 vocabulary is not here; it stays in
 Above the fence is what this project builds; below it is what it consumes and never extends.
 The fence is one test: a noun a second app would need goes to Workforce, not into Shift Manager.
 
-## The epics — derived live 2026-10-08 20:26 UTC
+## The epics — derived live 2026-10-08 21:05 UTC
 
 | Epic | What it owns | State | Surface |
 |---|---|---|---|
@@ -31,12 +31,12 @@ The fence is one test: a noun a second app would need goes to Workforce, not int
 | [FIX-1765](https://linear.app/fixpoint-labs/issue/FIX-1765) · **talk on a finished task** | A finished task still takes a message, surfaced upward | *not started* (Todo); first child FIX-1764 | — |
 | [FIX-1775](https://linear.app/fixpoint-labs/issue/FIX-1775) · **memory & context** | Shipped memory for the Shift Coordinator; long sessions kept inside the window | *not started* (Todo); first child FIX-1776 | — |
 | [FIX-1786](https://linear.app/fixpoint-labs/issue/FIX-1786) · **private & shared** | Private by default, only resources shared: workers as resources, coordinators for mailboxes and rooms | **in flight**, approved Oct 6 (Linear: Spec Approved): spec merged as [#2795](https://github.com/fixpoint-labs/flow-state-dev/pull/2795) by the owner. 3 of 13 children done (inventory FIX-1787, FIX-1789, FIX-1790); FIX-1788 in review, four in development, five in or past spec review | [retained spec](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1786) |
-| [FIX-1815](https://linear.app/fixpoint-labs/issue/FIX-1815) · **hand-offs** | Ask (wait for one answer, continue) and assign (a board job, its session open until done), over one answer-once fence. FIX-1786's follow-up | *not started*, filed Oct 8 (Linear: Todo); epic spec opening on `epic/hand-offs`, objective gate pending; 4 children, none started | — |
+| [FIX-1815](https://linear.app/fixpoint-labs/issue/FIX-1815) · **hand-offs** | Ask (wait for one answer, continue) and assign (a board job, its session open until done), over one answer-once fence. FIX-1786's follow-up | **in flight**, approved Oct 8 (Linear: Spec Approved): spec merged as [#2891](https://github.com/fixpoint-labs/flow-state-dev/pull/2891) by the owner. 5 children, none started; issue specs for FIX-1816 and FIX-1817 starting | [retained spec](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1815) |
 | [FIX-1651](https://linear.app/fixpoint-labs/issue/FIX-1651) · **eng workstream kit** | Epic and issue thin sync, per-issue board, EM, Lead and specialist seats | *not started*, held (Backlog) | — |
 | [FIX-1652](https://linear.app/fixpoint-labs/issue/FIX-1652) · **attention & inspect** | Needs-you, harness visibility, the resources list | *not started*, held (Backlog) | — |
 | [FIX-1653](https://linear.app/fixpoint-labs/issue/FIX-1653) · **review & GitHub wake** | Review and GitHub wake as Layer 2 of the FIX-1637 wake spine | *not started*, held (Backlog) | — |
 
-1 done · 2 in flight · 7 not started · 0 not filed, re-derived from Linear and the implementation
+1 done · 3 in flight · 6 not started · 0 not filed, re-derived from Linear and the implementation
 PRs each refresh. One contradiction is flagged, not resolved: FIX-1763 has no approved objective,
 yet its children are building, and its repository floor has merged.
 

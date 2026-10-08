@@ -10,8 +10,8 @@ deliberately not next. Each epic's own plan owns its checks.
 Day ten. The shell's bar closed at its closure merge on Oct 4, and Linear marked it Done
 that afternoon. Org primitives runs to the now line: its closure merged Oct 6, and the bar closes
 when the epic wraps. FIX-1786's bar runs from its Oct 6 approval to the now line. Hand-offs,
-FIX-1815, was filed today as FIX-1786's follow-up; its tick sits just behind the now line, with no
-bar until its objective is approved. Three lanes opened Oct 4 with a tick and no bar, none with an
+FIX-1815, was filed today as FIX-1786's follow-up and approved within the hour; its bar starts at
+the now line. Three lanes opened Oct 4 with a tick and no bar, none with an
 approved objective. FIX-1763's children are building anyway, and its repository floor has merged.
 That is the gap to watch. Three lanes stay empty by plan.
 
