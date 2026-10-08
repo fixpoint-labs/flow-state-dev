@@ -255,9 +255,9 @@ function pendingAction(row) {
   }
 
   const prerequisiteOpen = !!(row.blockedBy && row.blockedBy.length)
-  // Every implementation precondition, in ONE place, applied to every dispatch — not only the `implement`
-  // branches below. A verdict or an answered decision dispatches ahead of the phase switch, and its worker
-  // can carry the row into implementation (`reachesImplementation`), so each precondition has to hold it too.
+  // Every implementation precondition, applied to every dispatch. A verdict or an answered decision
+  // returns ahead of the phase switch, and its worker can carry the row into implementation
+  // (`reachesImplementation`), so the switch does not repeat these.
   //  - An open prerequisite holds all code (`buildsCode`), including work already past implementation start.
   //  - The cross-spec hold holds the step INTO implementation only, on the spec route: a bug has no spec to
   //    be incoherent with, and work already implementing is not re-parked.
@@ -295,17 +295,13 @@ function pendingAction(row) {
       // through (which is what the convergence rule does with remaining open threads anyway).
       if (row.specApproved) {
         return row.newSpecReviewEvents
-          ? crossSpecHold
-            ? null
-            : cursorUsable(row)
+          ? cursorUsable(row)
             ? { action: 'implement', why: 'spec approved on current head, with outstanding spec-PR feedback to carry as implementer notes' }
             : // The approval is real, but the batch riding with it cannot be recorded as handled — and this
               // is the ONLY pass that reads spec-PR feedback, so dispatching would carry it once and then
               // rediscover it on every later timestamp-less scan, re-handling and re-replying each time.
               // The same hold the spec-review and CI paths already take.
               null
-          : crossSpecHold
-          ? null
           : { action: 'implement', why: 'spec approved on current head' }
       }
       if (row.newSpecReviewEvents) {
@@ -320,17 +316,15 @@ function pendingAction(row) {
 
     case 'NEEDS_IMPLEMENTATION':
       // A DIRECT-route row (a bug) reaches implementation with no spec and no approval, by design
-      // — this is the phase it enters at. Both guards below are about the spec-approval gate, and
-      // neither has anything to hold: there is no spec to approve, and no spec to be incoherent
-      // with the rest of the set. Applying them anyway parks every bug in the epic forever, on a
-      // gate the coordinator is explicitly told never to surface for these rows.
+      // — this is the phase it enters at. The approval guard below would park it forever: there is
+      // no spec to approve, and the coordinator is told never to surface that gate for these rows.
+      // The cross-spec hold does not apply to this route (`implementationHeld`).
       if (isDirectRoute(row)) return { action: 'implement', why: 'bug — direct route, no spec required' }
       // The phase NAME asserts approval; only `specApproved` establishes it, and the schema validates
       // the two independently — so a scout that derives the phase wrongly would dispatch
       // implementation on a spec no human ever approved. This is the one gate that must never be
       // bypassable, so the phase is not allowed to be the thing that carries it.
       if (!row.specApproved) return null
-      if (crossSpecHold) return null
       return { action: 'implement', why: 'spec approved, implementation not started' }
 
     case 'PR_FEEDBACK': {
