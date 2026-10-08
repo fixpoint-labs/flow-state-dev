@@ -84,8 +84,13 @@ import {
 } from "../delivery-ledger";
 import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
 import { FILING_SESSION_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
-import type { WorkerInstallation } from "../workers/installation";
-import { coordinatorConfigProblems, coordinatorConfigSchema, type CoordinatorConfig } from "./coordinator-config";
+import type { RosterWorker, WorkerInstallation } from "../workers/installation";
+import {
+  coordinatorConfigProblems,
+  coordinatorConfigSchema,
+  type CoordinatorConfig,
+  type CoordinatorRouting
+} from "./coordinator-config";
 import { createDelegateCheck, takesDelegatedPost } from "./coordinator-check";
 import {
   COORDINATOR_SERVER_OWNED,
@@ -128,6 +133,7 @@ import {
 } from "./coordinator-keys";
 import { emitCoordinatorRoute, routedDelegateSchema, type RoutedDelegate } from "./coordinator-route";
 import {
+  MAX_OPEN_ROUNDS,
   anyOverdue,
   beginRound,
   closeOverdue,
@@ -208,7 +214,9 @@ const postStateSchema = z.object({
   /** In a round after the person's post: the answers going back out. */
   answers: z.array(roundAnswerSchema).optional(),
   /** Who they never go back to: their author, under best fit and round robin. */
-  exclude: deliveryDelegateSchema.optional()
+  exclude: deliveryDelegateSchema.optional(),
+  /** Why this round's answers go no further, when it was refused at the cap on open rounds. */
+  note: z.string().optional()
 });
 
 type PostState = z.infer<typeof postStateSchema>;
@@ -632,6 +640,14 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     filingSessionId: post.filingSessionId
   });
 
+  /** What every record of this request's routing starts with, its note included when it has one. */
+  const recordOf = (post: PostState) => ({
+    postId: post.postId,
+    round: post.round,
+    policy: post.policy,
+    ...(post.note === undefined ? {} : { note: post.note })
+  });
+
   /** What the judgment turn reads: the person's post, or the answers going back out. */
   const turnMessage = (post: PostState): string =>
     post.answers === undefined ? post.body : wakeMessage(post.round - 1, post.answers);
@@ -653,10 +669,24 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       handOffs: []
     };
     // Below the limit, this round waits for its answers so they can go back out.
+    // `beginRound` counts the routings adding to a round: under best fit or round
+    // robin, each answer of a round with several deliveries goes on into the next
+    // round in a request of its own, and the round must not close until both have
+    // added their deliveries.
     if (post.round < config.rounds) {
-      await ctx.session.atomicState((state) => ({
-        [ROUNDS_STATE]: beginRound((state[ROUNDS_STATE] ?? []) as OpenRound[], post.postId, post.round)
-      }));
+      const begun = await withOutcome(
+        (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
+          ctx.session.atomicState(mutator as never),
+        (state: Readonly<Record<string, unknown>>) => {
+          const result = beginRound((state[ROUNDS_STATE] ?? []) as OpenRound[], post.postId, post.round);
+          return { state: result.opened ? { [ROUNDS_STATE]: result.rounds } : {}, result: result.opened };
+        }
+      );
+      if (begun === false) {
+        post.note =
+          `this conversation already has ${MAX_OPEN_ROUNDS} rounds waiting for answers, ` +
+          `so answers in round ${post.round} go no further`;
+      }
     }
     await ctx.request.patchState({ [POST_STATE]: post } as never);
     return post;
@@ -766,9 +796,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     execute: async (_reply: unknown, ctx) => {
       const post = postOf(ctx as never);
       await emitCoordinatorRoute(ctx as never, {
-        postId: post.postId,
-        round: post.round,
-        policy: post.policy,
+        ...recordOf(post),
         by: "judgment",
         delegates: post.handOffs,
         ...(post.handOffs.some((handOff) => handOff.outcome === "delivered")
@@ -782,6 +810,39 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const judgmentTurn = sequencer({ name: "coordinator-judgment-turn", inputSchema: doorInputSchema })
     .step(turn.run)
     .tap(recordJudgment);
+
+  // --- the fixed policies' one scan ----------------------------------------
+
+  /** What a policy does with one delegate that can be reached: take it, skip it with why, or take it and stop. */
+  type Visit = void | "stop" | { skip: string };
+
+  /**
+   * One reachability scan for best fit, round robin and everyone: each
+   * record in the order given (never `exclude`), checked for a post now. One
+   * that can't be reached is skipped with the check's answer; each one that
+   * can goes to `visit`. Skips come back in scan order, so every policy words
+   * them the same way.
+   */
+  const scanReachable = async (
+    ctx: BlockContext,
+    records: readonly DelegateRecord[],
+    exclude: DeliveryDelegate | undefined,
+    visit: (record: DelegateRecord, worker: RosterWorker) => Visit
+  ): Promise<RoutedDelegate[]> => {
+    const skipped: RoutedDelegate[] = [];
+    for (const record of records) {
+      if (exclude !== undefined && sameDelegate(record, exclude)) continue;
+      const checked = await check(ctx as never, record.worker, "post");
+      if (!checked.ok) {
+        skipped.push({ ...bare(record), outcome: "skipped", reason: checked.message });
+        continue;
+      }
+      const visited = visit(record, checked.worker);
+      if (visited === "stop") break;
+      if (visited !== undefined) skipped.push({ ...bare(record), outcome: "skipped", reason: visited.skip });
+    }
+    return skipped;
+  };
 
   // --- best fit ------------------------------------------------------------
 
@@ -817,21 +878,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const reachable: string[] = [];
       const options: Record<string, string> = {};
       const byLabel: BestFitCaseValue["byLabel"] = {};
-      const skipped: RoutedDelegate[] = [];
-      for (const record of listed.delegates) {
-        if (post.exclude !== undefined && sameDelegate(record, post.exclude)) continue;
-        const checked = await check(ctx as never, record.worker, "post");
-        const delegate = bare(record);
-        if (!checked.ok) {
-          skipped.push({ ...delegate, outcome: "skipped", reason: checked.message });
-          continue;
-        }
+      const skipped = await scanReachable(ctx as never, listed.delegates, post.exclude, (record, worker) => {
         const label = delegateLabel(record);
         reachable.push(label);
-        byLabel[label] = { delegate, flow: checked.worker.flow };
-        const pickBy = record.note ?? checked.worker.description ?? undefined;
+        byLabel[label] = { delegate: bare(record), flow: worker.flow };
+        const pickBy = record.note ?? worker.description ?? undefined;
         if (pickBy !== undefined) options[label] = pickBy;
-      }
+      });
       const hold =
         post.round === 0
           ? coordinatorSessionStateSchema.shape[HOLD_STATE].parse(ctx.session.state[HOLD_STATE] ?? null)
@@ -926,9 +979,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const delegates = [...(placed.place === "deliver" ? outcomes : []), ...placed.skipped];
       const delivered = outcomes.some((outcome) => outcome.outcome === "delivered");
       await emitCoordinatorRoute(ctx as never, {
-        postId: post.postId,
-        round: post.round,
-        policy: post.policy,
+        ...recordOf(post),
         by: placed.place === "deliver" ? placed.by : "unplaced",
         delegates,
         ...(delivered ? {} : { none: "no pick could be delivered" })
@@ -954,9 +1005,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         error instanceof Error ? error.message : String(error)
       }`;
       await emitCoordinatorRoute(ctx as never, {
-        postId: post.postId,
-        round: post.round,
-        policy: post.policy,
+        ...recordOf(post),
         by: "unplaced",
         delegates: [],
         none: why
@@ -984,9 +1033,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const post = postOf(ctx as never);
       const reason = placed.place === "deliver" ? "no pick could be delivered" : placed.reason;
       await emitCoordinatorRoute(ctx as never, {
-        postId: post.postId,
-        round: post.round,
-        policy: post.policy,
+        ...recordOf(post),
         by: "unplaced",
         delegates: placed.skipped,
         none: reason
@@ -1031,19 +1078,18 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         author === undefined
           ? roundRobinCursorSchema.nullable().parse(ctx.session.state[ROUND_ROBIN_STATE] ?? null)
           : { delegate: author, index: Math.max(0, list.findIndex((record) => sameDelegate(record, author))) };
-      const skipped: RoutedDelegate[] = [];
-      for (const record of turnOrder(list, after)) {
-        if (author !== undefined && sameDelegate(record, author)) continue;
-        const checked = await check(ctx as never, record.worker, "post");
-        if (!checked.ok) {
-          skipped.push({ ...bare(record), outcome: "skipped", reason: checked.message });
-          continue;
-        }
+      let pick: { record: DelegateRecord; flow: string } | undefined;
+      const skipped = await scanReachable(ctx as never, turnOrder(list, after), author, (record, worker) => {
+        pick = { record, flow: worker.flow };
+        return "stop";
+      });
+      if (pick !== undefined) {
+        const { record, flow } = pick;
         if (author === undefined) {
           const index = list.findIndex((candidate) => sameDelegate(candidate, record));
           await ctx.session.patchState({ [ROUND_ROBIN_STATE]: { delegate: bare(record), index } } as never);
         }
-        return { place: "deliver", by: "round-robin", picks: [deliveryOf(post, record, checked.worker.flow)], skipped };
+        return { place: "deliver", by: "round-robin", picks: [deliveryOf(post, record, flow)], skipped };
       }
       return {
         place: "unplaced",
@@ -1075,26 +1121,18 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     requestStateSchema,
     execute: async (_input: unknown, ctx): Promise<Placed> => {
       const post = postOf(ctx as never);
+      const answers = post.answers;
       const picks: DeliveryRequest[] = [];
-      const skipped: RoutedDelegate[] = [];
-      for (const record of currentDelegates(ctx.session.state, post.defaults).delegates) {
-        const checked = await check(ctx as never, record.worker, "post");
-        if (!checked.ok) {
-          skipped.push({ ...bare(record), outcome: "skipped", reason: checked.message });
-          continue;
+      const records = currentDelegates(ctx.session.state, post.defaults).delegates;
+      const skipped = await scanReachable(ctx as never, records, undefined, (record, worker): Visit => {
+        if (answers === undefined) {
+          picks.push(deliveryOf(post, record, worker.flow));
+          return;
         }
-        if (post.answers === undefined) {
-          picks.push(deliveryOf(post, record, checked.worker.flow));
-          continue;
-        }
-        const others = othersOf(post.answers, record);
-        if (others.length === 0) {
-          const reason = `no other delegate answered in round ${post.round - 1}`;
-          skipped.push({ ...bare(record), outcome: "skipped", reason });
-          continue;
-        }
-        picks.push(deliveryOf(post, record, checked.worker.flow, passedOn(others)));
-      }
+        const others = othersOf(answers, record);
+        if (others.length === 0) return { skip: `no other delegate answered in round ${post.round - 1}` };
+        picks.push(deliveryOf(post, record, worker.flow, passedOn(others)));
+      });
       if (picks.length > 0) return { place: "deliver", by: "everyone", picks, skipped };
       return {
         place: "unplaced",
@@ -1113,7 +1151,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   // --- the door ------------------------------------------------------------
 
-  const fixedPolicies: Readonly<Record<string, BlockDefinition<any, any>>> = {
+  /** Each policy's steps: the one map both the router's routes and its pick read. */
+  const policies: Readonly<Record<CoordinatorRouting, BlockDefinition<any, any>>> = {
+    judgment: judgmentTurn,
     "best-fit": bestFit,
     "round-robin": roundRobin,
     everyone
@@ -1122,8 +1162,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const routeByPolicy = router({
     name: "coordinator-route-by-policy",
     inputSchema: z.object({ message: z.string(), policy: z.string() }),
-    routes: [judgmentTurn, bestFit, roundRobin, everyone],
-    execute: (opened: { policy: string }) => fixedPolicies[opened.policy] ?? judgmentTurn
+    routes: Object.values(policies),
+    execute: (opened: { policy: string }) => policies[opened.policy as CoordinatorRouting] ?? judgmentTurn
   } as never) as BlockDefinition<any, any>;
 
   // --- rounds --------------------------------------------------------------

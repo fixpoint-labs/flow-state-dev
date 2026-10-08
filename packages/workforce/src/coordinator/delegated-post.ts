@@ -23,7 +23,7 @@
  * posts.
  */
 import { dispatcher, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition, RequestScopeHandle } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   COORDINATOR_KIND,
@@ -114,8 +114,17 @@ const deliveryStateSchema = z.object({
 const notedDelivery = (ctx: { readonly request: { readonly state: unknown } }) =>
   (ctx.request.state as z.infer<typeof deliveryStateSchema>)[DELIVERY_STATE];
 
-/** How often the deadline watch looks whether the turn has ended. */
-const WATCH_INTERVAL_MS = 100;
+/**
+ * The deadline watch waiting in each request, by request: `markEnded` wakes
+ * the one for its request, so a watch waits on one timer and never polls.
+ * Process-local on purpose: a side chain runs in the process that runs its
+ * request.
+ */
+const watches = new Map<string, () => void>();
+
+/** One request's key in {@link watches}: its id and its incarnation. */
+const watchKey = (ctx: { readonly request: Pick<RequestScopeHandle, "identity" | "incarnation"> }) =>
+  `${ctx.request.identity.id} ${ctx.request.incarnation}`;
 
 /** Note which delivery this request answers, so the answer after the turn hands back its token. */
 const markDelivery = handler({
@@ -135,7 +144,7 @@ const markDelivery = handler({
   }
 });
 
-/** Note that the turn has ended, one way or the other. */
+/** Note that the turn has ended, one way or the other, and wake this request's deadline watch. */
 const markEnded = handler({
   name: "delegated-post-ended",
   inputSchema: z.unknown(),
@@ -143,6 +152,7 @@ const markEnded = handler({
   requestStateSchema: deliveryStateSchema,
   execute: async (_value: unknown, ctx) => {
     await ctx.request.patchState({ [ENDED_STATE]: true });
+    watches.get(watchKey(ctx))?.();
     return {};
   }
 });
@@ -178,22 +188,10 @@ const toAnswer = handler({
   }
 });
 
-/** Wait `ms`, or less when `signal` aborts first. */
-function pause(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) return resolve();
-    const done = () => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", done);
-      resolve();
-    };
-    const timer = setTimeout(done, ms);
-    signal.addEventListener("abort", done, { once: true });
-  });
-}
-
 /**
- * Wait until the turn ends or the post's deadline passes, whichever is first.
+ * Wait until the turn ends or the post's deadline passes, whichever is first:
+ * one timer to the deadline, cleared when `markEnded` wakes the watch or the
+ * request is cancelled.
  *
  * @returns `late` when the deadline came while the turn was still running.
  */
@@ -203,14 +201,25 @@ const waitForDeadline = handler({
   outputSchema: z.object({ late: z.boolean() }),
   requestStateSchema: deliveryStateSchema,
   execute: async (post: DelegatedPost, ctx) => {
-    // Only run on a post that has one (the `sideChainIf` below).
-    const deadlineAt = post.deadlineAt!;
-    for (;;) {
-      if (ctx.request.state[ENDED_STATE] === true || ctx.signal.aborted) return { late: false };
-      const left = deadlineAt - Date.now();
-      if (left <= 0) return { late: true };
-      await pause(Math.min(left, WATCH_INTERVAL_MS), ctx.signal);
-    }
+    const key = watchKey(ctx);
+    const late = await new Promise<boolean>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (isLate: boolean) => {
+        clearTimeout(timer);
+        ctx.signal.removeEventListener("abort", onAbort);
+        watches.delete(key);
+        resolve(isLate);
+      };
+      const onAbort = () => finish(false);
+      // Registered before the state is read: a turn that ends in between still wakes it.
+      watches.set(key, () => finish(false));
+      if (ctx.request.state[ENDED_STATE] === true || ctx.signal.aborted) return finish(false);
+      ctx.signal.addEventListener("abort", onAbort, { once: true });
+      // Only run on a post that has a deadline (the `sideChainIf` below).
+      const left = Math.max(0, post.deadlineAt! - Date.now());
+      timer = setTimeout(() => finish(ctx.request.state[ENDED_STATE] !== true), left);
+    });
+    return { late };
   }
 });
 

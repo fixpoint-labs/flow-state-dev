@@ -38,6 +38,7 @@ import {
   routeOnAfterAnswer,
   routeOnAfterClose
 } from "../src/coordinator/coordinator-rounds";
+import type { OpenRound } from "../src/coordinator/coordinator-delegates";
 import { claimAnswer, openDelivery, type DeliveryLedger, type DeliveryRecord } from "../src/delivery-ledger";
 import { bootHost, messageOf, standardWorkers } from "./coordinator-harness";
 
@@ -190,7 +191,7 @@ describe("a round, on its own (V5)", () => {
   const opened = (round = 0) => openDelivery([], { postId: "p1", round, delegate }, "t1").ledger;
 
   it("waits while a routing still adds to it, and shares one deadline across its deliveries (BR-24b)", () => {
-    let rounds = beginRound([], "p1", 0);
+    let rounds = beginRound([], "p1", 0).rounds;
     const first = roundDeadline(rounds, "p1", 0, 1_000, 500);
     expect(first.deadlineAt).toBe(1_500);
     rounds = first.rounds;
@@ -209,7 +210,7 @@ describe("a round, on its own (V5)", () => {
   });
 
   it("closes without an answer that comes after the deadline, which then goes nowhere (BR-24b)", () => {
-    const rounds = endRound(roundDeadline(beginRound([], "p1", 0), "p1", 0, 1_000, 500).rounds, "p1", 0);
+    const rounds = endRound(roundDeadline(beginRound([], "p1", 0).rounds, "p1", 0, 1_000, 500).rounds, "p1", 0);
     const claimed = claimAnswer(opened(), "t1") as { ledger: DeliveryLedger; delivery: DeliveryRecord };
     const late = landAnswer(rounds, claimed.ledger, claimed.delivery, "late", 1_600);
     expect(late).toMatchObject({ kept: false, rounds: [], closed: { answers: [] } });
@@ -482,6 +483,13 @@ describe("rounds (V5)", () => {
 });
 
 describe("a delegate that never answers (V5, BR-24b)", () => {
+  /** Wait until every open round of the conversation is past its deadline. */
+  const untilOverdue = async (host: Host, id: string) => {
+    const open = (await host.sessionState(id)).openRounds as Array<{ deadlineAt?: number }>;
+    const last = Math.max(...open.map((round) => round.deadlineAt ?? 0));
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, last - Date.now()) + 20));
+  };
+
   /** The records of one post, by round. */
   const recordsOf = async (host: Host, id: string, postId: string) =>
     (await host.items(id)).records.filter((record: any) => record.postId === postId);
@@ -510,7 +518,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
 
   for (const wake of ["delegateAnswer", "delegateMissed"] as const) {
     it(`closes an overdue round when a ${wake === "delegateAnswer" ? "repeated answer" : "missed report"} wakes the conversation`, async () => {
-      const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 300, reportCancel: false });
+      const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 1_000, reportCancel: false });
       const id = await host.conversation("alice", "desk");
       expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
       expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
@@ -518,7 +526,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
       expect(passedToCoder(host, "status?")).toHaveLength(0);
       const answered = (await host.sessionState(id)).deliveries.find((d: any) => d.delegate.worker === "eng.em");
 
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      await untilOverdue(host, id);
       // The EM's delivery already has its answer, so this writes nothing of its own; it only wakes.
       const input = wake === "delegateAnswer" ? { token: answered.token, body: "again" } : { token: answered.token };
       expect((await host.act("alice", id, wake, input, "coordinator", "internal")).error).toBeUndefined();
@@ -529,7 +537,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
   }
 
   it("closes an overdue round when the person's post is the only wake", async () => {
-    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 300, reportCancel: false });
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 1_000, reportCancel: false });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
     expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
@@ -538,7 +546,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     // With no delegates left, the next post makes no delivery, so no answer wakes anything.
     for (const worker of ["eng.em", "eng.coder"]) await act(host, id, "removeDelegate", { worker });
 
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await untilOverdue(host, id);
     await post(host, id, "anyone?");
     await quiet(host);
     // The stale round closed once, and its one routing ran: nobody can take the EM's answer now.
@@ -551,7 +559,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
 
   it("closes an overdue round on the conversation's next wake, once, and the new post routes as well", async () => {
     // The coder's run is cancelled and says nothing, as one whose process stopped would.
-    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 300, reportCancel: false });
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 1_000, reportCancel: false });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
     expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
@@ -567,7 +575,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect(silent.missed).toBeUndefined();
 
     // Past the deadline, the person posts again.
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await untilOverdue(host, id);
     await post(host, id, "and the release?");
     await quiet(host);
 
@@ -591,19 +599,41 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect((await host.sessionState(id)).openRounds).toEqual([]);
   });
 
-  it(`stops tracking the oldest open round past ${MAX_OPEN_ROUNDS}: its answers then go nowhere`, () => {
-    let rounds = beginRound([], "p0", 0);
-    for (let n = 1; n <= MAX_OPEN_ROUNDS; n += 1) rounds = beginRound(rounds, `p${n}`, 0);
+  it(`refuses a round past ${MAX_OPEN_ROUNDS} open ones, keeping the open ones as they were`, () => {
+    let rounds: OpenRound[] = [];
+    for (let n = 0; n < MAX_OPEN_ROUNDS; n += 1) rounds = beginRound(rounds, `p${n}`, 0).rounds;
     expect(rounds).toHaveLength(MAX_OPEN_ROUNDS);
-    expect(rounds.some((open) => open.postId === "p0")).toBe(false);
-    expect(rounds[0]!.postId).toBe("p1");
-    // An answer to the dropped round lands in no open round, so it goes nowhere.
-    const claimed = claimAnswer(openDelivery([], { postId: "p0", round: 0, delegate: { worker: "eng.em" } }, "t0").ledger, "t0") as {
-      ledger: DeliveryLedger;
-      delivery: DeliveryRecord;
-    };
-    const landed = landAnswer(rounds, claimed.ledger, claimed.delivery, "late", Date.now());
-    expect(landed.kept).toBe(false);
-    expect(routeOnAfterAnswer(claimed.delivery, "late", landed.kept, "best-fit", 1)).toBeUndefined();
+    expect(beginRound(rounds, "p-new", 0)).toEqual({ rounds, opened: false });
+    // A round already open is still held open by a second routing.
+    expect(beginRound(rounds, "p0", 0)).toMatchObject({ opened: true, rounds: expect.arrayContaining([expect.objectContaining({ postId: "p0", opening: 2 })]) });
+  });
+
+  it(`says in the record when a post's round is refused at ${MAX_OPEN_ROUNDS} open, and its answers go no further`, async () => {
+    const host = bootHost({ standard: pairDesk("everyone", 1) });
+    const id = await host.conversation("alice", "desk");
+    // Fill the conversation with rounds still within their deadline.
+    const runtime = await host.state.getRuntime();
+    const session = (await runtime.stores.session.get(id))!;
+    const full = Array.from({ length: MAX_OPEN_ROUNDS }, (_, n) => ({
+      postId: `earlier-${n}`,
+      round: 0,
+      opening: 0,
+      deadlineAt: Date.now() + 60_000,
+      answers: []
+    }));
+    await runtime.stores.session.set(id, { ...session, state: { ...session.state, openRounds: full } } as never, session.version as never);
+
+    await post(host, id, "ship it?");
+    await quiet(host);
+    // Delivered as usual, but nothing waited for the answers: they went no further.
+    expect(host.heard).toHaveLength(2);
+    const [record] = (await host.items(id)).records;
+    expect(record).toMatchObject({
+      round: 0,
+      by: "everyone",
+      note: `this conversation already has ${MAX_OPEN_ROUNDS} rounds waiting for answers, so answers in round 0 go no further`
+    });
+    expect((await host.items(id)).records).toHaveLength(1);
+    expect((await host.sessionState(id)).openRounds).toHaveLength(MAX_OPEN_ROUNDS);
   });
 });

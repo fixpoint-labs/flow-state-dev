@@ -26,9 +26,11 @@
  * until the conversation's next wake after the deadline: every wake closes
  * each overdue round ({@link closeOverdue}).
  *
- * At most {@link MAX_OPEN_ROUNDS} rounds stay open per conversation. Opening
- * one more stops tracking the oldest: its close never runs, and its answers
- * land once and go no further.
+ * At most {@link MAX_OPEN_ROUNDS} rounds stay open per conversation. A round
+ * past that is refused, not opened: its deliveries still go out, but nothing
+ * waits for their answers, which land once and go no further. The routing
+ * says so in its record's `note`. Every wake first closes the overdue rounds,
+ * so the cap is reached only by that many rounds within their deadline.
  *
  * A delegate gets at most one delivery per post per round under every policy
  * (the delivery ledger), so a post costs at most delegates × (rounds + 1)
@@ -55,7 +57,7 @@ import {
   type RoundAnswer
 } from "./coordinator-delegates";
 
-/** The most open rounds a conversation keeps. An older one is dropped, and its late answers route nowhere. */
+/** The most open rounds a conversation keeps. One more is refused: its answers go no further. */
 export const MAX_OPEN_ROUNDS = 50;
 
 /**
@@ -86,12 +88,22 @@ const indexOf = (rounds: readonly OpenRound[], postId: string, round: number) =>
 /**
  * A routing starts adding deliveries to a round below the limit: open it, or
  * hold it open while another routing adds to it too.
+ *
+ * @returns `opened` false when the round isn't open and {@link MAX_OPEN_ROUNDS}
+ *   already are: it is refused, and the rounds are unchanged.
  */
-export function beginRound(rounds: readonly OpenRound[], postId: string, round: number): OpenRound[] {
+export function beginRound(
+  rounds: readonly OpenRound[],
+  postId: string,
+  round: number
+): { rounds: OpenRound[]; opened: boolean } {
   const at = indexOf(rounds, postId, round);
-  if (at >= 0) return rounds.map((open, i) => (i === at ? { ...open, opening: open.opening + 1 } : open));
-  const opened: OpenRound[] = [...rounds, { postId, round, opening: 1, answers: [] }];
-  return opened.length > MAX_OPEN_ROUNDS ? opened.slice(-MAX_OPEN_ROUNDS) : opened;
+  if (at >= 0) {
+    const held = rounds.map((open, i) => (i === at ? { ...open, opening: open.opening + 1 } : open));
+    return { rounds: held, opened: true };
+  }
+  if (rounds.length >= MAX_OPEN_ROUNDS) return { rounds: [...rounds], opened: false };
+  return { rounds: [...rounds, { postId, round, opening: 1, answers: [] }], opened: true };
 }
 
 /**

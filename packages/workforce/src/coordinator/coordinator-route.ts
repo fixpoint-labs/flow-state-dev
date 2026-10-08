@@ -54,7 +54,12 @@ export const coordinatorRouteRecordSchema = z.object({
   /** Each delegate the decision touched. */
   delegates: z.array(routedDelegateSchema),
   /** Why nobody was delivered to, when nobody was. */
-  none: z.string().optional()
+  none: z.string().optional(),
+  /**
+   * What else this decision means for the post: that its answers go no
+   * further, when the conversation already had the most rounds open.
+   */
+  note: z.string().optional()
 });
 
 export type CoordinatorRouteRecord = z.infer<typeof coordinatorRouteRecordSchema>;
