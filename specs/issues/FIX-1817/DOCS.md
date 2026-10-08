@@ -79,7 +79,8 @@ The epic's shared sentence ([FIX-1815 DOCS](../../epics/FIX-1815/DOCS.md)), in i
 >
 > A board whose tasks run in their own sessions (handed off with a dispatcher) gets two more
 > verbs with its task tools. A worker on a handed-off task has `parkOnQuestion`, which parks the
-> task it is running on a question and ends its turn. Whoever can write the board answers with
+> task it is running on a question and ends its turn. A task filed with `waitForResponse` has
+> no `parkOnQuestion`: the worker answers with what it has, or fails. Whoever can write the board answers with
 > `answerTask`, or the `answerTask_<board>` action:
 >
 > ```ts

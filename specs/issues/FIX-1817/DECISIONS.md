@@ -125,6 +125,21 @@ From the [POC](poc/task-session-reentry/README.md), run on `main` at `b78c0ef58`
   ignores it. PLAN S5.
 - **A re-entry is free** — **REFUTED** (R1). It spent one attempt. PLAN S3.
 
+## Cross-spec alignment
+
+Decided by the epic coordinator after the cross-spec pass, after this spec merged
+([#2899](https://github.com/fixpoint-labs/flow-state-dev/pull/2899)); aligned with FIX-1816 in
+[#2905](https://github.com/fixpoint-labs/flow-state-dev/pull/2905). No change of direction; the
+product owner may overrule ER-22.
+
+- **An asked row gets no `parkOnQuestion` in v1**: epic [ER-22](../../epics/FIX-1815/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)
+  ([#2904](https://github.com/fixpoint-labs/flow-state-dev/pull/2904)), owned here: BR-1a, S1, S7.
+  FIX-1816 BR-5b mirrors it.
+- **`followUpOf` with `waitForResponse` on one call is allowed**, mirroring FIX-1816 BR-4a: BR-22a, S4.
+- **S1 owns the one "task turn" test**; FIX-1816 BR-5a cites it. PLAN's check on the dropped L6 is gone.
+- **BR-26 covers any task write** on a finished row, with its decline codes named there.
+- **One set of task tools per turn, not a count**, as the epic says (S2, S7, V5).
+
 ## How it got here
 
 - **Draft** — framed as the answer path FIX-1794 BR-25 lacks, plus a finished session that keeps
@@ -134,5 +149,7 @@ From the [POC](poc/task-session-reentry/README.md), run on `main` at `b78c0ef58`
   coordinator before the gate, and
   two clarifications from Cursor's review: what is built for ER-2 versus an existing door, and
   S5, S1 and S2 strictly before S4.
+- **Cross-spec alignment** — after merge, a follow-up PR from `main` aligned this spec with
+  FIX-1816 and epic ER-22, [above](#cross-spec-alignment).
 
 **Open: none.**
