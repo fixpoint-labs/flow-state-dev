@@ -46,8 +46,8 @@ controls move the work to a fresh session, or drop the answer, and must fail.
 |---|---|
 | **Goal check** | `goals/coordinators/task-session-stays-open/` · `openai/gpt-5.4-mini` · Shift Manager over HTTP, one user, FIX-1794's goal tree plus a ticket tool · run by the implementer at completion · verdict in the implementation PR |
 | **Signal** | **a**: a task whose brief says to draw a ticket and then ask which region to use parks with one `parked` notice. The app answers `eu-west` with `answerTask_tasks`. Within 90 s the task is `completed` in the session that parked, its output names the ticket and `eu-west`, one `completed` notice follows, and a task filed with one attempt still has it unspent. **b**: the door into that session, "Which ticket did you draw?", is answered with the ticket. **c**: a follow-up task naming it runs in the same session, names the ticket, and the ticket tool ran once in total |
-| **Input** | The region and the follow-up's wording are held out at run time. A different region, or a brief with two questions, must pass too |
-| **Anti-game** | No row, notice or session written by the check. The ticket never appears in any prompt the check sends. Counts read again after 5 s |
+| **Input** | The region and the follow-up's wording are held out at run time. A different region must pass too. A task that asks twice is BR-14's, in CI |
+| **Anti-game** | No row, notice or session written by the check. The ticket never appears in any prompt the check sends |
 | **Control that must fail** | `GOAL_CONTROL=new-session`: legs a and c FAIL on *names the ticket*. `GOAL_CONTROL=drop-answer`: leg a FAILS on *names `eu-west`*. Today's `main`: every leg FAILS |
 
 ## What changes

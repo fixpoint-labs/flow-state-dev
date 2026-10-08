@@ -39,14 +39,14 @@ The *proved by* column is the check the plan runs.
 | BR-17 | Alice sends a message through the worker's door into a finished task's session (completed, errored or cancelled) | It runs as a turn in that session, handed its whole history. The row doesn't change. No notice | CI · VG leg b |
 | BR-18 | Bob sends to it | Refused, as today (engine ownership) | Existing suite |
 | BR-19 | The worker was fired, or its flow is gone | Refused (FIX-1788 BR-19, BR-19a). These are the only refusals | Existing suite |
-| BR-20 | A follow-up task names a finished task (`followUpOf`) | A new row on the same board, with its own id. Its hand-off opens no session: it runs in the finished task's session. `findWorkerSession` with either id finds that session. Its ending is heard like any task's | CI · VG leg c |
+| BR-20 | A follow-up task names a finished task (`followUpOf`) | A new row on the same board, with its own id. Its hand-off opens no session: it runs in the finished task's session. The session is reached by the finished task's id. Its ending is heard like any task's | CI · VG leg c |
 | BR-21 | The named task hasn't finished | Refused, naming its status. Nothing stored | CI |
-| BR-22 | The follow-up names another worker | Refused: another worker is another session. With no assignee it takes the finished task's worker | CI |
+| BR-22 | The follow-up names an assignee | Refused at input: a follow-up takes the finished task's worker, and another worker is another session | CI |
 | BR-23 | The named task is on another conversation's board, or Bob's | The same answer as an unknown task. Nothing stored | CI |
 | BR-24 | A follow-up names a follow-up | It runs in the same session, the first task's | CI |
-| BR-25 | A follow-up names a task whose session already has an unfinished task | Refused, naming that task. One task at a time in a session | CI |
+| BR-25 | A follow-up names a finished task while an earlier follow-up still runs in its session | Accepted. Its turn follows the session's concurrency policy, like any turn into that session | CI |
 | BR-26 | Anything writes to the finished task's own row | Declined, `terminal_task_write_declined` (FIX-1794 leg e) | Existing suite |
-| BR-27 | A person's message reaches a task session while a follow-up task runs there | It runs after the current turn, in the engine's order. Never dropped | CI |
+| BR-27 | A person's message reaches a task session while a follow-up task runs there | It follows the session's concurrency policy (`allow`, `queue` or `reject`), as any turn does | Existing suite |
 
 ## Failure taxonomy
 

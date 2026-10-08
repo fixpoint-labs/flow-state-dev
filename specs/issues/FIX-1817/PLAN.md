@@ -15,10 +15,10 @@ first (ER-11).
 |---|---|---|---|
 | S1 | `orchestration` · the receiving gate's turn (FIX-1794 S2) | A `parkOnQuestion({ question })` tool on a turn the gate serves: `awaitReview` on the row that turn's hand-off claimed, fenced by its claim ticket, never a task id from input. Once per turn. Declined when the claim is displaced, or when the turn already parked for its pieces (FIX-1802 S4) | BR-1–BR-5 |
 | S2 | `orchestration` · task tools | `answerTask({ taskId, answer })`, the ninth tool beside the eight, and its action through `taskToolActions` (`answerTask_<board>`). Through the resolver's ref, so it reaches only this session's partition. Runs the fenced `unpark` with the answer; the ref writes FIX-1794 S5's start-owed marker in the same write, as a reassign does. Declines a row not parked on a question: a binding from FIX-1802 means pieces, `parkedForTurn` means a person's turn | BR-6 BR-9–BR-12 BR-16 |
-| S3 | `orchestration` · the claim charge | `answerTask`'s unpark marks the re-entry, and `shouldRetryOnFail` discounts it beside `abandonments` and `turnReentries`. Top level, never `metadata` (BP-031); absent reads as zero (BP-030). Other `unpark` callers unchanged | BR-8 |
-| S4 | `orchestration` · `addTask` | Optional `followUpOf`. Checked in the same partition: the task exists, is terminal, and its session has no unfinished task; the assignee is empty or the same worker. Stored top level on the new row, server-checked, resolved to the root when it names a follow-up | BR-20–BR-25 |
+| S3 | `orchestration` · the claim charge | `answerTask`'s unpark adds one to the existing `turnReentries`, which `shouldRetryOnFail` already discounts. No new field, so no new dual-read. `turnReentries` now counts both kinds of re-entry: after a person's turn (FIX-1690) and after an answered question. Other `unpark` callers unchanged | BR-8 |
+| S4 | `orchestration` · `addTask` | Optional `followUpOf`. Checked in the same partition: the task exists and is terminal. An `assignee` beside `followUpOf` is rejected at input; the follow-up takes the root task's worker. Stored top level on the new row, server-checked, resolved to the root when it names a follow-up. No scan of the session for unfinished tasks | BR-20–BR-25 |
 | S5 | `workforce` · the task entry (`work`, FIX-1794 S6) | Declare `userMessage`, so the task as filed is the turn's user item and part of history. On a re-entry after `answerTask`, the turn's message is the answer, labelled as the answer to its question, not the task again. A retry after a failure is not labelled an answer | BR-7 BR-17 |
-| S6 | `workforce` · the hand-off's session key (FIX-1794 S3, S9) | A row with `followUpOf` hands off under its root task's session criteria, so it opens no session. `findWorkerSession` with a follow-up's id resolves to the root's session | BR-20 BR-24 |
+| S6 | `workforce` · the hand-off's session key (FIX-1794 S3, S9) | A row with `followUpOf` hands off under its root task's session criteria, so it opens no session. The session is reached by the root task's id only; `findWorkerSession` is unchanged | BR-20 BR-24 |
 | S7 | `workforce` · the turns that carry the tools | The `agent` kind's task turn carries S1's tool. Every flow that carries the eight task tools (FIX-1794 S4, FIX-1802 S2) carries S2's with them, in the same capability, so no flow gets one without the other | BR-1 BR-2 BR-6 |
 | S8 | `goals/coordinators/task-session-stays-open/` | The goal check and its two controls, per [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met). Reuses FIX-1794's goal tree; adds a goal-local ticket tool | goal |
 | S9 | Docs | [DOCS.md](DOCS.md); `orchestration` and `workforce` READMEs; `minor` changesets for both | — |
@@ -29,6 +29,11 @@ reached as a task tool, where `unparkAndDrain` runs the board in the caller's re
 S1 and S2 are one invariant: a question park is written only through the claim that runs the
 task, and answered only through the board that filed it. Build and check them together.
 
+**Built for ER-2 versus an existing door.** New API: `parkOnQuestion` (S1), `answerTask` (S2)
+and the free re-entry (S3), all for ER-2's answer path. Leg b uses a door that already exists, a
+message to the worker in its session; this issue only fixes what that session's history holds
+(S5).
+
 ## Sequence
 
 ```mermaid
@@ -37,13 +42,16 @@ flowchart TD
   S1 --> S2["S2 · answerTask"]
   S2 --> S3["S3 · the re-entry is free"]
   S2 --> S7["S7 · wire the tools"]
-  S5 --> S4["S4 · followUpOf"]
+  S2 --> S4["S4 · followUpOf"]
   S4 --> S6["S6 · same session"]
   S3 & S6 & S7 --> S8["S8 · goal check"]
   S8 --> S9["S9 · docs"]
 ```
 
 S5 first: its red state is on `main` today (the POC's F1), and every later check reads history.
+**The order S5, then S1, then S2 is strict, and all three land before S4 starts.** S4 and S6
+read the history S5 fixes, and a follow-up built first is checked against a session that
+forgets its prompt.
 
 ## Checks
 
@@ -52,7 +60,7 @@ S5 first: its red state is on `main` today (the POC's F1), and every later check
 | V1 | S5 | The POC's F1 and R1, made into specs: a later turn's model is handed the task prompt, and a re-entered turn is handed the answer as its message. Both red on `main` first |
 | V2 | S1 | BR-1–BR-5. A turn that isn't a task turn has no tool; a forged task id on input reaches nothing |
 | V3 | S2, S3 | BR-6, BR-8–BR-12, BR-14: re-entry in the same session id; a task with `maxAttempts: 1` answered twice and then failing once ends `errored` after that one failure, not before; a crash between the answer's write and the board's run is recovered on the next touch |
-| V4 | S4, S6 | BR-20–BR-25. Two conversations of Alice's each follow up their own task with the same id, and each lands in its own session |
+| V4 | S4, S6 | BR-20–BR-25. Two conversations of Alice's each follow up their own task with the same id, and each lands in its own session. A follow-up filed while an earlier one runs is accepted |
 | V5 | S7 | **Must-test**, as FIX-1794 V3: on `agent` and the coordinator, each of the nine task tools appears exactly once on a turn, and `parkOnQuestion` only on a task turn |
 | V6 | S1–S7 | The second path (BP-035): FIX-1802's split, with one piece parked on a question and answered by the task session above, then both pieces end and the parent settles once (BR-16). FIX-1690's turn park still re-enters through its door, and `answerTask` declines it |
 | VG | S8 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/coordinators/task-session-stays-open/run.mts` PASSES on `openai/gpt-5.4-mini`, after FAILING under `GOAL_CONTROL=new-session` (legs a and c, *names the ticket*) and `GOAL_CONTROL=drop-answer` (leg a, *names `eu-west`*) |
@@ -65,7 +73,7 @@ S5 first: its red state is on `main` today (the POC's F1), and every later check
 | Worker tool | `parkOnQuestion`, input `{ question }` | A model reads it. "Ask" is FIX-1816's word for a hand-off that waits, so it is not used here |
 | `addTask` input | `followUpOf` | Public, on an existing tool |
 
-Everything else is yours to name, the re-entry counter included.
+Everything else is yours to name.
 
 ## Guardrails
 
@@ -93,11 +101,11 @@ the conversation, on the parked notice:
     answerTask(taskId, answer):
         row ← this session's partition only
         refuse unless parked on a question
-        unpark(row, answer) + start owed + mark re-entry          ← one write
+        unpark(row, answer) + start owed + turnReentries + 1      ← one write
         dispatch the board's run (as on add)
 the board's run:  claim (not charged) → hand-off → same task session
 the task entry:   message = answer ? "Answer to your question: …" : the task
-addTask(goal, followUpOf):  root ← resolve followUpOf; refuse unless finished and alone
+addTask(goal, followUpOf):  refuse an assignee; root ← resolve followUpOf; refuse unless finished
 the hand-off:     session criteria ← root's, when followUpOf is set
 ```
 
@@ -113,7 +121,7 @@ which are S5 and S3.
 - If FIX-1816 has merged, confirm its resume verb is untouched here, and that a board worker
   that *asks* (its L6) parks under a reason `answerTask` declines.
 - Harness Manager parks on questions with `awaitReview` too. Confirm its answer path keeps its
-  own charge (S3 marks only `answerTask`'s re-entry).
+  own charge (S3 counts only `answerTask`'s re-entry).
 - FIX-1764's state: if its composer has shipped, check its finished-task send matches D2.
 
 ## Follow-ups

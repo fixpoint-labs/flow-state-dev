@@ -66,11 +66,12 @@ PR. It binds FIX-1817's build at this gate. It binds FIX-1764 when that epic acc
   and the task stays parked. An app that wants one box wires its composer to `answerTask` while
   the row is parked.
 - **An answer doesn't spend the task's retries.** Attempts price failures (FIX-1690 BR-9 does
-  the same for a person's turn). Only `answerTask`'s re-entry is discounted; other `unpark`
-  callers, Harness Manager's among them, are unchanged.
+  the same for a person's turn). Only `answerTask`'s re-entry is newly discounted, counted in
+  the existing `turnReentries`; other `unpark` callers, Harness Manager's among them, are
+  unchanged.
 - **A question waits without limit.** No timeout. `cancelTask` ends it, silently, as today.
 - **A follow-up task keeps the finished task's worker.** Another worker is another session
-  (FIX-1788 BR-13).
+  (FIX-1788 BR-13), so `addTask` rejects an `assignee` beside `followUpOf`.
 - **A park writes nothing new on the row**: `awaitReview`'s status and question, as today. So
   [ER-21](../../epics/FIX-1815/BUSINESS-RULES.md#how-the-set-is-run)'s notice to FIX-1786's
   coordinator is not owed.
@@ -90,6 +91,26 @@ PR. It binds FIX-1817's build at this gate. It binds FIX-1764 when that epic acc
 | A message into a parked session counts as its answer | The row belongs to the board, and the session no longer holds its claim. It would also make every chat line into a parked session a possible answer |
 | Build nothing for a follow-up question | The framework already runs the turn (POC F1), so "never locks" needs no new path. It still answers without its task prompt, which is the one change made |
 
+## Cut before the gate
+
+Restraint cuts the epic coordinator made inside the approved objective. Each removes a surface
+the goal doesn't need.
+
+- **No `findWorkerSession` aliasing.** The session is reached by the root task's id only. A
+  caller holding a follow-up's id has its `followUpOf`, so a second key buys nothing.
+- **No "session has no unfinished task" scan on a follow-up.** `followUpOf` must still name a
+  finished row. The session's concurrency policy already governs overlapping turns, so an
+  overlapping follow-up is accepted rather than checked twice.
+- **BR-27 is existing behaviour, not a new promise.** A person's message into a busy task
+  session follows the session's concurrency policy, and the existing suite covers it. "Never
+  dropped" was not true under `reject`.
+- **The answer's re-entry reuses `turnReentries`.** No new persisted field, so no new dual-read.
+  The field now counts re-entries after a person's turn and after an answered question.
+- **The assignee check is an input rule.** `addTask` rejects `assignee` beside `followUpOf`, and
+  the follow-up takes the root task's worker. One check instead of a comparison.
+- **A narrower goal check.** The two-question input is dropped (BR-14 covers a second question
+  in CI), and so is the 5 s recount. Both controls and all three legs stay.
+
 ## Settled
 
 From the [POC](poc/task-session-reentry/README.md), run on `main` at `b78c0ef58`:
@@ -107,5 +128,8 @@ From the [POC](poc/task-session-reentry/README.md), run on `main` at `b78c0ef58`
 - **Draft** — framed as the answer path FIX-1794 BR-25 lacks, plus a finished session that keeps
   its context; the board's own re-queue into the same session over ask's resume; D2 as the joint
   answer for FIX-1765; a POC on `main` before drafting, which found three gaps (S3, S5); one PR.
+- **Restraint pass** — the six cuts above, made by the epic coordinator before the gate, and
+  two clarifications from Cursor's review: what is built for ER-2 versus an existing door, and
+  S5, S1 and S2 strictly before S4.
 
 **Open: none.**
