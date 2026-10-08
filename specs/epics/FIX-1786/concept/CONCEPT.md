@@ -323,7 +323,9 @@ The lead is any worker whose delegates can take a task, often a coordinator, the
 
 ## Naming
 
-**Decided:** workstream, with an owner (not responsibility). Channel (not space). Mailbox is retired: it's a coordinator worker. A coordinator's workers are its delegates (not targets, members or recipients). Each task still has one assignee, picked from the delegates.
+**Decided:** workstream, with an owner (not responsibility). Channel (not space). Mailbox is retired: it's a coordinator worker. The word is kept back for a future inbox that takes untrusted messages from outside, and isn't used now. A worker's delegates are the workers it may delegate to (not targets, members or recipients). Each task still has one assignee, picked from the delegates.
+
+**Decided (the product owner, 2026-10-08, [D10](../DECISIONS.md#d10)):** a hand-off is orchestration's word: work leaves this request for another session, and exactly one answer comes back later. It comes in two kinds: an ask waits for its answer, and an assign is a task tracked on the board until it's done. Delegation is Workforce's word: a hand-off to a worker on the user's roster, checked against that roster. In published docs, "delegation" means only that. Skill sub-agents are removed, so a skill no longer brings a team of its own.
 
 ### One coordinator flow, or coordinator and relay?
 
@@ -383,7 +385,7 @@ Held for later: treating the files like migrations, so that everything lives in 
 
 ## Vocabulary
 
-One term, one thing. Retired: person (say user), seat (say worker; on a task board, say assignee, [D7](../DECISIONS.md#d7)), hired seat, hired roster (say roster), desk, room, talk session, house, world, space, responsibility, mailbox, mailbox thread, target (say delegate), kind (say flow), and flow instance.
+One term, one thing. Retired: person (say user), seat (say worker; on a task board, say assignee, [D7](../DECISIONS.md#d7)), hired seat, hired roster (say roster), desk, room, talk session, house, world, space, responsibility, mailbox (kept back for a future inbox of untrusted messages from outside, [D10](../DECISIONS.md#d10)), mailbox thread, target (say delegate), kind (say flow), and flow instance.
 
 | Term | Means | Private or shared |
 | -- | -- | -- |
@@ -408,7 +410,11 @@ One term, one thing. Retired: person (say user), seat (say worker; on a task boa
 | Standard install | What every user starts with, defined by files | Installation-level |
 | Worker contract | What a flow must meet to run workers: standard configuration, a door, attribution on shared writes | Installation-level |
 | Door | The one public action that takes a message to a worker | Private |
-| Delegate | A worker a coordinator can hand posts to. Always on the same user's roster | Private |
+| Hand-off | Work leaves this request for another session, and exactly one answer comes back later. Orchestration's task board and core's dispatch ([D10](../DECISIONS.md#d10)) | Follows its session |
+| Ask | A hand-off that waits for its one answer. The follow-up epic, [FIX-1815](https://linear.app/fixpoint-labs/issue/FIX-1815), builds it | Private |
+| Assign | A hand-off tracked as a task on the board until it's done. Filing a task for a delegate is one | Private |
+| Delegation | A hand-off to a worker on the user's roster, checked against that roster. Workforce's word | Private |
+| Delegate | A worker a conversation may delegate to: a coordinator hands it posts, and any worker files tasks for one that takes them ([D8](../DECISIONS.md#d8)). Listed under `delegates:`, always on the same user's roster | Private |
 | Routing policy | How a coordinator picks delegates: judgment, best fit, round robin, or everyone | Private |
 | Project coordinator | The coordinator session a user talks to a project through, one per user per project | Private |
 

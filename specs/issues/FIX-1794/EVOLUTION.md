@@ -47,3 +47,21 @@ spec changed:
 | *Decided, not asked*, BR's "Reassign and cancel" and this record's FIX-1780 row: FIX-1780's BR-16 to BR-22 apply | **Amended** to the task tools' own contract, as the amended *decided, not asked* line already said | A cancel of a running task lands and cascades (FIX-1802 BR-19); its late result is declined; no three-move limit | The assignee freeze; BR-2's check on a reassign |
 | T1: outside the epic's "D3 four" | **Amended**: the fifth of D3's six | The epic's count moved | T1 as written |
 | The incarnation line's BP-030 citation | **Amended**: it gives its own reason | Epic D9: BP-030 doesn't apply to this epic | Old rows stay unread |
+
+<a name="amendment-handoff"></a>
+## Amended after merge (skill sub-agents removed, 2026-10-08)
+
+**The decision.** The product owner removed skill sub-agents rather than keep them beside
+delegation ([epic D10](../../epics/FIX-1786/DECISIONS.md#d10)). A skill that lists `agents:` made
+the skills library install its own copy of the eight task tools and `runBoard`. P2 puts the same
+eight on the coordinator, which since FIX-1791 runs the built-in agent's shared worker turn, so a
+coordinator holding such a skill carried two tools of each name, and core refused every turn.
+[FIX-1814](https://linear.app/fixpoint-labs/issue/FIX-1814) removes them and blocks P2. This spec
+changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| V3 and the guardrails: nothing on how many times a tool is on a turn | **Amended**: each of the eight once on the coordinator's turn, with a skill loaded and without; a control adding a second instance must throw | Asked for by the engineering lead and the cycle PM (epic ER-32) | S4, T1 and the rest of V3 |
+| P2's start: after FIX-1788 and FIX-1791 | **Amended**: FIX-1814 too | Epic D10: it blocks P2 | P1's exception, which doesn't wait on it |
+
+Nothing in this spec assumed skill sub-agents existed, so nothing else moved.

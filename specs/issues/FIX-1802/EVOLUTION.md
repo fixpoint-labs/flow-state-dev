@@ -29,3 +29,22 @@ spec changed:
 | S2, BR-1, BR-2, BR-5, the sketch, D1's *Locks in* and *decided, not asked*: the grant read from the file's `delegates:` | **Amended**: read per call from the session's current delegates, the list the assignee check reads | Delegates change per conversation (FIX-1791), and the roster is read per call (FIX-1794 T1); D1's own reason, one list with nothing beside it to disagree | No flag; the file's list is where each session starts |
 | S3 and the failure taxonomy: nothing refused at load | **Amended**: FIX-1791 BR-11's refusal reaches every standard worker with `delegates:` (new BR-10a), and delegate state is server-only on every flow that carries it | FIX-1791 BR-11 and epic ER-6 refuse a standard coordinator naming a non-standard delegate | Nothing about the grant refuses a file |
 | BR-6: a delegate list on a session create is ignored, or refused | **Amended**: refused with a 400 naming the field | FIX-1791 BR-8 and FIX-1797's sweep require it | Action and tool input as FIX-1794 BR-8 |
+
+<a name="amendment-handoff"></a>
+## Amended after merge (skill sub-agents removed, 2026-10-08)
+
+**The decision.** The product owner removed skill sub-agents rather than keep them beside
+delegation ([epic D10](../../epics/FIX-1786/DECISIONS.md#d10)). A skill that lists `agents:` made
+the skills library install its own copy of the eight task tools and `runBoard`, so a worker holding
+one beside a task-taking delegate carried two tools of each name, and core refused every turn.
+[FIX-1814](https://linear.app/fixpoint-labs/issue/FIX-1814) removes them and blocks this issue.
+This spec changed:
+
+| What | Treatment | Why | What is retained |
+|---|---|---|---|
+| S1: "The `agent` flow composes them, as the coordinator flow does" | **Amended**: through the built-in agent's shared worker turn (`agentWorkerTurn`), one capability instance per turn | The coordinator runs that turn since FIX-1791, and FIX-1794's P2 puts the tools there; a second instance is the clash (epic ER-32) | The eight tools, the resolver and the roster |
+| V1, BR-1 and the guardrails: nothing on how many times a tool is on a turn | **Amended**: each of the eight once, with a skill loaded and without; a control adding a second instance must throw | Asked for by the engineering lead and the cycle PM | BR-1's grant |
+| The plan's start: after FIX-1794, FIX-1788, FIX-1789 and FIX-1791 | **Amended**: FIX-1814 too | Epic D10: it blocks this issue | The stack on FIX-1794 |
+| DOCS: `filing-work.md`, "Filing work" | **Renamed** `delegating-work.md`, "Delegating work", with the links to it | One word per thing: delegation is Workforce's word for handing work to a delegate | The page's content and place in the sidebar |
+
+Nothing in this spec assumed skill sub-agents existed, so nothing else moved.

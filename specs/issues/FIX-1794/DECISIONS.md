@@ -218,5 +218,10 @@ left.
   cancel are the task tools' own everywhere, a cancel cascading as FIX-1802 BR-19 says; T1 is D3's
   fifth of six; the incarnation line stands without BP-030.
   ([EVOLUTION.md](EVOLUTION.md#amendment-cross-spec))
+- **Amended after merge (skill sub-agents removed, 2026-10-08)** — the product owner removed skill
+  sub-agents, whose private board put a second set of task tools on a worker's turn
+  ([epic D10](../../epics/FIX-1786/DECISIONS.md#d10)). P2 waits on FIX-1814, and V3 gains the
+  must-test: each task tool once on the coordinator's turn.
+  ([EVOLUTION.md](EVOLUTION.md#amendment-handoff))
 
 **Open: none.** [Q](#q) is answered: the split moves to FIX-1802, which is in the MVP (epic D8).
