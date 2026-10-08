@@ -75,6 +75,7 @@ import { projectAt, projectRowsAt, PROJECT_ROW_RESOURCES } from "./project-addre
 import { isMember } from "./membership-gate";
 import { isAlreadyExists, isConcurrentModification, isResourceDeleted } from "./store-errors";
 import { readProjectFiles } from "./project-files";
+import { readProject } from "./project-read";
 import { ProjectRefusedError } from "./project-refusal";
 import { repositoryProblem } from "./repository-value";
 import { noteBindRefusal, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
@@ -162,16 +163,18 @@ export type SetRepositoryInput = z.infer<typeof setRepositoryInputSchema>;
 /** What setting a project's repository returns: the row as written. */
 export const setRepositoryOutputSchema = z.object({ project: projectRowSchema });
 
-/** The project writes and the project files read, and the same blocks as an `actions` map. */
+/** The project writes, the project read and the project files read, and the same blocks as an `actions` map. */
 export type ProjectBlocks = {
   createProject: ReturnType<typeof createProjectSequence>;
   setWorkstreams: typeof setWorkstreams;
   setRepository: typeof setRepository;
+  readProject: typeof readProject;
   readProjectFiles: typeof readProjectFiles;
   actions: {
     createProject: ActionConfig;
     setWorkstreams: ActionConfig;
     setRepository: ActionConfig;
+    readProject: ActionConfig;
     readProjectFiles: ActionConfig;
   };
 };
@@ -607,7 +610,7 @@ async function settleFailedStamps(
 }
 
 /**
- * Build the project writes and the project files read.
+ * Build the project writes, the project read and the project files read.
  *
  * @example
  *   const projects = defineProjectBlocks();
@@ -619,6 +622,7 @@ export function defineProjectBlocks(): ProjectBlocks {
     createProject,
     setWorkstreams,
     setRepository,
+    readProject,
     readProjectFiles,
     actions: {
       createProject: {
@@ -634,6 +638,11 @@ export function defineProjectBlocks(): ProjectBlocks {
         block: setRepository,
         description:
           "Set, change or clear (null) the git remote a project's code lives in. Members only; a bare path or a remote carrying a credential is refused."
+      },
+      readProject: {
+        block: readProject,
+        description:
+          "Read a project by its address: its row, every workstream's entry, and its progress worked out from them."
       },
       readProjectFiles: {
         block: readProjectFiles,

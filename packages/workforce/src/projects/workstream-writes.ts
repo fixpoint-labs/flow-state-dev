@@ -18,10 +18,11 @@
  * refused.
  *
  * **Updating one.** Only its owner writes an entry, and the engine enforces
- * that at the store whichever flow writes. The app's action and the lead's
- * tool both write the caller's own entry: the action by the address it is
- * given, the tool by the workstream its session leads, read from the
- * session's readonly `workstreamId`. Each write is a compare-and-swap that
+ * that at the store whichever flow writes. The app's action writes the entry
+ * its input names, the caller's own unless it names another owner, which the
+ * store then refuses. The lead's tool writes the workstream its session
+ * leads, read from the session's readonly `workstreamId`, so it only ever
+ * reaches its own owner's entry. Each write is a compare-and-swap that
  * recomputes on retry, stamps `writtenBy` from the session and sets
  * `updatedAt` from the server's clock. Nothing deletes an entry; done is a
  * status.
@@ -47,8 +48,10 @@ import {
   workstreamIdProblem,
   workstreamsAccessor,
   workstreamStatusSchema,
+  workstreamViewSchema,
   type WorkstreamEntry,
-  type WorkstreamObjective
+  type WorkstreamObjective,
+  type WorkstreamView
 } from "./workstream-collections";
 import { leadsWorkstreams, WORKSTREAM_OPENED_ENTRY } from "./workstream-lead";
 import { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
@@ -85,16 +88,6 @@ export const openWorkstreamInputSchema = z
 /** @see openWorkstreamInputSchema */
 export type OpenWorkstreamInput = z.infer<typeof openWorkstreamInputSchema>;
 
-/** One workstream as the writes answer it: its entry, with its project, its owner and its id. */
-export const workstreamViewSchema = workstreamEntrySchema.extend({
-  project: projectAddressSchema,
-  id: z.string(),
-  owner: z.string()
-});
-
-/** @see workstreamViewSchema */
-export type WorkstreamView = z.infer<typeof workstreamViewSchema>;
-
 /** What opening a workstream returns: the entry, and whether this call made it. */
 export const openWorkstreamOutputSchema = z.object({
   workstream: workstreamViewSchema,
@@ -120,9 +113,14 @@ const changesShape = {
   report: z.string().optional()
 };
 
-/** What updating a workstream from the app takes: its address, and the changes. */
+/**
+ * What updating a workstream from the app takes: the entry's place (its
+ * project's address, its owner and its id), and the changes. `owner` defaults
+ * to the caller. Naming anyone else addresses their entry, and the store
+ * refuses the write by the owner rule.
+ */
 export const updateWorkstreamInputSchema = z
-  .object({ project: projectAddressSchema, id: z.string().min(1), ...changesShape })
+  .object({ project: projectAddressSchema, owner: z.string().min(1).optional(), id: z.string().min(1), ...changesShape })
   .strict();
 
 /** @see updateWorkstreamInputSchema */
@@ -372,8 +370,8 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     resources: WORKSTREAM_RESOURCES,
     execute: async (input: UpdateWorkstreamInput, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
-      const { project, id, ...changes } = input;
-      return { workstream: await updateEntry(ctx, { project, id }, ownerOf(ctx, "updateWorkstream"), changes) };
+      const { project, id, owner, ...changes } = input;
+      return { workstream: await updateEntry(ctx, { project, id }, owner ?? ownerOf(ctx, "updateWorkstream"), changes) };
     }
   });
 
@@ -446,15 +444,15 @@ function nextObjectives(
 }
 
 /**
- * Write the caller's own entry: a compare-and-swap that recomputes on retry,
- * then the report as its content. The owner rule at the store is what makes
- * the entry the caller's to write; this only ever addresses the caller's key.
+ * Write `owner`'s entry: a compare-and-swap that recomputes on retry, then the
+ * report as its content. Nothing here checks who the caller is: the owner rule
+ * at the store refuses a write to anyone else's entry, whichever path asks.
  */
 async function updateEntry(
   ctx: BlockContext,
   address: WorkstreamAddress,
   owner: string,
-  changes: Omit<UpdateWorkstreamInput, "project" | "id">
+  changes: Omit<UpdateWorkstreamInput, "project" | "id" | "owner">
 ): Promise<WorkstreamView> {
   assertWorkstreamId(address.id);
   const entries = entriesAt(ctx, address.project.visibility);
@@ -462,7 +460,7 @@ async function updateEntry(
   if (entry === undefined) {
     throw new ProjectRefusedError(
       "no-such-workstream",
-      `you have no workstream "${address.id}" in project "${address.project.id}".`
+      `"${owner}" has no workstream "${address.id}" in project "${address.project.id}".`
     );
   }
   const { report, objectives, ...fields } = changes;

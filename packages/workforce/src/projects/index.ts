@@ -88,11 +88,30 @@ export {
   WORKSTREAMS_PATTERN,
   WORKSTREAMS_RESOURCE,
   workstreamStatusSchema,
+  workstreamViewSchema,
   type WorkstreamEntry,
   type WorkstreamEntryPlace,
   type WorkstreamObjective,
-  type WorkstreamStatus
+  type WorkstreamStatus,
+  type WorkstreamView
 } from "./workstream-collections";
+
+export {
+  projectProgress,
+  STALE_AFTER_MS,
+  WORKSTREAM_STATUSES,
+  type ProgressEntry,
+  type ProjectProgress
+} from "./project-progress";
+
+export {
+  projectProgressSchema,
+  readProject,
+  readProjectInputSchema,
+  readProjectOutputSchema,
+  type ReadProjectInput,
+  type ReadProjectOutput
+} from "./project-read";
 
 export { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
 
@@ -105,13 +124,11 @@ export {
   updateOwnWorkstreamInputSchema,
   updateWorkstreamInputSchema,
   updateWorkstreamOutputSchema,
-  workstreamViewSchema,
   type OpenWorkstreamInput,
   type OpenWorkstreamOutput,
   type UpdateWorkstreamInput,
   type WorkstreamBlocks,
-  type WorkstreamBlocksOptions,
-  type WorkstreamView
+  type WorkstreamBlocksOptions
 } from "./workstream-writes";
 
 export {

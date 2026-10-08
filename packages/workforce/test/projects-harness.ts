@@ -16,7 +16,7 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, type StoreAdapter } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { MAILBOX_KIND, mailboxFlow } from "../src/index";
@@ -73,7 +73,7 @@ function workerFlow(
 }
 
 /** Boot one host over `stores`. */
-export async function bootProjectsHost(extras: HostExtras, options: { stores?: StoreRegistry } = {}) {
+export async function bootProjectsHost(extras: HostExtras, options: { stores?: StoreAdapter } = {}) {
   const stores = options.stores ?? inMemoryStores();
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => flows as never });

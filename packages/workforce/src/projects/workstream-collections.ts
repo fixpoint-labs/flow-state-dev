@@ -30,6 +30,7 @@ import { ownerSegment } from "@flow-state-dev/core";
 import { z } from "zod";
 import { sharedResource, writtenBySchema } from "../shared-resource";
 import { projectAddressSchema, type ProjectVisibility } from "./collections";
+import { WORKSTREAM_STATUSES } from "./project-progress";
 
 /** The resource-map ref of a shared project's workstream entries, at org scope. */
 export const WORKSTREAMS_RESOURCE = "workstreams";
@@ -43,7 +44,7 @@ export const WORKSTREAMS_PATTERN = "workstreams/[project]/[owner]/[workstream]";
 const STORAGE_PREFIX = "workstreams/";
 
 /** Where a workstream stands. A done workstream stays listed, as done. */
-export const workstreamStatusSchema = z.enum(["on-track", "at-risk", "blocked", "done"]);
+export const workstreamStatusSchema = z.enum(WORKSTREAM_STATUSES);
 
 /** @see workstreamStatusSchema */
 export type WorkstreamStatus = z.infer<typeof workstreamStatusSchema>;
@@ -143,6 +144,16 @@ export function workstreamsAccessor(visibility: ProjectVisibility): string {
  * one-string form is `workstreamRef` (`workstream-ref.ts`).
  */
 export const workstreamAddressSchema = z.object({ project: projectAddressSchema, id: z.string().min(1) }).strict();
+
+/** One workstream as the project reads and writes answer it: its entry, with its project, its owner and its id. */
+export const workstreamViewSchema = workstreamEntrySchema.extend({
+  project: projectAddressSchema,
+  id: z.string(),
+  owner: z.string()
+});
+
+/** @see workstreamViewSchema */
+export type WorkstreamView = z.infer<typeof workstreamViewSchema>;
 
 /** Why a workstream id is not usable, or `undefined` when it is: one path segment, not empty. */
 export function workstreamIdProblem(id: string): string | undefined {

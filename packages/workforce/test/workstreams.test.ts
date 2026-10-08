@@ -310,9 +310,20 @@ describe("who writes an entry", () => {
     for (const outcome of Object.values(forced)) {
       expect(outcome).toContain("refused: A row of an owner-writes collection is written only by the user it belongs to.");
     }
-    // The app's action and the lead's tool address the caller's own entry, which bob doesn't have.
-    const action = await h.act("bob", "lab", await h.lab("bob"), "updateWorkstream", { project: apollo, id: "checkout", status: "blocked" });
-    expect(refusal(action)).toContain("no-such-workstream");
+    // The app's action, naming her entry: the store refuses it by the same rule.
+    const action = await h.act("bob", "lab", await h.lab("bob"), "updateWorkstream", {
+      project: apollo,
+      owner: "alice",
+      id: "checkout",
+      status: "blocked",
+      report: "BOB-REPORT"
+    });
+    expect(action.settled).not.toBe("completed");
+    expect(refusal(action)).toContain("A row of an owner-writes collection is written only by the user it belongs to.");
+    // Left to the caller, the action addresses bob's own entry, which he doesn't have.
+    const his = await h.act("bob", "lab", await h.lab("bob"), "updateWorkstream", { project: apollo, id: "checkout", status: "blocked" });
+    expect(refusal(his)).toContain("no-such-workstream");
+    // The lead's tool writes the workstream its own session leads: bob's, never hers.
     await open(h, "bob", "search", "bob-lead");
     const bobSession = (await entriesOf(h)).find((e) => e.path.includes("~bob"))!.state.sessionId as string;
     await h.ok("bob", "lead", bobSession, "updateOwn", { status: "blocked" });

@@ -152,8 +152,8 @@ A project can name the repository its code lives in. It's a remote, the address 
 { id: "storefront", title: "Storefront", repository: "https://github.com/acme/storefront.git" }
 
 // later, from a member's session
-{ projectId: "storefront", repository: "git@github.com:acme/storefront.git" }
-{ projectId: "storefront", repository: null }
+{ project: { visibility: "shared", id: "storefront" }, repository: "git@github.com:acme/storefront.git" }
+{ project: { visibility: "shared", id: "storefront" }, repository: null }
 ```
 
 `setRepository` returns `{ project }`, the row as written. It changes `repository` and nothing else on the row. Only members can call it; anyone else is refused with `not-a-member`, and an id no project holds with `no-such-project`. When two members set it at the same moment, one of the two values is kept whole.
@@ -211,7 +211,7 @@ Only the project's members can list the files, with `readProjectFiles`:
 
 ```ts
 // input
-{ projectId: "storefront" }
+{ project: { visibility: "shared", id: "storefront" } }
 
 // output: each file's path under the project, and its size in bytes
 {
