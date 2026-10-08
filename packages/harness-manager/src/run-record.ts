@@ -90,6 +90,49 @@ export const runOutcomeSchema = z.enum(["running", "succeeded", "failed"]);
 export type RunOutcome = z.infer<typeof runOutcomeSchema>;
 
 /**
+ * Where a run's place stands, on a host that holds a run's work. The host's
+ * `provision` reports none of these words; the manager writes them around it.
+ */
+export const placeStateSchema = z.enum(["provisioning", "ready", "refused", "lost", "restoring"]);
+export type PlaceState = z.infer<typeof placeStateSchema>;
+
+/** One hold of a run's work, as the run record keeps it. */
+export const heldSchema = z.object({
+  /** The attempt that wrote it. */
+  attempt: z.number(),
+  /** When. */
+  at: z.number(),
+  /** The commits and pack of the last good hold; `null` when none ever succeeded. */
+  base: z.string().nullable(),
+  head: z.string().nullable(),
+  snapshot: z.string().nullable(),
+  key: z.string().nullable(),
+  sha256: z.string().nullable(),
+  bytes: z.number().nullable(),
+  /** Paths the last good hold left out, and why. */
+  skipped: z.array(z.object({ path: z.string(), why: z.string() })),
+  /** Why the last hold failed, or `null` when it did not. */
+  error: z.string().nullable(),
+  /** This pack parked the run: it is never dropped. */
+  parked: z.boolean(),
+});
+export type HeldRecord = z.infer<typeof heldSchema>;
+
+/**
+ * Refuse a record whose two place roots cannot occur together: `held` set
+ * with `place` `null`. `place` is written before any hold, so this pair is a
+ * corrupt record, not a state (BR-27).
+ */
+export function assertPlaceAndHeld(record: { place?: unknown; held?: unknown } | undefined): void {
+  if (record != null && record.place == null && record.held != null) {
+    throw new Error(
+      "[harness-manager] the run record names held work but no place. A place is always " +
+        "recorded before its first hold, so this record is corrupt. Not provisioning from it.",
+    );
+  }
+}
+
+/**
  * One issue-phase's run record.
  *
  * Every field is `.nullable().default(null)` (BP-023) so a row written by an
@@ -151,6 +194,27 @@ export const runRecordStateSchema = z.object({
     })
     .nullable()
     .default(null),
+  /**
+   * Which host the run's place is on, and where that place stands. Written
+   * only where the workspace host holds a run's work; `null` with holding off,
+   * before the first provision, and on a record from before held work
+   * (BP-030). Kept across attempts.
+   */
+  place: z
+    .object({
+      host: z.string(),
+      state: placeStateSchema,
+    })
+    .nullable()
+    .default(null),
+  /**
+   * The run's last hold, written after its pack was stored and before the pack
+   * it replaced is dropped. A failed hold keeps the last good one's fields and
+   * sets `error`. `parked` is set when this pack parked the run: it is never
+   * dropped. `null` with holding off, and until the first hold. Kept across
+   * attempts. Never set while {@link place} is `null` (BR-27).
+   */
+  held: heldSchema.nullable().default(null),
   /** How the last attempt ended. */
   outcome: runOutcomeSchema.nullable().default(null),
   /** Why, in the harness's own words or the throw's message. */
