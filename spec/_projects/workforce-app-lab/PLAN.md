@@ -7,12 +7,13 @@ deliberately not next. Each epic's own plan owns its checks.
 
 ![The arc](figures/arc.svg)
 
-Day eight. The shell's bar closed at its closure merge on Oct 4, and Linear marked it Done
-that afternoon. Org primitives reaches the now line: its closure merged minutes before it, and the
-bar closes when the epic wraps. FIX-1786's bar starts on the now line, at its approval. Its filing
-tick sits just behind it. Three lanes opened Oct 4 with a tick and no bar, none with an approved
-objective. FIX-1763's children are building anyway, and its repository floor has merged. That is
-the gap to watch. Three lanes stay empty by plan.
+Day ten. The shell's bar closed at its closure merge on Oct 4, and Linear marked it Done
+that afternoon. Org primitives runs to the now line: its closure merged Oct 6, and the bar closes
+when the epic wraps. FIX-1786's bar runs from its Oct 6 approval to the now line. Hand-offs,
+FIX-1815, was filed today as FIX-1786's follow-up; its tick sits just behind the now line, with no
+bar until its objective is approved. Three lanes opened Oct 4 with a tick and no bar, none with an
+approved objective. FIX-1763's children are building anyway, and its repository floor has merged.
+That is the gap to watch. Three lanes stay empty by plan.
 
 ## What each epic consumes and releases
 
@@ -27,6 +28,7 @@ the gap to watch. Three lanes stay empty by plan.
 | **talk on a finished task** · FIX-1765 | The shell's task view; the existing needs-you signal | A message on a finished task that stays on it and reaches whoever acts next. No second inbox |
 | **memory & context** · FIX-1775 | The shipped memory pack; the Shift Coordinator from FIX-1650 | Standard memory on the coordinator, then a long session kept inside its window. Takes long-lived session memory from FIX-1786 |
 | **private & shared** · FIX-1786 | Everything in flight in Workforce, boards, engine scopes and Shift Manager, inventoried first (FIX-1787); FIX-1778's named assignment | Workers as private resources, coordinators in place of mailboxes and rooms, one-owner workstreams, and the retired terms gone from code and docs. **Releases nothing until its gate** ([Decisions](DECISIONS.md) → Open) |
+| **hand-offs** · FIX-1815 | FIX-1786's assigned-task path, whose reply still ends the task (FIX-1794 BR-25); a feasibility spike that found ask viable as park-and-resume | Ask, a hand-off that waits for one answer and continues; assign, a job on the board whose session stays open until done; one answer-once fence under both |
 
 ## What is deliberately not next
 
