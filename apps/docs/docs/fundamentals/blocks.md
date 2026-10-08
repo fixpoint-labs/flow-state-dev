@@ -175,16 +175,24 @@ const assistant = generator({
 });
 ```
 
-The new name is the copy's name everywhere, not only in what the model is offered. Tool pills, traces and a suspended call's resume all use `saveNote`. The original `notes.write` keeps its own name wherever you use it directly, so nothing recorded under it changes.
+Wherever the copy runs, it goes by the new name. The model is offered `saveNote`, and the copy's tool pills, trace rows and a suspended call's resume all show `saveNote`. The original is unchanged: where you use `notes.write` directly, it runs and shows up as `notes.write`. You can list the original and a renamed copy in one `tools` array, and the model sees two tools.
 
-Leave out `name` to keep it and only replace the description, or leave out `description` to keep the original's. A blank name is refused when the copy is built. Two copies of one block under two names are two tools; two blocks with the same name in one `tools` array are refused, as they always are. The same goes for a router's routes: a copy that only changes the description has the original's name, so a router can't list both.
+Leave out `name` to keep the original's name and only replace the description, or leave out `description` to keep the original's.
 
-`.as()` returns a plain block, so on a sequencer finish adding steps first and rename last.
+A blank or whitespace-only `name` throws when you call `.as()`.
+
+Tool names must be unique within one generator. Each `.as()` call returns a new block, so two copies under two names are two tools, but two different blocks with the same name in one `tools` array make the generator throw when it runs (`Generator "assistant" has two tools named "saveNote"`). That includes a description-only copy listed beside its original, and two `.as()` calls with the same name. Listing the same block value twice is fine.
+
+A router's routes follow the same rule, checked when you build the router: two different blocks in `routes` can't share a name.
+
+On a sequencer, call `.as()` after the last `.step()`. The copy is typed as a `BlockDefinition`, which has no `.step()` or other step-adding methods.
 
 `.as()` is not `.asTool()`. `.as()` changes what the block is called and adds nothing at run time. `.asTool()`, below, wraps a block so a sequencer step shows a tool pill. They stack: put `.as()` first, and the pill shows the new name.
 
 ```ts
-fetchPrices: getPrices.as({ name: "fetchPrices" }).asTool({ agentName: "analyst" }),
+const prefetch = sequencer({ name: "prefetch" }).parallel({
+  fetchPrices: getPrices.as({ name: "fetchPrices" }).asTool({ agentName: "analyst" }),
+});
 ```
 
 The other order, `.asTool().as(...)`, renames only the wrapper's row in the trace, and the pill keeps the original name.
