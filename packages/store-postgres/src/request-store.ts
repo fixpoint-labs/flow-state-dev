@@ -39,7 +39,7 @@ import {
 } from "@flow-state-dev/engine";
 import type { Pool, PoolClient } from "pg";
 import type { QueryExecutor } from "./types";
-import { createPgRecordStore, nullSafeEqualsClause } from "./pg-store";
+import { createPgRecordStore, nullSafeEqualsClause, type PgCompanionWrite } from "./pg-store";
 
 const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
 const DEFAULT_POLL_INTERVAL_MS = 250;
@@ -59,6 +59,56 @@ const MAX_ITEM_ID_LENGTH = 2600;
 function parseItemData(data: unknown): OutputItem {
   if (typeof data === "string") return JSON.parse(data) as OutputItem;
   return data as OutputItem;
+}
+
+/**
+ * A request row's `request_items`, as one JSONB array in sequence order,
+ * selected beside the row in the same statement (FIX-1619). One statement
+ * reads one snapshot, so the row and its items always belong to the same
+ * request. Read apart, a request deleted and a new one written under its id
+ * in between would hand back the old row with the new request's items.
+ */
+const ITEMS_COLUMN =
+  "(SELECT COALESCE(jsonb_agg(i.data ORDER BY i.sequence ASC), '[]'::jsonb) " +
+  "FROM request_items i WHERE i.request_id = requests.id) AS table_items";
+
+/** The items {@link ITEMS_COLUMN} selected for a row. */
+function parseTableItems(value: unknown): OutputItem[] {
+  const list = typeof value === "string" ? JSON.parse(value) : value;
+  return Array.isArray(list) ? list.map(parseItemData) : [];
+}
+
+/**
+ * UPSERT a batch of items into `request_items`, binding from `firstParam`.
+ * `gate` is appended as the `SELECT`'s `WHERE`, so a companion write can
+ * skip itself when its row write did not land.
+ */
+function upsertItemsStatement(
+  firstParam: number,
+  requestId: string,
+  batch: OutputItem[],
+  gate?: string
+): { sql: string; params: unknown[] } {
+  const p = firstParam;
+  return {
+    sql:
+      "INSERT INTO request_items (request_id, item_id, sequence, item_type, data) " +
+      `SELECT $${p}, item_id, sequence, item_type, data::jsonb FROM unnest(` +
+      `$${p + 1}::text[], $${p + 2}::bigint[], $${p + 3}::text[], $${p + 4}::text[]` +
+      ") AS t(item_id, sequence, item_type, data) " +
+      (gate === undefined ? "" : `WHERE ${gate} `) +
+      "ON CONFLICT (request_id, item_id) DO UPDATE SET " +
+      "sequence = EXCLUDED.sequence, " +
+      "item_type = EXCLUDED.item_type, " +
+      "data = EXCLUDED.data",
+    params: [
+      requestId,
+      batch.map((i) => i.id),
+      batch.map((i) => i.itemIndex),
+      batch.map((i) => i.type),
+      batch.map((i) => JSON.stringify(i))
+    ]
+  };
 }
 
 /**
@@ -246,12 +296,38 @@ export function createPostgresRequestStore(
     });
   }
 
-  async function queryItems(requestId: string): Promise<OutputItem[]> {
-    const { rows } = await executor.query(
-      "SELECT data FROM request_items WHERE request_id = $1 ORDER BY sequence ASC",
-      [requestId]
-    );
-    return rows.map((r) => parseItemData(r.data));
+  /**
+   * The items in `snapshot` whose content differs from what was last
+   * persisted for the request, de-duplicated by id (ON CONFLICT errors on
+   * duplicate keys in a single batch) and sorted by id for deterministic
+   * conflict-row ordering, plus the content map to record once written.
+   *
+   * Diffed by serialized content, not object reference: the runtime mutates
+   * a block_trace item in place across in_progress → completed (same
+   * reference, new content), so a reference compare would drop the
+   * completed write and leave the row in_progress, defeating resume
+   * memoization (FIX-839).
+   */
+  function itemDelta(
+    requestId: string,
+    snapshot: OutputItem[]
+  ): { batch: OutputItem[]; persisted: Map<string, string> } {
+    const priorById = lastPersistedItems.get(requestId);
+    const persisted = new Map<string, string>();
+    const byId = new Map<string, OutputItem>();
+    for (const item of snapshot) {
+      if (item.id.length > MAX_ITEM_ID_LENGTH) {
+        throw new Error(
+          `request_items: item.id length ${item.id.length} exceeds limit ${MAX_ITEM_ID_LENGTH} ` +
+            `(Postgres B-tree index row size). Item ID prefix: ${item.id.slice(0, 64)}...`
+        );
+      }
+      const serialized = JSON.stringify(item);
+      persisted.set(item.id, serialized);
+      if (priorById?.get(item.id) !== serialized) byId.set(item.id, item);
+    }
+    const batch = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+    return { batch, persisted };
   }
 
   async function doFlushRequestItems(requestId: string): Promise<void> {
@@ -264,56 +340,15 @@ export function createPostgresRequestStore(
       const snapshot = latestItemSnapshots.get(requestId) ?? [];
       latestItemSnapshots.delete(requestId);
 
-      // Diff by serialized content, not object reference: the runtime mutates
-      // a block_trace item in place across in_progress → completed (same
-      // reference, new content), so a reference compare would drop the
-      // completed write and leave the row in_progress, defeating resume
-      // memoization (FIX-839).
-      const priorById = lastPersistedItems.get(requestId);
-      const nextById = new Map<string, string>();
-      const delta: OutputItem[] = [];
-      for (const item of snapshot) {
-        if (item.id.length > MAX_ITEM_ID_LENGTH) {
-          throw new Error(
-            `request_items: item.id length ${item.id.length} exceeds limit ${MAX_ITEM_ID_LENGTH} ` +
-              `(Postgres B-tree index row size). Item ID prefix: ${item.id.slice(0, 64)}...`
-          );
-        }
-        const serialized = JSON.stringify(item);
-        nextById.set(item.id, serialized);
-        if (priorById?.get(item.id) !== serialized) delta.push(item);
-      }
-      if (delta.length > 0) {
-        // De-dup by id (ON CONFLICT errors on duplicate keys in a single
-        // batch). Sort by id for deterministic conflict-row ordering.
-        const byId = new Map<string, OutputItem>();
-        for (const item of delta) byId.set(item.id, item);
-        const batch = [...byId.values()].sort((a, b) =>
-          a.id.localeCompare(b.id)
-        );
-
-        await executor.query(
-          "INSERT INTO request_items (request_id, item_id, sequence, item_type, data) " +
-            "SELECT $1, item_id, sequence, item_type, data::jsonb FROM unnest(" +
-            "$2::text[], $3::bigint[], $4::text[], $5::text[]" +
-            ") AS t(item_id, sequence, item_type, data) " +
-            "ON CONFLICT (request_id, item_id) DO UPDATE SET " +
-            "sequence = EXCLUDED.sequence, " +
-            "item_type = EXCLUDED.item_type, " +
-            "data = EXCLUDED.data",
-          [
-            requestId,
-            batch.map((i) => i.id),
-            batch.map((i) => i.itemIndex),
-            batch.map((i) => i.type),
-            batch.map((i) => JSON.stringify(i))
-          ]
-        );
+      const { batch, persisted } = itemDelta(requestId, snapshot);
+      if (batch.length > 0) {
+        const upsert = upsertItemsStatement(1, requestId, batch);
+        await executor.query(upsert.sql, upsert.params);
       }
 
       // Reconcile from what we actually persisted. If a newer snapshot
       // arrived during the await, the next loop iteration picks it up.
-      lastPersistedItems.set(requestId, nextById);
+      lastPersistedItems.set(requestId, persisted);
     }
   }
 
@@ -324,13 +359,13 @@ export function createPostgresRequestStore(
 
   return {
     async get(id: string): Promise<RequestRecord | undefined> {
-      const [base_, fromTable] = await Promise.all([
-        base.get(id),
-        queryItems(id)
-      ]);
-      if (base_ === undefined) return undefined;
-      const record = withSourceDefault(base_) as RequestRecord;
-      return { ...record, items: mergeLegacyWithTable(fromTable, record.items) };
+      const found = await base.getWith(id, ITEMS_COLUMN);
+      if (found === undefined) return undefined;
+      const record = withSourceDefault(found.record) as RequestRecord;
+      return {
+        ...record,
+        items: mergeLegacyWithTable(parseTableItems(found.row.table_items), record.items)
+      };
     },
     async set(
       id: string,
@@ -346,14 +381,30 @@ export function createPostgresRequestStore(
       }
       // Items live in `request_items`; keep them out of `requests.data` to
       // avoid double-storage.
-      const { items: _omitted, ...withoutItems } = value;
+      const { items, ...withoutItems } = value;
+      // A write that settles the request carries the items it settles with,
+      // and they land in the same statement as its status (FIX-1750), so no
+      // reader sees the status without them. A write while the request runs
+      // leaves them to `persistItems`: it is built from a record read
+      // earlier, so its items can be older than ones persisted since, and
+      // writing them would roll a finished item back.
+      const batch =
+        isTerminalRequestStatus(value.status) && Array.isArray(items)
+          ? itemDelta(id, items).batch
+          : [];
+      const companion: PgCompanionWrite | undefined =
+        batch.length > 0
+          ? (firstParam) =>
+              upsertItemsStatement(firstParam, id, batch, "EXISTS (SELECT 1 FROM written)")
+          : undefined;
       // Strip the abort flag before it is bound: `preserveJsonKeys` re-applies
       // the stored value on the UPDATE paths, and an INSERT has no stored row
       // to preserve, so a record carrying the flag must not create one.
       const result = await base.set(
         id,
         withStoredAbortRequested(withoutItems as RequestRecord, undefined),
-        expectedVersion
+        expectedVersion,
+        companion
       );
       if (result.ok && isTerminalRequestStatus(value.status)) {
         clearItemMaps(id);
@@ -503,35 +554,23 @@ export function createPostgresRequestStore(
       clearItemMaps(id);
     },
     async list(options?: RequestListOptions): Promise<RequestRecord[]> {
+      if (options?.withItems === true) {
+        // Each row's items in the same statement as the rows (FIX-1619).
+        const found = await base.listWith(options, ITEMS_COLUMN);
+        return found.map(({ record, row }) => {
+          const withSource = withSourceDefault(record) as RequestRecord;
+          return {
+            ...withSource,
+            items: mergeLegacyWithTable(parseTableItems(row.table_items), withSource.items)
+          };
+        });
+      }
+
       const records = await base.list(options);
-      const withSource = records.map((r) => withSourceDefault(r) as RequestRecord);
-
-      if (options?.withItems !== true) {
-        return withSource.map((r) =>
-          r.items === undefined ? r : { ...r, items: undefined }
-        );
-      }
-
-      if (withSource.length === 0) return withSource;
-
-      const requestIds = withSource.map((r) => r.id);
-      const { rows } = await executor.query(
-        "SELECT request_id, data FROM request_items " +
-          "WHERE request_id = ANY($1::text[]) ORDER BY request_id, sequence ASC",
-        [requestIds]
-      );
-      const byRequestId = new Map<string, OutputItem[]>();
-      for (const r of rows) {
-        const rid = r.request_id as string;
-        const list = byRequestId.get(rid) ?? [];
-        list.push(parseItemData(r.data));
-        byRequestId.set(rid, list);
-      }
-
-      return withSource.map((r) => ({
-        ...r,
-        items: mergeLegacyWithTable(byRequestId.get(r.id) ?? [], r.items)
-      }));
+      return records.map((r) => {
+        const withSource = withSourceDefault(r) as RequestRecord;
+        return withSource.items === undefined ? withSource : { ...withSource, items: undefined };
+      });
     },
 
     persistItems(requestId: string, items: OutputItem[]): void {

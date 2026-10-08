@@ -733,9 +733,17 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * than hand back that snapshot's. An adapter that keeps items on the record
    * and replaces the whole record on `set` would drop every item persisted
    * since: carry the stored `items` through when `value.items` is absent
-   * (the in-memory and filesystem adapters use `withHeldItems`). An adapter
-   * that keeps items out of `set` entirely, as the SQL pair does, holds this
-   * already. A record that carries `items` may still replace them.
+   * (the in-memory and filesystem adapters use `withHeldItems`). A record
+   * that carries `items` may still replace them.
+   *
+   * **A `set` that settles a request lands the `items` it carries in the same
+   * write as its status** (FIX-1750), so no reader sees a final status
+   * without the items it settled with. An adapter that keeps items apart from
+   * the record row writes them in the row write's transaction, and only if
+   * that write lands. A `set` with a non-terminal status may leave `items` to
+   * {@link RequestStore.persistItems}, as the SQL pair does: it is built from
+   * a record read earlier, so its items can be older than ones persisted
+   * since.
    */
   set(
     id: string,
@@ -759,7 +767,8 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
   /**
    * Persist the current items for an in-progress request.
    * Non-blocking from the caller's perspective — the backend handles async flushing.
-   * Callers should call flushItems() before writing terminal status.
+   * The write that settles a request carries its final items itself (see
+   * {@link RequestStore.set}); this is the path for items while it runs.
    *
    * Merge-by-id contract (FIX-811): persisting items MUST union the supplied
    * items into the stored set by `id` (last-write-wins per id), never replacing
@@ -782,8 +791,9 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
   persistItems(requestId: string, items: OutputItem[]): void;
 
   /**
-   * Wait for all pending item persistence writes to complete.
-   * Called before the terminal patchRequestRecord.
+   * Wait for all pending item persistence writes to complete, so none lands
+   * after a later write. Draining these is all it does: a settling `set`
+   * lands its own items and does not depend on a flush before it.
    */
   flushItems(requestId: string): Promise<void>;
 

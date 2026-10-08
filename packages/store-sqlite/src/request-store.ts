@@ -355,15 +355,113 @@ export function createSQLiteRequestStore(
     latestItemSnapshots.delete(id);
   }
 
+  /**
+   * The items in `snapshot` whose content differs from what was last
+   * persisted for the request, de-duplicated by id and sorted for a
+   * deterministic write order, plus the content map to record once written.
+   *
+   * Diffed by serialized content, not object reference: the runtime mutates a
+   * block_trace item in place across its in_progress → completed lifecycle
+   * (same reference, new content), so a reference compare would never
+   * re-persist the completed state — the row would stay in_progress and resume
+   * memoization would re-run the already-completed block (FIX-839).
+   * Serializing to compare keeps writes proportional to new/changed items.
+   */
+  function itemDelta(
+    requestId: string,
+    snapshot: OutputItem[]
+  ): { batch: OutputItem[]; persisted: Map<string, string> } {
+    const priorById = lastPersistedItems.get(requestId);
+    const persisted = new Map<string, string>();
+    const byId = new Map<string, OutputItem>();
+    for (const item of snapshot) {
+      const serialized = JSON.stringify(item);
+      persisted.set(item.id, serialized);
+      if (priorById?.get(item.id) !== serialized) byId.set(item.id, item);
+    }
+    const batch = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+    return { batch, persisted };
+  }
+
+  /** Reject an item id past the length bound, before any SQL runs. */
+  function assertItemIds(items: OutputItem[]): void {
+    for (const item of items) {
+      if (item.id.length > MAX_ITEM_ID_LENGTH) {
+        throw new Error(
+          `request_items: item.id length ${item.id.length} exceeds limit ` +
+            `${MAX_ITEM_ID_LENGTH}. Item ID prefix: ${item.id.slice(0, 64)}...`
+        );
+      }
+    }
+  }
+
+  /**
+   * A record row and its items, read in one transaction so both come from one
+   * snapshot (FIX-1619). Request ids are caller-supplied and retention deletes
+   * requests, so a request can be deleted and a new one written under its id
+   * between two separate reads; read apart, the row of one would carry the
+   * items of the other.
+   */
+  const readWithItems = db.transaction((id: string): RequestRecord | undefined => {
+    const base_ = base.getSync(id);
+    if (base_ === undefined) return undefined;
+    const record = withSourceDefault(base_) as RequestRecord;
+    return { ...record, items: mergeLegacyWithTable(queryItems(id), record.items) };
+  });
+
+  /** `list({ withItems: true })`'s rows and their items, in one transaction (FIX-1619). */
+  const listWithItems = db.transaction((options: RequestListOptions): RequestRecord[] => {
+    const withSource = base
+      .listSync(options)
+      .map((r) => withSourceDefault(r) as RequestRecord);
+    if (withSource.length === 0) return withSource;
+
+    const requestIds = withSource.map((r) => r.id);
+    const byRequestId = new Map<string, OutputItem[]>();
+    for (let i = 0; i < requestIds.length; i += SQLITE_MAX_VARIABLE_NUMBER) {
+      const chunk = requestIds.slice(i, i + SQLITE_MAX_VARIABLE_NUMBER);
+      const placeholders = chunk.map(() => "?").join(", ");
+      const rows = db
+        .prepare(
+          `SELECT request_id, data FROM request_items ` +
+            `WHERE request_id IN (${placeholders}) ` +
+            `ORDER BY request_id, sequence ASC`
+        )
+        .all(...chunk) as Array<{ request_id: string; data: string }>;
+      for (const r of rows) {
+        const list = byRequestId.get(r.request_id) ?? [];
+        list.push(JSON.parse(r.data) as OutputItem);
+        byRequestId.set(r.request_id, list);
+      }
+    }
+
+    return withSource.map((r) => ({
+      ...r,
+      items: mergeLegacyWithTable(byRequestId.get(r.id) ?? [], r.items)
+    }));
+  });
+
+  /**
+   * A record row and the items it settles with, written in one transaction
+   * (FIX-1750). The items are written only if the row write lands, so a lost
+   * CAS leaves both untouched.
+   */
+  const setWithItems = db.transaction(
+    (
+      id: string,
+      value: RequestRecord,
+      expectedVersion: ExpectedVersion,
+      items: OutputItem[]
+    ): SetResult<RequestRecord> => {
+      const result = base.setSync(id, value, expectedVersion);
+      if (result.ok) writeItemsBatchTxn(items, id);
+      return result;
+    }
+  );
+
   return {
     async get(id: string): Promise<RequestRecord | undefined> {
-      const base_ = await base.get(id);
-      if (base_ === undefined) return undefined;
-      const record = withSourceDefault(base_) as RequestRecord;
-      return {
-        ...record,
-        items: mergeLegacyWithTable(queryItems(id), record.items)
-      };
+      return readWithItems(id);
     },
 
     async set(
@@ -375,17 +473,25 @@ export function createSQLiteRequestStore(
       // avoid double-storage. better-sqlite3 is synchronous so any queued
       // item write for this request has already flushed within its
       // microtask before this async method body runs — no drain needed.
-      const { items: _omitted, ...withoutItems } = value;
+      const { items, ...withoutItems } = value;
       // Strip the abort flag before it is bound. `preserveJsonKeys` re-applies
       // the stored value inside the write statement itself, so nothing here
       // reads it first — a read would race a second connection's conditional
       // write, which is the whole scenario this feature exists for.
-      const result = await base.set(
-        id,
-        withStoredAbortRequested(withoutItems as RequestRecord, undefined),
-        expectedVersion
-      );
-      if (result.ok && isTerminalRequestStatus(value.status)) {
+      const row = withStoredAbortRequested(withoutItems as RequestRecord, undefined);
+      const terminal = isTerminalRequestStatus(value.status);
+      // A write that settles the request carries the items it settles with,
+      // and they land with its status (FIX-1750). A write while the request
+      // runs leaves them to `persistItems`: it is built from a record read
+      // earlier, so its items can be older than ones persisted since, and
+      // writing them would roll a finished item back.
+      const batch = terminal && Array.isArray(items) ? itemDelta(id, items).batch : [];
+      if (batch.length > 0) assertItemIds(batch);
+      const result =
+        batch.length > 0
+          ? setWithItems.immediate(id, row, expectedVersion, batch)
+          : await base.set(id, row, expectedVersion);
+      if (result.ok && terminal) {
         clearItemMaps(id);
       }
       return result;
@@ -467,42 +573,15 @@ export function createSQLiteRequestStore(
     },
 
     async list(options?: RequestListOptions): Promise<RequestRecord[]> {
+      if (options?.withItems === true) return listWithItems(options);
+
+      // Default: do NOT query request_items. Strip any legacy blob items so
+      // list payloads stay lean (callers opt in with `withItems: true`).
       const records = await base.list(options);
-      const withSource = records.map((r) => withSourceDefault(r) as RequestRecord);
-
-      if (options?.withItems !== true) {
-        // Default: do NOT query request_items. Strip any legacy blob items so
-        // list payloads stay lean (callers opt in with `withItems: true`).
-        return withSource.map((r) =>
-          r.items === undefined ? r : { ...r, items: undefined }
-        );
-      }
-
-      if (withSource.length === 0) return withSource;
-
-      const requestIds = withSource.map((r) => r.id);
-      const byRequestId = new Map<string, OutputItem[]>();
-      for (let i = 0; i < requestIds.length; i += SQLITE_MAX_VARIABLE_NUMBER) {
-        const chunk = requestIds.slice(i, i + SQLITE_MAX_VARIABLE_NUMBER);
-        const placeholders = chunk.map(() => "?").join(", ");
-        const rows = db
-          .prepare(
-            `SELECT request_id, data FROM request_items ` +
-              `WHERE request_id IN (${placeholders}) ` +
-              `ORDER BY request_id, sequence ASC`
-          )
-          .all(...chunk) as Array<{ request_id: string; data: string }>;
-        for (const r of rows) {
-          const list = byRequestId.get(r.request_id) ?? [];
-          list.push(JSON.parse(r.data) as OutputItem);
-          byRequestId.set(r.request_id, list);
-        }
-      }
-
-      return withSource.map((r) => ({
-        ...r,
-        items: mergeLegacyWithTable(byRequestId.get(r.id) ?? [], r.items)
-      }));
+      return records.map((r) => {
+        const withSource = withSourceDefault(r) as RequestRecord;
+        return withSource.items === undefined ? withSource : { ...withSource, items: undefined };
+      });
     },
 
     persistItems(requestId: string, items: OutputItem[]): void {
@@ -516,14 +595,7 @@ export function createSQLiteRequestStore(
       // from inside the queueMicrotask callback would escape as an
       // uncaughtException (crashing the process) rather than failing the
       // caller; validating here surfaces the error to ResponseEmitter cleanly.
-      for (const item of items) {
-        if (item.id.length > MAX_ITEM_ID_LENGTH) {
-          throw new Error(
-            `request_items: item.id length ${item.id.length} exceeds limit ` +
-              `${MAX_ITEM_ID_LENGTH}. Item ID prefix: ${item.id.slice(0, 64)}...`
-          );
-        }
-      }
+      assertItemIds(items);
 
       // Always capture the latest snapshot so the queued write uses the most
       // recent items, even when subsequent calls are coalesced away.
@@ -538,32 +610,9 @@ export function createSQLiteRequestStore(
         latestItemSnapshots.delete(requestId);
         if (snapshot === undefined) return;
 
-        // Diff against the last persisted *content* (not object reference):
-        // the runtime mutates a block_trace item in place across its
-        // in_progress → completed lifecycle (same reference, new content), so a
-        // reference compare would never re-persist the completed state — the
-        // row would stay in_progress and resume memoization would re-run the
-        // already-completed block (FIX-839). Serializing to compare keeps
-        // writes proportional to new/changed items.
-        const priorById = lastPersistedItems.get(requestId);
-        const nextById = new Map<string, string>();
-        const delta: OutputItem[] = [];
-        for (const item of snapshot) {
-          const serialized = JSON.stringify(item);
-          nextById.set(item.id, serialized);
-          if (priorById?.get(item.id) !== serialized) delta.push(item);
-        }
-        if (delta.length > 0) {
-          // De-dup by id and sort for deterministic write ordering.
-          const byId = new Map<string, OutputItem>();
-          for (const item of delta) byId.set(item.id, item);
-          const batch = [...byId.values()].sort((a, b) =>
-            a.id.localeCompare(b.id)
-          );
-          writeItemsBatchTxn(batch, requestId);
-        }
-
-        lastPersistedItems.set(requestId, nextById);
+        const { batch, persisted } = itemDelta(requestId, snapshot);
+        if (batch.length > 0) writeItemsBatchTxn(batch, requestId);
+        lastPersistedItems.set(requestId, persisted);
       });
     },
 
