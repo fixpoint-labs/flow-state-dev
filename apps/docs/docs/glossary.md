@@ -100,14 +100,14 @@ These sit beside Orchestration on Core and don't use a task board.
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
-| **Worker** | workforce | One worker record, usually from a `WORKER.md` and sometimes built in code, hired into a flow instance with its own address. You open sessions against it like any flow. See [Workers on disk](./workforce/workers-on-disk.md). | Flow instance |
-| **Address** | workforce | A worker's id: `team.name` for a team worker, the bare name for an org worker. A worker hired while the app runs is addressed `<org>.<name>`, or `<org>.~<user>.<name>` when one person owns it. | None |
+| **Worker** | workforce | A configuration run by one shared copy of the flow it names: a `WORKER.md` (a standard worker every user has) or a row a user hired or forked for themselves. A session names its worker when it is created. See [Workers on disk](./workforce/workers-on-disk.md). | Flow, session state |
+| **Address** | workforce | A worker's id: `team.name` for a team worker, the bare name for an org worker. A user's own worker is addressed by the id it was hired or forked under, on that user's roster. | None |
 | **Team** | workforce | A folder of workers under `teams/<name>/`, with an optional `TEAM.md` whose body every worker on the team reads. A team is not a flow and has no address. | Workers |
 | **Org worker** | workforce | A worker under `org/workers/<name>/`. It belongs to no team. | Worker |
 | **Built-in worker** | workforce | The `agent` kind every worker runs on unless its file names another `flow:`. See [The built-in worker](./workforce/built-in-worker.md). | Flow (collection), generator, skills |
-| **Hire** | workforce | A user adds a worker of their own, as a row in their data. `hireWorkforce` gives back one copy of each worker flow, which your app registers. | Flow instance |
-| **Roster** | workforce | A user's workers: their own, and the standard ones your files declare. See [Hiring and forking](./workforce/durable-hire.md). | Org resource collection |
-| **Fire** | workforce | Removes a worker hired while the app runs. A worker declared in a file leaves when its folder is deleted. | Roster row, inventory row |
+| **Hire** | workforce | A user adds a worker of their own, as a row in their data. `hireWorkforce` gives back one copy of each worker flow, which your app registers. | Roster row |
+| **Roster** | workforce | A user's workers: their own, and the standard ones your files declare. See [Hiring and forking](./workforce/durable-hire.md). | User-scoped resource collection, standard workers from files |
+| **Fire** | workforce | Removes one of a user's own workers from their roster. A worker declared in a file leaves when its folder is deleted. | Roster row |
 | **Mailbox** | workforce | One `MAILBOX.md`: a named session on the shared `mailbox` flow, with members, a charter and a transcript. See [Mailboxes](./workforce/mailboxes.md). | Session, flow |
 | **Member** | workforce | A worker id on a mailbox's member list. A post wakes each member whose flow kind handles posts, or only the chosen one on a routed mailbox. | Worker address |
 | **Transcript** | workforce | The posts in a mailbox, rebuilt from the post items. | Items |

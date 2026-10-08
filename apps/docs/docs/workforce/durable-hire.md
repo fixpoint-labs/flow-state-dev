@@ -13,8 +13,8 @@ stored in their data, and nobody else can see it.
 
 ## Hiring a worker
 
-A hire writes one row to the user's roster, in the organization they're signed in to. Nothing is
-registered and nothing restarts: the next turn on any of your processes can use it.
+A hire writes one row to the user's roster, in the organization they're signed in to. A hire
+takes effect on the user's next turn, on any of your processes. No restart.
 
 `hireWorkforce` registers a roster flow, `workforce-roster`, beside your worker flows. It carries
 four actions: `hire`, `fork`, `edit` and `fire`. Send them as you would any action, in a session
@@ -53,8 +53,9 @@ const { hire, fork, edit, fire } = createWorkerHireBlocks(installation)
 await roster.sendAction("fork", { from: "researcher", id: "my-researcher" }, { sessionId })
 ```
 
-The fork keeps a copy of the standard worker's instructions, and doesn't change when your
-installation's files do. Fork again to pick up a change. The standard worker doesn't change, for
+The fork copies what the worker it forks from runs with: its flow, its description, its own
+instructions (a `WORKER.md` body), its team's instructions (the `TEAM.md` body), the names of its
+skills, and its settings. The copy doesn't change when your installation's files do. Fork again to pick up a change. The standard worker doesn't change, for
 this user or anyone else.
 
 A fork starts with no conversations. The user's sessions with the worker they forked stay with
@@ -69,6 +70,19 @@ session to talk to the worker on its new flow.
 
 `fire` deletes the row. Its past sessions stay readable to their owner. A new message to one is
 refused with the worker named as fired. Every process sees the fire on the next turn.
+
+## When something is refused
+
+A refused write or turn changes nothing. The action's request ends `failed`, and its error says
+why; your app reads it the way it reads any failed request.
+
+| What happened | The error |
+| --- | --- |
+| A hire under an id already on the user's roster | `"scribe" is already on your roster. Pick another id. Nothing was written.` |
+| An edit of a standard worker (a hire, fork onto or fire of one is refused the same way) | `"researcher" is a standard worker, which nobody can edit. Fork it to get a worker of your own.` |
+| A hire whose settings its flow refuses | `Worker "scribe" …the flow's own reason…. Nothing was written.` |
+| A turn on a session whose worker moved to another flow | `Worker "scribe" now runs on flow "research", and this session runs on "agent". A session stays on the flow it was created on: start a new session to talk to it on "research".` |
+| A turn on a session whose worker was fired | `Worker "scribe" was fired. This session stays readable; a new turn can't run as it.` |
 
 ## Who can reach a worker
 
@@ -87,8 +101,7 @@ up to you: see [Where a worker's data lives](./workers-on-disk.md#where-a-worker
 
 ## After a hire, refresh the roster
 
-Read the roster again after each turn. A turn that hires, forks or fires changes it, and nothing
-tells you which tool ran, so you don't need to watch for a tool's name.
+Read the roster again after any turn, since a turn may have hired, forked or fired.
 
 ```ts
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser"

@@ -72,7 +72,7 @@ request into tasks, assign them, and report what came back.
 
 `description` is the only key the file itself requires. In a [routed mailbox](./mailboxes.md#routing-a-mailbox), it is also what the route reads to decide whether a post is this worker's. The file refuses `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` and `teamInstructions:` outright. A seat's skills and the blocks it can reach come from where its folders sit, and its team's instructions from that team's [`TEAM.md`](#what-a-teammd-says). `flow` names which of your flow kinds this worker runs. Leave it out and the worker runs on [the built-in worker flow](./built-in-worker.md), which needs no flow of yours.
 
-`resources:` is a list of the [documents](./documents-on-disk.md) this worker may touch, chosen from the ones its kind holds. Each entry is a document's [ref](./documents-on-disk.md#a-documents-ref), the name it gets from where its file sits. A ref on its own is read-only. `<ref>: rw` grants writes, and `<ref>: ro` spells the default out. Leave the key out and the worker reaches every document its kind installed, and writes the ones that allow writes; `resources: []` is how you say it gets none.
+`resources:` is a list of the [documents](./documents-on-disk.md) this worker may touch, chosen from the ones the app passed to the installation as `documents`. Each entry is a document's [ref](./documents-on-disk.md#a-documents-ref), the name it gets from where its file sits. A ref on its own is read-only. `<ref>: rw` grants writes, and `<ref>: ro` spells the default out. Leave the key out and the worker reaches every document the app passed as `documents`, on the flow's shared copy, and writes the ones that allow writes; `resources: []` is how you say it gets none.
 
 Only documents are narrowed. The stores and boards its kind declares stay reachable and writable whatever the list says, and so do the resources the kind's own blocks declare. Where the documents come from is [below](#supplying-the-documents-a-seat-may-name).
 
@@ -399,8 +399,7 @@ A worker flow must:
 - **Have one door.** Exactly one public action declares `userMessage` and takes `{ message }`, so
   an app can talk to any worker without knowing which flow it runs on.
 - **Declare the installation's session.** `session: installation.session()` gives every session a
-  readonly `workerId`, checked when the session is created. A flow without it is refused, because
-  its sessions would run no checked worker. Load the worker with `installation.resolveWorker` on
+  readonly `workerId`, checked when the session is created. A flow without it is refused. Load the worker with `installation.resolveWorker` on
   every turn: in the flow's `request.onStarted`, or in the block that reads it.
 - **Declare any resource with `writtenBy` through `sharedResource()`.** A resource that has a
   `writtenBy` field is declared with [`sharedResource()`](#sharing-something-from-a-worker), which
@@ -529,7 +528,7 @@ What the refusals cover is what a **file** declares. No frontmatter may set `tea
 
 The two instruction settings stay apart. A worker's own text is never merged into its team's, so a kind can read one without the other. On the [built-in worker kind](./built-in-worker.md) both go into the prompt, the team's first and the worker's own last. That order is fixed, and it is an order rather than a ranking: nothing resolves a contradiction between the two, so a team rule and a worker rule that disagree are left to the model that reads them.
 
-Every worker flow has that setting, because `workerConfigSchema()` declares it — so a worker's body always has somewhere to arrive, and no worker flow has to check for one. A flow whose schema will not take those settings is refused by `hireWorkforce` before anything is registered, whatever workers it holds:
+Every worker flow has that setting, because `workerConfigSchema()` declares it — so a worker's body always has somewhere to arrive, and no worker flow has to check for one. A flow whose schema will not take those settings is refused by `hireWorkforce` before anything is registered:
 
 ```
 hireWorkforce refused 1 worker flow ("intake"); nothing was hired:
@@ -671,7 +670,8 @@ export const requestTriageFlow = workerFlow((installation) => {
   // The decision is the flow's graph: a router block picks the branch from the
   // request itself. `answer` is a generator; `escalate` hands off to a person.
   // The threshold is the worker's own setting, read from the worker this turn
-  // runs as: every worker on the flow shares one copy, and `ctx.flow.config`.
+  // runs as. Every worker on the flow shares one copy, so `ctx.flow.config` is
+  // the same for all of them.
   const triage = router({
     name: "triage",
     inputSchema: requestSchema,
@@ -793,8 +793,15 @@ make it the hook's active session.
 const workforce = useMemo(() => createWorkforceClient({ userId, baseUrl }), [userId, baseUrl])
 const flow = useFlow({ flowKind: "agent" })
 
-const session = await workforce.ensureWorkerSession({ worker: "researcher" })
-flow.selectSession(session.id)
+useEffect(() => {
+  let current = true
+  workforce.ensureWorkerSession({ worker: "researcher" }).then((session) => {
+    if (current) flow.selectSession(session.id)
+  })
+  return () => {
+    current = false
+  }
+}, [workforce])
 ```
 
 Tasks and messages your other workers hand to this one open sessions the same way, naming the

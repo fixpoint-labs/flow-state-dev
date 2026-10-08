@@ -2,14 +2,14 @@
 title: Workforce
 sidebar_position: 1
 sidebar_label: Overview
-description: Describe a roster of workers, hire them as addressable flow copies, and register what comes back.
+description: Describe a roster of workers, run each on one shared copy of the flow it names, and talk to a worker in a session that names it.
 ---
 
 # Workforce
 
-`@flow-state-dev/workforce` turns a roster of workers into configured, addressable copies of flows you already defined. Describe each worker (usually as a `WORKER.md`), hire the roster, and register the copies that come back.
+`@flow-state-dev/workforce` runs a roster of workers on flows you already defined. A worker is a configuration: a `WORKER.md` your files declare, or one a user hires or forks for themselves. Each flow a worker names is registered once, as one shared copy, and every worker on it runs there.
 
-A hired worker is a **seat**: a flow instance with its own id. You open a session against it the way you open one against any other flow.
+A conversation with a worker is a session of its flow that names the worker when it is created. One session, one worker, for the session's whole life.
 
 ## Workforce or orchestration
 

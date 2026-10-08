@@ -88,7 +88,7 @@ const flows = hireWorkforce(installation);
 | `taskLists` | The mailbox boards this kind's workers take tasks from, by id (`mailboxBoardIds(mailboxes)`). Left out, the kind takes no tasks. See [Taking a task](#taking-a-task). |
 | `uses` | Capabilities every worker of this kind carries, attached to the generator that answers. |
 | `afterAnswer` | A block that runs after the worker answers, without changing the reply. |
-| `isolateUserState` | Keep this flow's user-scoped storage apart from other flows'. Every worker on `agent` shares one copy, so a user's workers on it still share one cell. |
+| `isolateUserState` | Keep this flow's user-scoped storage apart from other flows'. Every worker on `agent` shares one copy, so a user's workers on it still share the same user-scoped storage. |
 
 `classifierModel` and `confidenceThreshold` belong to the kind: nothing reads either until a worker turns `skills.enableLlmClassifier` on, and a `WORKER.md` that names one is refused at the hire, by name, along with any other setting the kind does not declare. `uses` and `afterAnswer` are what [Giving workers memory](#giving-workers-memory) uses.
 

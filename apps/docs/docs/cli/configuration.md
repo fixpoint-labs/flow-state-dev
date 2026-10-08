@@ -167,10 +167,6 @@ anything is written:
 
 - A session belongs to the user and organization it was created with. Resuming one with
   `--session` as anyone else is refused, as it would be over HTTP. Use a new session id.
-- A flow copy registered with an owner pin runs only for the owner it's pinned to. A run whose
-  user or organization falls outside that pin is refused, whether the identity came from your
-  resolver or from `--user` and `--org`. Name the owner with `--org`, plus `--user` for a copy
-  pinned to one member.
 - A session with no organization recorded on it is refused and left unchanged. The message points
   to the upgrade steps in
   [Which organization a record belongs to](/docs/persistence/overview#which-organization-a-record-belongs-to).

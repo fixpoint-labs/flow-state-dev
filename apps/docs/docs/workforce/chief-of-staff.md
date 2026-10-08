@@ -2,18 +2,18 @@
 title: The chief of staff
 sidebar_position: 12
 sidebar_label: Chief of staff
-description: "One worker a person asks who works here, and asks for workers of their own. Hires land at once; a fire waits for the person's approval. It can also start projects."
+description: "One worker a person asks who works here, and asks for workers of their own. Hires land at once; with the approval step below, a fire waits for the person's approval. It can also start projects."
 ---
 
 # The chief of staff
 
-The chief of staff is a worker a person talks to about the organization itself. Ask it who works here or who is in a mailbox, and it looks it up. Ask it for another worker, and it hires one of your own. Ask it for one fewer, and it puts the fire in front of you to approve. Nothing is removed until you do. Give it the project tools, and it starts [projects](./projects.md) for you too.
+The chief of staff is a worker a person talks to about the organization itself. Ask it who works here or who is in a mailbox, and it looks it up. Ask it for another worker, and it hires one of your own. Ask it for one fewer, and, with the approval step shown below, it puts the fire in front of you to approve; nothing is removed until you do. Give it the project tools, and it starts [projects](./projects.md) for you too.
 
 A worker it hires belongs to the person it is talking to: it is on their roster and nobody else's, as [Hiring and forking](./durable-hire.md) describes. A Lab that doesn't declare a chief of staff doesn't have one.
 
 ## Adding one
 
-You need two things: a `WORKER.md` for the worker, and the hire and fire tools in the catalog of the flow it runs on.
+Add a `WORKER.md` for the worker, and put the hire and fire tools in the catalog of the flow it runs on.
 
 The file goes under `org/workers/`, beside `teams/`. Its folder name is its id, so `org/workers/chief-of-staff/` is the worker `chief-of-staff`. It runs on the built-in `agent` flow and names the tools it holds:
 
@@ -117,7 +117,7 @@ export const flows = hireWorkforce(installation);
 
 The capabilities on the flow each add one part:
 
-- **Inventory and `discover`.** `createWorkforceCapability` gives every worker on the flow `discover`, which is how the chief of staff answers questions about the roster. The small `inventory` capability declares the seat and mailbox inventories on the flow, the mailbox one with `projectWritesMailboxInventory`, the declaration the [project tools](#starting-projects) need, so you can add them later without touching it. Passing the keys as `inventory` lets `discover` answer who works here and who is in a mailbox.
+- **Inventory and `discover`.** `createWorkforceCapability` gives every worker on the flow `discover`, which is how the chief of staff answers questions about the roster. The small `inventory` capability declares the seat and mailbox inventories on the flow. The mailbox one uses `projectWritesMailboxInventory`, the declaration the [project tools](#starting-projects) need, so you can add them later without touching it. Passing the keys as `inventory` lets `discover` answer who works here and who is in a mailbox.
 - **Posting.** `workerMailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can answer in a mailbox it is a member of, signed as the worker its turn runs as. A mailbox counts it as a member only when its `MAILBOX.md` `members:` lists it, by its own name for an org-level worker, as in `members: [eng.em, eng.coder, chief-of-staff]`. A post from a worker the mailbox doesn't list is refused with `author-not-a-member`.
 - **Hiring.** The catalog holds `hire` and `fire`. Asking first is yours to add, as `askFire` does: the blocks themselves write at once.
 
@@ -208,7 +208,7 @@ firing "scribe" waits for a person's approval, and this app can't ask for one. N
 
 Asking also needs a model with the single-step methods: `generateStep`, and `streamStep` when it streams. Models from the built-in AI SDK adapter have them. On a custom model without them, or a fallback group none of whose models has them, the tool can't pause the request: the call fails before anything changes, the model is told the tool failed, and the turn carries on with no approval raised. [Suspending inside generators](../advanced/generator-and-router-suspend-resume.md) covers a pause inside a tool call.
 
-The roster flow's own `fire` action, which an app sends directly, never asks: an app that sends it already has the person's say-so.
+The roster flow's own `fire` action, which an app sends directly, never asks. Get the person's approval before you send it.
 
 ## What it can't do
 

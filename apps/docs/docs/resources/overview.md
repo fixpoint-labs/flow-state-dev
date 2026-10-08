@@ -289,7 +289,7 @@ Resource collections take the same flags, declared once on the collection and ap
 
 The generic tools address resources by their scope-qualified uri (for example `session/files/readme.md`), the same handle the [search tools](/docs/resources/searching) return — so a result from `globResources` or `grepResourceContent` feeds straight into `readResourceContentTool`.
 
-A flow can also narrow what the model reaches on a single turn. Give it a `resourceVisibility` rule, and the built-in resource tools, the `discover` door, and any tool you build on them treat a resource the rule hides as one that doesn't exist: it isn't listed, searched, read or written, and asking for it by its uri gets the same answer as asking for a missing one. A resource the rule marks read-only is read but not written. With no rule, the model reaches what it reaches today.
+A flow can also narrow what the model reaches on a single turn. Give it a `resourceVisibility` rule: a function that returns `"visible"`, `"read-only"` or `"hidden"` for each resource. The built-in resource tools, the `discover` tool, and any tool you build on them treat a resource the rule hides as one that doesn't exist: it isn't listed, searched, read or written, and asking for it by its uri gets the same answer as asking for a missing one. A resource the rule marks read-only is read but not written. With no rule, the model reaches every resource the flow declares, as its `llmReadable` and `llmWritable` flags allow.
 
 ```ts
 defineFlow({

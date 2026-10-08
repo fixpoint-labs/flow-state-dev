@@ -300,7 +300,7 @@ const engineering = resourcesFromDocs(
 
 A worker's folder is also only part of the name. Putting a `resources/` document under `workers/ada/` addresses it to that worker. It does not keep it from the others. Every worker on a flow shares that flow's one copy, so by default every one of them reads the same row.
 
-Filtering decides what a whole flow installs. To narrow one worker within a flow, the worker's own file names the documents it may touch under `resources:`, and can take one read-only: see [what a `WORKER.md` says](./workers-on-disk.md#what-a-workermd-says). Its model then reaches only those, on every turn: a document it isn't granted answers as one that doesn't exist. A worker naming a document the app didn't declare is refused, so the filter holds.
+Filtering decides what a whole flow installs. To narrow one worker within a flow, the worker's own file names the documents it may touch under `resources:`, and can take one read-only: see [what a `WORKER.md` says](./workers-on-disk.md#what-a-workermd-says). Its model then reaches only those, on every turn: a document it isn't granted answers as one that doesn't exist. A worker whose file has no `resources:` key reaches every document the app passed as `documents`, and writes the ones that allow writes. A worker naming a document the app didn't declare is refused, so the filter holds.
 
 ### Keeping a document per person
 

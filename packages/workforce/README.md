@@ -44,7 +44,7 @@ That record names no `flow:`, so it runs on the built-in `agent` flow and needs 
 option. Its body becomes its instructions and steers its answers. Every worker on `agent` shares
 its one copy; a session names its worker when it is created, and each turn loads it.
 
-The built-in keeps each worker's skills apart, per user, so two workers never share a drawer and
+The built-in keeps each worker's skills apart, per user, so two workers never share skills and
 two people never share one worker's.
 
 To talk to it, find or start a session with the worker, then send to the flow it names:
@@ -358,9 +358,8 @@ whose name breaks the naming rules.
 
 `createWorkerInstallation` takes the standard workers and the worker flows your app defined, and
 `hireWorkforce` gives back the flows to register: **one copy of each worker flow**, at the flow's own
-kind, and the roster flow (`workforce-roster`). Every worker on a flow shares its one copy. Nothing
-is minted per worker and nothing is pinned to an owner, so a hire, fork or fire while the app runs
-is a write to the user's data, seen by every process on the next turn.
+kind, and the roster flow (`workforce-roster`). Every worker on a flow shares its one copy. A hire,
+fork or fire is a write to the user's data. Every process sees it on the next turn.
 
 ```ts
 import { createWorkerInstallation, hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
@@ -421,7 +420,8 @@ core's resource tools and any tool built on them. That is the flow's `resourceVi
 which the installation supplies: block code that names a document directly is not narrowed.
 
 **Absent and empty are different answers.** A worker whose file has no `resources:` key reaches every
-document the app declared, and writes the ones that allow writes. `resources: []` is how a file
+document the app passed to the installation as `documents`, on the flow's shared copy, and writes
+the ones that allow writes. `resources: []` is how a file
 says a worker gets none.
 
 **Only documents are narrowed.** The stores, boards and anything else the flow declares stay
@@ -471,8 +471,7 @@ list at all, an entry that is neither a ref nor a one-key `ref: mode` mapping, a
 matches, a ref naming a document the app declared but did not install on this worker's flow, a mode
 that is neither `ro` nor `rw`, the same ref twice, `rw` on a document whose own frontmatter says
 `writable: false`, a ref colliding with a name the kind's own blocks already declare, and a ref the
-kind does declare at flow level while what it holds there is not the document the app passed — the
-two cannot be told apart, so it is refused rather than guessed.
+kind does declare at flow level while what it holds there is not the document the app passed.
 
 One more is checked on the worker's configuration rather than on the list: if a document the worker
 did **not** name is reachable anyway — because one of the flow's blocks declares that same
@@ -610,7 +609,7 @@ worker.
 | --- | --- |
 | `uses` | Capabilities attached to every worker's answer generator. The skills binding stays first and is never displaced. A capability passed as a plain ref brings its own storage with it; one passed as a `(ctx) => refs` resolver brings none, so anything it needs has to be declared statically somewhere. |
 | `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string, it cannot change the answer, and a failure in it does not fail the turn. Absent, nothing runs after the answer. |
-| `isolateUserState` | Forwarded to `defineFlow`. Keys the flow's user-scoped storage by its copy, apart from the person's other flows. Every worker on `agent` shares the one copy, so a person's workers on it still share one cell. Default `false`. |
+| `isolateUserState` | Forwarded to `defineFlow`. Keys the flow's user-scoped storage by its copy, apart from the person's other flows. Every worker on `agent` shares the one copy, so a person's workers on it still share the same user-scoped storage. Default `false`. |
 
 **The tools fence.** A worker that writes a `tools:` line can call exactly the tools it lists,
 whatever it selected under `capabilities:`. The kind maps those names against the catalog and hands
@@ -1611,9 +1610,8 @@ Mailboxes used to be called channels, everywhere, and the old names are not read
 ## Hire, fork and fire as tools
 
 A user's own workers are rows on their roster ([Workers as data](#workers-as-data)), written by the
-roster flow's `hire`, `fork`, `edit` and `fire` actions, which `hireWorkforce` registers. Nothing
-is registered per hire, nothing restarts, and nothing is read back at boot: every process reads the
-row on the next turn.
+roster flow's `hire`, `fork`, `edit` and `fire` actions, which `hireWorkforce` registers. A hire,
+fork or fire is a write to the user's data. Every process sees it on the next turn.
 
 To let a worker hire or fire for the person it talks to, hand the same blocks to a model as tools.
 A catalog key is the tool's own name, so wrap each block in a sequencer that carries the name and
@@ -1650,8 +1648,8 @@ worker the turn loaded (as `members:` lists it) as `author`, so the mailbox's me
 The worker comes from the session, never from the input or a setting. The line has
 `seatAuthored: true`, so `wakeMemberSeats` wakes nobody for it. A client `post` that sets `author`
 to the same worker id wakes hearing members. A turn that loaded no worker posts nothing.
-`mailboxPostCapability` is the same tool for a flow copy minted for one worker, which signs with its
-`seatId` setting.
+Passing `mailboxPostCapability` to `defineAgentWorkerFlow({ installation })` puts this one in its
+place.
 
 The tool returns once the post is handed to the mailbox, as `{ handedTo, note }`. A refusal by the
 mailbox, such as an author who is not a member, lands on the mailbox's request, not in the seat's
@@ -2020,10 +2018,10 @@ restart.
 
 ## Workers as data
 
-A worker is data rather than a registered copy: a row its owner holds in their user scope, or a
-standard worker your files declare, run by one registered copy of the flow it names. A session
-names its worker once, when it is created, and each turn loads it. Nothing mints a copy per worker
-or sets a pin.
+A worker is data: a row its owner holds in their user scope, or a standard worker your files
+declare, run by one registered copy of the flow it names. A session names its worker once, when it
+is created, and each turn loads it. A hire, fork or fire is a write to the user's data. Every
+process sees it on the next turn.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -2100,7 +2098,8 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   - `hire({ id, flow?, description?, instructions?, skills?, settings? })` returns `{ id, flow }`;
     `flow` defaults to `agent`, and `settings` takes the keys a `WORKER.md` frontmatter accepts;
   - `fork({ from, id })` returns `{ id, flow }`, copying a standard worker's, or one of the user's
-    own, configuration and shared instructions; a later edit to the files doesn't reach the fork;
+    own, configuration: its flow, description, instructions, team instructions, skill names and
+    settings; a later edit to the files doesn't reach the fork;
   - `edit({ id, flow?, description?, instructions?, skills?, settings? })` returns `{ id, flow }`,
     replacing each field given;
   - `fire({ id })` returns `{ id }` and deletes the row.
@@ -2281,7 +2280,7 @@ and `MailboxTranscriptLine`, the same values the root exports, and reaches no No
 | One skill name at more than one of a seat's levels | Collected in `readSeatSkills`'s `errors` as `kind: "duplicate-skill-name"`, keyed by the level the name was first seen at, with every colliding path on the entry's `paths`; the name is left out of `skills` |
 | `scope:` in a `SKILL.md` | Collected in `readSeatSkills`'s `errors` as `kind: "refused-scope-key"`, keyed by the skill's path |
 | Worker flow misses the contract | `hireWorkforce`, before anything is registered — a flow passed under a key that is not its own kind, a configuration it refuses by key or by value, or takes but rewrites (composing `workerConfigSchema()` is the fix), no door or two, no installation session, or a resource with `writtenBy` that `sharedResource()` didn't build. Collected: one error names every problem with every flow, and nothing is hired |
-| Worker cannot run | For a standard worker, `hireWorkforce`; for a user's own worker, the `hire`, `fork` or `edit` that saves it, and its turn — an empty or whitespace-only `flow`, an unknown flow, a user's own worker naming a flow marked `standardOnly` (or naming none, when `agent` is marked), a duplicate standard id (`createWorkerInstallation`), a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this worker's flow, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a seat did not name that its minted flow reaches anyway because one of the kind's blocks declares it, a `references:` list the hire step cannot resolve (a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this seat cannot reach from its place in the tree — including every ref when no `references` map was passed), a seat id that names no place in the tree while its kind holds references, a reference the seat did not name that its minted flow reaches anyway, `instructions` given both in the frontmatter and as a body, a `packages:` list the hire step cannot resolve (not a list of names, a name no library in reach offers, or a name both its own folder and a library offer), a held package's block that clashes with another tool the seat can call, registers under a name other than its own, or declares a store, a package with blocks in its own folder that failed to load, or a `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` or `teamInstructions:` key. Collected: one error names every bad worker |
+| Worker cannot run | For a standard worker, `hireWorkforce`; for a user's own worker, the `hire`, `fork` or `edit` that saves it, and its turn — an empty or whitespace-only `flow`, an unknown flow, a user's own worker naming a flow marked `standardOnly` (or naming none, when `agent` is marked), a duplicate standard id (`createWorkerInstallation`), a setting or body the flow never declared, a `tools:` name nothing registers for that seat, a registered block whose key and own `name` disagree, a block in a worker's own folder that declares a resource, a skill name reaching one seat from both the app's `skills` and its own folders, a `resources:` list the hire step cannot resolve (a `resources:` that is not a list, an entry that is neither a ref nor a one-key `ref: mode` mapping, a ref no document matches, a ref naming a document the app declared but did not install on this worker's flow, a mode other than `ro` or `rw`, the same ref twice, `rw` on a document declaring itself `writable: false`, a ref colliding with a name the kind's own blocks declare, a ref the kind declares at flow level while what it holds there is not that document, or the key itself with no `documents` passed), a document a worker did not name that the worker's flow reaches anyway because one of the kind's blocks declares it, a `references:` list the hire step cannot resolve (a `references:` that is not a list, an entry that is not a ref, the same ref twice, or a ref naming a reference this seat cannot reach from its place in the tree — including every ref when no `references` map was passed), a seat id that names no place in the tree while its kind holds references, a reference the worker did not name that the worker's flow reaches anyway, `instructions` given both in the frontmatter and as a body, a `packages:` list the hire step cannot resolve (not a list of names, a name no library in reach offers, or a name both its own folder and a library offer), a held package's block that clashes with another tool the seat can call, registers under a name other than its own, or declares a store, a package with blocks in its own folder that failed to load, or a `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` or `teamInstructions:` key. Collected: one error names every bad worker |
 | A roster write refused | The `hire`, `fork`, `edit` or `fire` block: a standard worker's id (suggesting a fork), an id already on the caller's roster, a worker that isn't the caller's, a flow that isn't a worker flow or is kept for standard workers, or a configuration its flow refuses. Nothing is written. |
 | A turn on a session whose worker can't run | `resolveWorker` throws `WorkerTurnRefusedError`, naming the worker: fired, moved to another flow, a name that no longer resolves, or a flow now kept for standard workers. Nothing is written; the session stays readable. |
 | Package folder fails to load | Collected in `readPackagesDirectory`'s and `readWorkforce`'s `packageErrors` as `kind: "package-load-failed"` (a symlinked or badly named folder, or a missing, unreadable or malformed `PACKAGE.md`), `"refused-entry"` (a file in `packages/`, or a documents, skills or packages folder or a symlink inside a package), or `"unreadable-slot"`, keyed by the path. The package is left out whole |
