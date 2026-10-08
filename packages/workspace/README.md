@@ -310,7 +310,7 @@ changed. That is not a `WorkspaceRefusedError`: a refusal won't clear on a retry
 waits for a person to decide. A host without a held-work store rejects a recorded hold the same
 way, with `field: "disabled"`, where the run has no live checkout. Once the person has answered,
 pass the hold with `parked: true`: the place starts from the base, and the held snapshot is laid
-out in `held/` beside the checkout when its pack can be read (`heldDir`).
+out in `held/` beside the checkout when its pack can be read and matches the record (`heldDir`). A store that fails while it is read fails the provision instead, so a retry can still lay the work out.
 
 A checkout this host has for a place that the record names on another host is moved aside, to
 `checkout.stale-<time>`, and kept. A host's identity is its root's: hosts that share a root share
