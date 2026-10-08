@@ -344,6 +344,14 @@ async function readTree(): Promise<Tree> {
   return { mailboxes: roster.mailboxes.map((c) => ({ id: c.id, boards: ((c.declared.boards as string[] | undefined) ?? []).length > 0 })) };
 }
 
+/** The flow the chief of staff runs on, as its file names it. */
+async function cosFlow(): Promise<string> {
+  const roster = await readDeclaredRoster(TREE);
+  const flow = roster.workers.find((w) => w.id === COS)?.declared.flow;
+  if (typeof flow !== "string") throw new Error(`the tree declares no "${COS}" with a flow`);
+  return flow;
+}
+
 /** The inventory's mailboxes and the project rows, read through a mailbox's session by its published key patterns. */
 async function readStore(api: LabApi, host: string): Promise<{ mailboxes: string[]; rows: Row[] }> {
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
@@ -665,14 +673,16 @@ async function cos(apis: { owner: LabApi; member: LabApi }, host: string, fail: 
   const titles = fixture.cos.titles.map((t) => `${t} ${RUN_STAMP}`);
   const before = new Set((await readStore(owner, host)).rows.map((r) => r.id));
 
-  const opened = await person.call("POST", `/${encodeURIComponent(COS)}/sessions`, { userId: person.user.userId });
+  // A conversation is a session on the flow the chief of staff's file names, naming it.
+  const flow = await cosFlow();
+  const opened = await person.call("POST", `/${encodeURIComponent(flow)}/sessions`, { userId: person.user.userId, state: { workerId: COS } });
   if (opened.status !== 201) {
     fail(leg, `the chief of staff's address did not answer: ${opened.status} ${JSON.stringify(opened.body)}`);
     return;
   }
   const session = String(opened.body.session.id);
   const ask = fixture.cos.ask.replace("{first}", titles[0]!).replace("{second}", titles[1]!).replace("{named}", named);
-  const posted = await person.call("POST", `/${encodeURIComponent(COS)}/${encodeURIComponent(session)}/actions/run`, {
+  const posted = await person.call("POST", `/${encodeURIComponent(flow)}/${encodeURIComponent(session)}/actions/run`, {
     userId: person.user.userId,
     input: { message: ask },
   });
@@ -683,7 +693,7 @@ async function cos(apis: { owner: LabApi; member: LabApi }, host: string, fail: 
   const requestId = String(posted.body.request.id);
   let status = "timed-out";
   for (const until = Date.now() + COS_TURN_MS; Date.now() < until; await sleep(500)) {
-    const polled = String((await person.call("GET", `/${encodeURIComponent(COS)}/requests/${encodeURIComponent(requestId)}/status`)).body?.status);
+    const polled = String((await person.call("GET", `/${encodeURIComponent(flow)}/requests/${encodeURIComponent(requestId)}/status`)).body?.status);
     if (!["pending", "queued", "in_progress", "running"].includes(polled)) {
       status = polled;
       break;

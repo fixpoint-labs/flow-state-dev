@@ -573,10 +573,12 @@ export interface OpenLabOptions {
    */
   dropTask?: boolean;
   /**
-   * Leave the project tools out: not in the agent kind's catalog, and not in
-   * any seat's `tools:`, as before the chief of staff had them. Applied to the
-   * record before the mint, so the seat boots and genuinely cannot create a
-   * project. The red state of "the chief of staff creates projects".
+   * Leave the project tools out: not in the catalog the agent turn is built
+   * with (the `agent` kind's, and the chief of staff's on the coordinator
+   * flow), and not in any seat's `tools:`, as before the chief of staff had
+   * them. Applied to the record before the mint, so the seat boots and
+   * genuinely cannot create a project. The red state of "the chief of staff
+   * creates projects".
    */
   withoutProjectTools?: boolean;
 }
