@@ -5,7 +5,11 @@
 The calls that sit above either child. None is open. Q1 was the product owner's, answered on
 2026-10-08. Q2 was decided on 2026-10-08 by the two epics' coordinators, to whom the product owner
 delegated it. Q3 was an engineering call the coordinator absorbed on 2026-10-08. Five are engineering calls I made as EM (D1 to D5); they are recorded so no child
-reopens them.
+reopens them. The product owner's approval of the FIX-1816 and FIX-1817 specs on 2026-10-08 changed
+D5's rows; they are recorded in [D5 amendments from the child specs](#d5-amendments-from-the-child-specs),
+with the product owner's call on a FIX-1794 P2 slip. The cross-spec pass of the two specs, which
+the product owner authorized on 2026-10-08, settled four more points, recorded
+[below](#decided-in-the-cross-spec-pass).
 
 ## The tree
 
@@ -19,7 +23,7 @@ flowchart TD
   D1 -.->|"rejected"| X3["hold the request open"]
   E --> D2["D2 · one of each shared part"]
   D2 -.->|"rejected"| X4["a copy per kind"]
-  E --> D5["D5 · nine Layer 1 changes, listed"]
+  E --> D5["D5 · Layer 1 changes, listed · L6 dropped"]
 ```
 
 Q3, D3 and D4 have no rejected sibling worth a node: their cards name what lost.
@@ -95,8 +99,8 @@ a note of the second kind (FIX-1802's settle-owed marker, its BR-17). Neither is
 **What it settles.** The gap the recommendation left open, that FIX-1794's `onTaskSettled` was a
 Workforce entry an ask below Workforce could not hear, closes by the lift, not by a second copy.
 FIX-1802's marker and FIX-1794 BR-25 stay as specified. FIX-1794 P2 builds S6 and S7
-layer-clean, as the coordinators agreed, and the lift's re-pointing of them is the one agreed touch
-of FIX-1794's code ([ER-12](BUSINESS-RULES.md#what-no-child-may-do), [ER-21](BUSINESS-RULES.md#how-the-set-is-run)).
+layer-clean, as the coordinators agreed, and the lift's re-pointing of them is one of two agreed
+touches of FIX-1794's code; FIX-1817's L9 rows are the other ([ER-12](BUSINESS-RULES.md#what-no-child-may-do), [ER-21](BUSINESS-RULES.md#how-the-set-is-run)).
 
 **What it costs.** Two owed markers share one pattern, so a change to the pattern is made in both.
 FIX-1816 carries the lift, which lands only after FIX-1794 P2 merges.
@@ -161,7 +165,7 @@ It comes down to ownership: a reopen or a new issue gives the signal two owners.
 |---|---|
 | **Instead of** | An ask that may wait without limit |
 | **Because** | A asks B while B asks A, and both wait forever. Nothing today carries a cancel from a parent to its child; `dispatch-and-execute.ts` combines only the request signal and lease loss |
-| **Locks in** | A mandatory timeout and a depth cap on every ask, and a cancel of the asker that reaches the asked child. The values are FIX-1816's |
+| **Locks in** | A mandatory timeout and a depth cap on every ask, and a cancel of the asker that reaches the asked child. As FIX-1816 settled them: the depth cap holds by construction at depth 1, since a turn working a task row cannot ask, and the timeout is fixed, fired by the durability sweeper's expiry step within 10 to 20 minutes (L7) |
 
 <a name="d4"></a>
 ## D4 · Dispatch stays fire-and-forget by default
@@ -170,35 +174,36 @@ It comes down to ownership: a reopen or a new issue gives the signal two owners.
 |---|---|
 | **Instead of** | Making every dispatch wait |
 | **Because** | A dispatch on `main` returns before the dispatched work runs, and its callers are written for that. A default that waits changes all of them |
-| **Locks in** | Ask is a separate, opt-in call |
+| **Locks in** | Ask is an opt-in option on the call, `addTask`'s `waitForResponse` (L5); without it a hand-off is fire-and-forget |
 
 <a name="d5"></a>
-## D5 · The set's Layer 1 changes are these nine
+## D5 · The set's Layer 1 changes are these, L6 dropped
 
 | | |
 |---|---|
 | **Instead of** | Each child finding its Layer 1 changes during its build |
 | **Because** | This is framework work. A change to a persisted format or a public export outlives the epic, so each one is named, owned and proved before a child builds it |
-| **Locks in** | A child that needs a tenth comes up to this epic first ([ER-11](BUSINESS-RULES.md#what-no-child-may-do)) |
+| **Locks in** | A child that needs another comes up to this epic first ([ER-11](BUSINESS-RULES.md#what-no-child-may-do)). The rows keep their numbers; L6 is dropped, not renumbered |
 
 | # | Change | Area | Owner | Critical | Proved by · red state |
 |---|---|---|---|---|---|
 | L1 | Server-side resume of a turn parked on a task or internal source | `engine` · beside `routes/resume-routes.ts`; `public-reentry.ts` unchanged | FIX-1816 | New internal verb at an authorization boundary (BP-031); **no new public route** | Resumes a parked task-source turn; the public route still answers not-found. Red: nothing can resume it today |
-| L2 | A wait binding: the parked turn names the request it waits on | `core` · `generator-resume.ts`; `engine` execution | FIX-1816 | **Persisted** in the item log | Leg a's restart. Red: after a restart the turn cannot find what it waited on |
+| L2 | A wait binding: the parked turn names the task row it waits on (L5) | `core` · `generator-resume.ts`; `engine` execution | FIX-1816 | **Persisted** in the item log | Leg a's restart. Red: after a restart the turn cannot find what it waited on |
 | L3 | A durable resume-owed marker on FIX-1802's settle-owed pattern (BR-17): written in the write that ends the turn, cleared only by what it owes, replayed on any board touch. FIX-1802's own marker is unchanged | `orchestration` · board rows | FIX-1816 ([Q2](#q2)) | **Persisted** | Leg a's waker control must FAIL |
 | L4 | The child-finished signal FIX-1780 promised: FIX-1794 P2 builds it (S6, S7) as one layer-clean module; FIX-1816 lifts it into `orchestration` and re-points S6 and S7 at it | `orchestration` board gate, after the lift; `workforce` `onTaskSettled` | FIX-1794 P2 builds · FIX-1816 lifts ([Q2](#q2)) | **Public** entry name | FIX-1794's V5, before and after the lift; leg a consumes it |
-| L5 | `awaitDispatch`: dispatch once under `ctx.runOnce`, then read `resultOf(requestId)` | `core` context; `engine` read | FIX-1816 | **Public export** and a new read verb | Leg a's `runOnce` control must FAIL: B runs twice |
-| L6 | A board worker that asks parks its own row; its lease does not lapse into a second claim | `orchestration` · `dispatch-and-execute.ts`, lease renewal | FIX-1816 | **Persisted** row state | An asking worker past its lease is not re-claimed. Red: today a second worker claims it |
-| L7 | A timeout and a depth cap on each ask; a cancel reaches the asked child (D3) | `core`, `engine`; `orchestration` cascade | FIX-1816 | **Persisted** deadline | A asks B, B asks A: both end at the timeout. Red: both wait forever |
-| L8 | A test-harness dispatch seam with a durable in-memory runtime that survives a simulated restart | `@flow-state-dev/testing` | FIX-1816 | **Public export** | L1, L2 and L5 to L7's tests run on it. Red: today's harness drops the wait on restart |
-| L9 | An answered park resumes the same task session; a finished session takes a follow-up question, and a follow-up task as a new row bound to it | `orchestration` park path; `workforce` task entry | FIX-1817 | **Persisted**: a row keeps its session after it ends | Leg b. Red: FIX-1794 BR-25's answer has no path back |
+| L5 | An ask is a task on the asker's own board: `addTask` with a `waitForResponse` option. No new tool, no new core export, no `awaitDispatch` or `resultOf`. `waitForResponse` adds no tool | `orchestration` · `addTask` | FIX-1816 (its D1) | **Public**: one option on an existing tool | Leg a's `runOnce` control must FAIL: B runs twice |
+| ~~L6~~ | **Dropped.** There are no nested asks: a turn that is itself working a task row cannot wait, so no asking worker parks its own row | — | — | — | — |
+| L7 | A timeout and a depth cap on each ask; a cancel reaches the asked child (D3). The depth half holds by construction, at depth 1. The timeout is fixed and fires from the durability sweeper's expiry step, within 10 to 20 minutes | `engine` sweeper expiry; `orchestration` cascade | FIX-1816 | **Persisted** deadline | An ask past its deadline resumes with a timeout error. Red: it waits forever |
+| L8 | A test-harness dispatch seam with a durable in-memory runtime that survives a simulated restart | `@flow-state-dev/testing` | FIX-1816 | **Public export** | L1, L2, L5 and L7's tests run on it. Red: today's harness drops the wait on restart |
+| L9 | An answered park resumes the same task session; a finished session takes a follow-up question, and a follow-up task as a new row bound to it. `answerTask` joins the task tools, and `addTask.followUpOf` binds a follow-up to the root task's session; a follow-up is refused while that session has an unfinished task. `parkOnQuestion`, a new model-visible tool, parks an assigned task on its question; an asked task is not offered it (ER-22). A person's message keeps the shipped `allow` concurrency | `orchestration` park path and task tools; `workforce` task entry, which changes FIX-1794's S5 `work` entry, S6 session key and S7 capability (ER-12) | FIX-1817 | **Persisted**: a row keeps its session after it ends, and `turnReentries` now counts question re-entries as well as person turns. **Public**: two new tools, `answerTask` and `parkOnQuestion`, and one `addTask` option | Leg b. Red: FIX-1794 BR-25's answer has no path back |
 
 L9 keeps FIX-1794's rule that a finished task declines writes (its goal leg e): a follow-up task
-is a new row, not a write to the old one.
+is a new row, not a write to the old one. L5 adds no tool. L9's `answerTask` and `parkOnQuestion`
+are the two the set adds, and a turn still carries one set of task tools.
 
 ## Who owns what
 
-![Who owns what: eight cross-cutting rules by five columns, FIX-1816, FIX-1817, the closure, FIX-1786 and FIX-1765; each rule has one builder; FIX-1786 builds the child-finished signal and FIX-1816 lifts it, and FIX-1786 owns the owed-marker pattern that FIX-1816 reuses](figures/ownership.svg)
+![Who owns what: nine cross-cutting rules by five columns, FIX-1816, FIX-1817, the closure, FIX-1786 and FIX-1765; each rule has one builder; FIX-1786 builds the child-finished signal and FIX-1816 lifts it, and FIX-1786 owns the owed-marker pattern that FIX-1816 reuses](figures/ownership.svg)
 
 Read a row: one cell builds or decides, the others consume, lift, reuse or prove. The two rows
 [Q2](#q2) settled each have FIX-1786 as builder: the signal, which FIX-1816 moves once, and the
@@ -213,6 +218,50 @@ owed-marker pattern, which FIX-1816 reuses for its own resume-owed marker (L3).
   `dispatchAndWait` or `resultOf(requestId)` in code. `metadata.dispatch.from` carries `block`,
   `sessionId` and `lineageId`, no request id. FIX-1659 is about a reassign that leaves a claim in
   place, not cancellation reaching children.
+
+## D5 amendments from the child specs
+
+The product owner approved FIX-1816's spec at #2900 (head `964ecb69`) and FIX-1817's at #2899
+(head `163730d8`) in session on 2026-10-08. Each carried changes to this epic's rows, recorded
+here as decided:
+
+- **L5, reshaped** (FIX-1816 D1). An ask is a task on the asker's own board, `addTask` with
+  `waitForResponse`. The product owner's reason: ask and add both add a task.
+- **L6, dropped.** No nested asks; a turn working a task row cannot wait.
+- **L7's depth half** holds by construction, at depth 1. The timeout is fixed and fires from the
+  durability sweeper's expiry step, within 10 to 20 minutes.
+- **ER-5** reads "an opt-in option"; [D4](#d4)'s fire-and-forget default is unchanged.
+- **L9** (FIX-1817) adds `answerTask`, a new task tool, and `addTask.followUpOf`.
+- **If FIX-1794 P2 slips, ask waits with it. Decided by the product owner**, 2026-10-08. No
+  stop-gap waker is built: it would be the second child-finished signal
+  [ER-7](BUSINESS-RULES.md#what-no-child-may-do) forbids, and the lift would tear it out. The cost
+  is that ask's goal slips one for one with P2 ([PLAN](PLAN.md#what-unblocks-what-from-here)).
+
+## Decided in the cross-spec pass
+
+The product owner authorized a cross-spec pass of FIX-1816's and FIX-1817's approved specs on
+2026-10-08. It found four points where the two specs, or this epic's rows, did not yet agree.
+Recorded here as decided:
+
+1. **An asked task gets no `parkOnQuestion` in v1.** A coordinator decision, an engineering call
+   the product owner can overrule. A colleague you asked answers with what it has, or fails; it
+   cannot stop on a question back to the asker. *Rejected:* letting it park. A question parked
+   inside an ask would sit until the ask's timeout fired, silently, 10 to 20 minutes later (L7),
+   and the asker would see only a timeout. *Cost:* an asked worker that needs a fact it lacks
+   must fail and say so; the asker can assign the work instead. Epic rule
+   [ER-22](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), owned by FIX-1817, mirrored by
+   FIX-1816.
+2. **A second agreed touch of FIX-1794's code** ([ER-12](BUSINESS-RULES.md#what-no-child-may-do)).
+   FIX-1817's L9 rows change FIX-1794's S5 `work` entry, S6 session key and S7 capability. Where
+   FIX-1816's lift and FIX-1817 both touch S6's task entry, FIX-1817 lands after FIX-1816 P3 and
+   rebases onto it. `fix-1786-pm` is told before FIX-1794 P2 merges
+   ([ER-21](BUSINESS-RULES.md#how-the-set-is-run)).
+3. **L9 adds `parkOnQuestion`**, a new model-visible tool, beside `answerTask`. The persisted
+   `turnReentries` now counts question re-entries as well as person turns ([D5](#d5)).
+4. **One set of task tools per turn, not a count.** The intent is one set of task tools on each
+   turn. FIX-1816's check becomes "`waitForResponse` adds no tool", not a literal eight.
+   FIX-1786's ER-32 says "each of the eight task tools"; that literal is raised with
+   `fix-1786-pm` as an amendment request, since ER-12 keeps this epic out of FIX-1786's specs.
 
 ## What the end-state POC showed
 
@@ -232,4 +281,14 @@ first move inside FIX-1816's spec, not here.
 - **Merged (Oct 8)**: #2891, by the product owner.
 - **Q1 and Q3 decided (Oct 8)**: Q1 by the product owner, in session: FIX-1818 and FIX-1819
   cut. Q3 as an engineering call by the coordinator under epic-pm: FIX-1780 stays Done with a
-  correcting comment and a relation to FIX-1794. Recorded by a follow-up PR from `main`.
+  correcting comment and a relation to FIX-1794. Recorded by a follow-up PR from `main` (#2893).
+- **Child specs approved (Oct 8)**: FIX-1816 (#2900) and FIX-1817 (#2899), by the product
+  owner, in session. Their changes to L5, L6, L7, L9 and ER-5, and the product owner's call that
+  ask waits on a FIX-1794 P2 slip, recorded in
+  [D5 amendments from the child specs](#d5-amendments-from-the-child-specs) by a second follow-up
+  PR from `main` (#2904).
+- **Cross-spec pass (Oct 8)**: authorized by the product owner. An asked task gets no
+  `parkOnQuestion` (ER-22, a coordinator call the product owner can overrule); FIX-1817's L9 is a
+  second agreed touch of FIX-1794's code (ER-12); L9 adds `parkOnQuestion` and widens
+  `turnReentries`; the tool check is one set per turn, with FIX-1786's ER-32 raised as an
+  amendment request. Recorded in [Decided in the cross-spec pass](#decided-in-the-cross-spec-pass), same PR.

@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 284" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 8 October 2026, in phases rather than dates. Two input lanes from FIX-1786, landing in the order Q2 fixed, each on the product owner&#x27;s merge: FIX-1794 has P1 merged, then P2, the notices, waiting on FIX-1814, which removes skill sub-agents, then its build. FIX-1802 has its spec merged, then waits on FIX-1794 P2, then builds P1. This spec is in review at the now line. After the gate, the ask and assign specs run at once, beside the closure&#x27;s QA plan. Ask builds its own Layer 1 pieces, L1 to L3 and L5 to L8, without waiting, then lifts the child-finished signal, L4, once FIX-1794 P2 merges. Assign builds only after FIX-1802 merges. The closure runs on one main commit after both. FIX-1818 and FIX-1819 were cut by Q1 and have no lane. The critical path, dashed red, runs through FIX-1794 P2&#x27;s wait on FIX-1814 and its build, FIX-1802 P1, assign&#x27;s build and the closure run.">
+     aria-label="The path as of 8 October 2026, in phases rather than dates. Two input lanes from FIX-1786, landing in the order Q2 fixed, each on the product owner&#x27;s merge: FIX-1794 has P1 merged, then P2, the notices, waiting on FIX-1814, which removes skill sub-agents, then its build. FIX-1802 has its spec merged, then waits on FIX-1794 P2, then builds P1. This spec is in review at the now line. After the gate, the ask and assign specs run at once, beside the closure&#x27;s QA plan. Ask builds its own Layer 1 pieces, L1 to L3, L5, L7 and L8, without waiting, then lifts the child-finished signal, L4, once FIX-1794 P2 merges. Ask is offered to models only once FIX-1794 P2 merges, and waits with it if P2 slips. Assign builds only after FIX-1802 merges. The closure runs on one main commit after both. FIX-1818 and FIX-1819 were cut by Q1 and have no lane. The critical path, dashed red, runs through FIX-1794 P2&#x27;s wait on FIX-1814 and its build, FIX-1802 P1, assign&#x27;s build and the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -59,7 +59,7 @@
   <g id="fix-1816">
     <text class="t-ln" x="16" y="174">FIX-1816 · ask</text>
     <rect class="todo" x="290" y="161" width="130" height="20" rx="3"/><text class="t-s" x="296" y="175">spec · kill line</text>
-    <rect class="todo" x="430" y="161" width="110" height="20" rx="3"/><text class="t-s" x="436" y="175">L1–L3 L5–L8</text>
+    <rect class="todo" x="430" y="161" width="110" height="20" rx="3"/><text class="t-s" x="436" y="175">L1–L3 L5 L7 L8</text>
     <rect class="todo" x="560" y="161" width="110" height="20" rx="3"/><text class="t-s" x="566" y="175">lift L4</text>
   </g>
   <g id="fix-1817">

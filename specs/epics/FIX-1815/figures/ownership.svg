@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 392" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: eight cross-cutting rules by five columns. Ask returns the real answer across a restart and runs once: FIX-1816 builds, FIX-1817 consumes, the closure FIX-1820 proves. An answered park resumes the same session: FIX-1817 builds, the closure proves. A finished session answers and takes a follow-up task: FIX-1817 builds, FIX-1765 consumes and settles the reply semantics with it, the closure proves. Every ask is bounded: FIX-1816 builds, the closure proves. One child-finished signal, lifted once: FIX-1786 builds it in FIX-1794 P2, FIX-1816 lifts it into orchestration, FIX-1817 consumes. Owed markers share one pattern: FIX-1786 builds it as FIX-1802&#x27;s settle-owed marker, FIX-1816 reuses it for its own resume-owed marker, FIX-1817 consumes. Both decided under Q2. One answer-once check, and ask adds none: FIX-1816 decides, FIX-1817 consumes. Dispatch stays fire-and-forget by default: FIX-1816 decides, FIX-1817 consumes.">
+<svg viewBox="0 0 940 426" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: nine cross-cutting rules by five columns. Ask returns the real answer across a restart and runs once: FIX-1816 builds, FIX-1817 consumes, the closure FIX-1820 proves. An answered park resumes the same session: FIX-1817 builds, the closure proves. A finished session answers and takes a follow-up task: FIX-1817 builds, FIX-1765 consumes and settles the reply semantics with it, the closure proves. Every ask is bounded: FIX-1816 builds, the closure proves. One child-finished signal, lifted once: FIX-1786 builds it in FIX-1794 P2, FIX-1816 lifts it into orchestration, FIX-1817 consumes. Owed markers share one pattern: FIX-1786 builds it as FIX-1802&#x27;s settle-owed marker, FIX-1816 reuses it for its own resume-owed marker, FIX-1817 consumes. Both decided under Q2. One answer-once check, and ask adds none: FIX-1816 decides, FIX-1817 consumes. Dispatch stays fire-and-forget by default: FIX-1816 decides, FIX-1817 consumes. An asked task cannot park on a question: FIX-1817 decides, FIX-1816 mirrors.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -22,7 +22,7 @@
     .c-use { fill:var(--accent); }
     .c-prv { fill:var(--prose); }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="392"/>
+  <rect class="bg" x="0" y="0" width="940" height="426"/>
   <g id="header">
     <rect class="hd" x="16" y="14" width="908" height="44" rx="4"/>
     <text class="t-lbl" x="28" y="40">RULE · ER</text>
@@ -68,9 +68,13 @@
     <rect class="own" x="344" y="307" width="104" height="24" rx="3"/><text class="t-c c-own" x="396" y="323">DECIDES</text>
     <rect class="use" x="462" y="307" width="104" height="24" rx="3"/><text class="t-c c-use" x="514" y="323">consumes</text>
     <line class="row" x1="16" y1="338" x2="924" y2="338"/></g>
+  <g id="r9"><text class="t-r" x="28" y="357">An asked task cannot park on a question · ER-22</text>
+    <rect class="use" x="344" y="341" width="104" height="24" rx="3"/><text class="t-c c-use" x="396" y="357">mirrors</text>
+    <rect class="own" x="462" y="341" width="104" height="24" rx="3"/><text class="t-c c-own" x="514" y="357">DECIDES</text>
+    <line class="row" x1="16" y1="372" x2="924" y2="372"/></g>
   <g id="legend">
-    <rect class="own" x="28" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="48" y="366">ONE OWNER PER ROW</text>
-    <rect class="use" x="230" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="250" y="366">MUST NOT RE-DECIDE</text>
-    <rect class="prv" x="430" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="450" y="366">CLOSURE PROVES IT</text>
+    <rect class="own" x="28" y="390" width="14" height="12" rx="2"/><text class="t-lbl" x="48" y="400">ONE OWNER PER ROW</text>
+    <rect class="use" x="230" y="390" width="14" height="12" rx="2"/><text class="t-lbl" x="250" y="400">MUST NOT RE-DECIDE</text>
+    <rect class="prv" x="430" y="390" width="14" height="12" rx="2"/><text class="t-lbl" x="450" y="400">CLOSURE PROVES IT</text>
   </g>
 </svg>

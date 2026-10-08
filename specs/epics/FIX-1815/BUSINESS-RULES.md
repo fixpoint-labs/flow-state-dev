@@ -12,8 +12,9 @@ checks them. Each names its owner and where it is checked.
 | ER-1 | An ask returns the asked worker's real answer inside the asker's turn, across a restart, and the asked worker runs once | FIX-1816 | FIX-1820's leg a and both controls |
 | ER-2 | An answered park resumes the same task session, which keeps what it did before it parked | FIX-1817 | FIX-1820's leg b |
 | ER-3 | A finished task's session answers a follow-up question from its history and accepts a follow-up task. It never locks. The finished row still declines writes (FIX-1794's leg e); a follow-up task is a new row bound to the same session | FIX-1817, with FIX-1765 on what a reply does | FIX-1820's leg b · FIX-1817's spec review |
-| ER-4 | Every ask has a timeout and a depth cap, and a cancel of the asker reaches the asked worker ([D3](DECISIONS.md#d3)) | FIX-1816 | FIX-1816's tests · FIX-1820's gap sweep with a mutual ask |
-| ER-5 | Dispatch stays fire-and-forget by default; ask is a separate, opt-in call ([D4](DECISIONS.md#d4)) | FIX-1816 decides · FIX-1817 consumes | Both specs' review |
+| ER-4 | Every ask has a timeout and a depth cap, and a cancel of the asker reaches the asked worker ([D3](DECISIONS.md#d3)). The cap is depth 1, by construction; the timeout is fixed (L7) | FIX-1816 | FIX-1816's tests · FIX-1820's gap sweep with a stalled ask: it resumes with a timeout error, and a cancel of the asker reaches the asked task (L7) |
+| ER-5 | Dispatch stays fire-and-forget by default; ask is an opt-in option, `addTask`'s `waitForResponse` (L5, [D4](DECISIONS.md#d4)) | FIX-1816 decides · FIX-1817 consumes | Both specs' review |
+| ER-22 | An asked task gets no `parkOnQuestion` in v1. The colleague you asked answers with what it has, or fails; it cannot stop on a question back to the asker ([the cross-spec pass](DECISIONS.md#decided-in-the-cross-spec-pass)) | FIX-1817, with FIX-1816 mirroring it | FIX-1817's tests: an asked row's turn is offered no `parkOnQuestion` · FIX-1816's spec states it |
 
 ## What no child may do
 
@@ -24,8 +25,8 @@ checks them. Each names its owner and where it is checked.
 | ER-8 | Hold a request open while it waits | [D1](DECISIONS.md#d1) |
 | ER-9 | Merge ask and assign into one kind | The product owner, 2026-10-08 |
 | ER-10 | Restore skill `agents:` in any form, including a skill's private team | FIX-1814 removed it; Not doing |
-| ER-11 | Add a Layer 1 change outside [D5](DECISIONS.md#d5)'s nine, or any new public route | D5. It comes to this epic first |
-| ER-12 | Change a FIX-1786 child's spec or code: FIX-1791, FIX-1792, FIX-1793, FIX-1794, FIX-1796, FIX-1797, FIX-1802, FIX-1814. A need goes to that epic as a comment. The one agreed exception: FIX-1816's lift re-points FIX-1794's S6 and S7 at the moved module ([Q2](DECISIONS.md#q2)) | Another session owns them |
+| ER-11 | Add a Layer 1 change outside [D5](DECISIONS.md#d5)'s list, or any new public route | D5. It comes to this epic first |
+| ER-12 | Change a FIX-1786 child's spec or code: FIX-1791, FIX-1792, FIX-1793, FIX-1794, FIX-1796, FIX-1797, FIX-1802, FIX-1814. A need goes to that epic as a comment. Two agreed exceptions: FIX-1816's lift re-points FIX-1794's S6 and S7 at the moved module ([Q2](DECISIONS.md#q2)); and FIX-1817's L9 rows change FIX-1794 code, its S5 `work` entry, S6 session key and S7 capability ([the cross-spec pass](DECISIONS.md#decided-in-the-cross-spec-pass)). Where both touch S6's task entry, FIX-1817 lands after FIX-1816 P3 and rebases onto it | Another session owns them. FIX-1786's coordinator is told of both before FIX-1794 P2 merges (ER-21) |
 | ER-13 | Build the Shift Manager composer for finished tasks | FIX-1764 and epic FIX-1765 own it |
 
 ## How the set is run
@@ -33,11 +34,11 @@ checks them. Each names its owner and where it is checked.
 | # | Rule | Because |
 |---|---|---|
 | ER-14 | What a reply to a finished task does (a note, a follow-up task, or a reopen) is settled in FIX-1817's spec together with epic FIX-1765, not alone | Both epics answer the same question |
-| ER-15 | The inputs land in this order, each on the product owner's merge, with no dates: FIX-1814, then FIX-1794 P2, then FIX-1802 P1. FIX-1817's build starts only after FIX-1802 merges on `main`. FIX-1816's lift of the child-finished signal (L4) starts only after FIX-1794 P2 merges; its other rows, L3 among them, do not wait | [Q2](DECISIONS.md#q2), decided 2026-10-08 |
+| ER-15 | The inputs land in this order, each on the product owner's merge, with no dates: FIX-1814, then FIX-1794 P2, then FIX-1802 P1. FIX-1817's build starts only after FIX-1802 merges on `main`. FIX-1816's lift of the child-finished signal (L4) starts only after FIX-1794 P2 merges; its other rows, L3 among them, do not wait. Where FIX-1817 touches FIX-1794's S6 task entry, it lands after FIX-1816 P3 (ER-12) | [Q2](DECISIONS.md#q2), decided 2026-10-08 |
 | ER-16 | The epic finishes only when FIX-1820 closes: a clean run on one `main` commit, every bug an earlier run found fixed as a child of this epic and retested | The closure rule |
 | ER-17 | FIX-1816's spec, before its gate, names the caller the kill line asks for, or the set stops after it and ships assign alone | The kill line |
 | ER-18 | FIX-1816's spec decides FIX-1537's fate; one of the two closes as a duplicate. Nothing re-parents FIX-1537 out of FIX-1312 | FIX-1537 is FIX-1312's child |
-| ER-21 | FIX-1816's spec sends `fix-1786-pm` the shape of the child-finished signal's seam before FIX-1794 P2 starts. If FIX-1817 changes what a park writes on the row, it tells `fix-1786-pm` before FIX-1794 P2 merges | [Q2](DECISIONS.md#q2): the module is built there and moved here, so both sides agree its shape first |
+| ER-21 | FIX-1816's spec sends `fix-1786-pm` the shape of the child-finished signal's seam before FIX-1794 P2 starts. If FIX-1817 changes what a park writes on the row, or FIX-1794 code under L9 (ER-12), it tells `fix-1786-pm` before FIX-1794 P2 merges | [Q2](DECISIONS.md#q2): the module is built there and moved here, so both sides agree its shape first |
 
 ## The closure
 
