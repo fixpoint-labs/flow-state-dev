@@ -241,7 +241,14 @@ function pendingAction(row) {
   }
 
   const prerequisiteOpen = !!(row.blockedBy && row.blockedBy.length)
-  const unlessBuilding = (next) => (prerequisiteOpen && buildsCode(row, next.action) ? null : next)
+  // The cross-spec hold parks EVERY dispatch for a spec-route row that could start implementation, not
+  // only the two `implement` branches below. A verdict or an answered decision dispatches ahead of the
+  // phase switch, and the worker advances the row to its next external wait — which, for an approved
+  // spec or a row at NEEDS_IMPLEMENTATION, is opening the implementation PR. Unapproved spec work still
+  // runs (the pass waits on it), and so does a bug: it has no spec to be incoherent with.
+  const crossSpecParks =
+    crossSpecHold && !isDirectRoute(row) && (row.phase === 'NEEDS_IMPLEMENTATION' || (PRE_APPROVAL_PHASES.has(row.phase) && row.specApproved))
+  const unlessBuilding = (next) => (crossSpecParks || (prerequisiteOpen && buildsCode(row, next.action)) ? null : next)
 
   // A worker that escalated a decision it could not make is WAITING ON A HUMAN. Re-dispatching
   // it on the next unrelated PR event or heartbeat would either retry the same dead end or push
@@ -1375,7 +1382,9 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
       blocked.push(row)
       if (!next) continue
     }
-    if (next && foldEpicWanted && AUTHORS_AGAINST_OBJECTIVE.has(next.action)) {
+    // Only while the epic gate is OPEN. Under a closed gate the row is held by the gate (`held` below),
+    // and reporting it as held-for-fold promised a dispatch next wake that the gate refuses again.
+    if (next && epicApproved && foldEpicWanted && AUTHORS_AGAINST_OBJECTIVE.has(next.action)) {
       heldForFold.push({ row, ...next })
       continue
     }
@@ -2687,7 +2696,10 @@ const freshById = bindByPosition(
 // table only from `rows` would discard it — the issue would be invisible to the coordinator and
 // the epic could wrap without it (→ epic-lifecycle § Intake). They enter at NEEDS_SPEC and hit
 // their own spec-approval gate like any other.
-const TERMINAL_LINEAR = /^(done|closed|cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
+// State NAMES and state TYPES both: the children read sometimes reports the type (`completed`,
+// `canceled`) where the name (`Done`, `Canceled`) was asked for, and a finished prerequisite that reads
+// as open work holds its dependent. `canceled` is already covered by `cancell?ed`.
+const TERMINAL_LINEAR = /^(done|completed|closed|cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
 const discovered = linearIssues
   .filter((li) => li.id !== epic.issueId && !rows.some((r) => r.id === li.id))
   // A child the human already closed or dropped is not new work. Entering it at NEEDS_SPEC would
@@ -3931,7 +3943,12 @@ return {
   // covers a returned `multiPrPending` row, a landed verdict still owed a fold, and a Settle-phase verdict
   // that Advance had already passed by. A parked or cancelled row yields null and so ends the turn.
   moreWorkNow:
-    plan.heldForFold.length > 0 ||
+    // Held work counts only if the NEXT wake finds the epic gate open — the case where this wake's fold
+    // applied the last answered epic question. Otherwise the next wake holds it again, and an immediate
+    // wake just loops the coordinator on a gate only the human can open.
+    (plan.heldForFold.length + plan.held.length > 0 &&
+      epicApproved && epicSpecMerged &&
+      !(epicOut.openQuestions.length || epicOut.unsettled.length || epicOut.answers.length)) ||
     plan.deferred.length > 0 ||
     plan.queuedClaims.length + unsettled.length + newRequests.length > 0 ||
     (foldEpicWanted && !plan.foldEpic) ||
