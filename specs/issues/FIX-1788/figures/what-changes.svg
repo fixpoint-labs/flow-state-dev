@@ -78,7 +78,7 @@
   </g>
   <g id="case-5">
     <text class="t-lbl" x="32" y="432">TWO WORKERS ON A BUILT-IN FLOW, EACH WITH ITS OWN SKILLS</text>
-    <text class="t-same" x="32" y="452">Each reads only its own</text>
+    <text class="t-same" x="32" y="452">Each reads only its own, on its own copy</text>
     <text class="t-same" x="494" y="452">Each reads only its own, on the one copy</text>
     <text class="t-s" x="494" y="470">and working memory · long-term memory is the user&#x27;s, shared</text>
   </g>
