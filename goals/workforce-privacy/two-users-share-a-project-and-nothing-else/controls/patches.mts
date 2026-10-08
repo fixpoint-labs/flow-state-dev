@@ -20,7 +20,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** The DevTeam profile inside a checkout. */
 export const profileOf = (root: string) => join(root, "packages", "shift-manager", "teams", "devteam");
@@ -131,7 +131,7 @@ export function orgScopedWorkers(root: string): ModulePatch {
   return {
     name: "org-scoped-workers",
     env: {
-      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${new URL(`file://${MODULE_PATCH}`).href}`.trim(),
+      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${pathToFileURL(MODULE_PATCH).href}`.trim(),
       GOAL_MODULE_PATCH: JSON.stringify({ file, from, to }),
     },
     diff,
@@ -151,7 +151,7 @@ export function probeOrgScopedWorkers(root: string, patch: ModulePatch, tsx: str
   writeFileSync(
     probe,
     [
-      `const m = await import(${JSON.stringify(new URL(`file://${file}`).href)});`,
+      `const m = await import(${JSON.stringify(pathToFileURL(file).href)});`,
       `const c = (m as any).defineWorkerCollection?.();`,
       `console.log("__PROBE__" + JSON.stringify({ scope: c?.scope ?? c?.config?.scope }));`,
     ].join("\n"),
