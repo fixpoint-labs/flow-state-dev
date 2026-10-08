@@ -8,6 +8,7 @@ import {
   kebabToCamel,
   camelToKebab,
   MAX_DESCRIPTION_LENGTH,
+  SkillAgentsRemovedError,
 } from "../../src/skills/skill-md";
 
 describe("parseSkillMd", () => {
@@ -404,7 +405,7 @@ describe("kebabToCamel / camelToKebab", () => {
 
 
 // ---------------------------------------------------------------------------
-// Delegation agents parsing — FIX-918
+// Removed frontmatter — refused loudly, never preserved or ignored
 // ---------------------------------------------------------------------------
 
 const baseHeader = `description: company research`;
@@ -413,235 +414,53 @@ function withFrontmatter(extra: string): string {
   return `---\n${baseHeader}\n${extra}\n---\n\nbody`;
 }
 
-describe("parseSkillMd — delegation agents", () => {
-  it("parses a standalone `agents:` map into state.agents", () => {
-    const text = withFrontmatter(
-      [
-        `agents:`,
-        `  analyst:`,
-        `    prompt-ref: ./reference/analyst.md`,
-        `  writer:`,
-        `    prompt: Write the final report.`,
-      ].join("\n"),
+/** The error `parseSkillMd` throws for `text`, or a failure if it parses. */
+function refusalOf(text: string): Error {
+  try {
+    parseSkillMd(text);
+  } catch (err) {
+    return err as Error;
+  }
+  throw new Error("expected parseSkillMd to refuse, but it parsed");
+}
+
+describe("parseSkillMd — removed `agents:` (skill sub-agents)", () => {
+  // A skill used to run a private team declared under `agents:`. That surface
+  // is gone, so a file that still declares one must fail where it is loaded —
+  // preserving the key would round-trip a team nothing runs, and dropping it
+  // would leave a body that tells the model to plan for that team.
+  it("refuses a skill that declares agents, saying it was removed and where delegation lives now", () => {
+    const err = refusalOf(
+      withFrontmatter([`agents:`, `  analyst:`, `    prompt: You analyse.`].join("\n")),
     );
-    const { state, warnings } = parseSkillMd(text);
-    expect(state.agents?.analyst?.promptRef).toBe("./reference/analyst.md");
-    expect(state.agents?.writer?.prompt).toBe("Write the final report.");
-    // Declaring `agents:` is sufficient — no `pattern:` required, no warning.
-    expect(warnings.some((w) => w.includes("agents"))).toBe(false);
+    expect(err).toBeInstanceOf(SkillAgentsRemovedError);
+    expect(err.message).toMatch(/`agents:` was removed from skills/);
+    expect(err.message).toMatch(/task board/);
   });
 
-  it("parses inline `prompt: |` literal block scalars and visibility", () => {
-    const text = withFrontmatter(
-      [
-        `agents:`,
-        `  synth:`,
-        `    prompt: |`,
-        `      You write the report.`,
-        `      Use prior findings.`,
-        `    visibility: primary`,
-      ].join("\n"),
-    );
-    const { state } = parseSkillMd(text);
-    expect(state.agents?.synth?.prompt).toMatch(
-      /You write the report\.\nUse prior findings\./,
-    );
-    expect(state.agents?.synth?.itemVisibility).toEqual({
-      client: true,
-      history: true,
-    });
+  it("refuses every shape an agent entry used to take, not only an inline prompt", () => {
+    for (const entry of [
+      [`  market:`, `    prompt-ref: ./reference/market.md`],
+      [`  vet:`, `    agent-ref: research-analyst`],
+    ]) {
+      const err = refusalOf(withFrontmatter([`agents:`, ...entry].join("\n")));
+      expect(err.message).toMatch(/`agents:` was removed/);
+    }
   });
 
-  it("parses agent-ref + agent-overrides without resolving them", () => {
-    const text = withFrontmatter(
-      [
-        `agents:`,
-        `  vet:`,
-        `    agent-ref: research-analyst`,
-        `    agent-overrides:`,
-        `      tools: [search, fetch]`,
-        `      model: anthropic/claude-haiku`,
-      ].join("\n"),
-    );
-    const { state } = parseSkillMd(text);
-    expect(state.agents?.vet?.agentRef).toBe("research-analyst");
-    expect(state.agents?.vet?.agentOverrides).toEqual({
-      tools: ["search", "fetch"],
-      model: "anthropic/claude-haiku",
-    });
+  it("refuses a bare `agents:` key with no entries", () => {
+    expect(refusalOf(withFrontmatter(`agents:`)).message).toMatch(/`agents:` was removed/);
   });
 
-  it("rejects an agent with zero of prompt/prompt-ref/agent-ref", () => {
-    const text = withFrontmatter(
-      [`agents:`, `  bare:`, `    tools: [search]`].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(
-      /exactly one of `prompt`, `prompt-ref`, `agent-ref`/,
-    );
-  });
-
-  it("rejects an agent with two resolution fields", () => {
-    const text = withFrontmatter(
-      [`agents:`, `  bad:`, `    prompt: hi`, `    prompt-ref: ./x.md`].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/mutually exclusive/);
-  });
-
-  it("rejects a non-string resolution field (present but not a usable string)", () => {
-    // `prompt: 123` satisfies the exactly-one check but leaves no usable string,
-    // so it must fail at parse time, not confusingly at materialization.
-    const numeric = withFrontmatter([`agents:`, `  bad:`, `    prompt: 123`].join("\n"));
-    expect(() => parseSkillMd(numeric)).toThrow(/`prompt` must be a non-empty string/);
-
-    const boolRef = withFrontmatter(
-      [`agents:`, `  bad:`, `    agent-ref: false`].join("\n"),
-    );
-    expect(() => parseSkillMd(boolRef)).toThrow(/`agent-ref` must be a non-empty string/);
-  });
-
-  it("rejects inline tuning fields (tools/model/visibility) on an agent-ref spec", () => {
-    // These apply only to inline agents; on agent-ref the materializer uses
-    // agent-overrides and would silently ignore them. Fail loud instead.
-    const text = withFrontmatter(
-      [`agents:`, `  a:`, `    agent-ref: shared`, `    tools: [search]`].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/can't be set alongside `agent-ref`/);
-  });
-
-  it("rejects tools/model/visibility/context-supply beside prompt-ref (file is source of truth)", () => {
-    // Dual-write: the prompt file owns generator config. A leftover skill-entry
-    // field would either silently lose or silently win — reject and point at
-    // the file's frontmatter, same spirit as agent-ref + inline tuning.
-    const tools = withFrontmatter(
-      [`agents:`, `  analyzer:`, `    prompt-ref: ./reference/analyze.md`, `    tools: [search]`].join("\n"),
-    );
-    expect(() => parseSkillMd(tools)).toThrow(
-      /can't be set alongside `prompt-ref`[\s\S]*frontmatter of `\.\.\/reference\/analyze\.md`|prompt file[\s\S]*frontmatter/,
-    );
-    expect(() => parseSkillMd(tools)).toThrow(/`tools`/);
-
-    const model = withFrontmatter(
-      [`agents:`, `  a:`, `    prompt-ref: ./x.md`, `    model: openai/gpt-5.4-mini`].join("\n"),
-    );
-    expect(() => parseSkillMd(model)).toThrow(/`model`/);
-
-    const visibility = withFrontmatter(
-      [`agents:`, `  a:`, `    prompt-ref: ./x.md`, `    visibility: sub`].join("\n"),
-    );
-    expect(() => parseSkillMd(visibility)).toThrow(/`visibility`/);
-
-    const supply = withFrontmatter(
-      [`agents:`, `  a:`, `    prompt-ref: ./x.md`, `    context-supply: conversation`].join("\n"),
-    );
-    expect(() => parseSkillMd(supply)).toThrow(/`context-supply`/);
-  });
-
-  it("still accepts tools/model/visibility on an inline prompt entry", () => {
-    // The tiny case: a one-line persona that never earned its own file may
-    // keep generator config on the skill entry. prompt-ref is what forbids it.
-    const text = withFrontmatter(
-      [
-        `agents:`,
-        `  writer:`,
-        `    prompt: You write the report.`,
-        `    tools: [search]`,
-        `    model: openai/gpt-5.4-mini`,
-        `    visibility: sub`,
-      ].join("\n"),
-    );
-    const { state } = parseSkillMd(text);
-    expect(state.agents?.writer).toEqual({
-      prompt: "You write the report.",
-      tools: ["search"],
-      model: "openai/gpt-5.4-mini",
-      itemVisibility: { client: true, history: false },
-    });
-  });
-
-  it("rejects agent-overrides without agent-ref", () => {
-    const text = withFrontmatter(
-      [
-        `agents:`,
-        `  w:`,
-        `    prompt: hi`,
-        `    agent-overrides:`,
-        `      tools: [x]`,
-      ].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/agent-overrides[`]? requires/);
-  });
-
-  it("rejects an invalid agent key", () => {
-    const text = withFrontmatter(
-      [`agents:`, `  "Bad Key":`, `    prompt: hi`].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/agent key/);
-  });
-
-  // FIX-925: assignee keys and catalog keys are one namespace, and a tool
-  // catalog is app code whose keys are camelCase by convention (`httpGet`).
-  // A lowercase-only pattern would filter exactly those out of the board's
-  // worker registry, so uppercase is legal here too.
-  it("accepts a camelCase agent key", () => {
-    const text = withFrontmatter([`agents:`, `  httpGet:`, `    prompt: hi`].join("\n"));
-    expect(parseSkillMd(text).state.agents?.httpGet?.prompt).toBe("hi");
-  });
-
-  // The leading-alphanumeric anchor is what widening must not cost: it is the
-  // only thing keeping the board's reserved routes unclaimable.
-  it.each(["__proto__", "__floor__", "__no_assignee__", "-lead", "_lead"])(
-    "still rejects the reserved-shape agent key %j",
-    (key) => {
-      const text = withFrontmatter([`agents:`, `  "${key}":`, `    prompt: hi`].join("\n"));
-      expect(() => parseSkillMd(text)).toThrow(/agent key/);
-    },
-  );
-
-  // FIX-920 — context-supply sub-key
-  it("parses `context-supply: conversation` into contextSupply", () => {
-    const text = withFrontmatter(
-      [
-        `agents:`,
-        `  summarizer:`,
-        `    prompt: Summarize the discussion.`,
-        `    context-supply: conversation`,
-      ].join("\n"),
-    );
-    const { state } = parseSkillMd(text);
-    expect(state.agents?.summarizer?.contextSupply).toBe("conversation");
-  });
-
-  it("leaves contextSupply undefined when context-supply is absent", () => {
-    const text = withFrontmatter(
-      [`agents:`, `  a:`, `    prompt: hi`].join("\n"),
-    );
-    const { state } = parseSkillMd(text);
-    expect(state.agents?.a?.contextSupply).toBeUndefined();
-  });
-
-  it("rejects an unknown context-supply value fail-loud", () => {
-    const text = withFrontmatter(
-      [`agents:`, `  a:`, `    prompt: hi`, `    context-supply: everything`].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/context-supply/);
-  });
-
-  it("rejects context-supply on an agent-ref agent", () => {
-    // agent-ref agents own their own context (workforce materializer); the
-    // orchestration history slot can't reach them, so fail loud not no-op.
-    const text = withFrontmatter(
-      [
-        `agents:`,
-        `  vet:`,
-        `    agent-ref: shared`,
-        `    context-supply: conversation`,
-      ].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/context-supply/);
+  it("parses the same skill once the `agents:` block is deleted", () => {
+    // The control: the refusal is about the key, not the rest of the file.
+    expect(parseSkillMd(withFrontmatter(`keywords: [research]`)).state.keywords).toEqual([
+      "research",
+    ]);
   });
 });
 
-describe("parseSkillMd — removed pattern/fork/workers/block-ref frontmatter (FIX-918)", () => {
+describe("parseSkillMd — removed pattern/fork/workers frontmatter (FIX-918)", () => {
   it("throws a migration error on `context: fork`", () => {
     const text = `---\n${baseHeader}\ncontext: fork\n---\n\nbody`;
     expect(() => parseSkillMd(text)).toThrow(/context: fork.*removed/);
@@ -652,98 +471,9 @@ describe("parseSkillMd — removed pattern/fork/workers/block-ref frontmatter (F
     expect(() => parseSkillMd(text)).toThrow(/pattern.*removed/);
   });
 
-  it("throws a migration error pointing at `agents:` on legacy `workers:`", () => {
-    const text = withFrontmatter(
-      [`workers:`, `  analyst:`, `    prompt: hi`].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(
-      /`workers:` was renamed to `agents:`/,
-    );
-  });
-
-  it("throws a migration error pointing at `agent-ref` on a `block-ref:` agent field", () => {
-    const text = withFrontmatter(
-      [`agents:`, `  analyst:`, `    block-ref: analyst`].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(
-      /`block-ref` was removed.*agent-ref/s,
-    );
-  });
-});
-
-describe("serializeSkillMd — delegation agents round-trip", () => {
-  it("round-trips a prompt-ref + agent-ref agent map", () => {
-    const text = withFrontmatter(
-      [
-        `agents:`,
-        `  market:`,
-        `    prompt-ref: ./reference/market.md`,
-        `  vet:`,
-        `    agent-ref: research-analyst`,
-        `    agent-overrides:`,
-        `      tools: [search, fetch]`,
-        `      model: anthropic/claude-haiku`,
-      ].join("\n"),
-    );
-    const parsed = parseSkillMd(text);
-    const out = serializeSkillMd(parsed.state, parsed.body);
-    const reparsed = parseSkillMd(out);
-    expect(reparsed.state.agents).toEqual(parsed.state.agents);
-    expect(out).toContain("prompt-ref: ./reference/market.md");
-    expect(out).not.toMatch(/market:\n(?:    .*\n)*    tools:/);
-  });
-
-  it("refuses to serialize tools/model beside prompt-ref", () => {
-    expect(() =>
-      serializeSkillMd(
-        {
-          description: "x",
-          agents: {
-            analyzer: { promptRef: "./reference/analyze.md", tools: ["search"] },
-          },
-        },
-        "body",
-      ),
-    ).toThrow(/can't be set alongside `prompt-ref`[\s\S]*frontmatter of `\.\.\/reference\/analyze\.md`|prompt file/);
-  });
-
-  it("round-trips an inline `prompt: |` body", () => {
-    const text = withFrontmatter(
-      [
-        `agents:`,
-        `  synth:`,
-        `    prompt: |`,
-        `      First line.`,
-        `      Second line.`,
-        `    visibility: primary`,
-      ].join("\n"),
-    );
-    const parsed = parseSkillMd(text);
-    const out = serializeSkillMd(parsed.state, parsed.body);
-    const reparsed = parseSkillMd(out);
-    expect(reparsed.state.agents?.synth?.prompt).toBe(
-      parsed.state.agents?.synth?.prompt,
-    );
-  });
-
-  // FIX-920 — context-supply must survive a serialize → parse round-trip.
-  // Stays on the inline `prompt:` entry (the tiny case). Beside `prompt-ref`
-  // the field is rejected — the prompt file owns it.
-  it("round-trips `context-supply: conversation` on an inline prompt", () => {
-    const text = withFrontmatter(
-      [
-        `agents:`,
-        `  summarizer:`,
-        `    prompt: Summarize the discussion.`,
-        `    context-supply: conversation`,
-      ].join("\n"),
-    );
-    const parsed = parseSkillMd(text);
-    const out = serializeSkillMd(parsed.state, parsed.body);
-    const reparsed = parseSkillMd(out);
-    expect(reparsed.state.agents?.summarizer?.contextSupply).toBe("conversation");
-    expect(reparsed.state.agents?.summarizer?.contextSupply).toEqual(
-      parsed.state.agents?.summarizer?.contextSupply,
-    );
+  it("refuses the legacy `workers:` name for a team, without pointing at the removed `agents:`", () => {
+    const err = refusalOf(withFrontmatter([`workers:`, `  analyst:`, `    prompt: hi`].join("\n")));
+    expect(err.message).toMatch(/`workers:` was removed from skills/);
+    expect(err.message).not.toMatch(/`agents:`/);
   });
 });

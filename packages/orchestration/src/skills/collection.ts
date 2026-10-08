@@ -174,7 +174,7 @@ export function skillManifestKey(name: string): string {
 /** Resource key (relative to prefix) for a skill's supporting file.
  *
  * Normalizes the caller's path so authors can write either `reference/x.md`
- * or `./reference/x.md` in their `prompt-ref` / similar fields and get the
+ * or `./reference/x.md` when they name a supporting file and get the
  * same lookup key. Without normalization, `./reference/x.md` joined against
  * `<skillName>` produces `<skillName>/./reference/x.md`, which never matches
  * the seeded entry at `<skillName>/reference/x.md`.

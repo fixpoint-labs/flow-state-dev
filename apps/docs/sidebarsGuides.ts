@@ -19,7 +19,6 @@ const sidebars: SidebarsConfig = {
       items: [
         "building-a-research-team",
         "board-lifecycle",
-        "agents-command-the-board",
         "create-your-own-pattern",
       ],
     },

@@ -36,8 +36,8 @@
  * `docs/architecture/capabilities.md` → *The tools fence*. What the fence
  * deliberately does NOT hold back is a framework
  * **control** a capability declares through `controlTools` — the skill loader
- * this seat switched on, the delegation board a skill it holds asked for. A
- * seat only holds those because its own config asked, and they are built
+ * this seat switched on. A seat only holds those because its own config asked,
+ * and they are built
  * inside their capability and never exported, so no `tools:` list could name
  * one back in. The skills library is handed the
  * app's catalog with registration turned off (`registerCatalogTools: false`),
@@ -47,16 +47,6 @@
  * own tools slot below stays the only stock tool-registration path, so a
  * seat's own file is the one thing that decides what it can call, no matter
  * what `allowed-tools` a bound skill declares.
- *
- * **That fence has a second gate now the skills are the seat's own.** A skill a
- * seat holds can declare `agents:`, which installs the delegation surface and
- * seats BOARD WORKERS — separate generators — from the catalog. The generator's
- * `tools:` mapping cannot reach those, so the library is given a
- * `toolSeatFence` that narrows them to this seat's own `tools:` list. The fence
- * is the seat's, not the skill's: a seat with `tools: []` reaches nothing,
- * including through a worker it delegated to. The fence is what the seat
- * LISTED — a seat with no `tools:` line listed nothing, so the tools it chose
- * do not travel to a delegate, the same as a block in its own folder.
  *
  * {@link AgentWorkerFlowOptions.uses} is fenced by the framework too
  * (FIX-1393): core drops a capability's catalog-granted tools when the block
@@ -902,13 +892,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     // is the copy's.
     ...(options.installation !== undefined
       ? { partitionBy: (ctx: BlockContext) => verifiedWorkerOf(ctx.session as object) }
-      : {}),
-    // The second half of the `tools:` fence. A skill a seat merely HOLDS can
-    // declare `agents:`, and the delegation surface would otherwise seat board
-    // workers — separate generators the `tools:` mapping below never sees —
-    // from the app's whole catalog. The fence is the seat's own list, so a
-    // seat with `tools: []` reaches nothing, delegated or not.
-    toolSeatFence: (ctx) => (seatConfigOf(ctx) as Partial<SeatConfig>).tools ?? []
+      : {})
   });
 
   // Pinned by the contract (C5): the library plus a per-generator binding.

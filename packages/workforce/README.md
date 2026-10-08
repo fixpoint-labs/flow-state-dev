@@ -622,9 +622,7 @@ both presets, and suggests selecting one of them or writing a `tools:` line. A w
 line is hired whatever its presets' tools are named, and gets exactly its list.
 
 A skill does not widen the grant: a skill's `allowed-tools` are validated against the catalog but
-never registered, and a skill's delegated workers are seated from the names the holding worker
-listed, so tools a worker got by selecting a preset, and the blocks of its packages, do not travel
-to its delegates. Everything else
+never registered. Everything else
 a capability brings — context, storage, helpers — arrives whatever `tools:` says.
 
 What does reach a worker without appearing in `tools:` is a **control**, which is framework
@@ -632,8 +630,6 @@ machinery rather than a tool from the app's catalog, switched on by the worker's
 
 - the **skill loader**, when a worker sets `skills.activateTool: true` — it pulls a skill the worker
   already holds into the turn;
-- the **delegation surface**, when a skill the worker holds declares `agents:`, which puts the task
-  board's eight tools plus `runBoard` on the worker;
 - the **controls a capability preset declares**, when the worker selects that preset in its
   `capabilities:` key — a preset's `controlTools` reach the worker even with `tools: []`.
 

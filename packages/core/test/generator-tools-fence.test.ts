@@ -44,8 +44,7 @@ const capTool = handler({
 
 /**
  * A capability whose tool is ON by default — the shape that produced every
- * encounter on this line (memory's `recall`, the skills catalog, delegation
- * `agents:`). Tools reach a block through presets, never a top-level `tools`
+ * encounter on this line (memory's `recall`, the skills catalog). Tools reach a block through presets, never a top-level `tools`
  * field, so a default-active preset is what "attaching the capability hands
  * the model a tool" actually looks like.
  */
@@ -177,9 +176,9 @@ describe("declared `tools:` fences capability tools", () => {
   });
 
   it("`tools: []` does NOT hold back a capability's control tool", async () => {
-    // The carve-out. A seat that switched the skills loader on, or holds a
-    // skill that declared `agents:`, keeps that surface even behind the
-    // tightest possible fence — it asked for it by composing the capability.
+    // The carve-out. A seat that switched the skills loader on keeps that
+    // surface even behind the tightest possible fence — it asked for it by
+    // composing the capability.
     const block = generator({
       name: "empty-fence-control",
       ...genDefaults,

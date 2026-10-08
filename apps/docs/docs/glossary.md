@@ -68,7 +68,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 
 ## Orchestration: a task board
 
-![A task is a row with a goal, a status and an optional assignee. Tasks live in a task collection, kept either in state or in a resource collection. A task board is a sequencer that drains the collection: a dispatcher picks the next ready task, the assignee routes it to a board worker, and a board worker is any block. Built on the board: the goal-seek loop wraps a drain with a judge, the harness manager is a board worker that runs a coding agent, a skill agent becomes a generator board worker, and four patterns use a board.](./glossary/orchestration.svg)
+![A task is a row with a goal, a status and an optional assignee. Tasks live in a task collection, kept either in state or in a resource collection. A task board is a sequencer that drains the collection: a dispatcher picks the next ready task, the assignee routes it to a board worker, and a board worker is any block. Built on the board: the goal-seek loop wraps a drain with a judge, the harness manager is a board worker that runs a coding agent, and four patterns use a board.](./glossary/orchestration.svg)
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
@@ -81,7 +81,6 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | **Goal-seek loop** | orchestration | Drains a board, asks a judge whether the goal is met, replans, and drains again. See [Goal-seek loop](./orchestration/goal-seek-loop.md). | Task board, sequencer |
 | **Flow policy** | orchestration | Which earlier tasks' results a worker sees. See [Flow policy](./orchestration/flow-policy.md). | Capability |
 | **Skill** | orchestration | A `SKILL.md` folder, stored as a resource and loaded into a generator when needed. See [Skills](./skills/overview.md). | Resource collection, capability, tools |
-| **Skill agent** | orchestration | An entry in a skill's `agents:` map. It becomes a generator that works tasks on a board. See [Agents](./orchestration/agents.md). | Generator, board worker |
 | **Harness manager** | harness-manager | A board worker that turns one task into one supervised coding run in its own checkout, and checks the run's result before marking the task completed or errored. A run that asks a question parks its task until someone answers. See [Harness manager](./orchestration/harness-manager.md). | Board worker, sequencer, harness block, resource collection |
 | **Pattern** | patterns | A function that returns a composed block for a common shape. `supervisor`, `planAndExecute`, `parallelTasks` and `eventActors` run a task board; `debate`, `roundRobin` and `responseAuditor` don't. See [Patterns](./patterns/overview.md). | Sequencer, generators, sometimes a task board |
 

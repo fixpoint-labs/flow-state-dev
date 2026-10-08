@@ -57,14 +57,13 @@ Body goes here.
 | `metadata` | no | map of string → string | Extra properties of your own. Keep the key names distinctive so they don't collide with anyone else's. |
 | `keywords` | no | string[] | Lowercased tokens for the up-front router's tier-2 keyword scan. Plain substring matches against the user message. Ignored on the `runSkill` path. See below. |
 | `context` | no | `inline` | Activation mode. Only `inline` is supported — a matched skill's body is injected into the parent generator's prompt. |
-| `allowed-tools` | no | space-separated string, or string[] | The tool names this skill's body is written around. It grants nothing: see [What tools the generator gets](./binding#what-tools-the-generator-gets). It does gate delegation. When the skill declares `agents:`, the tools listed here are the ones that can be [assigned to a task](./delegation#assigning-a-task-to-a-tool), and listing none makes the whole catalog assignable. |
-| `agents` | no | map | Agent declarations (inline `prompt`/`prompt-ref`, or `agent-ref`) that turn on delegation. See [Delegation](./delegation). |
+| `allowed-tools` | no | space-separated string, or string[] | The tool names this skill's body is written around. It grants nothing: see [What tools the generator gets](./binding#what-tools-the-generator-gets). |
 | `when-to-use` | no | string | Extra guidance appended to the description for the classifier and the `runSkill` catalog. Keep it short. |
 | `disable-model-invocation` | no | boolean | When `true`, the skill stays in the collection but every activation path skips it (no slash, no keyword match, hidden from the classifier and the `runSkill` catalog). Useful for drafts or admin-only skills. |
 
 Unknown frontmatter keys are preserved but not interpreted. A skill that fails validation is reported and skipped (see [Validation errors](#validation-errors)).
 
-`name`, `description`, `license`, `compatibility`, `metadata`, and `allowed-tools` are the Agent Skills fields. The rest (`keywords`, `agents`, `when-to-use`, `disable-model-invocation`, `context`) are this framework's additions. A skill that uses only the standard fields is fully portable; one that uses the additions still runs elsewhere, but the extra keys may be flagged by a strict validator such as the Agent Skills reference tool, [`skills-ref`](https://github.com/agentskills/agentskills/tree/main/skills-ref).
+`name`, `description`, `license`, `compatibility`, `metadata`, and `allowed-tools` are the Agent Skills fields. The rest (`keywords`, `when-to-use`, `disable-model-invocation`, `context`) are this framework's additions. A skill that uses only the standard fields is fully portable; one that uses the additions still runs elsewhere, but the extra keys may be flagged by a strict validator such as the Agent Skills reference tool, [`skills-ref`](https://github.com/agentskills/agentskills/tree/main/skills-ref).
 
 ### Writing good descriptions
 
@@ -214,6 +213,7 @@ This gives the agent concrete ground truth (today's date) that it can't always r
 - A `name` that breaks the naming rules, or that doesn't match the folder it's in
 - `compatibility` longer than 500 chars
 - Missing or malformed frontmatter delimiters
+- An `agents:` block. A skill can't declare a team of its own; give the work to workers on a [task board](../orchestration/task-board) instead.
 
 `readSkillsDirectory` catches these per skill and returns them in its `errors` array. One broken skill doesn't stop the rest from loading.
 

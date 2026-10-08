@@ -83,7 +83,7 @@
   <text x="482" y="320" class="h">Orchestration</text>
   <text x="482" y="340" class="p">Tasks, task boards,</text>
   <text x="482" y="358" class="p">dispatchers, skills</text>
-  <text x="482" y="376" class="p">and skill agents</text>
+  <text x="482" y="376" class="p">and the task tools</text>
   <text x="482" y="394" class="muted">uses core</text>
   <rect x="688" y="296" width="204" height="112" rx="10" class="card"/>
   <text x="702" y="320" class="h">Smaller packages</text>

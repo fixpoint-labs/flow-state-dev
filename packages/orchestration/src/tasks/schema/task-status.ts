@@ -118,7 +118,7 @@ export function isTransitionAllowed(from: TaskStatus, to: TaskStatus): boolean {
  * write, so nothing is committed.
  *
  * Carries the three facts a caller needs to react without re-parsing the
- * message. The delegation `taskTools` boundary catches this by type and returns
+ * message. The `taskTools` boundary catches this by type and returns
  * a recoverable `{ ok: false, error }` result naming what the model can do
  * instead; **every other caller still gets the throw** — driving a collection
  * directly (a drain's rescue path, user code) is expected to handle or

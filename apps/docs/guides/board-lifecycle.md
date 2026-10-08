@@ -240,7 +240,6 @@ side, including what a board's handed-off rows reach and what they don't.
 
 ## Related
 
-- [Building a research team](./building-a-research-team) — a board from scratch, three ways.
+- [Building a research team](./building-a-research-team) — a board from scratch, two ways.
 - [Create your own pattern](./create-your-own-pattern) — wrap `taskBoard` in a reusable factory.
-- [Authoring a delegating skill](./agents-command-the-board) — let a model add and assign tasks mid-drain.
 - [Task board](/docs/orchestration/task-board) and [Task substrate](/docs/orchestration/task-substrate) — the reference docs.

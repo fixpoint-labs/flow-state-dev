@@ -330,12 +330,6 @@ The seeding step runs once per collection lifetime — after the initial seed, b
 
 If you want to ship skill updates alongside code, the pattern most apps use is: edit the source file, bump a version, and run a migration that overwrites the resource content. The Skills package doesn't prescribe this; it just persists what's in the collection.
 
-## Step 10 (optional): Delegate to sub-workers
-
-Some skills are better handled by a small team than a single agent. A skill that declares an `agents:` field gets a private task board plus `taskTools` and a `runBoard` tool when it's bound to a generator. The generator assigns work as tasks (`addTask` with an `assignee` naming one of the skill's agents, `deps` to order them) and runs the whole graph by calling `runBoard`. The board runs the agents — there is no per-agent tool the generator calls by hand. An assignee can also name one of the generator's own tools, which runs as a direct call with no model turn.
-
-[Authoring a delegating skill](/guides/agents-command-the-board) walks the whole path end to end: declaring the team, staffing each seat, planning the graph, draining it, and what the failures look like. See [Delegation](/docs/skills/delegation) for the frontmatter shape and the board overrides.
-
 ## Verifying it works
 
 Run the app. Open DevTool. Ask a question that should match a skill. What you should see depends on which path you wired:

@@ -99,13 +99,6 @@ Narrative: [GoalSeekLoop](./goal-seek-loop).
 | `scope` | `"org"` \| `"user"` \| `"session"` | `"org"` | Where the skills collection lives. `"org"` shares seeded skills across users. |
 | `collectionConfig` | `{ maxInstances?, prefix? }` | omitted | Collection sizing and mount prefix. |
 | `itemVisibility` | visibility or list | omitted | Restrict bindings to blocks with a matching visibility. |
-| `workerModelId` | `string` | neutral default | Model for delegation agents that omit `model`. |
-| `maxTotalTasks` | `number \| null` | `500` | Lifetime task ceiling on the delegation board. `null` is unbounded. |
-| `maxEnqueuedTasks` | `number \| null` | `100` | How many tasks a coordinator may add while others are still `pending`. |
-| `agentRegistry` | `AgentRegistry` | omitted | Your own agent catalog, resolving `agent-ref` entries by name. A statically-`active` skill with `agent-ref` and no registry fails at build time. |
-| `materializeAgent` | function | omitted | Your own function turning a resolved agent into a board worker. Required alongside `agentRegistry`; neither works without the other. See [Borrowing an agent from a registry](./agents#borrowing-an-agent-from-a-registry). |
-| `capabilityCatalog` | name → capability | omitted | Forwarded to `materializeAgent`. |
-| `toolSeatFence` | `(ctx) => string[] \| undefined` | omitted | A ceiling on which `catalog` keys a delegated board worker may be seated with. It only ever narrows; `[]` means no catalog seats. Called each time the delegation surface resolves, so keep it cheap and free of side effects. Reach for it when the generator's own tools are fenced and it runs skills you didn't author, so a skill's agents can't be seated with tools the generator itself can't call. |
 
 ## `skills.with` options
 
@@ -116,9 +109,7 @@ Per-generator binding. Two generators, two different `active` sets, and neither 
 | `active` | `string[]` | omitted | Skills preloaded from the start. Unknown names fail at build time. |
 | `allowed` | `string[]` | omitted | Skills the load tool may pull; omitted, it may pull any skill in the library. Also the skills an `activeState` field may render with tools: an `activeState` binding with neither `allowed` nor `dynamicActivation` gets no catalog tools at all. When the catalog is contributed it is the whole `catalog`, not these skills' `allowed-tools`. See [What tools the generator gets](../skills/binding#what-tools-the-generator-gets). |
 | `activeState` | `{ scope, field }` | this generator's block state | Where dynamic activations live. Set a named scope to share across generators or persist across turns. |
-| `delegation` | `boolean` | on iff a bound skill declares `agents:` | `false` suppresses the board + `taskTools` + `runBoard` surface. `true` installs it even with an empty roster. |
-| `guidance` | `boolean` | on when delegation installs | Delegation playbook + live agent roster in context. `false` turns that context off. |
 
 `dynamicActivation` and `catalogContext` are presets on the same `.with({ ... })` call, not fields on this table. `dynamicActivation` installs the `loadSkill` tool. `catalogContext` is on by default and puts the loadable skills' names and descriptions into the prompt beside it; set `catalogContext: false` to take that listing out and let the agent find skills through [discovery](./discovery) instead. Both belong in the same call — preset overrides replace rather than merge, so chaining `.presets()` and `.with()` drops whichever came first. See [Binding skills](../skills/binding).
 
-Narrative for authoring a skill and the delegation surface: [Authoring](../skills/authoring), [Delegation](../skills/delegation).
+Narrative for authoring a skill: [Authoring](../skills/authoring).

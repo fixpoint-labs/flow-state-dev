@@ -1,17 +1,13 @@
 /**
- * `taskTools` capability — the programmatic surface for a delegation board.
+ * `taskTools` capability — the model's surface onto a task board.
  *
- * When a skill delegates (declares `agents:`), `createSkillsLibrary` installs
- * a private task board on the executive generator's own block state and wires
- * these eight handler-shaped tools (`addTask`/`assignTask`/`completeTask`/
- * `failTask`/`blockTask`/`cancelTask`/`updateTask`/`listTasks`) so the model
- * can assign work, mark a task complete, or query the board.
+ * Eight handler-shaped tools (`addTask`/`assignTask`/`completeTask`/
+ * `failTask`/`blockTask`/`cancelTask`/`updateTask`/`listTasks`) let a model
+ * assign work, mark a task complete, or query the board.
  *
  * The board is a **ledger** these tools plan on — `addTask` records a row and
- * returns its id; nothing executes it by itself. The executive runs delegated
- * work by assigning tasks (`addTask` with an `assignee` naming a participant —
- * an agent or, since FIX-925, a deterministic tool) and then calling `runBoard`,
- * the delegation surface's drain over this same ledger.
+ * returns its id; nothing executes it by itself. Whatever drains that board
+ * (a `taskBoard()` drain, a hand-off) runs the work.
  *
  * Board resolution goes through an injectable resolver (FIX-918). The default
  * reads the host generator's own-state board via `ctx.parent` (each handler
@@ -72,25 +68,20 @@ import { boardResolverOf } from "../task-board/board-resolver";
 import { shouldRetryOnFail } from "../tasks/collection/internal";
 
 /**
- * Own-state field the delegation board lives on. `createSkillsLibrary`
- * contributes `stateSchema: { [DELEGATION_BOARD_FIELD]: record<Task> }` to the
- * host generator when a bound skill delegates, and each tool declares it via
- * `parentStateSchema` so `ctx.parent` carries the state ops.
+ * Own-state field the default resolver's board lives on. A host generator that
+ * wants an own-state board declares
+ * `stateSchema: { [DELEGATION_BOARD_FIELD]: delegationBoardSchema }`, and each
+ * tool declares it via `parentStateSchema` so `ctx.parent` carries the state
+ * ops.
  */
 export const DELEGATION_BOARD_FIELD = "delegationBoard";
 
 /**
- * Change-stream visibility for the delegation board. The `task-change` items
+ * Change-stream visibility for the own-state board. The `task-change` items
  * drive the client's live plan UI but never re-enter the executive's LLM
- * history — the task tools' return values and `runBoard`'s settled summary
- * already carry that signal.
- *
- * Lives here, next to the board field, because BOTH paths to this board must
- * agree on it: the own-state resolver below and the delegation surface's capped
- * resolver. Two ledgers over the same state with different visibility would
- * emit the same change twice under different rules.
+ * history — the task tools' return values already carry that signal.
  */
-export const DELEGATION_BOARD_VISIBILITY = { client: true, history: false } as const;
+const DELEGATION_BOARD_VISIBILITY = { client: true, history: false } as const;
 
 /**
  * Schema for the delegation board field (a `Record<taskId, Task>`). Defaults to
@@ -117,9 +108,9 @@ export type TaskCollectionResolver = (
  * NOT capped (FIX-931). This builds a bare collection with no creation caps, so
  * a board reached only through this fallback is unbounded. That is deliberate —
  * it has no construction site to take cap options from — but it means the caps
- * are a property of the surface that BUILT the board, not of `taskTools`. The
- * delegation surface passes its own capped resolver instead of relying on this;
- * see `defaultOwnStateResolver`'s note on the `taskTools` singleton below.
+ * are a property of the surface that BUILT the board, not of `taskTools`. A
+ * caller that wants a bounded board passes its own capped resolver instead; see
+ * the note on the `taskTools` singleton below.
  */
 export const defaultOwnStateResolver: TaskCollectionResolver = async (ctx) => {
   const parent = (
@@ -152,17 +143,13 @@ const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_no
 // Assignee validation (FIX-924)
 // ---------------------------------------------------------------------------
 /**
- * The declared participants a delegation board can be assigned to — agents and
- * tools alike, one namespace — plus a human-readable rendering for error
- * messages. Supplied by the delegation surface so assignment is checked against
- * the board's real participant registry — the same list the executive's guidance
- * advertises as "Your team:", so context and validation cannot disagree.
+ * The declared participants a board can be assigned to, plus a human-readable
+ * rendering for error messages. Supplied by the caller so assignment is checked
+ * against the board's real participant registry — the same list the model is
+ * told about, so context and validation cannot disagree.
  */
 export interface WorkerRoster {
-  /**
-   * True when `assignee` names a participant on this board — a declared agent
-   * or one of its tool seats (FIX-925). Both live on one namespace.
-   */
+  /** True when `assignee` names a participant on this board. */
   has(assignee: string): boolean;
   /** Roster rendered for an error message, e.g. `researcher (…), fetch (tool)`. */
   describe(): string;
@@ -184,12 +171,12 @@ const unknownAssigneeError = (assignee: string, roster: WorkerRoster) => ({
  * Two shapes pass unchecked, both deliberate:
  *
  * - **No assignee.** An unassigned task is a valid plan — it runs on the board's
- *   default worker (the delegation floor, FIX-940). Reaching the floor by
- *   *intent* stays open; only reaching it by *accident* (a typo) is closed.
- * - **No roster.** The standalone `taskTools` singleton, and a delegation board
- *   with no declared agents at all, supply none — there is nothing to validate
- *   against, so validation is inert and every assignee is accepted as before
- *   (BP-030: tolerate the old, roster-less shape).
+ *   default worker (its floor, FIX-940). Reaching the floor by *intent* stays
+ *   open; only reaching it by *accident* (a typo) is closed.
+ * - **No roster.** The standalone `taskTools` singleton, and any caller that
+ *   passes none, supply none — there is nothing to validate against, so
+ *   validation is inert and every assignee is accepted as before (BP-030:
+ *   tolerate the old, roster-less shape).
  *
  * This is the one place the definition of "a valid assignee" lives. FIX-923 /
  * FIX-641 widen it here (to admit an explicit ad-hoc agent spec) rather than
@@ -220,11 +207,6 @@ const capError = (err: TaskCapExceededError) => ({
 /**
  * The status-changing tools on THIS surface, paired with the status each moves a
  * task to, in the order an error message lists them.
- *
- * `runBoard` is deliberately absent. It is not one of the eight `taskTools` —
- * the delegation surface installs it separately, and `taskTools` also ships
- * standalone — so naming it would point a directly-wired consumer at a tool it
- * does not have.
  *
  * @param task The task as it stands now, used only to route `failTask`. Absent
  *   (a task removed underneath us) is read as "no retry budget".
@@ -798,8 +780,8 @@ function buildTaskTools(
  * generator's `tools:` array rather than composing the capability via `uses:`).
  * Defaults to the own-state board resolver.
  *
- * @param roster Optional declared-agent roster. Supply it and `addTask`/
- *   `assignTask`/`updateTask` reject an assignee that names no declared agent.
+ * @param roster Optional roster of the board's workers. Supply it and
+ *   `addTask`/`assignTask`/`updateTask` reject an assignee it does not name.
  *   Omit it and assignment is unvalidated, as before.
  */
 export function buildTaskToolsList(
@@ -820,11 +802,10 @@ export function buildTaskToolsList(
  *
  * @param resolveCollection Optional board resolver. Defaults to the host
  *   generator's own-state board via `ctx.parent`. Pass a resolver targeting a
- *   shared board for the shared-board delegation case (or a drain board for a
- *   Shape 2 fan-out worker).
- * @param roster Optional declared-agent roster for assignee validation. Supply
- *   it so a fan-out worker enqueuing follow-up tasks mid-drain is held to the
- *   same roster the executive is.
+ *   shared board instead (or a drain board for a fan-out worker).
+ * @param roster Optional roster for assignee validation. Supply it so a
+ *   fan-out worker enqueuing follow-up tasks mid-drain is held to the same
+ *   roster the executive is.
  */
 export function createTaskToolsCapability(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
@@ -834,13 +815,12 @@ export function createTaskToolsCapability(
     name: "taskTools",
     presets: {
       tools: {
-        // `controlTools`, not `tools` (FIX-1393): the delegation board is a
-        // framework control, not a grant from the app's catalog. A block only
-        // holds these because it — or a skill it holds that declared `agents:`
-        // — asked for a board, and that composition is the declaration. They
-        // are also unnameable: `buildTaskTools` mints them per resolver, so a
-        // `tools:` list has no stable key to let them back in. A skill worker
-        // declaring `tools: ["someCatalogTool"]` keeps its board.
+        // `controlTools`, not `tools` (FIX-1393): a task board is a framework
+        // control, not a grant from the app's catalog. A block only holds these
+        // because it asked for a board, and that composition is the
+        // declaration. They are also unnameable: `buildTaskTools` mints them
+        // per resolver, so a `tools:` list has no stable key to let them back
+        // in. A worker declaring `tools: ["someCatalogTool"]` keeps its board.
         controlTools: buildTaskTools(resolveCollection, roster),
       },
       default: ["tools"],
@@ -854,10 +834,8 @@ export function createTaskToolsCapability(
  * **This instance is UNCAPPED** (FIX-931). It closes over
  * `defaultOwnStateResolver`, which builds a bare collection with no creation
  * caps, so a board reached this way has no `maxEnqueuedTasks` /
- * `maxTotalTasks` ceiling. Boards installed by the skills library's delegation
- * surface ARE capped (500/100 by default) — the caps come from the site that
- * constructs the collection, and wiring this capability by hand has no such
- * site. If you want a bounded board here, build the collection yourself with
+ * `maxTotalTasks` ceiling. The caps come from the site that constructs the
+ * collection, and wiring this capability by hand has no such site. If you want a bounded board here, build the collection yourself with
  * `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and pass a
  * resolver for it to `createTaskToolsCapability`.
  */

@@ -448,13 +448,16 @@ describe("createSkillsLibrary — block-state default reader", () => {
   });
 });
 
-describe("createSkillsLibrary — delegation gating", () => {
-  const agentSkill = (name: string, disabled: boolean): InitialSkill => ({
-    name,
+describe("createSkillsLibrary — removed skill sub-agents", () => {
+  // A skill used to run a private team (`agents:`). It is gone, and a bundled
+  // skill that still declares one is refused where the author is looking —
+  // at construction — rather than skipped like an ordinary malformed skill,
+  // which would leave a skill that silently never appears.
+  const teamSkill: InitialSkill = {
+    name: "team",
     skillMd: [
       "---",
-      `description: ${name} skill`,
-      ...(disabled ? ["disable-model-invocation: true"] : []),
+      "description: team skill",
       "agents:",
       "  researcher:",
       "    prompt: You research things.",
@@ -462,27 +465,19 @@ describe("createSkillsLibrary — delegation gating", () => {
       "",
       "addTask then runBoard.",
     ].join("\n"),
-  });
-
-  const boardField = (skills: ReturnType<typeof createSkillsLibrary>, active: string[]) => {
-    const resolved = skills.__configDef!.resolve(
-      { active } as never,
-      { presets: new Set(), blockKind: "generator" },
-    ) as { stateSchema?: { shape?: Record<string, unknown> } };
-    return resolved.stateSchema?.shape?.delegationBoard;
   };
 
-  it("installs the delegation board for an enabled agent skill", () => {
-    const skills = createSkillsLibrary({ initialSkills: [agentSkill("team", false)] });
-    expect(boardField(skills, ["team"])).toBeDefined();
+  it("refuses a bundled skill that still declares agents, at construction, naming the skill", () => {
+    expect(() => createSkillsLibrary({ initialSkills: [teamSkill] })).toThrow(
+      /bundled skill "team": SKILL\.md `agents:` was removed from skills/,
+    );
   });
 
-  it("does NOT install delegation for a disable-model-invocation agent skill, even when force-bound via active", () => {
-    // A disabled skill is invisible to the model (its body is suppressed). The
-    // delegation surface is model-facing too, so it must not install — otherwise
-    // a draft/private skill's agents would be reachable through addTask/runBoard.
-    const skills = createSkillsLibrary({ initialSkills: [agentSkill("draft-team", true)] });
-    expect(boardField(skills, ["draft-team"])).toBeUndefined();
+  it("still skips (rather than refuses) a bundled skill that is merely malformed", () => {
+    // The control for the case above: only `agents:` is promoted to a
+    // construction-time refusal; an ordinary parse failure keeps its old path.
+    const malformed: InitialSkill = { name: "broken", skillMd: "no frontmatter" };
+    expect(() => createSkillsLibrary({ initialSkills: [malformed] })).not.toThrow();
   });
 });
 

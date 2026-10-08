@@ -181,8 +181,6 @@ export const PHRASE_SURVIVORS = [
   [
     "structured channel",
     [
-      "goals/delegation/synthesizes-fanned-out-worker-results/goal.md",
-      "goals/delegation/synthesizes-fanned-out-worker-results/run.mts",
       "packages/engine/src/stores/index.ts",
       "packages/engine/src/stores/types.ts",
     ],
@@ -270,9 +268,6 @@ export const PHRASE_SURVIVORS = [
   ["ONE channel\\. `error`", ["packages/devtool/src/react/hooks/use-dispatch-runs.ts"]],
   ["were two channels", ["packages/devtool/src/react/hooks/use-dispatch-runs.ts"]],
   ["a second channel carrying it", ["packages/devtool/src/react/hooks/use-request-stream.ts"]],
-  ["the channel by which one worker", ["goals/delegation/synthesizes-fanned-out-worker-results/run.mts"]],
-  ["payload channel", ["goals/delegation/synthesizes-fanned-out-worker-results/run.mts"]],
-  ["third channel: a dep", ["goals/delegation/synthesizes-fanned-out-worker-results/run.mts"]],
   ["a back channel", ["goals/workforce-conventions/durable-hire-survives-redeploy/run.mts"]],
   ["the channel a manager hands", ["packages/core/test/harness-resolver.test-d.ts"]],
   ["split-channel bug", ["packages/devtool/test/use-dispatch-runs.test.ts"]],
@@ -281,7 +276,6 @@ export const PHRASE_SURVIVORS = [
   ["the channel `readWorkforce` itself fills", ["packages/workforce/test/team-instructions-seam.test.ts"]],
   ["loader's own channel", ["packages/workforce/test/team-instructions-seam.test.ts"]],
   ["within 1 per channel", ["goals/design-system/skins-reused-components-from-one-token-set/goal.md"]],
-  ["leak through a third channel", ["goals/delegation/synthesizes-fanned-out-worker-results/goal.md"]],
   ["either alone leaves a channel", ["packages/shift-manager/teams/devteam/acceptance-check.mjs"]],
   ["Their own channel (rather|for the reason)", ["packages/workforce/src/loader/read-workforce.ts"]],
   ["five channels are one list", ["packages/workforce/src/loader/read-declared-roster.ts"]],

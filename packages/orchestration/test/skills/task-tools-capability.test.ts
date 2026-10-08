@@ -89,21 +89,9 @@ describe("taskTools capability", () => {
     expect(cap.name).toBe("taskTools");
   });
 
-  it("no tool description names runBoard, which this surface does not install", () => {
-    // Companion to the FIX-950 error-message assertion further down — same rule, at the description level.
-    const tools = buildTaskToolsList();
-    expect(tools).toHaveLength(8);
-    for (const tool of tools) {
-      expect(tool.config?.description, `${tool.config?.name} names runBoard`).not.toContain(
-        "runBoard",
-      );
-    }
-  });
-
-  it("addTask still documents both creation caps it can return", () => {
-    // Dropping the drain-tool reference must not drop the cap vocabulary with
-    // it — `addTask` genuinely returns these two errors when the board it
-    // resolves has ceilings, and the model needs to recognize them to react.
+  it("addTask documents both creation caps it can return", () => {
+    // `addTask` genuinely returns these two errors when the board it resolves
+    // has ceilings, and the model needs to recognize them to react.
     const description = findTool("addTask").config?.description ?? "";
     expect(description).toContain("enqueued_task_cap_exceeded");
     expect(description).toContain("total_task_cap_exceeded");
@@ -225,15 +213,14 @@ describe("taskTools — unknown task ids", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * A two-agent roster standing in for what the delegation surface derives from
- * its board worker registry.
+ * A two-worker roster standing in for a board's declared workers.
  */
 const testRoster: WorkerRoster = {
   has: (a) => a === "researcher" || a === "writer",
   describe: () => "researcher (Researches sources), writer (Drafts prose)",
 };
 
-/** The roster-carrying tools, as the delegation surface builds them. */
+/** The roster-carrying tools, as a caller supplying a roster builds them. */
 function rosterTool(name: string): GeneratorTool {
   const tool = buildTaskToolsList(defaultOwnStateResolver, testRoster).find(
     (t) => (t as { config?: { name?: string } }).config?.name === name,
@@ -267,8 +254,8 @@ describe("checkAssignee — the single assignment gate", () => {
   });
 
   it("accepts an absent assignee, so the default worker stays reachable by intent", () => {
-    // The floor (FIX-940) is reached by deliberately omitting the assignee.
-    // Closing that would break rosterless delegation, not just typos.
+    // A board's default worker is reached by deliberately omitting the
+    // assignee. Closing that would break it, not just typos.
     expect(checkAssignee(undefined, testRoster)).toBeUndefined();
   });
 
@@ -577,28 +564,6 @@ describe("taskTools — the recovery list names tool-reachable calls", () => {
       expect(clause![1]).not.toContain("undefined");
     }
   });
-
-  it("never names runBoard, which is not one of these tools", async () => {
-    // Paired so each source status gets a tool that actually refuses from it.
-    // `completeTask` is NOT usable to provoke one from `completed`: same-status
-    // is a legal no-op that succeeds, which is why `blockTask` probes there.
-    const probes: Array<[status: string, tool: string]> = [
-      ["pending", "completeTask"],
-      ["in_progress", "blockTask"],
-      ["blocked", "completeTask"],
-      ["parked", "blockTask"],
-      ["completed", "blockTask"],
-    ];
-    for (const [status, tool] of probes) {
-      const input =
-        tool === "blockTask" ? { taskId: "a", reason: "legal" } : { taskId: "a", output: "done" };
-      const error = await errorFrom(tool, input, ctxWithTask(status));
-      // `taskTools` ships standalone; `runBoard` is installed by the delegation
-      // surface. Naming it would point a directly-wired consumer at a tool it
-      // does not have.
-      expect(error).not.toContain("runBoard");
-    }
-  });
 });
 
 /**
@@ -606,7 +571,7 @@ describe("taskTools — the recovery list names tool-reachable calls", () => {
  * asks `shouldRetryOnFail` about the task in hand rather than assuming.
  *
  * Note the layer: these tasks are seeded with `maxAttempts` directly onto the
- * board. The delegation `addTask` TOOL exposes no `maxAttempts`, so tasks
+ * board. The `addTask` TOOL exposes no `maxAttempts`, so tasks
  * created through it never carry a budget — but `taskTools` /
  * `buildTaskToolsList` are exported standalone and can be wired onto a
  * collection whose tasks do (the task-board primitive stamps one via

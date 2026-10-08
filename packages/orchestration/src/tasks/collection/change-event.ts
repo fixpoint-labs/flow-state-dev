@@ -105,8 +105,8 @@ export const SERVER_ONLY_TASK_FIELDS = ["claimedBy", "createdBy"] as const satis
  *
  * Applied where the component-item payload is built, because **schema
  * membership is itself a publication**: the collection factory spreads the
- * post-mutation row into a `task-change` component item and the delegation
- * board marks that stream client-visible, so a field on `Task` reaches a
+ * post-mutation row into a `task-change` component item and a board can mark
+ * that stream client-visible, so a field on `Task` reaches a
  * browser with no consumer required.
  *
  * Unconditional by design — redaction must not depend on a caller's
