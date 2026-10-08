@@ -19,7 +19,7 @@ checks them. Each names its owner and where it is checked.
 
 | # | Rule | Because |
 |---|---|---|
-| ER-6 | Add a third answer-once mechanism. Ask rides the board row's claim ticket or the existing delivery ledger | [D2](DECISIONS.md#d2). Under Q1's cut this rule replaces FIX-1818 |
+| ER-6 | Add a third answer-once mechanism. Ask rides the board row's claim ticket or the existing delivery ledger | [D2](DECISIONS.md#d2). It replaces FIX-1818, cut by [Q1](DECISIONS.md#q1) |
 | ER-7 | Build a second child-finished signal beside FIX-1794 P2's, or an owed marker on any pattern but FIX-1802's settle-owed. FIX-1816 lifts the one signal module and builds its resume-owed marker on that pattern; neither is a copy | D2 and [Q2](DECISIONS.md#q2), decided 2026-10-08. A gap goes to FIX-1786 as an amendment request |
 | ER-8 | Hold a request open while it waits | [D1](DECISIONS.md#d1) |
 | ER-9 | Merge ask and assign into one kind | The product owner, 2026-10-08 |

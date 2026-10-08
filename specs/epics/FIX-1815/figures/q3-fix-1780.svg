@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="Q3, open: FIX-1780 says Done, but its notices never shipped. Recommended: keep it Done and add a comment and a relation saying S1 to S5 moved to FIX-1794 P2. Instead of: reopen FIX-1780, or file a new issue. It comes down to the first row: the comment leaves one owner of the signal, FIX-1794 P2, while a reopen or a new issue gives it two. The price, second row: Done stays half true, because S5a shipped and the rest moved; a reopen makes it true, and a new issue leaves it half true. Third row: the comment costs one comment and one relation, where the other two each add a second plan kept in step with P2. Locks in: FIX-1794 P2 alone owns onTaskSettled, decision D2. Flips if: Done must mean everything shipped; then move it to Canceled with the same comment."
+<svg viewBox="0 0 940 418" role="img" aria-label="Q3, decided on 2026-10-08 as an engineering call: FIX-1780 says Done, but its notices never shipped. Decided: keep it Done and add a comment and a relation saying S1 to S5 moved to FIX-1794 P2. Instead of: reopen FIX-1780, or file a new issue. It comes down to the first row: the comment leaves one owner of the signal, FIX-1794 P2, while a reopen or a new issue gives it two. The price, second row: Done stays half true, because S5a shipped and the rest moved; a reopen makes it true, and a new issue leaves it half true. Third row: the comment costs one comment and one relation, where the other two each add a second plan kept in step with P2. Locks in: FIX-1794 P2 alone owns onTaskSettled, decision D2. Flips if: Done must mean everything shipped; then move it to Canceled with the same comment."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -10,7 +10,7 @@
               --gone:#DE8A84; } }
     .bg     { fill:var(--surface); }
     .ask    { fill:var(--surface-2); }
-    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 3; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
     .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
     .decide { fill:var(--accent-soft); }
     .bar    { fill:var(--accent); }
@@ -35,13 +35,13 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q3 · THE CALL · OPEN</text>
+    <text class="t-lbl" x="32" y="32">Q3 · THE CALL · DECIDED 2026-10-08 · ENGINEERING CALL</text>
     <text class="t-q" x="32" y="52">FIX-1780 says Done, but its notices never shipped. What happens to it?</text>
   </g>
 
   <g id="options">
     <rect class="rec" x="212" y="76" width="224" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-tag c-code" x="228" y="93">DECIDED</text>
     <text class="t-h c-code" x="228" y="112">Keep Done, add a comment</text>
     <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>

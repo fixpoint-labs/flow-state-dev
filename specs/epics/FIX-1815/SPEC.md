@@ -67,6 +67,10 @@ has passed and then merged. Today: none.
   settles what a reply does with them ([ER-14](BUSINESS-RULES.md#how-the-set-is-run)).
 - A separate issue to retire FIX-1791's delivery-ledger token.
 - Parallel fan-in beyond a correct one-at-a-time resume.
+- [FIX-1818](https://linear.app/fixpoint-labs/issue/FIX-1818), one fence: cut ([Q1](DECISIONS.md#q1)). Canceled, folded into
+  [ER-6](BUSINESS-RULES.md#what-no-child-may-do); its "ask the delegate" and ledger-token question moves into FIX-1816's spec.
+- [FIX-1819](https://linear.app/fixpoint-labs/issue/FIX-1819), skill helpers: cut ([Q1](DECISIONS.md#q1)). Backlog,
+  unparented, still blocked by FIX-1816; revisited after ask ships.
 
 **Kill line.** If FIX-1816's spec cannot name a shipped caller that needs the answer inside the
 same turn, and that assign-plus-park cannot serve, ask is surface we'd carry for nothing. Then the
@@ -92,11 +96,10 @@ A dated snapshot. Live state is Linear and the implementation PRs. Nothing has s
 |---|---|---|---|
 | [FIX-1816](https://linear.app/fixpoint-labs/issue/FIX-1816) · ask | Park and resume: a turn waits on a dispatched worker and resumes with its answer, bounded by a timeout and a depth cap ([D5](DECISIONS.md#d5) rows L1 to L3, L5 to L8); lifts the child-finished signal into `orchestration` (L4) | Leg a. Its spec also decides "ask the delegate" and FIX-1537 | Todo · spec route, first |
 | [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817) · assign stays open | An answered park resumes the same task session; a finished session answers and takes a follow-up task (L9) | Leg b | Todo · spec route · build waits on FIX-1802, which follows FIX-1794 P2 ([ER-15](BUSINESS-RULES.md#how-the-set-is-run)) |
-| [FIX-1818](https://linear.app/fixpoint-labs/issue/FIX-1818) · one fence | **Proposed cut** ([Q1](DECISIONS.md#q1)): becomes [ER-6](BUSINESS-RULES.md#what-no-child-may-do), and its token question moves into FIX-1816's spec | Not on the goal's path | Backlog · kept in Linear until the gate |
-| [FIX-1819](https://linear.app/fixpoint-labs/issue/FIX-1819) · skill helpers | **Proposed cut** ([Q1](DECISIONS.md#q1)): to Backlog, unparented, revisit after ask ships | Its outcome may be "no", and it does not serve the goal | Backlog · kept in Linear until the gate |
 | [FIX-1820](https://linear.app/fixpoint-labs/issue/FIX-1820) · closure · **required** | The QA plan and the goal fixture, run on one `main` commit | Proves the whole | Backlog · blocked by every other child |
 
-Four children and a closure as filed; two and a closure if Q1's cuts hold. Whether two is really
+Two children and a closure, after [Q1](DECISIONS.md#q1)'s cuts; FIX-1818 and FIX-1819 are under
+[Not doing](#while-it-runs-what-it-leaves-out-and-when-to-stop). Whether two is really
 one: FIX-1817 could ride on FIX-1816, but the two have different callers, different red states,
 and different inputs from FIX-1786. The collapse trigger is the kill line: if ask has no caller,
 the set is FIX-1817 and the closure.
@@ -112,8 +115,6 @@ flowchart LR
   A -->|"the resume verb and the wait"| B
   A --> Z["FIX-1820 · closure · required"]
   B --> Z
-  A -.->|"proposed cut"| C["FIX-1818 · one fence"]
-  A -.->|"proposed cut"| D["FIX-1819 · skill helpers"]
 ```
 
 An edge is what one issue hands the next. Dashed edges from the left are inputs from FIX-1786,
@@ -135,18 +136,13 @@ both specs run at once and settle the shared pieces together.
 restart, the work once. If wrong: we ship ask while assigned tasks still lose their answer, or
 the reverse.
 
-**Open, for the product owner:**
-
-1. **[Q1](DECISIONS.md#q1) · Two issues and a closure, or all four?** I recommend the cuts. If
-   wrong: one issue re-filed later.
-2. **[Q3](DECISIONS.md#q3) · FIX-1780 says Done, but its notices never shipped.** I recommend a
-   correcting comment, not a reopen. If wrong: the next reader trusts a signal that is not there.
-
-Decided, for the record: [Q2](DECISIONS.md#q2), who builds the shared waking parts, settled by
-the two coordinators on 2026-10-08. Engineering calls I made as EM: [D1](DECISIONS.md#d1) to [D5](DECISIONS.md#d5).
+Decided, for the record: [Q1](DECISIONS.md#q1), two issues and a closure, the product owner's
+answer on 2026-10-08 ("cut both"). [Q2](DECISIONS.md#q2), who builds the shared waking parts,
+settled by the two coordinators on 2026-10-08. [Q3](DECISIONS.md#q3), FIX-1780 stays Done with a
+correcting comment, an engineering call on 2026-10-08. Engineering calls I made as EM: [D1](DECISIONS.md#d1) to [D5](DECISIONS.md#d5).
 Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).
 
-Epic · two to four children and a closure · Workforce: Shift Manager ·
+Epic · two children and a closure · Workforce: Shift Manager ·
 [FIX-1815](https://linear.app/fixpoint-labs/issue/FIX-1815) · Goal 2 ([`docs/objectives.md`](../../../docs/objectives.md)),
 and Goal 1 through the support desk. It closes the durability gap for one-to-one hand-offs
 between workers; parallel fan-in and untrusted senders stay open.
