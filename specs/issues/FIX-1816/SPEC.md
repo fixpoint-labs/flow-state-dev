@@ -53,8 +53,8 @@ control removes one half of "survives a restart, filed once", and each must fail
 Same board, same row, same notice. Only what the ending does is new: it resumes the turn that
 parked, instead of waking a new one.
 
-**What a worker's model calls**: the same `addTask` of the eight task tools it has
-([FIX-1794](../FIX-1794/SPEC.md#what-changes)), with one new option:
+**What a worker's model calls**: the same `addTask` of the task tools it has
+([FIX-1794](../FIX-1794/SPEC.md#what-changes)), with one new option and no new tool:
 
 ```diff
   addTask({ goal: "Audit our licenses", assignee: "researcher" })                      // files, returns at once
