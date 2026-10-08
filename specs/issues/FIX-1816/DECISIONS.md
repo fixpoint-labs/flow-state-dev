@@ -121,7 +121,7 @@ reads as an opt-in option on the call; D4's fire-and-forget default is unchanged
 
 Decided by the epic coordinator after the cross-spec pass with [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817), after this spec merged. None changes direction.
 
-- **An asked row gets no `parkOnQuestion` in v1**, mirroring FIX-1817's rule: the colleague answers with what it has, or fails. No answered question re-claims the row mid-ask (BR-5b).
+- **An asked row gets no `parkOnQuestion` in v1**, by epic ER-22 ([#2904](https://github.com/fixpoint-labs/flow-state-dev/pull/2904), owned by [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817)); FIX-1817's S1 and S7 carve-out follows in its own alignment PR after its spec merges. The colleague answers with what it has, or fails (BR-5b). A product-shape rule: the gate's fence does not depend on it.
 - **The ask gate fences on the row's identity and its terminal ending, not on a per-attempt claim ticket.** The board's ticket already stops a stale attempt from settling the row (ER-6), so the gate admits the ending of whichever attempt settles it, after a board retry too, and never an intermediate failure that was retried (BR-12, BR-12a, PLAN S3).
 - **D1's tool-count check is "`waitForResponse` adds no tool"**, not "still eight": FIX-1817 adds `answerTask` and `parkOnQuestion` (PLAN S4, D1 check).
 - **`waitForResponse` with `followUpOf` on one call is allowed**: the assignee check runs against the root task's worker, and FIX-1817's busy-follow-up, BR-21 and BR-25 refusals come before filing, so nothing parks (BR-4a).
