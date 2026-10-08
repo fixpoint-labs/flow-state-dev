@@ -10,11 +10,11 @@ publishes it, with the names and limits below. Prose is proposed reader-facing t
 > ### Waiting for the answer
 >
 > A dispatch returns before the work it started has run. That is right for a job that outlives
-> the turn, and wrong when the next step needs the result. For that case, a worker asks instead
-> of filing.
+> the turn, and wrong when the next step needs the result. For that case, a worker files the task
+> and waits for it.
 >
-> An ask files the work as a task on the worker's own task board, the same way `addTask` does,
-> then parks the turn on it. When the task ends, the turn picks up where it stopped, with the
+> A waiting `addTask` files the work on the worker's own task board as usual, then parks the
+> turn on it. When the task ends, the turn picks up where it stopped, with the
 > task's output as the tool's result. Nothing holds the request open in between, so a server
 > restart while the turn waits loses nothing: the turn resumes after the restart, and the task
 > was filed once.
@@ -22,7 +22,7 @@ publishes it, with the names and limits below. Prose is proposed reader-facing t
 > Every ask has a ten-minute limit. If the task hasn't ended by then, the turn gets a timeout
 > error at the next background sweep, so within twenty minutes, and the task is cancelled.
 > Cancelling the turn that asked cancels the task it is waiting on. A worker that is itself
-> working a task can't ask; it files with `addTask` instead, so asks never nest.
+> working a task can't wait; it files without waiting, so asks never nest.
 >
 > Each answer replays the asking turn once, so an ask costs one extra replay. Use one when the
 > answer changes what this turn says or does next. When it doesn't, file the task and let the
@@ -32,31 +32,30 @@ publishes it, with the names and limits below. Prose is proposed reader-facing t
 
 > ### Asking, and waiting for the answer
 >
-> A worker that holds the task tools also gets `askTask` when the server has durable execution
-> and runs the durability sweeper, unless the turn is itself working a task. It files a task
-> exactly as `addTask` does, then parks the worker's turn until the task ends, and returns the
-> task's output as the tool's result. One ask per step: a second `askTask` in the same step is
-> refused.
+> When the server has durable execution and runs the durability sweeper, `addTask` takes a
+> `waitForResponse` option. Set it and the task is filed as usual, then the worker's turn parks
+> until the task ends, and the tool returns the task's output as its result. One wait per step:
+> a second waiting `addTask` in the same step is refused.
 >
 > | Input | |
 > |---|---|
-> | `goal`, `assignee` | As for `addTask`. An assignee `addTask` would refuse is refused the same way, and nothing parks |
+> | `waitForResponse` | `true` to wait for the answer. Everything else is as for `addTask`, and an assignee it would refuse is refused the same way, with nothing parked |
 >
 > | Error | When |
 > |---|---|
-> | `ask_timed_out` | The task did not end within ten minutes. It is cancelled |
-> | `ask_task_failed` | The task failed for good |
-> | `ask_task_cancelled` | The task was cancelled, or the turn that asked was |
-> | `ask_already_waiting` | This step has already asked. Nothing is filed |
+> | `wait_timed_out` | The task did not end within ten minutes. It is cancelled |
+> | `wait_task_failed` | The task failed for good |
+> | `wait_task_cancelled` | The task was cancelled, or the turn that asked was |
+> | `wait_already_pending` | This step is already waiting on a task. Nothing is filed |
+> | `wait_unavailable` | The turn is itself working a task, so it can't wait. Nothing is filed |
 >
 > An asked task is an ordinary row: `listTasks` shows it, marked `asked`, and the board's limits
-> and the chain's depth limit apply to it. There is no `askTask_<board>`
-> action: an app files with `addTask_<board>`.
+> and the chain's depth limit apply to it. The `addTask_<board>` action has no wait option.
 
 ## UPDATE · `packages/orchestration/README.md` · task tools
 
-> `askTask` files a task and parks the calling turn until it ends, then returns the task's
-> output. It needs a durability provider and a running durability sweeper. See the task board page for limits and errors.
+> `addTask` with `waitForResponse: true` files a task and parks the calling turn until it ends,
+> then returns the task's output. It needs a durability provider and a running durability sweeper. See the task board page for limits and errors.
 
 ## Not changed
 

@@ -53,20 +53,20 @@ control removes one half of "survives a restart, filed once", and each must fail
 Same board, same row, same notice. Only what the ending does is new: it resumes the turn that
 parked, instead of waking a new one.
 
-**What a worker's model calls**, beside the eight task tools it has
-([FIX-1794](../FIX-1794/SPEC.md#what-changes)):
+**What a worker's model calls**: the same `addTask` of the eight task tools it has
+([FIX-1794](../FIX-1794/SPEC.md#what-changes)), with one new option:
 
 ```diff
-  addTask({ goal: "Audit our licenses", assignee: "researcher" })        // files, returns at once
-+ askTask({ goal: "Is ACME's SOC 2 current?", assignee: "researcher" })  // files, waits, returns the answer
-+ // → { answer: "Yes, renewed 2026-08 …", taskId } or an error: timed out, failed, cancelled
+  addTask({ goal: "Audit our licenses", assignee: "researcher" })                      // files, returns at once
++ addTask({ goal: "Is ACME's SOC 2 current?", assignee: "researcher", waitForResponse: true })
++ // files, waits, returns { taskId, answer: "Yes, renewed 2026-08 …" } or an error: timed out, failed, cancelled
 ```
 
 ## How the answer reaches the turn
 
 ```mermaid
 flowchart LR
-  T["A's turn · askTask"] -->|"files once · parks the turn"| R["the row · on A's conversation board"]
+  T["A's turn · addTask, waiting"] -->|"files once · parks the turn"| R["the row · on A's conversation board"]
   R -->|"hand-off"| B["B's task session"]
   B -->|"ending · the one notice"| S["the child-finished signal · in orchestration"]
   S -->|"asked row · resume-owed"| V["the server-side resume"]
@@ -82,7 +82,8 @@ bounded by the durability sweeper, which resumes the turn with a timeout error.
 
 ## What stays as it is
 
-- `addTask` and every dispatch stay fire-and-forget ([D4](../../epics/FIX-1815/DECISIONS.md#d4)).
+- `addTask` without the option, and every dispatch, stay fire-and-forget
+  ([D4](../../epics/FIX-1815/DECISIONS.md#d4)): waiting is opt-in, per call.
 - The public resume, retry and continue routes still refuse task and internal sources.
 - A coordinator's posts ([FIX-1791](../FIX-1791/SPEC.md)): a delegate's answer still lands as its
   own line ([D3](DECISIONS.md#d3)).
@@ -97,7 +98,8 @@ restart, filed once. If wrong: an ask that works until the first deploy.
 1. **[D1](DECISIONS.md#d1) · An ask is a task on the asker's own board, and its turn parks on
    that row.** **The one to weigh, and an epic-level change:** it replaces the epic's L5
    surface, so it binds once the epic records it under
-   [ER-11](../../epics/FIX-1815/BUSINESS-RULES.md#what-no-child-may-do). Its price is a wait: if
+   [ER-11](../../epics/FIX-1815/BUSINESS-RULES.md#what-no-child-may-do): a wait option on
+   `addTask`, no new tool, no core export. Its price is a wait: if
    FIX-1794 P2 slips, the goal slips with it, one for one. I recommend waiting rather than
    building a stop-gap waker here, which would be the second signal the epic forbids (ER-7).
    If wrong: ask works only where a conversation board exists, and arrives late.

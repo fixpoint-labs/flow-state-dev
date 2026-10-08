@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 330" role="img" aria-label="Two panels on the same board. Today, on the left: worker A's turn files a task with addTask and ends; worker B works the row; the row's ending sends one notice, which wakes a new turn of A that has to work out again what it was doing. After, on the right: A's turn files the same row with askTask and parks on it; B works the row; the same ending and the same notice now resume the parked turn, which carries on with B's answer as the result of its call. A restart while the turn is parked loses nothing: the row and the parked turn are both durable."
+<svg viewBox="0 0 940 330" role="img" aria-label="Two panels on the same board. Today, on the left: worker A's turn files a task with addTask and ends; worker B works the row; the row's ending sends one notice, which wakes a new turn of A that has to work out again what it was doing. After, on the right: A's turn files the same row with addTask set to wait, and parks on it; B works the row; the same ending and the same notice now resume the parked turn, which carries on with B's answer as the result of its call. A restart while the turn is parked loses nothing: the row and the parked turn are both durable."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -50,7 +50,7 @@
     <text class="t-lbl" x="494" y="36">AFTER · ASK</text>
     <rect class="n-new" x="494" y="52" width="180" height="56" rx="5"/>
     <text class="t-b" x="508" y="75">A's turn</text>
-    <text class="t-new" x="508" y="94">askTask · the turn parks</text>
+    <text class="t-new" x="508" y="94">waits on addTask · parks</text>
     <rect class="n-box" x="728" y="52" width="180" height="56" rx="5"/>
     <text class="t-b" x="742" y="75">the same row</text>
     <text class="t-s" x="742" y="94">marked asked · filed once</text>
