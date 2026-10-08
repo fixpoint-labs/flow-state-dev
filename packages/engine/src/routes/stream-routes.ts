@@ -194,6 +194,7 @@ export async function handleRequestStream(
     );
 
     void pumpSubscription(subscription, handle, shouldForward, {
+      request,
       followThroughSuspend: leaseHeld,
       // On a `request.suspended` while following a continuation, end the stream
       // only once the lease has been released — i.e. the continuation reached a
@@ -319,13 +320,22 @@ async function pumpSubscription(
   handle: ReturnType<typeof createSSEStream>,
   shouldForward: ((event: { type: string }) => boolean) | undefined,
   followOptions?: {
+    /**
+     * The caller's request, held until the loop ends. Its signal is how a host
+     * says the caller left, and on Node that signal hears the abort of the one
+     * the request was built with only while the request itself is alive: the
+     * link between them is a weak reference. Holding the signal alone, the
+     * subscription could keep reading after the caller left.
+     */
+    request?: Request;
     followThroughSuspend?: boolean;
     isLeaseHeld?: () => Promise<boolean>;
   }
 ): Promise<void> {
+  const request = followOptions?.request;
   try {
     for await (const event of subscription) {
-      if (handle.closed) break;
+      if (handle.closed || request?.signal.aborted === true) break;
       if (shouldEmitToWire(event, shouldForward)) {
         handle.writeRaw(encodeStreamEvent(event));
       }
