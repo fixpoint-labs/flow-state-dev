@@ -30,6 +30,8 @@ The **import** and **source** legs have no control: a checkout without the expor
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | scripted | FAIL (control) | `no-wake`: **woken** only (desk.amy and desk.oz hold 0 conversations). `no-author-filter`: **seat-post** only (desk.amy's own post heard by both). |
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | scripted | PASS | One copy each of `agent` and `note`; the wake runs `wakeMemberSeats(copies, { installation })`. desk.amy and desk.oz each hold one conversation of desk.front, a session on `agent` naming them, each post heard once and answered; desk.amy's own post heard by no worker; desk.ned (on `note`) none. |
 | 2026-09-26 | FIX-1602 branch on a52bab37a, uncommitted | scripted | FAIL (control) | **`GOAL_CONTROL=no-wake`, taken first.** Failed at **woken** only: `desk.amy holds 0 conversations of desk.front (want 1)`, and the same for `desk.oz`. |
 | 2026-09-26 | FIX-1602 branch on a52bab37a, uncommitted | scripted | FAIL (control) | `GOAL_CONTROL=no-author-filter`. Failed at **seat-post** only: `desk.amy's own post was heard by desk.amy ("u_fresh_host in desk.front: seat-token-… I looked; it is empty."), desk.oz (…)`. |
 | 2026-09-26 | FIX-1602 branch on a52bab37a, uncommitted | scripted | FAIL (by hand) | The export removed from the mailbox barrel: failed at **import** (`@flow-state-dev/workforce exports no wakeMemberSeats`). Restored. |

@@ -44,7 +44,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowState, ensureSessionRecord, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   getOrCreateTaskCollection,
@@ -58,7 +58,9 @@ import {
   mailboxBoard,
   mailboxBoardIds,
   mailboxInstances,
+  createWorkerInstallation,
   hireWorkforce,
+  WORKER_ID_STATE_KEY,
   openMailboxes,
   workerConfigSchema,
   type MailboxManifest,
@@ -77,10 +79,10 @@ const CONVO_B = "s_convo_b";
 const ENTRY = "work";
 const MARKER_COMPONENT = "run-link-goal-marker";
 /**
- * The kind a seat names when its rows run on the DRAINER's flow. It holds no
- * task entry of its own: the drainer's flow declares the entry its hand-off
- * addresses. Any other kind a seat names is a flow of its own, which the seat's
- * hand-off addresses by the seat's instance id.
+ * The kind a seat names when its rows run on the DRAINER's flow, as the
+ * drainer. It holds no task entry of its own: the drainer's flow declares the
+ * entry its hand-off addresses. Any other kind a seat names is a flow of its
+ * own, which the seat's hand-off addresses, in a session naming the seat.
  */
 const PASSIVE_KIND = "seat";
 
@@ -208,13 +210,22 @@ await runGoal(async () => {
     }
   });
 
+  // A row's session names its worker: the seat, on a flow of its own; the
+  // drainer whose drain handed it over, on the drainer's flow.
   const address = (seat: (typeof seats)[number]) =>
     dispatcher<TaskWorkerInput>({
       name: `run-link-goal-hand-${seat.name}`,
       action: ENTRY,
       session: seat.policy,
-      ...(seat.flow !== undefined ? { flowKind: seat.id } : {})
+      ...(seat.flow !== undefined
+        ? { flowKind: seat.flow, state: { [WORKER_ID_STATE_KEY]: seat.id } }
+        : { state: (_task, ctx) => ({ [WORKER_ID_STATE_KEY]: (ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY] }) })
     });
+
+  // The installation every worker flow below runs its workers on. It reads the
+  // flows when it first needs them, so they are built on it below.
+  let workerFlows: Record<string, unknown> = {};
+  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => workerFlows as never });
 
   const BOARD_ID = `${ledger.id}-board`;
   const leadBoard = taskBoard({
@@ -227,7 +238,8 @@ await runGoal(async () => {
     kind: drainer.declared.flow as string,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    resources: { [ledger.id]: ledger },
+    session: installation.session(),
+    resources: { [ledger.id]: ledger, ...installation.resources },
     actions: { drain: { block: leadBoard.drain }, ...workerDoor },
     task: { actions: { [ENTRY]: { block: work } } }
   } as never);
@@ -248,7 +260,8 @@ await runGoal(async () => {
           kind: seat.flow!,
           cardinality: "collection",
           configSchema: seatConfig,
-          resources: { [ledger.id]: ledger },
+          session: installation.session(),
+          resources: { [ledger.id]: ledger, ...installation.resources },
           actions: { drain: { block: board.drain }, ...workerDoor },
           task: { actions: { [ENTRY]: { block: work } } }
         } as never)
@@ -260,18 +273,18 @@ await runGoal(async () => {
     kind: PASSIVE_KIND,
     cardinality: "collection",
     configSchema: seatConfig,
+    session: installation.session(),
+    resources: { ...installation.resources },
     actions: { ...workerDoor,}
   } as never);
 
   const instances = mailboxInstances(mailboxes);
-  const hired = hireWorkforce(workers, {
-    workerFlows: {
-      [drainer.declared.flow as string]: leadKind as never,
-      [PASSIVE_KIND]: passiveKind as never,
-      ...(otherKinds as Record<string, never>)
-    },
-    mailboxBoards: mailboxBoardIds(mailboxes)
-  });
+  workerFlows = {
+    [drainer.declared.flow as string]: leadKind,
+    [PASSIVE_KIND]: passiveKind,
+    ...otherKinds
+  };
+  const hired = hireWorkforce(installation, { mailboxBoards: mailboxBoardIds(mailboxes) });
   const state = createFlowState({
     flows: {
       ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
@@ -340,7 +353,35 @@ await runGoal(async () => {
       } as never)) as { output?: unknown; error?: unknown; requestId?: string };
 
     const mailboxInstance = instances.find((instance) => instance.kind === MAILBOX_KIND)!;
-    const lead = hired.find((seat) => seat.id === drainer.id)!;
+    const lead = hired.find((copy) => copy.kind === drainer.declared.flow)!;
+    // The two conversations that drain the board, each created naming the drainer.
+    for (const sessionId of [CONVO_A, CONVO_B]) {
+      const now = Date.now();
+      await ensureSessionRecord(
+        runtime.stores,
+        sessionId,
+        {
+          flow: lead as never,
+          sessionId,
+          principal: { userId: USER_ID, orgId: ORG_ID },
+          state: { [WORKER_ID_STATE_KEY]: drainer.id },
+          fromCaller: true,
+          via: "create"
+        },
+        () =>
+          ({
+            id: sessionId,
+            flowKind: lead.kind,
+            flowId: lead.id,
+            userId: USER_ID,
+            orgId: ORG_ID,
+            version: 0,
+            createdAt: now,
+            updatedAt: now,
+            journal: []
+          }) as never
+      );
+    }
     const row = async (taskId: string): Promise<Task | undefined> =>
       (await runtime.stores.resourceState.get("org", ORG_ID, `${ledger.id}/${taskId}`))?.state as Task | undefined;
 

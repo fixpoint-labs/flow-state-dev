@@ -1,20 +1,40 @@
 /**
- * A hireable worker kind with no model in it.
+ * A worker flow with no model in it, run by one registered copy for every
+ * worker on it.
  *
  * This is the whole point of the goal beside it: the admission contract is not
- * an agent feature. A kind that never calls a generator composes the same
- * contract, is handed the same bag, and receives the skills its seat's folders
- * resolved — and a block nested inside its action can read them.
+ * an agent feature. A flow that never calls a generator composes the same
+ * contract, and each turn's worker, loaded through the installation, carries
+ * the skills its folders resolved — and a block nested inside its action can
+ * read them.
  *
- * Three kinds, and they do not all make the same claim. `triageFlow` composes
- * the contract and carries the DELIVERY claim: a nested block reads the skills
- * its seat's folders resolved. `noContractFlow` and `handRolledFlow` are a
- * control pair carrying the STRUCTURAL claim: hire imposes a bag, and a schema
- * that cannot accept it is refused. They run a different action set on purpose
- * — see `controlActions` below.
+ * Three flows, and they do not all make the same claim. `defineTriageFlow`
+ * composes the contract and carries the DELIVERY claim: a nested block reads
+ * the skills the turn's worker's folders resolved. `noContractFlow` and
+ * `handRolledFlow` are a control pair carrying the STRUCTURAL claim: a worker
+ * is checked against its flow's `configSchema`, and a schema that cannot take
+ * the bag a worker is handed is refused. They run a different action set on
+ * purpose — see `controlActions` below.
+ *
+ * Each member of the pair is built on its own installation, read from the
+ * fixture trees here, because a flow declares one installation's session:
+ * `controlInstallation` holds the good workers and the legacy one on the
+ * no-contract flow, `twinInstallation` the good workers and one on the
+ * hand-rolled flow. The pair stays two top-level `defineFlow` calls, which
+ * `goals/scripts/validate-control-shape.mts` reads.
  */
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { workerConfigSchema } from "@flow-state-dev/workforce";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import {
+  createWorkerInstallation,
+  workerConfigOf,
+  workerConfigSchema,
+  type WorkerInstallation,
+  type WorkerManifest
+} from "@flow-state-dev/workforce";
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
 import { workerDoor } from "../../../lib/worker-door.mts";
 
@@ -22,34 +42,57 @@ export const TRIAGE_KIND = "request-triage";
 export const NO_CONTRACT_KIND = "request-triage-legacy";
 export const HAND_ROLLED_KIND = "request-triage-handrolled";
 
+const here = dirname(fileURLToPath(import.meta.url));
+
+/** The good tree's workers, and the control tree's legacy one. */
+const good = (await readWorkforce(join(here, "workforce"))).workers;
+const legacy = (await readWorkforce(join(here, "no-contract"))).workers;
+
+/** The one worker on the hand-rolled flow, hand-built: the twin's positive half. */
+export const HAND_ROLLED_WORKER: WorkerManifest = {
+  id: "support.handrolled",
+  declared: { description: "Hand-rolled, never composed.", flow: HAND_ROLLED_KIND, desk: "loft" },
+  body: "You hold the hand-rolled desk."
+};
+
 const inputSchema = z.object({ note: z.string() });
 
-/** What the seat records about itself while running. */
+/** What the worker records about itself while running. */
 const seatState = z.object({
-  /** The seat's skill names, in the order they reached the block. */
+  /** The worker's skill names, in the order they reached the block. */
   skills: z.array(z.string()).nullable().default(null),
   desk: z.string().nullable().default(null),
+  /** Whether the turn's worker carried the contract's `seatSkills` key at all. */
+  hasSeatSkills: z.boolean().nullable().default(null),
   runs: z.number().default(0)
 });
 
-/**
- * What the nested block needs of whatever flow installs it.
- *
- * It names `seatSkills` — the contract's key — which is what makes this a read
- * of the admitted bag rather than of anything this fixture arranged.
- */
-const needsSeatSkills = z.object({
-  seatSkills: z.array(z.object({ name: z.string() })),
-  desk: z.string()
-});
+const clientView = {
+  derived: {
+    ran: (ctx: {
+      state: { skills?: string[] | null; desk?: string | null; hasSeatSkills?: boolean | null; runs?: number };
+    }) => ({
+      skills: ctx.state.skills ?? null,
+      desk: ctx.state.desk ?? null,
+      hasSeatSkills: ctx.state.hasSeatSkills ?? null,
+      runs: ctx.state.runs ?? 0
+    })
+  }
+};
+
+/** The flow's `request.onStarted`: loads the turn's worker, on every run of a request. */
+function loadWorker(installation: WorkerInstallation, kind: string) {
+  return handler({
+    name: `${kind}-load-worker`,
+    inputSchema: z.unknown(),
+    resources: { ...installation.resources },
+    execute: async (_input: unknown, ctx: BlockContext) => ({ worker: (await installation.resolveWorker(ctx, kind)).id })
+  });
+}
 
 /**
- * Counts the turn, and reads no config at all — so a pass here cannot mask a
+ * Counts the turn, and reads no setting at all — so a pass here cannot mask a
  * nested failure.
- *
- * State-only, so it declares no `outputSchema`, returns nothing, and is chained
- * with `.tap()` (BP-012 / BP-014). The mutation is already observable in the
- * state-change log; echoing the input back would only pad the items log.
  */
 const start = handler({
   name: "triage-start",
@@ -60,69 +103,46 @@ const start = handler({
 });
 
 /**
- * The nested read — the far end of the journey a skill folder takes.
+ * The nested read — the far end of the journey a skill folder takes: the
+ * turn's worker, as the installation loaded it.
  *
  * Order is preserved rather than sorted: the contract promises level order
- * (org, then team, then the seat's own), and sorting here would throw away the
- * only evidence of it.
+ * (org, then team, then the worker's own), and sorting here would throw away
+ * the only evidence of it.
  */
 const recordSkills = handler({
   name: "triage-record",
   inputSchema,
   outputSchema: z.void(),
-  flowConfigSchema: needsSeatSkills,
   sessionStateSchema: seatState,
   execute: async (_input, ctx) => {
+    const config = workerConfigOf(ctx) as { seatSkills?: Array<{ name: string }>; desk?: string };
     await ctx.session.patchState({
-      skills: ctx.flow.config.seatSkills.map((skill) => skill.name),
-      desk: ctx.flow.config.desk
+      skills: (config.seatSkills ?? []).map((skill) => skill.name),
+      desk: config.desk ?? null,
+      hasSeatSkills: Object.hasOwn(config, "seatSkills")
     });
   }
 });
 
-const clientView = {
-  derived: {
-    ran: (ctx: { state: { skills?: string[] | null; desk?: string | null; runs?: number } }) => ({
-      skills: ctx.state.skills ?? null,
-      desk: ctx.state.desk ?? null,
-      runs: ctx.state.runs ?? 0
-    })
-  }
-};
-
 /**
- * What the CONTROL pair's nested block needs: the kind's own setting, and
- * nothing the admission contract imposes.
- *
- * Mirrors the sibling goal's `needsDesk`. The reason it exists is the reason
- * the control pair does not share `triageFlow`'s action set: `recordSkills`
- * independently requires `seatSkills` through its `flowConfigSchema`, so a
- * control that ran it would be refused by that block's requirement whether or
- * not its own schema could accept the imposed bag. Both causes would produce
- * the same refusal, and the control would certify whichever one the reader
- * already believed — the exact conflation this pair was rebuilt to remove.
- */
-const needsDesk = z.object({ desk: z.string() });
-
-/**
- * The control pair's nested read: its own setting only.
- *
- * Still NESTED rather than at the action root, for the reason `recordSkills`
- * is: the pair's positive half must run to completion on a real spread, not
- * merely mint.
+ * The control pair's nested read: its own setting, and whether the contract's
+ * key arrived, but no requirement on any setting. A block that required
+ * `seatSkills` would refuse the control on its own, whether or not its schema
+ * could take the bag, and certify whichever cause the reader already believed.
  */
 const recordDesk = handler({
   name: "triage-record-desk",
   inputSchema,
   outputSchema: z.void(),
-  flowConfigSchema: needsDesk,
   sessionStateSchema: seatState,
   execute: async (_input, ctx) => {
-    await ctx.session.patchState({ desk: ctx.flow.config.desk });
+    const config = workerConfigOf(ctx) as { desk?: string };
+    await ctx.session.patchState({ desk: config.desk ?? null, hasSeatSkills: Object.hasOwn(config, "seatSkills") });
   }
 });
 
-/** The delivery claim's action set — reads the admitted `seatSkills`. */
+/** The delivery claim's action set — reads the turn's `seatSkills`. */
 const actions = {
   run: {
     inputSchema,
@@ -132,10 +152,10 @@ const actions = {
 };
 
 /**
- * The structural claim's action set — requires only `desk`.
+ * The structural claim's action set — requires no setting.
  *
  * Separate from `actions` so that the control pair's outcome is decided by
- * each kind's own `configSchema` and by nothing else in the fixture.
+ * each flow's own `configSchema` and by nothing else in the fixture.
  */
 const controlActions = {
   run: {
@@ -146,31 +166,42 @@ const controlActions = {
 };
 
 /** Composes the contract. No model, no generator — handlers only. */
-export const triageFlow = defineFlow({
-  kind: TRIAGE_KIND,
-  cardinality: "collection",
-  configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
-  actions,
-  session: { stateSchema: seatState, client: clientView }
+export function defineTriageFlow(installation: WorkerInstallation) {
+  return defineFlow({
+    kind: TRIAGE_KIND,
+    cardinality: "collection",
+    configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
+    resources: { ...installation.resources },
+    request: { onStarted: loadWorker(installation, TRIAGE_KIND) },
+    actions,
+    session: { ...installation.session(seatState.shape), client: clientView }
+  });
+}
+
+let controlFlows: Record<string, unknown> = {};
+/** The good workers, and the legacy one on the no-contract flow. */
+export const controlInstallation = createWorkerInstallation({
+  standardWorkers: [...good, ...legacy],
+  workerFlows: () => controlFlows as never
+});
+
+let twinFlows: Record<string, unknown> = {};
+/** The good workers, and the one on the hand-rolled flow. */
+export const twinInstallation = createWorkerInstallation({
+  standardWorkers: [...good, HAND_ROLLED_WORKER],
+  workerFlows: () => twinFlows as never
 });
 
 /**
- * The control: a schema that **cannot accept the bag hire imposes**, because it
- * omits `seatSkills`.
+ * The control: a schema that **cannot take the bag a worker is handed**,
+ * because it omits `seatSkills`.
  *
- * Deliberately not "the same kind with `workerConfigSchema()` removed". That
+ * Deliberately not "the same flow with `workerConfigSchema()` removed". That
  * version refuses too, but removing the helper also removes every contract key,
- * so the refusal is equally consistent with hire checking whether the helper
- * was CALLED — which it does not and cannot. A control that conflates two
- * causes certifies whichever one the reader already believes. This one declares
- * three of the four contract keys and omits the one that makes the bag
- * unacceptable, so only the structural cause is left.
- *
- * For the same reason it runs `controlActions` rather than `triageFlow`'s: an
- * action set containing `recordSkills` would REQUIRE `seatSkills` through that
- * block's own `flowConfigSchema`, and this kind would then be refused by the
- * block whether or not its schema could accept the imposed bag — a second
- * cause, reintroducing the conflation the paragraph above removes.
+ * so the refusal is equally consistent with a check on whether the helper was
+ * CALLED — which there is not and cannot be. This one declares the other
+ * contract keys and omits the one that makes the bag unacceptable, so only the
+ * structural cause is left.
  */
 export const noContractFlow = defineFlow({
   kind: NO_CONTRACT_KIND,
@@ -178,26 +209,24 @@ export const noContractFlow = defineFlow({
   configSchema: z.object({
     instructions: z.string().optional(),
     teamInstructions: z.string().optional(),
-    // Declared so `seatSkills` stays the SINGLE missing key: the contract grew a
-    // fourth, and a control that omitted two would no longer isolate one cause.
+    // Declared so `seatSkills` stays the SINGLE missing key.
     seatTools: z.array(z.any()).default([]),
-    // The packages a seat holds, checked at boot like every other key.
     seatPackages: z.array(z.any()).optional(),
-    // The sixth, imposed on every seat: its own id.
+    // Imposed on every worker: its own id.
     seatId: z.string().optional(),
-    // `seatSkills` omitted — the single reason the imposed bag is refused.
+    // `seatSkills` omitted — the single reason the bag is refused.
     desk: z.string().default("front")
   }),
+  resources: { ...controlInstallation.resources },
+  request: { onStarted: loadWorker(controlInstallation, NO_CONTRACT_KIND) },
   actions: controlActions,
-  session: { stateSchema: seatState, client: clientView }
+  session: { ...controlInstallation.session(seatState.shape), client: clientView }
 });
 
 /**
- * The positive half of the same rule: a hand-written schema that accepts
- * everything hire imposes, without ever calling `workerConfigSchema()`.
- *
- * It hires. Without it, the refusal above would still be consistent with a
- * nominal check, and this goal would certify a rule the implementation rejects.
+ * The positive half of the same rule: a hand-written schema that takes
+ * everything a worker is handed, without ever calling `workerConfigSchema()`.
+ * It registers, and its worker runs.
  *
  * Runs `controlActions` like its twin, so the pair differs in exactly one
  * thing: whether its `configSchema` declares `seatSkills`.
@@ -209,15 +238,16 @@ export const handRolledFlow = defineFlow({
     instructions: z.string().optional(),
     teamInstructions: z.string().optional(),
     seatSkills: z.array(z.object({ name: z.string(), skillMd: z.string() }).passthrough()).default([]),
-    // The fourth contract key. A hand-rolled schema has to add each one as the
-    // contract grows — which is the cost this fixture exists to show, not a
-    // reason to stop hand-rolling.
     seatTools: z.array(z.any()).default([]),
     seatPackages: z.array(z.any()).optional(),
-    // The sixth, imposed on every seat: its own id.
     seatId: z.string().optional(),
     desk: z.string().default("front")
   }),
+  resources: { ...twinInstallation.resources },
+  request: { onStarted: loadWorker(twinInstallation, HAND_ROLLED_KIND) },
   actions: controlActions,
-  session: { stateSchema: seatState, client: clientView }
+  session: { ...twinInstallation.session(seatState.shape), client: clientView }
 });
+
+controlFlows = { [TRIAGE_KIND]: defineTriageFlow(controlInstallation), [NO_CONTRACT_KIND]: noContractFlow };
+twinFlows = { [TRIAGE_KIND]: defineTriageFlow(twinInstallation), [HAND_ROLLED_KIND]: handRolledFlow };

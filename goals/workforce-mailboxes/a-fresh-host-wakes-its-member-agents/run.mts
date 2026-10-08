@@ -124,7 +124,7 @@ await runGoal(async () => {
     if (res.status !== 200) throw new Error(`post "${body}" refused: ${res.status} ${res.text.slice(0, 300)}`);
   };
   const conversationsOf = async (seat: string): Promise<Conversation[]> => {
-    const listed = await call("GET", ["sessions"], undefined, `?flowId=${encodeURIComponent(seat)}&userId=${MAILBOX_OWNER}&include=dispatch-runs&limit=100`);
+    const listed = await call("GET", ["sessions"], undefined, `?flowId=agent&state.workerId=${encodeURIComponent(seat)}&userId=${MAILBOX_OWNER}&include=dispatch-runs&limit=100`);
     const rows = (JSON.parse(listed.text) as { sessions?: Array<{ id: string; parentSessionId?: string | null }> }).sessions ?? [];
     const out: Conversation[] = [];
     for (const row of rows) {

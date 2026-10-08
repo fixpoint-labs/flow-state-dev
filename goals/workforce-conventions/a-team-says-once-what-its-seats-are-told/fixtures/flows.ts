@@ -13,7 +13,7 @@
  * string would satisfy neither on its own.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { workerConfigSchema } from "@flow-state-dev/workforce";
+import { workerConfigSchema, workerConfigOf, type WorkerInstallation } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { workerDoor } from "../../../lib/worker-door.mts";
 
@@ -81,14 +81,15 @@ const recordLayers = handler({
   name: "triage-record",
   inputSchema,
   outputSchema: z.void(),
-  flowConfigSchema: needsInstructionLayers,
   sessionStateSchema: seatState,
   execute: async (_input, ctx) => {
+    // The turn's worker, as the flow's `request.onStarted` loaded it.
+    const config = needsInstructionLayers.parse(workerConfigOf(ctx));
     await ctx.session.patchState({
-      team: ctx.flow.config.teamInstructions ?? null,
-      teamKeyPresent: Object.hasOwn(ctx.flow.config, "teamInstructions"),
-      own: ctx.flow.config.instructions ?? null,
-      desk: ctx.flow.config.desk
+      team: config.teamInstructions ?? null,
+      teamKeyPresent: Object.hasOwn(config, "teamInstructions"),
+      own: config.instructions ?? null,
+      desk: config.desk
     });
   }
 });
@@ -113,16 +114,30 @@ const clientView = {
   }
 };
 
-/** Composes the contract. No model, no generator — handlers only. */
-export const triageFlow = defineFlow({
+/**
+ * Composes the contract. No model, no generator — handlers only. One copy runs
+ * every worker on it; a session names its worker, and the flow's
+ * `request.onStarted` loads it on every turn.
+ */
+export function defineTriageFlow(installation: WorkerInstallation) {
+  const loadWorker = handler({
+    name: "triage-load-worker",
+    inputSchema: z.unknown(),
+    resources: { ...installation.resources },
+    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, TRIAGE_KIND)).id })
+  });
+  return defineFlow({
   kind: TRIAGE_KIND,
   cardinality: "collection",
   configSchema: workerConfigSchema().extend({ desk: z.string().default("front") }),
+  resources: { ...installation.resources },
+  request: { onStarted: loadWorker },
   actions: { ...workerDoor,
     run: {
       inputSchema,
       block: sequencer({ name: "triage-work", inputSchema }).tap(start).tap(recordLayers)
     }
   },
-  session: { stateSchema: seatState, client: clientView }
+  session: { ...installation.session(seatState.shape), client: clientView }
 });
+}

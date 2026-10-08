@@ -45,13 +45,15 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { createModelResolver, defineFlow, generator, type BlockDefinition } from "@flow-state-dev/core";
+import { createModelResolver, defineFlow, generator, handler, type BlockDefinition } from "@flow-state-dev/core";
 import type { EvaluationModel, ModelResolver } from "@flow-state-dev/core/types";
 import {
   mailboxNotifyInputSchema,
+  workerConfigOf,
   workerConfigSchema,
   type MailboxManifest,
-  type MailboxNotifyInput
+  type MailboxNotifyInput,
+  type WorkerInstallation
 } from "@flow-state-dev/workforce";
 import { readMailboxesDirectory } from "@flow-state-dev/workforce/loader";
 import { gatewayModel, runGoal } from "../../lib/index.mts";
@@ -86,12 +88,12 @@ const heard = (post: MailboxNotifyInput) => `${post.author ?? post.principal} in
  * the recent lines as context, and posts nothing. A kind of the app's own gets
  * the routed mark and decides what to do with it; this one does nothing.
  */
-function quietAgentKind() {
+function quietAgentKind(installation: WorkerInstallation) {
   const answer = generator({
     name: "agent-answer",
     inputSchema: mailboxNotifyInputSchema,
     model: "scripted/answer",
-    prompt: (_post: MailboxNotifyInput, ctx) => (ctx.flow.config as { instructions?: string }).instructions ?? "",
+    prompt: (_post: MailboxNotifyInput, ctx) => (workerConfigOf(ctx) as { instructions?: string }).instructions ?? "",
     context: [
       (post: MailboxNotifyInput) =>
         post.recent === undefined || post.recent.length === 0
@@ -101,11 +103,20 @@ function quietAgentKind() {
     user: heard
   });
   const run = generator({ name: "agent-answer", inputSchema: z.object({ message: z.string() }), model: "scripted/answer", prompt: "", user: (i: { message: string }) => i.message });
+  const loadWorker = handler({
+    name: "quiet-agent-load-worker",
+    inputSchema: z.unknown(),
+    resources: { ...installation.resources },
+    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, "agent")).id })
+  });
   return defineFlow({
     kind: "agent",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    actions: { run: { inputSchema: z.object({ message: z.string() }), block: run } },
+    session: installation.session(),
+    resources: { ...installation.resources },
+    request: { onStarted: loadWorker },
+    actions: { run: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
     internal: { actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: answer, userMessage: heard } } }
   } as never);
 }
@@ -119,7 +130,7 @@ function controlSeams(): HostSeams {
           mailboxes.map(({ declared: { routing: _routing, ...declared }, ...rest }) => ({ ...rest, declared }))
       };
     case "no-landing":
-      return { kinds: { agent: quietAgentKind() } };
+      return { kinds: (installation: WorkerInstallation) => ({ agent: quietAgentKind(installation) }) };
     case "no-transcript":
       return {
         adaptEvaluation: (model: EvaluationModel) =>
@@ -164,7 +175,7 @@ function reader(app: RoutedHost, owner: string) {
     },
     /** A seat's conversations of one mailbox: the kept messages of each. */
     conversationsOf: async (seat: string, mailboxId: string): Promise<Message[][]> => {
-      const listed = await call("GET", ["sessions"], undefined, `?flowId=${encodeURIComponent(seat)}&userId=${owner}&include=dispatch-runs&limit=100`);
+      const listed = await call("GET", ["sessions"], undefined, `?flowId=agent&state.workerId=${encodeURIComponent(seat)}&userId=${owner}&include=dispatch-runs&limit=100`);
       const rows = (JSON.parse(listed.text) as { sessions?: Array<{ id: string; parentSessionId?: string | null }> }).sessions ?? [];
       const out: Message[][] = [];
       for (const row of rows.filter((r) => r.parentSessionId === mailboxId)) {

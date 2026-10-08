@@ -30,7 +30,7 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
 2. each seat reports its own instructions, document ref and **exact** skill union from inside a
    running block, and the coordinator kind declares no task entry at all *(BR-3, BR-4)*;
 3. one row, claimed once, handed to the seat the board's assignee names — graded on the **dispatch
-   record**, by `flowId` — with the third seat absent from it, and a second drain claiming nothing
+   record**, by the `workerId` each child session names — with the third seat absent from it, and a second drain claiming nothing
    *(BR-5, BR-6, BR-8, BR-9)*;
 4. the prompt carries all four held-out tokens, the run's `cwd` is the checkout the framework itself
    derives for this row (and that derivation is injective over its components), and the row settles
@@ -64,6 +64,8 @@ handed every skill in the tree.
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | FAIL (control) | `address-the-reviewer`: the drain dispatched to ["eng.reviewer"] and the coder's tokens missing. `no-commit` and `stopped-at-limit`: the row settled pending. `swap-documents`: eng.coder reads engineering-handbook. `drop-own-skill`: eng.coder holds only commit-style. |
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | The lab on one copy per worker flow (`em`, `coder`, `agent`): the EM's board handed the row to a session on `coder` naming `eng.coder`, graded on the dispatch record's `workerId`; the reviewer on the same flow never reached; each seat's own files in its prompt. A tree naming `codr` registered nothing. |
 | `address-the-reviewer` | the board's assignee address | the dispatch record names the seat that must never be reached |
 | `no-commit` | what the run leaves behind | the row does not settle done |
 | `swap-documents` | the working seat's `document:` | its own brief's token cannot reach the prompt |

@@ -3,13 +3,15 @@
  *
  * Everything here comes from the published packages and the team's files: no
  * kitchen-sink code, and no dispatcher or router of the app's own. The wake is
- * one call, `wakeMemberSeats(seats)`, in the built-in mailbox kind's notify
- * slot. The goal check reads this file's source to hold it to that.
+ * one call, `wakeMemberSeats(copies, { installation })`, in the built-in
+ * mailbox kind's notify slot. The goal check reads this file's source to hold
+ * it to that.
  *
- * The app has one kind of its own, `note`, whose seats take notes when asked
- * and declare no `onMailboxPost`, so a post runs nothing on them. Every other
- * seat is the built-in `agent` kind, answered by a scripted model so the check
- * needs no key.
+ * The app has one worker flow of its own, `note`, whose workers take notes
+ * when asked and declare no `onMailboxPost`, so a post runs nothing on them.
+ * Every other worker runs on the built-in `agent`, answered by a scripted
+ * model so the check needs no key. Each flow is registered once; a woken
+ * worker's conversation is a session on its flow, naming it.
  *
  * `adaptNotify` is the goal check's seam for its controls, and nothing else:
  * given the wake this app builds, it returns the block the mailbox runs, or
@@ -22,12 +24,14 @@ import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
   mailboxInstances,
+  createWorkerInstallation,
   defineMailboxFlow,
   hireWorkforce,
   openMailboxes,
   wakeMemberSeats,
   workerConfigSchema,
-  type MailboxManifest
+  type MailboxManifest,
+  type WorkerInstallation
 } from "@flow-state-dev/workforce";
 import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 
@@ -59,13 +63,16 @@ export const MAILBOX_OWNER = "u_fresh_host";
 /** What an agent seat answers with, whatever it heard. */
 export const REPLY_MARKER = "[reply:fresh-host]";
 
-/** This app's own kind: takes a note when asked directly, and hears no posts. */
-const note = defineFlow({
-  kind: "note",
-  cardinality: "collection",
-  configSchema: workerConfigSchema(),
-  actions: { ...workerDoor, take: { block: handler({ name: "note-take", execute: () => ({}) }) } }
-} as never);
+/** This app's own worker flow: takes a note when asked directly, and hears no posts. */
+const defineNote = (installation: WorkerInstallation) =>
+  defineFlow({
+    kind: "note",
+    cardinality: "collection",
+    configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources },
+    actions: { ...workerDoor, take: { block: handler({ name: "note-take", execute: () => ({}) }) } }
+  } as never);
 
 /** The app, booted: its router, what it hired, and a way to shut it down. */
 export interface FreshHost {
@@ -94,9 +101,13 @@ export async function startFreshHost(
     throw new Error(`the tree did not load: ${[...errors, ...mailboxErrors].map((e) => e.path).join(", ")}`);
   }
 
-  // Hire first: the wake reaches these seats, never a mailbox's stored members.
-  const seats = hireWorkforce(workers, { workerFlows: { note: note as never } });
-  const wake = wakeMemberSeats(seats);
+  // The flows first: the wake reaches the workers on these copies, never a
+  // mailbox's stored members.
+  let flows: Record<string, unknown> = {};
+  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows as never });
+  flows = { note: defineNote(installation) };
+  const seats = hireWorkforce(installation);
+  const wake = wakeMemberSeats(seats, { installation });
   const notify = adaptNotify === undefined ? wake : adaptNotify(wake);
   const mailboxFlows = mailboxInstances(mailboxes, {
     kinds: { mailbox: notify === undefined ? defineMailboxFlow() : defineMailboxFlow({ notify }) }

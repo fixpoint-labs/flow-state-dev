@@ -47,8 +47,10 @@ import { buildTaskToolsList } from "@flow-state-dev/orchestration";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
   mailboxBoardTaskTools,
+  workerConfigOf,
   workerConfigSchema,
   type MailboxBoardCollection,
+  type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { ledgerOf, rowsOf } from "../../../ledger.mts";
@@ -94,6 +96,16 @@ interface CoordinatorConfig {
   model?: string;
 }
 
+/**
+ * The settings this turn runs with: the coordinator worker's, as its turn
+ * loaded them. A probe that resolves the generator's tools outside any turn
+ * (it has no session) hands them as `ctx.flow.config` instead.
+ */
+function settingsOf(ctx: BlockContext): CoordinatorConfig {
+  const probe = (ctx as { session?: object }).session === undefined;
+  return (probe ? ctx.flow.config : workerConfigOf(ctx)) as unknown as CoordinatorConfig;
+}
+
 /** What intake is handed: the pieces of work, in the words they arrived in. */
 export const intakeInputSchema = z.object({
   work: z.array(z.string().min(1)).min(1),
@@ -120,6 +132,8 @@ function noteTool(): GeneratorTool {
 }
 
 export interface CoordinatorWorkerFlowOptions {
+  /** The installation that runs this flow's workers. */
+  installation: WorkerInstallation;
   /** The mailbox's own ledger — the one the `MAILBOX.md` declared by name. */
   board: MailboxBoardCollection;
   /**
@@ -152,7 +166,7 @@ export interface CoordinatorWorkerFlowOptions {
  *
  * @param options The ledger, whether to compose the board capability, the
  *   default model, and the seats the queue reports on.
- * @returns `{ kind, intake }` — the flow `hireWorkforce` mints a copy of, and
+ * @returns `{ kind, intake }` — the flow `hireWorkforce` registers a copy of, and
  *   the generator itself, so a check can read the tool names it resolves
  *   without having to run a model to find out.
  */
@@ -278,7 +292,6 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
   const intake = generator({
     name: "coordinator-intake",
     inputSchema: intakeInputSchema,
-    flowConfigSchema: coordinatorSettingsSchema(),
     // The grant, and the whole of it — under the lab's own door.
     ...(options.composeBoard && door === "capability"
       ? { uses: [mailboxBoardTaskTools(board)] }
@@ -288,15 +301,12 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
     // what taking the other door costs.
     ...(door === "catalog" ? { resources: { [board.id]: board } } : {}),
     prompt: [
-      (_input: unknown, ctx: BlockContext) =>
-        (ctx.flow.config as unknown as CoordinatorConfig).teamInstructions,
-      (_input: unknown, ctx: BlockContext) =>
-        (ctx.flow.config as unknown as CoordinatorConfig).instructions,
+      (_input: unknown, ctx: BlockContext) => settingsOf(ctx).teamInstructions,
+      (_input: unknown, ctx: BlockContext) => settingsOf(ctx).instructions,
     ],
-    model: (_input: unknown, ctx: BlockContext) =>
-      (ctx.flow.config as unknown as CoordinatorConfig).model ?? options.defaultModel,
+    model: (_input: unknown, ctx: BlockContext) => settingsOf(ctx).model ?? options.defaultModel,
     tools: (_input: unknown, ctx: BlockContext): GeneratorTool[] =>
-      (ctx.flow.config as unknown as CoordinatorConfig).tools
+      (settingsOf(ctx).tools ?? [])
         .map((name) => catalog[name])
         .filter((tool): tool is GeneratorTool => tool !== undefined),
     user: (input: z.infer<typeof intakeInputSchema>) =>
@@ -304,10 +314,24 @@ export function defineCoordinatorWorkerFlow(options: CoordinatorWorkerFlowOption
       input.work.map((piece, index) => `${index + 1}. ${piece}`).join("\n"),
   } as never);
 
+  const installation = options.installation;
+  /** Loads the turn's worker, on every run of a request, so `workerConfigOf` reads it. */
+  const loadWorker = handler({
+    name: `${COORDINATOR_KIND}-load-worker`,
+    inputSchema: z.unknown(),
+    resources: { ...installation.resources },
+    execute: async (_input: unknown, ctx: BlockContext) => ({
+      worker: (await installation.resolveWorker(ctx as never, COORDINATOR_KIND)).id,
+    }),
+  });
+
   const kind = defineFlow({
     kind: COORDINATOR_KIND,
     cardinality: "collection",
     configSchema: coordinatorSettingsSchema(),
+    session: installation.session(),
+    resources: { [board.id]: board, ...installation.resources },
+    request: { onStarted: loadWorker },
     actions: { ...workerDoor,
       [INTAKE_ENTRY]: { block: intake, description: "Take work in and file it onto the board." },
       [QUEUE_ENTRY]: { block: readQueue, description: "Read the queue. Writes nothing." },

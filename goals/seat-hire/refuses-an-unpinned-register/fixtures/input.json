@@ -1,8 +1,0 @@
-{
-  "orgId": "acme",
-  "otherOrg": "globex",
-  "managerId": "eng.manager",
-  "seatId": "eng.ada",
-  "unpinnedSeat": "eng.stray",
-  "foreignSeat": "eng.lead"
-}

@@ -388,8 +388,13 @@ await runGoal(async () => {
         );
       }
       // Nothing of the coordinator's travels with the row. The brief IS the
-      // row; there is no ambient dump.
-      const carried = JSON.stringify(session.state ?? {});
+      // row; there is no ambient dump. The one thing the session holds is the
+      // worker it runs, which is the seat that claimed the row.
+      const { workerId, ...rest } = (session.state ?? {}) as Record<string, unknown>;
+      if (workerId !== line.seat) {
+        note(`row ${row.id}'s child session names worker ${String(workerId)}, not ${line.seat}, which ran it`);
+      }
+      const carried = JSON.stringify(rest);
       if (carried.includes("desk-") || carried.length > 2) {
         note(`row ${row.id}'s child session carries state it was not handed: ${carried}`);
       }

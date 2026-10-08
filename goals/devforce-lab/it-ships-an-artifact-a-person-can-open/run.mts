@@ -635,7 +635,7 @@ await runGoal(async () => {
       await lab.drain(COORDINATOR_SEAT);
 
       const reached = (await lab.dispatched(COORDINATOR_SEAT)).filter(
-        (child) => child.flowId === REVIEWER_SEAT,
+        (child) => child.workerId === REVIEWER_SEAT,
       );
       if (reached.length === 0) {
         failures.push(
@@ -888,13 +888,13 @@ await runGoal(async () => {
 
     // ---- BR-8, graded where the rule points: the board dispatch record ---
     const dispatches = await lab.dispatched(COORDINATOR_SEAT);
-    const toReviewer = dispatches.filter((child) => child.flowId === REVIEWER_SEAT);
+    const toReviewer = dispatches.filter((child) => child.workerId === REVIEWER_SEAT);
     if (toReviewer.length > 0) {
       failures.push(
         `${toReviewer.length} board dispatch(es) reached ${REVIEWER_SEAT}, which never receives work`,
       );
     }
-    if (!dispatches.some((child) => child.flowId === ASSIGNED_SEAT)) {
+    if (!dispatches.some((child) => child.workerId === ASSIGNED_SEAT)) {
       failures.push(
         `no board dispatch names ${ASSIGNED_SEAT}, so there is no record the row reached the ` +
           `seat it was addressed to`,
