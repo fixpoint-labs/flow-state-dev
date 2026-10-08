@@ -13,7 +13,7 @@
  */
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Client, ResourceClient, SessionClient, SessionDetail, SessionSummary } from "@flow-state-dev/client";
+import type { Client, ResourceClient, SessionClient, SessionSummary } from "@flow-state-dev/client";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { messageOf, type RunRecord, type Turn } from "./record.mts";
 
@@ -31,7 +31,6 @@ export type RosterEntry = { id: string; flow: string; standard: boolean; descrip
 /** The workforce client's surface this goal uses. */
 interface WorkforceClient {
   roster(): Promise<RosterEntry[]>;
-  findWorkerSession(criteria: { worker: string }): Promise<SessionSummary | undefined>;
   ensureWorkerSession(criteria: { worker: string }): Promise<SessionSummary>;
 }
 
@@ -41,8 +40,6 @@ export interface Shipped {
   workforce: {
     createWorkforceClient(options: { userId: string; baseUrl?: string; fetcher?: typeof fetch }): WorkforceClient;
     deriveWorkerSessionId(input: { userId: string; orgId: string; flow: string; criteria: { worker: string } }): Promise<string>;
-    ROSTER_FLOW_KIND: string;
-    WORKER_ID_STATE_KEY: string;
   };
 }
 
@@ -54,7 +51,7 @@ export interface Shipped {
 export async function loadShipped(root: string): Promise<Shipped> {
   const client = (await import(pathToFileURL(join(root, "packages", "client", "src", "index.ts")).href)) as Shipped["client"];
   const workforce = (await import(pathToFileURL(join(root, "packages", "workforce", "src", "browser.ts")).href)) as Shipped["workforce"];
-  for (const name of ["createWorkforceClient", "deriveWorkerSessionId", "ROSTER_FLOW_KIND", "WORKER_ID_STATE_KEY"] as const) {
+  for (const name of ["createWorkforceClient", "deriveWorkerSessionId"] as const) {
     if (workforce[name] === undefined) throw new Error(`the commit's @flow-state-dev/workforce/browser exports no ${name}`);
   }
   return { client, workforce };
@@ -202,4 +199,4 @@ export async function everythingIn(who: Connected, sessionId: string): Promise<s
   return JSON.stringify({ state, items });
 }
 
-export type { SessionDetail, SessionSummary };
+export type { SessionSummary };
