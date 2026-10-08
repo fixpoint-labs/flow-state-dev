@@ -1,0 +1,112 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="Q3, open: FIX-1780 says Done, but its notices never shipped. Recommended: keep it Done and add a comment and a relation saying S1 to S5 moved to FIX-1794 P2. Instead of: reopen FIX-1780, or file a new issue. It comes down to the first row: the comment leaves one owner of the signal, FIX-1794 P2, while a reopen or a new issue gives it two. The price, second row: Done stays half true, because S5a shipped and the rest moved; a reopen makes it true, and a new issue leaves it half true. Third row: the comment costs one comment and one relation, where the other two each add a second plan kept in step with P2. Locks in: FIX-1794 P2 alone owns onTaskSettled, decision D2. Flips if: Done must mean everything shipped; then move it to Canceled with the same comment."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 3; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">Q3 · THE CALL · OPEN</text>
+    <text class="t-q" x="32" y="52">FIX-1780 says Done, but its notices never shipped. What happens to it?</text>
+  </g>
+
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">Keep Done, add a comment</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="468" y="112">Reopen FIX-1780</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="708" y="112">File a new issue</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">OWNERS OF</text>
+    <text class="t-lbl" x="32" y="169">THE SIGNAL</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">One: FIX-1794 P2</text>
+    <text class="t-s" x="248" y="179">the comment points there</text>
+    <text class="mark minus" x="468" y="162">−</text>
+    <text class="t-b" x="488" y="161">Two</text>
+    <text class="t-s" x="488" y="179">FIX-1780 and FIX-1794 P2</text>
+    <text class="mark minus" x="708" y="162">−</text>
+    <text class="t-b" x="728" y="161">Two</text>
+    <text class="t-s" x="728" y="179">the new issue and FIX-1794 P2</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">WHAT DONE</text>
+    <text class="t-lbl" x="32" y="231">SAYS</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">Half true</text>
+    <text class="t-s" x="248" y="241">S5a shipped; the rest moved</text>
+    <text class="mark plus" x="468" y="224">+</text>
+    <text class="t-b" x="488" y="223">True</text>
+    <text class="t-s" x="488" y="241">open until it is built</text>
+    <text class="mark minus" x="708" y="224">−</text>
+    <text class="t-b" x="728" y="223">Still half true</text>
+    <text class="t-s" x="728" y="241">FIX-1780 stays Done</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">THE COST</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">One comment</text>
+    <text class="t-s" x="248" y="299">and one relation</text>
+    <text class="mark minus" x="468" y="282">−</text>
+    <text class="t-b" x="488" y="281">A second plan</text>
+    <text class="t-s" x="488" y="299">kept in step with P2</text>
+    <text class="mark minus" x="708" y="282">−</text>
+    <text class="t-b" x="728" y="281">A second plan</text>
+    <text class="t-s" x="728" y="299">kept in step with P2</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">FIX-1794 P2 alone owns onTaskSettled</text>
+    <text class="t-s" x="32" y="387">D2: one child-finished signal</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">Done must mean everything shipped</text>
+    <text class="t-s" x="494" y="387">then Canceled, with the same comment</text>
+  </g>
+</svg>

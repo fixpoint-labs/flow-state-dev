@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 352" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path as of 8 October 2026, in phases rather than dates. Two input lanes from FIX-1786, landing in the order Q2 fixed, each on the product owner&#x27;s merge: FIX-1794 has P1 merged, then P2, the notices, waiting on FIX-1814, which removes skill sub-agents, then its build. FIX-1802 has its spec merged, then waits on FIX-1794 P2, then builds P1. This spec is in review at the now line. After the gate, the ask and assign specs run at once, beside the closure&#x27;s QA plan. Ask builds its own Layer 1 pieces, L1 to L3 and L5 to L8, without waiting, then lifts the child-finished signal, L4, once FIX-1794 P2 merges. Assign builds only after FIX-1802 merges. The closure runs on one main commit after both. FIX-1818 and FIX-1819 have lanes and no bars: both are proposed cuts. The critical path, dashed red, runs through FIX-1794 P2&#x27;s wait on FIX-1814 and its build, FIX-1802 P1, assign&#x27;s build and the closure run.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .flight { fill:var(--accent); stroke:none; }
+    .input  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .hold   { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .todo   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .axis   { stroke:var(--rule); stroke-width:1; }
+    .mark   { stroke:var(--prose); stroke-width:1; stroke-dasharray:2 3; }
+    .now    { stroke:var(--gone); stroke-width:1.4; }
+    .crit   { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-ln   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-in   { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-g    { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-w    { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="352"/>
+  <g id="axis">
+    <text class="t-lbl" x="16" y="18">THE PATH — PHASES, NOT DATES · AS OF 2026-10-08</text>
+    <path class="axis" d="M200 44 L924 44"/>
+    <text class="t-now" x="206" y="36">now</text>
+    <text class="t-s" x="284" y="36">gate</text>
+    <text class="t-s" x="330" y="36">specs</text>
+    <text class="t-s" x="450" y="36">builds</text>
+    <text class="t-s" x="554" y="36">P2 merges</text>
+    <text class="t-s" x="684" y="36">1802 merges</text>
+    <text class="t-s" x="816" y="36">closure</text>
+    <path class="now" d="M280 44 L280 336"/>
+    <path class="mark" d="M550 44 L550 336"/>
+    <path class="mark" d="M680 44 L680 336"/>
+  </g>
+  <g id="fix-1794">
+    <text class="t-in" x="16" y="72">FIX-1794 P2 · input</text>
+    <rect class="flight" x="206" y="59" width="66" height="20" rx="3"/><text class="t-w" x="212" y="73">P1 merged</text>
+    <rect class="hold" x="290" y="59" width="130" height="20" rx="3"/><text class="t-g" x="296" y="73">waits on FIX-1814</text>
+    <rect class="input" x="430" y="59" width="110" height="20" rx="3"/><text class="t-s" x="436" y="73">P2 · notices</text>
+  </g>
+  <g id="fix-1802">
+    <text class="t-in" x="16" y="106">FIX-1802 · input</text>
+    <rect class="flight" x="206" y="93" width="66" height="20" rx="3"/><text class="t-w" x="212" y="107">spec done</text>
+    <rect class="hold" x="290" y="93" width="250" height="20" rx="3"/><text class="t-g" x="296" y="107">waits on FIX-1794 P2</text>
+    <rect class="input" x="560" y="93" width="110" height="20" rx="3"/><text class="t-s" x="566" y="107">P1 · build</text>
+  </g>
+  <g id="fix-1815">
+    <text class="t-ln" x="16" y="140">FIX-1815 · this spec</text>
+    <rect class="flight" x="206" y="127" width="66" height="20" rx="3"/><text class="t-w" x="212" y="141">in review</text>
+  </g>
+  <g id="fix-1816">
+    <text class="t-ln" x="16" y="174">FIX-1816 · ask</text>
+    <rect class="todo" x="290" y="161" width="130" height="20" rx="3"/><text class="t-s" x="296" y="175">spec · kill line</text>
+    <rect class="todo" x="430" y="161" width="110" height="20" rx="3"/><text class="t-s" x="436" y="175">L1–L3 L5–L8</text>
+    <rect class="todo" x="560" y="161" width="110" height="20" rx="3"/><text class="t-s" x="566" y="175">lift L4</text>
+  </g>
+  <g id="fix-1817">
+    <text class="t-ln" x="16" y="208">FIX-1817 · assign open</text>
+    <rect class="todo" x="290" y="195" width="130" height="20" rx="3"/><text class="t-s" x="296" y="209">spec · with FIX-1765</text>
+    <rect class="todo" x="690" y="195" width="110" height="20" rx="3"/><text class="t-s" x="696" y="209">build L9</text>
+  </g>
+  <g id="fix-1818">
+    <text class="t-ln" x="16" y="242">FIX-1818 · one fence</text>
+    <text class="t-g" x="296" y="242">proposed cut · becomes ER-6</text>
+  </g>
+  <g id="fix-1819">
+    <text class="t-ln" x="16" y="276">FIX-1819 · helpers</text>
+    <text class="t-g" x="296" y="276">proposed cut · Backlog, unparented</text>
+  </g>
+  <g id="fix-1820">
+    <text class="t-ln" x="16" y="310">FIX-1820 · closure</text>
+    <rect class="todo" x="290" y="297" width="130" height="20" rx="3"/><text class="t-s" x="296" y="311">QA plan</text>
+    <rect class="todo" x="810" y="297" width="110" height="20" rx="3"/><text class="t-s" x="816" y="311">runs on one main</text>
+  </g>
+  <g id="critical-path">
+    <path class="crit" d="M420 69 L430 69 M540 69 L560 103 M670 103 L690 205 M800 205 L810 307"/>
+  </g>
+</svg>
