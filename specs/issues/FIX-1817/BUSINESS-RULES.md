@@ -4,7 +4,8 @@
 
 The cases, written as rules. Alice and Bob are two users of one org. A *conversation* is the
 session whose board filed the task (FIX-1794); a *task session* is the session the task runs in.
-The *proved by* column is the check the plan runs.
+The *proved by* column is the check the plan runs. Epic rules are cited as ER-n
+([FIX-1815](../../epics/FIX-1815/BUSINESS-RULES.md)).
 
 ## Stopping on a question
 
