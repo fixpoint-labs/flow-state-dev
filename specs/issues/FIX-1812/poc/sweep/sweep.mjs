@@ -31,32 +31,24 @@ const root = path.resolve(args.find((a) => !a.startsWith("--")) ?? ".");
 const require = createRequire(path.join(root, "packages/core/package.json"));
 const ts = require("typescript");
 
-/** file → sequencer name → expected class and reason. */
-/** file → sequencer name → [expected class, reason]. Canonical site list; PLAN → Sites mirrors it. */
+/**
+ * file → sequencer name → [expected class, reason]. Canonical site list; PLAN → Sites mirrors it.
+ * The `rename` sites were replaced with `.as()` (or, for an inline-built block, its own name) and
+ * left this list; a described one-step wrapper that reappears fails as unlisted.
+ */
 const EXPECTED = {
   "packages/shift-manager/teams/devteam/host.mts": {
-    setWorkstreams: ["rename", "replace with .as()"],
-    hire: ["rename", "replace with .as()"],
     createProject: ["kept", "approval tapIf before the write"],
     setRepository: ["kept", "approval tap before the write"],
     fire: ["kept", "approval tap before the write"],
   },
-  "apps/kitchen-sink/lib/mailbox-post-control.ts": {
-    "post-to-mailbox": ["rename", "replace with .as()"],
-  },
   "packages/workforce/src/mailbox-post-capability.ts": {
     "post-to-mailbox": ["kept", "signs, routes and maps the result"],
   },
-  "apps/docs/docs/workforce/projects.md": {
-    createProject: ["rename", "replace with .as()"],
-    setWorkstreams: ["rename", "replace with .as()"],
-  },
   "apps/docs/docs/workforce/chief-of-staff.md": {
-    hire: ["rename", "replace with .as()"],
     fire: ["kept", "approval tap before the write"],
   },
   "packages/workforce/README.md": {
-    hire: ["rename", "replace with .as()"],
     fire: ["kept", "approval tap before the write"],
   },
   // Kept: the wrapper does more than rename.

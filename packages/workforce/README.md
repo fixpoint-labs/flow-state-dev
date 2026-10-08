@@ -1615,8 +1615,9 @@ roster flow's `hire`, `fork`, `edit` and `fire` actions, which `hireWorkforce` r
 fork or fire is a write to the user's data. Every process sees it on the next turn.
 
 To let a worker hire or fire for the person it talks to, hand the same blocks to a model as tools.
-A catalog key is the tool's own name, so wrap each block in a sequencer that carries the name and
-what the model reads about it, and put the pair in the worker flow's catalog:
+A catalog key is the tool's own name, so give each block that name and what the model reads about
+it: `hire` with `.as()`, and `fire` as a sequencer when it should wait for an approval first. Put
+the pair in the worker flow's catalog:
 
 ```ts
 import { sequencer } from "@flow-state-dev/core";
@@ -1624,7 +1625,7 @@ import { createWorkerHireBlocks, defineAgentWorkerFlow } from "@flow-state-dev/w
 
 const { hire, fire } = createWorkerHireBlocks(installation);
 const rosterTools = {
-  hire: sequencer({ name: "hire", description: "Hire a worker of the person's own.", inputSchema: hire.inputSchema, outputSchema: hire.outputSchema }).step(hire),
+  hire: hire.as({ name: "hire", description: "Hire a worker of the person's own." }),
   fire: sequencer({ name: "fire", description: "Fire one of the person's own workers.", inputSchema: fire.inputSchema, outputSchema: fire.outputSchema })
     .tap(askFire) // your own `human_approval` suspension, if a fire should wait for the person
     .step(fire),

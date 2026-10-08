@@ -93,8 +93,6 @@ import {
   type WorkerInstallation,
   setRepositoryInputSchema,
   setRepositoryOutputSchema,
-  setWorkstreamsInputSchema,
-  setWorkstreamsOutputSchema,
   type InventoryActionRequest,
   type ProjectBlocks,
 } from "@flow-state-dev/workforce";
@@ -264,8 +262,8 @@ export function boardMailboxOf(roster: Pick<DeclaredRoster, "mailboxes">): Decla
  * The project writes as the chief of staff's tools, `createProject`,
  * `setWorkstreams` and `setRepository`: the same blocks the Lab's own open
  * creates projects through, under the names its `tools:` line spells. A
- * catalog key must be the tool's own name, so each is a sequencer carrying the
- * name and what the model reads about it.
+ * catalog key must be the tool's own name, so `setWorkstreams` is the block
+ * under `.as()`; the two that wait for an approval first are sequencers.
  *
  * The owner is the session's user, so a project the chief of staff creates
  * belongs to the person talking to it, who is always a member; `members` adds
@@ -292,14 +290,12 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks) {
     })
       .tapIf((input) => input.repository != null, askRepository((input) => input.id))
       .step(blocks.createProject),
-    setWorkstreams: sequencer({
+    setWorkstreams: blocks.setWorkstreams.as({
       name: "setWorkstreams",
       description:
         "Replace a project's workstreams with this list of full mailbox ids. Only the project's " +
         "members may; a workstream belongs to at most one project.",
-      inputSchema: setWorkstreamsInputSchema,
-      outputSchema: setWorkstreamsOutputSchema,
-    }).step(blocks.setWorkstreams),
+    }),
     setRepository: sequencer({
       name: "setRepository",
       description:
@@ -316,8 +312,9 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks) {
 /**
  * Hire and fire as the chief of staff's tools, under the names its `tools:`
  * line spells: Workforce's hire blocks, each a write to the roster of the
- * person talking to it. A catalog key must be the tool's own name, so each is
- * a sequencer carrying the name and what the model reads about it.
+ * person talking to it. A catalog key must be the tool's own name, so `hire`
+ * is the block under `.as()`; `fire` is a sequencer, because it waits for an
+ * approval first.
  *
  * **A fire waits for the person.** It pauses on a stock `human_approval`
  * naming the worker before the write; Deny throws out of the tool before the
@@ -327,14 +324,12 @@ export function chiefOfStaffProjectTools(blocks: ProjectBlocks) {
 export function chiefOfStaffRosterTools(installation: WorkerInstallation) {
   const blocks = createWorkerHireBlocks(installation);
   return {
-    hire: sequencer({
+    hire: blocks.hire.as({
       name: "hire",
       description:
         "Hire a worker of the person's own: `id` is a short lowercase slug, `flow` the flow it runs on " +
         "(`agent` when omitted), and `settings` the keys its file would declare. It lands at once.",
-      inputSchema: blocks.hire.inputSchema,
-      outputSchema: blocks.hire.outputSchema,
-    }).step(blocks.hire),
+    }),
     fire: sequencer({
       name: "fire",
       description:
