@@ -29,7 +29,7 @@ happens. The *proved by* column is the check the plan runs. Epic rules are cited
 | BR-9 | The process dies at any point while the turn is parked | The parked turn and the row survive. The ask completes after the restart | CI · goal |
 | BR-10 | The resumed turn replays and reaches the waiting `addTask` again | The call does not file again: one row per call (ER-1) | CI · goal control `no-run-once` |
 | BR-11 | The process dies after the row's ending is written and before the turn resumes | The row keeps a resume-owed marker. The next touch of the board resumes the turn once and clears it | CI, killed in that window · goal control `no-waker` |
-| BR-12 | The ending's notice arrives twice, or a touch replays the marker after the turn resumed | Nothing resumes twice. The gate fences on the row's identity and its terminal ending, not on a per-attempt claim ticket: the board's claim ticket already stops a stale attempt from settling the row (ER-6), so the gate needs only "this row ended". The fence does not depend on BR-5b: it admits the ending of whichever attempt settles the row, however many times the row was claimed. The row's single terminal ending and the parked turn's single pending gate each admit one answer | CI |
+| BR-12 | The ending's notice arrives twice, or a touch replays the marker after the turn resumed | Nothing resumes twice. The gate fences on the row's identity and its terminal ending, not on a per-attempt claim ticket: the board's claim ticket already stops a stale attempt from settling the row (ER-6), so the gate needs only "this row ended". It does not depend on BR-5b. The row's single terminal ending and the parked turn's single pending gate each admit one answer | CI |
 | BR-12a | The asked row's attempt fails, and the board retries it | The asker resumes once, with the ending of the attempt that settles the row. An intermediate failure that was retried never resumes it | CI, a row failed once then completed: one resume, the final answer |
 | BR-13 | Anyone calls the public resume route for an asking turn | Not found, as today. Only the asker's own conversation resumes it | CI |
 
@@ -58,7 +58,8 @@ BR-15, BR-17 and BR-18 were cut before the gate, with nested asks and the per-ca
 
 ## Failure taxonomy
 
-A refused filing (BR-4, BR-4a, BR-5a, BR-8) is the call's error and parks nothing. A failed,
+A refused filing (BR-4, BR-5a, BR-8) is the call's error and parks nothing. On a `followUpOf` call,
+FIX-1817's BR-21 and BR-25 refusals are refused filings too, before anything parks (BR-4a). A failed,
 cancelled or timed-out ask is the call's error and resumes the turn: the model decides what to do.
 A lost resume is never an error: the resume-owed marker holds it until the next touch. Nothing
 retries the asked work except the board's own attempts.

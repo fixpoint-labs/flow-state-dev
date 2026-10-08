@@ -113,7 +113,7 @@ reads as an opt-in option on the call; D4's fire-and-forget default is unchanged
 ## How it got here
 
 - **Draft** — framed as park and resume on the asker's own board; the epic's L5 replaced by one
-  tool beside the eight (since folded into `addTask`); three PRs, the last after FIX-1794 P2.
+  tool beside the task tools (since folded into `addTask`, which adds no tool); three PRs, the last after FIX-1794 P2.
 - **Review round 1** — the product owner folded `askTask` into `addTask` as `waitForResponse`; six cuts before the gate; the timeout given a real trigger, the sweeper;
   D1's dependency on FIX-1794 P2 priced; the stored marker justified.
 
@@ -123,7 +123,7 @@ Decided by the epic coordinator after the cross-spec pass with [FIX-1817](https:
 
 **Alignments** (no change of direction):
 
-- **An asked row gets no `parkOnQuestion` in v1**, by epic ER-22 ([#2904](https://github.com/fixpoint-labs/flow-state-dev/pull/2904), owned by FIX-1817); FIX-1817's S1 and S7 carve-out follows in its own alignment PR after its spec merges. The colleague answers with what it has, or fails (BR-5b). A product-shape rule: the gate's fence does not depend on it.
+- **Asked rows get no `parkOnQuestion` in v1**: epic ER-22 ([#2904](https://github.com/fixpoint-labs/flow-state-dev/pull/2904)), owned by FIX-1817, whose S1 and S7 carve-out follows after its spec merges; here BR-5b. The gate's fence, which does not depend on it: BR-12, PLAN S3.
 - **D1's tool-count check is "`waitForResponse` adds no tool"**, not "still eight": FIX-1817 adds `answerTask` and `parkOnQuestion` (PLAN S4, D1 check).
 - **`waitForResponse` with `followUpOf` on one call is allowed**: the assignee check runs against the root task's worker, and FIX-1817's busy-follow-up, BR-21 and BR-25 refusals come before filing, so nothing parks (BR-4a).
 - **BR-5a's "task turn" is FIX-1817 S1's single test**, a turn the gate serves, cited rather than defined again (BR-5a, PLAN S4, the cut above, DOCS).
