@@ -1,0 +1,54 @@
+<svg viewBox="0 0 940 260" role="img" aria-label="A dashed vertical fence. Left of it is the asker's own conversation; right of it is everything else. Two paths reach the one gate, the asker's own resume of its parked turn: the ending's notice arriving in the asker's conversation, and a touch of the asker's own board. Two paths are stopped at the fence: the public resume route, which answers not found, and a request in another conversation, which has no verb that reaches the gate."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .zone  { fill:var(--surface-2); }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:6 5; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .gate  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.8; }
+    .ok    { stroke:var(--code); stroke-width:1.8; fill:none; }
+    .ok-h  { fill:var(--code); }
+    .no    { stroke:var(--gone); stroke-width:1.6; fill:none; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-no  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="260"/>
+
+  <g id="inside">
+    <rect class="zone" x="16" y="14" width="560" height="232" rx="6"/>
+    <text class="t-lbl" x="32" y="36">THE ASKER'S OWN CONVERSATION</text>
+    <rect class="n-box" x="32" y="56" width="230" height="52" rx="5"/>
+    <text class="t-b" x="46" y="78">the ending's notice</text>
+    <text class="t-s" x="46" y="96">arrives in this conversation</text>
+    <rect class="n-box" x="32" y="160" width="230" height="52" rx="5"/>
+    <text class="t-b" x="46" y="182">a touch of its own board</text>
+    <text class="t-s" x="46" y="200">replays a resume-owed marker</text>
+    <rect class="gate" x="330" y="104" width="220" height="60" rx="6"/>
+    <text class="t-lbl" x="346" y="124">THE ONE GATE</text>
+    <text class="t-b" x="346" y="146">resume the parked turn</text>
+    <path class="ok" d="M262 82 C300 82 300 124 324 128"/><path class="ok-h" d="M330 130 l-8 -2 l3 7 z"/>
+    <path class="ok" d="M262 186 C300 186 300 144 324 140"/><path class="ok-h" d="M330 138 l-8 2 l3 -7 z"/>
+  </g>
+
+  <path id="the-fence" class="fence" d="M600 10 V250"/>
+
+  <g id="outside">
+    <rect class="n-box" x="660" y="56" width="250" height="52" rx="5"/>
+    <text class="t-b" x="674" y="78">the public resume route</text>
+    <text class="t-no" x="674" y="96">not found, as today</text>
+    <rect class="n-box" x="660" y="160" width="250" height="52" rx="5"/>
+    <text class="t-b" x="674" y="182">another conversation's request</text>
+    <text class="t-no" x="674" y="200">no verb reaches the gate</text>
+    <path class="no" d="M660 82 H606"/>
+    <path class="no" d="M660 186 H606"/>
+  </g>
+</svg>
