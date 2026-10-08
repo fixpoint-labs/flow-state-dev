@@ -336,8 +336,8 @@ purpose (`packages/orchestration/src/skills/seeding.ts:116-117`).
 
 **One exception, and it is not a body edit.** `ensureSeeded` re-seeds an already-seeded name when
 `needsResed` finds the persisted record stale against the FIX-918 migration shape — it still
-carries a legacy non-inline `contextMode` the source dropped, it still carries the `agents:` that
-FIX-1814 removed, or the source's `contextMode` changed (`seeding.ts`, `needsResed`). Those replace a
+carries a legacy non-inline `contextMode` the source dropped, or the source's `contextMode` changed
+(`seeding.ts`, `needsResed`). Those replace a
 seat's copy without anyone refreshing it. FIX-1362 left that reseeding as it is for seat copies:
 it fires on a *schema* mismatch between the persisted record and the current parser, never on a
 body edit, so it repairs records the renderer would otherwise skip rather than propagating an

@@ -384,6 +384,8 @@ export function parseSkillMd(
 
   // Legacy `workers:` frontmatter — renamed to `agents:` in FIX-918, which
   // FIX-1814 then removed. Fail loud rather than silently preserving the key.
+  // A plain Error on purpose: `createSkillsLibrary` skips a bundled skill that
+  // fails this way, like any parse failure; only `agents:` fails construction.
   if ("workers" in raw && raw["workers"] !== null && raw["workers"] !== undefined) {
     throw new Error(teamFieldRemoved("workers"));
   }
