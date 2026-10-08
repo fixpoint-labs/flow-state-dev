@@ -10,7 +10,9 @@
  *   2. Enforce suspension expiry: any `pending` suspension past its
  *      `expiresAt` is re-set to `expired` (closes the FIX-140 gap where
  *      expiry was recorded but never enforced, so the resume endpoint can
- *      reject stale gates).
+ *      reject stale gates). An **ask gate** is the exception: it is resumed
+ *      with `wait_timed_out` instead (FIX-1816), because an `expired` ask gate
+ *      would strand its turn: nothing else may resume it.
  *   3. Prune resolved (terminal) suspensions older than the retention window.
  *   4. Prune expired leases (finally wiring `LeaseStore.pruneExpired`).
  *   5. Prune orphaned checkpoints for terminal/interrupted requests whose
@@ -39,6 +41,9 @@ import {
   type RuntimeLogger
 } from "../execution/logging";
 import type { DurabilityProvider } from "./types";
+import { isAskGate } from "@flow-state-dev/core/types";
+import { resumeAskGate } from "../context/ask-resume-operation";
+import type { ResumeDeps } from "./resume-under-lease";
 
 /**
  * Retention policy for the durability sweeper. Every field is optional; the
@@ -75,6 +80,12 @@ export type CreateDurabilitySweeperOptions = {
   /** Lease holder id for the sweeper's sentinel lease. Default: a per-process id. */
   holder?: string;
   logger?: RuntimeLogger;
+  /**
+   * Continues a suspended request, so an overdue ask can be resumed with
+   * `wait_timed_out`. Absent → overdue ask gates are left pending (never
+   * marked expired, which would strand the turn).
+   */
+  continueRequest?: ResumeDeps["continueRequest"];
 };
 
 /** Handle returned by {@link createDurabilitySweeper}. */
@@ -124,7 +135,8 @@ export function createDurabilitySweeper(
     stores,
     retention = {},
     holder = defaultHolder(),
-    logger = DEFAULT_RUNTIME_LOGGER
+    logger = DEFAULT_RUNTIME_LOGGER,
+    continueRequest
   } = options;
 
   const sweepIntervalMs = retention.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
@@ -154,7 +166,8 @@ export function createDurabilitySweeper(
       checkpointMaxAgeMs,
       suspensionTerminalMaxAgeMs,
       orphanCheckpointThresholdMs,
-      batchLimit
+      batchLimit,
+      continueRequest
     })
       .catch((err) => {
         // A failure that escapes the per-step guards is still never thrown
@@ -197,6 +210,8 @@ type RunTickArgs = {
   suspensionTerminalMaxAgeMs: number;
   orphanCheckpointThresholdMs: number;
   batchLimit: number;
+  /** See {@link CreateDurabilitySweeperOptions.continueRequest}. */
+  continueRequest?: ResumeDeps["continueRequest"];
 };
 
 /** {@link RunTickArgs} with the logger resolved to a concrete sink. */
@@ -260,6 +275,10 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
     const pending = await provider.listSuspended({ status: "pending" });
     for (const record of pending) {
       if (record.expiresAt == null || record.expiresAt > now) continue;
+      if (isAskGate(record)) {
+        await resumeOverdueAsk(args, record);
+        continue;
+      }
       // Re-load immediately before writing: an operator may have approved or
       // rejected this suspension via the resume endpoint between the list read
       // above and this write. Skipping unless it is still `pending` shrinks the
@@ -275,6 +294,45 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
     }
   } catch (err) {
     logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: expiry enforcement failed", {
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
+}
+
+/**
+ * The ask branch of step 2: resume an overdue ask gate with `wait_timed_out`,
+ * through the same resume every ask takes (fenced on the gate still being
+ * pending, under the request's lease). The resumed call ends the asked task.
+ * Per-gate failures are logged and the sweep moves on; a refused resume (the
+ * answer won the race, or another resume holds the lease) needs nothing more.
+ */
+async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord): Promise<void> {
+  const { provider, stores, logger, continueRequest } = args;
+  if (continueRequest === undefined) return;
+  try {
+    const result = await resumeAskGate(
+      { provider, stores, continueRequest },
+      record,
+      {
+        answered: false,
+        error: {
+          code: "wait_timed_out",
+          message: "The ask was still open at its deadline, so it timed out."
+        }
+      },
+      "durability-sweeper"
+    );
+    if (!result.ok && result.refused !== "already-resolved") {
+      logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: overdue ask not resumed", {
+        requestId: record.requestId,
+        suspensionId: record.suspensionId,
+        refused: result.refused
+      });
+    }
+  } catch (err) {
+    logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: overdue ask resume failed", {
+      requestId: record.requestId,
+      suspensionId: record.suspensionId,
       error: err instanceof Error ? err.message : String(err)
     });
   }

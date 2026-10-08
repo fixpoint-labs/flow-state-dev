@@ -9,10 +9,10 @@
  * through `RequestHost.resumeAsk` (`create-request-host.ts` closes over the
  * session and finds the gate).
  *
- * **Not yet wired: timeouts.** No ask gate carries a deadline yet, and nothing
- * resumes an overdue ask with `wait_timed_out`. That arrives with the
- * durability sweep's ask branch (FIX-1816 P2, PLAN S7), which will call
- * {@link resumeAskGate} too.
+ * The durability sweep is the other caller of {@link resumeAskGate}: its
+ * expiry step resumes an ask gate still pending past its deadline with
+ * `wait_timed_out` (`durability/durability-sweeper.ts`). Both resume through
+ * `durability/resume-under-lease.ts`, as the public route does.
  *
  * The resume itself is the resume route's, minus everything a caller supplies:
  * load the gate under the request's lease, admit it only while it is an ask
@@ -24,34 +24,25 @@ import { isAskGate, parseAskOutcome } from "@flow-state-dev/core/types";
 import type {
   AskOutcome,
   ResumeAskResult,
-  ResumeContext,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import type { DurabilityProvider } from "../durability/types";
-import type { HostContinueRequestOptions } from "../transports/types";
-import type { ContinueRequestResult } from "../execution/request-continuation";
+import { resumeUnderLease, type ResumeDeps } from "../durability/resume-under-lease";
 import type { StoreRegistry } from "../stores/types";
-import { generateId } from "../utils/generate-id";
 import { ownsRecord, type OwnerIdentity } from "./record-owner";
 
-/** How long the resume holds the request's lease before the run takes over. */
-const RESUME_LEASE_MS = 60_000;
-
 /** What {@link resumeAskGate} needs from the host. */
-export type AskResumeDeps = {
-  provider: DurabilityProvider;
+export type AskResumeDeps = ResumeDeps & {
   stores: Pick<StoreRegistry, "request">;
-  continueRequest: (options: HostContinueRequestOptions) => Promise<ContinueRequestResult>;
 };
 
 /**
  * Resume one ask gate with an outcome, once.
  *
  * The caller has already decided this gate is theirs to resume. This checks
- * only what makes a resume safe: the gate is an ask, it is still pending under
- * the request's lease, and the request is suspended. A gate that is no longer
- * pending is `already-resolved`, so a second resume — a notice delivered twice,
- * a marker replayed after the turn resumed — resumes nothing.
+ * only what makes a resume safe, under the request's lease: the gate is an ask,
+ * it is still pending, and the request is suspended. A gate that is no longer
+ * pending is `already-resolved`, so a second resume (a notice delivered twice,
+ * a marker replayed after the turn resumed) resumes nothing.
  */
 export async function resumeAskGate(
   deps: AskResumeDeps,
@@ -65,74 +56,58 @@ export async function resumeAskGate(
     throw new TypeError("resumeAskGate: the outcome is not an ask outcome");
   }
 
-  const { provider } = deps;
-  const lease = await provider.acquireLease(gate.requestId, {
-    holder: generateId("resume-ask"),
-    durationMs: RESUME_LEASE_MS
+  type Refusal = Extract<ResumeAskResult, { ok: false }>;
+  const resumed = await resumeUnderLease<Refusal>(deps, {
+    requestId: gate.requestId,
+    holder: "resume-ask",
+    // Read under the lease, so two resumes racing for one gate cannot both
+    // see it pending.
+    admit: async () => {
+      const suspension = await deps.provider.loadSuspension(gate.requestId, gate.suspensionId);
+      if (suspension === null || !isAskGate(suspension)) {
+        return {
+          refusal: { ok: false, refused: "gate-not-found", detail: `no ask gate "${gate.suspensionId}"` }
+        };
+      }
+      if (suspension.status !== "pending") {
+        return {
+          refusal: {
+            ok: false,
+            refused: "already-resolved",
+            detail: `ask gate "${gate.suspensionId}" was already resolved (${suspension.status})`
+          }
+        };
+      }
+      const request = await deps.stores.request.get(gate.requestId);
+      if (request === undefined || request.status !== "suspended") {
+        return {
+          refusal: {
+            ok: false,
+            refused: "already-resolved",
+            detail: `the turn parked on ask gate "${gate.suspensionId}" is "${request?.status ?? "gone"}", not suspended`
+          }
+        };
+      }
+      return { suspension };
+    },
+    resolve: (suspension) => ({
+      status: "submitted",
+      resolvedBy: resumedBy,
+      resumeData: parsed,
+      resumeContext: {
+        suspensionId: suspension.suspensionId,
+        action: "submit",
+        data: parsed,
+        resumedBy
+      }
+    })
   });
-  if (lease === null) {
+
+  if (resumed.ok) return { ok: true };
+  if (resumed.busy) {
     return { ok: false, refused: "busy", detail: "another resume of this turn is in progress" };
   }
-
-  // Everything below is read under the lease, so two resumes racing for one
-  // gate cannot both see it pending.
-  let suspension: SuspensionRecord | null;
-  try {
-    suspension = await provider.loadSuspension(gate.requestId, gate.suspensionId);
-    if (suspension === null || !isAskGate(suspension)) {
-      await provider.releaseLease(gate.requestId, lease.leaseId);
-      return { ok: false, refused: "gate-not-found", detail: `no ask gate "${gate.suspensionId}"` };
-    }
-    if (suspension.status !== "pending") {
-      await provider.releaseLease(gate.requestId, lease.leaseId);
-      return {
-        ok: false,
-        refused: "already-resolved",
-        detail: `ask gate "${gate.suspensionId}" was already resolved (${suspension.status})`
-      };
-    }
-    const request = await deps.stores.request.get(gate.requestId);
-    if (request === undefined || request.status !== "suspended") {
-      await provider.releaseLease(gate.requestId, lease.leaseId);
-      return {
-        ok: false,
-        refused: "already-resolved",
-        detail: `the turn parked on ask gate "${gate.suspensionId}" is "${request?.status ?? "gone"}", not suspended`
-      };
-    }
-  } catch (error) {
-    await provider.releaseLease(gate.requestId, lease.leaseId).catch(() => {});
-    throw error;
-  }
-
-  const resumeContext: ResumeContext = {
-    suspensionId: suspension.suspensionId,
-    action: "submit",
-    data: parsed,
-    resumedBy
-  };
-
-  try {
-    await provider.suspend({
-      ...suspension,
-      status: "submitted",
-      resolvedAt: Date.now(),
-      resolvedBy: resumedBy,
-      resumeData: parsed
-    });
-    // Same-request continuation, exactly as the public resume route does it:
-    // the parked request re-enters under its own id, and `runAction` releases
-    // the lease when it ends or parks again.
-    await deps.continueRequest({ requestId: gate.requestId, resumeContext });
-    return { ok: true };
-  } catch (error) {
-    // Setup failed before the run started. Put the gate back so the next
-    // attempt can resume it; see the matching catch in `resume-routes.ts` for
-    // why nothing after the run starts can reach here.
-    await provider.suspend({ ...suspension, status: "pending" }).catch(() => {});
-    await provider.releaseLease(gate.requestId, lease.leaseId).catch(() => {});
-    throw error;
-  }
+  return resumed.refusal;
 }
 
 /**

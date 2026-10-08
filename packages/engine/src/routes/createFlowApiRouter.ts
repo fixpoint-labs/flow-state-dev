@@ -489,7 +489,10 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
           provider: durabilityProvider,
           stores: handlers.host.stores,
           retention: durabilityRetention,
-          logger: runtimeConfig.logger
+          logger: runtimeConfig.logger,
+          // Lets the sweep resume an overdue ask with `wait_timed_out`
+          // through this router's host (FIX-1816).
+          continueRequest: (opts) => handlers.host.continueRequest(opts)
         })
       : { dispose: () => {} };
 
