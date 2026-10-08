@@ -373,6 +373,20 @@ describe("BlockDefinition.as", () => {
     await expect(runForTest(agent, {}, createMockContext())).rejects.toThrow(/saveNote/);
   });
 
+  it("runs an author's handler execute with (input, ctx) only, and still refuses a handler with none", async () => {
+    const seen: unknown[][] = [];
+    const block = handler({
+      name: "plain",
+      execute: (...args: unknown[]) => {
+        seen.push(args);
+        return "ok";
+      }
+    } as never);
+    await runForTest(block.as({ name: "renamed" }), {}, createMockContext());
+    expect(seen[0]).toHaveLength(2);
+    expect(() => handler({ name: "no-execute" } as never)).toThrow(/without an execute function/);
+  });
+
   it("refuses a blank or whitespace name when the copy is built (BR-6)", () => {
     expect(() => writeNote().as({ name: "" })).toThrow(/non-empty "name"/);
     expect(() => writeNote().as({ name: "   " })).toThrow(/non-empty "name"/);
