@@ -1,0 +1,52 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="Today, on the left: the catalog entry hire is a one-step sequencer named hire that carries a description and input and output schemas copied from Workforce's workforce-hire block, which it runs as its one step; the trace shows two rows, tool hire and under it step workforce-hire. After, on the right: the catalog entry hire is workforce-hire.as with name hire and a description, a copy of the same block with nothing copied by hand; the trace shows one row, tool hire. The model sees the same name and description in both."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .wrap  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .blk   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-c   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-k   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="14" width="446" height="302" rx="6"/>
+    <text class="t-lbl" x="32" y="36">TODAY · CATALOG ENTRY hire</text>
+    <rect class="wrap" x="32" y="50" width="414" height="150" rx="5"/>
+    <text class="t-h" x="48" y="72">sequencer · name "hire"</text>
+    <text class="t-c" x="48" y="92">description: "Hire a worker…"</text>
+    <text class="t-g" x="48" y="110">inputSchema:  copied from workforce-hire</text>
+    <text class="t-g" x="48" y="128">outputSchema: copied from workforce-hire</text>
+    <rect class="blk" x="64" y="140" width="366" height="48" rx="5"/>
+    <text class="t-lbl" x="80" y="158">.step(...)</text>
+    <text class="t-b" x="80" y="178">workforce-hire · no description</text>
+    <text class="t-lbl" x="32" y="228">TRACE</text>
+    <text class="t-c" x="48" y="250">tool:hire</text>
+    <text class="t-g" x="64" y="270">└ step:workforce-hire   one extra row</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="14" width="446" height="302" rx="6"/>
+    <text class="t-lbl" x="494" y="36">AFTER · CATALOG ENTRY hire</text>
+    <rect class="new" x="494" y="50" width="414" height="90" rx="5"/>
+    <text class="t-h" x="510" y="72">workforce-hire.as({ … })</text>
+    <text class="t-k" x="510" y="92">name: "hire"</text>
+    <text class="t-k" x="510" y="110">description: "Hire a worker…"</text>
+    <text class="t-c" x="510" y="128">schemas, resources, rescue: its own</text>
+    <text class="t-lbl" x="494" y="228">TRACE</text>
+    <text class="t-k" x="510" y="250">tool:hire</text>
+  </g>
+</svg>
