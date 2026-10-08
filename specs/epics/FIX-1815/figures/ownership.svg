@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 392" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: eight cross-cutting rules by five columns. Ask returns the real answer across a restart and runs once: FIX-1816 builds, FIX-1817 consumes, the closure FIX-1820 proves. An answered park resumes the same session: FIX-1817 builds, the closure proves. A finished session answers and takes a follow-up task: FIX-1817 builds, FIX-1765 consumes and settles the reply semantics with it, the closure proves. Every ask is bounded: FIX-1816 builds, the closure proves. One child-finished signal: FIX-1786 builds, recommended under Q2, FIX-1816 and FIX-1817 consume. One resume-owed marker: FIX-1786 builds, recommended under Q2, FIX-1816 and FIX-1817 consume. One answer-once check, and ask adds none: FIX-1816 decides, FIX-1817 consumes. Dispatch stays fire-and-forget by default: FIX-1816 decides, FIX-1817 consumes.">
+     aria-label="Who owns what: eight cross-cutting rules by five columns. Ask returns the real answer across a restart and runs once: FIX-1816 builds, FIX-1817 consumes, the closure FIX-1820 proves. An answered park resumes the same session: FIX-1817 builds, the closure proves. A finished session answers and takes a follow-up task: FIX-1817 builds, FIX-1765 consumes and settles the reply semantics with it, the closure proves. Every ask is bounded: FIX-1816 builds, the closure proves. One child-finished signal, lifted once: FIX-1786 builds it in FIX-1794 P2, FIX-1816 lifts it into orchestration, FIX-1817 consumes. Owed markers share one pattern: FIX-1786 builds it as FIX-1802&#x27;s settle-owed marker, FIX-1816 reuses it for its own resume-owed marker, FIX-1817 consumes. Both decided under Q2. One answer-once check, and ask adds none: FIX-1816 decides, FIX-1817 consumes. Dispatch stays fire-and-forget by default: FIX-1816 decides, FIX-1817 consumes.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -11,7 +11,6 @@
     .bg    { fill:var(--surface); }
     .hd    { fill:var(--surface-2); }
     .own   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
-    .rec   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; stroke-dasharray:4 3; }
     .use   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:0.8; }
     .prv   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:0.8; }
     .row   { stroke:var(--rule); stroke-width:1; }
@@ -51,15 +50,15 @@
     <rect class="own" x="344" y="171" width="104" height="24" rx="3"/><text class="t-c c-own" x="396" y="187">BUILDS</text>
     <rect class="prv" x="580" y="171" width="104" height="24" rx="3"/><text class="t-c c-prv" x="632" y="187">proves</text>
     <line class="row" x1="16" y1="202" x2="924" y2="202"/></g>
-  <g id="r5"><text class="t-r" x="28" y="221">One child-finished signal · ER-7</text>
-    <rect class="use" x="344" y="205" width="104" height="24" rx="3"/><text class="t-c c-use" x="396" y="221">consumes</text>
+  <g id="r5"><text class="t-r" x="28" y="221">One child-finished signal, lifted once · ER-7</text>
+    <rect class="use" x="344" y="205" width="104" height="24" rx="3"/><text class="t-c c-use" x="396" y="221">lifts</text>
     <rect class="use" x="462" y="205" width="104" height="24" rx="3"/><text class="t-c c-use" x="514" y="221">consumes</text>
-    <rect class="rec" x="698" y="205" width="104" height="24" rx="3"/><text class="t-c c-own" x="750" y="221">BUILDS · Q2</text>
+    <rect class="own" x="698" y="205" width="104" height="24" rx="3"/><text class="t-c c-own" x="750" y="221">BUILDS</text>
     <line class="row" x1="16" y1="236" x2="924" y2="236"/></g>
-  <g id="r6"><text class="t-r" x="28" y="255">One resume-owed marker · ER-7</text>
-    <rect class="use" x="344" y="239" width="104" height="24" rx="3"/><text class="t-c c-use" x="396" y="255">consumes</text>
+  <g id="r6"><text class="t-r" x="28" y="255">Owed markers share one pattern · ER-7</text>
+    <rect class="use" x="344" y="239" width="104" height="24" rx="3"/><text class="t-c c-use" x="396" y="255">reuses</text>
     <rect class="use" x="462" y="239" width="104" height="24" rx="3"/><text class="t-c c-use" x="514" y="255">consumes</text>
-    <rect class="rec" x="698" y="239" width="104" height="24" rx="3"/><text class="t-c c-own" x="750" y="255">BUILDS · Q2</text>
+    <rect class="own" x="698" y="239" width="104" height="24" rx="3"/><text class="t-c c-own" x="750" y="255">BUILDS</text>
     <line class="row" x1="16" y1="270" x2="924" y2="270"/></g>
   <g id="r7"><text class="t-r" x="28" y="289">One answer-once check; ask adds none · ER-6</text>
     <rect class="own" x="344" y="273" width="104" height="24" rx="3"/><text class="t-c c-own" x="396" y="289">DECIDES</text>
@@ -71,8 +70,7 @@
     <line class="row" x1="16" y1="338" x2="924" y2="338"/></g>
   <g id="legend">
     <rect class="own" x="28" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="48" y="366">ONE OWNER PER ROW</text>
-    <rect class="rec" x="210" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="230" y="366">OWNER RECOMMENDED, OPEN UNDER Q2</text>
-    <rect class="use" x="500" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="520" y="366">MUST NOT RE-DECIDE</text>
-    <rect class="prv" x="680" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="700" y="366">CLOSURE PROVES IT</text>
+    <rect class="use" x="230" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="250" y="366">MUST NOT RE-DECIDE</text>
+    <rect class="prv" x="430" y="356" width="14" height="12" rx="2"/><text class="t-lbl" x="450" y="366">CLOSURE PROVES IT</text>
   </g>
 </svg>

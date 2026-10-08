@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 470" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What&#x27;s in the box. In the box, two kinds of hand-off. Ask, FIX-1816: the turn parks on a dispatched worker and resumes with its real answer, across a restart, the asked worker running once, bounded by a timeout, a depth cap and a cancel that reaches the child. Assign stays open, FIX-1817: an answered park resumes the same task session; a finished session answers follow-up questions and takes a follow-up task. Under both, the Layer 1 seam: a server-side resume, a wait binding, awaitDispatch with runOnce and resultOf, a worker that parks its row, and a durable test runtime. Built once elsewhere and consumed here: the child-finished notices from FIX-1794 P2, the settle-owed marker from FIX-1802, and the board&#x27;s claim ticket or FIX-1791&#x27;s delivery ledger as the one answer-once check; generator suspend and resume already ships. The app&#x27;s: which kind to use per call, its timeout and depth values, and the Shift Manager composer, FIX-1764 and FIX-1765. Not built, below a fence: an untrusted external inbox, skill agents in any form, one merged kind, a request held open, parallel fan-in beyond one-at-a-time resume, a third answer-once check.">
+     aria-label="What&#x27;s in the box. In the box, two kinds of hand-off. Ask, FIX-1816: the turn parks on a dispatched worker and resumes with its real answer, across a restart, the asked worker running once, bounded by a timeout, a depth cap and a cancel that reaches the child. Assign stays open, FIX-1817: an answered park resumes the same task session; a finished session answers follow-up questions and takes a follow-up task. Under both, the Layer 1 seam: a server-side resume, a wait binding, awaitDispatch with runOnce and resultOf, a worker that parks its row, a resume-owed marker, and a durable test runtime. Built once elsewhere and lifted or reused here: the child-finished notices from FIX-1794 P2, which ask lifts into orchestration, the settle-owed marker&#x27;s pattern from FIX-1802, which ask&#x27;s own marker reuses, and the board&#x27;s claim ticket or FIX-1791&#x27;s delivery ledger as the one answer-once check; generator suspend and resume already ships. The app&#x27;s: which kind to use per call, its timeout and depth values, and the Shift Manager composer, FIX-1764 and FIX-1765. Not built, below a fence: an untrusted external inbox, skill agents in any form, one merged kind, a request held open, parallel fan-in beyond one-at-a-time resume, a third answer-once check.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -37,13 +37,13 @@
     <text class="t-s" x="490" y="146">and takes a follow-up task · never locks</text>
     <rect class="held" x="32" y="178" width="876" height="36" rx="4"/>
     <text class="t-s" x="44" y="193">the Layer 1 seam, D5: server-side resume · a wait binding · awaitDispatch (runOnce + resultOf)</text>
-    <text class="t-s" x="44" y="207">a worker that asks parks its own row · a durable in-memory runtime for tests</text>
+    <text class="t-s" x="44" y="207">a worker that asks parks its own row · a resume-owed marker · a durable in-memory runtime for tests</text>
   </g>
   <g id="consumed">
     <rect class="repl" x="16" y="240" width="560" height="104" rx="5"/>
-    <text class="t-lbl" x="32" y="260">BUILT ONCE ELSEWHERE, CONSUMED HERE · D2</text>
-    <text class="t-s" x="32" y="280">the child-finished signal: completed · errored · parked · FIX-1794 P2</text>
-    <text class="t-s" x="32" y="296">the durable owed marker: settle-owed · FIX-1802</text>
+    <text class="t-lbl" x="32" y="260">BUILT ONCE ELSEWHERE, LIFTED OR REUSED HERE · D2</text>
+    <text class="t-s" x="32" y="280">the child-finished signal: completed · errored · parked · FIX-1794 P2, lifted by ask</text>
+    <text class="t-s" x="32" y="296">the owed-marker pattern: settle-owed · FIX-1802 · ask&#x27;s marker reuses it</text>
     <text class="t-s" x="32" y="312">one answer-once check: the claim ticket, or the delivery ledger</text>
     <text class="t-s" x="32" y="328">generator suspend and resume, as human approval uses it · ships</text>
   </g>

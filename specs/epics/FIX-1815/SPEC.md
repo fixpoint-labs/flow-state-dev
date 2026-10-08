@@ -77,11 +77,12 @@ it is not yet evidence either way.
 
 ## What's in the box
 
-![What's in the box: ask and an assigned task that stays open, on a Layer 1 seam; built once in FIX-1786 and consumed here; the app's choices; and below a fence, what is not built](figures/end-state.svg)
+![What's in the box: ask and an assigned task that stays open, on a Layer 1 seam with ask's resume-owed marker; built once in FIX-1786 and lifted or reused here; the app's choices; and below a fence, what is not built](figures/end-state.svg)
 
-Inside the box are the two kinds and the seam under them. The middle row is the reason for the
-epic's timing: the signal, the marker and the fence come from FIX-1786 and the board, consumed
-here and never copied ([D2](DECISIONS.md#d2)).
+Inside the box are the two kinds and the seam under them, ask's own resume-owed marker among its
+parts. The middle row is the reason for the epic's timing: the signal, the owed-marker pattern and
+the fence come from FIX-1786 and the board. The signal is lifted here once, the pattern reused,
+and nothing copied ([D2](DECISIONS.md#d2), [Q2](DECISIONS.md#q2)).
 
 ## The set · as of 2026-10-08
 
@@ -89,8 +90,8 @@ A dated snapshot. Live state is Linear and the implementation PRs. Nothing has s
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1816](https://linear.app/fixpoint-labs/issue/FIX-1816) · ask | Park and resume: a turn waits on a dispatched worker and resumes with its answer, bounded by a timeout and a depth cap ([D5](DECISIONS.md#d5) rows L1, L2, L5 to L8) | Leg a. Its spec also decides "ask the delegate" and FIX-1537 | Todo · spec route, first |
-| [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817) · assign stays open | An answered park resumes the same task session; a finished session answers and takes a follow-up task (L9) | Leg b | Todo · spec route · build waits on FIX-1794 P2 and FIX-1802 ([ER-15](BUSINESS-RULES.md#how-the-set-is-run)) |
+| [FIX-1816](https://linear.app/fixpoint-labs/issue/FIX-1816) · ask | Park and resume: a turn waits on a dispatched worker and resumes with its answer, bounded by a timeout and a depth cap ([D5](DECISIONS.md#d5) rows L1 to L3, L5 to L8); lifts the child-finished signal into `orchestration` (L4) | Leg a. Its spec also decides "ask the delegate" and FIX-1537 | Todo · spec route, first |
+| [FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817) · assign stays open | An answered park resumes the same task session; a finished session answers and takes a follow-up task (L9) | Leg b | Todo · spec route · build waits on FIX-1802, which follows FIX-1794 P2 ([ER-15](BUSINESS-RULES.md#how-the-set-is-run)) |
 | [FIX-1818](https://linear.app/fixpoint-labs/issue/FIX-1818) · one fence | **Proposed cut** ([Q1](DECISIONS.md#q1)): becomes [ER-6](BUSINESS-RULES.md#what-no-child-may-do), and its token question moves into FIX-1816's spec | Not on the goal's path | Backlog · kept in Linear until the gate |
 | [FIX-1819](https://linear.app/fixpoint-labs/issue/FIX-1819) · skill helpers | **Proposed cut** ([Q1](DECISIONS.md#q1)): to Backlog, unparented, revisit after ask ships | Its outcome may be "no", and it does not serve the goal | Backlog · kept in Linear until the gate |
 | [FIX-1820](https://linear.app/fixpoint-labs/issue/FIX-1820) · closure · **required** | The QA plan and the goal fixture, run on one `main` commit | Proves the whole | Backlog · blocked by every other child |
@@ -104,8 +105,8 @@ the set is FIX-1817 and the closure.
 
 ```mermaid
 flowchart LR
-  N["FIX-1794 P2 · notices"] -.->|"the child-finished signal"| A["FIX-1816 · ask"]
-  M["FIX-1802 · split"] -.->|"the settle-owed marker"| A
+  N["FIX-1794 P2 · notices"] -.->|"the signal module, lifted"| A["FIX-1816 · ask"]
+  M["FIX-1802 · split"] -.->|"the owed-marker pattern"| A
   N -.->|"the parked notice"| B["FIX-1817 · assign stays open"]
   M -.->|"run my board, into the row's session"| B
   A -->|"the resume verb and the wait"| B
@@ -138,12 +139,11 @@ the reverse.
 
 1. **[Q1](DECISIONS.md#q1) · Two issues and a closure, or all four?** I recommend the cuts. If
    wrong: one issue re-filed later.
-2. **[Q2](DECISIONS.md#q2) · Who builds the shared waking parts?** I recommend FIX-1786, as
-   already specced. If wrong: weeks waiting on another epic's hold.
-3. **[Q3](DECISIONS.md#q3) · FIX-1780 says Done, but its notices never shipped.** I recommend a
+2. **[Q3](DECISIONS.md#q3) · FIX-1780 says Done, but its notices never shipped.** I recommend a
    correcting comment, not a reopen. If wrong: the next reader trusts a signal that is not there.
 
-Engineering calls I made as EM, for the record: [D1](DECISIONS.md#d1) to [D5](DECISIONS.md#d5).
+Decided, for the record: [Q2](DECISIONS.md#q2), who builds the shared waking parts, settled by
+the two coordinators on 2026-10-08. Engineering calls I made as EM: [D1](DECISIONS.md#d1) to [D5](DECISIONS.md#d5).
 Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).
 
 Epic · two to four children and a closure · Workforce: Shift Manager ·

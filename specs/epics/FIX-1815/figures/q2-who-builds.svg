@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="Q2, decided on 2026-10-08 by the two epics&#x27; coordinators, to whom the product owner delegated it: who builds the child-finished signal and the owed marker that both kinds of hand-off wake on. Decided: FIX-1794 P2 builds the signal layer-clean and FIX-1816 lifts it into orchestration; FIX-1816 builds its own resume-owed marker on FIX-1802&#x27;s settle-owed pattern. Instead of: FIX-1786 builds both and this epic consumes them, the earlier recommendation. It comes down to the first row: settle-owed starts a new turn in the parked row&#x27;s session, and ask resumes the parked turn, so ask shares the pattern, not the mechanism. Second row: the signal is one module, lifted to orchestration once, where the alternative left a Workforce entry an ask below Workforce could not hear. Third row: ask&#x27;s marker no longer waits on FIX-1802; only the lift waits on FIX-1794 P2. The price: two markers on one pattern, and the lift is FIX-1816&#x27;s work. Locks in: FIX-1814, then FIX-1794 P2, then FIX-1802 P1; assign builds after FIX-1802. Watch: FIX-1816 sends FIX-1786&#x27;s coordinator the seam shape before FIX-1794 P2 starts."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">Q2 · THE CALL · DECIDED 2026-10-08 BY THE TWO COORDINATORS</text>
+    <text class="t-q" x="32" y="52">Who builds the finished signal and the owed marker that both kinds wake on?</text>
+  </g>
+
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">DECIDED</text>
+    <text class="t-h c-code" x="228" y="112">FIX-1794 P2 builds the signal; ask lifts it</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF · THE EARLIER RECOMMENDATION</text>
+    <text class="t-h c-lost" x="592" y="112">FIX-1786 builds both; ask consumes</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT EACH</text>
+    <text class="t-lbl" x="32" y="169">WAKE DOES</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Ask&#x27;s own marker, same pattern</text>
+    <text class="t-s" x="248" y="179">settle-owed starts a new turn; ask resumes one</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">One marker made to do both</text>
+    <text class="t-s" x="612" y="179">a new turn and a resumed turn are not one wake</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">WHICH LAYER</text>
+    <text class="mark plus" x="228" y="224">+</text>
+    <text class="t-b" x="248" y="223">One module, lifted once</text>
+    <text class="t-s" x="248" y="241">to orchestration; S6 and S7 re-pointed</text>
+    <text class="mark minus" x="592" y="224">−</text>
+    <text class="t-b" x="612" y="223">A Workforce entry</text>
+    <text class="t-s" x="612" y="241">an ask below Workforce cannot hear it</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="270">WHAT ASK</text>
+    <text class="t-lbl" x="32" y="283">WAITS ON</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">Only the lift, on FIX-1794 P2</text>
+    <text class="t-s" x="248" y="299">price: two markers share one pattern</text>
+    <text class="mark minus" x="592" y="282">−</text>
+    <text class="t-b" x="612" y="281">Both parts, through FIX-1802</text>
+    <text class="t-s" x="612" y="299">the last input to land</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN · ER-15</text>
+    <text class="t-b" x="32" y="369">FIX-1814, then FIX-1794 P2, then FIX-1802 P1</text>
+    <text class="t-s" x="32" y="387">assign builds after FIX-1802 · each on the owner&#x27;s merge</text>
+  </g>
+  <g id="watch">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">WATCH · ER-21</text>
+    <text class="t-b" x="494" y="369">The seam&#x27;s shape goes to fix-1786-pm first</text>
+    <text class="t-s" x="494" y="387">before FIX-1794 P2 starts; a park&#x27;s row write, before it merges</text>
+  </g>
+</svg>

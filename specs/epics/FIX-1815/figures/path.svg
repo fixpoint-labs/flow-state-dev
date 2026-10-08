@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 352" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 8 October 2026, in phases rather than dates. Two input lanes from FIX-1786: FIX-1794 has P1 merged and P2, the notices and their marker, still to build; FIX-1802 has its spec merged, then its build waiting on FIX-1814, which removes skill sub-agents, then its build. FIX-1794 P2 waits on FIX-1814 too. This spec is in review at the now line. After the gate, the ask and assign specs run at once, beside the closure&#x27;s QA plan. Ask builds its own Layer 1 pieces first, then integrates the signal and the marker once the inputs merge. Assign builds only after the inputs merge. The closure runs on one main commit after both. FIX-1818 and FIX-1819 have lanes and no bars: both are proposed cuts. The critical path, dashed red, runs through FIX-1802&#x27;s wait on FIX-1814 and its build, assign&#x27;s build and the closure run.">
+     aria-label="The path as of 8 October 2026, in phases rather than dates. Two input lanes from FIX-1786, landing in the order Q2 fixed, each on the product owner&#x27;s merge: FIX-1794 has P1 merged, then P2, the notices, waiting on FIX-1814, which removes skill sub-agents, then its build. FIX-1802 has its spec merged, then waits on FIX-1794 P2, then builds P1. This spec is in review at the now line. After the gate, the ask and assign specs run at once, beside the closure&#x27;s QA plan. Ask builds its own Layer 1 pieces, L1 to L3 and L5 to L8, without waiting, then lifts the child-finished signal, L4, once FIX-1794 P2 merges. Assign builds only after FIX-1802 merges. The closure runs on one main commit after both. FIX-1818 and FIX-1819 have lanes and no bars: both are proposed cuts. The critical path, dashed red, runs through FIX-1794 P2&#x27;s wait on FIX-1814 and its build, FIX-1802 P1, assign&#x27;s build and the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -32,22 +32,25 @@
     <text class="t-now" x="206" y="36">now</text>
     <text class="t-s" x="284" y="36">gate</text>
     <text class="t-s" x="330" y="36">specs</text>
-    <text class="t-s" x="470" y="36">builds</text>
-    <text class="t-s" x="616" y="36">inputs merge</text>
-    <text class="t-s" x="800" y="36">closure</text>
+    <text class="t-s" x="450" y="36">builds</text>
+    <text class="t-s" x="554" y="36">P2 merges</text>
+    <text class="t-s" x="684" y="36">1802 merges</text>
+    <text class="t-s" x="816" y="36">closure</text>
     <path class="now" d="M280 44 L280 336"/>
-    <path class="mark" d="M610 44 L610 336"/>
+    <path class="mark" d="M550 44 L550 336"/>
+    <path class="mark" d="M680 44 L680 336"/>
   </g>
   <g id="fix-1794">
     <text class="t-in" x="16" y="72">FIX-1794 P2 · input</text>
     <rect class="flight" x="206" y="59" width="66" height="20" rx="3"/><text class="t-w" x="212" y="73">P1 merged</text>
-    <rect class="input" x="290" y="59" width="310" height="20" rx="3"/><text class="t-s" x="296" y="73">P2 · notices, marker · after FIX-1814</text>
+    <rect class="hold" x="290" y="59" width="130" height="20" rx="3"/><text class="t-g" x="296" y="73">waits on FIX-1814</text>
+    <rect class="input" x="430" y="59" width="110" height="20" rx="3"/><text class="t-s" x="436" y="73">P2 · notices</text>
   </g>
   <g id="fix-1802">
     <text class="t-in" x="16" y="106">FIX-1802 · input</text>
     <rect class="flight" x="206" y="93" width="66" height="20" rx="3"/><text class="t-w" x="212" y="107">spec done</text>
-    <rect class="hold" x="290" y="93" width="190" height="20" rx="3"/><text class="t-g" x="296" y="107">build waits on FIX-1814</text>
-    <rect class="input" x="490" y="93" width="110" height="20" rx="3"/><text class="t-s" x="496" y="107">build · marker</text>
+    <rect class="hold" x="290" y="93" width="250" height="20" rx="3"/><text class="t-g" x="296" y="107">waits on FIX-1794 P2</text>
+    <rect class="input" x="560" y="93" width="110" height="20" rx="3"/><text class="t-s" x="566" y="107">P1 · build</text>
   </g>
   <g id="fix-1815">
     <text class="t-ln" x="16" y="140">FIX-1815 · this spec</text>
@@ -55,14 +58,14 @@
   </g>
   <g id="fix-1816">
     <text class="t-ln" x="16" y="174">FIX-1816 · ask</text>
-    <rect class="todo" x="290" y="161" width="140" height="20" rx="3"/><text class="t-s" x="296" y="175">spec · kill line</text>
-    <rect class="todo" x="440" y="161" width="160" height="20" rx="3"/><text class="t-s" x="446" y="175">build L1 L2 L5–L8</text>
-    <rect class="todo" x="620" y="161" width="140" height="20" rx="3"/><text class="t-s" x="626" y="175">integrate L3 L4</text>
+    <rect class="todo" x="290" y="161" width="130" height="20" rx="3"/><text class="t-s" x="296" y="175">spec · kill line</text>
+    <rect class="todo" x="430" y="161" width="110" height="20" rx="3"/><text class="t-s" x="436" y="175">L1–L3 L5–L8</text>
+    <rect class="todo" x="560" y="161" width="110" height="20" rx="3"/><text class="t-s" x="566" y="175">lift L4</text>
   </g>
   <g id="fix-1817">
     <text class="t-ln" x="16" y="208">FIX-1817 · assign open</text>
-    <rect class="todo" x="290" y="195" width="140" height="20" rx="3"/><text class="t-s" x="296" y="209">spec · with FIX-1765</text>
-    <rect class="todo" x="620" y="195" width="140" height="20" rx="3"/><text class="t-s" x="626" y="209">build L9</text>
+    <rect class="todo" x="290" y="195" width="130" height="20" rx="3"/><text class="t-s" x="296" y="209">spec · with FIX-1765</text>
+    <rect class="todo" x="690" y="195" width="110" height="20" rx="3"/><text class="t-s" x="696" y="209">build L9</text>
   </g>
   <g id="fix-1818">
     <text class="t-ln" x="16" y="242">FIX-1818 · one fence</text>
@@ -74,10 +77,10 @@
   </g>
   <g id="fix-1820">
     <text class="t-ln" x="16" y="310">FIX-1820 · closure</text>
-    <rect class="todo" x="290" y="297" width="140" height="20" rx="3"/><text class="t-s" x="296" y="311">QA plan</text>
-    <rect class="todo" x="780" y="297" width="140" height="20" rx="3"/><text class="t-s" x="786" y="311">runs on one main</text>
+    <rect class="todo" x="290" y="297" width="130" height="20" rx="3"/><text class="t-s" x="296" y="311">QA plan</text>
+    <rect class="todo" x="810" y="297" width="110" height="20" rx="3"/><text class="t-s" x="816" y="311">runs on one main</text>
   </g>
   <g id="critical-path">
-    <path class="crit" d="M480 103 L490 103 M600 103 L620 205 M760 205 L780 307"/>
+    <path class="crit" d="M420 69 L430 69 M540 69 L560 103 M670 103 L690 205 M800 205 L810 307"/>
   </g>
 </svg>
