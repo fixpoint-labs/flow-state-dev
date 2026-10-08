@@ -20,7 +20,7 @@ The cases, written as rules. Each says what an author or the system does and wha
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-7 | A renamed copy runs, of any of the five block kinds | Every item, trace row, status line, tool observer call and error it produces names the new name; none names the original | CI totality check over all five kinds · goal leg a |
+| BR-7 | A renamed copy runs, of any block kind | The copy's own name is the only block name on its execution path. Any item, trace row, status line, tool observer call or error that names the block names the new name | CI matrix (one kind per emission class) and its negative control · goal leg a |
 | BR-8 | The original block is used beside its copy, in the same flow | The original keeps its name in every item and trace; the two never share a trace row | CI |
 | BR-9 | A renamed tool suspends for approval, then the person approves | It resumes under the new name and its side effect happens exactly once | CI · goal leg a |
 | BR-10 | A renamed tool suspends, then the person denies | The denial reaches the model as for any tool, under the new name | CI |
@@ -40,10 +40,11 @@ The cases, written as rules. Each says what an author or the system does and wha
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-17 | A catalog entry `hire: x.as({ name: "hire" })`, where `x`'s own name is different (Workforce's hire block; likewise `setWorkstreams: projects.setWorkstreams.as({ name: "setWorkstreams" })`) | Passes the key-equals-name check **under the new name** at startup, and a worker whose `tools:` names `hire` is offered it, with the new description. This is the drop-in FIX-1812 relies on | CI in workforce, on Workforce's real hire block · goal leg b |
+| BR-17 | A catalog entry `hire: x.as({ name: "hire" })`, where `x`'s own name is different (Workforce's hire block; likewise `setWorkstreams: projects.setWorkstreams.as({ name: "setWorkstreams" })`) | Passes the key-equals-name check **under the new name** at startup, and a worker whose `tools:` names `hire` is offered it, with the new description. This is the drop-in FIX-1812 relies on. A worker's own folder or a held package registering a copy goes through the same check, unchanged | CI in workforce, on Workforce's real hire block · goal leg b |
 | BR-18 | A catalog entry whose key differs from the `.as()` name | Refused at startup with today's message, naming both spellings | CI in workforce |
-| BR-19 | A worker's own folder or a held package registers a renamed copy | Same one-name check, reading the new name | Existing suite, unchanged code |
 | BR-20 | A capability and the app's catalog both give one key, one of them an `.as()` copy | Refused as two different tools under one key, as today. Reuse one copy value in both places to share it | CI in workforce |
+
+BR-19 (registration from a worker's folder or a held package) is folded into BR-17; the ID is not reused.
 
 ## Failure taxonomy
 
@@ -55,5 +56,4 @@ Nothing new is caught at run time and nothing retries.
 
 [The goal](SPEC.md#the-goal-and-how-well-know-its-met): both legs of
 `goals/block-as/presents-a-block-under-a-new-name/` PASS on a real model, after both FAILED under
-`GOAL_CONTROL=no-as`. The BR-7 totality check passes over all five kinds and fails on its planted
-control.
+`GOAL_CONTROL=no-as`. The BR-7 matrix passes and its negative control fails.

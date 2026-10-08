@@ -36,7 +36,7 @@ flowchart TD
 |---|---|---|
 | V1 | S2 | A renamed handler as a generator tool (mock model): the compiled tool has the new name and description and the original's schema (BR-1–3); two copies make two tools (BR-4); a duplicate is refused (BR-5); a blank name is refused (BR-6) |
 | V2 | S2 | Property fidelity: for each property in BR-13, the copy carries it. A sequencer copy still reports its output schema. Chained rebuilds in both orders agree (BR-14) |
-| V3 | S3 | **Totality (BR-7).** For each of the five kinds, build a block with a distinctive name, run its `.as()` copy as a generator tool and as a sequencer step, collect every item, trace capture, status line, observer call and the error of a failing variant, and assert the original name appears in **none**. **Negative control:** run the same check on a copy made by overwriting only `name` on the definition object (no rebuild); it must fail for at least the generator and the router. Show that failure in the PR |
+| V3 | S3 | **One name (BR-7), a matrix plus a control.** Positives, one kind per emission class: a generator copy as a tool (tool attribution, default `agentName`, approval), a router copy (route record, `RouteUnavailableError`, suspend), a sequencer copy (output validation, `/connect-input` step). Each asserts the original name is absent from that copy's items and trace. Assert on names, not on message text. The PR lists the S3 sites found by re-grep. **Negative control:** a copy made by overwriting only `name` on the definition object (no rebuild) must fail for the generator and the router. Show that failure in the PR |
 | V4 | S3 | Suspension (BR-9, BR-10, BR-11): a renamed tool that calls `ctx.suspend()` resumes under the new name with its side effect counted once from a real counter; a deny reaches the model; a renamed router whose branch suspends resumes on its recorded route |
 | V5 | S2 | `.asTool()` in both orders (BR-15, BR-16); `ctx.wasRescued` and route lookups by the copy (BR-12); the original beside its copy keeps its own name (BR-8) |
 | V6 | S4 | Workforce: `defineAgentWorkerFlow` with catalog `{ hire: <the real Workforce hire block>.as({ name: "hire", … }) }` passes the one-name check under the new name and is offered to a worker naming it, with the new description (BR-17). Control: the same catalog with the block passed without `.as()` must be refused; a mismatched key is refused with today's message (BR-18); a capability and the catalog giving different copies under one key are refused (BR-20) |
@@ -62,10 +62,18 @@ Everything else is yours to name.
 | Rule | Because |
 |---|---|
 | `.as()` is a rebuild through the one shared path, never a spread copy of the definition object | A spread keeps the old name inside every closure that captured it, which is the half-rename V3's control plants (tenet 5: one convergence point for a block's identity) |
+| The run path passes the definition `buildBlock` built, not the receiver (`this`) | Passing the receiver would hand a spread copy its new name too, and V3's control would go green for the wrong reason |
 | A rebuild states only what it changes; the forwarded set lives in one place | Each rebuild copies the forwarded list by hand today, and the file already records drift (a rebuild from construction options once stopped being a dispatcher). A fifth copy for `.as()` is a fifth place to drift (tenet 5) |
-| Every reading of a block's own name at run time comes from the running definition, never from `ctx._blockIdentity` and never from a construction closure | D1 promises one name; a builder that quotes another name breaks it in one item nobody looks at. Why not `_blockIdentity`: next section |
+| Every reading of a block's own name at run time comes from the running definition, never from `ctx._blockIdentity` and never from a construction closure. Read it once at the top of a builder's run, not per tool call or stream chunk | D1 promises one name; a builder that quotes another name breaks it in one item nobody looks at. Why not `_blockIdentity`: next section |
 | No Workforce source change. If S4 fails without one, stop and surface it | D2 rests on the existing check reading `.name`; needing an edit means D1 was built wrong, not that Workforce should learn about renames (layer rule) |
 | The original block is never mutated | BR-8, and the issue's persisted-name concern: nothing stored under the original may move |
+
+## Cost of D1 → S3
+
+S3 is not optional hardening. D1 promises one name everywhere, and four builders quote the
+authored name from inside their run today. Without S3 a copy passes V1 and still reports the old
+name in an approval, a route record or an error. That is the closure patch list D1 buys; the
+choice of *how* the name reaches those sites is the next section.
 
 ## Where a running block's name comes from
 
@@ -144,6 +152,16 @@ From the round-1 review (#2874), for the implementer to weigh against real code:
   cost matters, leg b could assert the load plus the roster row with a mock model. The control
   still needs to fail on "the flow loads".
 - **Size.** Nine spec files for a method plus a four-builder fix is a lot of paper. Not a blocker.
+
+From the round-2 review (#2874, cursor):
+
+- **Reuse tests.** Extend `build-block.test.ts`, `build-block-as-tool.test.ts` and Workforce's
+  `custom-tools-catalog.test.ts` instead of parallel suites.
+- **Sequencer output schema.** A small shared stamp helper (used by `createSequencer` and the
+  rebuild) beats a third `(baseBlock as any).outputSchema` copy.
+- **One read per run.** The name is read from the running definition once at the top of a run
+  (a guardrail now). A small internal helper in the spirit of FIX-1701's `itemScope` is fine if it
+  helps; it reads the running definition, not `_blockIdentity`.
 
 ## Follow-ups
 
