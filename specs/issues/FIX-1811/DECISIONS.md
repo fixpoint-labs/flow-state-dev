@@ -79,9 +79,13 @@ It comes down to a renamed generator tool: `.as()` adds nothing; a rename throug
 - **Every builder reads its own name at run time, not from its construction.** Generator,
   router, evaluator and sequencer each capture the authored name inside their run today (a
   generator's default `agentName`, a router's route-selection record, error messages). A copy
-  that reported the old name there would break D1 quietly. The plan lists the sites.
+  that reported the old name there would break D1 quietly. They read the name from the running
+  definition, which the shared run path hands them; not from `ctx._blockIdentity`, which a block
+  run without its own scope inherits from its caller. The plan lists the sites and why.
 - **`.as()` composes with every other rebuild** (`.connectInput()`, `.mapModelOutput()`,
   `.rescue()`, `.asTool()`), in either order; everything the original carried rides the copy.
+  The rebuilds that keep a block's kind share one internal rebuild, so what they forward is
+  written once.
 - **No Workforce change.** FIX-1786 (coordinators replacing mailboxes) is reshaping Workforce's
   agent flow through FIX-1788, FIX-1791 and FIX-1794. None of them touches the catalog checks
   (the open FIX-1791 PR, #2865, adds an entry beside them), and D2 needs no edit there, so the two
@@ -94,11 +98,17 @@ It comes down to a renamed generator tool: `.as()` adds nothing; a rename throug
 | Keep the wrapper sequencers (do nothing) | The product owner asked for them gone. Each copies its block's schemas and adds a trace row with no behavior |
 | A `name` / `description` override on the generator's `tools` entry (`tools: [{ block, name }]`) | Works for a generator only; the catalog is a map of blocks and would need its own spelling. Two places to learn instead of one method |
 | A standalone helper, `rename(block, { name })` | The same rebuild with a worse home. Every other rebuild is a method on the block; this one should be too (tenet 8, match the codebase) |
+| Each builder owns its rebuild (re-run the factory with the authored config and the new name) | Also correct by construction, but it repeats capability resolution and construction checks per copy and changes four builders instead of one run path. Reading the running definition gets the same result at one point |
+| Read the name from `ctx._blockIdentity` | Wrong when a block runs without its own scope: the block inside `.asTool()` would read the wrapper's name |
 | Keep the source block's name on the trace row as an extra field | Not asked for; D1's *what would change my mind* names when it would be |
 
 ## How it got here
 
 - **Draft** — framed as "rename a block, not wrap it"; a rebuild that changes the block's one
   name, which Workforce's existing check already reads; one PR in core with a Workforce test.
+- **Review round 1** — a builder's run-time name now comes from the running definition, not
+  `ctx._blockIdentity`, because that identity is the caller's when a block runs without its own
+  scope (`.asTool()`'s inner block); and the rebuilds share one internal rebuild, because their
+  hand-copied forwarding lists had already drifted once.
 
 **Open: none.**
