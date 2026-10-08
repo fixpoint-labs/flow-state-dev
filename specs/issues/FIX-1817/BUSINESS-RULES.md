@@ -44,7 +44,7 @@ The *proved by* column is the check the plan runs.
 | BR-22 | The follow-up names an assignee | Refused at input: a follow-up takes the finished task's worker, and another worker is another session | CI |
 | BR-23 | The named task is on another conversation's board, or Bob's | The same answer as an unknown task. Nothing stored | CI |
 | BR-24 | A follow-up names a follow-up | It runs in the same session, the first task's | CI |
-| BR-25 | A follow-up names a finished task while an earlier follow-up still runs in its session | Accepted. Its turn follows the session's concurrency policy, like any turn into that session | CI |
+| BR-25 | A follow-up names a task whose session already has an unfinished task | Refused, naming that task. One task at a time in a session | CI |
 | BR-26 | Anything writes to the finished task's own row | Declined, `terminal_task_write_declined` (FIX-1794 leg e) | Existing suite |
 | BR-27 | A person's message reaches a task session while a follow-up task runs there | It follows the session's concurrency policy (`allow`, `queue` or `reject`), as any turn does | Existing suite |
 

@@ -98,9 +98,11 @@ the goal doesn't need.
 
 - **No `findWorkerSession` aliasing.** The session is reached by the root task's id only. A
   caller holding a follow-up's id has its `followUpOf`, so a second key buys nothing.
-- **No "session has no unfinished task" scan on a follow-up.** `followUpOf` must still name a
-  finished row. The session's concurrency policy already governs overlapping turns, so an
-  overlapping follow-up is accepted rather than checked twice.
+- **~~No "session has no unfinished task" scan on a follow-up.~~ Reverted: BR-25's check
+  stays.** The cut assumed the engine runs a session's turns one at a time. It doesn't: the
+  default policy is `allow`, and `queue` refuses a turn after 30 s, shorter than a task turn
+  runs. So `addTask` still refuses a follow-up while the session has an unfinished task. A
+  person's message keeps the shipped `allow` (BR-27), and no concurrency policy changes.
 - **BR-27 is existing behaviour, not a new promise.** A person's message into a busy task
   session follows the session's concurrency policy, and the existing suite covers it. "Never
   dropped" was not true under `reject`.
@@ -128,7 +130,8 @@ From the [POC](poc/task-session-reentry/README.md), run on `main` at `b78c0ef58`
 - **Draft** — framed as the answer path FIX-1794 BR-25 lacks, plus a finished session that keeps
   its context; the board's own re-queue into the same session over ask's resume; D2 as the joint
   answer for FIX-1765; a POC on `main` before drafting, which found three gaps (S3, S5); one PR.
-- **Restraint pass** — the six cuts above, made by the epic coordinator before the gate, and
+- **Restraint pass** — the cuts above (one later reverted, BR-25's check), made by the epic
+  coordinator before the gate, and
   two clarifications from Cursor's review: what is built for ER-2 versus an existing door, and
   S5, S1 and S2 strictly before S4.
 

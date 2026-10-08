@@ -16,7 +16,7 @@ first (ER-11).
 | S1 | `orchestration` · the receiving gate's turn (FIX-1794 S2) | A `parkOnQuestion({ question })` tool on a turn the gate serves: `awaitReview` on the row that turn's hand-off claimed, fenced by its claim ticket, never a task id from input. Once per turn. Declined when the claim is displaced, or when the turn already parked for its pieces (FIX-1802 S4) | BR-1–BR-5 |
 | S2 | `orchestration` · task tools | `answerTask({ taskId, answer })`, the ninth tool beside the eight, and its action through `taskToolActions` (`answerTask_<board>`). Through the resolver's ref, so it reaches only this session's partition. Runs the fenced `unpark` with the answer; the ref writes FIX-1794 S5's start-owed marker in the same write, as a reassign does. Declines a row not parked on a question: a binding from FIX-1802 means pieces, `parkedForTurn` means a person's turn | BR-6 BR-9–BR-12 BR-16 |
 | S3 | `orchestration` · the claim charge | `answerTask`'s unpark adds one to the existing `turnReentries`, which `shouldRetryOnFail` already discounts. No new field, so no new dual-read. `turnReentries` now counts both kinds of re-entry: after a person's turn (FIX-1690) and after an answered question. Other `unpark` callers unchanged | BR-8 |
-| S4 | `orchestration` · `addTask` | Optional `followUpOf`. Checked in the same partition: the task exists and is terminal. An `assignee` beside `followUpOf` is rejected at input; the follow-up takes the root task's worker. Stored top level on the new row, server-checked, resolved to the root when it names a follow-up. No scan of the session for unfinished tasks | BR-20–BR-25 |
+| S4 | `orchestration` · `addTask` | Optional `followUpOf`. Checked in the same partition: the task exists, is terminal, and its session has no unfinished task. An `assignee` beside `followUpOf` is rejected at input; the follow-up takes the root task's worker. Stored top level on the new row, server-checked, resolved to the root when it names a follow-up | BR-20–BR-25 |
 | S5 | `workforce` · the task entry (`work`, FIX-1794 S6) | Declare `userMessage`, so the task as filed is the turn's user item and part of history. On a re-entry after `answerTask`, the turn's message is the answer, labelled as the answer to its question, not the task again. A retry after a failure is not labelled an answer | BR-7 BR-17 |
 | S6 | `workforce` · the hand-off's session key (FIX-1794 S3, S9) | A row with `followUpOf` hands off under its root task's session criteria, so it opens no session. The session is reached by the root task's id only; `findWorkerSession` is unchanged | BR-20 BR-24 |
 | S7 | `workforce` · the turns that carry the tools | The `agent` kind's task turn carries S1's tool. Every flow that carries the eight task tools (FIX-1794 S4, FIX-1802 S2) carries S2's with them, in the same capability, so no flow gets one without the other | BR-1 BR-2 BR-6 |
@@ -60,7 +60,7 @@ forgets its prompt.
 | V1 | S5 | The POC's F1 and R1, made into specs: a later turn's model is handed the task prompt, and a re-entered turn is handed the answer as its message. Both red on `main` first |
 | V2 | S1 | BR-1–BR-5. A turn that isn't a task turn has no tool; a forged task id on input reaches nothing |
 | V3 | S2, S3 | BR-6, BR-8–BR-12, BR-14: re-entry in the same session id; a task with `maxAttempts: 1` answered twice and then failing once ends `errored` after that one failure, not before; a crash between the answer's write and the board's run is recovered on the next touch |
-| V4 | S4, S6 | BR-20–BR-25. Two conversations of Alice's each follow up their own task with the same id, and each lands in its own session. A follow-up filed while an earlier one runs is accepted |
+| V4 | S4, S6 | BR-20–BR-25. Two conversations of Alice's each follow up their own task with the same id, and each lands in its own session. A follow-up filed while an earlier one is unfinished is refused, naming it |
 | V5 | S7 | **Must-test**, as FIX-1794 V3: on `agent` and the coordinator, each of the nine task tools appears exactly once on a turn, and `parkOnQuestion` only on a task turn |
 | V6 | S1–S7 | The second path (BP-035): FIX-1802's split, with one piece parked on a question and answered by the task session above, then both pieces end and the parent settles once (BR-16). FIX-1690's turn park still re-enters through its door, and `answerTask` declines it |
 | VG | S8 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/coordinators/task-session-stays-open/run.mts` PASSES on `openai/gpt-5.4-mini`, after FAILING under `GOAL_CONTROL=new-session` (legs a and c, *names the ticket*) and `GOAL_CONTROL=drop-answer` (leg a, *names `eu-west`*) |
@@ -105,7 +105,7 @@ the conversation, on the parked notice:
         dispatch the board's run (as on add)
 the board's run:  claim (not charged) → hand-off → same task session
 the task entry:   message = answer ? "Answer to your question: …" : the task
-addTask(goal, followUpOf):  refuse an assignee; root ← resolve followUpOf; refuse unless finished
+addTask(goal, followUpOf):  refuse an assignee; root ← resolve followUpOf; refuse unless finished and alone
 the hand-off:     session criteria ← root's, when followUpOf is set
 ```
 

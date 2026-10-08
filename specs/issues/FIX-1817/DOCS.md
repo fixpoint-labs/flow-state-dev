@@ -60,8 +60,8 @@ The page is FIX-1791's and "Hearing how it went" is FIX-1794's. These land after
 >
 > The follow-up is a new task with its own id, and the conversation hears how it ends. It runs
 > in the same session as the task it follows, with the same worker, so it starts from
-> everything that session already knows. The task it names has to be finished, and a follow-up
-> doesn't take an assignee.
+> everything that session already knows. The task it names has to be finished, its session
+> works one task at a time, and a follow-up doesn't take an assignee.
 
 ## UPDATE · `apps/docs/docs/orchestration/task-board.md` · "Which session a task runs in", a closing paragraph
 
