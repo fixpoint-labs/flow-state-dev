@@ -96,7 +96,7 @@ export function Approval({ item }: { item: SuspensionItem }) {
           type="button"
           disabled={!approval.canReject || approval.isResolving}
           onClick={approval.reject}
-          className="rounded-lg bg-destructive px-4 py-1.5 text-sm font-semibold text-destructive-foreground transition-colors hover:bg-destructive/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-destructive px-4 py-1.5 text-sm font-semibold text-destructive-foreground transition-colors hover:bg-[color-mix(in_srgb,var(--color-destructive),var(--color-foreground)_10%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
           {approval.pendingAction === "reject" ? "Rejecting…" : "Reject"}
         </button>
