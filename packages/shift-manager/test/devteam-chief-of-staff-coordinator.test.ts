@@ -109,7 +109,7 @@ async function act(lab: Lab, sessionId: string, actionName: string, input: unkno
 async function settledItems(lab: Lab, sessionId: string) {
   const runtime = await lab.state.getRuntime();
   const deadline = Date.now() + 10_000;
-  while ((await runtime.stores.request.list({})).some((r) => r.status === "in_progress" || r.status === "queued")) {
+  while ((await runtime.stores.request.list({})).some((r) => r.status === "in_progress")) {
     if (Date.now() > deadline) throw new Error("a request never finished");
     await new Promise((resolve) => setTimeout(resolve, 20));
   }

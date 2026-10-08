@@ -224,7 +224,7 @@ export function bootHost(options: HostOptions = {}) {
     const deadline = Date.now() + 5_000;
     for (;;) {
       const all = await (await state.getRuntime()).stores.request.list({});
-      if (!all.some((r) => r.status === "in_progress" || r.status === "queued")) return all;
+      if (!all.some((r) => r.status === "in_progress")) return all;
       if (Date.now() > deadline) throw new Error("a request never finished");
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
