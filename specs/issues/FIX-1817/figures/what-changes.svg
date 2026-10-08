@@ -1,0 +1,73 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Two lanes, today and after, each one task session over time. Today the first turn ends with the worker's question as its answer and the task completes; the answer has no way back, and a follow-up opens a new session that knows nothing. After, turn 1 parks on its question; the conversation answers; turn 2 in the same session takes the answer and completes the task; turn 3 is a person's question, answered from history; turn 4 is a follow-up task, a new row, in the same session. The finished row above stays completed."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .sess  { stroke:var(--ink-3); stroke-width:1.4; }
+    .turn  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .lost  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .conv  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .arrow { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--accent); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-code { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="lane" x="16" y="14" width="908" height="140" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY · ONE TASK SESSION</text>
+    <line class="sess" x1="32" y1="96" x2="420" y2="96"/>
+    <rect class="turn" x="40" y="66" width="200" height="60" rx="5"/>
+    <text class="t-b" x="54" y="88">turn 1 · the task</text>
+    <text class="t-s" x="54" y="106">no way to stop: it guesses, or</text>
+    <text class="t-s" x="54" y="120">answers with its question</text>
+    <text class="t-code" x="260" y="92">row: completed</text>
+    <text class="t-gone" x="260" y="112">the answer has no way back</text>
+    <rect class="lost" x="640" y="66" width="270" height="60" rx="5"/>
+    <text class="t-b" x="654" y="88">follow-up · a new session</text>
+    <text class="t-s" x="654" y="106">starts from nothing; and the old one</text>
+    <text class="t-s" x="654" y="120">has lost what it was asked</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="16" y="170" width="908" height="214" rx="6"/>
+    <text class="t-lbl" x="32" y="190">AFTER · THE SAME TASK SESSION, TURN AFTER TURN</text>
+    <text class="t-lbl" x="40" y="214">ROW</text>
+    <text class="t-code" x="78" y="214">parked</text>
+    <text class="t-code" x="270" y="214">pending → completed</text>
+    <text class="t-code" x="520" y="214">completed · unchanged</text>
+    <text class="t-code" x="740" y="214">a new row · its own ending</text>
+    <line class="sess" x1="32" y1="270" x2="912" y2="270"/>
+    <rect class="ok" x="40" y="240" width="180" height="60" rx="5"/>
+    <text class="t-b" x="52" y="262">turn 1 · the task</text>
+    <text class="t-s" x="52" y="280">parks on its question</text>
+    <rect class="ok" x="262" y="240" width="200" height="60" rx="5"/>
+    <text class="t-b" x="274" y="262">turn 2 · the answer</text>
+    <text class="t-s" x="274" y="280">carries on and finishes</text>
+    <rect class="ok" x="504" y="240" width="190" height="60" rx="5"/>
+    <text class="t-b" x="516" y="262">turn 3 · a person asks</text>
+    <text class="t-s" x="516" y="280">answered from history</text>
+    <rect class="ok" x="736" y="240" width="176" height="60" rx="5"/>
+    <text class="t-b" x="748" y="262">turn 4 · follow-up task</text>
+    <text class="t-s" x="748" y="280">same worker, same history</text>
+    <rect class="conv" x="110" y="324" width="260" height="44" rx="5"/>
+    <text class="t-lbl" x="122" y="341">THE CONVERSATION</text>
+    <text class="t-s" x="122" y="358">hears the question · answerTask</text>
+    <path class="arrow" d="M130 300 L130 324"/>
+    <path class="arrow" d="M330 324 L330 300"/>
+    <path class="head" d="M326 304 L330 298 L334 304 Z"/>
+    <path class="head" d="M126 320 L130 326 L134 320 Z"/>
+  </g>
+</svg>
