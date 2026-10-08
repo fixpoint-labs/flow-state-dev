@@ -125,6 +125,31 @@ From the [POC](poc/task-session-reentry/README.md), run on `main` at `b78c0ef58`
   ignores it. PLAN S5.
 - **A re-entry is free** — **REFUTED** (R1). It spent one attempt. PLAN S3.
 
+## Cross-spec alignment
+
+Decided by the epic coordinator after the cross-spec pass with [FIX-1816](../FIX-1816/DECISIONS.md#cross-spec-alignment),
+after this spec merged ([#2899](https://github.com/fixpoint-labs/flow-state-dev/pull/2899)).
+No change of direction; each is the coordinator's call, and the product owner may overrule ER-22.
+
+- **An asked row gets no `parkOnQuestion` in v1**: epic [ER-22](../../epics/FIX-1815/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), which this issue owns
+  ([epic DECISIONS](../../epics/FIX-1815/DECISIONS.md#decided-in-the-cross-spec-pass)). A question
+  parked inside an ask would sit until the ask's timeout, and the asker would see only a timeout.
+  The carve-out reads the row being worked, not its root. Here: BR-1a, S1, S7, V2; FIX-1816 BR-5b
+  mirrors it.
+- **`followUpOf` with `waitForResponse` on one `addTask` call is allowed**, the mirror of FIX-1816
+  BR-4a. The assignee check runs against the root task's worker; BR-21, BR-22 and BR-25 refuse
+  before anything is filed, so nothing parks. Here: BR-22a, S4, V4.
+- **S1 owns the one "task turn" test**: a turn the gate serves. FIX-1816 BR-5a cites it rather
+  than defining it again (BR-1, BR-2). PLAN's check on FIX-1816's dropped L6 is replaced by a
+  check that BR-5a reads this test.
+- **BR-26 covers any task write** on a finished row, with the codes named:
+  `illegal_status_transition` for `completeTask`, `failTask` and `blockTask`;
+  `terminal_task_write_declined` for `assignTask`, `cancelTask` and `answerTask`. Read from
+  `packages/orchestration` on `main`.
+- **Tool count is intent, not a literal**, matching the epic's line: a turn carries one set of
+  task tools, `answerTask` among them (SPEC, S2, S7, V5). `answerTask` and `parkOnQuestion` stay
+  named and pinned.
+
 ## How it got here
 
 - **Draft** — framed as the answer path FIX-1794 BR-25 lacks, plus a finished session that keeps
@@ -134,5 +159,7 @@ From the [POC](poc/task-session-reentry/README.md), run on `main` at `b78c0ef58`
   coordinator before the gate, and
   two clarifications from Cursor's review: what is built for ER-2 versus an existing door, and
   S5, S1 and S2 strictly before S4.
+- **Cross-spec alignment** — after merge, a follow-up PR from `main` aligned this spec with
+  FIX-1816 and epic ER-22, [above](#cross-spec-alignment).
 
 **Open: none.**

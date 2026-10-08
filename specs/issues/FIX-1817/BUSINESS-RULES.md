@@ -10,8 +10,9 @@ The *proved by* column is the check the plan runs.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | A worker's task turn calls `parkOnQuestion` with a question | The row it was handed parks, holding the question; the turn ends; no lease runs. The conversation gets one `parked` notice with the question (FIX-1794 BR-25) | CI · VG leg a |
-| BR-2 | A turn that is not a task turn (a person's message, a post) | Has no `parkOnQuestion` tool | CI |
+| BR-1 | A worker's task turn ([PLAN S1](PLAN.md#surfaces)'s test) calls `parkOnQuestion` with a question | The row it was handed parks, holding the question; the turn ends; no lease runs. The conversation gets one `parked` notice with the question (FIX-1794 BR-25) | CI · VG leg a |
+| BR-1a | The task turn is working an asked row (filed with `waitForResponse: true`, [FIX-1816](../FIX-1816/BUSINESS-RULES.md#asking)) | In v1 it has no `parkOnQuestion` tool, by epic [ER-22](../../epics/FIX-1815/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), which this issue owns (FIX-1816 BR-5b mirrors it). The worker answers with what it has, or fails, and the ask ends with that. The carve-out reads the row being worked: an assigned follow-up of a finished asked task is not asked, and has the tool | CI |
+| BR-2 | A turn that is not a task turn (a person's message, a post): not a turn the gate serves, the one test [PLAN S1](PLAN.md#surfaces) owns | Has no `parkOnQuestion` tool | CI |
 | BR-3 | The tool is called twice in one turn, or after the turn's claim was displaced (a cancel or reassign landed) | The second call, or the displaced one, is declined, naming the row's status. Nothing written | CI |
 | BR-4 | The worker parks, and its turn then returns an answer anyway | The row stays parked. The answer is not recorded (FIX-1234's recorder rule) | Existing suite · CI |
 | BR-5 | A task session that filed pieces (FIX-1802) also asks a question in the same turn | The second park is declined, naming the first. A task waits on one thing at a time | CI |
@@ -42,10 +43,11 @@ The *proved by* column is the check the plan runs.
 | BR-20 | A follow-up task names a finished task (`followUpOf`) | A new row on the same board, with its own id. Its hand-off opens no session: it runs in the finished task's session. The session is reached by the finished task's id. Its ending is heard like any task's | CI · VG leg c |
 | BR-21 | The named task hasn't finished | Refused, naming its status. Nothing stored | CI |
 | BR-22 | The follow-up names an assignee | Refused at input: a follow-up takes the finished task's worker, and another worker is another session | CI |
+| BR-22a | `followUpOf` and `waitForResponse: true` are set on one `addTask` call (mirror of FIX-1816 BR-4a) | Allowed. FIX-1816's assignee check runs against the root task's worker. BR-21's and BR-25's refusals, and BR-22's, come before anything is filed, so nothing parks. The asked follow-up runs in the root task's session, with no `parkOnQuestion` (BR-1a) | CI |
 | BR-23 | The named task is on another conversation's board, or Bob's | The same answer as an unknown task. Nothing stored | CI |
 | BR-24 | A follow-up names a follow-up | It runs in the same session, the first task's | CI |
 | BR-25 | A follow-up names a task whose session already has an unfinished task | Refused, naming that task. One task at a time in a session | CI |
-| BR-26 | Anything writes to the finished task's own row | Declined, `terminal_task_write_declined` (FIX-1794 leg e) | Existing suite |
+| BR-26 | Any task write names the finished task's own row, by tool or action | Declined, naming its status; nothing written (FIX-1794 leg e). `completeTask`, `failTask` and `blockTask` answer `illegal_status_transition`. `assignTask`, `cancelTask` and `answerTask` (BR-9; its fenced `unpark`) answer `terminal_task_write_declined`. `parkOnQuestion` can't reach it: no claim is live (BR-3) | Existing suite · CI for `answerTask` |
 | BR-27 | A person's message reaches a task session while a follow-up task runs there | It follows the session's concurrency policy (`allow`, `queue` or `reject`), as any turn does | Existing suite |
 
 ## Failure taxonomy

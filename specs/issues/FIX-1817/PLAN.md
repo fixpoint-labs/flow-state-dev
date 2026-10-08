@@ -13,13 +13,13 @@ first (ER-11).
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `orchestration` · the receiving gate's turn (FIX-1794 S2) | A `parkOnQuestion({ question })` tool on a turn the gate serves: `awaitReview` on the row that turn's hand-off claimed, fenced by its claim ticket, never a task id from input. Once per turn. Declined when the claim is displaced, or when the turn already parked for its pieces (FIX-1802 S4) | BR-1–BR-5 |
-| S2 | `orchestration` · task tools | `answerTask({ taskId, answer })`, the ninth tool beside the eight, and its action through `taskToolActions` (`answerTask_<board>`). Through the resolver's ref, so it reaches only this session's partition. Runs the fenced `unpark` with the answer; the ref writes FIX-1794 S5's start-owed marker in the same write, as a reassign does. Declines a row not parked on a question: a binding from FIX-1802 means pieces, `parkedForTurn` means a person's turn | BR-6 BR-9–BR-12 BR-16 |
+| S1 | `orchestration` · the receiving gate's turn (FIX-1794 S2) | **A task turn is a turn the gate serves**: the turn a hand-off runs on the row it claimed. This is the set's one test; FIX-1816 BR-5a cites it, and nothing defines it again. A `parkOnQuestion({ question })` tool on a task turn: `awaitReview` on the row that turn's hand-off claimed, fenced by its claim ticket, never a task id from input. Once per turn. Declined when the claim is displaced, or when the turn already parked for its pieces (FIX-1802 S4). **Not offered when the claimed row is asked** (`waitForResponse`, FIX-1816) in v1, by epic [ER-22](../../epics/FIX-1815/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), which this issue owns | BR-1–BR-5 |
+| S2 | `orchestration` · task tools | `answerTask({ taskId, answer })`, joining the task tools in the one set a turn carries, and its action through `taskToolActions` (`answerTask_<board>`). Through the resolver's ref, so it reaches only this session's partition. Runs the fenced `unpark` with the answer; the ref writes FIX-1794 S5's start-owed marker in the same write, as a reassign does. Declines a row not parked on a question: a binding from FIX-1802 means pieces, `parkedForTurn` means a person's turn | BR-6 BR-9–BR-12 BR-16 |
 | S3 | `orchestration` · the claim charge | `answerTask`'s unpark adds one to the existing `turnReentries`, which `shouldRetryOnFail` already discounts. No new field, so no new dual-read. `turnReentries` now counts both kinds of re-entry: after a person's turn (FIX-1690) and after an answered question. Other `unpark` callers unchanged | BR-8 |
-| S4 | `orchestration` · `addTask` | Optional `followUpOf`. Checked in the same partition: the task exists, is terminal, and its session has no unfinished task. An `assignee` beside `followUpOf` is rejected at input; the follow-up takes the root task's worker. Stored top level on the new row, server-checked, resolved to the root when it names a follow-up | BR-20–BR-25 |
+| S4 | `orchestration` · `addTask` | Optional `followUpOf`. Checked in the same partition: the task exists, is terminal, and its session has no unfinished task. An `assignee` beside `followUpOf` is rejected at input; the follow-up takes the root task's worker. Stored top level on the new row, server-checked, resolved to the root when it names a follow-up. Allowed beside FIX-1816's `waitForResponse`: every refusal here runs before filing, so nothing parks | BR-20–BR-25, BR-22a |
 | S5 | `workforce` · the task entry (`work`, FIX-1794 S6) | Declare `userMessage`, so the task as filed is the turn's user item and part of history. On a re-entry after `answerTask`, the turn's message is the answer, labelled as the answer to its question, not the task again. A retry after a failure is not labelled an answer | BR-7 BR-17 |
 | S6 | `workforce` · the hand-off's session key (FIX-1794 S3, S9) | A row with `followUpOf` hands off under its root task's session criteria, so it opens no session. The session is reached by the root task's id only; `findWorkerSession` is unchanged | BR-20 BR-24 |
-| S7 | `workforce` · the turns that carry the tools | The `agent` kind's task turn carries S1's tool. Every flow that carries the eight task tools (FIX-1794 S4, FIX-1802 S2) carries S2's with them, in the same capability, so no flow gets one without the other | BR-1 BR-2 BR-6 |
+| S7 | `workforce` · the turns that carry the tools | The `agent` kind's task turn carries S1's tool, except on an asked row (ER-22). Every flow that carries the task tools (FIX-1794 S4, FIX-1802 S2) carries S2's with them, in the same capability, so a turn still carries one set of task tools and no flow gets `answerTask` without the rest | BR-1 BR-1a BR-2 BR-6 |
 | S8 | `goals/coordinators/task-session-stays-open/` | The goal check and its two controls, per [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met). Reuses FIX-1794's goal tree; adds a goal-local ticket tool | goal |
 | S9 | Docs | [DOCS.md](DOCS.md); `orchestration` and `workforce` READMEs; `minor` changesets for both | — |
 
@@ -58,10 +58,10 @@ forgets its prompt.
 | ID | Runs after | Passes when |
 |---|---|---|
 | V1 | S5 | The POC's F1 and R1, made into specs: a later turn's model is handed the task prompt, and a re-entered turn is handed the answer as its message. Both red on `main` first |
-| V2 | S1 | BR-1–BR-5. A turn that isn't a task turn has no tool; a forged task id on input reaches nothing |
+| V2 | S1 | BR-1–BR-5. A turn that isn't a task turn has no tool; a forged task id on input reaches nothing. BR-1a (ER-22): an asked row's task turn is offered no `parkOnQuestion`, and an assigned follow-up of a finished asked task is |
 | V3 | S2, S3 | BR-6, BR-8–BR-12, BR-14: re-entry in the same session id; a task with `maxAttempts: 1` answered twice and then failing once ends `errored` after that one failure, not before; a crash between the answer's write and the board's run is recovered on the next touch |
-| V4 | S4, S6 | BR-20–BR-25. Two conversations of Alice's each follow up their own task with the same id, and each lands in its own session. A follow-up filed while an earlier one is unfinished is refused, naming it |
-| V5 | S7 | **Must-test**, as FIX-1794 V3: on `agent` and the coordinator, each of the nine task tools appears exactly once on a turn, and `parkOnQuestion` only on a task turn |
+| V4 | S4, S6 | BR-20–BR-25, BR-22a. Two conversations of Alice's each follow up their own task with the same id, and each lands in its own session. A follow-up filed while an earlier one is unfinished is refused, naming it |
+| V5 | S7 | **Must-test**, as FIX-1794 V3: on `agent` and the coordinator, a turn carries one set of task tools: each task tool, `answerTask` among them, appears exactly once, and `parkOnQuestion` only on a task turn that is not working an asked row |
 | V6 | S1–S7 | The second path (BP-035): FIX-1802's split, with one piece parked on a question and answered by the task session above, then both pieces end and the parent settles once (BR-16). FIX-1690's turn park still re-enters through its door, and `answerTask` declines it |
 | VG | S8 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `goals/coordinators/task-session-stays-open/run.mts` PASSES on `openai/gpt-5.4-mini`, after FAILING under `GOAL_CONTROL=new-session` (legs a and c, *names the ticket*) and `GOAL_CONTROL=drop-answer` (leg a, *names `eu-west`*) |
 
@@ -70,7 +70,7 @@ forgets its prompt.
 | Where | Name | Why pinned |
 |---|---|---|
 | Task tool and action | `answerTask`, `answerTask_<board>`, input `{ taskId, answer }` | Public. An app sends it; the docs teach it |
-| Worker tool | `parkOnQuestion`, input `{ question }` | A model reads it. "Ask" is FIX-1816's word for a hand-off that waits, so it is not used here |
+| Worker tool | `parkOnQuestion`, input `{ question }` | A model reads it. "Ask" is FIX-1816's word for a hand-off that waits, so it is not used here. Not offered on an asked row (ER-22) |
 | `addTask` input | `followUpOf` | Public, on an existing tool |
 
 Everything else is yours to name.
@@ -118,8 +118,8 @@ which are S5 and S3.
 
 - Re-read FIX-1794 S2–S9 and FIX-1802 S2, S4 as merged: names, the start-owed marker, the
   binding that marks a pieces' park. This plan names them as specified.
-- If FIX-1816 has merged, confirm its resume verb is untouched here, and that a board worker
-  that *asks* (its L6) parks under a reason `answerTask` declines.
+- If FIX-1816 has merged, confirm its resume verb is untouched here, and that S1's task-turn
+  test is the one its BR-5a refusal reads.
 - Harness Manager parks on questions with `awaitReview` too. Confirm its answer path keeps its
   own charge (S3 counts only `answerTask`'s re-entry).
 - FIX-1764's state: if its composer has shipped, check its finished-task send matches D2.
