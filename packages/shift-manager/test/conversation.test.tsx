@@ -125,7 +125,9 @@ describe("when a line may go", () => {
   it("holds it when the conversation failed to load", async () => {
     read.mockRejectedValue(new Error("down"));
     drawn([session("s1")]);
-    expect((await screen.findByTestId("rev-composer-blocked")).textContent).toContain("didn't load");
+    // The composer is blocked from the first render ("Reading the conversation first…"), so a
+    // findByTestId would return before the failed read re-renders it; wait for the failure's text.
+    await waitFor(() => expect(screen.getByTestId("rev-composer-blocked").textContent).toContain("didn't load"));
   });
 });
 
