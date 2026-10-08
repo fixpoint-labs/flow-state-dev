@@ -275,8 +275,25 @@ describe("rounds (V5)", () => {
       [1, "evaluated", [{ worker: "eng.coder", outcome: "delivered" }]]
     ]);
     expect(await answers(host, id)).toHaveLength(2);
-    // The answer going back out held nobody for the person's next post.
-    expect((await host.sessionState(id)).bestFitHold).toBeNull();
+  });
+
+  it("under best fit, holds nobody for the person's next post on an answer going back out (BR-14)", async () => {
+    const host = bootHost({ standard: standardWorkers({ desk: { rounds: 1 } }) });
+    const id = await host.conversation("alice", "desk");
+    // The EM answers; the coder, handed the EM's answer in round 1, never does.
+    await post(host, id, "who owns it? [route:eng.em] [route:eng.coder] [fail:eng.coder]");
+    await quiet(host);
+    expect(host.heard.map((h) => h.worker)).toEqual(["eng.em", "eng.coder"]);
+
+    // The person's next post is theirs to place: an evaluator call, not held for the coder.
+    await post(host, id, "and the budget? [route:support.general] [fail:support.general]");
+    await quiet(host);
+    expect(host.heard.map((h) => h.worker)).toEqual(["eng.em", "eng.coder", "support.general"]);
+    expect((await host.items(id)).records.map((record: any) => [record.round, record.by])).toEqual([
+      [0, "evaluated"],
+      [1, "evaluated"],
+      [0, "evaluated"]
+    ]);
   });
 
   it("under round robin, routes an answer to the delegate after its author, and the person's turn doesn't move (BR-24, BR-17)", async () => {
@@ -397,11 +414,16 @@ describe("rounds (V5)", () => {
       "alice, through desk",
       "eng.em, through desk"
     ]);
-    const { records } = await host.items(id);
+    const { records, all } = await host.items(id);
     expect(records[1].delegates).toEqual([
       { worker: "eng.coder", outcome: "delivered" },
       { worker: "eng.em", outcome: "skipped", reason: "no other delegate answered in round 0" }
     ]);
+    // Round 0 closed at its deadline, before the coder's late answer came in.
+    const roundOne = all.findIndex((item: any) => item.type === "component" && item.data?.round === 1);
+    const coderLine = all.findIndex((item: any) => item.type === "message" && item.agentName === "eng.coder");
+    expect(roundOne).toBeGreaterThanOrEqual(0);
+    expect(roundOne).toBeLessThan(coderLine);
     // The EM's answer, the coder's late one, then the coder's to round 1: each once.
     expect((await answers(host, id)).map((line) => line.agentName)).toEqual(["eng.em", "eng.coder", "eng.coder"]);
     const late = (await host.sessionState(id)).deliveries.find(
