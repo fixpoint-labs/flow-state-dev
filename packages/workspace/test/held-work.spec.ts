@@ -176,6 +176,20 @@ describe("holding is off unless the host has a held-work store (BR-28, BR-29)", 
     expect(git(place.cwd, "rev-parse", "HEAD")).toBe(remote.rev("main"));
   });
 
+  it("rejects as disabled where the only checkout here is one a killed provision half-built", async () => {
+    const held = await holdTurnOne();
+    const placeDir = join(rootB, ...PLACE);
+    mkdirSync(join(placeDir, "checkout"), { recursive: true });
+    writeFileSync(join(placeDir, "checkout", ".git"), "gitdir: /nowhere\n");
+    writeFileSync(join(placeDir, ".checkout.provisioning"), "");
+    spawned.mockClear();
+
+    const error = await mismatchOf(hostOn(rootB, null).provision(answer, request({ host: "machine-a", held })));
+
+    expect(error.field).toBe("disabled");
+    expect(spawned).not.toHaveBeenCalled();
+  });
+
   it("does not reject a recorded hold where the run's checkout is live here", async () => {
     const offHost = hostOn(rootB, null);
     await offHost.provision(answer, request());
@@ -581,6 +595,36 @@ describe("held work that disagrees with the record is refused, naming the field 
     const held = await holdTurnOne();
     await expectMismatch("branch", { host: "machine-a", held, branch: "fsd/other" });
     await expectMismatch("remote", { host: "machine-a", held, remote: `${remote.url}-elsewhere` });
+  });
+
+  it("a base the remote no longer reaches, though this host's clone still has it: base", async () => {
+    const held = await holdTurnOne();
+    // B's clone fetches the old history first, for another run.
+    await hostOn(rootB).provision(answer, { place: ["epic", "other"], branch: "fsd/other" });
+    // Then the remote's history is replaced.
+    const replaced = tempDir("replaced");
+    execFileSync("git", ["init", "-q", "-b", "main", replaced]);
+    writeFileSync(join(replaced, "fresh.txt"), "new history\n");
+    git(replaced, "add", "fresh.txt");
+    git(replaced, "commit", "-q", "-m", "new root");
+    git(replaced, "push", "-q", "--force", remote.bare, "main:main");
+    rmSync(replaced, { recursive: true, force: true });
+
+    await expectMismatch("base", { host: "machine-a", held });
+  });
+
+  it("a rebuilt checkout whose repository no longer ignores the caller's directory is refused", async () => {
+    remote.commit("main", ".gitignore", ".env\nnode_modules/\n.fsdev\n");
+    const ignored = { dir: ".fsdev", rule: ".fsdev", why: "The run's questions are written there." };
+    const a = hostOn(rootA);
+    const place = await a.provision(answer, { ...request(), ignored });
+    writeFileSync(join(place.cwd, ".gitignore"), ".env\nnode_modules/\n");
+    const held = (await a.checkpoint(place))!;
+
+    const attempt = hostOn(rootB).provision(answer, { ...request({ host: a.hostId(), held }), ignored });
+
+    await expect(attempt).rejects.toThrow(/does not ignore the directory ".fsdev"/);
+    expect(existsSync(join(rootB, ...PLACE, "checkout"))).toBe(false);
   });
 
   it("a rebuilt tree that is not the snapshot's: tree, with the rebuilt checkout removed", async () => {

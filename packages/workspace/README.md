@@ -301,7 +301,7 @@ from in `origin`: `new` for a first provision, `live` for a place that is live o
 recorded as this host's, handed back as it always was, `held` for one rebuilt from held work, and
 `base` when nothing was ever held. To rebuild, the host clones the remote, cuts the branch at the
 recorded base, unpacks the pack, checks out the snapshot, resets the branch to the head with the
-changes unstaged, and checks the rebuilt tree against the snapshot. `progress` is told `lost`
+changes unstaged, and checks the rebuilt tree against the snapshot, and the `ignored` directory the same way a new checkout is checked. The base must still be on a branch of the remote as just fetched, not only in this host's clone. `progress` is told `lost`
 when the recorded place isn't live here, and `restoring` before a rebuild.
 
 When anything disagrees, `provision` rejects with `HeldWorkMismatchError`, whose `field` names
