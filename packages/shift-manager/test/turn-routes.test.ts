@@ -7,18 +7,16 @@ import { describe, expect, it } from "vitest";
 import { addressedSeat, doorOf, mentionOf, messageableRows, type Roster } from "../src/lib/derive";
 import type { BoardRow, Seat } from "../src/lib/reads";
 
-const seat = (id: string, door: string | null = "message"): Seat => ({
+const seat = (id: string, door: string | null = "message", kind = "coder"): Seat => ({
   id,
-  kind: "coder",
+  kind,
   door,
-  hired: false,
-  seatId: id,
   team: id.split(".")[0]!,
   name: id.split(".")[1]!,
 });
 
 const roster: Roster = {
-  seats: [seat("eng.coder"), seat("eng.em", null), seat("ops.coder")],
+  seats: [seat("eng.coder"), seat("eng.em", null, "em"), seat("ops.coder")],
   workstreams: [{ id: "eng.feature", kind: "mailbox", members: ["eng.coder", "eng.em"] }],
 };
 const feature = roster.workstreams[0]!;
@@ -84,8 +82,10 @@ describe("an @name in a workstream (BR-19)", () => {
 
 describe("a session's door (BR-18)", () => {
   it("is the one the session's own flow publishes, or none", () => {
-    expect(doorOf(roster.seats, "eng.coder")).toBe("message");
-    expect(doorOf(roster.seats, "eng.em")).toBeNull();
-    expect(doorOf(roster.seats, "eng.feature")).toBeNull();
+    expect(doorOf(roster.seats, "coder")).toBe("message");
+    expect(doorOf(roster.seats, "em")).toBeNull();
+    // A flow no seat runs on, and a worker's id, which names no flow.
+    expect(doorOf(roster.seats, "mailbox")).toBeNull();
+    expect(doorOf(roster.seats, "eng.coder")).toBeNull();
   });
 });

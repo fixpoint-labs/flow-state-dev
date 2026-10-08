@@ -69,12 +69,6 @@ export interface WorkforceCapabilityOptions {
    */
   inventory: InventoryKeys;
   /**
-   * Registry key for the durable hired roster. When set, Discover treats a
-   * roster row with no file as the declared half for that seat, so a runtime
-   * hire is visible on the same lookup Labs already use.
-   */
-  hiredRoster?: string;
-  /**
    * Other domains' sources to put behind the same door — `skillsManifestSource()`
    * from `@flow-state-dev/orchestration`, `resourcesManifestSource()` from
    * `@flow-state-dev/core`.
@@ -127,7 +121,6 @@ export function createWorkforceCapability(
     ...workforceManifestSources({
       roster: options.roster,
       inventory: options.inventory,
-      hiredRoster: options.hiredRoster,
     }),
     ...(options.sources ?? []),
   ]);

@@ -3,11 +3,12 @@
  * worker flow, and the built-in `agent` keeps a worker's own state off org
  * scope while a shared note names who wrote it.
  *
- * Real path, no model: the roster is read from files, hired through
- * `hireWorkforce`, booted with `createFlowState`, run with `runAction` for two
- * users of one org, and a hired worker comes back from a stored roster row
- * through `reloadHiredSeats`. Graded on what boot refuses and what the store
- * holds after each run, never on what the contract check returns.
+ * Real path, no model: the roster is read from files, registered through
+ * `hireWorkforce`, booted with `createFlowState`, and run with `runAction`
+ * for two users of one org, each in a session created naming its worker. A
+ * user's own worker on a flow kept for declared workers is refused when a
+ * session names it. Graded on what boot refuses and what the store holds
+ * after each run, never on what the contract check returns.
  *
  * See goal.md for the contract and the source-revert controls.
  *
@@ -17,26 +18,11 @@ import { join } from "node:path";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, ensureSessionRecord, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import {
-  createWorkerInstallation,
-  HIRED_ROSTER_PREFIX,
-  hireWorkforce,
-  reloadHiredSeats,
-  seatAddress,
-  toHiredSeatRow,
-  type HireOptions
-} from "@flow-state-dev/workforce";
+import { resolveUserStorageKey } from "@flow-state-dev/engine";
+import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { fixtureDir, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import {
-  coordinatorFlow,
-  doorlessFlow,
-  looseAttributionFlow,
-  numberedFlow,
-  defineSharerFlow,
-  orgKeeperFlow,
-  triageFlow
-} from "./fixtures/flows.ts";
+import { defineFlows } from "./fixtures/flows.ts";
 
 type Fixture = {
   orgId: string;
@@ -57,20 +43,6 @@ stripIntentOverrides();
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 
-/**
- * The app's worker flows. The coordinator is kept for declared workers. The
- * sharer runs its worker on the worker model, which the files' roster builds
- * once read, so it joins the map then.
- */
-const registered: NonNullable<HireOptions["workerFlows"]> = {
-  triage: triageFlow,
-  [fixture.keptFlow]: { flow: coordinatorFlow, standardOnly: true },
-  "org-keeper": orgKeeperFlow
-};
-
-/** The same app with three flows that each break one rule. */
-const BROKEN = { doorless: doorlessFlow, numbered: numberedFlow, "loose-attribution": looseAttributionFlow };
-
 type Access = { user: string; op: string; scopeType: string; scopeId: string; key: string };
 
 await runGoal(async () => {
@@ -83,19 +55,30 @@ await runGoal(async () => {
     return { failures: [`the fixture tree did not load: ${JSON.stringify([tree.errors, tree.skillErrors])}`], evidence: "" };
   }
   const workers = tree.workers;
-  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => registered });
-  registered.sharer = defineSharerFlow(installation);
+  /** The app's installation, with the broken flows beside its own when `broken`. The coordinator is kept for declared workers. */
+  const install = (broken: boolean) => {
+    let flows: Record<string, unknown> = {};
+    const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows as never });
+    const built = defineFlows(installation);
+    flows = {
+      ...built.registered,
+      [fixture.keptFlow]: { flow: built.registered.coordinator, standardOnly: true },
+      ...(broken ? built.broken : {})
+    };
+    return { installation, registered: Object.keys(built.registered), broken: Object.keys(built.broken) };
+  };
 
   // ---- leg a · three broken flows refused at boot, by name; nothing hired ----
   let brokenSeats: FlowInstance[] | undefined;
   let bootError = "";
+  const withBroken = install(true);
   try {
-    brokenSeats = hireWorkforce(workers, { workerFlows: { ...registered, ...BROKEN } });
+    brokenSeats = hireWorkforce(withBroken.installation);
   } catch (error) {
     bootError = error instanceof Error ? error.message : String(error);
   }
   if (brokenSeats !== undefined) {
-    fail("a", `the app with ${Object.keys(BROKEN).join(", ")} hired ${brokenSeats.length} worker(s)`);
+    fail("a", `the app with ${withBroken.broken.join(", ")} registered ${brokenSeats.length} cop(ies)`);
   } else {
     const named = (flow: string) => bootError.includes(`worker flow "${flow}"`);
     if (!named("doorless") || !bootError.includes("no door")) fail("a", `the boot error does not name the doorless flow: ${bootError}`);
@@ -103,7 +86,7 @@ await runGoal(async () => {
     if (!named("loose-attribution") || !bootError.includes("writtenBy")) {
       fail("a", `the boot error does not name loose-attribution's \`writtenBy\`: ${bootError}`);
     }
-    for (const good of ["agent", ...Object.keys(registered)]) {
+    for (const good of ["agent", ...withBroken.registered]) {
       if (named(good)) fail("a", `the boot error refuses "${good}", which meets the contract`);
     }
     if (!bootError.includes("nothing was hired")) fail("a", `the boot error does not say nothing was hired: ${bootError}`);
@@ -111,17 +94,20 @@ await runGoal(async () => {
   }
 
   // ---- boot the app that meets the contract ------------------------
-  const seats = hireWorkforce(workers, { workerFlows: registered });
-  const seatById = new Map(seats.map((seat) => [seat.id, seat]));
-  const seat = (id: string): FlowInstance => {
-    const found = seatById.get(id);
-    if (found === undefined) throw new Error(`no seat "${id}" was hired; hired: ${[...seatById.keys()].join(", ")}`);
+  const { installation } = install(false);
+  const copies = hireWorkforce(installation);
+  const copyById = new Map(copies.map((copy) => [copy.id, copy]));
+  /** The copy of the flow `workerId` runs on. */
+  const flowOf = (workerId: string): FlowInstance => {
+    const kind = (installation.standardWorker(workerId)?.declared.flow as string | undefined) ?? "agent";
+    const found = copyById.get(kind);
+    if (found === undefined) throw new Error(`no copy of "${kind}" was registered; registered: ${[...copyById.keys()].join(", ")}`);
     return found;
   };
-  evidence.push(`booted ${seats.length} workers on ${new Set(seats.map((s) => s.kind)).size} flows`);
+  evidence.push(`booted ${workers.length} workers on ${copies.length - 1} flows, one copy each`);
 
   const state = createFlowState({
-    flows: Object.fromEntries(seats.map((s) => [s.id, s])),
+    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {
@@ -161,16 +147,47 @@ await runGoal(async () => {
       return (getAll as (...args: unknown[]) => Promise<unknown>)(scopeType, scopeId, ...rest);
     }) as typeof store.getAll;
 
-    const run = async (flow: FlowInstance, actionName: string, user: string, input: unknown) => {
+    /** Open `sessionId` naming `worker`, through the one session-birth path, as `user`. */
+    const open = async (worker: string, user: string, sessionId: string) => {
+      const flow = flowOf(worker);
+      const now = Date.now();
+      await ensureSessionRecord(
+        runtime.stores,
+        sessionId,
+        {
+          flow,
+          sessionId,
+          principal: { userId: user, orgId: fixture.orgId },
+          state: { workerId: worker },
+          fromCaller: true,
+          via: "create"
+        },
+        () => ({
+          id: sessionId,
+          flowKind: flow.kind,
+          flowId: flow.id,
+          userId: user,
+          orgId: fixture.orgId,
+          version: 0,
+          createdAt: now,
+          updatedAt: now,
+          journal: []
+        })
+      );
+    };
+    /** One turn of `worker`'s `actionName`, as `user`, in a session naming the worker. */
+    const run = async (worker: string, actionName: string, user: string, input: unknown) => {
+      const sessionId = `${user}-${worker}-${actionName}`;
+      await open(worker, user, sessionId);
       runningAs = user;
       try {
         return await runAction({
           orgId: fixture.orgId,
-          flow,
+          flow: flowOf(worker),
           actionName,
           input,
           userId: user,
-          sessionId: `${user}-${flow.id}-${actionName}`,
+          sessionId,
           stores: runtime.stores,
           runtimeConfig: { ...runtime.runtimeConfig, logger: silentLogger }
         } as never);
@@ -180,14 +197,13 @@ await runGoal(async () => {
     };
 
     // ---- leg b · the built-in agent's own state stays in its user's scope ----
-    const helper = seat(fixture.helper);
     for (const user of [fixture.alice, fixture.bob]) {
-      const result = await run(helper, "run", user, { message: fixture.question });
-      if (result.error !== undefined) fail("b", `${user}'s run on ${helper.id} failed: ${JSON.stringify(result.error)}`);
+      const result = await run(fixture.helper, "run", user, { message: fixture.question });
+      if (result.error !== undefined) fail("b", `${user}'s run on ${fixture.helper} failed: ${JSON.stringify(result.error)}`);
     }
     const drawer = accesses.filter((a) => a.key.startsWith("skills/") && a.user !== "");
     const aliceWrites = drawer.filter((a) => a.user === fixture.alice && a.op === "set");
-    if (aliceWrites.length === 0) fail("b", `alice's run on ${helper.id} wrote no skills drawer rows, so nothing below is evidence`);
+    if (aliceWrites.length === 0) fail("b", `alice's run on ${fixture.helper} wrote no skills drawer rows, so nothing below is evidence`);
     const orgRows = aliceWrites.filter((a) => a.scopeType === "org");
     if (orgRows.length > 0) {
       fail("b", `alice's drawer rows are in the org's cells: ${[...new Set(orgRows.map((a) => `org/${a.scopeId}`))].join(", ")}`);
@@ -203,33 +219,7 @@ await runGoal(async () => {
 
     // Her shared note names her, and her worker: the one her session was
     // created with, which the turn loaded.
-    const scout = seat(fixture.scout);
-    const shareSession = `${fixture.alice}-${scout.id}-share`;
-    const now = Date.now();
-    await ensureSessionRecord(
-      runtime.stores,
-      shareSession,
-      {
-        flow: scout,
-        sessionId: shareSession,
-        principal: { userId: fixture.alice, orgId: fixture.orgId },
-        state: { workerId: fixture.scout },
-        fromCaller: true,
-        via: "create"
-      },
-      () => ({
-        id: shareSession,
-        flowKind: scout.kind,
-        flowId: scout.id,
-        userId: fixture.alice,
-        orgId: fixture.orgId,
-        version: 0,
-        createdAt: now,
-        updatedAt: now,
-        journal: []
-      })
-    );
-    const shared = await run(scout, "share", fixture.alice, fixture.note);
+    const shared = await run(fixture.scout, "share", fixture.alice, fixture.note);
     if (shared.error !== undefined) fail("b", `alice's note failed: ${JSON.stringify(shared.error)}`);
     const stored = (await get("org", fixture.orgId, `team-notes/${fixture.note.key}`)) as { state?: unknown } | undefined;
     const want = { text: fixture.note.text, writtenBy: { userId: fixture.alice, workerId: fixture.scout } };
@@ -240,38 +230,58 @@ await runGoal(async () => {
     }
 
     // A flow its author built to keep org data registered, and every member reads what it wrote (Q2).
-    const keeper = seat(fixture.keeper);
-    const kept = await run(keeper, "keep", fixture.alice, fixture.board);
+    const kept = await run(fixture.keeper, "keep", fixture.alice, fixture.board);
     const boardRow = (await get("org", fixture.orgId, `team-board/${fixture.board.key}`)) as { state?: { text?: string } } | undefined;
     if (kept.error !== undefined || boardRow?.state?.text !== fixture.board.text) {
       fail("b", `the org-keeper's own org data was not written: ${JSON.stringify(kept.error ?? boardRow)}`);
     }
 
-    // ---- leg c · a hired worker on a kept flow is refused ------------------
-    const row = toHiredSeatRow({
-      seatId: fixture.bobsOwn.seatId,
+    // ---- leg c · a user's own worker on a kept flow is refused ---------------
+    // Bob's own worker row, naming the kept flow, as a row written before the
+    // flow was kept for declared workers leaves it: hire refuses to write one now.
+    const bobsCell = resolveUserStorageKey(fixture.bob, fixture.orgId, { id: "", isolateUserState: false });
+    const rowKey = `workforce/workers/${fixture.bobsOwn.seatId}`;
+    const row = {
       flow: fixture.keptFlow,
-      owningOrgId: fixture.orgId,
-      ownerUserId: fixture.bob
-    });
-    const rowKey = `${HIRED_ROSTER_PREFIX}${fixture.bobsOwn.seatId}`;
-    await set("org", fixture.orgId, rowKey, row as never, "any" as never);
-    const before = JSON.stringify(await get("org", fixture.orgId, rowKey));
-    const reload = await reloadHiredSeats({ stores: runtime.stores, orgIds: [fixture.orgId], workerFlows: registered });
-    const bobsAddress = seatAddress(fixture.orgId, fixture.bobsOwn.seatId, fixture.bob);
-    if (reload.seats.some((s) => s.id === bobsAddress)) {
-      fail("c", `bob's hired worker runs on the kept flow "${fixture.keptFlow}"`);
+      description: null,
+      instructions: "You hand work on.",
+      teamInstructions: null,
+      skills: [],
+      settings: {},
+      forkedFrom: null
+    };
+    await set("user", bobsCell, rowKey, row as never, "any" as never);
+    const before = JSON.stringify(await get("user", bobsCell, rowKey));
+    let refusal = "";
+    try {
+      const flow = copyById.get(fixture.keptFlow)!;
+      const sessionId = `${fixture.bob}-${fixture.bobsOwn.seatId}`;
+      const now = Date.now();
+      await ensureSessionRecord(
+        runtime.stores,
+        sessionId,
+        {
+          flow,
+          sessionId,
+          principal: { userId: fixture.bob, orgId: fixture.orgId },
+          state: { workerId: fixture.bobsOwn.seatId },
+          fromCaller: true,
+          via: "create"
+        },
+        () => ({ id: sessionId, flowKind: flow.kind, flowId: flow.id, userId: fixture.bob, orgId: fixture.orgId, version: 0, createdAt: now, updatedAt: now, journal: [] })
+      );
+    } catch (error) {
+      refusal = error instanceof Error ? error.message : String(error);
     }
-    const problem = reload.problems.join("\n");
-    if (!problem.includes(`"${fixture.keptFlow}"`) || !problem.includes("declared workers")) {
-      fail("c", `the refusal does not name the kept flow and say it is kept for declared workers: ${problem}`);
+    if (refusal === "") fail("c", `bob's own worker runs on the kept flow "${fixture.keptFlow}"`);
+    else if (!refusal.includes(`"${fixture.keptFlow}"`) || !refusal.includes("declared workers")) {
+      fail("c", `the refusal does not name the kept flow and say it is kept for declared workers: ${refusal}`);
     }
-    if (JSON.stringify(await get("org", fixture.orgId, rowKey)) !== before) fail("c", "bob's stored worker was changed by the boot");
-    const coord = seat(fixture.coordinator);
-    const standardRun = await run(coord, "run", fixture.alice, { message: "who takes this?" });
+    if (JSON.stringify(await get("user", bobsCell, rowKey)) !== before) fail("c", "bob's stored worker was changed");
+    const standardRun = await run(fixture.coordinator, "run", fixture.alice, { message: "who takes this?" });
     if (standardRun.error !== undefined) fail("c", `the declared worker on "${fixture.keptFlow}" did not run: ${JSON.stringify(standardRun.error)}`);
-    if (!reload.seats.some((s) => s.id === bobsAddress) && standardRun.error === undefined) {
-      evidence.push(`c: bob's hired worker on "${fixture.keptFlow}" was refused at reload and left as stored; ${coord.id} ran on it`);
+    if (refusal !== "" && standardRun.error === undefined) {
+      evidence.push(`c: a session naming bob's own worker on "${fixture.keptFlow}" was refused and his row left as stored; ${fixture.coordinator} ran on it`);
     }
   } finally {
     await state.dispose();

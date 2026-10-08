@@ -9,6 +9,11 @@
  * - `createWorkerHireBlocks`: hire, fork, edit and fire, as writes to the
  *   caller's roster.
  * - `defineWorkerRosterFlow`: the flow a client reads a roster through.
+ * - `hireWorkforce`: the copies to register, one per worker flow, and the
+ *   roster flow.
+ * - `workerConfigOf`: the configuration of the worker a turn loaded.
+ * - `workerFlow`: a worker flow built on its installation, for a flow that
+ *   lives in its own file.
  * - `createWorkforceClient`: find or start a session with a worker. Exported
  *   from `./browser` only: it is an app's, and the server never calls it.
  */
@@ -34,9 +39,13 @@ export {
   verifiedWorkerOf,
   WorkerTurnRefusedError,
   type ResolvedWorker,
+  type WorkerGrants,
   type WorkerInstallation,
   type WorkerInstallationOptions,
   type WorkerTurnContext
 } from "./installation";
 export { createWorkerHireBlocks, type WorkerHireBlocks } from "./hire-blocks";
 export { defineWorkerRosterFlow } from "./roster-flow";
+export { hireWorkforce, inventorySeats, type HireWorkforceOptions } from "./register";
+export { workerConfigOf } from "./verified-worker";
+export { workerFlow, type WorkerFlowBuilder } from "./worker-flow";

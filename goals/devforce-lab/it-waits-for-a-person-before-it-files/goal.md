@@ -26,7 +26,7 @@ different valid feature still passes a correct implementation.
 2. Approve, through `POST /eng.em/requests/:id/resume`: first a resume with no bearer (401) and one
    with `submit` (409) are refused and it stays pending; then approve answers 202, the request
    completes, exactly one row (derived from the held-out slug) settles `completed`, handed to the
-   coder seat by `flowId` and never to the reviewer, the coder reached once, nothing left pending
+   coder seat by `workerId` and never to the reviewer, the coder reached once, nothing left pending
    *(AR-8, AR-9, AR-11, AR-13)*;
 3. Deny, on a fresh open: the request completes, no row, no dispatch, the coder not reached, and the
    EM's message says nothing was filed *(AR-10, AR-11)*;
@@ -47,13 +47,15 @@ different valid feature still passes a correct implementation.
 a lab helper rather than by the route Shift Manager takes. So every read a person's client would make goes
 through the lab's HTTP door with its verified bearer; the answer goes only through the engine's
 resume route; rows are **enumerated**, never looked up by the id this check expects; and "the coder
-started" is graded on the dispatch record by `flowId` and on the stub being reached, not on the
+started" is graded on the dispatch record by `workerId` and on the stub being reached, not on the
 row's status alone.
 
 **Controls:** `GOAL_CONTROL=list` prints them.
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | FAIL (control) | `no-gate`: legs 1, 3, 4c and 10 (a row before any approval). |
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | The ask raised in `s_eng_em`, a session on `em` naming the EM; answered through `em`'s resume route; approve filed one row handed to `eng.coder` by worker id; deny filed nothing. |
 | `no-gate` | the asking door files before it suspends | leg 1, "a row existed before any approval" (and legs 3 and 4c, a row after Deny) |
 
 **Model:** n/a (model-free by design; no key is read).

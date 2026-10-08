@@ -16,6 +16,7 @@ import { projectsOf, talkFor, type LoadedSnapshot } from "../src/lib/derive";
 import { createLabReader, toProject, type Project } from "../src/lib/reads";
 import { postToRoom, readRoom, readRoomPages, startRoomRefresh, TalkRefused, type RoomLine, type RoomPage } from "../src/lib/talk";
 import { ClientHttpError } from "@flow-state-dev/client";
+import { ASKER_KIND } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -146,7 +147,7 @@ describe("PROJECTS (BR-22, D3)", () => {
     const { baseUrl } = await lab();
     // OTHER is a member of both projects, created none of them, and holds only a seat's session.
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: "ops.asker", userId: OTHER });
+    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_KIND, userId: OTHER, state: { workerId: "ops.asker" } });
     openApp(baseUrl, "/p/desk/stream", OTHER);
     await screen.findByTestId("nav-project-desk", undefined, { timeout: 10_000 });
     expect(screen.getAllByTestId("project-group").map((g) => g.getAttribute("data-project-id"))).toContain("empty");
@@ -211,7 +212,7 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
   it("a Lab that doesn't serve the room kind has nothing that declares projects: zero projects, not a failure", async () => {
     const { baseUrl } = await lab();
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: "ops.asker", userId: OTHER });
+    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_KIND, userId: OTHER, state: { workerId: "ops.asker" } });
     refuseSessionsOn("mailbox", 404);
     const snapshot = await createLabReader(createLabClients({ userId: OTHER, baseUrl })).read();
     expect("projects" in snapshot && snapshot.projects).toEqual({ ok: true, value: { rows: [] } });
@@ -220,7 +221,7 @@ describe("a Lab that declares no projects is empty, not failed (D3)", () => {
   it("a room kind that can't be opened for this person is a failed projects read, never an empty list", async () => {
     const { baseUrl } = await lab();
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: "ops.asker", userId: OTHER });
+    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: ASKER_KIND, userId: OTHER, state: { workerId: "ops.asker" } });
     refuseSessionsOn("mailbox", 503);
     const snapshot = await createLabReader(createLabClients({ userId: OTHER, baseUrl })).read();
     const projects = "projects" in snapshot ? snapshot.projects : undefined;

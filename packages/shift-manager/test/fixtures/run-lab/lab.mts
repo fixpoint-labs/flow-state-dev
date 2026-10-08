@@ -10,6 +10,10 @@
  * a per-worker seat on the drainer's flow, and a per-task seat on a flow of
  * its own. No seat, mailbox or board is named in this file.
  *
+ * Every flow is registered once and runs the installation's workers: a run's
+ * session names the worker whose flow it runs on. A row handed to a seat on
+ * the drainer's flow runs there, as the drainer.
+ *
  * At boot, after the inventory, the Lab files its rows through the mailbox's
  * own `fileTask` and drains the board once from a conversation of its own:
  *
@@ -54,8 +58,10 @@ import {
   mailboxBoard,
   mailboxBoardIds,
   mailboxInstances,
+  createWorkerInstallation,
   defineMailboxFlow,
   hireWorkforce,
+  inventorySeats,
   openMailboxes,
   openInventory,
   workerConfigSchema,
@@ -63,6 +69,7 @@ import {
   type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -228,13 +235,18 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     }));
   if (drainer === undefined || seats.length === 0) throw new Error("the run-lab tree declares no drainer or no seats");
 
+  let workerFlows: Record<string, unknown> = {};
+  const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => workerFlows as never });
   const seatConfig = workerConfigSchema().extend({ handoff: z.enum(["per-task", "per-worker"]).optional() });
+  // A row for a seat on a flow of its own runs there, as that seat; one for a
+  // seat on the drainer's flow runs on the drainer's flow, as the drainer.
   const address = (seat: (typeof seats)[number]) =>
     dispatcher<TaskWorkerInput>({
       name: `run-lab-hand-${seat.name}`,
       action: ENTRY,
       session: seat.policy,
-      ...(seat.flow !== undefined ? { flowKind: seat.id } : {}),
+      state: { [WORKER_ID_STATE_KEY]: seat.flow !== undefined ? seat.id : drainer.id },
+      ...(seat.flow !== undefined ? { flowKind: seat.flow } : {}),
     });
   const BOARD_ID = `${ledger.id}-board`;
   const leadBoard = taskBoard({
@@ -243,11 +255,13 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     collection: ledger,
     workers: Object.fromEntries(seats.map((seat) => [seat.name, address(seat)])),
   });
+  const drainerFlow = drainer.declared.flow as string;
   const leadKind = defineFlow({
-    kind: drainer.declared.flow as string,
+    kind: drainerFlow,
     cardinality: "collection",
-    configSchema: workerConfigSchema(),
-    resources: { [ledger.id]: ledger },
+    configSchema: seatConfig,
+    session: installation.session(),
+    resources: { [ledger.id]: ledger, ...installation.resources },
     actions: { drain: { block: leadBoard.drain }, ...hearingDoor },
     task: { actions: { [ENTRY]: { block: scriptedRun } } },
   } as never);
@@ -261,7 +275,14 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
           name: `run-lab-${seat.flow}`,
           boardId: BOARD_ID,
           collection: ledger,
-          workers: { [seat.name]: address({ ...seat, flow: undefined }) },
+          workers: {
+            [seat.name]: dispatcher<TaskWorkerInput>({
+              name: `run-lab-hand-${seat.name}-own`,
+              action: ENTRY,
+              session: seat.policy,
+              state: { [WORKER_ID_STATE_KEY]: seat.id },
+            }),
+          },
         });
         return [
           seat.flow!,
@@ -269,28 +290,35 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
             kind: seat.flow!,
             cardinality: "collection",
             configSchema: seatConfig,
-            resources: { [ledger.id]: ledger, [OBSERVED_PLAN]: observedPlanCollection, [OBSERVED_FILE_OPS]: observedFileOpsCollection },
+            session: installation.session(),
+            resources: {
+              [ledger.id]: ledger,
+              [OBSERVED_PLAN]: observedPlanCollection,
+              [OBSERVED_FILE_OPS]: observedFileOpsCollection,
+              ...installation.resources,
+            },
             actions: { drain: { block: board.drain }, ...hearingDoor },
             task: { actions: { [ENTRY]: { block: scriptedRun } } },
           } as never),
         ];
       }),
   );
-  const passiveKind = defineFlow({ kind: PASSIVE_KIND, cardinality: "collection", configSchema: seatConfig, actions: { ...hearingDoor } } as never);
+  const passiveKind = defineFlow({
+    kind: PASSIVE_KIND,
+    cardinality: "collection",
+    configSchema: seatConfig,
+    session: installation.session(),
+    resources: { ...installation.resources },
+    actions: { ...hearingDoor },
+  } as never);
 
-  const hired = hireWorkforce(tree.workers, {
-    workerFlows: {
-      [drainer.declared.flow as string]: leadKind as never,
-      [PASSIVE_KIND]: passiveKind as never,
-      ...(ownKinds as Record<string, never>),
-    },
-    mailboxBoards: mailboxBoardIds(tree.mailboxes),
-  });
+  workerFlows = { [drainerFlow]: leadKind, [PASSIVE_KIND]: passiveKind, ...ownKinds };
+  const copies = hireWorkforce(installation, { mailboxBoards: mailboxBoardIds(tree.mailboxes) });
   const mailboxKind = defineMailboxFlow({ inventory: true });
   const instances = mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } });
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(instances.map((i) => [i.kind, i])),
-    ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
+    ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
   };
   const flowState = createFlowState({
     flows,
@@ -348,7 +376,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   };
 
   const inventory = await openInventory(
-    { seats: hired, mailboxes: tree.mailboxes },
+    { seats: inventorySeats(installation), mailboxes: tree.mailboxes },
     {
       run: (request: InventoryActionRequest) => act(flows[request.flowKind]!, request.sessionId, request.action, request.input, request.source),
       seatWriter: { flowKind: MAILBOX_KIND },
@@ -377,8 +405,14 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   for (const seat of seats.filter((s) => s.policy === "per-worker")) {
     for (const n of [1, 2]) filed.push({ taskId: await file(seat, `${seat.name}: short run ${n}`, { steps: 2 }), seatId: seat.id, kind: "short" });
   }
-  const lead = hired.find((seat) => seat.id === drainer.id)!;
-  await act(lead as FlowInstance, RUN_LAB_DRAIN_SESSION, "drain", {});
+  // The drain's conversation, opened naming the drainer.
+  const opened = await call("POST", [drainerFlow, "sessions"], {
+    userId: RUN_LAB_USER_ID,
+    sessionId: RUN_LAB_DRAIN_SESSION,
+    state: { [WORKER_ID_STATE_KEY]: drainer.id },
+  });
+  if (opened.status !== 201) throw new Error(`the drain's session was not opened: ${opened.status} ${JSON.stringify(opened.body)}`);
+  await act(flows[drainerFlow]!, RUN_LAB_DRAIN_SESSION, "drain", {});
 
   // Filed after the only drain, so nothing ever claims it.
   const firstSeat = seats.find((s) => s.policy === "per-task")!;
@@ -396,5 +430,5 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     }
   };
 
-  return { flowState, tree, flows, mailbox, boardName, ledger, drainerId: drainer.id, seats, filed, stopHeldRuns, releaseAsk: () => asks.open() };
+  return { flowState, tree, flows, mailbox, boardName, ledger, drainerFlow, seats, filed, stopHeldRuns, releaseAsk: () => asks.open() };
 }

@@ -54,13 +54,13 @@ import {
   mailboxPostCapability,
   defineAgentWorkerFlow,
   defineMailboxFlow,
-  hireWorkforce,
   routeByPurpose,
   wakeMemberSeats,
   type MailboxManifest,
   type MailboxNotifyInput,
-  type WorkerManifest
+  type WorkerManifest,
 } from "../src/index";
+import { mintSeats } from "../src/hire";
 import { MAILBOX_ANSWER_ACTION, mailboxAnswerInputSchema } from "../src/mailbox/mailbox-flow";
 import { failLineWrite, postedLines } from "./mailbox-post-lines";
 
@@ -178,7 +178,7 @@ function answerFlow() {
 
 function host() {
   const agent = defineAgentWorkerFlow({ uses: [mailboxPostCapability] });
-  const seats = hireWorkforce(workers(), { workerFlows: { agent } });
+  const seats = mintSeats(workers(), { workerFlows: { agent } });
   const [mailbox] = mailboxInstances(manifests, {
     kinds: {
       mailbox: defineMailboxFlow({

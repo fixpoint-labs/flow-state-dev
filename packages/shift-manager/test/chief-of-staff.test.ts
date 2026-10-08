@@ -6,14 +6,13 @@
  */
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
-import { seatAddress } from "@flow-state-dev/workforce/browser";
 import { chiefOfStaffOf, shiftSummary, streamCounts, type LoadedSnapshot } from "../src/lib/derive";
 import { conversationSession, currentConversation, newConversationId } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
 import { STAFF_TEAM, toSeat, type Ask, type BoardRow, type Seat } from "../src/lib/reads";
 
 const ORG = "org_1";
-const seat = (id: string, door: string | null = "run"): Seat => ({ ...toSeat({ id, kind: "agent", door }, ORG)! });
+const seat = (id: string, door: string | null = "run"): Seat => ({ ...toSeat({ id, kind: "agent", door })! });
 
 describe("landing (V1, BR-1)", () => {
   it("opens Chief of Staff at /, at /cos and at any path Shift Manager doesn't know", () => {
@@ -44,37 +43,31 @@ describe("landing (V1, BR-1)", () => {
 });
 
 describe("which seat is the chief of staff (V2, D2)", () => {
-  it("finds an org seat and a team's seat by the name after the org's address", () => {
-    expect(chiefOfStaffOf([seat("chief-of-staff"), seat("ops.asker")], ORG)).toEqual({ kind: "one", seat: seat("chief-of-staff") });
-    expect(chiefOfStaffOf([seat("desk.chief-of-staff"), seat("desk.asker")], ORG)).toEqual({ kind: "one", seat: seat("desk.chief-of-staff") });
-    // An Ops-hired seat's address is `seatAddress(org, seatId)`: `org_1` is escaped to `org%5F1`.
-    const hired = seatAddress(ORG, "chief-of-staff");
-    expect(chiefOfStaffOf([seat(hired)], ORG)).toEqual({ kind: "one", seat: seat(hired) });
-    expect(chiefOfStaffOf([seat(seatAddress(ORG, "desk.chief-of-staff"))], ORG).kind).toBe("one");
+  it("finds an org seat and a team's seat by its name", () => {
+    expect(chiefOfStaffOf([seat("chief-of-staff"), seat("ops.asker")])).toEqual({ kind: "one", seat: seat("chief-of-staff") });
+    expect(chiefOfStaffOf([seat("desk.chief-of-staff"), seat("desk.asker")])).toEqual({ kind: "one", seat: seat("desk.chief-of-staff") });
   });
 
   it("is several, and no guess, when two seats carry the name", () => {
-    expect(chiefOfStaffOf([seat("chief-of-staff"), seat("desk.chief-of-staff")], ORG)).toEqual({
+    expect(chiefOfStaffOf([seat("chief-of-staff"), seat("desk.chief-of-staff")])).toEqual({
       kind: "several",
       seats: [seat("chief-of-staff"), seat("desk.chief-of-staff")],
     });
-    expect(chiefOfStaffOf([seat("desk.chief-of-staff"), seat("ops.chief-of-staff")], ORG).kind).toBe("several");
+    expect(chiefOfStaffOf([seat("desk.chief-of-staff"), seat("ops.chief-of-staff")]).kind).toBe("several");
   });
 
   it("is none when no seat carries exactly the name", () => {
-    expect(chiefOfStaffOf([], ORG)).toEqual({ kind: "none" });
-    expect(chiefOfStaffOf([seat("desk.chief-of-staffs"), seat("chief"), seat("desk.chief"), seat("chief-of-staff.asker")], ORG)).toEqual({
+    expect(chiefOfStaffOf([])).toEqual({ kind: "none" });
+    expect(chiefOfStaffOf([seat("desk.chief-of-staffs"), seat("chief"), seat("desk.chief"), seat("chief-of-staff.asker")])).toEqual({
       kind: "none",
     });
   });
 
   it("reads an org seat's row, which has no team, without error", () => {
-    expect(toSeat({ id: "chief-of-staff", kind: "agent", door: "run" }, ORG)).toEqual({
+    expect(toSeat({ id: "chief-of-staff", kind: "agent", door: "run" })).toEqual({
       id: "chief-of-staff",
       kind: "agent",
       door: "run",
-      hired: null,
-      seatId: "chief-of-staff",
       team: STAFF_TEAM,
       name: "chief-of-staff",
     });
@@ -186,43 +179,48 @@ describe("the rail's STREAMS (V7, BR-19)", () => {
 });
 
 describe("the person's conversation with the chief of staff (V4, BR-14)", () => {
-  const session = (id: string, flowId: string | undefined, createdAt: number, parentSessionId?: string): SessionSummary =>
-    ({ id, flowKind: "agent", ...(flowId === undefined ? {} : { flowId }), userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;
+  const cos = seat("desk.chief-of-staff");
+  const session = (id: string, workerId: string | undefined, createdAt: number, parentSessionId?: string, flowKind = "agent"): SessionSummary =>
+    ({ id, flowKind, flowId: flowKind, ...(workerId === undefined ? {} : { state: { workerId } }), userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;
 
-  it("is the newest session on the seat's flow that no mailbox or run started", () => {
+  it("is the newest session on the seat's flow, naming its worker, that no mailbox or run started", () => {
     const sessions = [
       session("old", "desk.chief-of-staff", 1),
       session("newest", "desk.chief-of-staff", 3),
       session("heard", "desk.chief-of-staff", 9, "desk.front"),
       session("other", "desk.asker", 10),
       session("mid", "desk.chief-of-staff", 2),
+      // The worker's id on another flow, and a session on its flow that names no worker.
+      session("elsewhere", "desk.chief-of-staff", 11, undefined, "em"),
+      session("nobody", undefined, 12),
     ];
-    expect(conversationSession(sessions, "desk.chief-of-staff")).toBe("newest");
+    expect(conversationSession(sessions, cos)).toBe("newest");
   });
 
   it("is never a session a mailbox post or another run started, and none when there is no direct one", () => {
-    expect(conversationSession([session("heard", "desk.chief-of-staff", 9, "desk.front")], "desk.chief-of-staff")).toBeNull();
+    expect(conversationSession([session("heard", "desk.chief-of-staff", 9, "desk.front")], cos)).toBeNull();
     // A store that nulls absent keys hands back `null` for a direct session's parent.
-    expect(conversationSession([{ ...session("direct", "desk.chief-of-staff", 1), parentSessionId: null } as unknown as SessionSummary], "desk.chief-of-staff")).toBe(
+    expect(conversationSession([{ ...session("direct", "desk.chief-of-staff", 1), parentSessionId: null } as unknown as SessionSummary], cos)).toBe(
       "direct",
     );
-    expect(conversationSession([], "desk.chief-of-staff")).toBeNull();
+    expect(conversationSession([], cos)).toBeNull();
   });
 });
 
 describe("which conversation the view is on, once a line opened one (V4, BR-14)", () => {
+  const cos = seat("desk.chief-of-staff");
   const session = (id: string, createdAt: number): SessionSummary =>
-    ({ id, flowKind: "agent", flowId: "desk.chief-of-staff", userId: "u", createdAt, updatedAt: createdAt }) as SessionSummary;
+    ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "desk.chief-of-staff" }, userId: "u", createdAt, updatedAt: createdAt }) as SessionSummary;
 
   it("keeps the session a first line opened until the listing holds it", () => {
-    expect(currentConversation([], "desk.chief-of-staff", "cos_new")).toBe("cos_new");
-    expect(currentConversation([session("older", 1)], "desk.chief-of-staff", "cos_new")).toBe("cos_new");
+    expect(currentConversation([], cos, "cos_new")).toBe("cos_new");
+    expect(currentConversation([session("older", 1)], cos, "cos_new")).toBe("cos_new");
   });
 
   it("follows the newest direct session once the listing has caught up, even one started elsewhere", () => {
-    expect(currentConversation([session("cos_new", 2)], "desk.chief-of-staff", "cos_new")).toBe("cos_new");
-    expect(currentConversation([session("cos_new", 2), session("from_another_tab", 3)], "desk.chief-of-staff", "cos_new")).toBe("from_another_tab");
-    expect(currentConversation([session("listed", 1)], "desk.chief-of-staff", null)).toBe("listed");
+    expect(currentConversation([session("cos_new", 2)], cos, "cos_new")).toBe("cos_new");
+    expect(currentConversation([session("cos_new", 2), session("from_another_tab", 3)], cos, "cos_new")).toBe("from_another_tab");
+    expect(currentConversation([session("listed", 1)], cos, null)).toBe("listed");
   });
 });
 

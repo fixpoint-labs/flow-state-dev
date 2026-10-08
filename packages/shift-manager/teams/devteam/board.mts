@@ -13,17 +13,19 @@
  * The row crosses flows (D1 of the lab's own spec):
  *
  * - {@link coordinatorBoard} sits on the `em` kind and drains the ledger. Its
- *   `coder` worker is a dispatcher naming *another flow instance* (the hired
- *   coder worker), so the row it claims is handed to the worker a `WORKER.md`
- *   declared. A row for any other name falls to the board's fallback, which
- *   asks the Workforce lookup which worker holds that name right now.
+ *   `coder` worker is a dispatcher naming *another flow* (the `coder` kind)
+ *   and the worker a `WORKER.md` declared on it: the row's session is opened
+ *   naming that worker, so the row it claims is handed to that worker. A row
+ *   for any other name falls to the board's fallback, which asks the
+ *   Workforce lookup which worker holds that name.
  * - {@link ledgerDoor} is the coder's side: its task entry takes rows from
  *   this ledger, by the ledger's id, with no board of its own. The board
  *   hands off under that id (`boardId: ledger.id`) for the door to find it.
  */
 
 import { defineCapability, dispatcher } from "@flow-state-dev/core";
-import type { TaskBinding, TaskFlowTarget } from "@flow-state-dev/core/types";
+import type { TaskBinding, TaskFlowTarget, TaskStateTarget } from "@flow-state-dev/core/types";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
@@ -45,7 +47,7 @@ export const BOARD_ID = "devforce-feature-board";
  * row, and BR-5/BR-8 grade on it.
  *
  * The board routes this name itself, to the worker the host names in
- * `coderWorkerId`, which is what lets BR-8 be graded at all: a control that
+ * `coderWorker`, which is what lets BR-8 be graded at all: a control that
  * points it at the wrong worker turns the check red. Every other name goes to
  * the board's fallback and the Workforce lookup.
  */
@@ -87,16 +89,19 @@ export interface CoordinatorBoardOptions {
   /** The ledger this board reads and writes — the mailbox's. */
   ledger: FeatureLedger;
   /**
-   * The hired coder worker's **instance id**, where a `coder` row is handed.
-   * The host derives it from the tree rather than naming it, so no file is
-   * named in code.
+   * The coder worker's id, whose session a `coder` row runs in. The host
+   * derives it from the tree rather than naming it, so no file is named in
+   * code.
    */
-  coderSeatId: string;
+  coderWorker: string;
+  /** The flow the coder worker runs on, where a `coder` row is handed. */
+  coderFlow: string;
   /**
    * Which worker any other assignee names, asked per row: the Workforce
-   * lookup's `flowKind`. Absent, a row for any other name is never claimed.
+   * lookup's `flowKind` and `state`. Absent, a row for any other name is
+   * never claimed.
    */
-  findWorker?: TaskFlowTarget;
+  findWorker?: { flowKind: TaskFlowTarget; state: TaskStateTarget };
   /** Rows the board starts with. The EM files through the capability instead. */
   initialTasks?: FeatureRow[];
 }
@@ -124,8 +129,10 @@ export function coordinatorBoard(options: CoordinatorBoardOptions) {
     workers: {
       [ASSIGNEE]: dispatcher<TaskWorkerInput>({
         name: `${BOARD_ID}-hand-off`,
-        // The worker's own flow instance. This one line is the whole of D1.
-        flowKind: options.coderSeatId,
+        // The worker's flow, and the worker its row's session names. These
+        // two lines are the whole of D1.
+        flowKind: options.coderFlow,
+        state: { [WORKER_ID_STATE_KEY]: options.coderWorker },
         action: WORK_ENTRY,
         session: "per-task",
       }),
@@ -135,7 +142,8 @@ export function coordinatorBoard(options: CoordinatorBoardOptions) {
       : {
           defaultWorker: dispatcher<TaskWorkerInput>({
             name: `${BOARD_ID}-hand-over`,
-            flowKind: options.findWorker,
+            flowKind: options.findWorker.flowKind,
+            state: options.findWorker.state,
             action: WORK_ENTRY,
             session: "per-task",
           }),

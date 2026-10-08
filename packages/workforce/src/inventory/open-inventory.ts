@@ -45,7 +45,6 @@ import {
 } from "../mailbox/mailbox-flow";
 import type { MailboxManifest } from "../manifest";
 import { seatDoorOf } from "../seat-door";
-import { incarnationOf } from "../roster/incarnation";
 
 /**
  * One registered seat, as the binder needs it.
@@ -67,27 +66,11 @@ export interface InventorySeat {
    * by forgetting them: pass `{}` to say the seat has no door.
    */
   actions: Readonly<Record<string, unknown>>;
-  /**
-   * The seat's settings, which `hireWorkforce` stamps with its `seatId`. A
-   * seat whose `seatId` differs from its `id` was hired at runtime (its id is
-   * an address); one whose `seatId` is its `id` was declared. The row's
-   * `hired` is read from this; omitted, the row says `null` (unknown).
-   */
-  config?: unknown;
-}
-
-/** `true` for a runtime hire, `false` for a declared seat, `null` when the seat doesn't say. */
-function hiredOf(seat: InventorySeat): boolean | null {
-  const seatId =
-    typeof seat.config === "object" && seat.config !== null
-      ? (seat.config as { readonly seatId?: unknown }).seatId
-      : undefined;
-  return typeof seatId === "string" ? seatId !== seat.id : null;
 }
 
 /** What the binder registers: the seats that were hired, and the mailboxes that were opened. */
 export interface InventoryRoster {
-  /** The registered seats. Pass `hireWorkforce(...)`'s result directly. */
+  /** The registered seats: `inventorySeats(installation)`, the standard workers with their flows' actions. */
   seats: readonly InventorySeat[];
   /** The mailbox records — the same ones `mailboxInstances` registered and `openMailboxes` opened. */
   mailboxes: readonly MailboxManifest[];
@@ -325,8 +308,8 @@ export async function openInventory(
             id: seat.id,
             kind: seat.kind,
             door: seatDoorOf(seat).door,
-            hired: hiredOf(seat),
-            incarnation: incarnationOf(seat) ?? null,
+            hired: false,
+            incarnation: null,
           })),
         },
         userId: options.userId,

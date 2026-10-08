@@ -47,13 +47,13 @@ import {
   mailboxNotifyInputSchema,
   defineAgentWorkerFlow,
   defineMailboxFlow,
-  hireWorkforce,
   wakeMemberSeats,
   workerConfigSchema,
   type MailboxNotifyInput,
-  type WorkerManifest
+  type WorkerManifest,
 } from "../src/index";
-import { hiredSeatManifest, toHiredSeatRow } from "../src/roster/rows";
+import { mintSeats } from "../src/hire";
+import { createWorkerInstallation } from "../src/workers/installation";
 import { workerDoor } from "./worker-door";
 
 const USER_ID = "u_wake";
@@ -123,13 +123,6 @@ function kinds() {
 /** A worker record of one kind (`agent` when `flow` is omitted). */
 function worker(id: string, flow?: string): WorkerManifest {
   return { id, declared: flow === undefined ? {} : { flow }, body: "" };
-}
-
-/** A seat minted from a stored roster row, as the boot reload does: at `<org>.<seatId>`. */
-function reloaded(orgId: string, seatId: string, flow: string, ownerUserId?: string): WorkerManifest {
-  const bound = hiredSeatManifest(orgId, toHiredSeatRow({ seatId, flow, ownerUserId }));
-  if (!("manifest" in bound)) throw new Error(bound.problem);
-  return bound.manifest;
 }
 
 /** A fallback that records each member it ran for, and on which post. */
@@ -268,10 +261,49 @@ function bySeat(heard: Heard[]): Record<string, Heard[]> {
   return out;
 }
 
+describe("wakeMemberSeats · workers on one shared copy (FIX-1788)", () => {
+  it("wakes two workers on one agent copy, each in a conversation of its own, created naming its worker", async () => {
+    let flows: Record<string, unknown> = {};
+    const installation = createWorkerInstallation({
+      standardWorkers: [
+        { id: "desk.amy", declared: {}, body: "You are Amy." },
+        { id: "desk.bo", declared: {}, body: "You are Bo." }
+      ],
+      workerFlows: () => flows as never
+    });
+    const agent = defineAgentWorkerFlow({ installation });
+    flows = { agent };
+    const copy = agent({ id: "agent" }) as unknown as FlowInstance;
+    const { mailbox, state } = host([copy], wakeMemberSeats([copy], { installation }));
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, "desk.front", ["desk.amy", "desk.bo"]);
+      await post(runtime, mailbox, "desk.front", "first");
+      await settle(runtime, "desk.front", 1);
+      await post(runtime, mailbox, "desk.front", "second");
+      await settle(runtime, "desk.front", 2);
+
+      const conversations = (await runtime.stores.session.list({ flowId: "agent", parentage: "all" })).filter(
+        (s) => s.parentSessionId === "desk.front"
+      );
+      // Two workers, two conversations, each created naming its own worker.
+      expect(conversations.map((s) => s.state.workerId).sort()).toEqual(["desk.amy", "desk.bo"]);
+      expect(new Set(conversations.map((s) => s.id)).size).toBe(2);
+      // Each heard both posts in its own conversation, and every run completed.
+      for (const conversation of conversations) {
+        const requests = await runtime.stores.request.list({ sessionId: conversation.id, withItems: true });
+        expect(requests.map((r) => r.status)).toEqual(["completed", "completed"]);
+      }
+    } finally {
+      await state.dispose();
+    }
+  });
+});
+
 describe("wakeMemberSeats · who a post wakes", () => {
   it("runs each declaring member once per post, one conversation per seat, and nobody else (BR-1, BR-2, BR-6, BR-8, BR-9, BR-12)", async () => {
     const { heard, map } = kinds();
-    const seats = hireWorkforce(
+    const seats = mintSeats(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note"), worker("desk.idle", "listener")],
       { workerFlows: map }
     );
@@ -317,7 +349,7 @@ describe("wakeMemberSeats · who a post wakes", () => {
 
   it("wakes hearing members when a public post claims a hire address as author", async () => {
     const { heard, map } = kinds();
-    const seats = hireWorkforce(
+    const seats = mintSeats(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
       { workerFlows: map }
     );
@@ -342,7 +374,7 @@ describe("wakeMemberSeats · who a post wakes", () => {
 
   it("wakes hearing members when a dispatched post claims a hire address as author", async () => {
     const { heard, map } = kinds();
-    const seats = hireWorkforce(
+    const seats = mintSeats(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
       { workerFlows: map }
     );
@@ -366,7 +398,7 @@ describe("wakeMemberSeats · who a post wakes", () => {
 
   it("wakes nobody when the post arrives on the seat post action; the fallback stays with members that could not wake", async () => {
     const { heard, map } = kinds();
-    const seats = hireWorkforce(
+    const seats = mintSeats(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
       { workerFlows: map }
     );
@@ -401,7 +433,7 @@ describe("wakeMemberSeats · who a post wakes", () => {
 
   it("gives a member with no seat the fallback, and everyone the fallback when no seats are passed (BR-4, BR-15)", async () => {
     const { heard, map } = kinds();
-    const seats = hireWorkforce([worker("desk.ivy", "listener")], { workerFlows: map });
+    const seats = mintSeats([worker("desk.ivy", "listener")], { workerFlows: map });
     const fallback = recordingFallback();
     const { mailbox, state } = host([], wakeMemberSeats([], { fallback: fallback.block }), seats);
     try {
@@ -420,51 +452,10 @@ describe("wakeMemberSeats · who a post wakes", () => {
 });
 
 describe("wakeMemberSeats · where a woken seat runs", () => {
-  it("wakes a seat the boot reload minted at <org>.<seatId>, by its logical id, in the post's organization (BR-5)", async () => {
-    const { heard, map } = kinds();
-    const seats = hireWorkforce([reloaded("acme", "desk.rex", "listener"), reloaded("globex", "desk.rex", "listener")], {
-      workerFlows: map
-    });
-    expect(seats.map((s) => s.id).sort()).toEqual(["acme.desk.rex", "globex.desk.rex"]);
-    const { mailbox, state } = host(seats, wakeMemberSeats(seats));
-    try {
-      const runtime = await state.getRuntime();
-      await bind(runtime.stores, "desk.front", ["desk.rex"], "acme");
-      await post(runtime, mailbox, "desk.front", "for acme", { orgId: "acme" });
-      await settle(runtime, "desk.front", 1);
-
-      expect(heard.map((h) => `${h.seat}|${h.body}`)).toEqual(["acme.desk.rex|for acme"]);
-    } finally {
-      await state.dispose();
-    }
-  });
-
-  it("wakes the caller's own seat when users of one organization each own a seat of that id (BR-5)", async () => {
-    const { heard, map } = kinds();
-    // Another user's seat first, so a pick by organization alone takes the wrong one.
-    const seats = hireWorkforce(
-      [reloaded("acme", "desk.rex", "listener", "u_other"), reloaded("acme", "desk.rex", "listener", USER_ID)],
-      { workerFlows: map }
-    );
-    const fallback = recordingFallback();
-    const { mailbox, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
-    try {
-      const runtime = await state.getRuntime();
-      await bind(runtime.stores, "desk.front", ["desk.rex"], "acme");
-      await post(runtime, mailbox, "desk.front", "for me", { orgId: "acme" });
-      await settle(runtime, "desk.front", 1);
-
-      const mine = seats.find((s) => s.ownerPin?.userId === USER_ID)!.id;
-      expect(heard.map((h) => `${h.seat}|${h.body}`)).toEqual([`${mine}|for me`]);
-      expect(fallback.ran).toEqual([]);
-    } finally {
-      await state.dispose();
-    }
-  });
 
   it("keeps one conversation per mailbox for a seat in two mailboxes (BR-10)", async () => {
     const { heard, map } = kinds();
-    const seats = hireWorkforce([worker("desk.ivy", "listener")], { workerFlows: map });
+    const seats = mintSeats([worker("desk.ivy", "listener")], { workerFlows: map });
     const { mailbox, state } = host(seats, wakeMemberSeats(seats));
     try {
       const runtime = await state.getRuntime();
@@ -487,7 +478,7 @@ describe("wakeMemberSeats · where a woken seat runs", () => {
 
   it("fails one member's delivery when its entry refuses the post, and still runs the others (BR-7)", async () => {
     const { heard, map } = kinds();
-    const seats = hireWorkforce([worker("desk.pip", "picky"), worker("desk.ivy", "listener")], { workerFlows: map });
+    const seats = mintSeats([worker("desk.pip", "picky"), worker("desk.ivy", "listener")], { workerFlows: map });
     const { mailbox, state } = host(seats, wakeMemberSeats(seats));
     try {
       const runtime = await state.getRuntime();

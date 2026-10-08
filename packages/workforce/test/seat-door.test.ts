@@ -12,13 +12,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import { openInventory } from "../src/inventory/open-inventory";
 import type { WorkerManifest } from "../src/manifest";
 import { seatDoorOf } from "../src/seat-door";
 import { workerConfigSchema } from "../src/worker-config";
-import { checkHiredSeatRow } from "../src/roster/check";
-import { toHiredSeatRow } from "../src/roster/rows";
 
 const message = z.object({ message: z.string() });
 const echo = handler({ name: "door-echo", inputSchema: message, outputSchema: message, execute: (i) => i });
@@ -80,18 +78,18 @@ function refusalOf(run: () => unknown): string {
 
 describe("a seat's door (BR-1, BR-2)", () => {
   it("is the built-in agent kind's `run`", () => {
-    const [seat] = hireWorkforce([record("eng.lead")], { workerFlows: kinds });
+    const [seat] = mintSeats([record("eng.lead")], { workerFlows: kinds });
     expect(seat!.kind).toBe("agent");
     expect(seatDoorOf(seat!)).toEqual({ door: "run" });
   });
 
   it("is the one public action a kind declares for a person's message", () => {
-    const [seat] = hireWorkforce([record("eng.desk", "desk")], { workerFlows: kinds });
+    const [seat] = mintSeats([record("eng.desk", "desk")], { workerFlows: kinds });
     expect(seatDoorOf(seat!)).toEqual({ door: "ask" });
   });
 
   it("refuses a kind with no door when it is registered, and hires nothing", () => {
-    const message = refusalOf(() => hireWorkforce([record("eng.quiet", "quiet")], { workerFlows: { quiet: quietKind } }));
+    const message = refusalOf(() => mintSeats([record("eng.quiet", "quiet")], { workerFlows: { quiet: quietKind } }));
     expect(message).toContain('worker flow "quiet" has no door');
     expect(message).toContain("nothing was hired");
   });
@@ -99,14 +97,14 @@ describe("a seat's door (BR-1, BR-2)", () => {
   it("refuses a kind with two doors when it is registered, naming both, and prints no warning", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const message = refusalOf(() =>
-      hireWorkforce([record("eng.chatty", "two-door")], { workerFlows: { "two-door": twoDoorKind } }),
+      mintSeats([record("eng.chatty", "two-door")], { workerFlows: { "two-door": twoDoorKind } }),
     );
     expect(message).toContain('worker flow "two-door" has 2 doors ("message", "say")');
     expect(warn).not.toHaveBeenCalled();
   });
 
   it("is written on the seat's inventory row at boot", async () => {
-    const seats = hireWorkforce([record("eng.lead"), record("eng.desk", "desk")], {
+    const seats = mintSeats([record("eng.lead"), record("eng.desk", "desk")], {
       workerFlows: kinds,
     });
     const sent: unknown[] = [];
@@ -130,44 +128,3 @@ describe("a seat's door (BR-1, BR-2)", () => {
   });
 });
 
-describe("a seat's origin on its inventory row", () => {
-  it("is `hired: true` for a seat whose id is its address, and `false` for a declared one, even one named like the org", async () => {
-    // A team-list reader tells the two apart by this, not by the id's shape:
-    // `org.lead` below is a declared team `org` in organization `org`.
-    const seats = hireWorkforce(
-      [{ ...record("org.support.ada"), seatId: "support.ada" }, record("org.lead")],
-      { workerFlows: kinds },
-    );
-    const sent: Array<{ seats: Array<{ id: string; hired: boolean | null }> }> = [];
-    await openInventory(
-      { seats, mailboxes: [] },
-      {
-        run: async (request) => void sent.push(request.input as (typeof sent)[number]),
-        userId: "u",
-        orgId: "org",
-        seatWriter: { flowKind: "mailbox" },
-      },
-    );
-    expect(sent[0]!.seats.map((row) => [row.id, row.hired])).toEqual([
-      ["org.lead", false],
-      ["org.support.ada", true],
-    ]);
-  });
-
-  it("keeps a hired seat's incarnation when the boot rewrites its row, so a user-owned hire stays listed after a restart", async () => {
-    const row = toHiredSeatRow({ seatId: "research", flow: "agent", owningOrgId: "org", ownerUserId: "u1", incarnation: "i-9" });
-    const checked = checkHiredSeatRow("org", row, kinds);
-    if (!checked.ok) throw new Error(checked.detail);
-    const sent: Array<{ seats: Array<{ id: string; incarnation: string | null }> }> = [];
-    await openInventory(
-      { seats: [checked.seat], mailboxes: [] },
-      {
-        run: async (request) => void sent.push(request.input as (typeof sent)[number]),
-        userId: "u",
-        orgId: "org",
-        seatWriter: { flowKind: "mailbox" },
-      },
-    );
-    expect(sent[0]!.seats.map((seat) => [seat.id, seat.incarnation])).toEqual([["org.~u1.research", "i-9"]]);
-  });
-});

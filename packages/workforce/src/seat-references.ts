@@ -300,11 +300,11 @@ const unreachableSeatReferenceMessage = (ref: string, seatId: string): string =>
  * the failure this convention exists to end.
  */
 const referencesNotDeclaredMessage = (refs: readonly string[]): string =>
-  `is hired onto a kind holding ${refs.length} reference(s) that hireWorkforce was not given: ` +
+  `runs on a flow holding ${refs.length} reference(s) its installation was not given: ` +
   `${refs.map((ref) => `"${ref}"`).join(", ")}. A reference's reach is derived from where its ` +
   `file sits, and that can only be worked out against the app's own catalog — so without it ` +
   `every seat would reach every team's references and nothing would say so. Pass the same map ` +
-  `you installed on the kind: \`hireWorkforce(workers, { references: referencesFromDocs(refs) })\`.`;
+  `you declared on the flow: \`createWorkerInstallation({ references: referencesFromDocs(refs) })\`.`;
 
 /**
  * The wording for a seat whose id names no place in the tree.

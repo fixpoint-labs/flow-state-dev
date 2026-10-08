@@ -18,7 +18,9 @@ import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createNotifyLog } from "../teams/devteam/notify.mts";
 
+/** The chief of staff, and the flow it runs on, whose one copy every worker on it shares. */
 const COS = "chief-of-staff";
+const COS_FLOW = "agent";
 const FIRST = "https://github.com/acme/storefront.git";
 const ASKED = "git@github.com:acme/storefront-next.git";
 
@@ -73,13 +75,19 @@ async function open(): Promise<Lab> {
 async function run(lab: Lab, call: ToolCall, message: string) {
   const runtime = await lab.state.getRuntime();
   model = scripted(call);
+  // A conversation with the chief of staff: a session on its flow, naming it.
+  const sessionId = `s-cos-${globalThis.crypto.randomUUID()}`;
+  const opened = await lab.door("POST", `${COS_FLOW}/sessions`, {
+    body: { userId: LAB_USER_ID, sessionId, state: { workerId: COS } },
+  });
+  expect(opened.status).toBe(201);
   return await runAction({
     orgId: LAB_ORG_ID,
-    flow: runtime.registry.get(COS) as FlowInstance,
+    flow: runtime.registry.get(COS_FLOW) as FlowInstance,
     actionName: "run",
     input: { message },
     userId: LAB_USER_ID,
-    sessionId: `s-cos-${globalThis.crypto.randomUUID()}`,
+    sessionId,
     stores: runtime.stores,
     runtimeConfig: runtime.runtimeConfig,
   } as never);
@@ -98,7 +106,7 @@ async function ask(lab: Lab, call: ToolCall, message: string): Promise<{ request
 
 /** Answer through the resume route, as Inbox does, and wait for the request to finish. */
 async function answer(lab: Lab, asked: { requestId: string; suspension: SuspensionRecord }, action: "approve" | "reject") {
-  const sent = await lab.door("POST", `${COS}/requests/${asked.requestId}/resume`, {
+  const sent = await lab.door("POST", `${COS_FLOW}/requests/${asked.requestId}/resume`, {
     body: { suspensionId: asked.suspension.suspensionId, action },
   });
   expect(sent.status).toBe(202);
@@ -165,5 +173,31 @@ describe("the chief of staff's repository writes wait for a person", () => {
     expect(asked.suspension.message).not.toContain("s3cret-token");
     expect(JSON.stringify(asked.suspension.data)).not.toContain("s3cret-token");
     await answer(lab, asked, "reject");
+  }, 120_000);
+});
+
+describe("the chief of staff's roster writes", () => {
+  /** The person's own workers, by id, as their roster holds them. */
+  async function roster(lab: Lab): Promise<string[]> {
+    const rows = await lab.stored("user", "workforce/workers/");
+    return Object.keys(rows).map((key) => key.slice("workforce/workers/".length)).sort();
+  }
+
+  it("hires a worker of the person's own at once; a fire waits for them, Deny keeps it, Approve removes it", async () => {
+    const lab = await open();
+    const hired = await run(lab, { toolName: "hire", args: { id: "helper", flow: "agent" } }, "hire me a helper");
+    expect(hired.error).toBeUndefined();
+    expect(await roster(lab)).toEqual(["helper"]);
+
+    const call = { toolName: "fire", args: { id: "helper" } };
+    const asked = await ask(lab, call, "fire the helper");
+    expect(asked.suspension.message).toContain('"helper"');
+    expect(await roster(lab)).toEqual(["helper"]);
+    await answer(lab, asked, "reject");
+    expect(await roster(lab)).toEqual(["helper"]);
+
+    const again = await ask(lab, call, "fire the helper");
+    await answer(lab, again, "approve");
+    expect(await roster(lab)).toEqual([]);
   }, 120_000);
 });

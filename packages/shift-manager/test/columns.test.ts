@@ -55,8 +55,8 @@ const row = (status: string, assignee: string | null, id = status): BoardRow =>
   toBoardRow("t.c.work", "t.c", id, { id, title: id, status, assignee });
 
 describe("which seat holds a row, when a bare name is in more than one team", () => {
-  const ops = toSeat({ id: "ops.builder", kind: "worker" }, "acme")!;
-  const eng = toSeat({ id: "eng.builder", kind: "worker" }, "acme")!;
+  const ops = toSeat({ id: "ops.builder", kind: "worker" })!;
+  const eng = toSeat({ id: "eng.builder", kind: "worker" })!;
   const onMailbox = (mailboxId: string, members: string[]) => toWorkstream({ id: mailboxId, kind: "mailbox", members })!;
   const rowOn = (mailboxId: string, assignee: string) =>
     toBoardRow(`${mailboxId}.work`, mailboxId, "r", { id: "r", title: "r", status: "in_progress", assignee });

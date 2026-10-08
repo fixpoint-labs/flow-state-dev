@@ -1,0 +1,9 @@
+{
+  "org": "acme",
+  "alice": "alice",
+  "bob": "bob",
+  "standard": { "onAgent": "desk.amy", "onResearch": "research.lead" },
+  "markers": { "onAgent": "AMY-DESK-7Q", "onResearch": "LEAD-RESEARCH-2M", "skill": "SKILL-REFUND-R9" },
+  "fork": { "id": "my-desk" },
+  "hire": { "id": "scribe", "instructions": "You take notes. Sign every answer SCRIBE-NOTES-5H." , "marker": "SCRIBE-NOTES-5H" }
+}

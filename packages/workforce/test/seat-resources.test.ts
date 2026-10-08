@@ -35,7 +35,7 @@ import {
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createExecutionContext, createInMemoryStores } from "@flow-state-dev/engine";
 import { runForTest } from "@flow-state-dev/testing";
-import { hireWorkforce, type HireOptions } from "../src/hire";
+import { mintSeats, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import {
   SEAT_RESOURCES_KEY,
@@ -152,7 +152,7 @@ function seat(id: string, declared: Record<string, unknown> = {}): WorkerManifes
 }
 
 function hire(manifests: WorkerManifest[], options: Partial<HireOptions> = {}): FlowInstance[] {
-  return hireWorkforce(manifests, {
+  return mintSeats(manifests, {
     workerFlows: { [DESK_KIND]: deskFlow as never },
     documents: CATALOG,
     ...options
@@ -389,7 +389,7 @@ describe("V5 · the second path — a seat that declares nothing is untouched (B
   });
 
   it("hires with no `documents` passed at all, the way every caller before this did", () => {
-    const seats = hireWorkforce([seat("eng.unrestricted")], { workerFlows: { [DESK_KIND]: deskFlow as never } });
+    const seats = mintSeats([seat("eng.unrestricted")], { workerFlows: { [DESK_KIND]: deskFlow as never } });
 
     expect(seats).toHaveLength(1);
     expect([...seats[0]!.flowLevelResourceKeys].sort()).toEqual(
@@ -418,7 +418,7 @@ describe("V6 · the kind's own machinery is never what a grant governs (BR-7, BR
     // install the document at flow level, where it wins the merge — a seat file
     // repointing its kind's wiring.
     expect(() =>
-      hireWorkforce(
+      mintSeats(
         [
           {
             id: "eng.lead",
@@ -434,7 +434,7 @@ describe("V6 · the kind's own machinery is never what a grant governs (BR-7, BR
   it("the same kind hires a seat whose grant does NOT collide, and keeps the block's resource", async () => {
     // The control. Without it the refusal above is equally consistent with this
     // kind being unhireable for some reason that has nothing to do with the ref.
-    const seats = hireWorkforce(
+    const seats = mintSeats(
       [
         {
           id: "eng.lead",
@@ -514,7 +514,7 @@ describe("V8 · a grant never widens, and never resolves against nothing", () =>
       actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
     });
     const hireFiltered = (refs: unknown) =>
-      hireWorkforce(
+      mintSeats(
         [{ id: "eng.lead", declared: { flow: "filtered-desk", description: "d", [SEAT_RESOURCES_KEY]: refs }, body: "" }],
         { workerFlows: { "filtered-desk": filteredFlow as never }, documents: CATALOG }
       );
@@ -527,7 +527,7 @@ describe("V8 · a grant never widens, and never resolves against nothing", () =>
 
   it("a seat declaring `resources:` with no documents supplied refuses, naming what is missing (BR-18)", () => {
     expect(() =>
-      hireWorkforce([seat("eng.lead", { [SEAT_RESOURCES_KEY]: [HANDBOOK] })], {
+      mintSeats([seat("eng.lead", { [SEAT_RESOURCES_KEY]: [HANDBOOK] })], {
         workerFlows: { [DESK_KIND]: deskFlow as never }
       })
     ).toThrow(/no documents to resolve it against/);
@@ -570,7 +570,7 @@ describe("V9 · the narrowing is checked on the seat that was BUILT", () => {
   });
 
   const hireRestoring = (refs: unknown) =>
-    hireWorkforce(
+    mintSeats(
       [{ id: "eng.lead", declared: { flow: "restoring-desk", description: "d", [SEAT_RESOURCES_KEY]: refs }, body: "" }],
       { workerFlows: { "restoring-desk": restoringFlow as never }, documents: CATALOG }
     );
@@ -617,7 +617,7 @@ describe("V9 · the narrowing is checked on the seat that was BUILT", () => {
       actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
     });
 
-    const [lead] = hireWorkforce(
+    const [lead] = mintSeats(
       [{ id: "eng.lead", declared: { flow: "aliased-desk", description: "d", [SEAT_RESOURCES_KEY]: [] }, body: "" }],
       { workerFlows: { "aliased-desk": aliasedFlow as never }, documents: CATALOG }
     );
@@ -643,7 +643,7 @@ describe("a document's ref must hold that document on the kind", () => {
       actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
     });
     const hireImpostor = (refs: unknown) =>
-      hireWorkforce(
+      mintSeats(
         [{ id: "eng.lead", declared: { flow: "impostor-desk", description: "d", [SEAT_RESOURCES_KEY]: refs }, body: "" }],
         { workerFlows: { "impostor-desk": impostorFlow as never }, documents: CATALOG }
       );
@@ -662,7 +662,7 @@ describe("a document's ref must hold that document on the kind", () => {
       resources: { [HANDBOOK]: CATALOG[HANDBOOK]!, [PAYROLL]: CATALOG[PAYROLL]!, "audit-log": auditLog } as DeclaredResources,
       actions: { ...workerDoor, run: { inputSchema: z.object({}), block: work } }
     });
-    const [lead] = hireWorkforce(
+    const [lead] = mintSeats(
       [{ id: "eng.lead", declared: { flow: "honest-desk", description: "d", [SEAT_RESOURCES_KEY]: [HANDBOOK] }, body: "" }],
       { workerFlows: { "honest-desk": honestFlow as never }, documents: CATALOG }
     );

@@ -44,10 +44,6 @@ import {
   resolveMailboxBoard
 } from "./mailbox-board";
 import { emitMailboxPostLine, readMailboxPostLines } from "./mailbox-items";
-import { incarnationOfRow } from "../roster/incarnation";
-import { seatAddress, splitSeatAddress } from "../roster/address";
-import { defineHiredRosterCollection } from "../roster/collections";
-import { INVENTORY_RACE_ATTEMPTS, isWriteConflict } from "../roster/remove";
 import {
   MAILBOX_POST_COMPONENT,
   mailboxTranscriptLineSchema,
@@ -1019,122 +1015,12 @@ const retireMailboxesInputSchema = z.object({ ids: z.array(z.string().min(1)) })
 /** What the retirement reports: how many mailbox rows it removed. */
 export const inventoryMailboxesRetiredSchema = z.object({ retired: z.number() });
 
-/** The stored row is not one this boot may replace. */
-class NotTheBootsRow extends Error {}
-
-/** The stored row moved after the roster was read against it; read both again. */
-class RowMovedSinceRosterRead extends Error {}
-
 /**
- * Whether a boot's row may replace the row stored at its address.
- *
- * A runtime hire's row (`hired: true`) is replaced by the same hire: a hired
- * row carrying the same incarnation (`null` matching only `null`, a row from
- * before incarnations). It is also replaced by the hire the roster holds at
- * the address now (`rosterIncarnation`), because a row of another incarnation
- * is then a hire the roster no longer has: what a fire that stopped between
- * its two deletes leaves (FIX-1621). Without that, a replacement hire that
- * stopped before publishing its own row could never publish it at a boot,
- * and a team list would leave it out on every restart. A boot that read an
- * older roster carries an incarnation the roster no longer holds, so it
- * still replaces nothing of a newer hire's.
- *
- * A declared seat's row is replaced only by a declared row, and a boot's
- * hired row never replaces it. A row from before `hired` existed is replaced
- * by a declared row, and by a hired one as above.
- *
- * @param rosterIncarnation The incarnation of the roster row at the address,
- *   read in this attempt; `undefined` when there is none, or when the boot
- *   cannot read it (a user-owned seat's row is its owner's alone).
+ * Write one seat row from a boot. A seat's row is its standard worker's, the
+ * same on every process, so a later boot's write replaces an earlier one's.
  */
-function bootMayReplace(
-  stored: Record<string, unknown>,
-  row: SeatInventoryRow,
-  rosterIncarnation: string | null | undefined
-): boolean {
-  if (row.hired === true) {
-    if (stored.hired === false) return false;
-    const incarnation = row.incarnation ?? null;
-    return incarnationOfRow(stored) === incarnation || rosterIncarnation === incarnation;
-  }
-  return stored.hired !== true;
-}
-
-/**
- * The incarnation of the roster row at a hired seat's address, as stored now,
- * for {@link bootMayReplace}. `undefined` when the address has no roster row,
- * and for a user-owned address (`<org>.~<user>.<seatId>`), whose roster row
- * is owner-private and so not the boot's to read.
- *
- * As stored now, not as this request first read it: a fire and a replacement
- * hire can both land between the two, and a boot judging by the older row
- * would put a fired hire's row back over the replacement's. A row deleted
- * since it was read throws `resource_deleted`, which the caller takes as
- * "not the boot's to write".
- */
-async function rosterIncarnationAt(
-  roster: ResourceCollectionRef,
-  orgId: string,
-  address: string
-): Promise<string | null | undefined> {
-  const seatId = splitSeatAddress(orgId, address);
-  if (seatId === undefined || seatAddress(orgId, seatId) !== address) return undefined;
-  const current = await roster.getOptional(seatId);
-  if (current === undefined) return undefined;
-  return readCommitted(current, (state) => incarnationOfRow(state as Record<string, unknown>));
-}
-
-/**
- * Write one seat row from a boot's roster, only where it is still the boot's
- * to write.
- *
- * The roster the boot read can be older than the store: during a rolling
- * deploy another process may have fired the seat and hired a replacement, or
- * dropped a declaration and hired the same address. So the row is created
- * only where none was there when this action read the inventory, and
- * otherwise replaced only while {@link bootMayReplace} holds. The check runs
- * inside the version-checked write, so a row another writer put there since is
- * checked again, against a roster read again for that attempt. A row removed
- * after it was read is not written back.
- *
- * @returns whether the row landed.
- */
-async function publishBootSeatRow(
-  seats: ResourceCollectionRef,
-  roster: ResourceCollectionRef,
-  orgId: string,
-  row: SeatInventoryRow
-): Promise<boolean> {
-  for (let attempt = 0; attempt < INVENTORY_RACE_ATTEMPTS; attempt += 1) {
-    const stored = await seats.getOptional(row.id);
-    try {
-      if (stored === undefined) {
-        await seats.create(row.id, row);
-        return true;
-      }
-      const rosterIncarnation = row.hired === true ? await rosterIncarnationAt(roster, orgId, row.id) : undefined;
-      const seen = incarnationOfRow(stored.state as Record<string, unknown>);
-      await stored.updateState((current) => {
-        // The roster was read with `seen` stored. The write's own retry hands
-        // this a newer row without reading the roster again, so a row of
-        // another incarnation goes back round the loop for a fresh read of
-        // both rather than being judged by the older roster.
-        const now = incarnationOfRow(current);
-        if (rosterIncarnation !== undefined && now !== seen && now !== (row.incarnation ?? null)) {
-          throw new RowMovedSinceRosterRead();
-        }
-        if (!bootMayReplace(current, row, rosterIncarnation)) throw new NotTheBootsRow();
-        return row;
-      });
-      return true;
-    } catch (error) {
-      if (error instanceof NotTheBootsRow) return false;
-      if (error instanceof RowMovedSinceRosterRead) continue;
-      if ((error as { code?: unknown }).code === "resource_deleted") return false;
-      if (!isWriteConflict(error)) throw error;
-    }
-  }
-  throw new Error("the row kept changing under this boot.");
+async function publishBootSeatRow(seats: ResourceCollectionRef, row: SeatInventoryRow): Promise<void> {
+  await seats.upsert(row.id, row);
 }
 
 /**
@@ -1187,10 +1073,6 @@ export function inventoryWriterActions(kind: string) {
   const mailboxes = defineMailboxInventoryCollection();
   const memberships = defineMembershipIndexCollection();
   const seats = defineSeatInventoryCollection();
-  // Read by the seat write only, to tell a fired hire's leftover row from a
-  // newer hire's (see `bootMayReplace`). Lazy, so the row is read when the
-  // write asks for it rather than when the request starts.
-  const roster = { ...defineHiredRosterCollection(), prefetchMode: "lazy" as const };
 
   const registerMailbox = handler({
     name: "mailbox-register-in-inventory",
@@ -1266,7 +1148,7 @@ export function inventoryWriterActions(kind: string) {
     name: "inventory-register-seats",
     inputSchema: registerSeatsInputSchema,
     outputSchema: inventorySeatsRegisteredSchema,
-    resources: { seats, roster },
+    resources: { seats },
     execute: async (input, ctx) => {
       if (ctx.org === undefined) {
         throw new Error(
@@ -1276,12 +1158,12 @@ export function inventoryWriterActions(kind: string) {
         );
       }
 
-      const orgId = ctx.org.identity.orgId ?? ctx.org.identity.id;
       const problems: string[] = [];
       let written = 0;
       for (const row of input.seats) {
         try {
-          if (await publishBootSeatRow(ctx.resources.seats, ctx.resources.roster, orgId, row)) written += 1;
+          await publishBootSeatRow(ctx.resources.seats, row);
+          written += 1;
         } catch (error) {
           problems.push(
             `seat "${row.id}" — ${error instanceof Error ? error.message : String(error)}`

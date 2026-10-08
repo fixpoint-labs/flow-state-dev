@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { hireWorkforce, type HireOptions } from "../src/hire";
+import { mintSeats, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import { workerDoor } from "./worker-door";
@@ -117,7 +117,7 @@ const intake = record({
 });
 
 function hireOne(manifest: WorkerManifest): FlowInstance {
-  const [seat] = hireWorkforce([manifest], { workerFlows: kinds });
+  const [seat] = mintSeats([manifest], { workerFlows: kinds });
   return seat!;
 }
 
@@ -127,7 +127,7 @@ function refusalOf(
 ): string {
   let seats: FlowInstance[] | undefined;
   try {
-    seats = hireWorkforce(manifests, { workerFlows: withKinds });
+    seats = mintSeats(manifests, { workerFlows: withKinds });
   } catch (error) {
     expect(seats).toBeUndefined();
     return error instanceof Error ? error.message : String(error);
@@ -138,14 +138,14 @@ function refusalOf(
 describe("hireWorkforce", () => {
   // 1
   it("mints one copy per record, carrying its own id, in id order", () => {
-    const seats = hireWorkforce([lead, intake], { workerFlows: kinds });
+    const seats = mintSeats([lead, intake], { workerFlows: kinds });
     expect(seats.map((s) => s.id)).toEqual(["engineering.intake", "engineering.lead"]);
     expect(seats.map((s) => s.kind)).toEqual(["intake", "custom-agent"]);
   });
 
   // 2
   it("gives each copy its own settings, frozen, with no trace of its sibling's", () => {
-    const seats = hireWorkforce([lead, intake], { workerFlows: kinds });
+    const seats = mintSeats([lead, intake], { workerFlows: kinds });
     const [thin, opinionated] = seats as [FlowInstance, FlowInstance];
 
     expect(opinionated.config).toMatchObject({
@@ -285,7 +285,7 @@ describe("hireWorkforce", () => {
     let seats: FlowInstance[] | undefined;
     let message = "";
     try {
-      seats = hireWorkforce([lead], { workerFlows: { ...kinds, "custom-agent": intakeFlow } });
+      seats = mintSeats([lead], { workerFlows: { ...kinds, "custom-agent": intakeFlow } });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
@@ -361,7 +361,7 @@ describe("hireWorkforce", () => {
   it("builds nothing partially — one bad record takes the whole call", () => {
     let seats: FlowInstance[] | undefined;
     expect(() => {
-      seats = hireWorkforce([lead, intake, record({ id: "engineering.ghost", declared: { flow: "   " } })], {
+      seats = mintSeats([lead, intake, record({ id: "engineering.ghost", declared: { flow: "   " } })], {
         workerFlows: kinds
       });
     }).toThrow();
@@ -377,7 +377,7 @@ describe("hireWorkforce", () => {
 
   // 12
   it("returns an empty roster for empty input", () => {
-    expect(hireWorkforce([], { workerFlows: kinds })).toEqual([]);
+    expect(mintSeats([], { workerFlows: kinds })).toEqual([]);
   });
 
   // 13
@@ -492,7 +492,7 @@ describe("hireWorkforce", () => {
 
     // It really does accept the bag — without this the test below would pass
     // for a kind that is genuinely missing the door.
-    const [ok] = hireWorkforce(
+    const [ok] = mintSeats(
       [record({ id: "engineering.ok", declared: { flow: "optional-no-default" }, body: "Work." })],
       { workerFlows: withKind }
     );
@@ -500,7 +500,7 @@ describe("hireWorkforce", () => {
 
     let message = "";
     try {
-      hireWorkforce(
+      mintSeats(
         [
           record({
             id: "engineering.typo",

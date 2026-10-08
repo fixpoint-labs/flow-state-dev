@@ -14,7 +14,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance, InitialSkill, ResolvePrincipalFn } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import type { WorkerManifest } from "../src/manifest";
 
@@ -100,7 +100,7 @@ async function ask(seat: FlowInstance, sessionId: string): Promise<Turn> {
 
 function hireSeat(authentication?: FlowInstance["authentication"]): FlowInstance {
   const kind = defineAgentWorkerFlow();
-  const [seat] = hireWorkforce([record()], { workerFlows: { [AGENT_KIND]: kind } });
+  const [seat] = mintSeats([record()], { workerFlows: { [AGENT_KIND]: kind } });
   if (authentication !== undefined) {
     Object.assign(seat!, { authentication });
   }

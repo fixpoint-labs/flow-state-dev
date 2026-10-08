@@ -26,7 +26,7 @@ convention file and in none of the lab's own code, before the run starts.
    transcript, the fan-out addressed the EM seat and recorded every other member `MAILBOX.md`
    declares as skipped (read off the tree, which must still declare the coder and the reviewer),
    and exactly one row exists.
-2. The board's dispatch record names the coder seat and never the reviewer seat, by `flowId`.
+2. The board's dispatch record names the coder seat and never the reviewer seat, by the worker each child session names (`workerId`).
 3. The prompt the manager handed the agent carries all four held-out tokens.
 4. Exactly one branch under `conductor/` resolves at the published address **after** the store is
    closed and the temporary repository and every checkout have been deleted, and it is at least one
@@ -86,7 +86,7 @@ defeat waiting to come back quietly.
 | `already-passing` | a base ref seeded with **the artifact the run actually produced** | the base-ref half ACCEPTS, which is the vacuous-green shape BR-3's second half exists to catch |
 | `no-harness` | the harness slot throws, as an unauthenticated SDK does | the row settles **`errored`** and no branch carries a commit — it fails rather than substituting something |
 | `rejected-work` | a scripted run that commits work the brief did not ask for | the row settles `errored` rather than `completed`, which is **BR-4**: the artifact existing is never sufficient, and the row is what survives the run |
-| `work-reaches-the-reviewer` | the board's `coder` assignee is addressed to the reviewer seat | a board dispatch record carries `flowId` = the reviewer, which the goal forbids |
+| `work-reaches-the-reviewer` | the board's `coder` assignee is addressed to the reviewer seat | a board dispatch record carries `workerId` = the reviewer, which the goal forbids |
 
 `already-passing` is built from the run's own product rather than from an implementation written in
 the check, for two reasons: writing one would put the answer in a file BR-2 scans, and a base ref

@@ -16,13 +16,13 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 
 const ORG = DEFAULT_ORG_ID;
 const SKILL_MD = "---\nname: refunds\ndescription: How refunds work\n---\nRefunds take five days.";
 
 async function drawerKeys(workers: ReadonlyArray<string | undefined>): Promise<string[]> {
-  const [seat] = hireWorkforce([
+  const [seat] = mintSeats([
     { id: "support.otto", declared: {}, body: "You answer questions.", skills: [{ name: "refunds", skillMd: SKILL_MD }] }
   ]);
   const keys: string[] = [];

@@ -11,16 +11,18 @@
  *
  * `workerConfigSchema()` is composed rather than hand-declared, so a key added
  * to the admission contract arrives here for free instead of refusing at boot.
- * `document:` is **required**, which the pentest lab's kind could not do — it
- * predates FIX-1367, whose probe-based admission silently skipped a kind that
- * declared any required setting. Admission is now the flow's own closed schema,
- * so a seat that names no document is refused at the mint rather than at its
- * first read.
+ * `document:` is optional in the schema, because each kind runs as one copy
+ * shared by every worker on it, and that copy carries no worker's settings.
+ * The lab refuses a worker of either kind that names none when it opens
+ * (`openLab`), so a seat with nothing to read never boots.
+ *
+ * A worker's own settings are read per turn, from the worker the session
+ * names ({@link seatOf}), never from `ctx.flow.config`.
  */
 
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { workerConfigSchema } from "@flow-state-dev/workforce";
+import { workerConfigSchema, type WorkerInstallation } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /** Where a seat's resolved skill union arrives, spelled exactly as the factory imposes it. */
@@ -45,12 +47,13 @@ export const SEAT_FACTS_COMPONENT = "devforce-seat-facts";
 /**
  * What a seat of either kind configures.
  *
- * `.min(1)` and required: the ref is what a seat reads its brief by, and a seat
- * with nothing to read passes every isolation check trivially.
+ * `.min(1)`: the ref is what a seat reads its brief by, and a seat with
+ * nothing to read passes every isolation check trivially. Optional only so
+ * the shared copy, which carries no worker's settings, can be built.
  */
 export function seatSettingsSchema() {
   return workerConfigSchema().extend({
-    [DOCUMENT_KEY]: z.string().min(1),
+    [DOCUMENT_KEY]: z.string().min(1).optional(),
   });
 }
 
@@ -59,19 +62,40 @@ export interface SeatConfig {
   /** The seat's own id, imposed by the hire and never authored. */
   seatId?: string;
   instructions?: string;
-  document: string;
+  document?: string;
   seatSkills: Array<{ name: string; skillMd: string }>;
+}
+
+/** The worker a turn runs as: its id and its own settings. */
+export interface Seat {
+  id: string;
+  config: SeatConfig;
+}
+
+/** How a block finds the worker its turn runs as. */
+export type SeatOf = (ctx: BlockContext) => Promise<Seat>;
+
+/**
+ * The worker a turn on `kind` runs as, loaded through the installation: the
+ * one the session names, checked, with its settings as its own file declared
+ * them.
+ */
+export function seatOf(installation: WorkerInstallation, kind: string): SeatOf {
+  return async (ctx) => {
+    const worker = await installation.resolveWorker(ctx as never, kind);
+    return { id: worker.id, config: worker.config as unknown as SeatConfig };
+  };
 }
 
 /**
  * What a seat can see of itself, read from inside a running block.
  *
- * Every field came off the seat's own config bag or through the resource
- * surface at run time — never off `hireWorkforce`'s return value, which would
- * only prove the mint agrees with itself.
+ * Every field came off the worker the session names, loaded on this turn, or
+ * through the resource surface at run time — never off what the lab handed
+ * the installation, which would only prove the lab agrees with itself.
  */
 export const seatFactsSchema = z.object({
-  /** The seat's own instance id, off `ctx.flow.id`. */
+  /** The worker the session names, as the turn loaded it. */
   seat: z.string(),
   /** Its own `WORKER.md` body, as `instructions`. */
   instructions: z.string(),
@@ -88,7 +112,7 @@ export const seatFactsSchema = z.object({
 export type SeatFacts = z.infer<typeof seatFactsSchema>;
 
 /**
- * Read what this seat can see of itself.
+ * Build the block that reads what this seat can see of itself.
  *
  * **The org-less read being refused is the whole of BR-17.** Every
  * file-declared document is org-scoped (`resourcesFromDocs` sets
@@ -108,33 +132,37 @@ export type SeatFacts = z.infer<typeof seatFactsSchema>;
  * `transient: true` means the item is never persisted, so the paragraph above
  * still holds.
  */
-export const readOwnFacts = handler({
-  name: "devforce-seat-facts",
-  inputSchema: z.object({}).optional(),
-  outputSchema: seatFactsSchema,
-  execute: async (_input: unknown, ctx: BlockContext): Promise<SeatFacts> => {
-    const config = ctx.flow.config as unknown as SeatConfig;
-    const seat = (ctx.flow as { id?: string }).id ?? "<unknown>";
+export function defineReadOwnFacts(seatOfTurn: SeatOf) {
+  return handler({
+    name: "devforce-seat-facts",
+    inputSchema: z.object({}).optional(),
+    outputSchema: seatFactsSchema,
+    execute: async (_input: unknown, ctx: BlockContext): Promise<SeatFacts> => {
+      const { id: seat, config } = await seatOfTurn(ctx);
+      if (config.document === undefined) {
+        throw new Error(`seat "${seat}" names no document, so it has nothing to read.`);
+      }
 
-    const ref = ctx.resources[config.document];
-    if (ref === undefined) {
-      throw new Error(
-        `seat "${seat}" names document "${config.document}", which is not installed on this ` +
-          `flow. Installed: ${Object.keys(ctx.resources).join(", ")}`,
-      );
-    }
-    const document = await (ref as { readContent(): Promise<string | null> }).readContent();
-    const skills = config.seatSkills ?? [];
+      const ref = ctx.resources[config.document];
+      if (ref === undefined) {
+        throw new Error(
+          `seat "${seat}" names document "${config.document}", which is not installed on this ` +
+            `flow. Installed: ${Object.keys(ctx.resources).join(", ")}`,
+        );
+      }
+      const document = await (ref as { readContent(): Promise<string | null> }).readContent();
+      const skills = config.seatSkills ?? [];
 
-    const facts: SeatFacts = {
-      seat,
-      instructions: config.instructions ?? "",
-      documentRef: config.document,
-      document: document ?? "",
-      skillNames: skills.map((skill) => skill.name),
-      skillBodies: Object.fromEntries(skills.map((skill) => [skill.name, skill.skillMd])),
-    };
-    ctx.emit.component(SEAT_FACTS_COMPONENT, facts, { transient: true });
-    return facts;
-  },
-});
+      const facts: SeatFacts = {
+        seat,
+        instructions: config.instructions ?? "",
+        documentRef: config.document,
+        document: document ?? "",
+        skillNames: skills.map((skill) => skill.name),
+        skillBodies: Object.fromEntries(skills.map((skill) => [skill.name, skill.skillMd])),
+      };
+      ctx.emit.component(SEAT_FACTS_COMPONENT, facts, { transient: true });
+      return facts;
+    },
+  });
+}

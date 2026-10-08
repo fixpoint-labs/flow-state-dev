@@ -16,7 +16,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, InitialSkill } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
-import { hireWorkforce, type HireOptions } from "../src/hire";
+import { mintSeats, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { workerConfigSchema } from "../src/worker-config";
@@ -31,12 +31,12 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
 }
 
 function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): FlowInstance[] {
-  return hireWorkforce(manifests, { workerFlows: kinds });
+  return mintSeats(manifests, { workerFlows: kinds });
 }
 
 function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): string {
   try {
-    hireWorkforce(manifests, { workerFlows: kinds });
+    mintSeats(manifests, { workerFlows: kinds });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }

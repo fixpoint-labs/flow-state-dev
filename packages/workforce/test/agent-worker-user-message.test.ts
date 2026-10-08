@@ -13,13 +13,13 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 
 const USER_ID = "u_person";
 
 describe("a message to an agent seat", () => {
   it("is kept in the seat's conversation as the caller's turn, ahead of the reply", async () => {
-    const [seat] = hireWorkforce([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
+    const [seat] = mintSeats([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
     const state = createFlowState({
       flows: { [seat!.id]: seat! },
       stores: { default: { primary: inMemoryStores() } },

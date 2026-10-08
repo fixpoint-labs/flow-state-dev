@@ -13,21 +13,21 @@ The inventory keeps that record as data: three org-scoped resource collections t
 
 | Collection | One row per | Key |
 |------------|-------------|-----|
-| Seats | registered seat | `inventory/seats/<id>`; for a seat hired at runtime, `<id>` is its address, such as `acme.support.ada` |
+| Seats | registered seat | `inventory/seats/<id>` |
 | Mailboxes | registered mailbox | `inventory/mailboxes/<mailboxId>` |
 | Memberships | seat-in-mailbox | `inventory/members/<seatId>/<mailboxId>` |
 
 **A row means registered, not open.** It records that a seat or mailbox was registered in this organization. It says nothing about whether that seat is working or that mailbox is open now. Nothing deletes a row for going missing, so a seat or mailbox a later roster no longer names keeps its row. Label rows that way wherever you show them.
 
-There are two removals. Firing a seat hired at runtime removes its row, and only the row its own hire published (see below). And when a `MAILBOX.md` becomes a project talk template (`mintFor: projects`), it is no longer a mailbox, so the next `openInventory` removes its mailbox row and membership rows through the `seatWriter`. Discovery never lists a template as a mailbox, even before that boot runs.
+The seats are the workers your files declare, the standard workers every user has. A user's own workers, hired or forked while the app runs, aren't listed: they are on that user's [roster](./durable-hire.md), which nobody else reads. One removal remains: when a `MAILBOX.md` becomes a project talk template (`mintFor: projects`), it is no longer a mailbox, so the next `openInventory` removes its mailbox row and membership rows through the `seatWriter`. Discovery never lists a template as a mailbox, even before that boot runs.
 
 ## When to use which source
 
-![Four records, each answering one question. Your files: what is declared? A WORKER.md or MAILBOX.md, read at every start; a seat hired at runtime has no file. Inventory, in the organization's store: was it registered here? A seat row (id, kind, door, hired, incarnation, where hired says the seat came from a runtime hire rather than a file), a mailbox row with a copy of its members, and a membership row per seat in a mailbox. A declared row is never deleted; firing a seat hired at runtime removes its row. Hired roster, a row at workforce/roster/ plus the seat id: is it hired right now? It holds only seats hired while the app runs, and a row is deleted when its seat is fired. The mailbox's session: will this post be accepted? Its state holds members and instructions, and post and fileTask check the author a post names against those members. The inventory's members is a copy for finding mailboxes, never the check. A seat hired at runtime has its address as its inventory id, such as acme.support.ada, while members name it support.ada.](./seat-mailbox-records.svg)
+![Four records, each answering one question. Your files: what is declared? A WORKER.md or MAILBOX.md, read at every start; a user's own worker has no file. Inventory, in the organization's store: was it registered here? A seat row (id, kind, door), a mailbox row with a copy of its members, and a membership row per seat in a mailbox. A declared row is never deleted, and a user's own worker has no row. A user's roster, a row at workforce/workers/ plus the worker's id in that user's own data: whose worker is it? Deleted when the worker is fired. The mailbox's session: will this post be accepted? Its state holds members and instructions, and post and fileTask check the author a post names against those members. The inventory's members is a copy for finding mailboxes, never the check.](./seat-mailbox-records.svg)
 
-Each column answers one question, so ask the record that owns yours. Two are easy to mix up. Whether a seat hired at runtime is hired right now is the [hired roster](./durable-hire.md#the-roster)'s, not the inventory's. Whether a post's `author` is accepted depends on the `members` in the mailbox's session state, not the inventory's copy.
+Each column answers one question, so ask the record that owns yours. Whether a post's `author` is accepted depends on the `members` in the mailbox's session state, not the inventory's copy.
 
-The inventory and your files join on the seat's `id`, except for a seat hired at runtime: its inventory `id` is its address, such as `acme.support.ada`, while a mailbox's `members` name it `support.ada`. For a team list, use `listedSeatRows` from `@flow-state-dev/workforce/browser`. It keeps every declared seat's row and a hired seat's row only while the hired roster backs it, so a seat that is no longer hired drops out.
+The inventory and your files join on the seat's `id`.
 
 ## Wiring the boot
 
@@ -35,16 +35,19 @@ Rows are written by actions that run inside flows, not by a standalone call. So 
 
 ```ts
 import {
-  mailboxInstances,
+  createWorkerInstallation,
   hireWorkforce,
+  inventorySeats,
+  mailboxInstances,
   openMailboxes,
   openInventory,
 } from "@flow-state-dev/workforce";
 
-const seats = hireWorkforce(roster.workers);
+const installation = createWorkerInstallation({ standardWorkers: roster.workers });
+const flows = hireWorkforce(installation);
 const instances = mailboxInstances(roster.mailboxes, { inventory: true });
 
-flowRegistry.registerMany([...seats, ...instances]);
+flowRegistry.registerMany([...flows, ...instances]);
 // server starts here
 
 await openMailboxes(roster.mailboxes, {
@@ -53,7 +56,7 @@ await openMailboxes(roster.mailboxes, {
 });
 
 await openInventory(
-  { seats, mailboxes: roster.mailboxes },
+  { seats: inventorySeats(installation), mailboxes: roster.mailboxes },
   {
     run,
     seatWriter: { flowKind: "mailbox" },
@@ -129,10 +132,6 @@ The rest of the roster is still attempted. Which of these is fatal is yours to d
 
 Every write is an upsert keyed by the record's id. Running over the same roster writes the same rows. Nothing duplicates, and a mailbox registered on an earlier boot keeps its original `openedAt`.
 
-Seat rows have one exception. The roster a boot read can be older than the store, because during a rolling deploy another server may have fired a seat and hired it again, or dropped a declared seat and hired the same address. So a boot writes a seat's row only where there was no row when it read the inventory, or where the stored row is the same kind of seat: for a declared seat, a declared seat's row, and for a hired seat, a row carrying the same incarnation. A boot never writes over a runtime hire's row with another hire's or a declared seat's, and it doesn't bring back a row that a fire removed after the boot read it. A row it leaves isn't counted in `seats`, as long as your `run` returns the action's output or a result carrying it as `output`.
-
-A hire that finds a declared seat's row at its address, written by such a boot while the hire was running, doesn't write over it either. The hire takes back the seat it registered and its roster row, and refuses.
-
 ## Reading the inventory
 
 Declare the same collections on any block. They return the same rows, because a collection is addressed by its pattern and scope, never by object identity.
@@ -173,11 +172,11 @@ const seatMailboxes = handler({
 { id: "engineering.lead", kind: "agent", door: "run", hired: false, incarnation: null }
 ```
 
-`hired` says where the seat came from: `true` for a seat hired at runtime, whose id is its address, and `false` for one declared in a worker file. Read it rather than the id's shape, because a declared team can share the organization's name. A row written before the field existed has `hired: null` until the next boot rewrites it. `incarnation` names the hire or repair that published a hired seat's row. Fire removes a row only when it carries the incarnation being fired, so a seat hired again at the same address keeps its own row, and never removes a declared seat's row. A team list shows a hired seat's row only while the roster row at its address carries the same incarnation.
+`hired` is `false` and `incarnation` is `null` on every row: the inventory lists only the workers your files declare.
 
-`door` names an action on the seat's flow: the one that takes a person's message for this seat. It is the kind's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is named `run`, which is unrelated to the `run` callback above. Every worker flow has exactly one: `hireWorkforce` refuses a flow with none, or with two, before it hires anyone ([which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers)). A seat you build by hand with no such action gets `door: null`, and an app should say that seat takes no message rather than guess.
+`door` names an action on the seat's flow: the one that takes a person's message for this seat. It is the kind's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is named `run`, which is unrelated to the `run` callback above. Every worker flow has exactly one: `hireWorkforce` refuses a flow with none, or with two, before it registers anything ([which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers)). A seat you build by hand with no such action gets `door: null`, and an app should say that seat takes no message rather than guess.
 
-`openInventory` reads the door from each seat's `actions`, and `hired` from its settings, so pass it the seats `hireWorkforce` returned. A seat you build by hand needs `actions` too; pass `{}` for one that takes no message.
+`openInventory` reads the door from each seat's `actions`, so pass it `inventorySeats(installation)`, which gives each standard worker with its flow's actions. A seat you build by hand needs `actions` too; pass `{}` for one that takes no message.
 
 **Mailbox:**
 
@@ -236,7 +235,7 @@ if (mailboxesRef !== undefined) {
 // mailboxes[0] → { id: "engineering.standup", kind: "mailbox", members: [...], openedAt: "..." }
 ```
 
-The patterns are `inventory/seats/*`, `inventory/mailboxes/*` and `inventory/members/**`. A mailbox built with `mailboxInstances(roster.mailboxes, { inventory: true })` declares all three, so any mailbox's session can read the whole inventory. A seat whose kind carries the [`seat-hire` tools](./durable-hire.md) declares only the seat collection.
+The patterns are `inventory/seats/*`, `inventory/mailboxes/*` and `inventory/members/**`. A mailbox built with `mailboxInstances(roster.mailboxes, { inventory: true })` declares all three, so any mailbox's session can read the whole inventory. 
 
 **Which organization:** the session's. The server takes it from the session, and the session took it from your principal resolver when it was created. Nothing in the request can name a different one.
 

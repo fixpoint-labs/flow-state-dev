@@ -1,32 +1,32 @@
 /**
- * Goal check — a team's own worker replaces ours, for every seat on the roster.
+ * Goal check — a team's own worker flow replaces ours, for every worker on
+ * the roster.
  *
- * Three worker records. Two name no kind at all and one names `agent`
- * explicitly, so all three would take the built-in. The app registers its own
- * flow under `agent`, and every one of them runs on the app's flow instead —
- * checked seat by seat, because one-seat-right-and-the-rest-ours is the failure
- * a single assertion misses.
+ * Three worker records. Two name no flow at all and one names `agent`
+ * explicitly, so all three would run on the built-in. The app hands the
+ * installation its own flow under `agent`, and every one of them runs on the
+ * app's flow instead: one registered copy, checked worker by worker, because
+ * one-worker-right-and-the-rest-ours is the failure a single assertion misses.
  *
- * The seats then REGISTER, through the real flow registry, and one runs to
- * completion over the real HTTP route so its own record's instructions can be
- * read back at the far end. Registration is the point: the mint is not the
- * gate. The control run at the end proves that — the same roster with the
- * replacement declared as a singleton mints exactly the same three seats and is
- * refused at registration.
+ * Each worker's session is created naming it, through the real HTTP route,
+ * and runs to completion there; a block nested inside the action reads the
+ * turn's worker and records its own record's instructions and `desk`, a
+ * setting only the caller's flow declares.
  *
  * Real path, no mocking, no model. See goal.md for the contract.
  *
  * Run: pnpm tsx goals/workforce-seats/a-callers-own-agent-wins-every-seat/run.mts
+ * Control: GOAL_CONTROL=builtin-agent (the app passes no flow of its own) must FAIL at (b) for every worker.
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { AGENT_KIND, hireWorkforce, type WorkerManifest } from "@flow-state-dev/workforce";
+import { AGENT_KIND, type WorkerManifest } from "@flow-state-dev/workforce";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { callerAgentFlow, callerAgentSingleton } from "./fixtures/flows";
+import { installWorkers, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+import { defineCallerAgent } from "./fixtures/flows";
 
 type Worker = {
   id: string;
@@ -40,6 +40,9 @@ type Fixture = { userId: string; note: string; roster: Worker[] };
 
 stripIntentOverrides();
 
+const CONTROL = process.env.GOAL_CONTROL ?? "";
+if (CONTROL !== "" && CONTROL !== "builtin-agent") throw new Error(`unknown GOAL_CONTROL "${CONTROL}"`);
+
 const fixture = loadFixture<Fixture>(import.meta.url);
 
 /**
@@ -52,7 +55,7 @@ function records(): WorkerManifest[] {
     declared: {
       description: worker.description,
       desk: worker.desk,
-      // The two shapes that must land on the same kind: an absent key, and the
+      // The two shapes that must land on the same flow: an absent key, and the
       // name written out.
       ...(worker.namesTheKind ? { flow: AGENT_KIND } : {})
     },
@@ -60,32 +63,23 @@ function records(): WorkerManifest[] {
   }));
 }
 
-function host(stores: StoreRegistry, flows: FlowInstance[]) {
+type Router = ReturnType<typeof createFlowApiRouter>;
+
+function host(stores: StoreRegistry, flows: FlowInstance[]): Router {
   const registry = createFlowRegistry();
   registry.registerMany(flows);
   return createFlowApiRouter({ registry, stores, runtimeConfig: { logger: silentLogger } } as never);
 }
 
-type Router = ReturnType<typeof createFlowApiRouter>;
-
-async function act(router: Router, address: string, sessionId: string): Promise<Response> {
-  const path = [address, sessionId, "actions", "run"];
-  return router.POST(
+async function call(router: Router, method: "GET" | "POST", path: string[], body?: unknown): Promise<Response> {
+  return router[method](
     new Request(`http://goal/api/flows/${path.join("/")}`, {
-      method: "POST",
-      body: JSON.stringify({ userId: fixture.userId, input: { note: fixture.note } })
+      method,
+      headers: { "content-type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
     }),
     { params: { path } }
   );
-}
-
-async function ranOn(router: Router, sessionId: string) {
-  const path = ["sessions", sessionId, "state"];
-  const res = await router.GET(new Request(`http://goal/api/flows/${path.join("/")}`), { params: { path } });
-  const body = (await res.json()) as {
-    clientData?: { session?: { ran?: { instructions?: string | null; desk?: string | null; runs?: number } } };
-  };
-  return { status: res.status, ...(body.clientData?.session?.ran ?? {}) };
 }
 
 async function settled(stores: StoreRegistry, requestId: string): Promise<string | undefined> {
@@ -97,124 +91,65 @@ async function settled(stores: StoreRegistry, requestId: string): Promise<string
   return undefined;
 }
 
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
-
 await runGoal(async () => {
   const failures: string[] = [];
   const evidence: string[] = [];
   const dir = mkdtempSync(join(tmpdir(), "fsd-caller-agent-"));
-  const dbFile = join(dir, "goal.db");
 
-  const roster = records();
-  const seats = hireWorkforce(roster, { workerFlows: { [AGENT_KIND]: callerAgentFlow } });
+  // ---- (a) one copy of `agent`, and it is the caller's ----------------------
+  const { copies } = installWorkers(records(), (installation) =>
+    CONTROL === "builtin-agent" ? {} : { [AGENT_KIND]: defineCallerAgent(installation) }
+  );
+  const agents = copies.filter((copy) => copy.kind === AGENT_KIND);
+  if (agents.length !== 1 || agents[0]!.id !== AGENT_KIND) {
+    failures.push(`(a) ${agents.length} copies of "${AGENT_KIND}" registered (${agents.map((c) => c.id).join(", ")}), wanted one, at its kind`);
+  }
+  if (copies.some((copy) => fixture.roster.some((w) => w.id === copy.id))) failures.push("(a) a copy was registered at a worker's id");
+  evidence.push(`one call registered ${agents.length} copy of "${AGENT_KIND}" for ${fixture.roster.length} workers`);
 
-  // ---- (a) EVERY seat resolved to the caller's flow ----------------------
-  {
-    if (seats.length !== roster.length) {
-      failures.push(`hired ${seats.length} seat(s) from ${roster.length} record(s)`);
-    }
-
+  // ---- (b) every worker runs on it, as itself -------------------------------
+  const stores = createSQLiteStores({ filename: join(dir, "goal.db") }) as unknown as StoreRegistry;
+  try {
+    const router = host(stores, copies);
     for (const worker of fixture.roster) {
-      const seat = seats.find((s) => s.id === worker.id);
-      if (seat === undefined) {
-        failures.push(`${worker.id}: no seat was hired for this record`);
+      const sessionId = `s_${worker.id.replace(/\W/g, "_")}`;
+      const created = await call(router, "POST", [AGENT_KIND, "sessions"], {
+        userId: fixture.userId,
+        sessionId,
+        state: { workerId: worker.id }
+      });
+      if (created.status !== 201) {
+        failures.push(`(b) ${worker.id}: its session was not created: ${created.status} ${await created.text()}`);
         continue;
       }
-      // Counting instances is the anti-game trap: three seats come back even
-      // when all three are ours. Read each seat's own bag instead — `desk` is
-      // a setting only the caller's flow declares, and `model` is one only
-      // ours does.
-      const config = seat.config as Record<string, unknown>;
-      if (config.desk !== worker.desk) {
-        failures.push(`${worker.id}: carries desk ${JSON.stringify(config.desk)}, wanted ${JSON.stringify(worker.desk)} — this seat is not the caller's flow`);
+      const res = await call(router, "POST", [AGENT_KIND, sessionId, "actions", "run"], {
+        userId: fixture.userId,
+        input: { note: fixture.note }
+      });
+      if (res.status !== 202) {
+        failures.push(`(b) ${worker.id}: expected 202 from the "${AGENT_KIND}" copy, got ${res.status}: ${await res.text()}`);
+        continue;
       }
-      if (Object.hasOwn(config, "model")) {
-        failures.push(`${worker.id}: carries a "model" setting, which only the built-in declares — the replacement did not win this seat`);
+      const body = (await res.json()) as { request?: { id: string } };
+      const status = await settled(stores, body.request?.id ?? "");
+      if (status !== "completed") failures.push(`(b) ${worker.id}: request ended ${String(status)}`);
+      const state = await call(router, "GET", ["sessions", sessionId, "state"]);
+      const ran = ((await state.json()) as {
+        clientData?: { session?: { ran?: { instructions?: string | null; desk?: string | null; runs?: number } } };
+      }).clientData?.session?.ran;
+      if ((ran?.instructions ?? "").trim() !== worker.body.trim()) {
+        failures.push(`(b) ${worker.id}: its nested block saw instructions ${JSON.stringify(ran?.instructions)}`);
+      }
+      if (ran?.desk !== worker.desk) {
+        failures.push(`(b) ${worker.id}: its nested block saw desk ${JSON.stringify(ran?.desk)}, wanted ${JSON.stringify(worker.desk)} — this turn did not run on the caller's flow`);
       }
     }
-
     const named = fixture.roster.filter((w) => w.namesTheKind).length;
     evidence.push(
-      `all ${seats.length} seats resolved to the caller's own agent — ${named} naming the kind and ${seats.length - named} naming none`
+      `every worker — ${named} naming the flow and ${fixture.roster.length - named} naming none — ran on the caller's copy through the real HTTP route, its own record's body arriving as \`instructions\` and its \`desk\` with it`
     );
-  }
-
-  // ---- (b) and those seats REGISTER ---------------------------------------
-  let stores: StoreRegistry = createSQLiteStores({ filename: dbFile }) as unknown as StoreRegistry;
-  {
-    let router: Router | undefined;
-    try {
-      router = host(stores, seats);
-    } catch (error) {
-      failures.push(`registering the caller's seats threw: ${messageOf(error)}`);
-    }
-
-    if (router !== undefined) {
-      evidence.push("every seat registered through the real flow registry");
-
-      // ---- (c) one seat runs, and its OWN record's instructions arrive ----
-      const lead = fixture.roster[0]!;
-      const session = "s_lead";
-      const res = await act(router, lead.id, session);
-      if (res.status !== 202) {
-        failures.push(`${lead.id}: expected 202 from its own address, got ${res.status}`);
-      } else {
-        const body = (await res.json()) as { request?: { id: string } };
-        const status = await settled(stores, body.request?.id ?? "");
-        if (status !== "completed") failures.push(`${lead.id}: request ended ${String(status)}`);
-
-        const seen = await ranOn(router, session);
-        if (seen.status !== 200) failures.push(`${lead.id}: /state returned ${seen.status}`);
-        if ((seen.instructions ?? "").trim() !== lead.body.trim()) {
-          failures.push(`${lead.id}: its nested block saw instructions ${JSON.stringify(seen.instructions)}`);
-        }
-        if (seen.desk !== lead.desk) {
-          failures.push(`${lead.id}: its nested block saw desk ${String(seen.desk)}`);
-        }
-        if (seen.runs !== 1) failures.push(`${lead.id}: ran ${String(seen.runs)} times`);
-
-        evidence.push(
-          "one seat ran to completion through the real HTTP route, and its own record's body reached a block nested inside the action as `instructions`"
-        );
-      }
-    }
-  }
-  (stores as unknown as { close(): void }).close();
-
-  // ---- (d) the control: a singleton replacement must FAIL at registration --
-  // Without this leg, (b) proves nothing — a check that cannot fail has
-  // verified nothing, and the mint is demonstrably not the gate.
-  {
-    const controlStores = createSQLiteStores({ filename: join(dir, "control.db") }) as unknown as StoreRegistry;
-    let controlSeats: FlowInstance[] | undefined;
-    try {
-      controlSeats = hireWorkforce(roster, { workerFlows: { [AGENT_KIND]: callerAgentSingleton } });
-    } catch (error) {
-      failures.push(
-        `the control roster was refused at the HIRE (${messageOf(error)}) — it is supposed to mint and fail later, so this leg no longer proves registration is the gate`
-      );
-    }
-
-    if (controlSeats !== undefined) {
-      if (controlSeats.length !== roster.length) {
-        failures.push(`the control minted ${controlSeats.length} seat(s), wanted ${roster.length}`);
-      }
-      let registered = false;
-      try {
-        host(controlStores, controlSeats);
-        registered = true;
-      } catch {
-        // Expected: a singleton's seats are refused one by one, by name.
-      }
-      if (registered) {
-        failures.push("a singleton replacement registered cleanly — registration is not refusing what the contract says it must");
-      } else {
-        evidence.push(
-          "the control run — the same roster with the replacement declared a singleton — minted all three seats and was refused at registration, which is what proves this check reaches the registry at all"
-        );
-      }
-    }
-    (controlStores as unknown as { close(): void }).close();
+  } finally {
+    (stores as unknown as { close(): void }).close();
   }
 
   return { failures, evidence: evidence.join("; ") };

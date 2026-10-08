@@ -29,8 +29,6 @@ export interface Entry {
 /** Every check that boots the DevTeam tree, other than the closure's own and the three named above. */
 function devteamBooters(): string[] {
   const named = new Set([
-    "goals/hire-plane/repairs-a-seat-whose-kind-was-cut",
-    "goals/org-seats/cos-changes-the-roster",
     "goals/shift-manager/it-groups-workstreams-under-their-projects",
     "goals/shift-manager/one-person-runs-a-labs-projects-and-people",
     // FIX-1737's closure goal: another epic's, matched only by naming devteam, and its part 3 reruns checks listed here.
@@ -59,14 +57,6 @@ function devteamBooters(): string[] {
  */
 type Expect = { legs: RegExp[]; only?: RegExp };
 const EXPECTED: Record<string, Record<string, Expect>> = {
-  // "Must FAIL `team-list:retired-row-gone` only."
-  "goals/hire-plane/repairs-a-seat-whose-kind-was-cut": {
-    "fire-keeps-inventory": { legs: [/^\[team-list:retired-row-gone\]/], only: /^\[team-list:retired-row-gone\]/ },
-  },
-  // "**discover** only: ... every later leg stays green"
-  "goals/org-seats/cos-changes-the-roster": {
-    "drop-member-from-discover": { legs: [/^\[control drop-member-from-discover\] discover:/], only: /^\[control drop-member-from-discover\] discover:/ },
-  },
   "goals/shift-manager/it-groups-workstreams-under-their-projects": {
     unread: { legs: [/^\[control unread\] PROJECTS equals the store's rows:/] },
     "gap-tabs": { legs: [/^\[control gap-tabs\] a project's four tabs:/] },
@@ -149,8 +139,6 @@ export function gradeControl(path: string, control: string, exit: number | null,
 
 export function manifest(): Entry[] {
   return [
-    { id: "P3.1", path: "goals/hire-plane/repairs-a-seat-whose-kind-was-cut", controls: ["fire-keeps-inventory"] },
-    { id: "P3.2", path: "goals/org-seats/cos-changes-the-roster", controls: ["drop-member-from-discover"], covered: "deny-fire (b3)" },
     {
       id: "P3.3",
       path: "goals/shift-manager/it-groups-workstreams-under-their-projects",

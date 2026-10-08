@@ -25,9 +25,6 @@
  *   BR-10 two posts at once each run exactly once, in that same conversation.
  *   BR-14 the post's own request carries no seat's answer: the wake runs in
  *         the mailbox's hand-off request.
- *   FIX-1602 BR-11: a seat conversation this app's own wake opened before
- *         it moved onto Workforce's `wakeMemberSeats` takes the next post.
- *         Red: the helper's key changed, so the next post opens a second.
  *   BR-11, BR-12 need a roster this app does not have (a seat in two
  *         mailboxes, a refused wake), so they are held on the factory below,
  *         with a roster built for them.
@@ -39,16 +36,17 @@
  * without one.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ORG_ID, dispatcher, handler, utility, type BlockDefinition } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import type { FlowState, StoreRegistry } from "@flow-state-dev/engine";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   MAILBOX_KIND,
+  createWorkerInstallation,
   mailboxNotifyInputSchema,
   defineMailboxFlow,
   hireWorkforce,
-  type MailboxNotifyInput,
+  workerConfigSchema,
 } from "@flow-state-dev/workforce";
 
 // Each case boots the whole app afresh, and the first import is cold.
@@ -131,9 +129,18 @@ async function seatPost(sessionId: string, body: string, author: string) {
 type Message = { role: string; text: string };
 type Conversation = { sessionId: string; parentSessionId?: string; messages: Message[] };
 
-/** Every conversation of a seat, dispatch runs included, with its kept messages. */
+/**
+ * Every conversation of a worker, dispatch runs included, with its kept
+ * messages: the sessions on `agent`'s one copy created naming the worker.
+ */
 async function conversationsOf(router: Router, seat: string): Promise<Conversation[]> {
-  const listed = await call(router, "GET", ["sessions"], undefined, `?flowId=${encodeURIComponent(seat)}&userId=${USER}&include=dispatch-runs&limit=100`);
+  const listed = await call(
+    router,
+    "GET",
+    ["sessions"],
+    undefined,
+    `?flowId=agent&state.workerId=${encodeURIComponent(seat)}&userId=${USER}&include=dispatch-runs&limit=100`,
+  );
   expect(listed.status, listed.text).toBe(200);
   const rows = (JSON.parse(listed.text) as { sessions: Array<{ id: string; parentSessionId?: string | null }> }).sessions;
   const out: Conversation[] = [];
@@ -284,9 +291,10 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[])
 
 describe("V3 · the wake factory, off the app's own roster", () => {
   /**
-   * `support.otto` is hired and registered. `support.iris` is hired and handed
-   * to the wake, but its flow is not registered, so its dispatch is refused.
-   * `support.lost` never loaded, so it has no seat to wake.
+   * `support.otto` is a standard worker on `agent`, whose copy is registered.
+   * `support.iris` runs on `listener`, whose copy is handed to the wake but not
+   * registered, so its dispatch is refused. `support.lost` never loaded, so
+   * there is no worker to wake.
    */
   async function host() {
     vi.resetModules();
@@ -294,13 +302,31 @@ describe("V3 · the wake factory, off the app's own roster", () => {
     vi.stubEnv("GOAL_CONTROL", "");
     const { notifyFor } = await import("@/workforce/mailbox-notify");
     const { createKitchenSinkTestModelResolver } = await import("@/test/mock-flowstate");
-    const [iris, otto] = hireWorkforce([
-      { id: "support.iris", declared: {}, body: "You answer questions." },
-      { id: "support.otto", declared: {}, body: "You answer questions." },
-    ]);
-    const mailbox = defineMailboxFlow({ notify: notifyFor([iris!, otto!]) })();
+    let flows: Record<string, unknown> = {};
+    const installation = createWorkerInstallation({
+      standardWorkers: [
+        { id: "support.iris", declared: { flow: "listener" }, body: "You answer questions." },
+        { id: "support.otto", declared: {}, body: "You answer questions." },
+      ],
+      workerFlows: () => flows as never,
+    });
+    const quiet = handler({ name: "listener-heard", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => null });
+    const door = z.object({ message: z.string() });
+    flows = {
+      listener: defineFlow({
+        kind: "listener",
+        configSchema: workerConfigSchema(),
+        session: installation.session(),
+        resources: { ...installation.resources },
+        actions: { run: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: quiet } },
+        internal: { actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: quiet } } },
+      }),
+    };
+    const copies = hireWorkforce(installation);
+    const agent = copies.find((copy) => copy.id === "agent")!;
+    const mailbox = defineMailboxFlow({ notify: notifyFor(copies, installation) })();
     const state = createFlowState({
-      flows: { [MAILBOX_KIND]: mailbox, [otto!.id]: otto! },
+      flows: { [MAILBOX_KIND]: mailbox, [agent.id]: agent },
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createKitchenSinkTestModelResolver(),
     });
@@ -317,8 +343,8 @@ describe("V3 · the wake factory, off the app's own roster", () => {
         runtimeConfig: { ...runtime.runtimeConfig },
       });
     const ottoRuns = async () => {
-      const sessions = await runtime.stores.session.list({ flowId: "support.otto", parentage: "all" });
-      return sessions.filter((s) => s.parentSessionId != null);
+      const sessions = await runtime.stores.session.list({ flowId: "agent", parentage: "all" });
+      return sessions.filter((s) => s.parentSessionId != null && (s.state as { workerId?: string }).workerId === "support.otto");
     };
     return { state, runtime, send, ottoRuns };
   }
@@ -368,87 +394,3 @@ describe("V3 · the wake factory, off the app's own roster", () => {
   });
 });
 
-describe("V3 · a restart onto the package's wake", () => {
-  it("lands the next post in the seat conversation the app's own wake opened before the move (BR-11)", async () => {
-    vi.resetModules();
-    vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
-    vi.stubEnv("GOAL_CONTROL", "");
-    const { notifyFor } = await import("@/workforce/mailbox-notify");
-    // The old wake's fallback, as it was: a name-only line for a member it did not run.
-    const notifyMember = handler({
-      name: "kitchen-sink-notify-member",
-      inputSchema: mailboxNotifyInputSchema,
-      outputSchema: z.object({ notified: z.string() }),
-      execute: (input: MailboxNotifyInput) => ({ notified: input.member }),
-    });
-    const { createKitchenSinkTestModelResolver } = await import("@/test/mock-flowstate");
-    const [otto] = hireWorkforce([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
-    const stores = inMemoryStores();
-
-    // The wake this app built for itself before it moved onto the package's,
-    // as it was in what finds a conversation: the dispatcher's name, target,
-    // entry and key.
-    const before = utility.keyedRouter({
-      name: "kitchen-sink-notify",
-      inputSchema: mailboxNotifyInputSchema,
-      blocks: {
-        "support.otto": dispatcher({
-          name: "wake-support.otto",
-          flowKind: "support.otto",
-          action: "onMailboxPost",
-          inputSchema: mailboxNotifyInputSchema,
-          session: { key: (p: MailboxNotifyInput) => `mailbox:${p.mailboxId}` },
-        }),
-      },
-      select: (p: MailboxNotifyInput) => (p.author !== undefined ? "" : p.member),
-      fallback: notifyMember,
-    });
-
-    /** Boot on one wake, post once, wait for otto to hear it, and shut down. */
-    const runOn = async (notify: BlockDefinition<any, any>, body: string) => {
-      const mailbox = defineMailboxFlow({ notify })();
-      const state = createFlowState({
-        flows: { [MAILBOX_KIND]: mailbox, [otto!.id]: otto! },
-        stores: { default: { primary: stores } },
-        modelResolver: createKitchenSinkTestModelResolver(),
-      });
-      try {
-        const runtime = await state.getRuntime();
-        if ((await runtime.stores.session.get("room.one")) === undefined) {
-          await bind(runtime.stores, "room.one", ["support.otto"]);
-        }
-        const sent = await runAction({
-          orgId: DEFAULT_ORG_ID,
-          flow: mailbox,
-          actionName: "post",
-          input: { body },
-          userId: USER,
-          sessionId: "room.one",
-          stores: runtime.stores,
-          runtimeConfig: { ...runtime.runtimeConfig },
-        });
-        expect(sent.error).toBeUndefined();
-        const runs = async () =>
-          (await runtime.stores.session.list({ flowId: "support.otto", parentage: "all" })).filter(
-            (s) => s.parentSessionId === "room.one",
-          );
-        const heard = async () => {
-          for (const run of await runs()) {
-            const requests = await runtime.stores.request.list({ sessionId: run.id });
-            if (requests.some((r) => r.status === "completed" && JSON.stringify(r.input).includes(body))) return true;
-          }
-          return false;
-        };
-        await until(heard, `otto to hear "${body}"`);
-        return (await runs()).map((r) => r.id);
-      } finally {
-        await state.dispose();
-      }
-    };
-
-    const opened = await runOn(before, "[scenario:wake] before the move");
-    expect(opened).toHaveLength(1);
-    const after = await runOn(notifyFor([otto!]), "[scenario:wake] after the move");
-    expect(after).toEqual(opened);
-  });
-});

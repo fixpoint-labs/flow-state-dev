@@ -20,7 +20,7 @@
 import type { ManifestEntry } from "@flow-state-dev/contracts";
 import type { BlockContext } from "../types/block";
 import type { ResourceRef } from "../types/resource";
-import { collectReadableProjectedCollections, collectReadableResources } from "../tools/resource-tools";
+import { collectReadableProjectedCollections, collectReadableResources, isLlmWritableNow } from "../tools/resource-tools";
 import type { BlockManifestSource } from "./registry";
 
 /**
@@ -46,8 +46,10 @@ function purposeOf(ref: ResourceRef<any>): string {
  * exists to remove. Collection instances carry their collection's config, so
  * the collection-level `writable` is read through this same expression.
  */
-function contractOf(ref: ResourceRef<any>): string {
-  const mayWrite = ref.config?.llmWritable === true && ref.config?.writable !== false;
+function contractOf(ref: ResourceRef<any>, ctx: BlockContext): string {
+  // `isLlmWritableNow` also holds the flow's visibility rule: a resource it
+  // leaves read-only is advertised as read-only.
+  const mayWrite = isLlmWritableNow(ref, ctx) && ref.config?.writable !== false;
   return `Reachable by uri "${ref.uri}"; you may ${mayWrite ? "read and write" : "read"} its content.`;
 }
 
@@ -67,7 +69,7 @@ export function resourcesManifestSource(): BlockManifestSource {
           id: ref.uri,
           kind: "resource",
           purpose: purposeOf(ref),
-          contract: contractOf(ref),
+          contract: contractOf(ref, ctx),
         });
       }
 

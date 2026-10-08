@@ -27,7 +27,7 @@ import {
 import { readDeclaredRoster } from "../src/loader/read-declared-roster";
 import { referencesFromDocs } from "../src/references-from-docs";
 import { resourcesFromDocs } from "../src/resources-from-docs";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import { workerConfigSchema } from "../src/worker-config";
 import { workerDoor } from "./worker-door";
 
@@ -117,7 +117,7 @@ async function devtoolResources(root: string): Promise<SnapshotEntry[]> {
   const documents = resourcesFromDocs(roster.documents);
   const references = referencesFromDocs(roster.references);
 
-  const [seat] = hireWorkforce(
+  const [seat] = mintSeats(
     [{ id: SEAT, declared: { flow: KIND, description: SEAT }, body: "" }],
     { workerFlows: { [KIND]: kindWith({ ...documents, ...references }) as never }, documents, references },
   );

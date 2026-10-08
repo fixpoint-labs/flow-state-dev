@@ -19,7 +19,7 @@ import type { FlowInstance } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
-import { hireWorkforce, type HireOptions } from "../src/hire";
+import { mintSeats, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 
 // Markers, not prose: each appears in exactly one preset on one capability, so
@@ -141,7 +141,7 @@ function hire(
   manifests: WorkerManifest[],
   kinds: HireOptions["workerFlows"] = {}
 ): (id: string) => FlowInstance {
-  const seats = hireWorkforce(manifests, { workerFlows: kinds });
+  const seats = mintSeats(manifests, { workerFlows: kinds });
   return (id) => {
     const seat = seats.find((candidate) => candidate.id === id);
     if (!seat) throw new Error(`no seat "${id}" in [${seats.map((s) => s.id).join(", ")}]`);
@@ -151,7 +151,7 @@ function hire(
 
 function refusalOf(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): string {
   try {
-    hireWorkforce(manifests, { workerFlows: kinds });
+    mintSeats(manifests, { workerFlows: kinds });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }

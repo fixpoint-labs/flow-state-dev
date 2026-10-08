@@ -19,9 +19,8 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
-import { hireWorkforce, type HireOptions } from "../src/hire";
+import { mintSeats, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
-import { hiredSeatManifestFromStored, hiredSeatRowFromManifest, toHiredSeatRow } from "../src/roster/rows";
 
 /** A named tool that does nothing; the checks read whether it was OFFERED. */
 function tool(name: string) {
@@ -90,7 +89,7 @@ function hire(
   kinds: HireOptions["workerFlows"],
   seatBlocks?: HireOptions["seatBlocks"]
 ): (id: string) => FlowInstance {
-  const seats = hireWorkforce(manifests, { workerFlows: kinds, ...(seatBlocks ? { seatBlocks } : {}) });
+  const seats = mintSeats(manifests, { workerFlows: kinds, ...(seatBlocks ? { seatBlocks } : {}) });
   return (id) => {
     const seat = seats.find((candidate) => candidate.id === id);
     if (!seat) throw new Error(`no seat "${id}" in [${seats.map((s) => s.id).join(", ")}]`);
@@ -318,35 +317,6 @@ describe("omitted and empty stay apart after the schema", () => {
 
   // A stored row is read the way a file is. Round-tripped through JSON, as
   // storage does, so a key written as `undefined` could not survive by accident.
-  it("reads a stored row with no `tools:` as omitted, and a stored `tools: []` as a withhold (BR-8)", async () => {
-    const stored = (settings: Record<string, unknown>, seatId: string) =>
-      JSON.parse(
-        JSON.stringify(
-          toHiredSeatRow({ seatId, flow: AGENT_KIND, settings, owningOrgId: "acme" })
-        )
-      ) as unknown;
-    const manifestOf = (value: unknown): WorkerManifest => {
-      const read = hiredSeatManifestFromStored("acme", value);
-      if ("problem" in read) throw new Error(read.problem);
-      return read.manifest;
-    };
-
-    const open = manifestOf(stored({ capabilities: { fieldwork: ["survey"] } }, "eng.open"));
-    const shut = manifestOf(
-      stored({ tools: [], capabilities: { fieldwork: ["survey"] } }, "eng.shut")
-    );
-
-    // Written back, the omitted line is still omitted.
-    const again = hiredSeatRowFromManifest("acme", open);
-    if ("problem" in again) throw new Error(again.problem);
-    expect(again.row.settings).not.toHaveProperty("tools");
-
-    const seat = hire([open, shut], {
-      [AGENT_KIND]: defineAgentWorkerFlow({ uses: [fieldwork] })
-    });
-    expect(await offered(seat("acme.eng.open"), "acme")).toEqual(["lookup"]);
-    expect(await offered(seat("acme.eng.shut"), "acme")).toEqual([]);
-  });
 });
 
 describe("chosen tools that cannot all be granted are refused at the hire", () => {
@@ -363,7 +333,7 @@ describe("chosen tools that cannot all be granted are refused at the hire", () =
 
     let message = "";
     try {
-      hireWorkforce(
+      mintSeats(
         [
           record({
             id,

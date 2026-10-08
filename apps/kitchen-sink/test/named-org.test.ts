@@ -2,8 +2,8 @@
  * Kitchen-sink runs as one named organization — driven through the app's own
  * `fsdev.config.ts` and the router it builds, not through `runAction`.
  *
- * Every case imports the real config. So the host resolver, the admin
- * credential, the boot's mailbox open and the step that clears a pre-change
+ * Every case imports the real config. So the host resolver, the boot's
+ * mailbox open and the step that clears a pre-change
  * store's mailboxes are the ones the app ships, and a request goes through
  * route-level authentication exactly as a browser's does. Promoted from the
  * spec POC (`specs/issues/FIX-1500/poc/named-org/`).
@@ -16,8 +16,8 @@
  * Checks, by the spec's ids (`specs/issues/FIX-1500/PLAN.md`), and the red
  * state each was seen in before its green was trusted:
  *
- *   V18 A session on the assistant's flow, on a seat and on a mailbox binds to
- *       `kitchen-sink`, whatever the body says. Red: remove `resolvePrincipal`
+ *   V18 A session on the assistant's flow, with a worker and on a mailbox
+ *       binds to `kitchen-sink`, whatever the body says. Red: remove `resolvePrincipal`
  *       from `fsdev.config.ts` — every session binds to `__fsd_default_org__`.
  *   V19 A store written before the app named its organization is not
  *       upgraded: it is wiped (the owner's call on #2159). The boot over one
@@ -26,16 +26,6 @@
  *       mailbox is moved, rebound or deleted. Red: remove the guard in `fsdev.config.ts` — the boot fails with the
  *       bare `mailbox "support.help" could not be opened — Request failed
  *       (403)`, which names neither the cause nor the fix.
- *   V22 With `acme:t1,kitchen-sink:t2`, the `acme` token is refused (401) and
- *       named in the boot log, and the `kitchen-sink` token's `fire` releases
- *       the seat its `hire` made. Red: accept the `acme` binding — its token
- *       resolves, and its fire answers `This organization hired no seat`.
- *
- * V11 and V14 were proven through the rail's hire, and left with it (FIX-1611
- * D3): an operator's hire landing in `kitchen-sink` whatever its body names is
- * `workforce-admin.test.ts` V10, and one surviving a restart is
- * `hired-seat-auth.test.ts` and the goal check
- * `goals/workforce-conventions/durable-hire-survives-redeploy/`.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -90,12 +80,11 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function bootApp(options: { dataDir?: string; tokens?: string; steps?: ScriptStep[] } = {}) {
+async function bootApp(options: { dataDir?: string; steps?: ScriptStep[] } = {}) {
   vi.resetModules();
   script.steps = options.steps ?? [{ text: "ok" }];
   vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
   vi.stubEnv("STORE_TYPE", options.dataDir === undefined ? "memory" : "filesystem");
-  vi.stubEnv("WORKFORCE_ADMIN_TOKENS", options.tokens ?? "");
   delete process.env.FSDEV_DEFAULT_MODEL;
   // The config roots the filesystem profile at `<cwd>/.fsdev/data`.
   if (options.dataDir !== undefined) vi.spyOn(process, "cwd").mockReturnValue(options.dataDir);
@@ -154,11 +143,17 @@ async function act(router: Router, flowId: string, action: string, sessionId: st
 // ---------------------------------------------------------------------------
 
 describe("V18 · one organization, from the host resolver", () => {
-  it("binds the assistant's flow, a seat and a mailbox to kitchen-sink, whatever the body says", async () => {
+  it("binds the assistant's flow, a worker's conversation and a mailbox to kitchen-sink, whatever the body says", async () => {
     const { router } = await bootApp();
 
-    for (const flowId of ["chat-agent", "support.devices", "support.general", "mailbox"]) {
-      const opened = await openSession(router, flowId, { orgId: "globex" });
+    const opens: Array<[string, Record<string, unknown>]> = [
+      ["chat-agent", {}],
+      ["agent", { state: { workerId: "support.devices" } }],
+      ["agent", { state: { workerId: "support.general" } }],
+      ["mailbox", {}],
+    ];
+    for (const [flowId, body] of opens) {
+      const opened = await openSession(router, flowId, { orgId: "globex", ...body });
       expect(opened.status, `${flowId}: ${opened.text}`).toBe(201);
       expect(opened.orgId, flowId).toBe(ORG);
     }
@@ -170,39 +165,6 @@ describe("V18 · one organization, from the host resolver", () => {
 
 });
 
-describe("V22 · every admin token is bound to kitchen-sink", () => {
-  it("refuses and names an acme token, and the kitchen-sink token fires the seat it hired", async () => {
-    const { runtime, router, log } = await bootApp({ tokens: "acme:t1,kitchen-sink:t2" });
-
-    expect(log.join("\n")).toMatch(/names organization "acme"/);
-
-    // The operator's hire, pinned to the organization and the admin user.
-    const seat = `${ORG}.~workforce-admin.support.pat`;
-    const hired = await act(
-      router,
-      "workforce-admin",
-      "hire",
-      "admin-hire",
-      { seatId: "support.pat", flow: "agent", instructions: "Takes refunds." },
-      {},
-      { authorization: "Bearer t2" },
-    );
-    expect(hired.text).not.toMatch(/"type":"error"/);
-    expect(runtime.registry.get(seat)?.kind).toBe("agent");
-
-    const acme = await act(router, "workforce-admin", "fire", "admin-acme", { seatId: "support.pat" }, {}, { authorization: "Bearer t1" });
-    expect(acme.status, acme.text).toBe(401);
-    expect(runtime.registry.get(seat)).toBeDefined();
-
-    const fired = await act(router, "workforce-admin", "fire", "admin-fire", { seatId: "support.pat" }, {}, { authorization: "Bearer t2" });
-    // The action's `{ released }` result is a block output, which a client
-    // stream never carries; the registry below is the evidence it fired.
-    expect(fired.status, fired.text).toBe(200);
-    expect(fired.text).not.toMatch(/"type":"error"/);
-    expect(runtime.registry.get(seat)).toBeUndefined();
-  });
-});
-
 describe("V19 · a store written before the app named its organization", () => {
   /**
    * The boot the app ran before it named its organization, for the part that
@@ -211,8 +173,8 @@ describe("V19 · a store written before the app named its organization", () => {
    * development organization.
    */
   async function preChangeBoot(dataDir: string) {
-    const { hireKitchenSinkWorkforce } = await import("@/workforce/hire");
-    const workforce = await hireKitchenSinkWorkforce();
+    const { buildKitchenSinkWorkforce } = await import("@/workforce/hire");
+    const workforce = await buildKitchenSinkWorkforce();
     const flowstate = createFlowState({
       flows: Object.fromEntries(workforce.mailboxFlows.map((flow) => [flow.id, flow])),
       stores: { dev: { primary: filesystemStores({ rootDir: path.join(dataDir, ".fsdev", "data") }) } },

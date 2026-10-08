@@ -189,6 +189,7 @@ function rejectRemovedClientData(value: object | undefined, flowKind: string, sc
 
 /** The definition-only options {@link rejectDefinitionOnlyOptions} refuses. */
 const DEFINITION_ONLY_INSTANCE_OPTIONS = [
+  "resourceVisibility",
   "webhooks",
   "schedules",
   "mcp",
@@ -1473,6 +1474,7 @@ function normalizeFlowConfig(
     mcp,
     webhooks,
     schedules,
+    ...(definition.resourceVisibility !== undefined ? { resourceVisibility: definition.resourceVisibility } : {}),
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator,
     isolateUserState,
@@ -1558,6 +1560,7 @@ export function defineFlow<
     mcp: baseInstance.mcp,
     webhooks: baseInstance.webhooks,
     schedules: baseInstance.schedules,
+    ...(baseInstance.resourceVisibility !== undefined ? { resourceVisibility: baseInstance.resourceVisibility } : {}),
     tokenCounter: baseInstance.tokenCounter,
     costEstimator: baseInstance.costEstimator,
     isolateUserState: baseInstance.isolateUserState,

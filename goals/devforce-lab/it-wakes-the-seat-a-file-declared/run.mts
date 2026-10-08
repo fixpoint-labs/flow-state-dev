@@ -365,7 +365,7 @@ await runGoal(async () => {
       }
       if (hiredAnyway >= 0) {
         note(`a tree naming an unregistered kind hired ${hiredAnyway} seats instead of refusing`);
-      } else if (!refusal.includes("nothing was hired") || !refusal.includes("codr")) {
+      } else if (!refusal.includes("nothing was registered") || !refusal.includes("codr")) {
         note(`the refusal did not name the unregistered kind and the empty roster: ${refusal}`);
       }
 
@@ -457,7 +457,7 @@ await runGoal(async () => {
       // cannot tell the seat that was named from the seat that must never be
       // reached. That distinction is the whole of BR-8.
       const dispatched = await lab.dispatched(fixture.coordinatorSeat);
-      const reached = dispatched.map((child) => child.flowId ?? "<none>");
+      const reached = dispatched.map((child) => child.workerId ?? "<none>");
       if (!sameSet(reached, [fixture.assignedSeat])) {
         note(
           `the drain dispatched to ${JSON.stringify(reached)}, wanted exactly ` +

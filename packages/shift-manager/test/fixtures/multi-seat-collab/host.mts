@@ -1,6 +1,8 @@
 /**
- * The hire — read the tree, build the two kinds, hire the seats, and hand back
- * what `fsdev.config.mts` serves and what the checks need to read.
+ * Read the tree, build the installation and the two kinds on it, register one
+ * copy of each, and hand back what `fsdev.config.mts` serves and what the
+ * checks need to read. Every seat is a worker on its kind's one copy; a
+ * session names the worker it runs.
  *
  * Every file it reads is found by walking from one root; no seat, mailbox or
  * board is named in this code. The minted ledger id is not written anywhere
@@ -28,6 +30,7 @@ import {
   mailboxBoard,
   mailboxBoardIds,
   mailboxInstances,
+  createWorkerInstallation,
   hireWorkforce,
   openMailboxes,
   openInventory,
@@ -62,6 +65,8 @@ export interface LabTree {
   plannerId: string;
   /** The worker seat ids, in tree order. */
   workerIds: string[];
+  /** Seat id -> the flow it runs on, whose one copy every seat of that flow shares. */
+  seatFlows: Record<string, string>;
   /**
    * Seat id -> the desk that seat's OWN `WORKER.md` answers for. **The oracle.**
    * Read by the checks, never by the routing.
@@ -118,6 +123,7 @@ export async function readLabTree(root: string = LAB_TREE): Promise<LabTree> {
     boardId: mailboxBoard(mailbox.id, boardName).id,
     plannerId: planner.id,
     workerIds: workers.map((worker) => worker.id),
+    seatFlows: { [planner.id]: PLANNER_KIND, ...Object.fromEntries(workers.map((worker) => [worker.id, WORKER_KIND])) },
     declaredDesks,
   };
 }
@@ -140,28 +146,34 @@ export interface HireLabOptions {
 }
 
 /**
- * Build the kinds and hire every seat, plus the mailbox singleton.
+ * Build the installation and the kinds, and register one copy of each, plus
+ * the mailbox singleton.
  *
- * `hireWorkforce` refuses the WHOLE roster when any record cannot be hired, so
- * a refusal cannot leave a short roster running.
+ * `hireWorkforce` refuses the WHOLE roster when any worker would be refused
+ * on its first turn, so a refusal cannot leave a short roster running.
  *
- * @returns The flow instances by address — what a `FlowState` registers.
+ * @returns The flow instances by id — what a `FlowState` registers.
  */
 export function hireLab(options: HireLabOptions): Record<string, FlowInstance> {
   const { tree } = options;
   const board = mailboxBoard(tree.mailbox.id, tree.boardName);
-  const seats = hireWorkforce(tree.roster.workers, {
-    workerFlows: {
-      [WORKER_KIND]: defineWorkerFlow({
-        board,
-        routes: options.routes,
-        outbox: options.outbox,
-        ...(options.workerControl === undefined ? {} : { control: options.workerControl }),
-      }) as never,
-      [PLANNER_KIND]: definePlannerFlow({ mailboxId: tree.mailbox.id, boardName: tree.boardName }) as never,
-    },
-    mailboxBoards: mailboxBoardIds([tree.mailbox]),
+  let workerFlows: Record<string, unknown> = {};
+  const installation = createWorkerInstallation({
+    standardWorkers: tree.roster.workers,
+    workerFlows: () => workerFlows as never,
   });
+  workerFlows = {
+    [WORKER_KIND]: defineWorkerFlow({
+      installation,
+      board,
+      routes: options.routes,
+      outbox: options.outbox,
+      ...(options.workerControl === undefined ? {} : { control: options.workerControl }),
+    }),
+    [PLANNER_KIND]: definePlannerFlow({ installation, mailboxId: tree.mailbox.id, boardName: tree.boardName }),
+  };
+  const copies = hireWorkforce(installation, { mailboxBoards: mailboxBoardIds([tree.mailbox]) });
+
   const { boardActions: _optIn, ...withoutOptIn } = tree.mailbox.declared;
   const mailbox =
     options.boardActions === false ? { ...tree.mailbox, declared: withoutOptIn } : tree.mailbox;
@@ -171,7 +183,7 @@ export function hireLab(options: HireLabOptions): Record<string, FlowInstance> {
     ...Object.fromEntries(
       mailboxInstances([mailbox], { inventory: true }).map((instance) => [instance.kind, instance]),
     ),
-    ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
+    ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
   };
 }
 
@@ -262,10 +274,12 @@ export async function openLab(
     }
     return result;
   };
+  // Each seat, on the copy of the flow it runs on, whose actions its door is read from.
   const seats = tree.roster.workers.map((worker) => {
-    const seat = flows[worker.id];
-    if (seat === undefined) throw new Error(`seat "${worker.id}" was not hired`);
-    return seat;
+    const kind = tree.seatFlows[worker.id]!;
+    const flow = flows[kind];
+    if (flow === undefined) throw new Error(`seat "${worker.id}" runs on "${kind}", which is not registered`);
+    return { id: worker.id, kind, actions: (flow as { actions?: Readonly<Record<string, unknown>> }).actions ?? {} };
   });
   const binding = await openInventory(
     { seats, mailboxes: [tree.mailbox] },

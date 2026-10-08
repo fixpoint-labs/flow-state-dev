@@ -248,6 +248,7 @@ export type {
   ResourceRegistry,
   StateOf
 } from "./resource";
+export type { ResourceVisibility, ResourceVisibilityRule, ResourceVisibilityTarget } from "./resource-visibility";
 
 export type {
   CollectionHookContext,

@@ -21,12 +21,12 @@
  * Run: pnpm tsx goals/agent-discovery/an-orchestrator-routes-a-task-by-asking/run.mts
  */
 import { defineCapability, defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { createInMemoryStores, createModelResolver, runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores, createModelResolver, ensureSessionRecord, runAction } from "@flow-state-dev/engine";
 import {
   createWorkforceCapability,
   defineAgentWorkerFlow,
   defineSeatInventoryCollection,
-  hireWorkforce,
+  createWorkerInstallation, hireWorkforce,
   type WorkerManifest,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
@@ -124,7 +124,17 @@ async function route(blankPurposes: boolean): Promise<{
   const { assign, assigned } = assignTool();
   const roster = rosterFrom(fx.seats, blankPurposes);
 
+  // The coordinator is a worker from a record like any other. Its file names
+  // its tool and its instructions; it names NO seat and no roster.
+  const coordinatorRecord: WorkerManifest = {
+    id: fx.orchestrator.id,
+    declared: { tools: ["assign"] },
+    body: fx.orchestrator.instructions,
+  };
+  let flows: Record<string, unknown> = {};
+  const installation = createWorkerInstallation({ standardWorkers: [coordinatorRecord], workerFlows: () => flows as never });
   const kind = defineAgentWorkerFlow({
+    installation,
     model: DEFAULT_MODEL,
     catalog: { assign },
     uses: [
@@ -136,17 +146,9 @@ async function route(blankPurposes: boolean): Promise<{
     ],
   });
 
-  // The coordinator is hired from a record like any other seat. Its file names
-  // its tool and its instructions; it names NO seat and no roster.
-  const coordinatorRecord: WorkerManifest = {
-    id: fx.orchestrator.id,
-    declared: { tools: ["assign"] },
-    body: fx.orchestrator.instructions,
-  };
-  const [coordinator] = hireWorkforce([coordinatorRecord], {
-    workerFlows: { agent: kind as never },
-  });
-  if (!coordinator) return { assigned, prompt: "", error: "the coordinator was not hired" };
+  flows = { agent: kind };
+  const coordinator = hireWorkforce(installation).find((copy) => copy.id === "agent");
+  if (!coordinator) return { assigned, prompt: "", error: "no agent copy was registered" };
 
   const stores = createInMemoryStores();
   const runtimeConfig = {
@@ -170,9 +172,34 @@ async function route(blankPurposes: boolean): Promise<{
   });
   if (seeded.error) return { assigned, prompt: "", error: `seeding failed: ${seeded.error.message}` };
 
+  // The coordinator's session, created naming it.
+  const now = Date.now();
+  await ensureSessionRecord(
+    stores,
+    session,
+    {
+      flow: coordinator as never,
+      sessionId: session,
+      principal: { userId: "goal-user", orgId: DEFAULT_ORG_ID },
+      state: { workerId: coordinatorRecord.id },
+      fromCaller: true,
+      via: "create",
+    },
+    () => ({
+      id: session,
+      flowKind: coordinator.kind,
+      flowId: coordinator.id,
+      userId: "goal-user",
+      orgId: DEFAULT_ORG_ID,
+      version: 0,
+      createdAt: now,
+      updatedAt: now,
+      journal: [],
+    }) as never,
+  );
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
-    flow: { ...coordinator, cardinality: "singleton" } as never,
+    flow: coordinator as never,
     actionName: "run" as never,
     input: { message: fx.task },
     userId: "goal-user",

@@ -28,6 +28,7 @@ export {
 } from "./items/predicates";
 // `ClientDataOf` covers both DefinedResource and DefinedResourceCollection — one import for either.
 export type { ClientDataOf, ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
+export type { ResourceVisibility, ResourceVisibilityRule, ResourceVisibilityTarget } from "./types/resource-visibility";
 export type {
   CollectionHookContext,
   DefinedResourceCollection,

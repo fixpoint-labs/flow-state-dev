@@ -1,32 +1,35 @@
 /**
  * One person's conversation with one seat, read from the seat's session.
  *
- * The session is the newest direct one the snapshot lists for the seat, or the
- * one a first line just opened, until the snapshot lists it (BR-14). Its items
- * are read when the view opens and after each line, never on the snapshot's
- * refresh. Nothing is sent into a conversation the screen hasn't read; one a
- * line opened here holds nothing the person hasn't seen.
+ * The session is the newest direct one the snapshot lists on the seat's flow
+ * naming the seat's worker, or the one a first line just opened, until the
+ * snapshot lists it (BR-14). Its items are read when the view opens and after
+ * each line, never on the snapshot's refresh. Nothing is sent into a
+ * conversation the screen hasn't read; one a line opened here holds nothing
+ * the person hasn't seen.
  *
  * Used by `<Conversation>`; a view that wants a conversation with a seat draws
  * that component, and calls this only to build its own.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SessionSummary } from "@flow-state-dev/client";
+import { ClientHttpError, type SessionSummary } from "@flow-state-dev/client";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
+import type { LabClients } from "./connection";
 import { newSessionId } from "./ids";
 import { useLab } from "./lab-data";
-import { describeFailure, type Failure, type Seat } from "./reads";
+import { describeFailure, workerOf, type Failure, type Seat } from "./reads";
 import { readSessionItems, RunReadError, type SessionItems } from "./run";
 
 /**
- * The id of the person's conversation with the seat `seatId`: their newest
- * session on that seat's flow with no parent session, or `null` when they have
- * none. A store that nulls absent keys hands back `null` for a parent, so the
- * guard is `== null`.
+ * The id of the person's conversation with `seat`: their newest session on
+ * the seat's flow that names the seat's worker and has no parent session, or
+ * `null` when they have none. A store that nulls absent keys hands back
+ * `null` for a parent, so the guard is `== null`.
  */
-export function conversationSession(sessions: readonly SessionSummary[], seatId: string): string | null {
+export function conversationSession(sessions: readonly SessionSummary[], seat: Pick<Seat, "id" | "kind">): string | null {
   let newest: SessionSummary | undefined;
   for (const session of sessions) {
-    if (session.flowId !== seatId || session.parentSessionId != null) continue;
+    if (session.flowKind !== seat.kind || workerOf(session) !== seat.id || session.parentSessionId != null) continue;
     if (newest === undefined || session.createdAt > newest.createdAt) newest = session;
   }
   return newest?.id ?? null;
@@ -37,18 +40,41 @@ export function conversationSession(sessions: readonly SessionSummary[], seatId:
  * here, until the listing holds it; from then on the newest direct session
  * the listing names, which may be one started elsewhere.
  */
-export function currentConversation(sessions: readonly SessionSummary[], seatId: string, opened: string | null): string | null {
+export function currentConversation(
+  sessions: readonly SessionSummary[],
+  seat: Pick<Seat, "id" | "kind">,
+  opened: string | null,
+): string | null {
   if (opened !== null && !sessions.some((session) => session.id === opened)) return opened;
-  return conversationSession(sessions, seatId);
+  return conversationSession(sessions, seat);
 }
 
 /**
- * A fresh session id for a new conversation ({@link newSessionId}). The Lab's
- * answer to an action sent with no session doesn't name the session it opened,
- * so a first line goes to an id minted here, and the door's request opens it.
+ * A fresh session id for a new conversation ({@link newSessionId}). A worker's
+ * session names its worker from the moment it is created, so a first line goes
+ * to an id minted here, opened by {@link openConversation} before the door's
+ * request runs in it.
  */
 export function newConversationId(): string {
   return newSessionId("conv", "_");
+}
+
+/**
+ * Open `sessionId` on the seat's flow, naming the seat's worker in its
+ * starting state. A session a failed earlier attempt already opened under that
+ * id is the one the line goes to, so a conflict is not an error.
+ */
+export async function openConversation(clients: LabClients, seat: { id: string; kind: string }, sessionId: string): Promise<void> {
+  try {
+    await clients.sessions.createSession({
+      flowKind: seat.kind,
+      userId: clients.userId,
+      sessionId,
+      state: { [WORKER_ID_STATE_KEY]: seat.id },
+    });
+  } catch (error) {
+    if (!(error instanceof ClientHttpError && error.status === 409)) throw error;
+  }
 }
 
 export interface SeatConversation {
@@ -72,7 +98,7 @@ export interface SeatConversation {
 export function useSeatConversation(seat: Seat, sessions: readonly SessionSummary[]): SeatConversation {
   const { clients } = useLab();
   const [opened, setOpened] = useState<string | null>(null);
-  const sessionId = currentConversation(sessions, seat.id, opened);
+  const sessionId = currentConversation(sessions, seat, opened);
   // The id a first line goes to, kept across a failed send so a retry lands in
   // the same session if the Lab already opened it.
   const fresh = useRef<string | null>(null);

@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 
 const ORG = "acme";
 const SKILL_MD = "---\nname: refunds\ndescription: How refunds work\n---\nRefunds take five days.";
@@ -19,7 +19,7 @@ const SKILL_MD = "---\nname: refunds\ndescription: How refunds work\n---\nRefund
 type Write = { scopeType: string; scopeId: string; key: string };
 
 async function runAs(users: readonly string[]): Promise<Write[]> {
-  const [seat] = hireWorkforce([
+  const [seat] = mintSeats([
     {
       id: "support.otto",
       declared: {},

@@ -11,7 +11,6 @@
  */
 
 import type { InitialSkill } from "@flow-state-dev/core";
-import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
 
 /**
  * One worker, as declared on disk or hand-built. Declared once, in this module; the loader
@@ -83,21 +82,6 @@ export interface WorkerManifest {
    * libraries, only the ones its file names in `packages:`.
    */
   packages?: PackageManifest[];
-  /**
-   * Set by a hire row, never by a `WORKER.md`. Absent, the minted instance
-   * stays shared — a file-declared seat and a shared app flow. Present, the
-   * mint copies it onto the instance, and registration stores it as the pin.
-   * Not parsed from {@link WorkerManifest.id}.
-   */
-  ownerPin?: InstanceOwnerPin;
-  /**
-   * The seat's logical id, as a mailbox's `members:` lists it: `"<teamId>.<name>"`
-   * for a team seat, the bare `"<name>"` for an org seat.
-   * Set by a hire row, never by a `WORKER.md`. Absent, the hire uses
-   * {@link WorkerManifest.id}, which on a file record is that id. A hired
-   * record's `id` is its org-qualified address, so the row carries this.
-   */
-  seatId?: string;
 }
 
 /**

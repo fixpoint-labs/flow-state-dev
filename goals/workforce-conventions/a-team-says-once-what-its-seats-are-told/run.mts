@@ -17,17 +17,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { hireWorkforce, type HireOptions } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   fixtureDir,
+  installWorkers,
   loadFixture,
   runGoal,
   silentLogger,
   stripIntentOverrides
 } from "../../lib/index.mts";
-import { TRIAGE_KIND, triageFlow } from "./fixtures/flows";
+import { TRIAGE_KIND, defineTriageFlow } from "./fixtures/flows";
 
 type SeatFixture = { id: string; desk: string; own: string };
 type Side = { team: string; seats: SeatFixture[] };
@@ -45,8 +45,6 @@ stripIntentOverrides();
 const fixture = loadFixture<Fixture>(import.meta.url);
 const allSeats = [...fixture.withLayer.seats, ...fixture.withoutLayer.seats];
 
-const kinds: HireOptions["workerFlows"] = { [TRIAGE_KIND]: triageFlow as never };
-
 const tree = (name: string): string => join(fixtureDir(import.meta.url), name);
 
 function host(stores: StoreRegistry, flows: FlowInstance[]) {
@@ -57,8 +55,24 @@ function host(stores: StoreRegistry, flows: FlowInstance[]) {
 
 type Router = ReturnType<typeof createFlowApiRouter>;
 
-async function act(router: Router, address: string, sessionId: string): Promise<Response> {
-  const path = [address, sessionId, "actions", "run"];
+/** Open `sessionId` on the one copy, naming `worker`, as the session route does for a person. */
+async function open(router: Router, worker: string, sessionId: string): Promise<number> {
+  const path = [TRIAGE_KIND, "sessions"];
+  const res = await router.POST(
+    new Request(`http://goal/api/flows/${path.join("/")}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: fixture.userId, sessionId, state: { workerId: worker } })
+    }),
+    { params: { path } }
+  );
+  return res.status;
+}
+
+async function act(router: Router, worker: string, sessionId: string): Promise<Response> {
+  const opened = await open(router, worker, sessionId);
+  if (opened !== 201) return new Response(`the session naming "${worker}" was not created (${opened})`, { status: opened });
+  const path = [TRIAGE_KIND, sessionId, "actions", "run"];
   return router.POST(
     new Request(`http://goal/api/flows/${path.join("/")}`, {
       method: "POST",
@@ -137,12 +151,12 @@ await runGoal(async () => {
     );
   }
 
-  const seats = hireWorkforce(workers, { workerFlows: kinds });
-  if (seats.length !== allSeats.length) {
-    failures.push(`hired ${seats.length} seat(s), wanted ${allSeats.length}`);
+  const { copies: seats } = installWorkers(workers, (installation) => ({ [TRIAGE_KIND]: defineTriageFlow(installation) }));
+  if (seats.filter((copy) => copy.kind === TRIAGE_KIND).length !== 1) {
+    failures.push(`registered ${seats.filter((copy) => copy.kind === TRIAGE_KIND).length} copies of "${TRIAGE_KIND}", wanted one`);
   }
   evidence.push(
-    "the real loader read a tree of two teams — one with a TEAM.md, one without — and one hireWorkforce call turned all three records into seats of a kind with no model in it"
+    "the real loader read a tree of two teams — one with a TEAM.md, one without — and one copy of a flow with no model in it runs all three workers"
   );
 
   // ---- (b) each seat RUNS, and its nested block reads both layers ----------
@@ -157,7 +171,7 @@ await runGoal(async () => {
       // no request to wait on, so polling anyway would report a second,
       // invented failure beside the real one.
       if (res.status !== 202) {
-        failures.push(`${seat.id}: expected 202 from its own address, got ${res.status}`);
+        failures.push(`${seat.id}: expected 202 from "${TRIAGE_KIND}", got ${res.status}: ${await res.clone().text()}`);
         continue;
       }
       const requestId = body.request?.id;
@@ -208,7 +222,7 @@ await runGoal(async () => {
       if (ran.runs !== 1) failures.push(`${seat.id}: ran ${String(ran.runs)} times`);
     }
     evidence.push(
-      "after closing the store and rebuilding the host, both seats on the team with a TEAM.md show their team's instructions AND their own, as two separate values read off ctx.flow.config inside a nested block"
+      "after closing the store and rebuilding the host, both seats on the team with a TEAM.md show their team's instructions AND their own, as two separate values read off the turn's worker inside a nested block"
     );
 
     // ---- (c) the sibling team's seat carries NO layer, and none of theirs --

@@ -14,8 +14,8 @@ settles — but the thing that row reaches is a hand-written TypeScript flow, no
 seat that came out of a folder.
 
 This runs the join. One tree of Markdown, pointed at once: a row filed by one
-declared seat wakes a **different** declared seat, in its own flow instance, into
-a supervised coding run whose prompt was built out of that seat's own files. A
+declared seat wakes a **different** declared seat, in a session of its own on
+its flow's one copy, into a supervised coding run whose prompt was built out of that seat's own files. A
 third seat, declared on the same kind, is never reached.
 
 Six checks drive it. The first two differ by **one expression** — the harness
@@ -83,7 +83,7 @@ no opinion at that spot — not because a convention is missing.
 | `board.mts` | The EM's board over the mailbox's ledger, whose worker hands a row to the coder worker, and the coder's door on that ledger, which lets the hand-off in without a board of its own. The board itself belongs to the mailbox: its file names it, and the framework mints its id from where the mailbox sits. |
 | `workforce/flows/workers/em.mts` | The coordinator kind. It owns the board and files rows, and declares **no task entry at all** — so "the EM seat does no harness work" is a fact about the kind, not about one run. |
 | `workforce/flows/workers/coder.mts` | The working kind. One task entry, `harnessManager` behind it, and the harness itself passed in as a slot. |
-| `host.mts` | Read the tree, build the kinds, hire, register. The `coder` assignee's address is supplied by the caller, so a control can point it at the wrong worker; any other assignee, on the board or filed through the mailbox, is resolved by the Workforce worker lookup. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
+| `host.mts` | Read the tree, build the installation and the kinds, register one copy of each. The `coder` assignee's address is supplied by the caller, so a control can point it at the wrong worker; any other assignee, on the board or filed through the mailbox, is resolved by the Workforce worker lookup. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
 | the mailbox door in `host.mts`, with `notify.mts` | Which mailbox this lab opens, and when, is the app's — and so is which member resolves to which seat, because the dispatch seam refuses a target read out of stored data. `openMailboxes` takes no `orgId` and needs no wrapper: the server-created session carries the organization from the verified principal (FIX-1442). |
 | the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare repository at a declared path the work is published to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process. |
 | `acceptance-check.mjs`, with `acceptance.mts` | The requester's half of the brief. It names the module, the export and the behaviour, and is spawned from here against the produced tree — never copied into a checkout, because a check the run can reach is a check the run can satisfy by rewriting it. |
@@ -123,7 +123,7 @@ a denied feature stays denied until the store is fresh. The other checks don't a
 it, so they run exactly as before.
 
 A host that builds its own flow state instead of calling `openLab` turns on durable execution
-itself and calls the same step, `raiseAsk` in `ask.mts`, after it hires.
+itself and calls the same step, `raiseAsk` in `ask.mts`, after it registers the worker flows.
 
 ```ts
 const lab = await openLab({
@@ -134,7 +134,7 @@ const lab = await openLab({
   ask: { issue: "search-bar", goal: "Add a search bar to the header" },
 });
 // The EM's session now holds one pending approval. Answer it through
-// POST /<em-seat>/requests/<requestId>/resume with "approve" or "reject".
+// POST /em/requests/<requestId>/resume with "approve" or "reject".
 ```
 
 ## Serving it

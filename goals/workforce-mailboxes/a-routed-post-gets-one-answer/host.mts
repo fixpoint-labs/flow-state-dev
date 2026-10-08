@@ -3,8 +3,10 @@
  *
  * Everything here comes from the published packages and the team's files: no
  * kitchen-sink code, and no dispatcher or router of the app's own. The wake is
- * `wakeMemberSeats(seats)` in the built-in mailbox kind's notify slot, and the
- * route is `routeByPurpose(seats, { model })`. A mailbox that declares
+ * `wakeMemberSeats(copies, { installation })` in the built-in mailbox kind's
+ * notify slot, and the route is `routeByPurpose(copies, { model, installation })`.
+ * Every worker flow is registered once, and a woken worker's conversation is a
+ * session on its flow, naming it. A mailbox that declares
  * `routing:` in its file is routed; one that doesn't wakes every agent member.
  * The goal check reads this file's source to hold it to that.
  *
@@ -36,12 +38,14 @@ import {
 } from "@flow-state-dev/testing";
 import {
   mailboxInstances,
+  createWorkerInstallation,
   defineMailboxFlow,
   hireWorkforce,
   openMailboxes,
   routeByPurpose,
   wakeMemberSeats,
-  type MailboxManifest
+  type MailboxManifest,
+  type WorkerInstallation
 } from "@flow-state-dev/workforce";
 import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 
@@ -58,8 +62,8 @@ export const ROUTE_MODEL = "vercel/typesafe-ai/jev";
 export interface HostSeams {
   /** The mailbox files as the host reads them, before anything is built. */
   adaptMailboxes?: (mailboxes: MailboxManifest[]) => MailboxManifest[];
-  /** Kinds the app registers beside the built-ins, by name. */
-  kinds?: Record<string, unknown>;
+  /** Worker flows the app registers beside the built-ins, by name, built on the installation. */
+  kinds?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** The wake the mailbox's notify slot runs. */
   adaptNotify?: (wake: BlockDefinition<any, any>) => BlockDefinition<any, any>;
   /** The route's scripted evaluation model, as the resolver hands it over. */
@@ -139,14 +143,18 @@ export async function startRoutedHost(tree: string, seams: HostSeams = {}): Prom
   }
   const mailboxes = seams.adaptMailboxes?.(read.mailboxes) ?? read.mailboxes;
 
-  // Hire first: the wake and the route reach these seats, never a mailbox's stored members.
-  const seats = hireWorkforce(workers, seams.kinds === undefined ? {} : { workerFlows: seams.kinds as never });
-  const wake = wakeMemberSeats(seats);
+  // The flows first: the wake and the route reach the workers on these copies,
+  // never a mailbox's stored members.
+  let flows: Record<string, unknown> = {};
+  const installation = createWorkerInstallation({ standardWorkers: workers, workerFlows: () => flows as never });
+  flows = seams.kinds?.(installation) ?? {};
+  const seats = hireWorkforce(installation);
+  const wake = wakeMemberSeats(seats, { installation });
   const mailboxFlows = mailboxInstances(mailboxes, {
     kinds: {
       mailbox: defineMailboxFlow({
         notify: seams.adaptNotify?.(wake) ?? wake,
-        route: routeByPurpose(seats, { model: ROUTE_MODEL })
+        route: routeByPurpose(seats, { model: ROUTE_MODEL, installation })
       })
     }
   });

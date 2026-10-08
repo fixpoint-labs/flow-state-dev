@@ -29,7 +29,7 @@ import type { useSession } from "@flow-state-dev/react";
 import { MAILBOX_POST_COMPONENT, type MailboxTranscriptLine } from "@flow-state-dev/workforce/browser";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { isMailboxKind, seatAskFor } from "@/lib/workforce-shell";
+import { isMailboxKind, seatAskFor, wokenWorkerOf } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;
 
@@ -140,8 +140,9 @@ function MailboxTranscript({ session }: { session: Session }) {
 }
 
 /**
- * One row per run under the session that hasn't finished, named by the run's
- * flow; a run with no recorded flow is background work, not a seat. A run
+ * One row per run under the session that hasn't finished, named by the worker
+ * a mailbox woke for it, or else by the run's flow; a run with no recorded
+ * flow is background work, not a seat. A run
  * waiting on an approval reads as working until it ends.
  *
  * While the list is stale (`childSessionsStale`: the last re-read failed, and
@@ -158,7 +159,7 @@ function WorkingRows({ session }: { session: Session }) {
         <li key={run.id} className="text-xs italic text-muted-foreground" data-testid="working-row">
           {run.flowId === undefined
             ? `Background work ${stale ? "was running at the last check" : "is running"}`
-            : `${run.flowId} ${stale ? "was working at the last check" : "is working"}`}
+            : `${wokenWorkerOf(run) ?? run.flowId} ${stale ? "was working at the last check" : "is working"}`}
         </li>
       ))}
     </ul>

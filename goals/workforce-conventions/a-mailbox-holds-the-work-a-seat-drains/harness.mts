@@ -47,6 +47,8 @@ interface TreeSpec {
   boardHolder: { id: string; address: string };
   /** Declared members, per mailbox id — who a fan-out on that mailbox addresses. */
   membersByMailbox: Record<string, string[]>;
+  /** The flow each member's worker runs on; one copy of it is the member's seat. */
+  flowByMember: Record<string, string>;
   mailboxOwner: string;
   appUserId: string;
 }
@@ -203,7 +205,7 @@ out.sessions = sessions;
 //                 framework's half: a seat's post is never routed, so the
 //                 fan-out walks the whole roster.
 //   `delivered` — which members a delivery was made to: a wake dispatched to
-//                 that member's seat (`wake-<member>`), or the name-only line
+//                 that member's seat (`wake-<flow>-<member>`), or the name-only line
 //                 the goal checks' `name-only-notify` control puts in the
 //                 wake's place (`kitchen-sink-notify-member`).
 //
@@ -245,7 +247,9 @@ for (const mailbox of TREE.mailboxes) {
       sawFanOut: fanOut.length > 0,
       reached: fanOut.reduce((n: number, t: any) => n + (t.output?.shape?.entries?.length ?? 0), 0),
       delivered: [
-        ...members.filter((member) => traces.some((t: any) => t.blockName === `wake-${member}`)),
+        ...members.filter((member) =>
+          traces.some((t: any) => t.blockName === `wake-${TREE.flowByMember[member]}-${member}`),
+        ),
         ...traces
           .filter((t: any) => t.blockName === NAME_ONLY_BLOCK)
           .map((t: any) => String(t.output?.value?.notified ?? ""))
@@ -278,7 +282,7 @@ out.notified = notified;
   const members = new Set(Object.values(TREE.membersByMailbox).flat());
   out.hearsPosts = [...members]
     .filter((member) => {
-      const seat = registry.get(member) as { internal?: { actions?: object } } | undefined;
+      const seat = registry.get(TREE.flowByMember[member] ?? "") as { internal?: { actions?: object } } | undefined;
       return Object.prototype.hasOwnProperty.call(seat?.internal?.actions ?? {}, "onMailboxPost");
     })
     .sort();

@@ -34,7 +34,7 @@ import ts from "typescript";
 import { z } from "zod";
 import { createSessionClient } from "@flow-state-dev/client";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowState, ensureSessionRecord, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -43,6 +43,7 @@ import {
   mailboxInstances,
   mailboxNotifyInputSchema,
   defineMailboxFlow,
+  createWorkerInstallation,
   hireWorkforce,
   openMailboxes,
   wakeMemberSeats,
@@ -431,6 +432,16 @@ function appLegs(failures: string[], evidence: string[]): void {
         mailboxes: manifests.map((m) => ({ id: m.id, address: m.declaredKind ?? "mailbox" })),
         boardHolder: { id: boardHolder.id, address: boardHolder.declaredKind ?? "mailbox" },
         membersByMailbox: Object.fromEntries(manifests.map((m) => [m.id, m.members])),
+        // The flow each member's worker runs on, off its own WORKER.md: the
+        // copy of that flow is the seat a post to the member reaches.
+        flowByMember: Object.fromEntries(
+          [...new Set(manifests.flatMap((m) => m.members))].map((member) => {
+            const [team, name] = member.split(".");
+            const file = join(WORKFORCE, "teams", team!, "workers", name!, "WORKER.md");
+            const { frontmatter } = existsSync(file) ? splitManifest(readFileSync(file, "utf8")) : { frontmatter: "" };
+            return [member, frontmatter.match(/^flow:\s*(.+)$/m)?.[1]?.trim() ?? "agent"];
+          }),
+        ),
         mailboxOwner,
         appUserId,
       }),
@@ -594,7 +605,13 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
   const attendedBoard = mailboxBoard(holder.id, attended);
 
   // ---- the kinds: one files, one drains the attended board, and the built-in
-  // agent hears posts. None writes a ledger id.
+  // agent hears posts. None writes a ledger id. Each is one copy for its
+  // workers, built on the installation.
+  let workerFlows: Record<string, unknown> = {};
+  const installation = createWorkerInstallation({
+    standardWorkers: roster.workers,
+    workerFlows: () => workerFlows as never,
+  });
   const noteRan = handler({
     name: "fixture-run-row",
     inputSchema: taskWorkerInputSchema,
@@ -612,6 +629,8 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
     kind: "em",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
+    session: installation.session(),
+    resources: { ...installation.resources },
     actions: { ...workerDoor,
       idle: {
         block: handler({
@@ -627,7 +646,8 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
     kind: "coder",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    resources: { [attendedBoard.id]: attendedBoard },
+    session: installation.session(),
+    resources: { [attendedBoard.id]: attendedBoard, ...installation.resources },
     actions: { ...workerDoor, drain: { block: board.drain } },
   } as never);
 
@@ -639,10 +659,8 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
   };
   let seats;
   try {
-    seats = hireWorkforce(roster.workers, {
-      workerFlows: { em: emKind as never, coder: coderKind as never },
-      mailboxBoards: mailboxBoardIds(mailboxes),
-    });
+    workerFlows = { em: emKind, coder: coderKind };
+    seats = hireWorkforce(installation, { mailboxBoards: mailboxBoardIds(mailboxes) });
   } finally {
     console.warn = realWarn;
   }
@@ -669,7 +687,7 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
   const instances = mailboxInstances(mailboxes, {
     kinds: {
       ...generated.mailboxKinds,
-      mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: nameOnlyLine }) }) as never,
+      mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats, { installation, fallback: nameOnlyLine }) }) as never,
     },
   });
   const state = createFlowState({
@@ -756,8 +774,13 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
     // the name-only line.
     const mailboxInstance = instances.find((instance) => instance.kind === "mailbox")!;
     const members = (holder.declared.members as string[] | undefined) ?? [];
+    /** The copy a member's worker runs on: the flow its file names, or the built-in agent. */
+    const copyOf = (member: string) => {
+      const flow = roster.workers.find((w) => w.id === member)?.declared.flow ?? "agent";
+      return seats.find((s) => s.kind === flow);
+    };
     const hearsPosts = members.filter((member) => {
-      const seat = seats.find((s) => s.id === member) as { internal?: { actions?: object } } | undefined;
+      const seat = copyOf(member) as { internal?: { actions?: object } } | undefined;
       return Object.prototype.hasOwnProperty.call(seat?.internal?.actions ?? {}, "onMailboxPost");
     });
     if (hearsPosts.length === 0) {
@@ -776,7 +799,7 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
           sawFanOut: fanOut.length > 0,
           reached: fanOut.reduce((n: number, t: any) => n + (t.output?.shape?.entries?.length ?? 0), 0),
           delivered: [
-            ...members.filter((member) => traces.some((t: any) => t.blockName === `wake-${member}`)),
+            ...members.filter((member) => traces.some((t: any) => t.blockName === `wake-${copyOf(member)?.id}-${member}`)),
             ...traces
               .filter((t: any) => t.blockName === "fixture-notify-member")
               .map((t: any) => String(t.output?.value?.notified ?? ""))
@@ -812,7 +835,35 @@ async function fixtureLegs(failures: string[], evidence: string[]): Promise<void
     if (coder === undefined) {
       failures.push("V8: the fixture hired no seat on the draining kind");
     } else {
-      const drained = await act(coder, `s_${coder.id}`, "drain", {});
+      // The coder worker's session on its flow's copy, created naming it.
+      const worker = roster.workers.find((w) => w.declared.flow === coder.kind)!.id;
+      const sessionId = `s_${worker}`;
+      const now = Date.now();
+      await ensureSessionRecord(
+        runtime.stores,
+        sessionId,
+        {
+          flow: coder as never,
+          sessionId,
+          principal: { userId: FIXTURE_USER, orgId: orgId! },
+          state: { workerId: worker },
+          fromCaller: true,
+          via: "create",
+        },
+        () =>
+          ({
+            id: sessionId,
+            flowKind: coder.kind,
+            flowId: coder.id,
+            userId: FIXTURE_USER,
+            orgId,
+            version: 0,
+            createdAt: now,
+            updatedAt: now,
+            journal: [],
+          }) as never,
+      );
+      const drained = await act(coder, sessionId, "drain", {});
       if (drained.error !== undefined) failures.push(`V8: the coder's drain failed: ${String(drained.error)}`);
     }
     for (const [i, name] of unwired.entries()) {

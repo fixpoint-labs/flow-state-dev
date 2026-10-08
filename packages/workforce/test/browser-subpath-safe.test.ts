@@ -40,17 +40,14 @@ describe("@flow-state-dev/workforce/browser", () => {
     expect(published).toBe(await import("../src/browser"));
   });
 
-  it("still exports the names the kitchen-sink panels import", async () => {
+  it("still exports the names an app's browser code imports", async () => {
     // The other direction: emptying the entry would pass the walk above.
     const entry = await import("@flow-state-dev/workforce/browser");
     expect(entry.MAILBOX_POST_COMPONENT).toBe("mailbox-post");
-    expect(entry.HIRED_ROSTER_RESOURCE).toBe("hiredRoster");
-    expect(entry.HIRED_ROSTER_BROWSER_PATTERN).toBe("workforce/roster/*");
-    expect(entry.SEAT_INVENTORY_RESOURCE).toBe("seatInventory");
-    expect(typeof entry.splitSeatAddress).toBe("function");
-    expect(typeof entry.listedSeatRows).toBe("function");
+    expect(typeof entry.createWorkforceClient).toBe("function");
+    expect(entry.ROSTER_FLOW_KIND).toBe("workforce-roster");
     expect(typeof entry.mailboxTranscriptLineSchema.parse).toBe("function");
-    // The eighth, the `MailboxTranscriptLine` type, is pinned in `browser-exports.test-d.ts`.
+    // The `MailboxTranscriptLine` type is pinned in `browser-exports.test-d.ts`.
   });
 
   it("finds the Node built-in the package root reaches through the mailbox floor", () => {

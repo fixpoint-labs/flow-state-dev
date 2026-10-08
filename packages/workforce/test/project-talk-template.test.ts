@@ -36,7 +36,6 @@ import {
   defineMailboxFlow,
   defineProjectBlocks,
   defineProjectsCollection,
-  hireWorkforce,
   openMailboxes,
   openInventory,
   wakeMemberSeats,
@@ -44,8 +43,9 @@ import {
   type MailboxManifest,
   type MailboxNotifyInput,
   type ProjectRow,
-  type WorkerManifest
+  type WorkerManifest,
 } from "../src/index";
+import { mintSeats } from "../src/hire";
 import { MAILBOX_ANSWER_ACTION } from "../src/mailbox/mailbox-flow";
 import { forgetOrgTalkTemplate, forgetTalkTemplate, registeredTalkTemplate } from "../src/projects/talk-template";
 import { roomLineKey } from "../src/projects/collections";
@@ -505,7 +505,7 @@ async function boot(options: {
 }) {
   const heard: Heard[] = [];
   const kept: { postId?: string; token?: string } = {};
-  const seats = hireWorkforce((options.seats ?? ["eng.em", "ops.lead", "chief-of-staff"]).map(seatRecord), {
+  const seats = mintSeats((options.seats ?? ["eng.em", "ops.lead", "chief-of-staff"]).map(seatRecord), {
     workerFlows: { listener: listeningKind(heard, kept) as never }
   });
   // Each boot stands for a fresh process: nothing declared or registered before it.

@@ -65,7 +65,7 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
   let watching: string | null = null;
   if (snapshot.inventory.ok) {
     const { seats, workstreams } = snapshot.inventory.value;
-    const cos = chiefOfStaffOf(seats, snapshot.orgId);
+    const cos = chiefOfStaffOf(seats);
     status = cos.kind === "one" ? seatStates(snapshot).seats.get(cos.seat.id)?.status : undefined;
     watching = `watching ${plural(workstreams.length, "stream", "streams")} and ${plural(seats.length, "worker", "workers")}`;
   }
@@ -187,7 +187,7 @@ function ChiefOfStaffConversation({ snapshot, gaps, lead }: { snapshot: LoadedSn
       </ConversationFrame>
     );
   }
-  const cos = chiefOfStaffOf(snapshot.inventory.value.seats, snapshot.orgId);
+  const cos = chiefOfStaffOf(snapshot.inventory.value.seats);
   if (cos.kind === "none") {
     return (
       <ConversationFrame testId="cos">

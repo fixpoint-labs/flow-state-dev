@@ -61,7 +61,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
     const message = query.slice(MESSAGE_PREFIX.length).trim();
     if (message === "") return;
     if (!snapshot.inventory.ok) return setSendFailure("The Lab's seats didn't load, so there is no one to send this to.");
-    const cos = chiefOfStaffOf(snapshot.inventory.value.seats, snapshot.orgId);
+    const cos = chiefOfStaffOf(snapshot.inventory.value.seats);
     if (cos.kind !== "one") return setSendFailure("There isn't exactly one Shift Coordinator to send this to.");
     if (cos.seat.door === null) return setSendFailure(`${cos.seat.id} ${gaps.turn.noDoor}`);
     handToChiefOfStaff(message);

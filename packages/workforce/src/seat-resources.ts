@@ -167,8 +167,8 @@ const seatResourceRwOnUnwritableMessage = (ref: string): string =>
  * lockout that reads like a roster full of typos.
  */
 const seatResourcesWithoutCatalogMessage = (): string =>
-  `declares \`${SEAT_RESOURCES_KEY}:\`, and hireWorkforce was given no documents to resolve it ` +
-  `against. Pass the app's documents — \`hireWorkforce(workers, { documents: ` +
+  `declares \`${SEAT_RESOURCES_KEY}:\`, and its installation was given no documents to resolve it ` +
+  `against. Pass the app's documents — \`createWorkerInstallation({ documents: ` +
   `resourcesFromDocs(documents) })\` — so a ref can be matched against what the app declared.`;
 
 /**

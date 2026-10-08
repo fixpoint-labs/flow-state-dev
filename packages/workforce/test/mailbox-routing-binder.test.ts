@@ -28,7 +28,7 @@ import {
   workerConfigSchema,
   type MailboxManifest
 } from "../src/index";
-import { hireWorkforce } from "../src/hire";
+import { mintSeats } from "../src/hire";
 import { workerDoor } from "./worker-door";
 
 /** A kind of the app's own that takes notes when asked and hears no posts. */
@@ -39,7 +39,7 @@ const note = defineFlow({
   actions: { ...workerDoor, take: { block: handler({ name: "note-take", execute: () => ({}) }) } }
 } as never);
 
-const seats = hireWorkforce(
+const seats = mintSeats(
   [
     { id: "support.devices", declared: { description: "Printers, laptops, phones and wifi." }, body: "Devices." },
     { id: "support.general", declared: { description: "Anything that fits no one else." }, body: "General." },

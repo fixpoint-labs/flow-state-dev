@@ -45,6 +45,7 @@ FAIL on leg 2, *the mailbox's board returned no rows* (legs 3, 4 and 5 go red wi
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | On one copy per worker flow: a post on eng.feature ended as one completed row on the mailbox's own board, assignee coder. |
 | 2026-09-30 | a1b122eb1 | n/a | PASS | Board `eng.feature.work`, one completed row assignee `coder`; the door returns it with no private field and refuses the org-less read (401); one org copy, none in user storage; no unattended-board warning. |
 | 2026-09-30 | a1b122eb1 | n/a | FAIL (control `kind-ledger`) | Fails at leg 2, *the mailbox's board returned no rows*; legs 3, 4 and 5 red with it. As designed. |
 | 2026-09-30 | a1b122eb1 | n/a | PASS (board renamed `queue`) | The board's name and id are read off the tree; rename reverted. |

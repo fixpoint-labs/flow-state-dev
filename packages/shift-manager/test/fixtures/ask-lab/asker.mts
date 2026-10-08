@@ -23,7 +23,7 @@
  * No model anywhere: the ask is the point, not what the seat would do.
  */
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
-import { defineProjectBlocks, workerConfigSchema } from "@flow-state-dev/workforce";
+import { defineProjectBlocks, workerConfigSchema, type WorkerInstallation } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /** The kind a `WORKER.md` names in its `flow:` line. */
@@ -124,16 +124,23 @@ const onMailboxPost = sequencer({ name: "asker-on-post", inputSchema: postSchema
 const ask = sequencer({ name: "asker-ask", inputSchema: askSchema }).step(gate);
 
 /**
- * Build the kind `hireWorkforce` mints one copy of per `asker` record.
+ * Build the kind `hireWorkforce` registers one copy of, which every `asker`
+ * worker runs on: each session names its worker.
  *
+ * @param installation The installation whose workers run on it.
  * @param resources The tree's declared documents, as `resourcesFromDocs`
  *   built them, so a document that opts in to browser reads is served.
  * @param options.projects Let the `message` door start projects ({@link startProjectLine}).
  */
-export function defineAskerFlow(resources: Record<string, unknown> = {}, options: { projects?: boolean } = {}) {
+export function defineAskerFlow(
+  installation: WorkerInstallation,
+  resources: Record<string, unknown> = {},
+  options: { projects?: boolean } = {},
+) {
   return defineFlow({
     kind: ASKER_KIND,
-    resources,
+    session: installation.session(),
+    resources: { ...resources, ...installation.resources },
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: {

@@ -5,7 +5,8 @@
  *
  * - **`buildPrompt` leads with the task the manager hands over** (`run.task`,
  *   the work a person approved or posted), **then is composed out of the seat's
- *   own configuration**, read through the block context the manager hands it.
+ *   own configuration**: the worker the run's session names, loaded through
+ *   the block context the manager hands it.
  *   Nothing here names a file, a seat or a token: the instructions are the
  *   `WORKER.md` body the mint put on the seat, the brief is whatever ref that
  *   seat's own frontmatter declared, and the conventions are the skill union
@@ -39,13 +40,13 @@ import type {
 import { GIT_TIMEOUT_MS, run } from "@flow-state-dev/harness-manager/checkout";
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
 import { runAcceptance } from "./acceptance.mts";
-import type { SeatConfig } from "./seat-config.mts";
+import type { SeatOf } from "./seat-config.mts";
 
 /** The phase segment of every run record's topic, and of every row filed here. */
 export const PHASE = "implement";
 
 /**
- * What {@link implementPhase}'s `validate` learned, handed back to `isDone`:
+ * What {@link defineImplementPhase}'s `validate` learned, handed back to `isDone`:
  * the base ref of a fixed repository, or that runs come from a workspace host,
  * where each run's base is the remote it was cut from.
  */
@@ -69,18 +70,18 @@ type ValidatedWorkspace = { baseRef: string } | { host: true };
  * own files" means the same thing in both halves.
  *
  * @param run What the manager hands a prompt builder for this attempt.
- * @param options The phase's options: the mailbox's charter and members, and
- *   whether acceptance decides.
+ * @param options The phase's options: how the run's worker is loaded, the
+ *   mailbox's charter and members, and whether acceptance decides.
  * @returns The prompt.
  * @throws If the seat declares a document it does not hold — a seat reading
  *   nothing is the silent pass this whole lab exists to refuse, so it is loud.
  */
 export async function buildSeatPrompt(
   run: PromptRunContext,
-  options: ImplementPhaseOptions = {},
+  options: ImplementPhaseOptions,
 ): Promise<string> {
   const ctx = run.ctx;
-  const config = (ctx.flow.config ?? {}) as unknown as SeatConfig;
+  const { config } = await options.seatOf(ctx as never);
 
   const documentRef = config.document;
   if (documentRef === undefined) {
@@ -99,9 +100,9 @@ export async function buildSeatPrompt(
   const brief = (await (ref as { readContent(): Promise<string | null> }).readContent()) ?? "";
 
   const skills = config.seatSkills ?? [];
-  // Membership is read off the declared tree and the woken seat's own id (the
-  // hire imposes it on the seat's settings), never off the row: who may see a
-  // mailbox is not the filer's to say.
+  // Membership is read off the declared tree and the woken worker's own id
+  // (imposed on its settings), never off the row: who may see a mailbox is not
+  // the filer's to say.
   const charter =
     options.mailbox !== undefined &&
     config.seatId !== undefined &&
@@ -267,6 +268,8 @@ async function hasNewCommit(workspacePath: string, baseRef: string): Promise<boo
  * its own.
  */
 export interface ImplementPhaseOptions {
+  /** How a run loads the worker its session names: `seatOf(installation, CODER_KIND)`. */
+  seatOf: SeatOf;
   /**
    * Also require the brief's acceptance check to pass before the row settles.
    *
@@ -301,12 +304,12 @@ export interface ImplementPhaseOptions {
 /**
  * Build the implement phase.
  *
- * @param options `requireAcceptance` to add the brief's condition to the
- *   done-condition, and `mailbox` to hand member seats its charter. See
- *   {@link ImplementPhaseOptions}.
+ * @param options `seatOf` to load the run's worker, `requireAcceptance` to add
+ *   the brief's condition to the done-condition, and `mailbox` to hand member
+ *   seats its charter. See {@link ImplementPhaseOptions}.
  * @returns The phase spec to hand the coder kind.
  */
-export function defineImplementPhase(options: ImplementPhaseOptions = {}): PhaseSpec {
+export function defineImplementPhase(options: ImplementPhaseOptions): PhaseSpec {
   return {
     phase: PHASE,
     buildPrompt: (run: PromptRunContext) => buildSeatPrompt(run, options),
@@ -361,5 +364,3 @@ export function defineImplementPhase(options: ImplementPhaseOptions = {}): Phase
   };
 }
 
-/** The phase the two older checks use — commit only, unchanged. */
-export const implementPhase: PhaseSpec = defineImplementPhase();

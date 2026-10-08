@@ -273,7 +273,7 @@ Output is a JSON object with execution results, schema validation status, and ti
 
 Walks `workforce/flows/workers/`, `workforce/flows/mailboxes/` and `workforce/blocks/`, and writes
 `workforce/workforce.gen.ts` beside them. The generated module exports `kinds`, `mailboxKinds` and
-`blocks`: the maps `hireWorkforce`, `mailboxInstances` and a task board already take. Each discovered
+`blocks`: the maps `createWorkerInstallation`, `mailboxInstances` and a task board already take. Each discovered
 file registers under its basename.
 
 It also walks every `resources/` folder the workforce convention reads — the organisation's, each

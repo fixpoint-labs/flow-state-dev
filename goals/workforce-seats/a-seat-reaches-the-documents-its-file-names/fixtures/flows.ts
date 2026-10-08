@@ -1,27 +1,35 @@
 /**
- * One worker kind, built the way an app builds one: the documents its
- * `resources/` folder declared, spread into a flow-level map beside a store of
- * its own.
+ * One worker flow, built the way an app builds one on an installation: one
+ * registered copy every worker runs on, the installation's documents spread
+ * into its resources beside a store of its own, and the installation's
+ * visibility rule, so each turn's model reaches only its worker's documents.
  *
- * A factory rather than a module-level constant, because the documents come off
- * disk. That is also what makes the fixture honest: the flow-level map holds a
- * `${STORE}` the allowlist must never touch, beside documents it must narrow.
- * A fixture whose flow-level map held nothing but documents would be green for
- * a resolver that silently deletes the app's own machinery.
+ * Its actions are core's model-facing document tools, mounted as they are:
+ * the same blocks a model calls, so a check runs them as a model would, with
+ * no model. Beside them, `peek`, an app's own tool built on core's lookup.
  *
- * No model, no generator. What is graded is which resources reached a running
- * block and which of them it could write.
+ * `withoutRule` builds the same flow with no visibility rule: the control.
  */
-import { defineFlow, defineResource, handler, sequencer } from "@flow-state-dev/core";
-import type { DeclaredResources } from "@flow-state-dev/core";
-import type { ResourceDoc } from "@flow-state-dev/workforce";
-import { resourcesFromDocs, workerConfigSchema } from "@flow-state-dev/workforce";
+import {
+  createManifestRegistry,
+  defineFlow,
+  defineResource,
+  discoveryTools,
+  handler,
+  readResourceContentTool,
+  resolveResourceByUri,
+  resourcesManifestSource,
+  resourceSearchTools,
+  writeResourceContentTool,
+} from "@flow-state-dev/core";
+import type { WorkerInstallation } from "@flow-state-dev/workforce";
+import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { workerDoor } from "../../../lib/worker-door.mts";
 
 export const DESK_KIND = "desk";
 
-/** The app's own store, declared at flow level beside the documents. Not a document. */
+/** The app's own store, declared beside the documents. Not a document, and no grant governs it. */
 export const STORE = "audit-log";
 
 const auditLog = defineResource({
@@ -29,108 +37,49 @@ const auditLog = defineResource({
   scope: "org",
   stateSchema: z.object({ entries: z.array(z.string()).default([]) }),
   default: { entries: [] },
-  writable: true
+  writable: true,
 });
 
-const inputSchema = z.object({ note: z.string() });
-
-/** What the seat records about what it could actually touch. */
-const seatState = z.object({
-  /** Every resource key the block resolved, sorted. */
-  reach: z.array(z.string()).nullable().default(null),
-  /** Every one of those it could also write, sorted. */
-  wrote: z.array(z.string()).nullable().default(null),
-  runs: z.number().default(0)
-});
-
-const start = handler({
-  name: "desk-start",
-  inputSchema,
-  execute: async (_input, ctx) => {
-    await ctx.session.incState({ runs: 1 });
-  }
+/** An app's own tool: open a document by uri through core's lookup, and say whether it found one. */
+const peek = handler({
+  name: "peek",
+  inputSchema: z.object({ uri: z.string() }),
+  outputSchema: z.object({ found: z.boolean() }),
+  execute: async ({ uri }, ctx) => ({ found: (await resolveResourceByUri(uri, ctx)) !== undefined }),
 });
 
 /**
- * The nested read — what this seat can reach, and what it can write.
+ * Build the desk flow on `installation`.
  *
- * Both halves are probed by DOING them, never by reading a flag: `ro` is only
- * worth anything if the write actually refuses at the seam, and a check that
- * asserted `writable === false` would pass for a flag nothing consults.
+ * @param options.withoutRule The control: no visibility rule, so every turn's
+ *   model reaches every document, as a flow that sets none does.
  */
-function probe(keys: readonly string[]) {
-  return handler({
-    name: "desk-probe",
-    inputSchema,
-    outputSchema: z.void(),
-    // Every document is org-scoped. Organization identity is unconditional, so
-    // an org registry is always built and no declaration is needed — the older
-    // opt-in let a request be admitted with no org, building no registry and
-    // reading every document as unregistered: a green `reach: []` for the wrong
-    // reason.
-    sessionStateSchema: seatState,
-    execute: async (_input, ctx) => {
-      const reach: string[] = [];
-      const wrote: string[] = [];
-      for (const key of keys) {
-        let ref: { setState(next: Record<string, unknown>): Promise<void> } | undefined;
-        try {
-          ref = ctx.resources.get(key) as unknown as typeof ref;
-        } catch {
-          continue;
-        }
-        if (ref === undefined) continue;
-        reach.push(key);
-        try {
-          await ref.setState({ touched: true });
-          wrote.push(key);
-        } catch {
-          // A refused write is the point of the `ro` half, not an error here.
-        }
-      }
-      await ctx.session.patchState({ reach: reach.sort(), wrote: wrote.sort() });
-    }
+export function buildDesk(installation: WorkerInstallation, options: { withoutRule?: boolean } = {}) {
+  const { globResources, grepResourceContent } = resourceSearchTools();
+  const { discover } = discoveryTools(createManifestRegistry([resourcesManifestSource()]));
+  // The turn's worker, loaded on every run of a request, a resumed one included.
+  const loadWorker = handler({
+    name: "desk-load-worker",
+    inputSchema: z.unknown(),
+    resources: { ...installation.resources },
+    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, DESK_KIND)).id }),
   });
-}
-
-const clientView = {
-  derived: {
-    ran: (ctx: { state: { reach?: string[] | null; wrote?: string[] | null; runs?: number } }) => ({
-      reach: ctx.state.reach ?? null,
-      wrote: ctx.state.wrote ?? null,
-      runs: ctx.state.runs ?? 0
-    })
-  }
-};
-
-/**
- * Build the kind from the documents the loader found.
- *
- * Returns the catalog too, because that is the same map the app hands
- * `hireWorkforce` as `documents` — one list, spread into the flow and passed to
- * the hire step, never built twice.
- */
-export function buildDesk(documents: ResourceDoc[]): {
-  deskFlow: ReturnType<typeof defineFlow>;
-  catalog: DeclaredResources;
-  probedKeys: string[];
-} {
-  const catalog = resourcesFromDocs(documents);
-  const probedKeys = [...Object.keys(catalog), STORE].sort();
-
-  const deskFlow = defineFlow({
+  return defineFlow({
     kind: DESK_KIND,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    resources: { ...catalog, [STORE]: auditLog } as DeclaredResources,
-    actions: { ...workerDoor,
-      run: {
-        inputSchema,
-        block: sequencer({ name: "desk-work", inputSchema }).tap(start).tap(probe(probedKeys))
-      }
+    session: installation.session(),
+    resources: { ...installation.resources, ...installation.documents, [STORE]: auditLog },
+    ...(options.withoutRule === true ? {} : { resourceVisibility: installation.resourceVisibility }),
+    request: { onStarted: loadWorker },
+    actions: {
+      ...workerDoor,
+      read: { inputSchema: z.object({ uri: z.string().optional() }), block: readResourceContentTool() },
+      write: { inputSchema: z.object({ uri: z.string(), content: z.string() }), block: writeResourceContentTool() },
+      glob: { inputSchema: z.object({}).passthrough(), block: globResources },
+      grep: { inputSchema: z.object({ pattern: z.string() }).passthrough(), block: grepResourceContent },
+      discover: { inputSchema: z.object({}).passthrough(), block: discover },
+      peek: { inputSchema: z.object({ uri: z.string() }), block: peek },
     },
-    session: { stateSchema: seatState, client: clientView }
   });
-
-  return { deskFlow, catalog, probedKeys };
 }

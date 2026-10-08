@@ -43,13 +43,14 @@ describe("V9 · the shell's rail and panel are package components", () => {
     expect(page).not.toMatch(/components\/session-sidebar/);
   });
 
-  it("draws the panel with the package's roster and board list", () => {
+  it("draws the panel with the package's board list, and the roster from Workforce's client", () => {
     const panel = read("components/team-panel.tsx");
     const fromReact = importedFrom(panel, "@flow-state-dev/react");
-    expect(fromReact).toEqual(expect.arrayContaining(["Roster", "BoardList"]));
+    expect(fromReact).toEqual(expect.arrayContaining(["BoardList"]));
     expect(fromReact).not.toContain("BoardColumns");
-    expect(panel).toContain("<Roster");
     expect(panel).toContain("<BoardList");
+    expect(importedFrom(panel, "@flow-state-dev/workforce/browser")).toEqual(expect.arrayContaining(["WorkforceClient"]));
+    expect(panel).toContain(".roster()");
   });
 
   it("lists no flows or sessions in app code for those regions", () => {
