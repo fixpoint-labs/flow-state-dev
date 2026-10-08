@@ -56,6 +56,7 @@
  *   is written
  * - the liveness gate refused → `livenessOf` is **absent from the bundle**
  */
+import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import type {
   DispatchOutcome,
   DispatchRefusal,
@@ -76,7 +77,7 @@ import {
   resolveLineageId,
   resolveSessionStorageKey
 } from "../stores/scope-keys";
-import { deriveDispatchRunSessionId, evaluateAdoption } from "./dispatch-run";
+import { deriveDispatchRunSessionId, evaluateAdoption, readonlyStateMismatch } from "./dispatch-run";
 import { ownsRecord } from "./record-owner";
 import type { DispatchOperation } from "./dispatch-operation";
 import {
@@ -406,6 +407,22 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         outcome.raced || verdict === undefined
           ? "the derived child key was taken by a non-matching record during this call"
           : `the derived child key is held by a record whose ${verdict.mismatch} does not match this request`
+      );
+    }
+    // The record was created with its own readonly state; adopting it for a
+    // dispatch that names another value would change a field nothing may
+    // change (a different worker, say). Refused by name rather than run as
+    // the record's value.
+    const differs = readonlyStateMismatch(
+      getReadonlyStateKeys(targetFlow.session?.stateSchema),
+      initialState,
+      current!.state as Readonly<Record<string, unknown>> | undefined
+    );
+    if (differs !== undefined) {
+      return refuse(
+        "key-occupied",
+        `the derived child key is held by a session created with another value of readonly state field "${differs}"; ` +
+          `derive a key per value of "${differs}"`
       );
     }
     return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: true, delivery: "child" };

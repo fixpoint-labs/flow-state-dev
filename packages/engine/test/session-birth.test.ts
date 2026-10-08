@@ -449,6 +449,31 @@ describe("a dispatch into a key-derived child", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("refuses to adopt a child whose readonly state differs from what this dispatch names", async () => {
+    // Two workers, one key: adopting the first worker's child for the second
+    // would run the second as the first, which is a readonly field changing.
+    const { stores, flow, plain } = boot();
+    await hold(stores, "alice", "researcher", "bound");
+    await hold(stores, "alice", "editor", "bound");
+    const send = (workerId: string) =>
+      seam(stores, plain, flow)({
+        type: "internal", action: "work", flowKind: "bound", session: { key: "shared", state: { workerId } }, payload: {}, from: "test"
+      });
+    expect(await send("researcher")).toMatchObject({ ok: true, adopted: false });
+    const second = await send("editor");
+    expect(second).toMatchObject({ ok: false, refused: "key-occupied" });
+    expect(JSON.stringify(second)).toContain("workerId");
+    const children = await stores.session.list({ parentage: "all" });
+    expect(children.map((child) => child.state.workerId)).toEqual(["researcher"]);
+    // The same worker again still adopts, and a dispatch that names no state adopts too.
+    expect(await send("researcher")).toMatchObject({ ok: true, adopted: true });
+    expect(
+      await seam(stores, plain, flow)({
+        type: "internal", action: "work", flowKind: "bound", session: { key: "shared" }, payload: {}, from: "test"
+      })
+    ).toMatchObject({ ok: true, adopted: true });
+  });
+
   it("refuses by name when the target refuses the child's state, and writes no child", async () => {
     const { stores, flow, plain } = boot();
     const outcome = await seam(stores, plain, flow)({
