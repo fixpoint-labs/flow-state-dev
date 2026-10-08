@@ -338,7 +338,13 @@ const place = await host.provision(answer, {
   branch: `fsd/${runId}`,
   recorded: record,
 });
-record = { ...record, host: host.hostId(), remote: place.repo!.remote, branch: place.repo!.branch };
+record = {
+  ...record,
+  host: host.hostId(),
+  remote: place.repo!.remote,
+  branch: place.repo!.branch,
+  baseRef: place.repo!.baseRef ?? record.baseRef,   // reported only when the branch was just cut
+};
 await saveRunRecord(runId, record);
 
 // ...the worker's turn...
@@ -363,7 +369,7 @@ A place whose record names another host, or names this host but has no checkout 
 | `held` | The place is lost here and the record has a hold that isn't parked. The checkout is rebuilt from it: the branch is at the recorded `head`, and the uncommitted changes are back in the working tree, unstaged, with new files untracked. |
 | `base` | The place is lost here and the record has no hold, or its hold has `parked: true`. The branch is cut again from the base. |
 
-On a host without a `heldWork` store, or for a run that holding doesn't apply to, `recorded` is not read for rebuilding, and `origin` is only ever `new` or `live`.
+On a host without a `heldWork` store, or for a run that holding doesn't apply to, `provision` never rebuilds, and `origin` is only ever `new` or `live`. A host without a store still checks `recorded.held`: if the record names held work and the run has no live checkout here, `provision` rejects with `field: "disabled"`.
 
 A rebuilt checkout starts from a clone of the remote, so ignored files, `node_modules` included, aren't there. Reinstall dependencies before the worker runs.
 
