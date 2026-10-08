@@ -62,11 +62,7 @@ if (skillsLoadErrors.length > 0) {
 }
 
 // Skills v2 library (FIX-918). The catalog carries the leaf web tools the
-// skills' agents reference via `tools:`. Every research skill declares an
-// `agents:` map, so binding (or runtime-activating) one installs its
-// board-commanded delegation surface automatically: a private task board, the
-// task tools, and `runBoard` — the skill plans the tasks (assignee names an
-// agent) and drains its own board.
+// skills reference via `allowed-tools`.
 const skills = createSkillsLibrary({
   catalog: {
     search: searchTool,
@@ -74,16 +70,13 @@ const skills = createSkillsLibrary({
     crawl: crawlTool,
   },
   initialSkills,
-  // Board workers that don't declare their own `model:` resolve through the
-  // flow's `chat` intent ladder like every other kitchen-sink generator.
-  workerModelId: "intent/chat",
   // User scope: skills are a per-user library that persists across sessions.
   // Org scope would be nicer for team-shared skills, but the chat-agent
   // flow has no project wiring yet — "org" falls through to an ambient
   // org with no persistence identity, which is why nothing seeds.
   scope: "user",
-  // Main-agent only: the agent answering in the turn carries skills; the
-  // sub-agents it hands work to — a board's workers — don't.
+  // Main-agent only: the agent answering in the turn carries skills; any
+  // generator it hands work to doesn't.
   itemVisibility: { client: true, history: true },
 });
 
@@ -92,9 +85,7 @@ const skills = createSkillsLibrary({
 // as a checked `SkillsBindingConfig`, then bridge the erased signature with a
 // cast (the object is still type-checked here, and re-validated by the binding
 // schema at runtime). `tech-brief` is bound `active`; the keyword/LLM
-// activator feeds the rest through `activeSkills`, and a runtime-activated
-// worker skill contributes its worker tools + runBoard when the generator's
-// tool surface resolves.
+// activator feeds the rest through `activeSkills`.
 const skillsBinding = {
   active: ["tech-brief"],
   activeState: { scope: "session", field: "activeSkills" },
@@ -148,7 +139,7 @@ export const bashCap = createBashCapability({
  * context to generators.
  *
  * Static dependencies:
- *   - skills (bound) — skills collection + catalog/team tools + skill bodies
+ *   - skills (bound) — skills collection + catalog tools + skill bodies
  *   - bashCap — shell/python execution, always available
  *   - artifactsCapability (inventory preset, tools disabled — bash writes
  *     artifacts via the mounted filesystem)
@@ -167,10 +158,7 @@ export const featuresCapability = defineCapability({
     // Static: skills library binding — installs the skills collection resource
     // at build time (dynamic uses callbacks can't contribute resources) and
     // binds this generator to the catalog. Scoped to primary agents by the
-    // library's own `itemVisibility` so sub-agent worker generators skip
-    // it. `tech-brief`'s
-    // delegation surface installs because it's bound `active`; the research
-    // skills install theirs when the activator puts them in `activeSkills`.
+    // library's own `itemVisibility` so other generators skip it.
     // (The cast bridges the config-erased `.with()` signature — see
     // `skillsBinding`.)
     skills.with(skillsBinding as never),

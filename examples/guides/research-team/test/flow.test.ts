@@ -1,13 +1,9 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { testFlow } from "@flow-state-dev/testing";
-import { readSkillsDirectory } from "@flow-state-dev/orchestration";
 import researchTeamFlow from "../src/flow";
 
 // These tests never need a model or an API key: the `research` and
-// `researchCompetitors` actions use deterministic handler workers, and the
-// skill test only parses the SKILL.md folders.
+// `researchCompetitors` actions use deterministic handler workers.
 
 type Item = {
   type?: string;
@@ -59,42 +55,5 @@ describe("research-team flow", () => {
     expect(done.has("analyze-1")).toBe(true);
     expect(done.has("analyze-2")).toBe(true);
     expect(done.has("synth")).toBe(true);
-  });
-
-  it("bundles two delegation skills that declare their teams as agents", async () => {
-    const dir = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "../src/skills",
-    );
-    const { skills, errors } = await readSkillsDirectory(dir);
-
-    expect(errors).toEqual([]);
-
-    const byName = new Map(skills.map((s) => [s.name, s]));
-    expect(byName.has("research-company")).toBe(true);
-    expect(byName.has("competitor-analysis")).toBe(true);
-
-    // FIX-918: pattern mode is gone and `workers:` is renamed to `agents:`.
-    // Both skills declare `agents:` — binding them installs the board-commanded
-    // delegation surface (task tools + runBoard) and the skill body plans the
-    // board itself.
-    expect(byName.get("research-company")?.skillMd).not.toContain("pattern:");
-    expect(byName.get("research-company")?.skillMd).not.toContain("workers:");
-    expect(byName.get("research-company")?.skillMd).toContain("agents:");
-    expect(byName.get("research-company")?.skillMd).toContain("runBoard");
-    expect(byName.get("competitor-analysis")?.skillMd).not.toContain("pattern:");
-    expect(byName.get("competitor-analysis")?.skillMd).not.toContain("workers:");
-    expect(byName.get("competitor-analysis")?.skillMd).toContain("agents:");
-    expect(byName.get("competitor-analysis")?.skillMd).toContain("runBoard");
-    // Every agent on both teams resolves from a persona file bundled with its
-    // own skill. Nothing here reaches for an agent registry, so neither skill
-    // needs a resolver wired into the library — asserted as the absence of
-    // `agent-ref`, because a skill that declared one would be refused at bind
-    // time with no registry supplied, not silently seated without its agent.
-    expect(byName.get("research-company")?.skillMd).not.toContain("agent-ref");
-    expect(byName.get("competitor-analysis")?.skillMd).not.toContain("agent-ref");
-    expect(byName.get("competitor-analysis")?.skillMd).toContain(
-      "prompt-ref: ./reference/analyze.md",
-    );
   });
 });
