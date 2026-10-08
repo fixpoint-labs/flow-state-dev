@@ -65,11 +65,14 @@ Remove the **One host's storage** bullet. Add:
 > taking its locks, and never writes a ref or contacts the remote. What it returns is a manifest:
 > the base and head commits and a hash for every held path. Record it on your run, last.
 >
-> Hand that record back to `provision`. A place that is live on this host, and recorded as this
-> host's, is handed back as it always was. Otherwise the host clones the remote, cuts the branch
+> Hand that record back to `provision`. The place it returns says where it came from in
+> `origin`: `new` for a first provision, `live` for a place that is live on this host and
+> recorded as this host's, handed back as it always was, `held` for one rebuilt from held work,
+> and `base` when nothing was ever held. To rebuild, the host clones the remote, cuts the branch
 > at the recorded base, applies the bundle and the held files, and checks every field of the
-> manifest. A place that matches comes back `restored`. One that doesn't comes back refused as a
-> mismatch, naming what disagreed, with nothing changed. A directory for the place that this host
+> manifest. When anything disagrees, `provision` rejects with `HeldWorkMismatchError`, naming the
+> field, with nothing changed. That is not a `WorkspaceRefusedError`: a refusal won't clear on a
+> retry, while a mismatch waits for a person to decide. A directory for the place that this host
 > holds but the record doesn't name is moved aside and kept.
 >
 > A host's identity is its root's: hosts that share a root share their places. Without an
@@ -86,10 +89,11 @@ Remove the **One host's storage** bullet. Add:
 > same three points. The run record's `held` shows the result: the attempt, the time, the base and
 > head commits, any files not held and why, and an error if the hold failed. A failed hold doesn't
 > fail the run, and the next one tries again, except on an attempt that would complete: that
-> attempt fails, so its retry holds the work. The record's `place` names the machine and the
-> place's state. An attempt on another machine rebuilds the checkout from what was held. When the
-> held work doesn't match the record, the row parks with a question to the run's owner, and the
-> operator's log names the run and what disagreed.
+> attempt fails, so its retry holds the work. The record's `place` names the machine and its
+> `state`: `provisioning`, `ready`, `lost`, `restoring` or `refused`. An attempt on another
+> machine rebuilds the checkout from what was held. When the held work doesn't match the record,
+> `place.state` stays `lost` and the row's status becomes `parked`, with a question to the run's
+> owner; the operator's log names the run and what disagreed.
 
 And in "Limits", the same removal and bullet as the docs site.
 

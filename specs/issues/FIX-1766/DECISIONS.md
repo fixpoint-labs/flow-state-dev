@@ -88,21 +88,16 @@ Recorded as constraints, not decisions this spec makes:
 
 ## Decided, not asked
 
-- **Reused machine.** The projection in `@flow-state-dev/workspace` (FIX-150's), over a place that
-  lists only dirty paths. A `ProjectedResource` (FIX-1518) serves read-only records and cannot hold
+- **Reused machine.** The projection in `@flow-state-dev/workspace` (FIX-150's), with one new
+  operation, `adopt`. A `ProjectedResource` (FIX-1518) serves read-only records and cannot hold
   writes, as [FIX-1762's evolution](../FIX-1762/EVOLUTION.md#why-a-repository-is-not-a-projected-resource) found.
-- **What is held:** tracked changes, untracked files git does not ignore, deletions as tombstones,
-  and `base..head` as one bundle. Ignored files (`.env`, `node_modules`) are not held, on purpose.
-- **Checked before trusted:** remote, branch, base, head and every held file's hash against the
-  run record. The record is written last, fenced like every run-row write, so a hold cut off part
-  way is caught as a mismatch rather than used.
-- **A live place on the machine the record names is used as it is**, as today. A directory on any
-  other machine's disk is stale: moved aside and kept, never deleted.
-- **A machine's identity is its root's.** Hosts sharing a root share their places.
-- **The vendor conversation** resumes only if that machine still has it; otherwise the attempt
-  starts fresh and its prompt says what was restored and from which turn.
-- **A file over 10 MB is not held** and is named on the run record. Large binaries belong in git or LFS.
-- **PR plan: four PRs**, shape in [PLAN.md](PLAN.md#pr-plan). An engineering call.
+- **What is held, and the size cap:** [BR-1 to BR-5](BUSINESS-RULES.md#holding-a-runs-work).
+- **Checked before trusted, record written last:** [BR-6](BUSINESS-RULES.md#holding-a-runs-work), [BR-17 to BR-19](BUSINESS-RULES.md#bringing-a-run-back).
+- **Live, stale and lost places; a machine's identity is its root's:** [BR-16, BR-22](BUSINESS-RULES.md#bringing-a-run-back).
+- **The vendor conversation on a new machine:** [BR-23](BUSINESS-RULES.md#bringing-a-run-back).
+- **The state words, and that a mismatch shows only in the row's status:** [the three vocabularies](BUSINESS-RULES.md#the-three-state-vocabularies).
+- **`place` and `held` stay two record roots**, not one object: they change at different times (per machine, per hold), and one object would still need both halves nullable. The allowed pairs are [BR-27](BUSINESS-RULES.md#the-place-on-the-record).
+- **PR plan: four PRs**, PR 2 after FIX-1793's storage merges; shape in [PLAN.md](PLAN.md#pr-plan). An engineering call.
 
 ## Considered and dropped
 
