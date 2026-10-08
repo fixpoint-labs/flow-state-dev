@@ -1,0 +1,69 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="Two panels on the same board. Today, on the left: worker A's turn files a task with addTask and ends; worker B works the row; the row's ending sends one notice, which wakes a new turn of A that has to work out again what it was doing. After, on the right: A's turn files the same row with askTask and parks on it; B works the row; the same ending and the same notice now resume the parked turn, which carries on with B's answer as the result of its call. A restart while the turn is parked loses nothing: the row and the parked turn are both durable."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .n-old { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .arr-n { stroke:var(--code); stroke-width:1.8; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .head-n{ fill:var(--code); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-new { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+    .t-gone{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="14" width="446" height="300" rx="6"/>
+    <text class="t-lbl" x="32" y="36">TODAY · ASSIGN</text>
+    <rect class="n-box" x="32" y="52" width="180" height="56" rx="5"/>
+    <text class="t-b" x="46" y="75">A's turn</text>
+    <text class="t-s" x="46" y="94">addTask, then the turn ends</text>
+    <rect class="n-box" x="266" y="52" width="180" height="56" rx="5"/>
+    <text class="t-b" x="280" y="75">the row</text>
+    <text class="t-s" x="280" y="94">on A's conversation board</text>
+    <rect class="n-box" x="266" y="148" width="180" height="56" rx="5"/>
+    <text class="t-b" x="280" y="171">B works it</text>
+    <text class="t-s" x="280" y="190">the ending · one notice</text>
+    <rect class="n-old" x="32" y="244" width="414" height="54" rx="5"/>
+    <text class="t-gone" x="46" y="266">a NEW turn of A wakes</text>
+    <text class="t-s" x="46" y="285">it reads the notice and works out again what it was doing</text>
+    <path class="arrow" d="M212 80 H260"/><path class="head" d="M266 80 l-7 -4 v8 z"/>
+    <path class="arrow" d="M356 108 V142"/><path class="head" d="M356 148 l-4 -7 h8 z"/>
+    <path class="arrow" d="M356 204 V238"/><path class="head" d="M356 244 l-4 -7 h8 z"/>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="14" width="446" height="300" rx="6"/>
+    <text class="t-lbl" x="494" y="36">AFTER · ASK</text>
+    <rect class="n-new" x="494" y="52" width="180" height="56" rx="5"/>
+    <text class="t-b" x="508" y="75">A's turn</text>
+    <text class="t-new" x="508" y="94">askTask · the turn parks</text>
+    <rect class="n-box" x="728" y="52" width="180" height="56" rx="5"/>
+    <text class="t-b" x="742" y="75">the same row</text>
+    <text class="t-s" x="742" y="94">marked asked · filed once</text>
+    <rect class="n-box" x="728" y="148" width="180" height="56" rx="5"/>
+    <text class="t-b" x="742" y="171">B works it</text>
+    <text class="t-s" x="742" y="190">the same ending · same notice</text>
+    <rect class="n-new" x="494" y="244" width="414" height="54" rx="5"/>
+    <text class="t-new" x="508" y="266">the PARKED turn resumes</text>
+    <text class="t-s" x="508" y="285">B's answer is the result of A's call · a restart in between loses nothing</text>
+    <path class="arr-n" d="M674 80 H722"/><path class="head-n" d="M728 80 l-7 -4 v8 z"/>
+    <path class="arrow" d="M818 108 V142"/><path class="head" d="M818 148 l-4 -7 h8 z"/>
+    <path class="arr-n" d="M818 204 V238"/><path class="head-n" d="M818 244 l-4 -7 h8 z"/>
+    <path class="arr-n" d="M584 244 V114"/><path class="head-n" d="M584 108 l-4 7 h8 z"/>
+    <text class="t-new" x="592" y="180">resume</text>
+  </g>
+</svg>
