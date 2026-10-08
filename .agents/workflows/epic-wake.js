@@ -194,18 +194,32 @@ let crossSpecHold = false
  * A prerequisite is a landing-order constraint on CODE — a dependent must not be built concurrently with
  * the thing it builds on. It says nothing about the dependent's SPEC, and parking spec work too serialised
  * a whole epic's specs behind its first implementation merge: the owner had to override the wake by hand
- * (FIX-1553). So the rule is derived from the phase, not from a list of action names: everything a row
- * does while its spec is not yet signed off (`PRE_APPROVAL_PHASES` — authoring, review, folding a POC
- * verdict, applying an answered decision) is spec work and runs; `implement` (the step out of the spec)
- * and anything a row does once past it is implementation and waits. Listing the free actions by hand
- * missed two of them (verdicts, decisions), and the missed decision deadlocked the cross-spec hold.
+ * (FIX-1553). So the rule is derived from the row, not from a list of action names: everything a row
+ * does while its spec is not yet signed off (`PRE_APPROVAL_PHASES`, unapproved — authoring, review,
+ * folding a POC verdict, applying an answered decision) is spec work and runs; `implement`, any dispatch
+ * that can carry the row INTO implementation (`reachesImplementation`), and anything a row does once
+ * past it is implementation and waits. Listing the free actions by hand missed two of them (verdicts,
+ * decisions), and the missed decision deadlocked the cross-spec hold.
  * → epic-lifecycle § Intake.
  *
  * @param row     the row the action is for
  * @param action  the action `pendingAction` would dispatch
  */
 function buildsCode(row, action) {
-  return action === 'implement' || !PRE_APPROVAL_PHASES.has(row.phase)
+  return action === 'implement' || !PRE_APPROVAL_PHASES.has(row.phase) || reachesImplementation(row)
+}
+
+/**
+ * Can ANY dispatch carry this row into implementation it has not started yet?
+ *
+ * True at NEEDS_IMPLEMENTATION, and for an approved spec still in a pre-approval phase. A worker is told to
+ * advance its row to the next external wait and that a satisfied gate is not one, so a verdict fold or an
+ * answered decision on such a row goes on to open the implementation PR — the action name says nothing
+ * about where the worker stops. Every implementation precondition (an open prerequisite, the cross-spec
+ * hold) is checked against this, in `pendingAction`, rather than against the action.
+ */
+function reachesImplementation(row) {
+  return row.phase === 'NEEDS_IMPLEMENTATION' || (PRE_APPROVAL_PHASES.has(row.phase) && !!row.specApproved)
 }
 
 function pendingAction(row) {
@@ -241,14 +255,17 @@ function pendingAction(row) {
   }
 
   const prerequisiteOpen = !!(row.blockedBy && row.blockedBy.length)
-  // The cross-spec hold parks EVERY dispatch for a spec-route row that could start implementation, not
-  // only the two `implement` branches below. A verdict or an answered decision dispatches ahead of the
-  // phase switch, and the worker advances the row to its next external wait — which, for an approved
-  // spec or a row at NEEDS_IMPLEMENTATION, is opening the implementation PR. Unapproved spec work still
-  // runs (the pass waits on it), and so does a bug: it has no spec to be incoherent with.
-  const crossSpecParks =
-    crossSpecHold && !isDirectRoute(row) && (row.phase === 'NEEDS_IMPLEMENTATION' || (PRE_APPROVAL_PHASES.has(row.phase) && row.specApproved))
-  const unlessBuilding = (next) => (crossSpecParks || (prerequisiteOpen && buildsCode(row, next.action)) ? null : next)
+  // Every implementation precondition, in ONE place, applied to every dispatch — not only the `implement`
+  // branches below. A verdict or an answered decision dispatches ahead of the phase switch, and its worker
+  // can carry the row into implementation (`reachesImplementation`), so each precondition has to hold it too.
+  //  - An open prerequisite holds all code (`buildsCode`), including work already past implementation start.
+  //  - The cross-spec hold holds the step INTO implementation only, on the spec route: a bug has no spec to
+  //    be incoherent with, and work already implementing is not re-parked.
+  // Spec work that cannot reach implementation (an unapproved spec's authoring, review, verdicts and
+  // decisions) dispatches under both — the cross-spec pass waits on exactly that work.
+  const implementationHeld = (next) =>
+    (prerequisiteOpen && buildsCode(row, next.action)) || (crossSpecHold && !isDirectRoute(row) && reachesImplementation(row))
+  const unlessBuilding = (next) => (implementationHeld(next) ? null : next)
 
   // A worker that escalated a decision it could not make is WAITING ON A HUMAN. Re-dispatching
   // it on the next unrelated PR event or heartbeat would either retry the same dead end or push
