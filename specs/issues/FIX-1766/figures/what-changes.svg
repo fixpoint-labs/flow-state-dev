@@ -1,0 +1,84 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="What changes. Today, on the left: a coding run's checkout, with its commits and uncommitted edits, exists only on machine A's disk. When A is lost, the next attempt on machine B starts from the base, and the work is gone. After, on the right: at the end of each turn, the paths git reports dirty and one bundle of unpushed commits are held in FSD's store, in the worktree-overlay collection, in the project's scope; the run record keeps the base, the head, a hash for each held path and which machine the run is on. When A is lost, machine B clones the remote at the recorded base, applies the bundle and the held files, and checks them against the run record: a match is ready, a mismatch parks the row for the run's owner. The git remote is only read; nothing is written to it."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .pane  { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-acc { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .wire  { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .wire-n{ stroke:var(--code); stroke-width:1.5; fill:none; }
+    .wire-g{ stroke:var(--gone); stroke-width:1.3; fill:none; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-c   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="today">
+    <rect class="pane" x="16" y="16" width="300" height="388" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="n-gone" x="40" y="60" width="252" height="80" rx="5"/>
+    <text class="t-b" x="56" y="84">Machine A · lost</text>
+    <text class="t-s" x="56" y="103">checkout/ · 2 commits, 5 edited files</text>
+    <text class="t-g" x="56" y="122">exists only on this disk</text>
+    <path class="wire-g" d="M166 140 L166 230"/>
+    <text class="t-g" x="176" y="190">nothing to carry</text>
+    <rect class="n-box" x="40" y="230" width="252" height="66" rx="5"/>
+    <text class="t-b" x="56" y="254">Machine B · next attempt</text>
+    <text class="t-s" x="56" y="273">starts from the base</text>
+    <text class="t-s" x="40" y="340">The run's work existed in one place,</text>
+    <text class="t-s" x="40" y="356">and that place is gone.</text>
+  </g>
+
+  <g id="after">
+    <rect class="pane" x="332" y="16" width="592" height="388" rx="6"/>
+    <text class="t-lbl" x="348" y="38">AFTER</text>
+
+    <rect class="n-gone" x="356" y="60" width="200" height="80" rx="5"/>
+    <text class="t-b" x="372" y="84">Machine A · lost</text>
+    <text class="t-s" x="372" y="103">checkout/ on the run's branch</text>
+    <text class="t-c" x="372" y="122">held at each turn's end</text>
+
+    <rect class="n-new" x="596" y="56" width="308" height="132" rx="5"/>
+    <text class="t-lbl" x="612" y="76">FSD'S STORE · THE PROJECT'S SCOPE</text>
+    <text class="t-b" x="612" y="98">worktree-overlay · this run</text>
+    <text class="t-s" x="612" y="116">dirty paths · tombstones · 1 bundle</text>
+    <text class="t-s" x="612" y="132">never the whole repository</text>
+    <text class="t-b" x="612" y="158">run record</text>
+    <text class="t-s" x="612" y="176">base · head · hashes · machine · state</text>
+    <path class="wire-n" d="M556 100 L596 100"/>
+
+    <rect class="n-acc" x="356" y="200" width="200" height="56" rx="5"/>
+    <text class="t-b" x="372" y="222">The git remote</text>
+    <text class="t-s" x="372" y="240">read only · nothing written</text>
+
+    <rect class="n-new" x="596" y="236" width="308" height="80" rx="5"/>
+    <text class="t-b" x="612" y="260">Machine B · next attempt</text>
+    <text class="t-s" x="612" y="279">clone at base · apply bundle and files</text>
+    <text class="t-s" x="612" y="297">check against the run record</text>
+    <path class="wire" d="M556 240 L596 262"/>
+    <path class="wire-n" d="M750 188 L750 236"/>
+
+    <rect class="n-new" x="596" y="340" width="140" height="44" rx="5"/>
+    <text class="t-b" x="612" y="360">ready</text>
+    <text class="t-s" x="612" y="376">the turn goes on</text>
+    <rect class="n-box" x="764" y="340" width="140" height="44" rx="5"/>
+    <text class="t-b" x="780" y="360">parked</text>
+    <text class="t-s" x="780" y="376">for the run's owner</text>
+    <path class="wire-n" d="M666 316 L666 340"/>
+    <path class="wire" d="M834 316 L834 340"/>
+    <text class="t-s" x="356" y="300">At most the turn in flight</text>
+    <text class="t-s" x="356" y="316">is lost with machine A.</text>
+  </g>
+</svg>
