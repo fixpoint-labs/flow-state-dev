@@ -1,43 +1,32 @@
 "use client";
 
 /**
- * The shell's right panel: the organization's roster and the boards, whatever
- * mode the app is in.
+ * The right-hand panel: the person's workers, and the mailbox's boards.
  *
- * Layout only. The roster and the board lists are `@flow-state-dev/react`
- * components; this places them, themes them, and supplies the roster's
- * skipped-seat list, which the boot publishes and the roster cannot read for
- * itself.
+ * The workers are the person's roster: the specialists the app's files
+ * declare, which everyone has, and any worker the person hired or forked,
+ * each with the flow it runs on. "Talk" opens the person's conversation with
+ * that worker, or starts one, through Workforce's client.
  *
- * The roster reads through the assistant's session. Each board reads through
- * its own mailbox's session, whose flow declares it, so a board is drawn before
- * any assistant conversation exists and, when `live`, follows that mailbox's
- * stream: a case the mailbox files shows without a reload.
+ * Each board reads through its own mailbox's session.
  */
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { ClientFetch } from "@flow-state-dev/client";
-import { BoardList, Roster, type PanelRowSource } from "@flow-state-dev/react";
-import { HIRED_ROSTER_RESOURCE } from "@flow-state-dev/workforce/browser";
+import { BoardList, type PanelRowSource } from "@flow-state-dev/react";
+import type { RosterEntry, WorkforceClient } from "@flow-state-dev/workforce/browser";
 
-import {
-  ROSTER_BOOT_REPORT_REF,
-  SHELL_BOARDS,
-  problemsFromBootReport,
-} from "@/lib/workforce-shell";
+import { SHELL_BOARDS } from "@/lib/workforce-shell";
 
-/** The panels' custom properties, set to this app's tokens. */
 const PANEL_THEME = {
   "--fsd-panel-fg": "var(--color-foreground)",
   "--fsd-panel-muted-fg": "var(--color-muted-foreground)",
 } as CSSProperties;
 
 export interface TeamPanelProps {
-  /**
-   * The session the roster and the boot report read through. Its flow must
-   * declare both; `undefined` while the session is still being created. The
-   * boards do not wait for it.
-   */
-  sessionId: string | undefined;
+  /** The person's workforce client. Pass a stable one: the roster is read again only when it changes. */
+  workforce: WorkforceClient;
+  /** Open the person's conversation with a worker. */
+  onTalk: (worker: RosterEntry) => Promise<void>;
   /** The host's resource client. Pass a stable one — the panels fence on it. */
   resourceClient: PanelRowSource;
   /**
@@ -51,31 +40,13 @@ export interface TeamPanelProps {
   top?: ReactNode;
 }
 
-export function TeamPanel({ sessionId, resourceClient, fetcher, live = false, top }: TeamPanelProps) {
-  const report = useRosterBootReport(resourceClient, sessionId);
+export function TeamPanel({ workforce, onTalk, resourceClient, fetcher, live = false, top }: TeamPanelProps) {
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto bg-muted/30" style={PANEL_THEME}>
       {top}
       <section className="border-b px-2 py-3" data-testid="roster-panel">
-        <h2 className="px-2 pb-1 text-sm font-semibold">Roster</h2>
-        {report.error !== null && (
-          <p className="px-2 pb-1 text-xs text-destructive" role="alert">
-            {report.error}{" "}
-            <button type="button" className="underline" onClick={report.retry}>
-              Retry
-            </button>
-          </p>
-        )}
-        {sessionId === undefined ? (
-          <p className="px-2 text-xs text-muted-foreground">Loading…</p>
-        ) : (
-          <Roster
-            sessionId={sessionId}
-            collectionRef={HIRED_ROSTER_RESOURCE}
-            resourceClient={resourceClient}
-            problems={report.problems}
-          />
-        )}
+        <h2 className="px-2 pb-1 text-sm font-semibold">Workers</h2>
+        <WorkerRoster workforce={workforce} onTalk={onTalk} />
       </section>
       {SHELL_BOARDS.map((board) => (
         <section key={board.ref} className="border-b px-2 py-3" data-testid={`board-${board.ref}`}>
@@ -97,47 +68,80 @@ export function TeamPanel({ sessionId, resourceClient, fetcher, live = false, to
   );
 }
 
-/** An empty board, in the desk's words. */
 function noCasesYet() {
   return <p className="px-2 text-xs text-muted-foreground">No cases filed here yet.</p>;
 }
 
-/**
- * What the last boot could not bring back into this organization's roster.
- *
- * Read through the same client the roster reads through. A read that fails is
- * reported beside the roster with a retry, and not as a skipped seat: a roster
- * shown without its skipped seats looks complete when it is not, and one with
- * an invented skipped seat miscounts.
- */
-function useRosterBootReport(
-  source: PanelRowSource,
-  sessionId: string | undefined,
-): { problems: readonly string[]; error: string | null; retry: () => void } {
-  const [problems, setProblems] = useState<readonly string[]>([]);
+/** The person's roster, each worker with its flow, what it handles, and "Talk". */
+function WorkerRoster({ workforce, onTalk }: { workforce: WorkforceClient; onTalk: (worker: RosterEntry) => Promise<void> }) {
+  const roster = useRoster(workforce);
+  const [talkError, setTalkError] = useState<{ id: string; message: string } | null>(null);
+  if (roster.error !== null) {
+    return (
+      <p className="px-2 pb-1 text-xs text-destructive" role="alert">
+        The roster could not be read: {roster.error}{" "}
+        <button type="button" className="underline" onClick={roster.retry}>
+          Retry
+        </button>
+      </p>
+    );
+  }
+  if (roster.workers === undefined) return <p className="px-2 text-xs text-muted-foreground">Loading…</p>;
+  return (
+    <ul className="space-y-2 px-2 text-xs" data-testid="roster">
+      {roster.workers.map((worker) => (
+        <li key={worker.id} data-testid="roster-worker" data-worker-id={worker.id}>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="font-medium">{worker.id}</span>
+            <span className="text-muted-foreground">{worker.flow}</span>
+            <button
+              type="button"
+              className="underline"
+              data-testid="roster-talk"
+              onClick={() => {
+                setTalkError(null);
+                onTalk(worker).catch((cause: unknown) =>
+                  setTalkError({ id: worker.id, message: cause instanceof Error ? cause.message : String(cause) }),
+                );
+              }}
+            >
+              Talk
+            </button>
+          </div>
+          {worker.description !== null && <p className="text-muted-foreground">{worker.description}</p>}
+          {talkError?.id === worker.id && (
+            <p role="alert" className="text-destructive" data-testid="roster-talk-error">
+              Could not open a conversation: {talkError.message}
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function useRoster(workforce: WorkforceClient): {
+  workers: readonly RosterEntry[] | undefined;
+  error: string | null;
+  retry: () => void;
+} {
+  const [workers, setWorkers] = useState<readonly RosterEntry[] | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    setProblems([]);
     setError(null);
-    if (sessionId === undefined) return;
     let current = true;
-    source
-      .listCollectionItems(sessionId, ROSTER_BOOT_REPORT_REF)
-      .then((page) => {
-        if (current) setProblems(problemsFromBootReport(page.items));
+    workforce
+      .roster()
+      .then((entries) => {
+        if (current) setWorkers(entries);
       })
       .catch((reason: unknown) => {
-        if (!current) return;
-        setError(
-          `The list of seats the last start skipped could not be read: ${
-            reason instanceof Error ? reason.message : String(reason)
-          }`,
-        );
+        if (current) setError(reason instanceof Error ? reason.message : String(reason));
       });
     return () => {
       current = false;
     };
-  }, [source, sessionId, attempt]);
-  return { problems, error, retry: () => setAttempt((n) => n + 1) };
+  }, [workforce, attempt]);
+  return { workers, error, retry: () => setAttempt((n) => n + 1) };
 }

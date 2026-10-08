@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { __resetDeprecationWarningsForTests } from "@flow-state-dev/core";
 import type { FlowState } from "@flow-state-dev/engine";
 import { createSessionClient } from "@flow-state-dev/client";
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -50,44 +51,48 @@ async function boot() {
     return (await res.json()) as unknown;
   };
   // The page's session client, over the app's own router.
-  const sessions = createSessionClient({
-    fetcher: async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = new URL(String(input), "http://localhost");
-      const path = url.pathname
-        .replace(/^\/api\/flows\/?/, "")
-        .split("/")
-        .filter((segment) => segment.length > 0)
-        .map(decodeURIComponent);
-      const method = (init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
-      return await router[method](new Request(url, init), { params: { path } });
-    },
-  });
-  return { get, sessions };
+  const sessionsFetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), "http://localhost");
+    const path = url.pathname
+      .replace(/^\/api\/flows\/?/, "")
+      .split("/")
+      .filter((segment) => segment.length > 0)
+      .map(decodeURIComponent);
+    const method = (init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";
+    return await router[method](new Request(url, init), { params: { path } });
+  };
+  const sessions = createSessionClient({ fetcher: sessionsFetcher });
+  // The page's workforce client, over the same router.
+  const workforce = createWorkforceClient({ userId: "devuser", fetcher: sessionsFetcher });
+  return { get, sessions, workforce };
 }
 
 describe("V1 · the boot serves one routed mailbox and four specialists", () => {
-  it("hires the four specialists on the agent kind, and no other seat", async () => {
-    const { get } = await boot();
-    const { flows } = (await get([])) as { flows: Array<{ id: string; kind: string; cardinality: string }> };
-    const seats = flows.filter((flow) => flow.cardinality === "collection" && flow.id !== flow.kind);
-    expect(seats.map((seat) => [seat.id, seat.kind]).sort()).toEqual([
-      ["support.accounts", "agent"],
-      ["support.devices", "agent"],
-      ["support.fsd", "agent"],
-      ["support.general", "agent"],
+  it("runs the four specialists as standard workers on one copy of agent, and registers no copy per worker", async () => {
+    const { get, workforce } = await boot();
+    const roster = await workforce.roster();
+    expect(roster.map((worker) => [worker.id, worker.flow, worker.standard]).sort()).toEqual([
+      ["support.accounts", "agent", true],
+      ["support.devices", "agent", true],
+      ["support.fsd", "agent", true],
+      ["support.general", "agent", true],
     ]);
+    const { flows } = (await get([])) as { flows: Array<{ id: string; kind: string }> };
+    expect(flows.filter((flow) => flow.kind === "agent").map((flow) => flow.id)).toEqual(["agent"]);
+    expect(flows.filter((flow) => roster.some((worker) => worker.id === flow.id))).toEqual([]);
   });
 
   it("opens one mailbox, support.help, on the built-in mailbox kind, beside the app's own flows", async () => {
     const { get } = await boot();
     const { flows } = (await get([])) as { flows: Array<{ id: string; kind: string }> };
-    // The workforce's kinds are the two built-ins; the rest are the app's own flows.
+    // The workforce's kinds are the built-ins: `agent`, the mailbox and the roster flow. The rest are the app's own flows.
     expect([...new Set(flows.map((flow) => flow.kind))].sort()).toEqual([
       "agent",
       "chat-agent",
       "mailbox",
       "rich-text-component",
       "weekly-digest",
+      "workforce-roster",
     ]);
     const { sessions } = (await get(["sessions"], "?flowId=mailbox&limit=100")) as { sessions: Array<{ id: string }> };
     expect(sessions.map((session) => session.id)).toEqual(["support.help"]);

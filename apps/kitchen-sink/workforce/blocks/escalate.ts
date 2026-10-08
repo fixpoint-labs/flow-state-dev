@@ -8,19 +8,20 @@
  * `tools:`, as each specialist's `WORKER.md` does.
  *
  * The model writes only the case. The mailbox and the board are named here,
- * and the author is the seat's own `seatId`, which the hire writes into every
- * seat's settings, so no model can file as another seat or onto another board.
+ * and the author is the worker the turn loaded, which the server checked when
+ * the conversation was created, so no model can file as another worker or
+ * onto another board.
  *
  * The dispatch is fire-and-forget: the row is written when the mailbox runs
  * `fileTask`, a moment after the tool returns, so the tool never sees the
  * mailbox's answer. The one refusal it could predict, it checks first: the
- * mailbox files only its members' cases, so a seat that is not one (an
- * operator can hire any seat with this tool) gets `filed: false` and sends
+ * mailbox files only its members' cases, so a worker that is not one (a user
+ * can hire a worker of their own with this tool) gets `filed: false` and sends
  * nothing, rather than a `filed: true` the mailbox would then refuse. Nothing
  * drains `escalations` in this app, and the boot says so.
  */
 import { DispatchRefusedError, dispatcher, handler, sequencer, type BlockContext } from "@flow-state-dev/core";
-import { MAILBOX_KIND } from "@flow-state-dev/workforce";
+import { MAILBOX_KIND, verifiedWorkerOf } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /** The mailbox a case is filed in. */
@@ -96,12 +97,14 @@ const fileIntoMailbox = dispatcher({
   payload: (input, ctx: BlockContext) => ({
     board: ESCALATION_BOARD,
     goal: input.case,
-    author: (ctx.flow.config as { seatId?: string }).seatId,
+    author: seatIdOf(ctx),
   }),
 });
 
-/** The calling seat's id, which the hire writes into every seat's settings. */
-const seatIdOf = (ctx: BlockContext): string | undefined => (ctx.flow.config as { seatId?: string }).seatId;
+/** The calling worker's id: the one this turn loaded and checked. */
+function seatIdOf(ctx: BlockContext): string | undefined {
+  return verifiedWorkerOf(ctx.session as object);
+}
 
 /** Whether the calling seat is one the mailbox files for. */
 const isMember = (ctx: BlockContext): boolean => ESCALATION_MEMBERS.includes(seatIdOf(ctx) ?? "");

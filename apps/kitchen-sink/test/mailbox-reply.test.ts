@@ -85,9 +85,9 @@ type Item = {
   toolCall?: { name?: string; arguments?: string };
 };
 
-/** Every conversation of a seat that mentions `token`, with its items. */
+/** Every conversation of a worker (its sessions on `agent`'s one copy) that mentions `token`, with its items. */
 async function conversationsHolding(router: Router, seat: string, token: string): Promise<Item[][]> {
-  const listed = await call(router, "GET", ["sessions"], undefined, `?flowId=${encodeURIComponent(seat)}&userId=${USER}&include=dispatch-runs&limit=100`);
+  const listed = await call(router, "GET", ["sessions"], undefined, `?flowId=agent&state.workerId=${encodeURIComponent(seat)}&userId=${USER}&include=dispatch-runs&limit=100`);
   const rows = (JSON.parse(listed.text) as { sessions: Array<{ id: string }> }).sessions;
   const out: Item[][] = [];
   for (const row of rows) {
