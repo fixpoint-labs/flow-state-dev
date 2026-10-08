@@ -144,7 +144,7 @@ describe("V8", () => {
     expect(sendLines).toHaveLength(1);
     expect(sendLines[0]).toContain("sendAction(target.door,");
     // Every composer that talks to a worker sends through it.
-    for (const file of ["surfaces/TaskFrame.tsx", "surfaces/Stream.tsx", "surfaces/Inbox.tsx", "lib/cos.ts"]) {
+    for (const file of ["surfaces/TaskFrame.tsx", "surfaces/Stream.tsx", "surfaces/Inbox.tsx", "components/Conversation.tsx"]) {
       expect(read(join(src, file)), file).toContain("sendTurn(clients,");
     }
     // Planted: a composer that sends to a named action is caught.
