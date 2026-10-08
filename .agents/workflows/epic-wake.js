@@ -194,18 +194,32 @@ let crossSpecHold = false
  * A prerequisite is a landing-order constraint on CODE — a dependent must not be built concurrently with
  * the thing it builds on. It says nothing about the dependent's SPEC, and parking spec work too serialised
  * a whole epic's specs behind its first implementation merge: the owner had to override the wake by hand
- * (FIX-1553). So the rule is derived from the phase, not from a list of action names: everything a row
- * does while its spec is not yet signed off (`PRE_APPROVAL_PHASES` — authoring, review, folding a POC
- * verdict, applying an answered decision) is spec work and runs; `implement` (the step out of the spec)
- * and anything a row does once past it is implementation and waits. Listing the free actions by hand
- * missed two of them (verdicts, decisions), and the missed decision deadlocked the cross-spec hold.
+ * (FIX-1553). So the rule is derived from the row, not from a list of action names: everything a row
+ * does while its spec is not yet signed off (`PRE_APPROVAL_PHASES`, unapproved — authoring, review,
+ * folding a POC verdict, applying an answered decision) is spec work and runs; `implement`, any dispatch
+ * that can carry the row INTO implementation (`reachesImplementation`), and anything a row does once
+ * past it is implementation and waits. Listing the free actions by hand missed two of them (verdicts,
+ * decisions), and the missed decision deadlocked the cross-spec hold.
  * → epic-lifecycle § Intake.
  *
  * @param row     the row the action is for
  * @param action  the action `pendingAction` would dispatch
  */
 function buildsCode(row, action) {
-  return action === 'implement' || !PRE_APPROVAL_PHASES.has(row.phase)
+  return action === 'implement' || !PRE_APPROVAL_PHASES.has(row.phase) || reachesImplementation(row)
+}
+
+/**
+ * Can ANY dispatch carry this row into implementation it has not started yet?
+ *
+ * True at NEEDS_IMPLEMENTATION, and for an approved spec still in a pre-approval phase. A worker is told to
+ * advance its row to the next external wait and that a satisfied gate is not one, so a verdict fold or an
+ * answered decision on such a row goes on to open the implementation PR — the action name says nothing
+ * about where the worker stops. Every implementation precondition (an open prerequisite, the cross-spec
+ * hold) is checked against this, in `pendingAction`, rather than against the action.
+ */
+function reachesImplementation(row) {
+  return row.phase === 'NEEDS_IMPLEMENTATION' || (PRE_APPROVAL_PHASES.has(row.phase) && !!row.specApproved)
 }
 
 function pendingAction(row) {
@@ -241,7 +255,17 @@ function pendingAction(row) {
   }
 
   const prerequisiteOpen = !!(row.blockedBy && row.blockedBy.length)
-  const unlessBuilding = (next) => (prerequisiteOpen && buildsCode(row, next.action) ? null : next)
+  // Every implementation precondition, applied to every dispatch. A verdict or an answered decision
+  // returns ahead of the phase switch, and its worker can carry the row into implementation
+  // (`reachesImplementation`), so the switch does not repeat these.
+  //  - An open prerequisite holds all code (`buildsCode`), including work already past implementation start.
+  //  - The cross-spec hold holds the step INTO implementation only, on the spec route: a bug has no spec to
+  //    be incoherent with, and work already implementing is not re-parked.
+  // Spec work that cannot reach implementation (an unapproved spec's authoring, review, verdicts and
+  // decisions) dispatches under both — the cross-spec pass waits on exactly that work.
+  const implementationHeld = (next) =>
+    (prerequisiteOpen && buildsCode(row, next.action)) || (crossSpecHold && !isDirectRoute(row) && reachesImplementation(row))
+  const unlessBuilding = (next) => (implementationHeld(next) ? null : next)
 
   // A worker that escalated a decision it could not make is WAITING ON A HUMAN. Re-dispatching
   // it on the next unrelated PR event or heartbeat would either retry the same dead end or push
@@ -271,17 +295,13 @@ function pendingAction(row) {
       // through (which is what the convergence rule does with remaining open threads anyway).
       if (row.specApproved) {
         return row.newSpecReviewEvents
-          ? crossSpecHold
-            ? null
-            : cursorUsable(row)
+          ? cursorUsable(row)
             ? { action: 'implement', why: 'spec approved on current head, with outstanding spec-PR feedback to carry as implementer notes' }
             : // The approval is real, but the batch riding with it cannot be recorded as handled — and this
               // is the ONLY pass that reads spec-PR feedback, so dispatching would carry it once and then
               // rediscover it on every later timestamp-less scan, re-handling and re-replying each time.
               // The same hold the spec-review and CI paths already take.
               null
-          : crossSpecHold
-          ? null
           : { action: 'implement', why: 'spec approved on current head' }
       }
       if (row.newSpecReviewEvents) {
@@ -296,17 +316,15 @@ function pendingAction(row) {
 
     case 'NEEDS_IMPLEMENTATION':
       // A DIRECT-route row (a bug) reaches implementation with no spec and no approval, by design
-      // — this is the phase it enters at. Both guards below are about the spec-approval gate, and
-      // neither has anything to hold: there is no spec to approve, and no spec to be incoherent
-      // with the rest of the set. Applying them anyway parks every bug in the epic forever, on a
-      // gate the coordinator is explicitly told never to surface for these rows.
+      // — this is the phase it enters at. The approval guard below would park it forever: there is
+      // no spec to approve, and the coordinator is told never to surface that gate for these rows.
+      // The cross-spec hold does not apply to this route (`implementationHeld`).
       if (isDirectRoute(row)) return { action: 'implement', why: 'bug — direct route, no spec required' }
       // The phase NAME asserts approval; only `specApproved` establishes it, and the schema validates
       // the two independently — so a scout that derives the phase wrongly would dispatch
       // implementation on a spec no human ever approved. This is the one gate that must never be
       // bypassable, so the phase is not allowed to be the thing that carries it.
       if (!row.specApproved) return null
-      if (crossSpecHold) return null
       return { action: 'implement', why: 'spec approved, implementation not started' }
 
     case 'PR_FEEDBACK': {
@@ -1375,7 +1393,9 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
       blocked.push(row)
       if (!next) continue
     }
-    if (next && foldEpicWanted && AUTHORS_AGAINST_OBJECTIVE.has(next.action)) {
+    // Only while the epic gate is OPEN. Under a closed gate the row is held by the gate (`held` below),
+    // and reporting it as held-for-fold promised a dispatch next wake that the gate refuses again.
+    if (next && epicApproved && foldEpicWanted && AUTHORS_AGAINST_OBJECTIVE.has(next.action)) {
       heldForFold.push({ row, ...next })
       continue
     }
@@ -2687,7 +2707,10 @@ const freshById = bindByPosition(
 // table only from `rows` would discard it — the issue would be invisible to the coordinator and
 // the epic could wrap without it (→ epic-lifecycle § Intake). They enter at NEEDS_SPEC and hit
 // their own spec-approval gate like any other.
-const TERMINAL_LINEAR = /^(done|closed|cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
+// State NAMES and state TYPES both: the children read sometimes reports the type (`completed`,
+// `canceled`) where the name (`Done`, `Canceled`) was asked for, and a finished prerequisite that reads
+// as open work holds its dependent. `canceled` is already covered by `cancell?ed`.
+const TERMINAL_LINEAR = /^(done|completed|closed|cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
 const discovered = linearIssues
   .filter((li) => li.id !== epic.issueId && !rows.some((r) => r.id === li.id))
   // A child the human already closed or dropped is not new work. Entering it at NEEDS_SPEC would
@@ -3931,7 +3954,12 @@ return {
   // covers a returned `multiPrPending` row, a landed verdict still owed a fold, and a Settle-phase verdict
   // that Advance had already passed by. A parked or cancelled row yields null and so ends the turn.
   moreWorkNow:
-    plan.heldForFold.length > 0 ||
+    // Held work counts only if the NEXT wake finds the epic gate open — the case where this wake's fold
+    // applied the last answered epic question. Otherwise the next wake holds it again, and an immediate
+    // wake just loops the coordinator on a gate only the human can open.
+    (plan.heldForFold.length + plan.held.length > 0 &&
+      epicApproved && epicSpecMerged &&
+      !(epicOut.openQuestions.length || epicOut.unsettled.length || epicOut.answers.length)) ||
     plan.deferred.length > 0 ||
     plan.queuedClaims.length + unsettled.length + newRequests.length > 0 ||
     (foldEpicWanted && !plan.foldEpic) ||

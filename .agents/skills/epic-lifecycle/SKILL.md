@@ -374,7 +374,9 @@ The epic-specific delta:
    its **implementation** waits until its blocker merges rather than being built concurrently with
    its prerequisite, but all its spec-phase work still runs (authoring, review, verdict folds,
    answered decisions, the approval gate) — `blocked` is not "idle"
-   ([Intake](#intake--filing--queueing-discovered-issues)).
+   ([Intake](#intake--filing--queueing-discovered-issues)). Once its spec is **approved**, a
+   verdict fold or an answered decision waits for the blocker too, since a worker would carry
+   it straight into implementation.
    And a row whose worker **died** looks untouched by design: the script treats a null agent
    result as *nothing happened*, so the cursor doesn't advance, no verdict is consumed, and no
    claim is marked settled — the next wake retries instead of inventing an outcome.
