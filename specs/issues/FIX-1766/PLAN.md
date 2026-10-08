@@ -99,7 +99,7 @@ hold and save, first-turn crash, stale directory.
 |---|---|
 | **Holding applies** when `heldWork ∧ heldPrefix ∧ remote`: the host has a store, the source named a prefix, and the branch came from a remote. S2, S4 and S5 act only then; otherwise no git read and no write at a save point | Jake: off is today's `main`, with no extra work at a turn's end. One predicate, so the three surfaces cannot drift |
 | The pack is `put` before the record names it, under a key no earlier hold used | A machine dying mid-hold must leave the record on the last good snapshot (BR-30) |
-| A hold deletes only the pack the record named before, only after the switch, never one that parked, and never overwrites the recorded key | Deleting first loses the last good turn to a crash (BR-30); a parked pack is evidence. Storage: one live pack per run, plus any orphans left by crashes and any pack that parked, which FIX-1768's sweep removes via `list` |
+| A hold writes, switches and deletes as BR-6, and never overwrites the recorded key. Harness-manager never calls `HeldWorkStore.delete` directly: `dropHeld`, public on the host, is the only caller, and it enforces the prefix check (BR-15) | Deleting first loses the last good turn to a crash (BR-30); a parked pack is evidence. Storage: one live pack per run, plus any orphans left by crashes and any pack that parked, which FIX-1768's sweep removes via `list` |
 | Size is checked by `lstat` before git reads a path | A large dirty file must cost a stat, not its size in memory |
 | Git in a hold uses a temporary index and `--no-optional-locks` reads, and writes no ref | The agent may be using the repository; a hold must not move it. Unreferenced objects are left in the local clone for git's own pruning |
 | The host reads only the recorded key, under this attempt's answered prefix | The store has no access control of its own; the prefix is the check |
@@ -123,7 +123,7 @@ at a save point:   unless holding applies → nothing
                    store.put(prefix/run/snap.pack, pack)
                    old ← record.held.key
                    record.held ← { base, head, snap, key, sha, bytes }   (fenced)
-                   store.delete(old) unless old parked                    (last)
+                   host.dropHeld(place, old) unless old parked            (last, after the switch)
 at provision:      no heldWork, record.held, not live here → mismatch disabled → row parked
                    no heldWork → as today
                    live here and record.place.host is us → origin live

@@ -180,11 +180,9 @@ Recorded as constraints, not decisions this spec makes:
   one pack. It writes no ref, never touches the agent's index, and carries deletions, renames,
   binary files, exec bits and symlinks by construction. The rebuild checks one thing that matters:
   the rebuilt tree equals the recorded snapshot's. From jhoffner's [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/2878#issuecomment-6066140305), finding 1.
-- **The record switches last, to a new key, and the pack it replaced goes after.** Each hold
-  writes its pack under a new, content-addressed key, points the record at it, and only then
-  deletes the pack the record named before, and no other, unless that pack parked. A machine that
-  dies before the switch leaves the record on the previous good pack; one that dies after it,
-  before the delete, leaves the old pack behind. A run's storage is one live pack, plus any
+- **The record switches last, to a new key, and the pack it replaced goes after,** as
+  [BR-6](BUSINESS-RULES.md#holding-a-runs-work); a crash between those steps costs one orphan,
+  never the last good pack (BR-30). A run's storage is one live pack, plus any
   orphans left by crashes and any pack that parked, which FIX-1768's sweep removes via `list`.
   Finding 2 of each second look, [#2878](https://github.com/fixpoint-labs/flow-state-dev/pull/2878#issuecomment-6066140305)
   and [#2881](https://github.com/fixpoint-labs/flow-state-dev/pull/2881#issuecomment-6068041468).
