@@ -1,14 +1,14 @@
 /**
  * A request's items are in the store by the time its status reads settled.
  *
- * The SQLite request store keeps items out of the record row: `set` drops
- * `items`, and only `persistItems` writes `request_items`. Until the terminal
- * write persisted its own items, a settled request's last items reached the
- * table only through the emitter's `item.done` hook, which fires after the
- * event is appended — after an `onEvent` the emitter awaits. A block's trace
- * is closed without waiting on that, so behind a live stream that yields even
- * once the run wrote `completed` first, and a poller read the status with the
- * root block_trace (the action's output) missing.
+ * The SQLite request store keeps items out of the record row, in
+ * `request_items`. While the request runs, its items reach the table through
+ * the emitter's `item.done` hook, which fires after the event is appended —
+ * after an `onEvent` the emitter awaits. A block's trace is closed without
+ * waiting on that, so behind a live stream that yields even once the run
+ * writes `completed` before the hook has persisted the root block_trace (the
+ * action's output). The write that settles the request carries its items and
+ * lands them with the status, so a poller never reads the status without it.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -74,22 +74,9 @@ describe("a settled request's items on SQLite", () => {
 
     // What a poller sees the moment the terminal status lands: read the record
     // straight after the write that settles it, before anything else runs.
-    // The order the store is written in: the root trace's completed output
-    // must be handed to `persistItems` before the write that settles the status.
-    const writes: string[] = [];
-    const persistItems = stores.request.persistItems.bind(stores.request);
-    stores.request.persistItems = (id, items) => {
-      const root = items.find(
-        (item) => item.type === "block_trace" && (item as BlockTraceItem).blockInstanceId === `${requestId}:root:0`
-      ) as BlockTraceItem | undefined;
-      if (id === requestId && root?.output !== undefined) writes.push("root output");
-      persistItems(id, items);
-    };
-
     let atSettle: RequestRecord | undefined;
     const set = stores.request.set.bind(stores.request);
     stores.request.set = async (id, value, expectedVersion) => {
-      if (id === requestId && value.status === "completed") writes.push("completed");
       const result = await set(id, value, expectedVersion);
       if (id === requestId && value.status === "completed" && atSettle === undefined) {
         atSettle = await stores.request.get(id);
@@ -110,8 +97,6 @@ describe("a settled request's items on SQLite", () => {
       responseEmitter: response
     });
 
-    expect(writes.indexOf("root output")).toBeGreaterThanOrEqual(0);
-    expect(writes.indexOf("root output")).toBeLessThan(writes.indexOf("completed"));
     expect(atSettle?.status).toBe("completed");
     const root = (atSettle?.items ?? []).find(
       (item): item is BlockTraceItem =>

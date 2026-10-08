@@ -92,6 +92,14 @@ export type SQLiteRecordStore<TRecord, TListOptions> = {
   ): Promise<SetResult<TRecord>>;
   delete(id: string): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
+  /**
+   * `get`, `set` and `list` as plain synchronous calls, so a caller can run
+   * them inside its own `db.transaction` beside writes or reads of a child
+   * table (better-sqlite3 transactions cannot span an `await`).
+   */
+  getSync(id: string): TRecord | undefined;
+  setSync(id: string, value: TRecord, expectedVersion: ExpectedVersion): SetResult<TRecord>;
+  listSync(options?: TListOptions): TRecord[];
 };
 
 export function createSQLiteRecordStore<
@@ -249,10 +257,117 @@ export function createSQLiteRecordStore<
     })();
   }
 
+  function getSync(id: string): TRecord | undefined {
+    const row = getStmt.get(id) as { data: string } | undefined;
+    return row === undefined ? undefined : JSON.parse(row.data) as TRecord;
+  }
+
+  function setSync(
+    id: string,
+    value: TRecord,
+    expectedVersion: ExpectedVersion
+  ): SetResult<TRecord> {
+    const scalarValues = toRow(value);
+    const data = JSON.stringify(value);
+
+    if (expectedVersion === "any") {
+      upsertStmt.run(id, ...scalarValues, value.version, value.createdAt, value.updatedAt, data);
+      return { ok: true, version: value.version };
+    }
+
+    // "absent" is create-if-absent: no CAS update attempt at all, because
+    // any existing row is a conflict regardless of its version. The bare
+    // INSERT is the predicate — SQLite's primary key decides the race
+    // atomically, so two concurrent creates cannot both land even across
+    // connections. A read-then-insert here would pass every in-process test
+    // and still lose the race in production.
+    if (expectedVersion === "absent") {
+      try {
+        casInsertStmt.run(
+          id,
+          ...scalarValues,
+          value.version,
+          value.createdAt,
+          value.updatedAt,
+          data
+        );
+        return { ok: true, version: value.version };
+      } catch (error) {
+        if (!isPrimaryKeyConflict(error)) throw error;
+        return loadConflict<TRecord>(getStmt, id);
+      }
+    }
+
+    // Try the CAS update first — the common case when a row already exists
+    // at the expected version.
+    const info = casUpdateStmt.run(
+      ...scalarValues,
+      value.version,
+      value.updatedAt,
+      data,
+      id,
+      expectedVersion
+    );
+    if (info.changes > 0) {
+      return { ok: true, version: value.version };
+    }
+
+    // No row matched. When expectedVersion is 0 this could mean "no row
+    // exists yet" — try the insert. A PK conflict means a row exists at a
+    // different version → report CAS conflict.
+    if (expectedVersion === 0) {
+      try {
+        casInsertStmt.run(
+          id,
+          ...scalarValues,
+          value.version,
+          value.createdAt,
+          value.updatedAt,
+          data
+        );
+        return { ok: true, version: value.version };
+      } catch (error) {
+        if (!isPrimaryKeyConflict(error)) throw error;
+        return loadConflict<TRecord>(getStmt, id);
+      }
+    }
+
+    // expectedVersion > 0 and no row matched → conflict.
+    return loadConflict<TRecord>(getStmt, id);
+  }
+
+  function listSync(options?: TListOptions): TRecord[] {
+    const { clause, params } = toWhere(options);
+
+    let sql = `SELECT data FROM ${tableName}`;
+    if (clause.length > 0) {
+      sql += ` WHERE ${clause}`;
+    }
+    // `null` means "no ORDER BY" (FIX-1010); `undefined` keeps the default.
+    const orderBy =
+      resolveOrderBy === undefined ? "updated_at DESC" : resolveOrderBy(options);
+    if (orderBy !== null) {
+      sql += ` ORDER BY ${orderBy ?? "updated_at DESC"}`;
+    }
+
+    const offset = Math.max(0, options?.offset ?? 0);
+    const limit = options?.limit;
+
+    if (limit !== undefined) {
+      sql += ` LIMIT ? OFFSET ?`;
+      params.push(Math.max(0, limit), offset);
+    } else if (offset > 0) {
+      sql += ` LIMIT -1 OFFSET ?`;
+      params.push(offset);
+    }
+
+    const rows = db.prepare(sql).all(...params) as { data: string }[];
+    return rows.map((row) => JSON.parse(row.data) as TRecord);
+  }
+
   return {
     async get(id: string): Promise<TRecord | undefined> {
-      const row = getStmt.get(id) as { data: string } | undefined;
-      return row === undefined ? undefined : JSON.parse(row.data) as TRecord;
+      return getSync(id);
     },
 
     async set(
@@ -260,74 +375,12 @@ export function createSQLiteRecordStore<
       value: TRecord,
       expectedVersion: ExpectedVersion
     ): Promise<SetResult<TRecord>> {
-      const scalarValues = toRow(value);
-      const data = JSON.stringify(value);
-
-      if (expectedVersion === "any") {
-        upsertStmt.run(id, ...scalarValues, value.version, value.createdAt, value.updatedAt, data);
-        return { ok: true, version: value.version };
-      }
-
-      // "absent" is create-if-absent: no CAS update attempt at all, because
-      // any existing row is a conflict regardless of its version. The bare
-      // INSERT is the predicate — SQLite's primary key decides the race
-      // atomically, so two concurrent creates cannot both land even across
-      // connections. A read-then-insert here would pass every in-process test
-      // and still lose the race in production.
-      if (expectedVersion === "absent") {
-        try {
-          casInsertStmt.run(
-            id,
-            ...scalarValues,
-            value.version,
-            value.createdAt,
-            value.updatedAt,
-            data
-          );
-          return { ok: true, version: value.version };
-        } catch (error) {
-          if (!isPrimaryKeyConflict(error)) throw error;
-          return loadConflict<TRecord>(getStmt, id);
-        }
-      }
-
-      // Try the CAS update first — the common case when a row already exists
-      // at the expected version.
-      const info = casUpdateStmt.run(
-        ...scalarValues,
-        value.version,
-        value.updatedAt,
-        data,
-        id,
-        expectedVersion
-      );
-      if (info.changes > 0) {
-        return { ok: true, version: value.version };
-      }
-
-      // No row matched. When expectedVersion is 0 this could mean "no row
-      // exists yet" — try the insert. A PK conflict means a row exists at a
-      // different version → report CAS conflict.
-      if (expectedVersion === 0) {
-        try {
-          casInsertStmt.run(
-            id,
-            ...scalarValues,
-            value.version,
-            value.createdAt,
-            value.updatedAt,
-            data
-          );
-          return { ok: true, version: value.version };
-        } catch (error) {
-          if (!isPrimaryKeyConflict(error)) throw error;
-          return loadConflict<TRecord>(getStmt, id);
-        }
-      }
-
-      // expectedVersion > 0 and no row matched → conflict.
-      return loadConflict<TRecord>(getStmt, id);
+      return setSync(id, value, expectedVersion);
     },
+
+    getSync,
+    setSync,
+    listSync,
 
     async patchField(
       id: string,
@@ -413,32 +466,7 @@ export function createSQLiteRecordStore<
     },
 
     async list(options?: TListOptions): Promise<TRecord[]> {
-      const { clause, params } = toWhere(options);
-
-      let sql = `SELECT data FROM ${tableName}`;
-      if (clause.length > 0) {
-        sql += ` WHERE ${clause}`;
-      }
-      // `null` means "no ORDER BY" (FIX-1010); `undefined` keeps the default.
-      const orderBy =
-        resolveOrderBy === undefined ? "updated_at DESC" : resolveOrderBy(options);
-      if (orderBy !== null) {
-        sql += ` ORDER BY ${orderBy ?? "updated_at DESC"}`;
-      }
-
-      const offset = Math.max(0, options?.offset ?? 0);
-      const limit = options?.limit;
-
-      if (limit !== undefined) {
-        sql += ` LIMIT ? OFFSET ?`;
-        params.push(Math.max(0, limit), offset);
-      } else if (offset > 0) {
-        sql += ` LIMIT -1 OFFSET ?`;
-        params.push(offset);
-      }
-
-      const rows = db.prepare(sql).all(...params) as { data: string }[];
-      return rows.map((row) => JSON.parse(row.data) as TRecord);
+      return listSync(options);
     }
   };
 }

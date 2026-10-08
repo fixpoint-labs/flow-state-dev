@@ -712,9 +712,17 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * than hand back that snapshot's. An adapter that keeps items on the record
    * and replaces the whole record on `set` would drop every item persisted
    * since: carry the stored `items` through when `value.items` is absent
-   * (the in-memory and filesystem adapters use `withHeldItems`). An adapter
-   * that keeps items out of `set` entirely, as the SQL pair does, holds this
-   * already. A record that carries `items` may still replace them.
+   * (the in-memory and filesystem adapters use `withHeldItems`). A record
+   * that carries `items` may still replace them.
+   *
+   * **A `set` that settles a request lands the `items` it carries in the same
+   * write as its status** (FIX-1750), so no reader sees a final status
+   * without the items it settled with. An adapter that keeps items apart from
+   * the record row writes them in the row write's transaction, and only if
+   * that write lands. A `set` with a non-terminal status may leave `items` to
+   * {@link RequestStore.persistItems}, as the SQL pair does: it is built from
+   * a record read earlier, so its items can be older than ones persisted
+   * since.
    */
   set(
     id: string,

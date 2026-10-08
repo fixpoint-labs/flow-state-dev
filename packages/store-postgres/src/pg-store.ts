@@ -93,12 +93,29 @@ export type PgRecordStoreConfig<TRecord, TListOptions> = {
   preserveJsonKeys?: string[];
 };
 
+/**
+ * A write to another table that lands in the same statement as `set`'s row
+ * write, and only if that write does. Given the first free parameter number,
+ * it returns a data-modifying statement that gates itself on
+ * `EXISTS (SELECT 1 FROM written)` — `written` is the row write's
+ * `RETURNING id` — and the parameters it binds from there.
+ */
+export type PgCompanionWrite = (firstParam: number) => { sql: string; params: unknown[] };
+
 export type PgRecordStore<TRecord, TListOptions> = {
   get(id: string): Promise<TRecord | undefined>;
+  /**
+   * `get`, also selecting `extra` (a trusted select-list fragment that may
+   * reference `${tableName}.id`) in the same statement, so both come from
+   * one snapshot. Returns the record with the raw row it came from.
+   */
+  getWith(id: string, extra: string): Promise<{ record: TRecord; row: QueryResultRow } | undefined>;
+  /** `set`, with an optional {@link PgCompanionWrite} that lands with the row. */
   set(
     id: string,
     value: TRecord,
-    expectedVersion: ExpectedVersion
+    expectedVersion: ExpectedVersion,
+    companion?: PgCompanionWrite
   ): Promise<SetResult<TRecord>>;
   patchField(
     id: string,
@@ -129,6 +146,11 @@ export type PgRecordStore<TRecord, TListOptions> = {
   ): Promise<SetResult<TRecord>>;
   delete(id: string): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
+  /** `list`, also selecting `extra` in the same statement — see `getWith`. */
+  listWith(
+    options: TListOptions | undefined,
+    extra: string
+  ): Promise<Array<{ record: TRecord; row: QueryResultRow }>>;
 };
 
 export function createPgRecordStore<
@@ -208,6 +230,27 @@ export function createPgRecordStore<
       ok: false,
       conflict: { currentValue, currentVersion }
     };
+  }
+
+  /**
+   * Run one of `set`'s row writes and report how many rows it wrote. With a
+   * companion, the write and the companion run as one statement, so they
+   * commit together or not at all; the count then comes from the row write's
+   * `RETURNING` rather than `rowCount`, which some executors (PGlite) report
+   * as 0 for a statement whose outer query is a `SELECT`.
+   */
+  async function writeRow(
+    sql: string,
+    params: unknown[],
+    companion: PgCompanionWrite | undefined
+  ): Promise<number> {
+    if (companion === undefined) return (await executor.query(sql, params)).rowCount;
+    const extra = companion(params.length + 1);
+    const result = await executor.query(
+      `WITH written AS (${sql} RETURNING id), companion AS (${extra.sql}) SELECT id FROM written`,
+      [...params, ...extra.params]
+    );
+    return result.rows.length;
   }
 
   function statePath(path: string[]): string[] {
@@ -384,6 +427,41 @@ export function createPgRecordStore<
     return result;
   }
 
+  async function listRows(
+    options: TListOptions | undefined,
+    extra: string | undefined
+  ): Promise<Array<{ record: TRecord; row: QueryResultRow }>> {
+    const { clause, params } = toWhere(options, 1);
+
+    let sql = `SELECT data${extra === undefined ? "" : `, ${extra}`} FROM ${tableName}`;
+    if (clause.length > 0) {
+      sql += ` WHERE ${clause}`;
+    }
+    // `null` means "no ORDER BY" (FIX-1010); `undefined` keeps the default.
+    const orderBy =
+      resolveOrderBy === undefined ? "updated_at DESC" : resolveOrderBy(options);
+    if (orderBy !== null) {
+      sql += ` ORDER BY ${orderBy ?? "updated_at DESC"}`;
+    }
+
+    const offset = Math.max(0, options?.offset ?? 0);
+    const limit = options?.limit;
+
+    if (limit !== undefined) {
+      const limitParam = params.length + 1;
+      const offsetParam = params.length + 2;
+      sql += ` LIMIT $${limitParam} OFFSET $${offsetParam}`;
+      params.push(Math.max(0, limit), offset);
+    } else if (offset > 0) {
+      const offsetParam = params.length + 1;
+      sql += ` OFFSET $${offsetParam}`;
+      params.push(offset);
+    }
+
+    const result = await executor.query(sql, params);
+    return result.rows.map((row) => ({ record: parseData(row.data) as TRecord, row }));
+  }
+
   return {
     async get(id: string): Promise<TRecord | undefined> {
       const result = await executor.query(getSQL, [id]);
@@ -392,23 +470,31 @@ export function createPgRecordStore<
       return parseData(row.data) as TRecord;
     },
 
+    async getWith(id: string, extra: string) {
+      const result = await executor.query(
+        `SELECT data, ${extra} FROM ${tableName} WHERE id = $1`,
+        [id]
+      );
+      const row = result.rows[0] as QueryResultRow | undefined;
+      if (row === undefined) return undefined;
+      return { record: parseData(row.data) as TRecord, row };
+    },
+
     async set(
       id: string,
       value: TRecord,
-      expectedVersion: ExpectedVersion
+      expectedVersion: ExpectedVersion,
+      companion?: PgCompanionWrite
     ): Promise<SetResult<TRecord>> {
       const scalarValues = toRow(value);
       const data = JSON.stringify(value);
 
       if (expectedVersion === "any") {
-        await executor.query(upsertSQL, [
-          id,
-          ...scalarValues,
-          value.version,
-          value.createdAt,
-          value.updatedAt,
-          data
-        ]);
+        await writeRow(
+          upsertSQL,
+          [id, ...scalarValues, value.version, value.createdAt, value.updatedAt, data],
+          companion
+        );
         return { ok: true, version: value.version };
       }
 
@@ -419,45 +505,36 @@ export function createPgRecordStore<
       // read-then-insert would pass every in-process test and still lose it
       // in production.
       if (expectedVersion === "absent") {
-        const insertResult = await executor.query(casInsertSQL, [
-          id,
-          ...scalarValues,
-          value.version,
-          value.createdAt,
-          value.updatedAt,
-          data
-        ]);
-        if (insertResult.rowCount === 0) {
+        const inserted = await writeRow(
+          casInsertSQL,
+          [id, ...scalarValues, value.version, value.createdAt, value.updatedAt, data],
+          companion
+        );
+        if (inserted === 0) {
           return loadConflict(id);
         }
         return { ok: true, version: value.version };
       }
 
       // Try the CAS update first — the common case.
-      const updateResult = await executor.query(casUpdateSQL, [
-        ...scalarValues,
-        value.version,
-        value.updatedAt,
-        data,
-        id,
-        expectedVersion
-      ]);
-      if (updateResult.rowCount > 0) {
+      const updated = await writeRow(
+        casUpdateSQL,
+        [...scalarValues, value.version, value.updatedAt, data, id, expectedVersion],
+        companion
+      );
+      if (updated > 0) {
         return { ok: true, version: value.version };
       }
 
       // No row matched. expectedVersion=0 may mean "no row yet" — try insert.
       // `DO NOTHING` returns rowCount=0 when a row exists → that's a conflict.
       if (expectedVersion === 0) {
-        const insertResult = await executor.query(casInsertSQL, [
-          id,
-          ...scalarValues,
-          value.version,
-          value.createdAt,
-          value.updatedAt,
-          data
-        ]);
-        if (insertResult.rowCount === 0) {
+        const inserted = await writeRow(
+          casInsertSQL,
+          [id, ...scalarValues, value.version, value.createdAt, value.updatedAt, data],
+          companion
+        );
+        if (inserted === 0) {
           return loadConflict(id);
         }
         return { ok: true, version: value.version };
@@ -618,37 +695,14 @@ export function createPgRecordStore<
     },
 
     async list(options?: TListOptions): Promise<TRecord[]> {
-      const { clause, params } = toWhere(options, 1);
+      return (await listRows(options, undefined)).map(({ record }) => record);
+    },
 
-      let sql = `SELECT data FROM ${tableName}`;
-      if (clause.length > 0) {
-        sql += ` WHERE ${clause}`;
-      }
-      // `null` means "no ORDER BY" (FIX-1010); `undefined` keeps the default.
-      const orderBy =
-        resolveOrderBy === undefined ? "updated_at DESC" : resolveOrderBy(options);
-      if (orderBy !== null) {
-        sql += ` ORDER BY ${orderBy ?? "updated_at DESC"}`;
-      }
-
-      const offset = Math.max(0, options?.offset ?? 0);
-      const limit = options?.limit;
-
-      if (limit !== undefined) {
-        const limitParam = params.length + 1;
-        const offsetParam = params.length + 2;
-        sql += ` LIMIT $${limitParam} OFFSET $${offsetParam}`;
-        params.push(Math.max(0, limit), offset);
-      } else if (offset > 0) {
-        const offsetParam = params.length + 1;
-        sql += ` OFFSET $${offsetParam}`;
-        params.push(offset);
-      }
-
-      const result = await executor.query(sql, params);
-      return result.rows.map((row) => parseData(row.data) as TRecord);
+    async listWith(options: TListOptions | undefined, extra: string) {
+      return listRows(options, extra);
     }
   };
+
 }
 
 /** Parse the data column — handles both string (TEXT) and pre-parsed object (JSONB) */
