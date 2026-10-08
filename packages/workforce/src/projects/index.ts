@@ -1,13 +1,19 @@
 /**
- * Projects: the organization's `projects` rows, the writes that create them,
- * and each project's room, reached through a member's own talk session.
+ * Projects: shared and private `projects` rows and the writes that create
+ * them, each project's workstream entries, and each shared project's room,
+ * reached through a member's own talk session.
  *
- * `collections.ts` is canonical for the keys and row shapes; `project-files.ts`
- * for a member's read of a project's files; `project-workspace.ts` for the run
- * source a coding run on a project's board gets its files from; `talk.ts` for how
- * a session reaches a room; `room-store.ts` for how a room is written and read;
- * `talk-template.ts` for a room's seats and charter, and the mint on create.
- * The talk entries are built into every mailbox kind by `defineMailboxFlow`.
+ * `collections.ts` is canonical for the project keys and row shapes;
+ * `project-address.ts` for reaching a project by its visibility and id;
+ * `workstream-collections.ts` for the workstream entries and their owner rule;
+ * `workstream-writes.ts` for opening and updating a workstream;
+ * `project-read.ts` and `project-progress.ts` for a project's read and the
+ * progress worked out from its entries; `project-files.ts` for a member's read
+ * of a project's files; `project-workspace.ts` for the run source a coding run
+ * gets its files from; `talk.ts` for how a session reaches a room;
+ * `room-store.ts` for how a room is written and read; `talk-template.ts` for a
+ * room's seats and charter, and the mint on create. The talk entries are built
+ * into every mailbox kind by `defineMailboxFlow`.
  */
 
 export {
@@ -81,7 +87,6 @@ export {
   workstreamEntriesPrefix,
   workstreamEntryKey,
   workstreamEntrySchema,
-  workstreamIdProblem,
   workstreamObjectiveSchema,
   workstreamPlaceOf,
   WORKSTREAM_RESOURCES,
@@ -115,7 +120,7 @@ export {
 
 export { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
 
-export { leadsWorkstreams, WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./workstream-lead";
+export { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./workstream-lead";
 
 export {
   defineWorkstreamBlocks,
