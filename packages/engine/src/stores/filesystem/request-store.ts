@@ -507,10 +507,10 @@ export class FilesystemRequestStore implements RequestStore {
       // otherwise outlive an applied `{ abortRequested: false }`: the marker
       // would be removed, the inline `true` would remain, and the next `get`
       // would report the cancellation as still standing.
-      return withStoredAbortRequested(
-        { ...current, ...recordFields, updatedAt },
-        undefined
-      );
+      const next: RequestRecord = { ...current, ...recordFields, updatedAt };
+      // A status move whose result is `undefined` removes the stored result.
+      if (fields.status !== undefined && fields.result === undefined) delete next.result;
+      return withStoredAbortRequested(next, undefined);
     });
 
     if (found === undefined || otherRecord) return { applied: false, status: undefined };

@@ -45,6 +45,7 @@ export type {
   ActiveRequestRegistry,
   CheckpointStore,
   ConditionalRequestFields,
+  ConditionalStatusTransition,
   ConditionalWriteResult,
   ContentScopeType,
   StorageScopeType,

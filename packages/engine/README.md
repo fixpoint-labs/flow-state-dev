@@ -660,11 +660,13 @@ setFieldsIfStatus(
 ): Promise<ConditionalWriteResult>;
 ```
 
-Both named types are exported from `@flow-state-dev/engine`. `ConditionalRequestFields` is a `Partial` of `RequestRecord` minus the fields that have their own write path: `id`, `version`, `createdAt`, `updatedAt`, `state`, `items`, `status`, and the indexed access-path fields (`flowKind`, `userId`, `sessionId`, `orgId`, `tenantId`). `abortRequested` is in the set. `ConditionalWriteResult` is `{ applied: boolean; status?: RequestStatus }`.
+Both named types are exported from `@flow-state-dev/engine`. `ConditionalRequestFields` is a `Partial` of `RequestRecord` minus the fields that have their own write path: `id`, `version`, `createdAt`, `incarnation`, `updatedAt`, `state`, `items`, and the indexed access-path fields (`flowKind`, `flowId`, `userId`, `sessionId`, `orgId`, `tenantId`). `abortRequested` is in the set. `status` and `result` are in it only as a pair (`ConditionalStatusTransition`, also exported): a write carries both or neither. `ConditionalWriteResult` is `{ applied: boolean; status?: RequestStatus }`.
 
 **`isAbortRequested`** answers whether cancellation has been requested, without materializing the request. It runs on the heartbeat tick for the life of every request, so it **must be O(1) in item count** — reading the record and deserializing a growing item array turns a long run into quadratic work. Return `false` for an unknown request. Read the flag with `=== true`; it is `boolean | undefined`.
 
 **`setFieldsIfStatus`** applies `fields` only while the record's status is one of `allowedStatuses`, evaluating the predicate and the write as one atomic step. Three outcomes: `{ applied: true, status }` when the predicate held; `{ applied: false, status }` when a record exists outside the predicate; `{ applied: false, status: undefined }` when no record exists.
+
+**A write that carries `status` moves the record to that status** when the predicate holds, in the same atomic step, together with its `result`. A `result` of `undefined` removes any stored result. If your store keeps `status` in an indexed column, update the column in the same write, or a status-filtered `list` will not see the move. The returned `status` is still the status found before the move. The stale-request sweep uses this to mark a request `interrupted` only while it is still `in_progress`.
 
 **`expectedIncarnation` fences the write to one request.** A request id can be reused once retention deletes its record, so the record at `id` when you write may not be the one the caller checked. When `expectedIncarnation` is given, compare it with the stored record's incarnation, resolved with `resolveRequestIncarnation(record)` (exported from `@flow-state-dev/engine`), and when they differ report the record as absent, `{ applied: false, status: undefined }`, and write nothing. Do the comparison inside the same atomic step as the status check.
 

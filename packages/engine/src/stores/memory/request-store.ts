@@ -95,7 +95,10 @@ export class InMemoryRequestStore implements RequestStore {
     }
     // Atomic by construction: nothing above yields, so the status that was
     // checked is the status this write lands on.
-    this.records.set(id, { ...current, ...cloneValue(fields), updatedAt });
+    const next: RequestRecord = { ...current, ...cloneValue(fields), updatedAt };
+    // A status move whose result is `undefined` removes the stored result.
+    if (fields.status !== undefined && fields.result === undefined) delete next.result;
+    this.records.set(id, next);
     return { applied: true, status: current.status };
   }
 
