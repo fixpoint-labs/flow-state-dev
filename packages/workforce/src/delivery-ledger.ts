@@ -10,6 +10,11 @@
  * never minted is refused. The round, the delegate and the post come from the
  * record the token names, never from the answer.
  *
+ * A delegate that has no answer for a delivery can say so with the same
+ * token: its turn failed, or the round's deadline came first. That marks the
+ * delivery `missed`, once. Its answer, if one still comes, is claimed once all
+ * the same.
+ *
  * Pure functions over a value the caller keeps in server-written state, so
  * one definition serves every flow that delivers to delegates. The caller
  * resolves which session a delivery goes to; the ledger only records it.
@@ -41,7 +46,9 @@ export const deliveryRecordSchema = z.object({
   /** Why it failed, once failed. */
   reason: z.string().optional(),
   /** Whether its answer has landed. Claimed once. */
-  answered: z.boolean()
+  answered: z.boolean(),
+  /** Why the delegate said it has no answer, once it said so: its turn failed, or the deadline came first. */
+  missed: z.string().optional()
 });
 
 export type DeliveryRecord = z.infer<typeof deliveryRecordSchema>;
@@ -147,4 +154,40 @@ export function claimAnswer(ledger: DeliveryLedger, token: string): AnswerClaim 
     ledger: ledger.map((record) => (record.token === token ? claimed : record)),
     delivery: claimed
   };
+}
+
+/** What marking a delivery missed came to. */
+export type MissClaim =
+  /** The delivery is now missed. */
+  | { readonly marked: true; readonly ledger: DeliveryLedger; readonly delivery: DeliveryRecord }
+  /** Its answer already landed, or it was already missed. Write nothing. */
+  | { readonly marked: false; readonly reason: "answered" | "missed"; readonly delivery: DeliveryRecord }
+  /** No delivery carries this token. Write nothing. */
+  | { readonly marked: false; readonly reason: "unknown-token" };
+
+/**
+ * Mark the delivery `token` names missed, once, with why. A delivery whose
+ * answer already landed stays answered.
+ */
+export function markMissed(ledger: DeliveryLedger, token: string, why: string): MissClaim {
+  const delivery = ledger.find((record) => record.token === token);
+  if (delivery === undefined) return { marked: false, reason: "unknown-token" };
+  if (delivery.answered) return { marked: false, reason: "answered", delivery };
+  if (delivery.missed !== undefined) return { marked: false, reason: "missed", delivery };
+  const marked: DeliveryRecord = { ...delivery, missed: why };
+  return {
+    marked: true,
+    ledger: ledger.map((record) => (record.token === token ? marked : record)),
+    delivery: marked
+  };
+}
+
+/** The deliveries of one post in one round. */
+export function deliveriesOf(ledger: DeliveryLedger, postId: string, round: number): DeliveryRecord[] {
+  return ledger.filter((record) => record.postId === postId && record.round === round);
+}
+
+/** Whether a delivery has come to an end: answered, missed, or failed to dispatch. */
+export function deliveryEnded(record: DeliveryRecord): boolean {
+  return record.answered || record.missed !== undefined || record.status === "failed";
 }

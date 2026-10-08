@@ -14,8 +14,10 @@
  * Every change is one versioned write that recomputes on retry: two changes
  * arriving together both land, and neither is lost.
  *
- * Only this module and the delivery code write these fields. The flow
- * declares them `serverOwned`, so a session create can't seed them.
+ * The same server-written state holds what routing keeps per conversation:
+ * best fit's hold, round robin's turn, the delivery ledger and the rounds still
+ * open. Only this module, the delivery code and the rounds write these fields.
+ * The flow declares them `serverOwned`, so a session create can't seed them.
  */
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -26,7 +28,9 @@ import {
   DELIVERIES_STATE,
   FALLBACK_STATE,
   HOLD_STATE,
-  MAX_DELEGATES
+  MAX_DELEGATES,
+  ROUND_ROBIN_STATE,
+  ROUNDS_STATE
 } from "./coordinator-keys";
 
 /** One delegate record. */
@@ -41,6 +45,34 @@ export type DelegateRecord = z.infer<typeof delegateRecordSchema>;
 export const bestFitHoldSchema = z.object({ postId: z.string(), delegate: deliveryDelegateSchema });
 
 /**
+ * Where round robin's turn stands: the delegate the person's last post went
+ * to, and where it stood in the list then, so the turn goes on from the same
+ * place when that delegate has since been removed.
+ */
+export const roundRobinCursorSchema = z.object({ delegate: deliveryDelegateSchema, index: z.number().int().min(0) });
+
+export type RoundRobinCursor = z.infer<typeof roundRobinCursorSchema>;
+
+/** An answer that landed in an open round: its author and what it said. */
+export const roundAnswerSchema = deliveryDelegateSchema.extend({ body: z.string() });
+
+export type RoundAnswer = z.infer<typeof roundAnswerSchema>;
+
+/** A round still open: below the coordinator's limit, and waiting for its answers (`coordinator-rounds.ts`). */
+export const openRoundSchema = z.object({
+  postId: z.string(),
+  round: z.number().int().min(0),
+  /** Routings still adding deliveries to it. It doesn't close on its answers while one runs. */
+  opening: z.number().int().min(0),
+  /** When it closes without what is still out. Set by its first delivery. */
+  deadlineAt: z.number().optional(),
+  /** The answers that landed in it, in the order they landed. */
+  answers: z.array(roundAnswerSchema)
+});
+
+export type OpenRound = z.infer<typeof openRoundSchema>;
+
+/**
  * The coordinator's server-written session state, as a flow spreads it into
  * its session `stateSchema`.
  */
@@ -48,7 +80,9 @@ export const coordinatorStateShape = {
   [DELEGATES_STATE]: z.array(delegateRecordSchema).nullable().default(null),
   [FALLBACK_STATE]: deliveryDelegateSchema.nullable().default(null),
   [HOLD_STATE]: bestFitHoldSchema.nullable().default(null),
-  [DELIVERIES_STATE]: deliveryLedgerSchema.default([])
+  [DELIVERIES_STATE]: deliveryLedgerSchema.default([]),
+  [ROUND_ROBIN_STATE]: roundRobinCursorSchema.nullable().default(null),
+  [ROUNDS_STATE]: z.array(openRoundSchema).default([])
 } as const;
 
 /** The fields only the flow's own code writes. */
@@ -56,7 +90,9 @@ export const COORDINATOR_SERVER_OWNED: readonly string[] = [
   DELEGATES_STATE,
   FALLBACK_STATE,
   HOLD_STATE,
-  DELIVERIES_STATE
+  DELIVERIES_STATE,
+  ROUND_ROBIN_STATE,
+  ROUNDS_STATE
 ];
 
 export const coordinatorSessionStateSchema = z.object(coordinatorStateShape);
@@ -77,6 +113,23 @@ export function delegateLabel(delegate: DeliveryDelegate): string {
 /** Whether two values name the same delegate record. */
 export function sameDelegate(a: DeliveryDelegate, b: DeliveryDelegate): boolean {
   return delegateKey(a) === delegateKey(b);
+}
+
+/**
+ * The list in round robin's order: starting right after `after`, or at the
+ * place it stood when it has since been removed, and going round once.
+ *
+ * @param list The conversation's delegates, in list order.
+ * @param after Who had the last turn, or `null` to start at the top.
+ */
+export function turnOrder<T extends DeliveryDelegate>(list: readonly T[], after: RoundRobinCursor | null): T[] {
+  if (list.length === 0) return [];
+  let start = 0;
+  if (after !== null) {
+    const at = list.findIndex((record) => sameDelegate(record, after.delegate));
+    start = (at >= 0 ? at + 1 : after.index) % list.length;
+  }
+  return [...list.slice(start), ...list.slice(0, start)];
 }
 
 /** The conversation's list as it stands, or the defaults when it was never set. */

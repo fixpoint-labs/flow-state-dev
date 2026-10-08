@@ -5,8 +5,9 @@
  * - `defineCoordinatorFlow`: the `coordinator` worker flow, registered on a
  *   worker installation like any worker flow.
  * - `delegatedPostEntry`: the internal entry a worker flow declares so its
- *   workers can be delegates that take posts. The built-in `agent` flow
- *   declares it.
+ *   workers can be delegates that take posts, and `delegatedPostOnFinished`,
+ *   the request `onFinished` that reports a cancelled run. The built-in
+ *   `agent` flow declares both.
  * - The pinned names: the flow's kind, its `coordinator-route` record, its
  *   four delegate actions and its configuration keys.
  */
@@ -38,6 +39,7 @@ export {
 export {
   delegatedAnswerSchema,
   delegatedPostEntry,
+  delegatedPostOnFinished,
   delegatedPostSchema,
   type DelegatedAnswer,
   type DelegatedPost

@@ -83,7 +83,7 @@ import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
-import { delegatedPostEntry } from "./coordinator/delegated-post";
+import { delegatedPostEntry, delegatedPostOnFinished } from "./coordinator/delegated-post";
 import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
 import { mailboxTaskLists } from "./mailbox/mailbox-board";
 import {
@@ -1400,6 +1400,9 @@ function defineAgentFlowAround(
     isolateUserState: options.isolateUserState ?? false,
     configSchema: settings,
     ...bound,
+    // A delegated post's run that is cancelled before its answer went back
+    // tells the coordinator, so its round doesn't wait for the deadline.
+    request: { ...(bound.request ?? {}), onFinished: delegatedPostOnFinished },
     // `userMessage` keeps the caller's message as their turn, so a seat's
     // conversation holds both sides and survives a reload.
     // On an installation copy the session names its worker, so a turn whose
