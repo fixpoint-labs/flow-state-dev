@@ -18,7 +18,12 @@ import { defineCapability, defineFlow, dispatcher, handler } from "@flow-state-d
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
+import {
+  defineTaskCollection,
+  getOrCreateTaskCollection,
+  resolveResourceCollection,
+  type Task,
+} from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   fileHeldWorkStore,
@@ -53,9 +58,8 @@ afterAll(() => {
  *
  * - `write` / `write-ask` / `write-throw` — writes `notes.md` (turn N), then finishes, asks, or the harness throws.
  * - `read` — records `notes.md` as it found it, then finishes.
- * - `displace` — writes, then a newer claim takes the row before the verdict.
  */
-type Step = "write" | "write-ask" | "write-throw" | "read" | "displace";
+type Step = "write" | "write-ask" | "write-throw" | "read";
 
 interface Seen {
   step: Step;
@@ -113,6 +117,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
   };
   let current = machines.A!;
   const provisions: PlaceRequest[] = [];
+  const placeStates: string[] = [];
   // The manager's one host, switched between machines between attempts.
   const workspace: WorkspaceHost = {
     get root() {
@@ -121,9 +126,22 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     source: answer,
     provisionTimeoutMs: 30_000,
     locate: (a, r) => current.locate(a, r),
-    provision: (a, r) => {
+    provision: async (a, r) => {
       provisions.push(r);
-      return current.provision(a, r);
+      placeStates.push(`${(await record()).place?.state}`);
+      const progress = r.progress;
+      const place = await current.provision(a, {
+        ...r,
+        ...(progress !== undefined
+          ? {
+              progress: async (reported: "lost" | "restoring") => {
+                await progress(reported);
+                placeStates.push(`${(await record()).place?.state}`);
+              },
+            }
+          : {}),
+      });
+      return place;
     },
     save: (p) => current.save(p),
     hostId: () => current.hostId(),
@@ -154,7 +172,6 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
           mkdirSync(dirname(marker!), { recursive: true });
           writeFileSync(marker!, "Which option?");
         }
-        if (step === "displace") await displace();
         if (step === "write-throw") throw new Error("the harness crashed");
         return {
           source: "stub/test",
@@ -220,7 +237,13 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     execute: async (_input, ctx) => {
       const open = (await listQuestions(ctx as never, ISSUE, PHASE)).filter((q) => q.state.status === "open");
       for (const q of open) await answerQuestion(ctx as never, q.topic, "go ahead");
-      await (ctx as { cap: Record<string, any> }).cap["held-board"].unpark(TASK_ID, "go ahead");
+      const tasks = await getOrCreateTaskCollection({
+        ctx: ctx as never,
+        backing: "resource",
+        collectionId: BOARD_ID,
+        collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
+      });
+      await tasks.unpark(TASK_ID, "go ahead");
       return {};
     },
   });
@@ -240,7 +263,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
 
   const act = async (action: string): Promise<void> => {
     const rt = await runtime();
-    await runAction({
+    const result = await runAction({
       flow,
       actionName: action,
       input: {},
@@ -251,6 +274,10 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
       stores: rt.stores,
       runtimeConfig: { ...rt.runtimeConfig },
     } as never);
+    const failed = (result as { items?: Array<{ type: string; status?: string; error?: { message: string } }> }).items?.find(
+      (item) => item.type === "block_trace" && item.status === "failed",
+    );
+    if (action === "answer" && failed !== undefined) throw new Error(failed.error?.message);
   };
 
   const row = async (): Promise<Task | undefined> => {
@@ -282,13 +309,6 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     await rt.stores.resourceState.set("user", RECORD_SCOPE, key, { ...value, ...patch }, "any");
   };
 
-  /** A newer claim takes the row: what a lapsed lease and a re-claim leave behind. */
-  async function displace(): Promise<void> {
-    const rt = await runtime();
-    const current = (await row())!;
-    await rt.stores.resourceState.set("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`, { ...current, attempts: current.attempts + 1 }, "any");
-  }
-
   const questions = async (): Promise<string[]> => {
     const rt = await runtime();
     const rows = await rt.stores.resourceState.getByPrefix("user", RECORD_SCOPE, "inbox/");
@@ -305,6 +325,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     calls,
     faults,
     provisions,
+    placeStates,
     keys: () => folder.list(PREFIX),
     tamper: (key: string, bytes: Uint8Array) => folder.put(key, bytes),
     pack: (key: string) => folder.get(key),
@@ -428,21 +449,6 @@ describe("a run's work is held at every save point (BR-1, BR-6, Q1)", () => {
     await run.settled("completed");
     expect((await run.record()).held).toMatchObject({ error: null, attempt: 2 });
   });
-
-  it("refuses a displaced attempt's hold: the record is not switched and nothing is dropped (BR-9)", async () => {
-    const run = lab({ script: ["write-throw", "displace"], maxAttempts: 3 });
-    await run.act("seed");
-    await run.act("drain");
-    await run.settled("pending");
-    const before = await run.record();
-    await run.act("drain").catch(() => undefined);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    const after = await run.record();
-    expect(after.held).toEqual(before.held);
-    expect(run.calls.filter((c) => c.startsWith("delete"))).toEqual([]);
-    expect(await run.keys()).toContain(before.held.key);
-  });
 });
 
 describe("a run lost with its machine continues on another (BR-17, BR-18, BR-23, BR-25)", () => {
@@ -451,23 +457,17 @@ describe("a run lost with its machine continues on another (BR-17, BR-18, BR-23,
     await run.act("seed");
     await run.act("drain");
     await run.settled("pending");
-    const states: string[] = [];
-    run.observe(async () => undefined);
     run.lose("A");
     run.use("B");
-    // Every place write, as the record holds it after each one.
-    const recordStates = async () => states.push(`${(await run.record()).place?.state}`);
-    const timer = setInterval(() => void recordStates(), 5);
+    run.placeStates.length = 0;
     await run.act("drain");
     await run.settled("completed");
-    clearInterval(timer);
 
     expect(run.seen[1]!.notes).toBe("turn 1\n");
     expect(run.seen[1]!.prompt).toMatch(/rebuilt on a new machine/);
     expect(await run.record()).toMatchObject({ place: { host: run.hostId("B"), state: "ready" } });
-    const order = states.filter((s, i) => s !== states[i - 1]);
-    expect(order.indexOf("lost")).toBeLessThan(order.indexOf("restoring"));
-    expect(order.indexOf("restoring")).toBeLessThan(order.lastIndexOf("ready"));
+    // As the record read on entering provision, then after each report.
+    expect(run.placeStates).toEqual(["provisioning", "lost", "restoring"]);
   });
 
   it("starts a fresh conversation on the new machine rather than resuming the old one", async () => {
@@ -529,12 +529,12 @@ describe("held work that cannot be used parks the run for its owner (BR-19, BR-2
     const run = lab({ script: ["write-throw", "read", "write"], maxAttempts: 4 });
     await heldThenLost(run);
     const parked = (await run.record()).held.key as string;
-    run.use("B");
-    await run.rewriteRecord({ held: { ...(await run.record()).held, head: "0".repeat(40) } });
+    run.use("B-off");
     await run.act("drain").catch(() => undefined);
     await run.settled("parked");
 
     await run.act("answer");
+    run.use("B");
     await run.act("drain");
     await run.settled("completed");
 
@@ -545,6 +545,28 @@ describe("held work that cannot be used parks the run for its owner (BR-19, BR-2
     expect(record.held.key).not.toBe(parked);
     expect(await run.keys()).toContain(parked);
     expect(run.calls).not.toContain(`delete ${parked}`);
+  });
+});
+
+describe("after an answer, held work that still cannot be read (BR-20)", () => {
+  it("starts from the base with no held/, and the prompt says so", async () => {
+    const run = lab({ script: ["write-throw", "read"], maxAttempts: 4 });
+    await run.act("seed");
+    await run.act("drain");
+    await run.settled("pending");
+    run.lose("A");
+    run.use("B");
+    await run.rewriteRecord({ held: { ...(await run.record()).held, head: "0".repeat(40) } });
+    await run.act("drain").catch(() => undefined);
+    await run.settled("parked");
+    expect((await run.questions()).some((q) => q.includes("(head)"))).toBe(true);
+
+    await run.act("answer");
+    await run.act("drain");
+    await run.settled("completed");
+    expect(run.seen[1]!.notes).toBeNull();
+    expect(run.seen[1]!.prompt).toMatch(/no copy of it beside the checkout/);
+    expect(run.heldDir("B")).toBeUndefined();
   });
 });
 

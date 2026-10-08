@@ -2311,6 +2311,9 @@ function pinnedAnswer(
     repo: pinned.remote,
     ...(pinned.baseRef !== null ? { baseRef: pinned.baseRef } : {}),
     ...files,
+    // Where held work goes is answered for THIS attempt, from its own
+    // context, like the kept files (BR-15): never pinned from the record.
+    ...(answer.kind === "repo" && answer.heldPrefix !== undefined ? { heldPrefix: answer.heldPrefix } : {}),
   };
 }
 
