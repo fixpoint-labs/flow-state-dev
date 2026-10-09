@@ -425,6 +425,8 @@ const router = createFlowApiRouter({
 });
 ```
 
+Pass `maxRecordedValueBytes` to change the largest block output or tool result recorded in an item (default 256 KiB). Larger values are recorded as an `omitted` placeholder with their size and a 512-character preview; the run itself keeps the full value. A resumed request that would need such a value fails with `RECORDED_VALUE_OMITTED`.
+
 `createFilesystemStores` wires a filesystem-backed trace store under `{rootDir}/traces/` so trace events survive process restarts. Retention is controlled by `traceStore.maxRequests`, which defaults to 1000 when `NODE_ENV=development` and 50 otherwise — explicit values always win. See the [trace channel reference](https://flow-state.dev/docs/streaming/trace-channel) for the full backend list and file layout.
 
 ```ts

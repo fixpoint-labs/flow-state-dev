@@ -42,6 +42,12 @@ export interface RuntimeConfig {
   /** Maximum buffered SSE bytes per request — see `createLiveRequestStream`. */
   maxResponseBufferSize?: number;
   /**
+   * Largest block output or tool result, in serialized bytes, recorded whole
+   * in an item (FIX-1772). Forwarded to every response emitter the runtime
+   * builds. Absent → the emitter's own 256 KiB default.
+   */
+  maxRecordedValueBytes?: number;
+  /**
    * Default SSE wire-level heartbeat interval in milliseconds applied to
    * every live stream when the per-flow `request.sseHeartbeatMs` is unset.
    */
@@ -118,6 +124,7 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     logger: options.logger,
     tracingLevel: options.tracingLevel,
     maxResponseBufferSize: options.maxResponseBufferSize,
+    maxRecordedValueBytes: options.maxRecordedValueBytes,
     defaultSseHeartbeatMs: options.defaultSseHeartbeatMs,
     onBackgroundWork: options.onBackgroundWork,
     durabilityProvider: options.durabilityProvider,

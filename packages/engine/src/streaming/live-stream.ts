@@ -50,6 +50,8 @@ export type CreateLiveRequestStreamOptions = {
    * interleave the resume items ahead of the pre-suspension history.
    */
   startItemIndex?: number;
+  /** Forwarded to the emitter: the record limit (FIX-1772). Absent → its 256 KiB default. */
+  maxRecordedValueBytes?: number;
   /**
    * When `true`, forward every event (including trace-channel items like
    * `block_trace`/`router_decision`/`state_snapshot`) instead of applying the
@@ -92,6 +94,7 @@ export function createLiveRequestStream(
     maxBufferSize: options.maxBufferSize,
     startSequenceNumber: options.startSequenceNumber,
     startItemIndex: options.startItemIndex,
+    maxRecordedValueBytes: options.maxRecordedValueBytes,
     onEvent,
     internalSeams: options.internalSeams
   });

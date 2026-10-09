@@ -66,6 +66,13 @@ export type CreateFlowApiRouterOptions = {
   settings?: FlowStateSettings;
   maxResponseBufferSize?: number;
   /**
+   * Largest block output or tool result, in serialized bytes, that a request
+   * records whole in its items. Larger values are recorded as an `omitted`
+   * placeholder with their size and a preview; the run keeps the full value.
+   * Default 256 KiB.
+   */
+  maxRecordedValueBytes?: number;
+  /**
    * Tracing verbosity for observability (non-durable) state snapshots
    * (FIX-406 6H): `"verbose"` (per-step, for DevTool), `"normal"` (block
    * boundaries only), or `"minimal"` (none). Durable resume checkpoints are

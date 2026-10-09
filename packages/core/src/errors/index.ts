@@ -18,6 +18,8 @@ export type {
 } from "./sequencer-output-schema-error";
 export { RouteUnavailableError } from "./route-unavailable-error";
 export type { RouteUnavailableDetails } from "./route-unavailable-error";
+export { RecordedValueOmittedError, RECORDED_VALUE_OMITTED } from "./recorded-value-omitted-error";
+export type { RecordedValueOmittedDetails } from "./recorded-value-omitted-error";
 export { rootCause, isAbortLike } from "./abort";
 export { serializeError, errorDetailsWithCause } from "./serialize-error";
 export type { SerializedError } from "./serialize-error";

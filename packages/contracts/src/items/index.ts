@@ -40,6 +40,7 @@ export type {
   SuspensionItem,
   SuspensionResumeItem,
   StructureShape,
+  OmittedValue,
   ToolOutputItem
 } from "./types";
 

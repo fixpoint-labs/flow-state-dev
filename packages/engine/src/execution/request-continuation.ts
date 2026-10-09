@@ -119,6 +119,7 @@ export async function continueRequest(
       ? createLiveRequestStream({
           requestId,
           maxBufferSize: runtimeConfig.maxResponseBufferSize,
+          maxRecordedValueBytes: runtimeConfig.maxRecordedValueBytes,
           sseHeartbeatMs,
           startSequenceNumber: lastSeq,
           startItemIndex: nextItemIndex,

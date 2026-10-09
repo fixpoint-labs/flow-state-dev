@@ -1038,7 +1038,8 @@ async function runActionAttempt<
     requestId,
     internalSeams: undefined,
     startSequenceNumber: options.startSequenceNumber,
-    startItemIndex: options.startItemIndex
+    startItemIndex: options.startItemIndex,
+    maxRecordedValueBytes: options.runtimeConfig.maxRecordedValueBytes
   });
 
   // Same-request continuation (FIX-811): the re-entry emitter holds only
@@ -1069,7 +1070,10 @@ async function runActionAttempt<
   });
 
   response.setLogCallback((eventType, detail) => {
-    logRuntimeEvent(logger, "debug", `[flow-state] ${eventType}`, {
+    // A value the record left out is a step breaking BP-042: warn, so its
+    // owner sees which step and how big (FIX-1772).
+    const level = eventType === "item.value_omitted" ? "warn" : "debug";
+    logRuntimeEvent(logger, level, `[flow-state] ${eventType}`, {
       requestId,
       actionName: options.actionName,
       flowKind: options.flow.kind,

@@ -32,7 +32,7 @@ import { Button } from "../ui/button";
 import { useSelection } from "../../context/selection-context";
 import { StatusBadge } from "../shared/status-badge";
 import { JsonViewer } from "../shared/json-viewer";
-import { BlockValueView, ToolOutputView } from "../shared/block-value-view";
+import { BlockValueView, OmittedValueView, ToolOutputView } from "../shared/block-value-view";
 import { EmptyState } from "../shared/empty-state";
 import { SequencerStateSection } from "./sequencer-state-panel";
 import { safeParseJson } from "../../lib/utils";
@@ -638,7 +638,12 @@ function BlockToolOutputDetail({ item }: { item: DevtoolItem & { type: "tool_out
       <CollapsibleSection title="Arguments" defaultOpen>
         <JsonViewer data={safeParseJson(item.toolCall.arguments)} />
       </CollapsibleSection>
-      {!isFailed && item.output !== undefined && (
+      {!isFailed && item.outputOmitted !== undefined && (
+        <CollapsibleSection title="Output" defaultOpen>
+          <OmittedValueView value={item.outputOmitted} />
+        </CollapsibleSection>
+      )}
+      {!isFailed && item.outputOmitted === undefined && item.output !== undefined && (
         <CollapsibleSection title="Output" defaultOpen>
           <ToolOutputView value={item.output} />
         </CollapsibleSection>

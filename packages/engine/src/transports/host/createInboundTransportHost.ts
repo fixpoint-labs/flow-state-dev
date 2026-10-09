@@ -431,7 +431,7 @@ export function createInboundTransportHost(
   options: CreateInboundTransportHostOptions
 ): InboundTransportHost {
   const { registry, stores, resolvePrincipal, runtimeConfig } = options;
-  const { onBackgroundWork, maxResponseBufferSize, defaultSseHeartbeatMs } =
+  const { onBackgroundWork, maxResponseBufferSize, maxRecordedValueBytes, defaultSseHeartbeatMs } =
     runtimeConfig;
 
   const inProcessDispatcher = createInProcessDispatcher({
@@ -854,6 +854,7 @@ export function createInboundTransportHost(
           ? createLiveRequestStream({
               requestId,
               maxBufferSize: maxResponseBufferSize,
+              maxRecordedValueBytes,
               sseHeartbeatMs
             })
           : null;
@@ -866,7 +867,7 @@ export function createInboundTransportHost(
       responseEmitter =
         envelope.responseEmitter ??
         liveStream?.emitter ??
-        createResponseEmitter({ requestId });
+        createResponseEmitter({ requestId, maxRecordedValueBytes });
 
       // Delegate to the dispatcher. InProcessDispatcher uses dispatchLocal
       // (carries non-serializable context); external dispatchers use the

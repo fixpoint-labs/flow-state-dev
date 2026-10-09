@@ -144,6 +144,24 @@ When a generator calls a tool, the runtime emits a `tool_output` placeholder via
 
 `tool_output` items have two origins: the AI SDK tool-loop inside a generator, and any block wrapped with [`.asTool()`](../fundamentals/blocks.md#showing-a-deterministic-call-as-a-tool-astool) when run from a sequencer step. The envelope and lifecycle are identical. `toolCall.generatorBlock` records which block initiated the call — the parent generator's name on the LLM path, the wrapping block's name on the deterministic path.
 
+### Values too large to record
+
+The runtime records what blocks return and what tools give back, up to a limit: 256 KiB once serialized, unless the server sets another. A larger `block_trace` output or `tool_output` result is recorded as a placeholder:
+
+```jsonc
+{ "kind": "omitted", "bytes": 1258291, "preview": "{\"files\":[{\"path\":\"src/index.ts\",\"body\":\"…" }
+```
+
+The same object appears in both places. On a `block_trace` it is the `output`. On a `tool_output` it is `outputOmitted`, and `output` and `modelOutput` are absent. `preview` is the first 512 characters of the serialized value, and `bytes` is `null` when the value couldn't be serialized, for example because it has a cycle. The server logs one warning naming the block and the size.
+
+Only the record changes. The run keeps the full value: the next step receives it, `ctx.getBlockOutput()` returns it, and a generator gets the real tool result in the same turn. Later turns see one line in its place, naming the tool and the size.
+
+A request that resumes after a pause or a crash can't rebuild a value from a placeholder. If it would have to hand one on, it fails with the error code `RECORDED_VALUE_OMITTED`, naming the block. Fix the block so it returns less, then retry.
+
+The limit is a backstop. To move bulk data between steps, use a sequencer's [`.map`](../sequencers/overview.md#dsl-methods), which isn't a block and records nothing. A `.map` that is the sequencer's last step is the exception: its value becomes the sequencer's output, which is recorded and limited like any other.
+
+To change the limit, set `maxRecordedValueBytes` on the router ([server API](../api/server.md#createflowapirouteroptions)).
+
 ### Lifecycle
 
 Trace items follow a three-event lifecycle: `item.added` (in_progress, no output yet), zero or more `item.updated` patches (input connectors, generator bundle, model usage), and a terminal `item.done` (status set to `completed` or `failed`, output written, timing closed). Consumers reconcile by id. A late subscriber that joins after `item.done` sees only the final settled row in the snapshot — no synthetic replay of intermediate patches is needed.

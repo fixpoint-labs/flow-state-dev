@@ -13,6 +13,7 @@ import type { RequestRecord } from "../../src/stores/types";
 import {
   createSessionItemViews,
   expandRequestToMessages,
+  itemToLLMMessages,
   LLM_AUDIENCE_TYPES,
   loadLLMHistory,
   selectRequestsByLimit,
@@ -568,5 +569,33 @@ describe("createSessionItemViews", () => {
     const result = views8.selectForContext();
     // selectForContext does not filter by client visibility
     expect(result.some((i) => i.id === "item_bt2")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A tool result recorded as a placeholder
+// ---------------------------------------------------------------------------
+
+describe("itemToLLMMessages — a tool result over the record limit", () => {
+  it("replays one line naming the tool and the size, never the placeholder object (BR-12)", () => {
+    const item = {
+      id: "o1",
+      type: "tool_output",
+      status: "completed",
+      requestId: "r1",
+      itemIndex: 0,
+      provenance: { blockName: "agent", blockInstanceId: "r1:root:0", phase: "main" },
+      ts: 0,
+      blockName: "readFiles",
+      outputOmitted: { kind: "omitted", bytes: 1258291, preview: '{"files":[' },
+      toolCall: { callId: "c1", name: "readFiles", alias: "readFiles", arguments: "{}", generatorBlock: "agent" },
+    } as unknown as OutputItem;
+
+    const [, result] = itemToLLMMessages(item, [item]);
+    const text = JSON.stringify(result);
+    expect(text).toContain("readFiles");
+    expect(text).toContain("1258291");
+    expect(text).not.toContain("omitted\\\"");
+    expect(text).not.toContain("files\\\":");
   });
 });

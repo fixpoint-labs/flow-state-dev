@@ -47,7 +47,7 @@ export function structureBlockValue<T>(shape: StructureShape): BlockValue<T> {
 export function isBlockValue(candidate: unknown): candidate is BlockValue {
   if (typeof candidate !== "object" || candidate === null) return false;
   const kind = (candidate as { kind?: unknown }).kind;
-  return kind === "inline" || kind === "ref" || kind === "structure";
+  return kind === "inline" || kind === "ref" || kind === "structure" || kind === "omitted";
 }
 
 /**
@@ -67,6 +67,7 @@ export type ItemLookup = (itemId: string) => OutputItem | BlockTraceItem | undef
  *       (FIX-480: streaming-text generators emit refs to their own message).
  *   Returns `undefined` if the target is missing (e.g., evicted).
  * - `structure` → deep-resolves each entry, reconstructing the container.
+ * - `omitted` → `undefined`: the record left the value out.
  *
  * Safe against cycles because the executor guarantees flatten-at-emit: a ref
  * never points at another ref. We still bail on a second ref hop defensively.
@@ -121,6 +122,12 @@ function resolveInternal(
     // callers already tolerate ref-misses (e.g. retention eviction), and a
     // hard throw would break adapters for any future non-message content
     // that legitimately becomes ref-able.
+    return undefined;
+  }
+
+  // omitted — the record left the value out (over the limit, or
+  // unserializable). There is no payload to return.
+  if (value.kind === "omitted") {
     return undefined;
   }
 
