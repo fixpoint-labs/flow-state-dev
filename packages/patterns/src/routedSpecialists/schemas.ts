@@ -52,25 +52,23 @@ const tasksRecordSchema: ZodTypeAny = z
  * decline every normal completion.
  *
  * Optional, so a run resumed from a checkpoint taken before this field
- * existed still completes its tasks — but note that iteration runs
- * **unguarded**, which is weaker than it was then, not equivalent. The
- * pre-FIX-981 state carried `currentAttempt`, and the write-back passed
- * it as `expectAttempt`; a legacy record therefore had an attempt guard
- * that the ticket path cannot reconstruct, because `TaskClaimTicket`
- * also needs the task's `createdAt` and no legacy state carries it.
+ * existed still completes its tasks.
  *
- * The exposure is a rollout-window one: a legacy checkpoint resumed
- * after upgrade, whose task was reclaimed and re-claimed by a second
- * attempt, would let attempt 1's late completion overwrite attempt 2.
- * Reaching it requires `reclaim()`, which today has no callers (see
- * FIX-1023). Tracked as FIX-1025 — do not read this slot's optionality
- * as "no guard was lost."
+ * `currentAttempt` is that earlier checkpoint's shape, **read, never
+ * set** (BP-030). Before the ticket, the step stored the claim's
+ * `attempts` here and the write-back fenced on it. A legacy record has no
+ * ticket and cannot rebuild one from its own state — the ticket also needs
+ * the task's `createdAt` — so the write-back reads that one field off the
+ * row and fences on the stored attempt instead (`writeBackGuard` in
+ * `index.ts`). Declared so a parse through this schema keeps it rather than
+ * stripping it; cleared by the next iteration, which writes a real ticket.
  */
 export const routedSpecialistsControlSchema: ZodTypeAny = z.object({
   iteration: z.number().default(0),
   currentSpecialist: z.string().optional(),
   currentTaskId: z.string().optional(),
   currentClaim: taskClaimTicketSchema.optional(),
+  currentAttempt: z.number().nullish(),
   done: z.boolean().default(false),
   tasks: tasksRecordSchema,
 });
@@ -80,6 +78,8 @@ export type RoutedSpecialistsControlState = {
   currentSpecialist?: string;
   currentTaskId?: string;
   currentClaim?: TaskClaimTicket;
+  /** Legacy checkpoint field — see the schema doc. Read, never set. */
+  currentAttempt?: number | null;
   done: boolean;
   tasks: Record<string, unknown>;
 };

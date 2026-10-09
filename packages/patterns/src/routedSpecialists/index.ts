@@ -311,6 +311,45 @@ async function getCollection(
   });
 }
 
+/**
+ * The ownership guard for an iteration's write-back.
+ *
+ * Normally the ticket the record-iteration step minted from its own claim.
+ * A run resumed from a checkpoint written before tickets existed carries only
+ * the bare `currentAttempt` (BP-030); for that record the guard is rebuilt
+ * from the stored attempt, so attempt 1's late result still cannot overwrite a
+ * task a second attempt has claimed.
+ *
+ * The rebuilt ticket takes `createdAt` from the row it is about to write, so
+ * its identity check is vacuous — the legacy record never stored which task
+ * incarnation it claimed, and the old guard never asked. What it keeps is the
+ * part that guard did enforce: the attempt and the status, checked inside the
+ * atomic write. Like every ticket it also gets the lease fence, which the
+ * current path has too.
+ *
+ * Returns no guard when neither field is present (a claim that lost, or a
+ * legacy record with no attempt), matching the pre-ticket behaviour.
+ */
+function writeBackGuard(
+  state: Pick<RoutedSpecialistsControlState, "currentClaim" | "currentAttempt">,
+  collection: TaskCollectionRef,
+  taskId: string
+): { claim?: TaskClaimTicket } {
+  if (state.currentClaim != null) return { claim: state.currentClaim };
+  if (state.currentAttempt == null) return {};
+  const task = collection.get(taskId);
+  // A missing row has nothing to fence; the write itself reports it.
+  if (task === undefined) return {};
+  return {
+    claim: {
+      collectionId: collection.collectionId,
+      taskId,
+      attempt: state.currentAttempt,
+      createdAt: task.createdAt,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -439,6 +478,9 @@ export function routedSpecialists<
           done: input.done,
           currentTaskId,
           currentClaim,
+          // A legacy checkpoint's attempt belongs to the iteration it was taken
+          // in; left set, it would fence this iteration's task on a stale number.
+          currentAttempt: undefined,
         });
 
         if (input.done) {
@@ -471,7 +513,7 @@ export function routedSpecialists<
           const collection = await getCollection(ctx, collectionId);
           await collection.fail(state.currentTaskId, message, {
             ifAllowed: true,
-            ...(state.currentClaim !== undefined ? { claim: state.currentClaim } : {}),
+            ...writeBackGuard(state, collection, state.currentTaskId),
           });
         }
       } finally {
@@ -511,7 +553,7 @@ export function routedSpecialists<
           const collection = await getCollection(ctx, collectionId);
           await collection.complete(state.currentTaskId, input, {
             ifAllowed: true,
-            ...(state.currentClaim !== undefined ? { claim: state.currentClaim } : {}),
+            ...writeBackGuard(state, collection, state.currentTaskId),
           });
         }
       } finally {
