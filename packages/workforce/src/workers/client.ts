@@ -69,7 +69,9 @@ export interface WorkforceClient {
    * the user, the organization, the flow and the criteria. Two calls at once
    * get the same session. With `workstreamId` it never creates one: a
    * workstream's open starts its lead's session, and until the entry names
-   * it this throws.
+   * it this throws. With `taskId` it never creates one either: a task's
+   * session is opened when its conversation's board hands it over, and until
+   * then this throws.
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
 }
@@ -181,11 +183,14 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       userId,
       state: filter,
       // A coordinator's delivery opens its delegate's session as a dispatch run
-      // of the conversation, and a workstream's open opens its lead's session
-      // as a dispatch run of the session that opened it, so a lookup for
-      // either includes those. A lookup that names neither keeps to the
-      // sessions a person started.
-      ...(criteria.filingSessionId === undefined && criteria.workstreamId === undefined
+      // of the conversation, a workstream's open opens its lead's session as
+      // a dispatch run of the session that opened it, and a conversation's
+      // board opens a task's session as a dispatch run of the conversation, so
+      // a lookup for any of them includes those. A lookup that names none
+      // keeps to the sessions a person started.
+      ...(criteria.filingSessionId === undefined &&
+      criteria.workstreamId === undefined &&
+      criteria.taskId === undefined
         ? {}
         : { include: "dispatch-runs" as const })
     });
@@ -214,6 +219,15 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       const flow = flowOf(await readRoster(id), criteria.worker);
       const existing = await find(criteria, flow, id);
       if (existing !== undefined) return existing;
+      if (criteria.taskId !== undefined) {
+        // Only the hand-over opens a task's session: it is a child of the
+        // conversation that filed the task, and one started here would be a
+        // session the task never runs in (BR-20).
+        throw new Error(
+          `Task "${criteria.taskId}" has no session with "${criteria.worker}" yet: a task's session is opened ` +
+            `when the task is handed over, never by ensureWorkerSession.`
+        );
+      }
       if (criteria.workstreamId !== undefined) {
         // Only a workstream's open starts its lead's session and names it on
         // the entry; one started here would be a second session nobody names.

@@ -4,7 +4,7 @@
  * snapshot (V3 to V5; BR-6 to BR-20). The reader is swapped for one that hands back
  * the fixture, so every screen draws exactly what the snapshot holds.
  */
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
@@ -77,17 +77,18 @@ function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "fai
   };
 }
 
-const clients = { userId: "u_test" } as unknown as LabClients;
-
 async function open(path: string, snapshot: LabSnapshot = lab()) {
   fixture = snapshot;
   (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`http://lab.local${path}`);
-  render(<App clients={clients} />);
+  // A connection per page, as a fresh load makes: the roster read is shared per connection.
+  render(<App clients={{ userId: "u_test" } as unknown as LabClients} />);
   await screen.findByTestId("sidebar");
 }
 
 const attrs = (els: HTMLElement[], name: string) => els.map((el) => el.getAttribute(name));
 
+// A wide window: the right panel is drawn beside the centre only from 1180px.
+beforeEach(() => (window as unknown as { happyDOM: { setViewport(viewport: { width: number; height: number }): void } }).happyDOM.setViewport({ width: 1600, height: 900 }));
 beforeEach(() => {
   fixture = lab();
   rosterRead = async () => [];
@@ -341,6 +342,53 @@ describe("the sidebar (V4)", () => {
     expect(`${window.location.pathname}${window.location.search}`).toBe("/roster?team=ops");
     expect(attrs(await screen.findAllByTestId("roster-worker"), "data-seat-id")).toEqual(["ops.asker", "ops.idle"]);
     expect(screen.getAllByTestId("team")[2]!.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("TEAMS lists the person's own workers from their roster, under the team their id names, as Roster does", async () => {
+    rosterRead = async () => [
+      { id: "amber-1f2e", flow: "coder", standard: false, description: null },
+      { id: "eng.mine", flow: "coder", standard: false, description: null },
+      { id: "eng.coder", flow: "coder", standard: true, description: null },
+    ];
+    await open("/inbox");
+    // The inventory alone has no row for either: they show only once the roster read lands.
+    await waitFor(() => expect(screen.getByTestId("teams").querySelector('[data-seat-id="amber-1f2e"]')).not.toBeNull());
+    const teams = screen.getAllByTestId("team");
+    expect(attrs(teams, "data-team")).toEqual([STAFF_TEAM, "eng", "ops"]);
+    expect(attrs(within(teams[0]!).getAllByTestId("worker"), "data-seat-id")).toEqual(["chief-of-staff", "amber-1f2e"]);
+    // A standard worker the inventory already has is drawn once.
+    expect(attrs(within(teams[1]!).getAllByTestId("worker"), "data-seat-id")).toEqual(["eng.coder", "eng.reviewer", "eng.mine"]);
+    expect(teams.map((t) => within(t).getByTestId("team-on-shift").textContent)).toEqual(["0/2", "1/3", "0/2"]);
+  });
+
+  it("with the inventory unread, TEAMS still lists the roster's workers beside the failure", async () => {
+    rosterRead = async () => [{ id: "amber-1f2e", flow: "coder", standard: false, description: null }];
+    await open("/inbox", lab({ inventory: "failed" }));
+    const teams = within(screen.getByTestId("teams"));
+    await teams.findByTestId("worker");
+    expect(attrs(teams.getAllByTestId("worker"), "data-seat-id")).toEqual(["amber-1f2e"]);
+    expect(teams.getByTestId("teams-failure").textContent).toContain("inventory offline");
+  });
+
+  it("says so under TEAMS when the person's own workers didn't load, and still lists the inventory's teams", async () => {
+    rosterRead = async () => {
+      throw new Error("roster offline");
+    };
+    await open("/inbox");
+    expect((await screen.findByTestId("teams-own-failure")).textContent).toContain("roster offline");
+    expect(attrs(screen.getAllByTestId("team"), "data-team")).toEqual([STAFF_TEAM, "eng", "ops"]);
+  });
+
+  it("Roster and TEAMS share one roster read per snapshot", async () => {
+    let reads = 0;
+    rosterRead = async () => {
+      reads += 1;
+      return [{ id: "amber-1f2e", flow: "coder", standard: false, description: null }];
+    };
+    await open("/roster");
+    await within(await screen.findByTestId("roster")).findByTestId("roster-worker-own");
+    await waitFor(() => expect(screen.getByTestId("teams").querySelector('[data-seat-id="amber-1f2e"]')).not.toBeNull());
+    expect(reads).toBe(1);
   });
 
   it("BR-20: the counts and the footer carry the partial mark when asks did not load", async () => {

@@ -40,13 +40,21 @@ import { encodeUserSegment, getPatternPrefix } from "@flow-state-dev/core/types"
  * carries request input through more than one handle (the parent's `input`,
  * and the `.input` on the sequencer's, the block's own and every target's
  * state ref). A partition read off any of them would let a caller name
- * another conversation's partition. A value the server keeps elsewhere (a
- * session's incarnation) is looked up from these ids; the function may be
- * async.
+ * another conversation's partition. The function may be async, for a value
+ * the server keeps elsewhere that it looks up from these ids.
  */
 export interface TaskPartitionContext {
   /** The running session's id. */
   readonly sessionId: string;
+  /**
+   * The lineage id the server minted when the running session's record was
+   * created, when the host sets one. A session deleted and created again under
+   * the same id gets a new one, so `sessionId` plus this names one incarnation
+   * of the session: a partition built from both starts empty for a recreated
+   * session instead of inheriting its predecessor's rows. Never written by a
+   * caller.
+   */
+  readonly lineageId?: string;
   /** The user the session belongs to, whose scope holds the rows. */
   readonly userId: string;
   /** The organization the request runs in, when it has one. */
@@ -101,8 +109,10 @@ function partitionContextOf(collectionId: string, ctx: BlockContext): TaskPartit
         `session or user to partition by.`
     );
   }
+  const lineageId = ctx.session?.lineageId;
   return Object.freeze({
     sessionId: identity.id,
+    ...(lineageId !== undefined ? { lineageId } : {}),
     userId,
     ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
     ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),

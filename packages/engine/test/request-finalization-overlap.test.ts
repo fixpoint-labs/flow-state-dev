@@ -8,9 +8,13 @@
  * the two runs to end must neither stamp the record nor drop the registry
  * entry while the other is still in `onFinished` or still writing. Only the
  * last one to end does, whichever it is.
+ *
+ * Abort reaches every live run, and a run that ends removes only its own
+ * controller. A second process does not count the first process's run, so
+ * that case stays `it.fails`.
  */
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   continueRequest,
@@ -19,20 +23,25 @@ import {
   detectInterruptedRequests,
   runAction
 } from "../src";
+import { abortRequest, hasActiveAbortController } from "../src/execution/abort-registry";
 
 type Worker = 0 | 1;
 
-async function overlap(firstToFinish: Worker) {
-  const stores = createInMemoryStores();
-  const requestId = `req_overlap_${firstToFinish}`;
+type OverlapIds = {
+  kind: string;
+  requestId: string;
+  sessionId: string;
+  userId: string;
+};
 
+/** Two parked runs of `kind`. The second `onFinished` waits until `releaseHeld`. */
+function parkedFlow(kind: string) {
   const release: Array<() => void> = [];
   const gates = [0, 1].map((i) => new Promise<void>((resolve) => (release[i] = resolve)));
   const entered: Array<() => void> = [];
   const parked = [0, 1].map((i) => new Promise<void>((resolve) => (entered[i] = resolve)));
+  const signals: AbortSignal[] = [];
   let started = 0;
-
-  // The second run to reach onFinished is held there until the test lets go.
   let finishing = 0;
   let enteredHeld!: () => void;
   const heldEntered = new Promise<void>((resolve) => (enteredHeld = resolve));
@@ -40,7 +49,7 @@ async function overlap(firstToFinish: Worker) {
   const held = new Promise<void>((resolve) => (releaseHeld = resolve));
 
   const flow = defineFlow({
-    kind: "overlap-flow",
+    kind,
     actions: {
       run: {
         inputSchema: z.any(),
@@ -48,11 +57,17 @@ async function overlap(firstToFinish: Worker) {
           name: "parked",
           inputSchema: z.any(),
           outputSchema: z.object({ ok: z.boolean() }),
-          execute: async () => {
+          execute: async (_input, ctx) => {
             const me = started;
             started += 1;
+            signals[me] = ctx.signal;
             entered[me]?.();
-            await gates[me];
+            await Promise.race([
+              gates[me],
+              new Promise<void>((resolve) =>
+                ctx.signal.addEventListener("abort", () => resolve(), { once: true })
+              )
+            ]);
             return { ok: true };
           }
         })
@@ -74,52 +89,74 @@ async function overlap(firstToFinish: Worker) {
         }
       })
     }
-  })({ id: "overlap-flow" });
-  const flowRegistry = createFlowRegistry();
-  flowRegistry.register(flow as never);
+  })({ id: kind });
 
+  return { flow, release, parked, signals, heldEntered, releaseHeld };
+}
+
+async function parkOriginal(ids: OverlapIds) {
+  const stores = createInMemoryStores();
+  const park = parkedFlow(ids.kind);
   const original = runAction({
     orgId: DEFAULT_ORG_ID,
-    flow,
+    flow: park.flow,
     actionName: "run",
-    requestId,
-    sessionId: "sess_overlap",
-    userId: "user_overlap",
+    requestId: ids.requestId,
+    sessionId: ids.sessionId,
+    userId: ids.userId,
     input: {},
     stores,
     runtimeConfig: {}
   });
-  await parked[0];
+  await park.parked[0];
   await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+  return { stores, park, original, requestId: ids.requestId };
+}
+
+async function startOverlap(ids: OverlapIds) {
+  const started = await parkOriginal(ids);
+  const flowRegistry = createFlowRegistry();
+  flowRegistry.register(started.park.flow as never);
   const { finished } = await continueRequest({
-    requestId,
-    stores,
+    requestId: started.requestId,
+    stores: started.stores,
     flowRegistry,
     runtimeConfig: {}
   });
-  await parked[1];
+  await started.park.parked[1];
+  return { ...started, finished };
+}
+
+async function overlap(firstToFinish: Worker) {
+  const requestId = `req_overlap_${firstToFinish}`;
+  const run = await startOverlap({
+    kind: "overlap-flow",
+    requestId,
+    sessionId: "sess_overlap",
+    userId: "user_overlap"
+  });
 
   const other: Worker = firstToFinish === 0 ? 1 : 0;
-  const runs = [original, finished];
-  release[firstToFinish]();
+  const runs = [run.original, run.finished];
+  run.park.release[firstToFinish]();
   await runs[firstToFinish].catch(() => {});
-  release[other]();
-  await heldEntered;
+  run.park.release[other]();
+  await run.park.heldEntered;
 
   // One run has ended; the other is still in onFinished.
   const midway = {
-    finalizedAtMs: (await stores.request.get(requestId))?.finalizedAtMs,
-    registered: (await stores.activeRequests.get(requestId)) !== undefined
+    finalizedAtMs: (await run.stores.request.get(requestId))?.finalizedAtMs,
+    registered: (await run.stores.activeRequests.get(requestId)) !== undefined
   };
 
-  releaseHeld();
+  run.park.releaseHeld();
   await Promise.allSettled(runs);
   // The continuation's own cleanup runs just after its run settles.
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   const after = {
-    finalizedAtMs: (await stores.request.get(requestId))?.finalizedAtMs,
-    registered: (await stores.activeRequests.get(requestId)) !== undefined
+    finalizedAtMs: (await run.stores.request.get(requestId))?.finalizedAtMs,
+    registered: (await run.stores.activeRequests.get(requestId)) !== undefined
   };
   return { midway, after };
 }
@@ -139,6 +176,47 @@ describe("overlapping runs of one request", () => {
       expect(after.registered).toBe(false);
     }
   );
+});
+
+describe("overlapping run attempts in one process", () => {
+  it("aborting the request still reaches the attempt left running after the other ends", async () => {
+    const requestId = "req_attempt_abort";
+    const run = await startOverlap({
+      kind: "attempt-abort-flow",
+      requestId,
+      sessionId: "sess_attempt_abort",
+      userId: "user_attempt_abort"
+    });
+    run.park.releaseHeld();
+
+    run.park.release[1]();
+    await run.finished.catch(() => {});
+
+    expect(hasActiveAbortController(requestId)).toBe(true);
+    expect(abortRequest(requestId)).toBe(true);
+    expect(run.park.signals[0]?.aborted).toBe(true);
+
+    await run.original.catch(() => {});
+    expect(hasActiveAbortController(requestId)).toBe(false);
+  });
+
+  it("one abort reaches every live attempt", async () => {
+    const requestId = "req_attempt_abort_both";
+    const run = await startOverlap({
+      kind: "attempt-abort-both-flow",
+      requestId,
+      sessionId: "sess_attempt_abort_both",
+      userId: "user_attempt_abort_both"
+    });
+    run.park.releaseHeld();
+
+    expect(abortRequest(requestId)).toBe(true);
+    expect(run.park.signals[0]?.aborted).toBe(true);
+    expect(run.park.signals[1]?.aborted).toBe(true);
+
+    await Promise.allSettled([run.original, run.finished]);
+    expect(hasActiveAbortController(requestId)).toBe(false);
+  });
 });
 
 // The run that ends last is the one left to stamp. When it ends by throwing
@@ -285,4 +363,53 @@ describe("a single run that fails during setup", () => {
       else process.env.FSDEV_DEFAULT_MODEL = previous;
     }
   });
+});
+
+type Engine = {
+  runAction: typeof runAction;
+  continueRequest: typeof continueRequest;
+  createFlowRegistry: typeof createFlowRegistry;
+};
+
+describe("overlapping run attempts in two processes", () => {
+  it.fails(
+    "the attempt that ends first does not finalize or deregister the id while the other still runs",
+    async () => {
+      const requestId = "req_attempt_xproc";
+      const started = await parkOriginal({
+        kind: "attempt-xproc-flow",
+        requestId,
+        sessionId: "sess_attempt_xproc",
+        userId: "user_attempt_xproc"
+      });
+
+      // A fresh copy of the engine is a second process sharing the stores.
+      vi.resetModules();
+      const other = (await import("../src")) as Engine;
+      expect(other.runAction).not.toBe(runAction);
+      const otherRegistry = other.createFlowRegistry();
+      otherRegistry.register(started.park.flow as never);
+      const { finished } = await other.continueRequest({
+        requestId,
+        stores: started.stores,
+        flowRegistry: otherRegistry,
+        runtimeConfig: {}
+      });
+      await started.park.parked[1];
+
+      started.park.release[1]();
+      await finished.catch(() => {});
+      started.park.release[0]();
+      await started.park.heldEntered;
+
+      const midway = {
+        finalizedAtMs: (await started.stores.request.get(requestId))?.finalizedAtMs,
+        registered: (await started.stores.activeRequests.get(requestId)) !== undefined
+      };
+      started.park.releaseHeld();
+      await started.original.catch(() => {});
+
+      expect(midway).toEqual({ finalizedAtMs: null, registered: true });
+    }
+  );
 });

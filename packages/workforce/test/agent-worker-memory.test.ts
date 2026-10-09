@@ -220,9 +220,10 @@ describe("memory attaches to the built-in agent kind by composition", () => {
   it("carries no memory at all when the factory is called with no arguments", () => {
     const [plain] = hire([record({ id: "engineering.lead", body: "Hello." })]);
 
-    // The skills collection is the whole resource surface — no memory store
-    // is declared anywhere in the default kind.
-    expect(Object.keys(plain!.resources ?? {})).toEqual(["skills"]);
+    // The skills collection and the conversation ledger its task entry reads
+    // tasks off are the whole resource surface — no memory store is declared
+    // anywhere in the default kind.
+    expect(Object.keys(plain!.resources ?? {}).sort()).toEqual(["skills", "tasks"]);
     // Nothing runs after the answer — the sequence is what it was.
     const children = plain!.actions.run!.block.childBlocks?.map((b) => b.name) ?? [];
     expect(children.some((name) => name.startsWith("memory/"))).toBe(false);

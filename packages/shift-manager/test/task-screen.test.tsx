@@ -5,7 +5,7 @@
  * compared with what the Lab's routes and stores hold.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -17,6 +17,8 @@ import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 type Opened = Awaited<ReturnType<typeof openRunLab>>;
 const served: Array<{ lab: Opened; served: ServedLab }> = [];
 
+// A wide window: the right panel is drawn beside the centre only from 1180px.
+beforeEach(() => (window as unknown as { happyDOM: { setViewport(viewport: { width: number; height: number }): void } }).happyDOM.setViewport({ width: 1600, height: 900 }));
 afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();

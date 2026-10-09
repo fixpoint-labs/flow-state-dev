@@ -1,0 +1,12 @@
+[
+  {
+    "on": "support.devices",
+    "opener": "Hi, my laptop won't join the office wifi since this morning.",
+    "followUp": "It sees it. It fails right after the password."
+  },
+  {
+    "on": "support.accounts",
+    "opener": "I can't sign in to my account since I changed my password yesterday.",
+    "followUp": "It's on my laptop, the work one."
+  }
+]

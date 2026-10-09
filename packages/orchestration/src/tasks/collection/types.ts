@@ -353,6 +353,14 @@ export interface AwaitReviewOptions extends TaskTransitionOptions {
    * status it found.
    */
   forTurn?: boolean;
+  /**
+   * The holder parks the row for its own reasons, not to ask anyone anything
+   * (FIX-1794 P2): a task waiting on pieces it handed out, say. A ledger's
+   * ending recorder is told so (`TaskEnding`'s `quiet`), so a composing layer
+   * that tells someone about each park can leave this one out. Changes nothing
+   * else about the park. A park for a person's turn (`forTurn`) is quiet too.
+   */
+  quiet?: boolean;
 }
 
 /**

@@ -228,18 +228,6 @@ export function buildBlock<
 
   const transient = config.transient === true;
 
-  // A block that still declares `requireOrg` is refused rather than built
-  // (FIX-1442). Organization identity is unconditional, so the declaration has
-  // no effect left — and a block whose author believed it was gating on an org
-  // is exactly the one that must not run as though it had asked for nothing.
-  if ("requireOrg" in (config as unknown as Record<string, unknown>)) {
-    throw new Error(
-      `Block "${String((config as { name?: unknown }).name ?? kind)}" declares requireOrg, ` +
-        `which no longer exists. Organization identity is required on every request ` +
-        `(FIX-1442), so the declaration is redundant: remove it.`
-    );
-  }
-
   // Every block this one statically composes. Rescue handlers are children like
   // any other — a board reachable only on the failure path is still a board the
   // flow has to route to — and they are folded in HERE, from the currently

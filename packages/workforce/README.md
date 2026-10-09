@@ -1191,8 +1191,25 @@ const mailboxes: MailboxManifest[] = [
 flowRegistry.registerMany(mailboxInstances(mailboxes)); // one instance, id "mailbox"
 
 // Runtime, once the host is up. One named session per record.
-await openMailboxes(mailboxes, { client: sessionClient, userId: "u_42" });
+await openMailboxes(mailboxes, {
+  client: {
+    createSession: sessionClient.createSession,
+    deleteSession: sessionClient.deleteSession,
+    // The stored record, not `sessionClient.getSession`: see below.
+    getSession: async (id) => {
+      const stored = await runtime.stores.session.get(id);
+      if (stored === undefined) throw new Error(`no session "${id}"`);
+      return stored;
+    },
+  },
+  userId: "u_42",
+});
 ```
+
+`getSession` reads the session from the store because the binder needs a mailbox's whole state to
+tell an open mailbox from an empty one it may replace. The session API sends a client only the state
+a flow exposes, and a mailbox exposes none, so through it every open mailbox would look empty. The
+example reads the store by the bare id, which is its storage key in a single-tenant app.
 
 The two calls are separate because they happen at two different times: an instance is registered
 when the server is built, and a session can only be opened once it is running. `openMailboxes` needs
@@ -1724,7 +1741,7 @@ const instances = mailboxInstances(roster.mailboxes, { inventory: true });
 flowRegistry.registerMany([...seats, ...instances]);
 // server starts here
 
-await openMailboxes(roster.mailboxes, { client, userId: "u_boot" });
+await openMailboxes(roster.mailboxes, { client, userId: "u_boot" }); // `client` as above
 
 await openInventory(
   { seats, mailboxes: roster.mailboxes },
@@ -2193,11 +2210,27 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
 
 - **Routing.** `judgment` runs the coordinator's own turn, which hands the post on with its
   `handOff` tool or answers itself. `best-fit` sends a follow-up to the delegate still working the
-  person's last post, else makes one evaluator call over each delegate's note or description, else
-  sends it to the fallback, else runs the judgment turn. If that turn fails too, nobody takes the
-  post, and the conversation says so. `round-robin` sends each post to the next delegate in list
-  order, skipping one that can't be reached. `everyone` sends it to each delegate that can be
-  reached. When no delegate can be reached, nobody takes the post, and the conversation says so.
+  person's last post, else makes one evaluator call over each delegate's note or description,
+  reading the post with the conversation's recent lines, else sends it to the fallback, else runs
+  the judgment turn. If that turn fails too, nobody takes the post, and the conversation says so.
+  `round-robin` sends each post to the next delegate in list order, skipping one that can't be
+  reached. `everyone` sends it to each delegate that can be reached. When no delegate can be
+  reached, nobody takes the post, and the conversation says so.
+- **Recent lines.** Every post is routed and delivered with the conversation's recent lines: the
+  person's posts, the coordinator's own replies and the delegates' answers that landed, oldest
+  first, each under who wrote it (the person's user id, the coordinator's worker id, or the
+  answering delegate's worker id). They are the last 10, at most 4,000 characters of text in all,
+  counted back from the newest; the line that crosses the cap is cut short with `…`, and older ones
+  are left out. They come from this conversation's own messages, as far back as the session's
+  history window reaches (its last 50 completed turns), never another conversation's. An answer
+  that has just landed is among them even before the request that landed it has finished. Best fit
+  reads the post with them, so a follow-up to a delegate's answer can go back to that delegate; the
+  other policies don't route by them. An evaluation model passed as `routeModel` (a scripted one
+  in a test, say) is handed `{ recent, post }`, each line and the post as `{ from, text }`.
+  Whatever the policy, the delegate that takes a post is shown them when its generator's `history`
+  is `delegatedPostHistory`: one user-role message just before the post, never system text, for
+  that turn only. The built-in `agent` flow's turn uses it. The delegate's own session never keeps
+  them.
 - **Rounds.** With `rounds:` above 0, a delegate's answer goes back out, at most that many times.
   `best-fit` and `round-robin` route each answer again as it lands, never to its own author.
   `everyone` waits for the round to close, then sends each delegate the other delegates' answers
@@ -2298,9 +2331,10 @@ the root exports, and reaches no Node built-in.
 | `workforceManifestSources({ roster, inventory })` | The seat and mailbox sources on their own, for an app assembling its own manifest registry. |
 | `createWorkerInstallation({ standardWorkers?, workerFlows?, seatBlocks?, packageBlocks?, documents?, references?, skills?, packages? })` | The worker model's one module (see [Workers as data](#workers-as-data)). Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
-| `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
+| `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. On a post whose answer can go back out, it also tells the coordinator when it has no answer: at once when its turn fails, and at the round's deadline while its turn is still running. The turn isn't stopped; a later answer still lands once. |
 | `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated post's run is cancelled before its answer went back, it tells the coordinator, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
+| `delegatedPostHistory` | A delegate flow generator's `history`, in place of `history: true`: the session's history, and on a delegated post that came with the conversation's recent lines, one user-role message just before the post (`Recent lines in the conversation with <coordinator> before this post, oldest first:`, then `- <from>: <text>` per line), for that turn only and never stored. On any other turn it is the session's history unchanged. The built-in `agent` flow's turn uses it. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `kinds` holds. |
 | `inventorySeats(installation)` | The standard workers as `openInventory` takes seats: each worker's id, its flow and that flow's actions. |

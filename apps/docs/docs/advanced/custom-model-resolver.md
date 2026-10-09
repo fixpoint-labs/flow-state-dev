@@ -101,7 +101,7 @@ Env vars overlay `intents` and `defaultModel` at construction. The `env` option 
 | `FSDEV_INTENT_<NAME>` | Replaces `intents[name]` with a one-element candidate list. | `provider/model` or `gateway/provider/model`. |
 | `FSDEV_DEFAULT_MODEL` | Replaces `defaultModel`. | Same as above. |
 
-`<NAME>` is `intentName.toUpperCase().replace(/-/g, "_")`. Disallowed values: `intent/*`, `preset/*`, empty / whitespace-only strings, and anything `parseModelString` rejects.
+`<NAME>` is `intentName.toUpperCase().replace(/-/g, "_")`. Disallowed values: `intent/*`, empty / whitespace-only strings, and anything `parseModelString` rejects.
 
 ### Semantics
 

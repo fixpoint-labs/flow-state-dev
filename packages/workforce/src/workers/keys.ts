@@ -57,6 +57,17 @@ export const FILING_SESSION_STATE_KEY = "filingSessionId";
 export const WORKSTREAM_STATE_KEY = "workstreamId";
 
 /**
+ * The session-state field that names the task a worker session was opened
+ * for: set when a conversation's board hands the task over, beside the
+ * worker and the filing conversation's `filingSessionId`, so the task's
+ * session is found within the conversation that filed it. Readonly, and set
+ * only by the hand-over: the installation's create check refuses a create on
+ * any other path that names it. **Pinned**: the criteria key
+ * `findWorkerSession` takes (FIX-1794).
+ */
+export const TASK_ID_STATE_KEY = "taskId";
+
+/**
  * The roster flow's kind: a flow that runs no worker and declares the two
  * worker collections, so a client can read a user's roster through a session
  * of its own. Its own kind, so a listing of a worker flow's sessions never

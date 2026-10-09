@@ -9,7 +9,8 @@
 | **builds a worker that must check with a colleague before it acts** | Files a task and the turn ends. The answer comes back later, as a new turn that has to work out again what it was doing | Asks. The turn waits, and carries on with the colleague's real answer as the result of the call it made |
 | **asks a worker for a brief its team writes** | Gets the brief in the same answer today, from a skill's private team that holds the request open. [FIX-1814](https://linear.app/fixpoint-labs/issue/FIX-1814) removes that team, and with it the only in-turn path | Gets the brief in the same answer: the lead asks the analyst, and the lead's answer carries the analyst's |
 | **runs Workforce on a server that restarts** | n/a | A restart while a turn waits loses nothing. The turn resumes after it, and the colleague's work was filed once |
-| **asks a colleague who never finishes** | n/a | Gets a timeout error within twenty minutes, instead of waiting forever |
+| **asks a colleague who never finishes** | n/a | Gets a timeout error once the ask's time limit passes (five minutes unless the asker sets 30 seconds to an hour), instead of waiting forever |
+| **stops a conversation that is waiting** | n/a | The turn ends and the asked task is cancelled. A turn waiting on an approval stops too, where today the stop is refused |
 | **watches the conversation's task list** | Sees filed tasks only | Also sees each ask as a task, marked as asked, from filing to answer |
 
 Ask is the first of the two hand-offs epic [FIX-1815](../../epics/FIX-1815/SPEC.md) adds. Assign
@@ -109,10 +110,12 @@ restart, filed once. If wrong: an ask that works until the first deploy.
    should compose one reply keeps posting its delegates' lines.
 
 **Cut before the gate**, within the approved objective: no ask from a turn already working a
-task, one ask per step, no testing helper, no reaching into a run under way, a fixed ten-minute
-timeout ([why](DECISIONS.md#cut-before-the-gate)).
+task, one ask per step, no testing helper, no reaching into a run under way
+([why](DECISIONS.md#cut-before-the-gate)). A fixed ten-minute timeout was cut too; the product
+owner reversed that cut on 2026-10-09, and built stopping a paused turn
+([amendments](DECISIONS.md#product-owner-amendments-2026-10-09)).
 
 **Open: none.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
-Feature · `core`, `engine`, `orchestration` · large · 3 PRs · epic [FIX-1815](../../epics/FIX-1815/SPEC.md)
+Feature · `core`, `engine`, `orchestration` · large · 4 PRs · epic [FIX-1815](../../epics/FIX-1815/SPEC.md)

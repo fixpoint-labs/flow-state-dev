@@ -102,8 +102,9 @@ describe("abort-registry", () => {
       expect(controller.signal.aborted).toBe(true);
     });
 
-    it("does not tag a controller that has since been replaced", () => {
+    it("does not tag a controller that has since left the registry", () => {
       const first = registerAbortController("test-req-1");
+      deregisterAbortController("test-req-1", first);
       const second = registerAbortController("test-req-1", "inc_b");
       tagAbortController("test-req-1", first, "inc_a");
 
@@ -116,6 +117,39 @@ describe("abort-registry", () => {
 
       expect(abortRequest("test-req-1")).toBe(true);
       expect(controller.signal.aborted).toBe(true);
+    });
+  });
+
+  describe("several live attempts under one id", () => {
+    it("fires every attempt's controller", () => {
+      const first = registerAbortController("test-req-1", "inc_a");
+      const second = registerAbortController("test-req-1", "inc_a");
+
+      expect(abortRequest("test-req-1", "inc_a")).toBe(true);
+      expect(first.signal.aborted).toBe(true);
+      expect(second.signal.aborted).toBe(true);
+    });
+
+    it("keeps the other attempt's controller when one attempt deregisters", () => {
+      const first = registerAbortController("test-req-1", "inc_a");
+      const second = registerAbortController("test-req-1", "inc_a");
+      deregisterAbortController("test-req-1", first);
+
+      expect(hasActiveAbortController("test-req-1")).toBe(true);
+      expect(abortRequest("test-req-1")).toBe(true);
+      expect(first.signal.aborted).toBe(false);
+      expect(second.signal.aborted).toBe(true);
+
+      deregisterAbortController("test-req-1", second);
+      expect(hasActiveAbortController("test-req-1")).toBe(false);
+    });
+
+    it("registers a controller it already holds only once", () => {
+      const controller = registerAbortController("test-req-1");
+      registerAbortController("test-req-1", "inc_a", controller);
+      deregisterAbortController("test-req-1", controller);
+
+      expect(hasActiveAbortController("test-req-1")).toBe(false);
     });
   });
 });
@@ -411,6 +445,7 @@ describe("handleAbortRequest", () => {
       const write = stores.request.setFieldsIfStatus.bind(stores.request);
       stores.request.setFieldsIfStatus = async (...args) => {
         const result = await write(...args);
+        deregisterAbortController(REUSED, own);
         await stores.request.delete(REUSED);
         await stores.request.set(
           REUSED,

@@ -163,7 +163,7 @@ Any entry can declare a `concurrency` policy that decides what happens when two 
 
 The policy is enforced by the in-process dispatcher, or across worker processes when the worker adapter supplies a shared lease backend (`WorkerAdapter.leaseBackend`), as `bullmqWorker` does. A deployment that hands dispatches to an external queue whose adapter supplies no shared lease backend skips it, so requests on the same key can overlap there.
 
-`ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently).
+`ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject" | "hold" | "defer"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently). `hold` runs at once and marks the key busy; `defer` waits until nothing on the key is running or waiting, then runs.
 
 ```ts
 defineFlow({
@@ -259,7 +259,7 @@ Forwarding is direct-only: inner capabilities used by `myCap` do not propagate t
 
 **Context & client data:**
 - `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)
-- `client` on scope configs — Per-scope client view: `expose: string[]` (verbatim passthrough by field name) and `derived: { name: fn }` (compute functions receive `{ state, resources }`). State without a `client` block is private. The former `clientData` key on scope configs has been removed — `defineFlow` throws if it is still set.
+- `client` on scope configs — Per-scope client view: `expose: string[]` (verbatim passthrough by field name) and `derived: { name: fn }` (compute functions receive `{ state, resources }`). State without a `client` block is private.
 
 **Prompt formatters** (`@flow-state-dev/core/prompt`):
 - `section`, `list`, `keyValues`, `table`, `entries`, `codeBlock`, `join`, `when` — Composable text formatters for building clean LLM context. `section` takes a string title (default `##`) or `{ title, level }` to nest under another section; `table` renders an array of records as a Markdown table. The same `keyValues` / `list` / `table` shapes are auto-registered as `fsd_*` filters inside `.md` prompt templates.
@@ -871,7 +871,7 @@ Env vars can replace which model a declared intent (or `defaultModel`) resolves 
 - `FSDEV_INTENT_<NAME>` — replace the candidate list for intent `<name>`. `<NAME>` is the intent name uppercased with hyphens replaced by underscores (`my-custom` → `FSDEV_INTENT_MY_CUSTOM`).
 - `FSDEV_DEFAULT_MODEL` — replace `defaultModel`. Useful when an intent falls through.
 
-Each value is a `provider/model` or `gateway/provider/model` string. `intent/*` and `preset/*` are rejected. Vars are read once at construction; setting them after the resolver is built has no effect.
+Each value is a `provider/model` or `gateway/provider/model` string. `intent/*` values are rejected. Vars are read once at construction; setting them after the resolver is built has no effect.
 
 ```bash
 # .env.local
@@ -879,7 +879,7 @@ FSDEV_INTENT_CHAT=openai/gpt-5.4-mini
 FSDEV_DEFAULT_MODEL=openai/gpt-5.4-mini
 ```
 
-Invalid values (an `intent/*`/`preset/*` string, or an empty value) for a declared intent throw at construction. An `FSDEV_INTENT_*` that names an intent the resolver doesn't declare is **warned-and-skipped, not fatal** — env vars are ambient, and an app must not crash because a shared/CI environment pins an intent var for some *other* app. (A typo in an intent the app *does* declare still surfaces as a warning.) `FSDEV_DEFAULT_MODEL` applies whether or not intents are declared, so an app that resolves no model is unaffected by it. Each applied or ignored override emits one dev-only `console.warn` (suppressed by `NODE_ENV=production` and `FSD_QUIET_WARNINGS=1`). Tests can pass an explicit `env` option to `createModelResolver` to avoid mutating `process.env`.
+Invalid values (an `intent/*` string, or an empty value) for a declared intent throw at construction. An `FSDEV_INTENT_*` that names an intent the resolver doesn't declare is **warned-and-skipped, not fatal** — env vars are ambient, and an app must not crash because a shared/CI environment pins an intent var for some *other* app. (A typo in an intent the app *does* declare still surfaces as a warning.) `FSDEV_DEFAULT_MODEL` applies whether or not intents are declared, so an app that resolves no model is unaffected by it. Each applied or ignored override emits one dev-only `console.warn` (suppressed by `NODE_ENV=production` and `FSD_QUIET_WARNINGS=1`). Tests can pass an explicit `env` option to `createModelResolver` to avoid mutating `process.env`.
 
 See the [models page](https://flow-state.dev/docs/fundamentals/models#env-var-overrides) for the failure-mode taxonomy.
 

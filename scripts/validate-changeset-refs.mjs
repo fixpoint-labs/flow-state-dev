@@ -2,9 +2,9 @@
 /**
  * Every changeset names the Linear issue it came from.
  *
- * Specs are not kept in the repo — Linear holds them — so the changeset is the
- * link between a shipped, released change and the reasoning behind it. Without
- * the issue id in the fragment, a CHANGELOG entry has no route back.
+ * The changeset is the link between a shipped, released change and the issue
+ * behind it, which links its retained spec under `specs/` when one exists.
+ * Without the issue id in the fragment, a CHANGELOG entry has no route back.
  *
  * THIS DOES NOT REQUIRE A CHANGESET. Under BP-022 most PRs have none, and a PR
  * with no fragment passes here trivially. The rule is conditional: *if* you
@@ -20,34 +20,23 @@
  * scope, because this only ever looks inside `.changeset`. Empty fragments
  * (`pnpm changeset --empty`) release nothing and are skipped.
  *
- * WHAT THIS MEASURES: "did the author of this release note name their issue" —
- * NOT "did this PR's diff touch the file". The two came apart during the
- * `@flow-state-dev/cli` -> `@flow-state-dev/fsdev` rename (FIX-1191), which had to rewrite the
- * package key in fourteen old fragments (otherwise `changeset version` fails on
- * a name that no longer resolves) and so was held answerable for a dozen
- * strangers' release notes, demanding ids it had no way to know.
+ * A well-formed id can still be the wrong one, so a fragment this PR ADDS must
+ * cite at least one of this PR's own issue ids, read from its branch name and
+ * title — never its description, which is where a PR names its neighbours (a
+ * wrong id once passed green that way). An EDITED fragment is usually someone
+ * else's release note, so it keeps the presence check only. When the branch and
+ * title name no id there is nothing to match against, and the match is skipped.
  *
- * Five cases. Each is exercised; keep it that way if you touch this.
+ * Because the title is an input, CI runs this in its own workflow that also
+ * triggers on PR edits (`.github/workflows/changeset-refs.yml`).
+ *
+ * Cases, each exercised in `packages/core/test/changeset-refs-check.test.ts`:
  *
  *   1.  NEW fragment, no issue id                            -> fails.
- *   2.  EXISTING fragment, BODY edited, no id                -> fails.
- *   2b. EXISTING fragment, package bump ADDED, no id         -> fails.
- *   2c. EXISTING fragment, package SWAPPED for an unrelated
- *       one at the same bump level, no id                    -> fails.
- *   3.  EXISTING fragment, only `RENAMED_PACKAGES` applied   -> passes.
- *
- * THIS GUARD HAS ALREADY REGRESSED THREE TIMES, each fix opening a smaller
- * hole than the one it closed:
- *
- *   `--diff-filter=AM`  fired at whoever's diff touched a file  (wrong people)
- *   `--diff-filter=A`   went silent on case 2                   (too weak)
- *   bump-shape compare  went silent on case 2c                  (too general)
- *
- * The pattern is generalising the exemption. It terminates by naming the exact
- * thing: `RENAMED_PACKAGES` is one specific migration, not a class of edit.
- * If you are tempted to widen it — "any same-level swap", "any body-preserving
- * change" — that is the regress restarting, and case 2c is the probe that
- * catches it. Add a mapping entry for a real rename instead.
+ *   2.  EXISTING fragment, edited, no id                     -> fails.
+ *   3.  NEW fragment, no id that is this PR's issue          -> fails.
+ *   4.  Only a sub-PR id such as `LAB-138a`                  -> fails, naming
+ *       the bare parent id to cite instead.
  *
  * No dependencies, so CI runs it without an install.
  */
@@ -55,11 +44,28 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
-/** A Linear issue id: team prefix, dash, number. Matches FIX-123 and future teams. */
-const ISSUE_REF = /\b[A-Z]{2,6}-\d+\b/;
+/** Every Linear issue id in a fragment body: team prefix, dash, number. FIX-123 and future teams. */
+const ISSUE_REFS = /\b[A-Z]{2,6}-\d+\b/g;
+
+/**
+ * An id with a sub-PR letter, `LAB-138a`. Not an issue id — sub-PRs of one
+ * issue cite that issue — but named in the failure so the author knows why.
+ */
+const SUFFIXED_REF = /\b([A-Z]{2,6}-\d+)[a-z]\b/;
+
+/**
+ * An id in a branch name: any case, and the number must end at a separator, so
+ * a random suffix such as `project-thread-8ra0ke` is not read as `THREAD-8`.
+ * One trailing letter is a sub-PR (`lab-138a`) and is dropped.
+ */
+const BRANCH_ID = /(?<![A-Za-z])([A-Za-z]{2,6})-(\d+)[a-z]?(?![0-9A-Za-z])/g;
+
+/** An id in a PR title, with a sub-PR letter dropped: `(LAB-138a)` is LAB-138. */
+const TITLE_ID = /\b([A-Z]{2,6})-(\d+)[a-z]?\b/g;
 
 /** A frontmatter line naming a package and a bump — `"@scope/pkg": patch`. */
 const PACKAGE_BUMP = /^\s*['"][^'"]+['"]\s*:\s*(patch|minor|major)\s*$/m;
@@ -96,6 +102,31 @@ function changedChangesets() {
     .map(([status, path]) => ({ status, path }));
 }
 
+/** The PR's head branch in CI, else the checked-out branch. */
+function currentBranch() {
+  if (process.env.GITHUB_HEAD_REF) return process.env.GITHUB_HEAD_REF;
+  try {
+    return git(["branch", "--show-current"]).trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The PR title from the event payload Actions writes for the run. Absent on a
+ * local run and on a push; an unreadable payload falls back to the branch alone
+ * rather than failing the guard on its own plumbing.
+ */
+function prTitle() {
+  const path = process.env.GITHUB_EVENT_PATH;
+  if (!path) return "";
+  try {
+    return JSON.parse(readFileSync(path, "utf8")).pull_request?.title ?? "";
+  } catch {
+    return "";
+  }
+}
+
 /** Splits a fragment into its frontmatter block and its body. */
 function parse(source) {
   const match = source.match(/^---\r?\n([\s\S]*?)\r?\n?---\r?\n?([\s\S]*)$/);
@@ -104,106 +135,118 @@ function parse(source) {
 }
 
 /**
- * The package renames this exemption exists for — old name -> new name.
- *
- * Deliberately an exact mapping, NOT a general "a package was swapped" rule.
- * A shape rule (compare bump levels, discard the names) was tried here and was
- * broken in review within the hour: because it ignored package identity,
- * replacing `"@flow-state-dev/fsdev": patch` with `"@flow-state-dev/core": patch` read as
- * mechanical, so a release note and its version bump could be retargeted onto
- * a different package with no issue reference and no complaint. Silently
- * moving a version bump is worse than the over-firing this exemption was
- * added to stop.
- *
- * Naming the specific migration makes the exemption impossible to reuse for
- * anything else, and trivially deletable once the last pre-rename fragment has
- * been released — a property no general rule has.
+ * This PR's own issue ids, as `{ id, from }`, read from its branch name and
+ * title. Never from its description: that is where a PR names its neighbours.
  */
-const RENAMED_PACKAGES = new Map([["@flow-state-dev/cli", "@flow-state-dev/fsdev"]]);
-
-/** `[name, bump]` per package a frontmatter bumps, in declaration order. */
-function packageBumps(frontmatter) {
-  return [...frontmatter.matchAll(/^\s*['"]([^'"]+)['"]\s*:\s*(patch|minor|major)\s*$/gm)].map(
-    (match) => [match[1], match[2]],
-  );
+export function issueIdsFromPr({ branch = "", title = "" }) {
+  const found = new Map();
+  for (const [, team, number] of branch.matchAll(BRANCH_ID)) {
+    const id = `${team.toUpperCase()}-${number}`;
+    if (!found.has(id)) found.set(id, "branch");
+  }
+  for (const [, team, number] of title.matchAll(TITLE_ID)) {
+    const id = `${team}-${number}`;
+    if (!found.has(id)) found.set(id, "title");
+  }
+  return [...found].map(([id, from]) => ({ id, from }));
 }
 
 /**
- * Case 3: a modified fragment whose only change is applying `RENAMED_PACKAGES`.
+ * The fragments that fail, as `{ path, reason }`.
  *
- * Exempt, because a rename is an edit forced on every old fragment that bumps
- * the renamed package — it does not make the sweep's author the author of
- * someone else's release note. Everything else is authorship: the body must be
- * byte-identical, and every package must be either untouched or exactly the
- * mapped rename, at the same bump level and in the same position.
+ * @param fragments `{ status: "A" | "M", path, source }` per changed fragment.
+ * @param prIds     This PR's issue ids, from `issueIdsFromPr`.
  */
-function isMechanicalRekey(path, current) {
-  let previous;
-  try {
-    previous = parse(git(["show", `${MERGE_BASE}:${path}`]));
-  } catch {
-    return false; // Not on the base after all — treat as new.
+export function findOffenders(fragments, prIds) {
+  const own = new Set(prIds.map(({ id }) => id));
+  const offenders = [];
+  for (const { status, path, source } of fragments) {
+    const parsed = parse(source);
+    if (!parsed) {
+      offenders.push({ path, reason: "no changeset frontmatter" });
+      continue;
+    }
+    if (!PACKAGE_BUMP.test(parsed.frontmatter)) continue; // Empty fragment — releases nothing.
+
+    const cited = [...new Set(parsed.body.match(ISSUE_REFS) ?? [])];
+    if (cited.length === 0) {
+      const suffixed = parsed.body.match(SUFFIXED_REF);
+      offenders.push({
+        path,
+        reason: suffixed
+          ? `found "${suffixed[0]}"; cite the bare parent id "${suffixed[1]}"`
+          : "no Linear issue id in the body",
+      });
+      continue;
+    }
+
+    // Only a fragment this PR adds is its author's to answer for. An edited one
+    // is usually someone else's release note, citing their issue, not this PR's.
+    if (status !== "A" || own.size === 0) continue;
+    if (cited.some((id) => own.has(id))) continue;
+    const named = prIds.map(({ id, from }) => `${id} (from its ${from})`).join(", ");
+    offenders.push({
+      path,
+      reason: `cites ${cited.join(", ")}; this PR is ${named}`,
+      mismatch: { cited, own: prIds.map(({ id }) => id) },
+    });
   }
-  if (!previous) return false;
-  if (previous.body !== current.body) return false;
-
-  const before = packageBumps(previous.frontmatter);
-  const after = packageBumps(current.frontmatter);
-  if (before.length !== after.length) return false;
-
-  return before.every(([name, bump], index) => {
-    const [currentName, currentBump] = after[index];
-    return currentBump === bump && currentName === (RENAMED_PACKAGES.get(name) ?? name);
-  });
+  return offenders;
 }
 
-const MERGE_BASE = (() => {
-  try {
-    return git(["merge-base", BASE, "HEAD"]).trim();
-  } catch {
-    return BASE;
+function main() {
+  const fragments = [];
+  for (const { status, path } of changedChangesets()) {
+    const full = join(ROOT, path);
+    if (!existsSync(full)) continue; // Renamed or removed after the diff was taken.
+    fragments.push({ status, path, source: readFileSync(full, "utf8") });
   }
-})();
-
-const offenders = [];
-
-for (const { status, path } of changedChangesets()) {
-  const full = join(ROOT, path);
-  if (!existsSync(full)) continue; // Renamed or removed after the diff was taken.
-
-  const parsed = parse(readFileSync(full, "utf8"));
-  if (!parsed) {
-    offenders.push({ path, reason: "no changeset frontmatter" });
-    continue;
+  const prIds = issueIdsFromPr({ branch: currentBranch(), title: prTitle() });
+  if (prIds.length === 0 && fragments.length > 0) {
+    console.log(
+      "  note: this PR's branch and title name no issue id, so fragments were checked for" +
+        "\n  an id but not matched against this PR's issue.",
+    );
   }
-  if (!PACKAGE_BUMP.test(parsed.frontmatter)) continue; // Empty fragment — releases nothing.
-  if (status === "M" && isMechanicalRekey(path, parsed)) continue; // Case 3 — a rekey.
-  if (!ISSUE_REF.test(parsed.body)) {
-    offenders.push({ path, reason: "no Linear issue id in the body" });
+  const offenders = findOffenders(fragments, prIds);
+
+  if (offenders.length === 0) {
+    console.log("✓ every new changeset names its Linear issue");
+    process.exit(0);
   }
-}
 
-if (offenders.length === 0) {
-  console.log("✓ every new changeset names its Linear issue");
-  process.exit(0);
-}
-
-console.error(`\n✗ ${offenders.length} changeset(s) missing a Linear issue reference:\n`);
-for (const { path, reason } of offenders) console.error(`    ${path}  (${reason})`);
-if (offenders.length > 3) {
+  console.error(`\n✗ ${offenders.length} changeset(s) do not name their issue correctly:\n`);
+  for (const { path, reason, mismatch } of offenders) {
+    console.error(`    ${path}  (${reason})`);
+    if (mismatch) {
+      const [cited] = mismatch.cited;
+      const [own] = mismatch.own;
+      console.error(
+        `      If the fragment is right to cite ${cited}, name ${own} in it too,` +
+          ` e.g. "(${cited}, part of ${own})",` +
+          `\n      or add ${cited} to the PR title (editing the title re-runs this check).`,
+      );
+    }
+  }
+  if (offenders.length > 3) {
+    console.error(
+      `\n  That is a lot for one branch — if these are fragments you did not write,` +
+        `\n  the base ref is stale and they only look new. Run 'git fetch origin main'` +
+        `\n  and try again.`,
+    );
+  }
   console.error(
-    `\n  That is a lot for one branch — if these are fragments you did not write,` +
-      `\n  the base ref is stale and they only look new. Run 'git fetch origin main'` +
-      `\n  and try again.`,
+    `\n  Name the issue in the fragment body so a released change traces back to` +
+      `\n  its retained repository spec and Linear discussion when they exist.` +
+      `\n\n  ---` +
+      `\n  "@flow-state-dev/engine": patch` +
+      `\n  ---` +
+      `\n` +
+      `\n  One-sentence user-facing description (FIX-123).\n`,
   );
+  process.exit(1);
 }
-console.error(
-  `\n  Name the issue in the fragment body so a released change traces back to` +
-    `\n  its retained repository spec and Linear discussion when they exist.` +
-    `\n\n  ---` +
-    `\n  "@flow-state-dev/engine": patch` +
-    `\n  ---` +
-    `\n` +
-    `\n  One-sentence user-facing description (FIX-123).\n`,
-);
-process.exit(1);
+
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}

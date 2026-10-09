@@ -153,10 +153,8 @@ export type ResolvePrincipalFn = (
  * flow-level) — the framework throws at registration with a clear error
  * naming the offending field.
  *
- * A resolver must return a verified `orgId`. There is no `requireOrg` flag:
- * organization identity is unconditional (FIX-1442), so declaring it was
- * redundant. A config that still carries the old key is rejected at flow
- * definition with migration guidance rather than silently ignored.
+ * A resolver must return a verified `orgId`: organization identity is
+ * unconditional.
  */
 export interface AuthenticationConfig {
   /**

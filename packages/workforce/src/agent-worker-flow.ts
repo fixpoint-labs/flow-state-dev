@@ -78,14 +78,12 @@ import {
   createSkillsLibrary,
   pushActiveSkill
 } from "@flow-state-dev/orchestration";
-import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
-import { DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
-import { delegatedPostEntry, delegatedPostOnFinished } from "./coordinator/delegated-post";
+import { COORDINATOR_KIND, DELEGATED_POST_ENTRY } from "./coordinator/coordinator-keys";
+import { delegatedPostEntry, delegatedPostHistory, delegatedPostOnFinished } from "./coordinator/delegated-post";
+import { workerTaskEntry } from "./conversation-board/task-entry";
 import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
-import { mailboxTaskLists } from "./mailbox/mailbox-board";
 import {
   mailboxNotifyInputSchema,
   mailboxTranscriptLineSchema,
@@ -319,14 +317,14 @@ export interface AgentWorkerFlowOptions {
   isolateUserState?: boolean;
   /**
    * The mailbox task lists this kind's workers take tasks from, by minted id
-   * (`mailboxBoardIds(mailboxes)`). With them, a task a list hands to one of
-   * these workers runs as one turn: the task's goal and context are the
-   * message, the worker's own instructions, tools and model answer it, and
-   * the answer is the task's result. Hand tasks over `per-task`, so each runs
-   * in a session of its own, apart from the worker's conversations.
+   * (`mailboxBoardIds(mailboxes)`), beside the conversation boards every
+   * worker of this kind takes tasks from. A task handed to one of these
+   * workers runs as one turn: the task's goal and context are the message,
+   * the worker's own instructions, tools and model answer it, and the answer
+   * is the task's result. Hand tasks over `per-task`, so each runs in a
+   * session of its own, apart from the worker's conversations.
    *
-   * Absent, the kind declares no task door, and a task handed to one of its
-   * workers is refused as one it takes no tasks for.
+   * Absent, the kind takes tasks from conversation boards only.
    */
   taskLists?: readonly string[];
   /**
@@ -789,6 +787,12 @@ export interface AgentTurnShare {
    * every worker on it.
    */
   readonly extraTools?: readonly GeneratorTool[];
+  /**
+   * Capabilities the turn always composes, beside the app's own `uses`: the
+   * coordinator's task tools, for one. Composed once here, so a turn carries
+   * one instance of each, whatever skill is loaded.
+   */
+  readonly extraUses?: readonly CapabilityRef[];
 }
 
 const AGENT_TURN: AgentTurnShare = { kind: AGENT_KIND, answerName: "agent-answer" };
@@ -797,8 +801,9 @@ const AGENT_TURN: AgentTurnShare = { kind: AGENT_KIND, answerName: "agent-answer
  * The built-in agent's turn, built once per flow that runs it: its settings
  * schema, the `run` sequence (skill matching, the worker's default skills,
  * and the answer), the request `onStarted` that loads the turn's worker, the
- * session and resources a flow on an installation declares, and the
- * cross-key checks a mint runs.
+ * session and resources a flow on an installation declares, the cross-key
+ * checks a mint runs, and the names the answer's messages carry as
+ * `agentName` (`answerNames`).
  *
  * The `agent` flow is this turn behind a door. The `coordinator` flow runs the
  * same turn for its judgment, with {@link AgentTurnShare.extraTools}, so a
@@ -964,7 +969,8 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     );
   const usesEntries = [
     ...(options.uses ?? []),
-    ...(seatCapabilityCatalog.size > 0 ? [seatCapabilities] : [])
+    ...(seatCapabilityCatalog.size > 0 ? [seatCapabilities] : []),
+    ...(share.extraUses ?? [])
   ];
 
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>
@@ -978,7 +984,10 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // hears and one per direct conversation, so nothing said in one reaches
       // another. Bounded by the session's history window (the framework's
       // default, 50 turns); older turns fall out rather than being summarized.
-      history: true,
+      // On a coordinator's delivery, the delivering conversation's recent
+      // lines join it as one user-role message before the post, for this
+      // call only; on any other turn it is `history: true` unchanged.
+      history: delegatedPostHistory,
       // What the app's catalog tools declare, declared here so `defineFlow`'s
       // static walk installs it — see `catalogDeclaredResources`. Omitted
       // entirely when the catalog declares nothing, so a kind built without one
@@ -1071,11 +1080,10 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       user: (input) => input.message
     });
 
-  const answer = answerWith(skillsBinding, share.answerName);
-  const answerWithActivateTool = answerWith(
-    skillsBindingWithActivateTool,
-    `${share.answerName}-with-activate-tool`
-  );
+  // The answer's two generator names, which its messages carry as `agentName`.
+  const answerNames = [share.answerName, `${share.answerName}-with-activate-tool`] as const;
+  const answer = answerWith(skillsBinding, answerNames[0]);
+  const answerWithActivateTool = answerWith(skillsBindingWithActivateTool, answerNames[1]);
 
   // `createSkillActivator` takes `enableLlmClassifier` at construction, so
   // one instance can't honour a per-seat switch on tier 3 alone. Two full
@@ -1261,7 +1269,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     return problems.length > 0 ? problems.join(" ") : undefined;
   };
 
-  return { options, settings, inputSchema, run, bound, mintProblems };
+  return { options, settings, inputSchema, run, bound, mintProblems, answerNames };
 }
 
 /** What a flow on an installation declares to run the agent's turn. */
@@ -1384,10 +1392,17 @@ function defineAgentFlowAround(
   /**
    * A task as this worker takes it: one turn of `run`, the task as the
    * message, the answer as the result. A turn that throws fails the attempt
-   * through the list's ordinary error path.
+   * through the board's ordinary error path. Tasks come from any
+   * conversation's board that hands one to a worker of this kind, and from
+   * the mailbox task lists the app names; the conversation that filed a task
+   * hears how it ended.
    */
-  const taskTurn = sequencer({ name: "agent-task-turn", inputSchema: taskWorkerInputSchema })
-    .step((task: TaskWorkerInput) => ({ message: taskMessage(task) }), run);
+  const taskEntry = workerTaskEntry({
+    name: "agent-task-turn",
+    turn: run,
+    noticeFlow: COORDINATOR_KIND,
+    ...(options.taskLists !== undefined ? { mailboxLists: options.taskLists } : {})
+  });
 
   const flow = defineFlow({
     kind: AGENT_KIND,
@@ -1433,20 +1448,7 @@ function defineAgentFlowAround(
         [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry()
       }
     },
-    ...(options.taskLists === undefined
-      ? {}
-      : {
-          task: {
-            actions: {
-              [WORKER_TASK_ENTRY]: {
-                block: taskTurn,
-                // The turn keeps the worker's skill state on the session, the
-                // same shape for every task, so a shared session would be safe.
-                from: mailboxTaskLists(options.taskLists, { allowSessionState: true })
-              }
-            }
-          }
-        })
+    task: { actions: { [WORKER_TASK_ENTRY]: taskEntry } }
   });
 
   /**
@@ -1464,24 +1466,6 @@ function defineAgentFlowAround(
     return seat;
   };
   return Object.assign(mint, flow) as typeof flow;
-}
-
-/**
- * A task as an agent worker reads it: the title when there is one, the goal,
- * the task's context, and its structured input as JSON when it carries any.
- */
-function taskMessage(task: TaskWorkerInput): string {
-  const lines = [task.title === undefined ? task.goal : `${task.title}\n\n${task.goal}`];
-  if (task.context !== undefined && task.context.trim().length > 0) lines.push(`Context:\n${task.context}`);
-  if (hasInput(task.input)) lines.push(`Input:\n${JSON.stringify(task.input, null, 2)}`);
-  return lines.join("\n\n");
-}
-
-/** True for a task input worth showing: present, and not an empty object. */
-function hasInput(input: unknown): boolean {
-  if (input === undefined || input === null) return false;
-  if (typeof input === "object" && !Array.isArray(input)) return Object.keys(input).length > 0;
-  return true;
 }
 
 /**

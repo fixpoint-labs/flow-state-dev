@@ -201,6 +201,13 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   }
 
   const partition = checkedPartition(options);
+  // The ledger's ending recorder, read off the declaration the engine hands
+  // back as the handle's config, so every resolution of the ledger (a board's
+  // drain, a task entry's gate, the task tools) writes its endings through it.
+  const declared = options.collection.config;
+  const recordEnding = isDefinedTaskCollection(declared)
+    ? declared.__taskCollection.recordEnding
+    : undefined;
   return await createResourceBackedTaskCollection<TInput, TOutput>({
     collectionId: options.collectionId,
     collection:
@@ -214,6 +221,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     ...(createdBy !== undefined ? { createdBy } : {}),
     immutableAssignee: options.immutableAssignee,
     ...(partition !== undefined ? { partition } : {}),
+    ...(recordEnding !== undefined ? { recordEnding } : {}),
   });
 }
 

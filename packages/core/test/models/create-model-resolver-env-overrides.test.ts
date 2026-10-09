@@ -91,16 +91,6 @@ describe("createModelResolver — env override validation", () => {
     );
   });
 
-  it("throws when FSDEV_INTENT_CHAT is a preset/* string", () => {
-    expect(() =>
-      createModelResolver({
-        intents: { chat: ["openai/gpt-5.4"] },
-        defaultModel: "openai/gpt-5.4",
-        env: { FSDEV_INTENT_CHAT: "preset/fast" },
-      })
-    ).toThrow(/FSDEV_INTENT_CHAT.*preset\/\* model strings have been removed/);
-  });
-
   it("throws when FSDEV_INTENT_CHAT is empty", () => {
     expect(() =>
       createModelResolver({

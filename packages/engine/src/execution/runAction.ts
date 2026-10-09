@@ -1694,6 +1694,11 @@ async function runActionAttempt<
   const keepHandoff =
     handoff !== undefined &&
     !(handoff.incarnation !== runIncarnation && wasFiredOnlyFenced(handoff.controller));
+  // A handed-over controller this run does not keep leaves the registry, so it
+  // is not left beside the run's own as a second attempt's.
+  if (handoff !== undefined && !keepHandoff) {
+    deregisterAbortController(requestId, handoff.controller);
+  }
   let registered = registerAbortController(
     requestId,
     runIncarnation,
@@ -2002,7 +2007,7 @@ async function runActionAttempt<
     // rather than leave a client polling forever (FIX-1511). Then clean up
     // the abort controller / heartbeat and rethrow so `finished` rejects.
     await recoverFromPreTransitionFailure();
-    deregisterAbortController(requestId);
+    deregisterAbortController(requestId, registered);
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
     if (!isReplayMode) {
       // The failed record is this run's terminal write; the run's exit
@@ -2125,7 +2130,7 @@ async function runActionAttempt<
     }, ctx, { internalSeams, logger });
   } catch (startupError) {
     stopHeartbeatTimer();
-    deregisterAbortController(requestId);
+    deregisterAbortController(requestId, registered);
     throw startupError;
   }
 
@@ -2254,7 +2259,7 @@ async function runActionAttempt<
           durationMs: Date.now() - startedAt
         });
 
-        deregisterAbortController(requestId);
+        deregisterAbortController(requestId, registered);
         // Another run of this request still live in this process keeps the
         // shared registry entry; it deregisters when it ends.
         if (attempt.end()) await registry.deregister(requestId).catch(() => {});
@@ -2556,7 +2561,7 @@ async function runActionAttempt<
 
     // Deregister abort controller and active registry. An unstamped run stays
     // registered, heartbeat stopped, for the stale-request sweep to stamp.
-    deregisterAbortController(requestId);
+    deregisterAbortController(requestId, registered);
     if (finalized) {
       await registry.deregister(requestId).catch((err) => {
         logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
@@ -2842,7 +2847,7 @@ async function runActionAttempt<
 
     // Deregister abort controller and active registry. An unstamped run stays
     // registered, heartbeat stopped, for the stale-request sweep to stamp.
-    deregisterAbortController(requestId);
+    deregisterAbortController(requestId, registered);
     if (finalized) {
       await registry.deregister(requestId).catch((err) => {
         logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {

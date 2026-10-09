@@ -87,10 +87,10 @@ function legVerdict(id: string, prefix: string[], report: ReturnType<typeof coll
 const NO_THEME: Patch = { file: "src/styles.css", from: THEME_IMPORT, to: "", why: "the design-system import line removed (leg c)" };
 const ACCENT = readShiftManagerTheme().attentionLight;
 const HARDCODED_ACCENT: Patch = {
-  file: "src/components/flow-state/tool.tsx",
-  from: /CheckCircleIcon className="size-4 text-success"/g,
-  to: `CheckCircleIcon className="size-4 text-[${ACCENT}]"`,
-  why: `control hardcoded-accent: Shift Manager's copy of the tool card paints its completed icon with Shift Manager's accent ${ACCENT} as a literal`,
+  file: "src/components/ToolLine.tsx",
+  from: "text-sm text-muted-foreground hover:text-foreground",
+  to: `text-sm text-[${ACCENT}]`, // no hover colour: the sweep clicks the line open, so the pointer rests on it
+  why: `control hardcoded-accent: Shift Manager's quiet tool line paints its label with Shift Manager's accent ${ACCENT} as a literal`,
 };
 const NO_ORG: Patch = {
   file: "src/surfaces/Sidebar.tsx",

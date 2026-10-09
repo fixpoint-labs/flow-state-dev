@@ -233,7 +233,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Full history so the changeset guard can diff against the base branch.
+      # Full history, as before the changeset guard moved to changeset-refs.yml,
+      # so the git-reading guards below see the same checkout they always did.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -252,9 +253,8 @@ jobs:
           !startsWith(github.head_ref, 'project/')
         run: node scripts/validate-spec-folder.mjs
 
-      - name: Changesets name their Linear issue
-        if: github.event_name == 'pull_request'
-        run: node scripts/validate-changeset-refs.mjs
+      # The changeset guard runs in changeset-refs.yml: it reads the PR title,
+      # so it must re-run on `edited`, which this workflow does not.
 
       # `private` is the only field `changeset publish` filters on, and an npm
       # name is given away permanently, so the packages we hold back are checked
@@ -262,7 +262,7 @@ jobs:
       - name: Packages held out of the publish set
         run: node scripts/validate-publish-set.mjs
 
-      # Unconditional, unlike the two above. A literal NUL makes git render the
+      # Unconditional, unlike the spec guard above. A literal NUL makes git render the
       # whole file as binary, so the change lands with no diff for anyone to
       # review — which is exactly as bad on a push to main as on a PR, and is
       # how one file already reached main entirely unreviewed.

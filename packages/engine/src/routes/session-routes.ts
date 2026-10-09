@@ -23,6 +23,7 @@ import {
   getString,
   isCheckedSession,
   jsonResponse,
+  loadCheckedSession,
   loadTenantSession,
   unknownSessionResponse,
   parseJsonBody,
@@ -36,6 +37,7 @@ import {
   toBareSessionId
 } from "../stores/scope-keys";
 import { sessionRequestScope } from "../context/session-request-scope";
+import { toClientSession } from "./client-session";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
   flowAuthenticates,
@@ -66,7 +68,7 @@ type SessionRouteContext = {
   anonymousFlowIds?: Set<string>;
   /**
    * The session the owner check read and admitted the caller to, for a route
-   * that writes over its own read of it (`RouteAuthResult.session`).
+   * that acts under its own read of it (`RouteAuthResult.session`).
    */
   checkedSession?: SessionRecord | null;
 };
@@ -302,11 +304,9 @@ export async function handleListSessions(
   }
 
   return jsonResponse(200, {
-    // Surface bare session ids — the stored `id` is the namespaced storage key.
-    sessions: visible.map((s) => ({
-      ...s,
-      id: toBareSessionId(s.id, ctx.tenantId)
-    }))
+    // Surface bare session ids — the stored `id` is the namespaced storage key —
+    // and only the state each row's flow exposes (FIX-1588).
+    sessions: visible.map((s) => toClientSession(ctx.registry, s, toBareSessionId(s.id, ctx.tenantId)))
   });
 }
 
@@ -327,8 +327,9 @@ export async function handleGetSession(
   if (unattributed !== undefined) return unattributed;
 
   return jsonResponse(200, {
-    // Surface the bare session id, not the namespaced storage key (FIX-682).
-    session: { ...session, id: route.sessionId }
+    // The bare session id, not the namespaced storage key (FIX-682), and only
+    // the state the flow exposes (FIX-1588).
+    session: toClientSession(ctx.registry, session, route.sessionId)
   });
 }
 
@@ -459,7 +460,7 @@ export async function handleCreateSession(
   }
 
   return jsonResponse(201, {
-    session: { ...outcome.record, id: sessionId }
+    session: toClientSession(ctx.registry, outcome.record, sessionId)
   });
 }
 
@@ -469,10 +470,11 @@ export async function handleDeleteSession(
   ctx: SessionRouteContext
 ): Promise<Response> {
   const sessionKey = resolveSessionStorageKey(route.sessionId, ctx.tenantId);
-  const existing = await loadTenantSession(
+  const existing = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (existing === undefined) {
     return unknownSessionResponse(route.sessionId);
@@ -545,8 +547,9 @@ export async function handlePatchSessionMetadata(
     const written = await ctx.stores.session.set(updated.id, updated, current.version);
     if (written.ok) {
       return jsonResponse(200, {
-        // Surface the bare session id, not the namespaced storage key (FIX-682).
-        session: { ...updated, id: route.sessionId }
+        // Surface the bare session id, not the namespaced storage key (FIX-682),
+        // and only the state the flow exposes (FIX-1588).
+        session: toClientSession(ctx.registry, updated, route.sessionId)
       });
     }
   }
@@ -561,10 +564,11 @@ export async function handleListSessionRequests(
   route: Extract<ParsedFlowRoute, { kind: "list_session_requests" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
-  const session = await loadTenantSession(
+  const session = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (session === undefined) {
     return unknownSessionResponse(route.sessionId);

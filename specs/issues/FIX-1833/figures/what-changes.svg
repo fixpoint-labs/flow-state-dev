@@ -1,0 +1,99 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="Four lanes, each one post read left to right. Today, a plain ask runs the chief of staff's own model turn, which writes a line and hands the post to the EM, and then the EM answers. After, the same plain ask goes to one Jev call that picks the EM at high confidence, and the EM answers, with no chief-of-staff turn and no line. An ask to hire goes to the Jev call, which picks the chief of staff itself, so its own turn runs and hires, as today. A vague ask that Jev puts on the EM below the 0.7 floor also goes to the chief of staff's own turn."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .post  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .turn  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; }
+    .jev   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .dlg   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .none  { fill:none; stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+  <text class="t-lbl" x="140" y="20">THE POST</text>
+  <text class="t-lbl" x="272" y="20">WHO DECIDES</text>
+  <text class="t-lbl" x="492" y="20">IN THE CONVERSATION</text>
+  <text class="t-lbl" x="712" y="20">WHO ANSWERS</text>
+
+  <g id="today-plain">
+    <rect class="lane" x="16" y="30" width="908" height="64" rx="5"/>
+    <text class="t-lbl" x="28" y="54">TODAY</text>
+    <text class="t-b" x="28" y="72">a plain ask</text>
+    <rect class="post" x="140" y="42" width="112" height="40" rx="4"/>
+    <text class="t-s" x="150" y="66">"file this feature"</text>
+    <line class="arrow" x1="252" y1="62" x2="270" y2="62"/>
+    <rect class="turn" x="270" y="42" width="200" height="40" rx="4"/>
+    <text class="t-b" x="280" y="59">its own model turn</text>
+    <text class="t-s" x="280" y="74">reads delegates, hands on</text>
+    <line class="arrow" x1="470" y1="62" x2="490" y2="62"/>
+    <rect class="turn" x="490" y="42" width="200" height="40" rx="4"/>
+    <text class="t-b" x="500" y="59">a chief-of-staff line</text>
+    <text class="t-s" x="500" y="74">before the answer</text>
+    <line class="arrow" x1="690" y1="62" x2="710" y2="62"/>
+    <rect class="dlg" x="710" y="42" width="200" height="40" rx="4"/>
+    <text class="t-b" x="720" y="59">eng.em</text>
+    <text class="t-s" x="720" y="74">"Filed … on the board."</text>
+  </g>
+
+  <g id="after-plain">
+    <rect class="lane" x="16" y="104" width="908" height="64" rx="5"/>
+    <text class="t-lbl" x="28" y="128">AFTER</text>
+    <text class="t-b" x="28" y="146">a plain ask</text>
+    <rect class="post" x="140" y="116" width="112" height="40" rx="4"/>
+    <text class="t-s" x="150" y="140">"file this feature"</text>
+    <line class="arrow" x1="252" y1="136" x2="270" y2="136"/>
+    <rect class="jev" x="270" y="116" width="200" height="40" rx="4"/>
+    <text class="t-b" x="280" y="133">one Jev call</text>
+    <text class="t-s" x="280" y="148">eng.em at .78 – 1</text>
+    <line class="arrow" x1="470" y1="136" x2="490" y2="136"/>
+    <rect class="none" x="490" y="116" width="200" height="40" rx="4"/>
+    <text class="t-s" x="500" y="140">no turn, no line</text>
+    <line class="arrow" x1="690" y1="136" x2="710" y2="136"/>
+    <rect class="dlg" x="710" y="116" width="200" height="40" rx="4"/>
+    <text class="t-b" x="720" y="133">eng.em</text>
+    <text class="t-s" x="720" y="148">"Filed … on the board."</text>
+  </g>
+
+  <g id="after-own">
+    <rect class="lane" x="16" y="178" width="908" height="64" rx="5"/>
+    <text class="t-lbl" x="28" y="202">AFTER</text>
+    <text class="t-b" x="28" y="220">an ask for it</text>
+    <rect class="post" x="140" y="190" width="112" height="40" rx="4"/>
+    <text class="t-s" x="150" y="214">"hire an auditor"</text>
+    <line class="arrow" x1="252" y1="210" x2="270" y2="210"/>
+    <rect class="jev" x="270" y="190" width="200" height="40" rx="4"/>
+    <text class="t-b" x="280" y="207">one Jev call</text>
+    <text class="t-s" x="280" y="222">the chief of staff at .80 – 1</text>
+    <line class="arrow" x1="470" y1="210" x2="490" y2="210"/>
+    <rect class="turn" x="490" y="190" width="420" height="40" rx="4"/>
+    <text class="t-b" x="500" y="207">its own model turn, as today</text>
+    <text class="t-s" x="500" y="222">hires, fires, starts a project, answers about the team</text>
+  </g>
+
+  <g id="after-unsure">
+    <rect class="lane" x="16" y="252" width="908" height="64" rx="5"/>
+    <text class="t-lbl" x="28" y="276">AFTER</text>
+    <text class="t-b" x="28" y="294">a vague ask</text>
+    <rect class="post" x="140" y="264" width="112" height="40" rx="4"/>
+    <text class="t-s" x="150" y="288">"can eng take this?"</text>
+    <line class="arrow" x1="252" y1="284" x2="270" y2="284"/>
+    <rect class="jev" x="270" y="264" width="200" height="40" rx="4"/>
+    <text class="t-b" x="280" y="281">one Jev call</text>
+    <text class="t-s" x="280" y="296">eng.em at .02 – .36: below .7</text>
+    <line class="arrow" x1="470" y1="284" x2="490" y2="284"/>
+    <rect class="turn" x="490" y="264" width="420" height="40" rx="4"/>
+    <text class="t-b" x="500" y="281">its own model turn, as today</text>
+    <text class="t-s" x="500" y="296">decides, and can still hand it to eng.em</text>
+  </g>
+</svg>

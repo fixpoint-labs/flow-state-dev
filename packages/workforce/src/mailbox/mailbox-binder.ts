@@ -225,7 +225,9 @@ export interface OpenMailboxesOptions {
    * create; the other two exist only to answer a 409.
    *
    * Structurally typed rather than imported so this package does not take a
-   * dependency on `@flow-state-dev/client`; a real `SessionClient` satisfies it.
+   * dependency on `@flow-state-dev/client`. A `SessionClient` serves
+   * `createSession` and `deleteSession`; `getSession` must read the stored
+   * record (see below).
    */
   client: {
     createSession: (options: {
@@ -241,6 +243,9 @@ export interface OpenMailboxesOptions {
      * whether a session exists.
      *
      * `state` is the session's raw state — the same thing the post fence reads.
+     * Read it from the session store, not `SessionClient.getSession`: the
+     * session route sends only the state a flow exposes, and a mailbox exposes
+     * none, so an open mailbox would read as empty and be deleted.
      * `flowKind`, `flowId` and `userId` are the occupant's identity, and they
      * are read before anything is deleted: a session id is unique per
      * principal, not per flow, so an id collision here is somebody else's
