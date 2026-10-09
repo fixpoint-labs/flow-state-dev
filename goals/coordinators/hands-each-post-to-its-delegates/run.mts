@@ -29,7 +29,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { buildShiftManagerPages, startShiftManager } from "../../lib/shift-manager.mts";
 import { CONTROL_NAMES, CONTROLS, controlEnv, describePatch, type Control } from "./controls/patches.mts";
-import { COS, cosDefaults, devteamLegs, loadShipped, type LegResult, type Person } from "./devteam.mts";
+import { boardMailboxes, COS, cosDefaults, devteamLegs, loadShipped, type LegResult, type Person } from "./devteam.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("coordinators-delegates");
@@ -225,7 +225,7 @@ await runGoal(async () => {
       });
       try {
         say(`attempt ${attempt} of ${attempts}, legs ${pending.join(", ")}: DevTeam at ${served.origin}; the chief of staff's defaults: [${defaults.join(", ")}]`);
-        const ran = await devteamLegs({ origin: served.origin, shipped, alice, bob, defaults, legs: new Set(pending), asks, say });
+        const ran = await devteamLegs({ origin: served.origin, shipped, alice, bob, defaults, legs: new Set(pending), asks, boardMailboxes: boardMailboxes(checkout.root), say });
         for (const t of ran.turns) say(`attempt ${attempt} turn (${t.leg}) ${t.status}: tools ${t.tools.map((x) => x.name).join(", ") || "none"}; reply: ${t.reply.slice(0, 240).replace(/\n/g, " ")}${t.providerRetry === undefined ? "" : ` (re-run after a provider error: ${t.providerRetry})`}`);
         for (const l of pending) {
           const r = ran.legs[l];

@@ -1,5 +1,5 @@
 {
-  "a": "Hand this to whichever of your delegates files features for the engineering team: {slug}: show a {word} badge on the storefront cart.",
+  "a": "Hand this to whichever of your delegates files features for the engineering team:\n{slug}: show a {word} badge on the storefront cart.",
   "c": "Audit our dependencies' licenses. If none of your delegates does that, hire someone who does.",
   "d": "Who are your delegates in this conversation? Name each one by its worker id.",
   "f": "Add the worker {worker} to this conversation's delegates."

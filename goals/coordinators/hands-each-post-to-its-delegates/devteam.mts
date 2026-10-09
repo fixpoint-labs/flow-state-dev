@@ -16,7 +16,7 @@
  * commit drives that commit's own clients.
  */
 import { randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
@@ -221,11 +221,65 @@ export interface DevteamOptions {
   defaults: string[];
   legs: ReadonlySet<string>;
   asks: { a: string; c: string; d: string; f: string };
+  /** The mailboxes whose boards the EM files on, by id, read off the commit's tree. */
+  boardMailboxes: string[];
   say: (line: string) => void;
 }
 
 /** The chief of staff's id: its wire id since FIX-1719, pinned by the spec. */
 export const COS = "chief-of-staff";
+
+/** The ids of the DevTeam mailboxes that declare `boards:`, read off the commit's tree. */
+export function boardMailboxes(root: string): string[] {
+  const teams = join(root, "packages", "shift-manager", "teams", "devteam", "workforce", "teams");
+  const ids: string[] = [];
+  for (const team of existsSync(teams) ? readdirSync(teams) : []) {
+    const mailboxes = join(teams, team, "mailboxes");
+    for (const name of existsSync(mailboxes) ? readdirSync(mailboxes) : []) {
+      const file = join(mailboxes, name, "MAILBOX.md");
+      if (existsSync(file) && /^boards:/m.test(readFileSync(file, "utf8"))) ids.push(`${team}.${name}`);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Whether the EM filed the feature leg a handed it: its answer in the
+ * conversation says `Filed <id> on the board.`, and a board Alice can read,
+ * through the mailbox session and the refs Shift Manager reads, holds that
+ * row with the held-out word in its goal.
+ */
+async function filedOnBoard(
+  alice: Connected,
+  conversation: string,
+  em: string,
+  theWord: string,
+  mailboxes: readonly string[],
+): Promise<{ failure: string; note?: undefined } | { failure?: undefined; note: string }> {
+  let answer: string | undefined;
+  for (const until = Date.now() + 60_000; answer === undefined && Date.now() < until; await sleep(1_000)) {
+    answer = (await alice.routes.items(conversation, "message")).filter((i) => (i as { agentName?: string }).agentName === em).map(textOf).at(-1);
+  }
+  if (answer === undefined) return { failure: `no answer from ${em} landed in the conversation within 60 s` };
+  const id = /^Filed (\S+) on the board\.$/.exec(answer.trim())?.[1];
+  if (id === undefined) return { failure: `${em} answered "${answer.slice(0, 200)}", not that it filed the feature` };
+  const seen: string[] = [];
+  for (const mailbox of mailboxes) {
+    const manifest = await alice.routes.get(`/sessions/${encodeURIComponent(mailbox)}/manifest`).catch(() => undefined);
+    const refs = ((manifest?.resources ?? []) as Array<{ kind: string; ref: string; pattern?: string }>)
+      .filter((r) => r.kind === "collection" && r.ref.startsWith(`${mailbox}.`) && r.pattern === `${r.ref}/**`)
+      .map((r) => r.ref);
+    for (const ref of refs) {
+      const rows = await alice.routes.collection(mailbox, `${ref}/**`);
+      seen.push(`${ref}: ${rows.length} row(s)`);
+      const row = rows.find((candidate) => candidate.id === id);
+      if (row === undefined) continue;
+      if (!String(row.goal ?? "").includes(theWord)) return { failure: `the row ${id} on ${ref} doesn't carry the word "${theWord}": ${show(row)}` };
+      return { note: `${em} answered "${answer}", and ${ref} holds ${id} with the word in its goal` };
+    }
+  }
+  return { failure: `${em} said it filed ${id}, but no board Alice can read holds it (${seen.join("; ") || "no board read"})` };
+}
 
 /** The chief of staff's `delegates:` as the commit's file lists them. */
 export function cosDefaults(root: string): string[] {
@@ -289,6 +343,13 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       const judged = records.filter((d) => d.by === "judgment");
       if (records.length !== 1 || judged.length !== 1 || !(judged[0]!.delegates as any[]).some((d) => d.worker === em && d.outcome === "delivered")) {
         r.failures.push(`${name}:judgment-record — wanted one \`by: judgment\` record delivering to ${em}; the post has ${records.length === 0 ? "none" : show(records)}`);
+      }
+      // The real outcome of the hand-off: the EM filed the feature line, and
+      // the row is on the team's board, read the way Shift Manager reads it.
+      if (name === "a") {
+        const filed = await filedOnBoard(alice, cos.id, em, theWord, o.boardMailboxes);
+        if (filed.failure !== undefined) r.failures.push(`a:filed — ${filed.failure}`);
+        else r.notes.push(filed.note);
       }
       // The second ask must reuse the session the first opened. A first ask that
       // opened none (leg a run only as this leg's setup, and red) leaves nothing
