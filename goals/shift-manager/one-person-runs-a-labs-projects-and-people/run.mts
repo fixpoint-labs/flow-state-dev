@@ -24,9 +24,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { buildShiftManagerPages } from "../../lib/shift-manager.mts";
+import { buildShiftManagerPages, devteamCosModel } from "../../lib/shift-manager.mts";
 import { extraFlow, noCos, noTool, scratchLab, type Patch } from "./controls/patches.mts";
 import { j4, type J4Result } from "./j4.mts";
 import { legA, readBack } from "./legs/a.mts";
@@ -43,8 +43,8 @@ const wants = (part: (typeof ALL)[number]) => ONLY.length === 0 || ONLY.includes
 
 /** The commit before FIX-1650's first child merged (FIX-1718's #2647): today's `main`, as a control. */
 const TODAYS_MAIN = "1afe16ffeed2ed6c6ac1c4391ceaedbc2b9fb4e1";
-const MODEL = "anthropic/claude-haiku-5-5";
-const MODEL_KEYS = ["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"];
+const MODEL = devteamCosModel();
+const MODEL_KEYS = keysServing(MODEL);
 const CONFIG = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "fsdev.config.mts");
 const git = (...args: string[]) => execFileSync("git", ["-C", REPO_ROOT, ...args], { encoding: "utf8" }).trim();
 
@@ -148,7 +148,7 @@ function todaysMainCheckout(): { root: string; tsx: string } {
 
 await runGoal(async (failures) => {
   if (!MODEL_KEYS.some((k) => (process.env[k] ?? "") !== "")) {
-    return { failures: [`blocked (QR-4): no model key; none of ${MODEL_KEYS.join(", ")} is set`], evidence: "" };
+    return { failures: [`blocked (QR-4): no key here serves the chief of staff's model, ${MODEL}; none of ${MODEL_KEYS.join(", ")} is set`], evidence: "" };
   }
   const head = git("rev-parse", "HEAD");
   const base = git("merge-base", "HEAD", "origin/main");

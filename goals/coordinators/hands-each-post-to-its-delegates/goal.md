@@ -26,7 +26,7 @@
 
 **Attempts:** legs a to d, f and g run on a real model, which doesn't route the same way every time. Each runs until it first passes, up to three attempts (`GOAL_ATTEMPTS`), each on a fresh store and a fresh Lab, and each running only the legs still red. A leg's verdict names the attempt it passed on, and every attempt is printed, so the verdict log records how often a leg passes, not only that it did. Under a control there is one attempt. Leg e is scripted and runs once.
 
-**Model:** real — `anthropic/claude-haiku-5-5` (the DevTeam chief of staff's own setting) on legs a to d, f and g; leg e is scripted and needs none. With none of `AI_GATEWAY_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY` set, legs a to d, f and g fail and say so.
+**Model:** real — `anthropic/claude-haiku-5-5` (the DevTeam chief of staff's own setting) on legs a to d, f and g; leg e is scripted and needs none. The run reads the model from that file and needs a key that serves it here (`keysServing` in `goals/lib/model.mts`): for an Anthropic model, `AI_GATEWAY_API_KEY`, since this repo installs no direct Anthropic or OpenRouter provider. Without one, legs a to d, f and g are blocked and say so.
 
 **Model-free run:** `GOAL_LEGS=e`
 

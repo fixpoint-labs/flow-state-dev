@@ -23,7 +23,7 @@
 
 **Anti-game:** expected values come from the store and the tree, never from the check or from Shift Manager's own data module. The `cos` leg grades the store, never the chief of staff's words: without the tool, the model has answered that it created both projects while the store held none. Rows are written by the profile's own code at boot. The page's lines go through its composer and the owner's talk session; the room is read back over HTTP through each member's own talk session, with each user's own bearer. The outsider legs run in the same organization, so only the membership check stands between it and the room.
 
-**Model:** `anthropic/claude-haiku-5-5` (the DevTeam chief of staff's own) for the chief of staff in the `cos` leg, through the default resolver; it needs one of `AI_GATEWAY_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY`, and fails with a precondition message when none is set. The other legs are model-free: the DevTeam harness is the lab's scripted stub, and the EM answers a room line without a model.
+**Model:** `anthropic/claude-haiku-5-5` (the DevTeam chief of staff's own) for the chief of staff in the `cos` leg, through the default resolver; it needs a key that serves the model the chief of staff's file names (`keysServing` in `goals/lib/model.mts`; for an Anthropic model, `AI_GATEWAY_API_KEY`), and the leg is blocked and says so when none is set. The other legs are model-free: the DevTeam harness is the lab's scripted stub, and the EM answers a room line without a model.
 
 **Model-free run:** `GOAL_LEG=model-free` (every leg but `cos`; `pnpm goal:all --model-free` runs it this way)
 

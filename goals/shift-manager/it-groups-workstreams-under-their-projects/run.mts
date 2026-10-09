@@ -65,8 +65,8 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, loadFixture, runGoal } from "../../lib/index.mts";
-import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
+import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, loadFixture, runGoal } from "../../lib/index.mts";
+import { SHIFT_MANAGER_COMMAND, devteamCosModel, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { LAB_CROWD, LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
 
@@ -118,7 +118,6 @@ const WRITE_LATENCY_MS = 30;
 const COS = "chief-of-staff";
 /** How long one turn of the chief of staff may take: a real model answers it. */
 const COS_TURN_MS = 180_000;
-const MODEL_KEYS = ["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"];
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const sorted = (values: Iterable<string>) => [...values].sort();
@@ -824,9 +823,11 @@ async function restarted(before: Kept[], owner: LabApi, host: string, fail: (leg
 }
 
 await runGoal(async (failures) => {
-  if (COS_LEG && !MODEL_KEYS.some((key) => (process.env[key] ?? "") !== "")) {
+  const cosModel = devteamCosModel();
+  const modelKeys = keysServing(cosModel);
+  if (COS_LEG && !modelKeys.some((key) => (process.env[key] ?? "") !== "")) {
     return {
-      failures: [`precondition: the cos leg runs the chief of staff on a real model, and none of ${MODEL_KEYS.join(", ")} is set. GOAL_LEG=model-free runs the other legs without one`],
+      failures: [`blocked: the cos leg runs the chief of staff on ${cosModel}, and no key here serves it; none of ${modelKeys.join(", ")} is set. GOAL_LEG=model-free runs the other legs without one`],
       evidence: "",
     };
   }

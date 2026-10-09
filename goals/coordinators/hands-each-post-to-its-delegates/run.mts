@@ -26,14 +26,13 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
-import { buildShiftManagerPages, startShiftManager } from "../../lib/shift-manager.mts";
+import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, runGoal } from "../../lib/index.mts";
+import { buildShiftManagerPages, devteamCosModel, startShiftManager } from "../../lib/shift-manager.mts";
 import { CONTROL_NAMES, CONTROLS, controlEnv, describePatch, type Control } from "./controls/patches.mts";
 import { boardMailboxes, COS, cosDefaults, devteamLegs, loadShipped, type LegResult, type Person } from "./devteam.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("coordinators-delegates");
-const MODEL_KEYS = ["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"];
 const ALL_LEGS = ["a", "b", "c", "d", "e", "f", "g"] as const;
 const say = (s: string) => console.error(`[coordinators ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
@@ -192,8 +191,11 @@ await runGoal(async () => {
   const devLegs = [...legs].filter((l) => l !== "e");
 
   if (devLegs.length > 0) {
-    const keys = MODEL_KEYS.filter((k) => (process.env[k] ?? "") !== "");
-    if (keys.length === 0) return { failures: [`blocked: no model key; none of ${MODEL_KEYS.join(", ")} is set`], evidence: "" };
+    const cosModel = devteamCosModel(checkout.root);
+    const modelKeys = keysServing(cosModel);
+    if (!modelKeys.some((k) => (process.env[k] ?? "") !== "")) {
+      return { failures: [`blocked: no key here serves the chief of staff's model, ${cosModel}; none of ${modelKeys.join(", ")} is set`], evidence: "" };
+    }
     const profile = join(checkout.root, "packages", "shift-manager", "teams", "devteam");
     const host = (await import(pathToFileURL(join(profile, "host.mts")).href)) as { LAB_USERS?: Record<string, { userId: string; bearer: string }> };
     const users = host.LAB_USERS;
