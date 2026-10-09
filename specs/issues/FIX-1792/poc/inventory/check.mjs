@@ -297,7 +297,7 @@ const FILE_CLASS = {
   "apps/docs/docs/workforce/workforce-overview.svg": "E · S12 · the figure draws a MAILBOX.md",
   "apps/kitchen-sink/README.md": "C · S6 · the help desk is a coordinator; the escalation feature goes",
   "apps/kitchen-sink/app/page.tsx": "C · S6 · the page talks to the help coordinator",
-  "apps/kitchen-sink/components/flow-state/chat-assistant.tsx": "E · S6 · renders coordinator-route, not mailbox-route",
+  "apps/kitchen-sink/components/flow-state/chat-assistant.tsx": "E · S9 · with the registry copy it is installed from (upstream first): mailbox-route goes; no coordinator-route item reaches this renderer, the coordinator panel draws messages only",
   "apps/kitchen-sink/components/picked-session-panel.tsx": "C · S6 · the picked conversation is the coordinator's",
   "apps/kitchen-sink/e2e/talk-from-page.spec.ts": "C · S6 · posts through the coordinator; the escalation leg goes",
   "apps/kitchen-sink/e2e/workforce-shell.spec.ts": "C · S6 · the escalations panel goes",
