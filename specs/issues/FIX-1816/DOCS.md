@@ -25,8 +25,9 @@ reconcile the wording to that test as shipped.
 >
 > Every ask has a time limit: five minutes unless the worker sets its own, anywhere from 30
 > seconds to an hour. If the task hasn't ended by then, the turn gets a timeout error at the next
-> background sweep, and the task is cancelled. The sweep runs every ten minutes by default, so
-> the error can arrive up to one sweep late; a host that needs tighter limits sweeps more often.
+> background sweep, and the task is cancelled. On a long-lived server the sweep wakes for the
+> earliest deadline, so the error arrives within seconds of the limit. Where the sweep runs as an
+> external cron job, as on a serverless host, a timeout fires no later than the next run.
 > Stopping the conversation while it waits cancels the task and ends the turn. A worker that is itself
 > working a task can't wait; it files without waiting, so asks never nest.
 >

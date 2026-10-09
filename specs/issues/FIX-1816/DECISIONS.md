@@ -192,13 +192,24 @@ owner wants the bound in the filer's hands before ask ships in P3.
 | **Five minutes when `timeoutMs` is not set** | Keeping ten | A colleague whose real work takes six to ten minutes times out unless its filer asks for more. The model sees `wait_timed_out` and can ask again with a longer bound |
 | **`timeoutMs` from 30 seconds to 60 minutes** | No range, or a wider one | Under 30 seconds nothing useful finishes; past an hour the turn is closer to an assignment, and assign ([FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817)) is the hand-off for it. A filer who needs more is refused and must assign instead |
 | **An out-of-range `timeoutMs` is refused with `wait_timeout_out_of_range`, nothing filed** | Clamping it into range | A model that asked for two hours is told so and picks again, rather than silently getting an hour it didn't ask for. Costs one wasted step when it happens |
+| **The sweep's next tick is the earliest pending ask deadline**, floor about a second | A fixed sweep, which leaves a timeout up to one interval late | A host with many asks sweeps more often. Each tick is a bounded batch, and an idle host keeps its interval |
 | **Stop works on every suspended turn, approval gates included** | Stopping only a turn parked on an ask | A person who today gets a refusal when stopping a turn waiting on an approval now ends it. No caller on `main` relies on that refusal; it reads as "already finished", which is false. Making stop ask-only would need a second rule for which suspensions it reaches |
 
-**One consequence to know, not a conflict:** the deadline is honoured at the sweep's
-resolution. The durability sweep runs every ten minutes by default, so a 30-second ask times out
-within ten and a half minutes on a default host, and the five-minute default within fifteen. A
-host that wants tighter bounds sets a shorter sweep. A second timer for asks alone was rejected
-before the gate ([Decided, not asked](#decided-not-asked)) and stays rejected.
+**The coordinator's call that makes A2 hold: the sweep's next tick is chosen from the earliest
+ask deadline.** On a fixed ten-minute sweep, a five-minute ask would time out anywhere from five to
+fifteen minutes, so a configured timeout would mean little. Instead, after each tick the sweeper
+schedules its next one at the earlier of its interval and the earliest pending ask deadline, with
+a floor of about a second and no busy loop. A turn that parks on an ask in this process tells the
+sweeper its deadline, so an ask filed just after a tick is not left waiting for the full interval.
+Asks then time out within seconds of their deadline, on any long-lived host. Where the sweep is an
+external cron, as on a serverless host, the bound is the cron's cadence: a timeout fires no later
+than the next sweep, and on a long-lived host that is the deadline itself.
+
+This is **not** the dedicated ask timer rejected before the gate
+([Decided, not asked](#decided-not-asked)), which stays rejected: there is still one sweeper per
+host and no timer per ask; only the moment of its next tick changes. *If wrong:* an early tick
+also runs the sweep's other steps, pruning included, more often while asks are pending; they are
+bounded batches, so the cost is a few extra store reads per ask.
 
 **Decided, not asked:** `timeoutMs` is offered only beside `waitForResponse`. Set without it,
 the call is refused before filing, never ignored, so a filer who meant to wait learns it didn't.
