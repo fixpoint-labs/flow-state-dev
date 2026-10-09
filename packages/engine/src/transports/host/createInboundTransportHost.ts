@@ -947,9 +947,9 @@ export function createInboundTransportHost(
           // Registered HERE rather than left to `runAction`, because between this
           // dispatch and the run's own registration the request is real,
           // discoverable, and cancellable by anyone reading the store — and yet
-          // has no controller for `abortRequest` to find. `runAction` re-registers
-          // (overwriting this one) when it actually starts, which is the same
-          // last-write-wins hand-off the enqueue-time record already uses, so this
+          // has no controller for `abortRequest` to find. `runAction` takes it
+          // over when it actually starts (keeping it, or swapping it for a fresh
+          // one), the same hand-off the enqueue-time record already uses, so this
           // adds a window rather than a second registry to keep in sync. The
           // `finally` below removes it on every exit, started or not.
           let queuedAbort = registerAbortController(requestId);
@@ -1172,7 +1172,7 @@ export function createInboundTransportHost(
               // cancelled, or timed out — so the pre-start window cannot leak
               // controllers into a long-lived process. Idempotent with
               // `runAction`'s own deregistration on the path where it did start.
-              deregisterAbortController(requestId);
+              deregisterAbortController(requestId, queuedAbort);
             });
         } else {
           // Nothing is written before the run here (`runAction` writes its own
