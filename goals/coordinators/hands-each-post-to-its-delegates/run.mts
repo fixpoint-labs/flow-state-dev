@@ -150,14 +150,31 @@ function gradeE(o: any): LegResult {
   if (order.join(",") !== "desk.alpha,desk.beta,desk.alpha") r.failures.push(`e:round-robin — three posts went to ${order.join(", ")}, not alpha, beta, alpha`);
   r.notes.push(`round robin: ${order.join(", ")}`);
 
-  // Everyone, one round.
+  // Everyone, one round: each delegate exactly once in round 0 and once in
+  // round 1, then nothing. Graded per delegate and per round, never as a
+  // total: three answers from one and one from the other is four as well.
   const ev = o.everyone;
-  const answers = (read: any) => (read.lines as any[]).filter((l) => l.agentName === "desk.alpha" || l.agentName === "desk.beta").length;
-  const byRound = (ev.graced.records as any[]).map((d) => `${d.round}:${d.by}:${(d.delegates as any[]).filter((x) => x.outcome === "delivered").length}`);
-  if (answers(ev.quiet) !== 4 || answers(ev.graced) !== 4) {
-    r.failures.push(`e:four-then-none — everyone with \`rounds: 1\` gave ${answers(ev.quiet)} answers, and ${answers(ev.graced)} after ${o.graceMs} ms more; wanted four, then none (records ${byRound.join(", ")})`);
+  const DELEGATES = ["desk.alpha", "desk.beta"];
+  const linesBy = (read: any) => Object.fromEntries(DELEGATES.map((w) => [w, (read.lines as any[]).filter((l) => l.agentName === w).length]));
+  const deliveredIn = (ev.graced.records as any[])
+    .filter((d) => d.postId === ev.post.requestId)
+    .flatMap((d) => (d.delegates as any[]).filter((x) => x.outcome === "delivered").map((x) => `${d.round}:${x.worker}`))
+    .sort();
+  const answeredInLedger = (ev.graced.ledger as any[])
+    .filter((d) => d.postId === ev.post.requestId && d.answered === true)
+    .map((d) => `${d.round}:${d.delegate.worker}`)
+    .sort();
+  const wanted = ["0:desk.alpha", "0:desk.beta", "1:desk.alpha", "1:desk.beta"];
+  const linesIn = { quiet: linesBy(ev.quiet), graced: linesBy(ev.graced) };
+  const twoEach = (counts: Record<string, number>) => DELEGATES.every((w) => counts[w] === 2);
+  if (deliveredIn.join(",") !== wanted.join(",") || answeredInLedger.join(",") !== wanted.join(",") || !twoEach(linesIn.quiet) || !twoEach(linesIn.graced)) {
+    r.failures.push(
+      `e:four-then-none — everyone with \`rounds: 1\` should hand each delegate the post once in round 0 and once in round 1, and land one answer from each per round, then nothing; ` +
+        `delivered (round:delegate) ${deliveredIn.join(", ") || "none"}, answered in the ledger ${answeredInLedger.join(", ") || "none"}, ` +
+        `lines per delegate ${show(linesIn.quiet)}, and ${show(linesIn.graced)} after ${o.graceMs} ms more`,
+    );
   }
-  r.notes.push(`everyone, rounds 1: ${answers(ev.quiet)} answers, ${answers(ev.graced)} after the grace; records ${byRound.join(", ")}`);
+  r.notes.push(`everyone, rounds 1: delivered ${deliveredIn.join(", ")}; answered ${answeredInLedger.join(", ")}; lines ${show(linesIn.quiet)}, ${show(linesIn.graced)} after the grace`);
   return r;
 }
 

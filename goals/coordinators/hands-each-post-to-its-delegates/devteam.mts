@@ -290,8 +290,14 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       if (records.length !== 1 || judged.length !== 1 || !(judged[0]!.delegates as any[]).some((d) => d.worker === em && d.outcome === "delivered")) {
         r.failures.push(`${name}:judgment-record — wanted one \`by: judgment\` record delivering to ${em}; the post has ${records.length === 0 ? "none" : show(records)}`);
       }
-      if (name === "b" && emSession !== undefined && toEm[0]?.sessionId !== undefined && toEm[0].sessionId !== emSession) {
-        r.failures.push(`b:same-session — the second delivery went to ${toEm[0].sessionId}, not leg a's ${emSession}`);
+      // The second ask must reuse the session the first opened. A first ask that
+      // opened none (leg a run only as this leg's setup, and red) leaves nothing
+      // to reuse, and that fails here rather than skipping the check.
+      if (name === "b") {
+        const second = toEm[0]?.sessionId;
+        if (emSession === undefined) r.failures.push(`b:same-session — the first ask opened no ${em} session for this conversation, so the second had none to reuse`);
+        else if (second === undefined) r.failures.push(`b:same-session — the second ask was delivered into no ${em} session, so it reused none`);
+        else if (second !== emSession) r.failures.push(`b:same-session — the second delivery went to ${second}, not the first ask's ${emSession}`);
       }
       emSession ??= toEm[0]?.sessionId;
     }
