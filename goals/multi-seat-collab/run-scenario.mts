@@ -24,7 +24,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { openMailboxes } from "@flow-state-dev/workforce";
+import { WORKER_ID_STATE_KEY, openMailboxes } from "@flow-state-dev/workforce";
 import { REPO_ROOT, intentFreeEnv, refuseIfAnswering, stopProcessGroup } from "../lib/index.mts";
 import { LAB_USER_ID, type LabTree } from "../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
 import { FILE_ENTRY, type FileInput } from "../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/planner.mts";
@@ -173,8 +173,8 @@ export interface ChangeRecord {
   taskId: string;
   /** The session the emitting request ran in. */
   sessionId: string;
-  /** The flow instance that owns that session. */
-  flowId: string;
+  /** The worker that session names in its state (`workerId`), or `null` when it names none. */
+  workerId: string | null;
   /** The principal the emitting request ran as. */
   userId: string;
   /** The action the emitting request ran. */
@@ -262,7 +262,7 @@ export class Scenario {
     await openMailboxes([this.tree.mailbox], { client, userId: LAB_USER_ID });
     // A seat has no flow of its own: its session is on the one copy of the flow it runs on, naming it.
     for (const seat of [this.tree.plannerId, ...this.tree.workerIds]) {
-      await client.createSession({ flowKind: this.tree.seatFlows[seat]!, userId: LAB_USER_ID, sessionId: this.seatSession(seat), state: { workerId: seat } });
+      await client.createSession({ flowKind: this.tree.seatFlows[seat]!, userId: LAB_USER_ID, sessionId: this.seatSession(seat), state: { [WORKER_ID_STATE_KEY]: seat } });
     }
   }
 
@@ -373,21 +373,22 @@ export class Scenario {
   }
 
   /**
-   * Every task change the run emitted, anywhere, with the session, owner,
-   * principal and action of the request that emitted it. A change is emitted
+   * Every task change the run emitted, anywhere, with the session (and the
+   * worker it names), principal and action of the request that emitted it. A change is emitted
    * into the session that made it, so for a claim this is the claim's identity
    * as the server recorded it.
    */
   async changes(): Promise<ChangeRecord[]> {
     const out: ChangeRecord[] = [];
     for (const session of await this.sessions()) {
+      const worker = session.state?.[WORKER_ID_STATE_KEY];
       for (const request of await this.requests(String(session.id))) {
         for (const change of taskChangesOf(request.items ?? [])) {
           out.push({
             kind: change.kind,
             taskId: change.taskId,
             sessionId: String(session.id),
-            flowId: String(session.flowId ?? session.flowKind),
+            workerId: typeof worker === "string" ? worker : null,
             userId: String(request.userId),
             action: String(request.actionName),
             requestId: String(request.id),
