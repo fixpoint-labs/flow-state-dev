@@ -31,7 +31,9 @@
  *
  * Controls:
  *
- *   optimistic-reply  Shift Manager built with `src/lib/cos.ts` swapped for
+ *   optimistic-reply  Shift Manager built with `src/lib/conversation.ts` (the
+ *                     conversation hook) and `src/lib/send.ts` (the send path
+ *                     its composer calls) swapped for
  *                     `controls/optimistic-reply.ts`: the line and a canned
  *                     reply are drawn without calling the door. Must fail at
  *                     "talk".
@@ -57,9 +59,11 @@ import { SHIFT_MANAGER_COMMAND, servedAddresses, workerOf } from "../../lib/shif
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
+/** Each control's source modules, and the module under `controls/` that stands in for all of them. */
 const SWAPS = {
-  "optimistic-reply": { module: join("src", "lib", "cos.ts"), with: "optimistic-reply.ts" },
-  "static-brief": { module: join("src", "lib", "derive.ts"), with: "static-brief.ts" },
+  // The conversation hook, and the send path its composer calls: both, so the reply is drawn and nothing is sent.
+  "optimistic-reply": { modules: [join("src", "lib", "conversation.ts"), join("src", "lib", "send.ts")], with: "optimistic-reply.ts" },
+  "static-brief": { modules: [join("src", "lib", "derive.ts")], with: "static-brief.ts" },
 } as const;
 type Control = keyof typeof SWAPS;
 if (CONTROL === "list") {
@@ -96,8 +100,8 @@ async function buildShiftManager(control: string): Promise<string> {
   const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
   const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const spec = control === "" ? undefined : SWAPS[control as Control];
-  const swap = spec === undefined ? undefined : { target: join(SHIFT_MANAGER, spec.module), with: join(HERE, "controls", spec.with) };
-  let swapped = 0;
+  const swap = spec === undefined ? undefined : { targets: spec.modules.map((m) => join(SHIFT_MANAGER, m)), with: join(HERE, "controls", spec.with) };
+  const swapped = new Set<string>();
   await vite.build({
     root: SHIFT_MANAGER,
     configFile: join(SHIFT_MANAGER, "vite.config.ts"),
@@ -114,14 +118,15 @@ async function buildShiftManager(control: string): Promise<string> {
               async resolveId(this: any, source: string, importer: string | undefined, options: Record<string, unknown>) {
                 if (importer === undefined || importer === swap.with) return null;
                 const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-                if (resolved?.id !== swap.target) return null;
-                swapped += 1;
+                if (resolved === null || !swap.targets.includes(resolved.id)) return null;
+                swapped.add(resolved.id);
                 return swap.with;
               },
             },
           ],
   });
-  if (swap !== undefined && swapped === 0) throw new Error(`control ${control}: the build never imported ${swap.target}, so nothing was swapped`);
+  const missed = swap?.targets.filter((target) => !swapped.has(target)) ?? [];
+  if (missed.length > 0) throw new Error(`control ${control}: the build never imported ${missed.join(", ")}, so nothing was swapped there`);
   return outDir;
 }
 
