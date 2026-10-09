@@ -297,11 +297,13 @@ The conversation that filed a task hears once when it ends, in a line under the 
 Task "Audit our dependencies' licenses" (task_…) completed by licenses: All 214 dependencies are MIT or Apache-2.0.
 ```
 
-It hears when a task completes, with what came back; when it fails for good, with the error; and when it stops on a question, with the question. A task gets two attempts, and a first failure just runs it again without a word. A coordinator that routes by judgment then takes a turn to read the line and decide what to do next. One with a fixed routing policy shows the line and nothing more. A line that arrives while the coordinator is replying to you starts its turn right away, beside that reply.
+It hears when a task completes, with what came back; when it fails for good, with the error; and when it stops on a question, with the question. When the line arrives, a coordinator that routes by judgment takes a turn to read it and decide what to do next. One with a fixed routing policy shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word.
+
+### Managing tasks
 
 | Action | What it does |
 | --- | --- |
-| `listTasks_tasks` | This conversation's tasks, and nobody else's |
+| `listTasks_tasks` | This conversation's tasks only, even when another conversation has the same coordinator and the same delegates |
 | `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id and starts at once |
 | `cancelTask_tasks` | Cancels a task that hasn't finished. Nothing is said in the conversation |
 
@@ -313,9 +315,7 @@ To open the session working a task, look it up by the task's id and the conversa
 const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId });
 ```
 
-Two conversations can file a task with the same id for the same worker, and each finds only its own task's session. A lookup without `taskId` never returns a task session, so a post to the same worker in this conversation still lands in its delegate session. `ensureWorkerSession` with a `taskId` never creates a session: until the board hands the task over, it throws.
-
-**Two conversations, two boards.** Each conversation's board is its own. Running one never takes, shows or waits on another conversation's tasks, even with the same coordinator and the same delegates.
+Two conversations can file a task with the same id for the same worker, and each finds only its own task's session. A lookup without `taskId` never returns a task session, so a post to the same worker in this conversation still lands in the session where that delegate works your posts. `ensureWorkerSession` with a `taskId` never creates a session: until the board hands the task over, it throws.
 
 ## Making your own flow a delegate
 
@@ -352,7 +352,7 @@ Then add it to `delegateFlows`. The door is handed `{ message }`, where the mess
 - **Stop a delegate at the deadline.** The round closes without it; the delegate's turn runs on.
 - **Recall a post.** Removing a delegate doesn't take back what it was handed.
 - **Pick by a delegate's instructions.** Best fit reads the delegate's note, or else its description, and nothing else.
-- **Let a delegate file tasks of its own.** A task session's `addTask` is refused, from the delegate's tools and from your app alike, so a delegate works the task it was handed itself.
+- **Let a delegate file tasks of its own.** A task session's `addTask` is refused, from the delegate's tools and from your app alike, with `{ "ok": false, "error": "no_delegation_board" }`.
 
 ## Related pages
 
