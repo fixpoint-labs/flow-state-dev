@@ -109,8 +109,7 @@ async function refused(attempt: () => Promise<{ status: string } | unknown>): Pr
   }
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const { markers, standard, fork, hire } = fixture;
   const dbFile = join(mkdtempSync(join(tmpdir(), "fsd-workers-as-resources-")), "goal.db");

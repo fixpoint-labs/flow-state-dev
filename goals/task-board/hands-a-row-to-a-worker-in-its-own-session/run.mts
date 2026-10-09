@@ -56,9 +56,8 @@ type LedgerRow = {
 // overrides before the engine builds its execution context.
 stripIntentOverrides();
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const fixture = loadFixture<Fixture>(import.meta.url);
-  const failures: string[] = [];
 
   if (fixture.seat === fixture.entry) {
     return {

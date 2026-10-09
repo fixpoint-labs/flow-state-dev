@@ -12,7 +12,10 @@
  * Checks (`specs/issues/FIX-1791/BUSINESS-RULES.md`): BR-33 (the chief of
  * staff runs on the coordinator flow, routing by judgment), BR-34's
  * mechanism (hire, add, hand off), BR-10 (its delegate read is the
- * conversation's list), and BR-9's record of a default that can't take a post.
+ * conversation's list, with what each takes), BR-9's record of a default that
+ * can't take a post (the coder, which takes tasks), naming the delegate that
+ * can, and the EM as a delegate that takes posts: it
+ * files the feature line a handed-on post carries, or says it filed nothing.
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,7 +23,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import { selectHarness } from "../teams/devteam/harness.mts";
+import { PHASE } from "../teams/devteam/phase.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createNotifyLog } from "../teams/devteam/notify.mts";
 
@@ -66,11 +71,11 @@ function scripted(calls: ToolCall[]): ModelResolver {
 
 let model: ModelResolver | undefined;
 
-async function open(): Promise<Lab> {
+async function open(stores: ReturnType<typeof inMemoryStores> = inMemoryStores()): Promise<Lab> {
   const harness = selectHarness();
   opened = await openLab({
     modelResolver: Object.assign((...args: Parameters<ModelResolver>) => model!(...args), { resolveId: (id: string) => id }),
-    stores: inMemoryStores(),
+    stores,
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-coordinator-")), remotes: { allow: ["file"] } },
@@ -91,11 +96,11 @@ async function conversation(lab: Lab): Promise<string> {
   return sessionId;
 }
 
-async function act(lab: Lab, sessionId: string, actionName: string, input: unknown) {
+async function act(lab: Lab, sessionId: string, actionName: string, input: unknown, flow = "coordinator") {
   const runtime = await lab.state.getRuntime();
   return (await runAction({
     orgId: LAB_ORG_ID,
-    flow: runtime.registry.get("coordinator") as FlowInstance,
+    flow: runtime.registry.get(flow) as FlowInstance,
     actionName,
     input,
     userId: LAB_USER_ID,
@@ -125,7 +130,12 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const id = await conversation(lab);
     const listed = await act(lab, id, "listDelegates", {});
     expect(listed.error).toBeUndefined();
-    expect(listed.output.delegates).toEqual([{ worker: "eng.em" }, { worker: "eng.coder" }]);
+    // What each one does (its WORKER.md description) and takes: the EM's flow takes posts and the
+    // coder's only tasks. What the chief of staff picks a hand-off by.
+    expect(listed.output.delegates).toEqual([
+      { worker: "eng.em", description: "Files each feature on the team's board; never does the work itself.", takes: "posts" },
+      { worker: "eng.coder", description: "Does the work a filed row names, in a checkout of its own.", takes: "tasks" },
+    ]);
     // The agent flow refuses it: a session names the flow its worker runs on.
     const onAgent = await lab.door("POST", `agent/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: COS } } });
     expect(onAgent.status).toBe(400);
@@ -156,12 +166,125 @@ describe("the chief of staff as a coordinator (S10)", () => {
   it("records a default delegate whose flow can't take a post as skipped, with why (BR-9)", async () => {
     const lab = await open();
     const id = await conversation(lab);
-    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }]);
+    model = scripted([{ toolName: "handOff", args: { worker: "eng.coder" } }]);
     expect((await act(lab, id, "run", { message: "plan the release" })).error).toBeUndefined();
     const items = await settledItems(lab, id);
     const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
     expect(record.data.delegates).toEqual([
-      { worker: "eng.em", outcome: "skipped", reason: 'Worker "eng.em" runs on flow "em", which can\'t take a delegated post.' },
+      {
+        worker: "eng.coder",
+        outcome: "skipped",
+        reason: 'Worker "eng.coder" runs on flow "coder", which can\'t take a delegated post. Delegates here that take posts: eng.em.',
+      },
     ]);
   });
+
+  it("hands feature work to its EM delegate, which files the post's feature line and says so (BR-12, BR-20)", async () => {
+    const lab = await open();
+    const id = await conversation(lab);
+    const issue = `cart-${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }]);
+    const post = `Get this filed for the team:\n${issue}: show a badge on the cart`;
+    expect((await act(lab, id, "run", { message: post })).error).toBeUndefined();
+    const items = await settledItems(lab, id);
+    const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
+    expect(record.data).toMatchObject({ by: "judgment", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
+    // The row the door would file for the line typed alone, on the EM's board.
+    const taskId = harnessTaskId(issue, PHASE);
+    expect((await lab.row(taskId))?.goal).toBe("show a badge on the cart");
+    // The EM's answer lands under its name, once.
+    const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
+    expect(answers).toEqual([`Filed ${taskId} on the board.`]);
+  });
+
+  // Only a whole line in the door's feature shape files: not a colon inside a
+  // sentence, not a label, not a link, and nothing in the delivery's heading.
+  for (const post of [
+    "can the team make the cart nicer?",
+    "Please investigate: https://example.com",
+    "Context: label: value",
+    "Look at this one:\nhttps://example.com/cart",
+  ]) {
+    it(`has its EM delegate file nothing, and say so, for ${JSON.stringify(post)}`, async () => {
+      const lab = await open();
+      const id = await conversation(lab);
+      model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }]);
+      const before = Object.keys(await lab.rows()).length;
+      expect((await act(lab, id, "run", { message: post })).error).toBeUndefined();
+      const items = await settledItems(lab, id);
+      const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
+      expect(answers).toEqual([
+        'Nothing filed: the line does not name a feature; this seat files from "<issue-slug>: <what the feature is>".',
+      ]);
+      expect(Object.keys(await lab.rows())).toHaveLength(before);
+    });
+  }
+
+  it("tells a coordinator with rounds when the EM's handed-on run is cancelled, so the round doesn't wait for its deadline", async () => {
+    // The EM's board read for one issue is held, so its run is still going when it is cancelled.
+    const issue = `hold-${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    let abandon = (_error: Error) => {};
+    const held = new Promise<void>((_resolve, reject) => (abandon = reject));
+    const memory = inMemoryStores();
+    let holding = false;
+    const lab = await open({
+      ...memory,
+      async resolve(...slots: Parameters<typeof memory.resolve>) {
+        const registry = await memory.resolve(...slots);
+        const store = registry.resourceState;
+        if (!holding && store !== undefined) {
+          holding = true;
+          // The board's write of the issue's row waits, inside the EM's turn.
+          registry.resourceState = new Proxy(store, {
+            get(target, key, receiver) {
+              const value = Reflect.get(target, key, receiver);
+              if (typeof value !== "function") return value;
+              return async (...args: unknown[]) => {
+                if (JSON.stringify(args)?.includes(issue)) await held;
+                return value.apply(target, args);
+              };
+            },
+          });
+        }
+        return registry;
+      },
+    });
+    // A coordinator of the person's own, with a round to send answers on, and the EM as its delegate.
+    const hired = await act(
+      lab,
+      "roster-cancel-test",
+      "hire",
+      { id: "release-desk", flow: "coordinator", description: "Runs the release.", settings: { delegates: ["eng.em"], rounds: 1 } },
+      "workforce-roster",
+    );
+    expect(hired.error).toBeUndefined();
+    const id = `s-desk-${globalThis.crypto.randomUUID()}`;
+    expect((await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: id, state: { workerId: "release-desk" } } })).status).toBe(201);
+    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }]);
+    expect((await act(lab, id, "run", { message: `${issue}: the release notes` })).error).toBeUndefined();
+
+    const runtime = await lab.state.getRuntime();
+    let running: { id: string } | undefined;
+    for (const until = Date.now() + 5_000; running === undefined && Date.now() < until; await new Promise((r) => setTimeout(r, 20))) {
+      running = (await runtime.stores.request.list({})).find((r) => r.status === "in_progress" && r.actionName === "onDelegatedPost");
+    }
+    expect(running, "the EM's handed-on run never started").toBeDefined();
+    expect((await lab.door("POST", `em/requests/${running!.id}/abort`)).status).toBe(204);
+    // The held write gives up, as a store call does when its request is cancelled under it.
+    abandon(new Error("the write was abandoned: its request was cancelled"));
+    await settledItems(lab, id);
+
+    const deliveries = ((await runtime.stores.session.get(id))?.state as { deliveries: any[] }).deliveries;
+    expect(deliveries.find((d) => d.delegate.worker === "eng.em")).toMatchObject({
+      answered: false,
+      missed: "its turn failed: its run was cancelled",
+    });
+  });
 });
+
+/** A stored message's text. */
+function textOf(item: { content?: unknown; text?: unknown }): string {
+  if (typeof item.text === "string") return item.text;
+  if (typeof item.content === "string") return item.content;
+  return ((item.content ?? []) as Array<{ text?: string }>).map((part) => part.text ?? "").join("");
+}

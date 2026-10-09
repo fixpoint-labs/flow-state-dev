@@ -116,8 +116,7 @@ function sseFrames(body: string): Array<Record<string, any>> {
     });
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   writeFileSync(OUTBOX, "", "utf8");
 
   // ---- a. the tree alone ----------------------------------------------------

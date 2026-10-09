@@ -303,7 +303,10 @@ describe("judgment (V7)", () => {
     await post(host, id, "who are your delegates?");
     const { all } = await host.items(id);
     const read = all.find((item: any) => item.type === "tool_output" && item.blockName === "listDelegates");
-    expect(read.output.delegates).toEqual((await host.sessionState(id)).delegates);
+    // The records as the session holds them, each with what it does and takes, which are read, never stored.
+    expect(read.output.delegates.map(({ takes: _takes, description: _description, ...record }: any) => record)).toEqual(
+      (await host.sessionState(id)).delegates
+    );
     // Never in its prompt: the turn's system text names no delegate.
     const prompt = JSON.stringify(judgment.calls[0]!.input);
     expect(prompt).not.toContain("eng.coder");
@@ -317,6 +320,63 @@ describe("judgment (V7)", () => {
     const id = await host.conversation("alice", "chief");
     await post(host, id, "anything");
     expect(host.heard).toEqual([]);
+  });
+
+  it("tells the model why a hand-off was skipped, and who takes posts instead, each sentence ending once", async () => {
+    const judgment = mockGenerator({
+      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "notes" } }] }, { text: "ok" }]
+    });
+    // `notes` runs on `quiet`, which takes no post: a default the hand-off can't reach.
+    const host = bootHost({ judgment, standard: standardWorkers({ chief: { delegates: ["eng.em", "notes"] } }) });
+    const id = await host.conversation("alice", "chief");
+    await post(host, id, "take notes on the release");
+    expect(host.heard).toEqual([]);
+    const told = (await host.items(id)).all.find((item: any) => item.type === "tool_output" && item.blockName === "handOff");
+    expect(told.output.note).toBe(
+      'Not handed to notes: Worker "notes" runs on flow "quiet", which can\'t take a delegated post. Delegates here that take posts: eng.em.'
+    );
+  });
+
+  it("names the delegates here that take posts when it refuses a hand-off, in the tool's answer and the record", async () => {
+    // The turn tries the delegate that takes only tasks first. Its refusal
+    // names the ones a hand-off reaches, so the turn's next pick needn't be a hire.
+    const judgment = mockGenerator({
+      script: [
+        { toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.builder" } }] },
+        { toolCalls: [{ toolCallId: "h2", toolName: "handOff", args: { worker: "eng.em" } }] },
+        { text: "Handed to the EM." }
+      ]
+    });
+    const host = bootHost({
+      judgment,
+      standard: standardWorkers({ chief: { delegates: ["eng.builder", "eng.em", "eng.lead"] } })
+    });
+    const id = await host.conversation("alice", "chief");
+    await post(host, id, "get this feature filed");
+    const refusal =
+      'Worker "eng.builder" runs on flow "tasker", which can\'t take a delegated post. ' +
+      "Delegates here that take posts: eng.em, eng.lead.";
+    const told = (await host.items(id)).all.filter((item: any) => item.type === "tool_output" && item.blockName === "handOff");
+    expect(told[0].output.note).toBe(`Not handed to eng.builder: ${refusal}`);
+    expect(heardBy(host)).toEqual(["eng.em"]);
+    const [record] = (await host.items(id)).records;
+    expect(record.delegates).toEqual([
+      { worker: "eng.builder", outcome: "skipped", reason: refusal },
+      { worker: "eng.em", outcome: "delivered" }
+    ]);
+  });
+
+  it("says so in a refused hand-off when no delegate here takes posts", async () => {
+    const judgment = mockGenerator({
+      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.builder" } }] }, { text: "ok" }]
+    });
+    const host = bootHost({ judgment, standard: standardWorkers({ chief: { delegates: ["eng.builder", "notes"] } }) });
+    const id = await host.conversation("alice", "chief");
+    await post(host, id, "get this feature filed");
+    const told = (await host.items(id)).all.find((item: any) => item.type === "tool_output" && item.blockName === "handOff");
+    expect(told.output.note).toBe(
+      'Not handed to eng.builder: Worker "eng.builder" runs on flow "tasker", which can\'t take a delegated post. No delegate here takes posts.'
+    );
   });
 });
 

@@ -32,9 +32,8 @@ type Fixture = {
 const fixture = loadFixture<Fixture>(import.meta.url);
 const root = join(fixtureDir(import.meta.url), fixture.root);
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const { documents, errors } = await readResourcesDirectory(root);
-  const failures: string[] = [];
 
   // 1. The documents are exactly the set the tree describes — no more, no
   //    fewer, and keyed the way the atlas keys them.

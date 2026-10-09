@@ -16,6 +16,9 @@
  * The check answers "is it yours, and can it take this", never "may it run":
  * FIX-1788's create check still links each delegate session at create, and
  * the delegate's own turn still loads its worker.
+ *
+ * `flowTakes` reads the same two facts about a flow, for `listDelegates` to
+ * say what each delegate takes.
  */
 import type { FlowType } from "@flow-state-dev/core/types";
 import type { RosterWorker, WorkerInstallation, WorkerTurnContext } from "../workers/installation";
@@ -37,6 +40,23 @@ export function takesDelegatedPost(flow: unknown): boolean {
 function takesTask(flow: unknown): boolean {
   const task = (flow as { task?: { actions?: Record<string, unknown> } } | undefined)?.task;
   return task?.actions !== undefined && Object.hasOwn(task.actions, WORKER_TASK_ENTRY);
+}
+
+/** What a delegate takes, as `listDelegates` says it. */
+export const DELEGATE_TAKES = ["posts", "tasks", "both", "nothing"] as const;
+
+export type DelegateTakes = (typeof DELEGATE_TAKES)[number];
+
+/**
+ * What a worker on flow `flowKind` takes, read as the check below reads it: a
+ * delegated post when `postFlows` holds the flow, a task when the flow
+ * declares the task entry.
+ */
+export function flowTakes(installation: WorkerInstallation, postFlows: ReadonlySet<string>, flowKind: string): DelegateTakes {
+  const post = postFlows.has(flowKind);
+  const task = takesTask(installation.workerFlows()[flowKind]?.flow);
+  if (post) return task ? "both" : "posts";
+  return task ? "tasks" : "nothing";
 }
 
 /**

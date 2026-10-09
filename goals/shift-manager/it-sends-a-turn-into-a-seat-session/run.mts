@@ -377,7 +377,7 @@ async function grade(
 
 // ---- the goal ----------------------------------------------------------------
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const devteam = await readDeclaredRoster(LABS.devteam.tree);
   const mailbox = devteam.mailboxes[0]!;
   const boardName = (mailbox.declared.boards as string[])[0]!;
@@ -387,7 +387,6 @@ await runGoal(async () => {
   const asker = (await readDeclaredRoster(LABS.asker.tree)).workers[0]!;
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
-  const failures: string[] = [];
   const evidence: string[] = [];
   const served = { devteam: await startLab("devteam", pages), asker: await startLab("asker", pages) };
   const browser = await launchChromium();
@@ -470,7 +469,11 @@ await runGoal(async () => {
       const config = (await page.evaluate(() => (window as any).__FSD_DEVTOOL_CONFIG__ ?? null)) as { userId?: string } | null;
       const askerApi = labApi(served.asker.origin, undefined);
       const askSession = `s_turn_goal_${randomBytes(3).toString("hex")}`;
-      const posted = await askerApi.call("POST", `/${encodeURIComponent(asker.id)}/${encodeURIComponent(askSession)}/actions/ask`, {
+      // A worker has no flow address of its own: the ask runs in a session of the flow its file names, created naming it.
+      const askerFlow = String(asker.declared.flow);
+      const opened = await askerApi.call("POST", `/${encodeURIComponent(askerFlow)}/sessions`, { userId: config?.userId, sessionId: askSession, state: { workerId: asker.id } });
+      if (opened.status !== 201) throw new Error(`a session with ${asker.id} on "${askerFlow}": ${opened.status} ${JSON.stringify(opened.body)}`);
+      const posted = await askerApi.call("POST", `/${encodeURIComponent(askerFlow)}/${encodeURIComponent(askSession)}/actions/ask`, {
         userId: config?.userId,
         input: { what: "ship the farewell module" },
       });

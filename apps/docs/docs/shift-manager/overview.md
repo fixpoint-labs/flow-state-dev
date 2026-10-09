@@ -54,6 +54,8 @@ To open another Lab from a checkout, pass its config:
 
 `devteam` is the team profile in this repository, at `teams/devteam/fsdev.config.mts`. It isn't in the published package, because it builds on the repository's own test Labs. It's a software team: an EM worker files features as rows on the team's board, and a coder worker runs each row as a supervised coding run. On start the EM asks you to approve one feature, so Inbox has something in it. Two projects exist from the start, Storefront and Platform.
 
+Its [chief of staff](../workforce/chief-of-staff.md) is a coordinator with the EM and the coder as delegates. Ask it for feature work with a line like `cart-badge: show a badge on the cart`, in the form `<issue-slug>: <what the feature is>`, and its instructions have it hand the post to the EM. The EM files that feature as a row on the board, or answers that it filed nothing because the post names no feature.
+
 Rows run on a scripted harness with no model. Set `DEVFORCE_LAB_HARNESS=claude-code` to run them on Claude Code instead. The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite`, or wherever `DEVTEAM_STORE` points. Delete the file to start fresh.
 
 ## What you see
@@ -62,7 +64,7 @@ These are Shift Manager's own screens and words. Where one maps onto a Workforce
 
 | Screen | What it is |
 |--------|------------|
-| **Shift Coordinator** | Where Shift Manager opens. A summary of the asks waiting on you and the runs going, then your conversation with the Lab's [chief of staff](../workforce/chief-of-staff.md). Without one, you get the summary and a line saying how to add one. |
+| **Shift Coordinator** | Where Shift Manager opens. A summary of the asks waiting on you and the runs going, then your conversation with the Lab's [chief of staff](../workforce/chief-of-staff.md). When the chief of staff is a [coordinator](../workforce/coordinators.md), the DELEGATES panel lists who it hands this conversation's work to: add a worker from your roster, or remove one. A refused add shows why. Without a chief of staff, you get the summary and a line saying how to add one. |
 | **Inbox** | Every approval and question a worker is waiting on you for, oldest first. Answer on the card, or reply to the worker under it. Inbox is not a [mailbox](../workforce/mailboxes.md). |
 | **Tasks** | Every row on every board that isn't done, grouped by state, worker or workstream. Queued rows are behind a toggle. |
 | **Roster** | Every worker, grouped as on shift (running a task), on call (waiting on you), or off shift. |
@@ -95,7 +97,7 @@ Shift Manager reads a Lab only through the routes its `FlowState` serves. It bui
 - **Open mailboxes.** Call `openMailboxes` at boot with the same `userId` you set in `devtool: { userId }`. Each mailbox is a workstream.
 - **An open [inventory](../workforce/inventory.md)**, which TEAMS, PROJECTS, Inbox and the boards read. Without it, TEAMS and PROJECTS say there's none and the rest loads.
 - **Who Shift Manager reads as**: `devtool: { userId }` on `createFlowState`, plus `bearerToken` when your resolver checks one. Shift Manager hands these to the page only on a loopback host.
-- **Optionally, a chief of staff**: a worker named `chief-of-staff` on the built-in `agent` kind, declared under `org/workers/`. See [The chief of staff](../workforce/chief-of-staff.md).
+- **Optionally, a chief of staff**: a worker named `chief-of-staff`, declared under `org/workers/`. On the `coordinator` flow it also gets the DELEGATES panel. See [The chief of staff](../workforce/chief-of-staff.md).
 
 A document under a `resources/` folder shows in Jump to only when its frontmatter sets `client.content.read: true`.
 

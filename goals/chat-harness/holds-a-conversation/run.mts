@@ -23,7 +23,7 @@ const fixture = loadFixture<{ name: string; statement: string; question: string 
 // The /status between the turns is the delimiter that isolates the second reply.
 const stdin = [fixture.statement, "/status", fixture.question, "/status", "/exit", ""].join("\n");
 
-await runGoal(() => {
+await runGoal((failures) => {
   // The harness resolves the real model through examples/hello-chat's config.
   // Clear the ambient intent-ladder overrides so createModelResolver auto-wires
   // the available provider gateway instead of rejecting on an intent-less
@@ -41,7 +41,6 @@ await runGoal(() => {
   process.stdout.write(transcript);
   if (result.stderr) process.stderr.write(result.stderr);
 
-  const failures: string[] = [];
   if (result.status !== 0) failures.push(`exited ${result.status} (expected 0)`);
 
   const firstStatus = transcript.indexOf("Turns:   1");

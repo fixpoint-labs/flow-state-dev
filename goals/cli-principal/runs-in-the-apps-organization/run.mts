@@ -29,7 +29,7 @@ const fixture = loadFixture<Fixture>(import.meta.url);
 const sessionId = `sess_goal_cli_${Date.now().toString(36)}`;
 const CAPTURE = join(goalTmpDir("cli-principal"), "run.json");
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const exit = runFsdev({
     app: KITCHEN_SINK,
     flow: fixture.seat,
@@ -40,7 +40,6 @@ await runGoal(async () => {
     env: { STORE_TYPE: "filesystem" },
   });
 
-  const failures: string[] = [];
   if (exit !== 0) failures.push(`fsdev run exited ${exit}`);
 
   // 1. Who the run was, as the CLI recorded it.

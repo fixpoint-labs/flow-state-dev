@@ -62,8 +62,7 @@ function adaptNotify(wake: BlockDefinition<any, any>): BlockDefinition<any, any>
 type Message = { role: string; text: string };
 type Conversation = { id: string; parentSessionId?: string; messages: Message[] };
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
 

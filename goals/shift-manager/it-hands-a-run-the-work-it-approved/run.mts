@@ -170,7 +170,8 @@ async function approve(lab: Lab): Promise<string | undefined> {
   const request = (found.body.requests as any[]).find((r) => r.status === "suspended");
   const suspension = (request?.items ?? []).filter((i: any) => i.type === "suspension").at(-1);
   if (suspension === undefined) return "no pending approval in the EM seat's session";
-  const approved = await lab.door("POST", `${fixture.coordinatorSeat}/requests/${request.id}/resume`, {
+  // Through the flow the EM's session is on: a worker has no flow address of its own.
+  const approved = await lab.door("POST", `${lab.seats[fixture.coordinatorSeat]!.id}/requests/${request.id}/resume`, {
     body: { suspensionId: suspension.suspensionId, action: "approve" },
   });
   return approved.status === 202 ? undefined : `approve answered ${approved.status}`;
@@ -209,8 +210,7 @@ function gradeTask(
   }
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const note = (leg: string, why: string): void => {
     failures.push(`leg ${leg}: ${CONTROL === "" ? "" : `[control ${CONTROL}] `}${why}`);

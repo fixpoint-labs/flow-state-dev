@@ -750,6 +750,15 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   addLabel(id: string, label: string): Promise<TaskWriteOutcome>;
   removeLabel(id: string, label: string): Promise<TaskWriteOutcome>;
   patchMetadata(id: string, patch: Record<string, unknown>): Promise<TaskWriteOutcome>;
+  /**
+   * Clear the row's resume-owed marker (`Task.resumeOwed`) once its asking
+   * turn has its answer (FIX-1816). `unchanged` when no marker is set.
+   *
+   * Optional: both built-in backings implement it, together with writing the
+   * marker when an asked row ends. A hand-written ref that does neither cannot
+   * host an ask, and the ask path refuses on it.
+   */
+  clearResumeOwed?(id: string): Promise<TaskWriteOutcome>;
 
   // query
   get(id: string): TaskHandle<TInput, TOutput> | undefined;

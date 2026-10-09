@@ -90,6 +90,7 @@ import {
 import {
   parentIdentity,
   readChildSessionLabels,
+  resolveActiveDispatchRuns,
   resolveDispatchRunStatus,
   type ParentIdentity
 } from "./child-session-routes";
@@ -261,8 +262,8 @@ class ConnectionEnded extends Error {
  * `store` as one connection reads it: each call first checks that the
  * connection is still open, and throws {@link ConnectionEnded} once it is not.
  * One read can be long (the first read of runs checks every run under the
- * session, two store reads each), and a connection that ended midway through
- * it makes no further store read.
+ * session), and a connection that ended midway through it makes no further
+ * store read.
  */
 function whileOpen<T extends object>(store: T, isOpen: () => boolean): T {
   return new Proxy(store, {
@@ -463,7 +464,7 @@ class RunTracker {
       orderBy: "createdAt",
       ...identity
     });
-    for (const child of children) await this.check(child);
+    await this.check(children);
   }
 
   /**
@@ -473,15 +474,16 @@ class RunTracker {
   async refresh(floor: number): Promise<boolean> {
     const { stores, sessionId, session, tenantId, identity } = this.options;
     const before = new Set(this.open.keys());
-    const checked = new Set<string>();
+    const moved: SessionRecord[] = [];
 
     await forEachUpdatedSince(
       floor,
       (limit) => stores.session.list(sessionStreamReads.recentRuns(sessionId, session, tenantId, limit)),
       async (child) => {
-        checked.add(await this.check(child));
+        moved.push(child);
       }
     );
+    const checked = await this.check(moved);
 
     for (const [id, { child }] of [...this.open]) {
       if (checked.has(id)) continue;
@@ -502,14 +504,21 @@ class RunTracker {
     return false;
   }
 
-  /** Resolve one run's status and record it. Returns the run's bare id. */
-  private async check(child: SessionRecord): Promise<string> {
+  /**
+   * Resolve these runs' statuses together and record them. Returns their bare
+   * ids. Together, not one by one: a read per run is a read per run of every
+   * request record on an adapter with no index.
+   */
+  private async check(children: readonly SessionRecord[]): Promise<Set<string>> {
     const { stores, tenantId, identity } = this.options;
-    const id = toBareSessionId(child.id, tenantId);
-    const status = await resolveDispatchRunStatus(stores.request, id, identity);
-    if (status === "active") this.open.set(id, { run: toSessionRun(child, id, this.options.sessionId), child });
-    else this.open.delete(id);
-    return id;
+    const ids = children.map((child) => toBareSessionId(child.id, tenantId));
+    const active = await resolveActiveDispatchRuns(stores.request, ids, identity);
+    children.forEach((child, index) => {
+      const id = ids[index]!;
+      if (active.has(id)) this.open.set(id, { run: toSessionRun(child, id, this.options.sessionId), child });
+      else this.open.delete(id);
+    });
+    return new Set(ids);
   }
 }
 

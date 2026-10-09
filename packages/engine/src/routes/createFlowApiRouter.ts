@@ -489,7 +489,10 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
           provider: durabilityProvider,
           stores: handlers.host.stores,
           retention: durabilityRetention,
-          logger: runtimeConfig.logger
+          logger: runtimeConfig.logger,
+          // Lets the sweep resume an overdue ask with `wait_timed_out`
+          // through this router's host (FIX-1816).
+          continueRequest: (opts) => handlers.host.continueRequest(opts)
         })
       : { dispose: () => {} };
 
@@ -625,9 +628,12 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // not part of the router's public shape (keeps `keyof typeof router`
   // narrow for consumers that index by HTTP method).
   const dispose = async (): Promise<void> => {
-    // Stop the sweepers first so their ticks can't race with adapter teardown.
-    sweeper.dispose();
+    // Stop the sweepers first so their ticks can't race with adapter teardown,
+    // and let a stale-request pass already running finish before the caller
+    // goes on to close the stores it reads.
+    const staleSweepSettled = sweeper.dispose();
     durabilitySweeper.dispose();
+    await staleSweepSettled;
     for (let i = allBindings.length - 1; i >= 0; i--) {
       const entry = allBindings[i];
       if (entry === undefined || entry.bindings.stop === undefined) continue;

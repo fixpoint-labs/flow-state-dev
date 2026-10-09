@@ -184,8 +184,7 @@ async function run(model: string | EvaluationModel, ticket: Ticket, requestId: s
 
 const inRange = (c: unknown) => typeof c === "number" && c >= 0 && c <= 1;
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
 
   // ---- Leg (j): Jev reports confidence, and a clear ticket reaches the gated leaf ----

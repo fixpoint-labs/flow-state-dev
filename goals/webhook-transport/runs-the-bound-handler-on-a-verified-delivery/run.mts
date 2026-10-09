@@ -39,7 +39,7 @@ interface Observation {
   model: string;
 }
 
-await runGoal(() => {
+await runGoal((failures) => {
   const r = runHarness<Observation>({
     app: KITCHEN_SINK,
     harness: new URL("./harness.mts", import.meta.url),
@@ -49,8 +49,6 @@ await runGoal(() => {
       GOAL_MODEL: MODEL,
     },
   });
-
-  const failures: string[] = [];
 
   // The forged-signature negative is the anti-game guard: it proves verification
   // is real, so the positive isn't just "any POST writes state".

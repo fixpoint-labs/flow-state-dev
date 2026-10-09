@@ -133,7 +133,7 @@ A second declaration of the inventory beside the writes fails when the flow is b
 Resource collision in flow "agent": accessor keys "mailboxInventory" and "project-writes-mailbox-inventory" resolve to the same effective storage key (scope=org, ref=inventory/mailboxes/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
 ```
 
-[The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way: its `mailbox-inventory` capability in [Adding one](./chief-of-staff.md#adding-one) is this same declaration, so the setup works with or without the project tools.
+[The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way. On the `coordinator` flow, its own turn reads the catalog you pass `defineCoordinatorFlow` as `agent`, so the entries go there. Its `inventory` capability in [Adding one](./chief-of-staff.md#adding-one) is this same declaration, so the setup works with or without the project tools.
 
 ## One project per workstream
 
@@ -239,13 +239,13 @@ import { defineProjectsCollection } from "@flow-state-dev/workforce";
 
 export default defineProjectsCollection({
   talk: {
-    seats: ["engineering.lead", "chief-of-staff"],
+    seats: ["engineering.lead", "operations.lead"],
     charter: "Plan the work, and say what is blocked.",
   },
 });
 ```
 
-A seat is named by its full id from any team, like `engineering.lead`, or by an organization-level seat's own name, like `chief-of-staff`. These seats are not the project's members. Members are the people who can read and post; seats are who a post wakes.
+A seat is named by its full id from any team, like `engineering.lead`, or by an organization-level seat's own name, like `chief-of-staff`. These seats are not the project's members. Members are the people who can read and post; seats are who a post wakes. `wakeMemberSeats`, below, wakes a chief of staff on the built-in `agent` flow, but not one on the [`coordinator`](./coordinators.md) flow, which doesn't hear mailbox posts.
 
 Pass the organization's resource map to `mailboxInstances`, so `mailboxInstances` can find the template. `mailboxes` is your mailbox roster ([Opening it](./mailboxes.md#opening-it-and-why-an-unopened-id-is-not-a-mailbox)), and `kinds` carries the mailbox kind built with a notify block, described just below:
 
@@ -274,7 +274,7 @@ Rooms run on the built-in mailbox kind, and that kind has to be able to wake sea
 
 `wakeMemberSeats(seats)` wakes a member whose seat is in the `seats` list and whose kind hears mailbox posts, as the built-in `agent` kind does. A notify block you write yourself wakes only the members its own code wakes; `mailboxInstances` doesn't check that it reaches the template's seats. A seat hired after you built `wakeMemberSeats(seats)` isn't in its list and isn't woken.
 
-If your app already has a notify block, keep it by passing it as the fallback: `defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) })`. A chief of staff (the `agent` kind) in the template is then woken by a person's post in the room (a post from another worker wakes no worker), and your block handles every member whose worker can't hear posts. The table under [waking agent workers](./mailboxes.md#waking-agent-seats) shows which members the fallback gets.
+If your app already has a notify block, keep it by passing it as the fallback: `defineMailboxFlow({ notify: wakeMemberSeats(seats, { fallback: yourNotify }) })`. A seat on the built-in `agent` kind in the template is then woken by a person's post in the room (a post from another worker wakes no worker), and your block handles every member whose worker can't hear posts. The table under [waking agent workers](./mailboxes.md#waking-agent-seats) shows which members the fallback gets.
 
 If your app calls `mailboxInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its mailbox kind with the same seats and charter. A call that finds a different template is refused.
 

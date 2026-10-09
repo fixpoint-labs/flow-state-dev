@@ -98,8 +98,7 @@ function buildFlow(deadlineMs?: number) {
   } as never);
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const { createFlowState, runAction, inMemoryStores } = await import("@flow-state-dev/engine");
 
   function neverResolvesAModel(): never {

@@ -45,7 +45,7 @@ const SCRATCH = goalTmpDir("closure-fix-1797");
 const SHOTS = join(SCRATCH, "screenshots");
 const say = (s: string) => console.error(`[closure ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   for (const part of ONLY) {
     if ((FINAL_PARTS as readonly string[]).includes(part)) return { failures: [`part "${part}" belongs to the final run, which is not built yet`], evidence: "" };
     if (!(MILESTONE_PARTS as readonly string[]).includes(part)) throw new Error(`unknown GOAL_ONLY part "${part}"; known: milestone, ${MILESTONE_PARTS.join(", ")}`);
@@ -70,7 +70,6 @@ await runGoal(async () => {
   const removeLater: Array<() => void> = [() => checkout.remove()];
   const runs: StepsRun[] = [];
   const controls: Array<{ control: string; ok: boolean; line: string }> = [];
-  const failures: string[] = [];
   let chromium = "not launched";
   let model = "the install's default";
   try {

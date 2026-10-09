@@ -373,8 +373,7 @@ async function expand(page: import("playwright").Page): Promise<void> {
 // The run
 // ---------------------------------------------------------------------------
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const scratch = goalTmpDir("design-system");
   const registryDir = join(scratch, "r");
   const host = join(scratch, "host");

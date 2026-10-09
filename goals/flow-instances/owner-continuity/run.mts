@@ -78,8 +78,7 @@ function cli(cwd: string, args: string[]): { status: number; stdout: string; std
   }
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const dir = mkdtempSync(join(tmpdir(), "fsd-owner-continuity-"));
   const dbFile = join(dir, "goal.db");

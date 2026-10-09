@@ -96,8 +96,7 @@ function filesUnder(root: string, prefix = ""): Array<[string, string]> {
   return out;
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
 
   // The held-out half, first and separately: a token the lab's own code could

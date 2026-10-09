@@ -343,8 +343,7 @@ async function legB(resolver: ModelResolver, failures: string[], evidence: strin
   );
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [`model ${MODEL}${CONTROL ? `, control ${CONTROL}` : ""}`];
   const resolver = await realResolver();
   await legA(resolver, failures, evidence);

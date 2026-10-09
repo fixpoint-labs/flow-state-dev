@@ -823,7 +823,7 @@ async function restarted(before: Kept[], owner: LabApi, host: string, fail: (leg
   evidence.push(`restart: ${rows.length} of ${before.length} project rows unchanged with their talk links; ${linesKept} lines read back through the same talk sessions`);
 }
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   if (COS_LEG && !MODEL_KEYS.some((key) => (process.env[key] ?? "") !== "")) {
     return {
       failures: [`precondition: the cos leg runs the chief of staff on a real model, and none of ${MODEL_KEYS.join(", ")} is set. GOAL_LEG=model-free runs the other legs without one`],
@@ -833,7 +833,6 @@ await runGoal(async () => {
   const pages = await buildShiftManager(CONTROL);
   const swap = serverSwapFor(CONTROL);
   const fired = swap === undefined ? undefined : join(SCRATCH, `fired-${CONTROL}-${RUN_STAMP}.log`);
-  const failures: string[] = [];
   const evidence: string[] = [];
   const fail = (leg: string, why: string) => failures.push(`${leg}: ${why}`);
   const tree = await readTree();

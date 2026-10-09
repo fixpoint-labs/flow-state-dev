@@ -23,10 +23,10 @@
  *   const board = taskBoard({ name: "todos", collection: todos, workers });
  */
 
-import { defineResourceCollection } from "@flow-state-dev/core";
-import type {
-  DefinedResourceCollection,
-  ResourceScope,
+import {
+  defineResourceCollection,
+  type DefinedResourceCollection,
+  type ResourceScope,
 } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import { taskSchema } from "../schema/task";

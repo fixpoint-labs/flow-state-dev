@@ -59,10 +59,9 @@ const WRITERS = [
   { requestId: "req_c", field: "attempts", value: 3 }
 ] as const;
 
-async function main(): Promise<GoalResult> {
+async function main(failures: string[]): Promise<GoalResult> {
   const dir = mkdtempSync(join(tmpdir(), "fsd-resource-cas-"));
   const stores = createSQLiteStores({ filename: join(dir, "goal.db") });
-  const failures: string[] = [];
 
   try {
     // Each context is built BEFORE any of them writes, so all three hold the

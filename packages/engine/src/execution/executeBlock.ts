@@ -295,6 +295,9 @@ export async function executeBlock(
             // FIX-914: any block with an own `stateSchema` gets a container
             // now, not just sequencers.
             stateSchema: options.block.config.stateSchema,
+            // Recorded like a sequencer step's, so the root block's children
+            // read it via `ctx.parent.input` the same as anywhere else.
+            input: interceptedInput,
             parentInstanceId: attemptMetadata.parentBlockInstanceId,
             path: blockPath,
             phase: attemptMetadata.scope === "sideChain" ? "sideChain" : "main",

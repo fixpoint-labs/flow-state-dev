@@ -276,12 +276,12 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
     }
   }
 
-  // Pending person-asks: a suspension with no resume, on a session a seat owns.
+  // Pending person-asks: a suspension with no resume, on a session that names a seat as its worker.
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
   const seatSet = new Set(seats);
   const asks: string[] = [];
   for (const session of (listing.sessions ?? []) as Array<Record<string, any>>) {
-    if (!seatSet.has(String(session.flowId))) continue;
+    if (!seatSet.has(String(session.state?.workerId))) continue;
     const found = await api.items(String(session.id), ["suspension", "suspension_resume"]);
     const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
     for (const item of found) {
@@ -630,9 +630,8 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
   }
 }
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const pages = await buildShiftManager(CONTROL);
-  const failures: string[] = [];
   const evidence: string[] = [];
   for (const name of Object.keys(LABS) as LabName[]) {
     await checkLab(name, pages, failures, evidence);

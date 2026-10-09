@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "goal:all": "tsx scripts/run-all.mts",
     "guard:control-shape": "tsx scripts/validate-control-shape.mts",
-    "check:run-fsdev-input": "tsx scripts/check-run-fsdev-input.mts"
+    "check:run-fsdev-input": "tsx scripts/check-run-fsdev-input.mts",
+    "check:run-goal-verdict": "tsx scripts/check-run-goal-verdict.mts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.75",

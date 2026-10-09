@@ -8,7 +8,8 @@
  * bulleted failure list on stderr / exit 1.
  *
  * Two usage shapes, matching how goals are actually written:
- *   - `runGoal(main)` for the common "collect failures, then decide" body.
+ *   - `runGoal(main)` for the common "collect failures, then decide" body;
+ *     `main` collects into the list it is handed, so a later throw keeps them.
  *   - `fail(msg)` (returns `never`) to bail out mid-flight on a setup error.
  */
 
@@ -44,17 +45,24 @@ export function fail(...failures: (string | string[])[]): never {
  * A throw is itself a FAIL (with the stack), so runners no longer need their
  * own `main().catch(...)` tail — which previously reported thrown errors in
  * three different formats.
+ *
+ * `main` receives the failure list the runner reads if it throws. A goal that
+ * pushes its legs' failures there keeps them when a later leg throws: the
+ * verdict lists the legs that already graded, then the throw. Otherwise a
+ * later leg's setup error (often caused by the earlier failure) would be
+ * reported as the whole story. On a normal return the returned `failures` is
+ * what counts, so a body that returns a copy or a literal list is unaffected.
  */
 export async function runGoal(
-  main: () => GoalResult | Promise<GoalResult>,
+  main: (failures: string[]) => GoalResult | Promise<GoalResult>,
 ): Promise<never> {
+  const graded: string[] = [];
   let result: GoalResult;
   try {
-    result = await main();
+    result = await main(graded);
   } catch (err) {
-    return fail(
-      err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err),
-    );
+    const thrown = err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err);
+    return graded.length === 0 ? fail(thrown) : fail(graded, `then threw: ${thrown}`);
   }
   return result.failures.length === 0 ? pass(result.evidence) : fail(result.failures);
 }

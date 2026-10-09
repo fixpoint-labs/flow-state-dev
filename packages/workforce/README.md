@@ -2093,7 +2093,10 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   user scope, one roster per organization. Every write is checked the way a turn would check it,
   and a standard worker's id is refused with a suggestion to fork it:
   - `hire({ id, flow?, description?, instructions?, skills?, settings? })` returns `{ id, flow }`;
-    `flow` defaults to `agent`, and `settings` takes the keys a `WORKER.md` frontmatter accepts;
+    `flow` defaults to `agent`, and `settings` takes the keys a `WORKER.md` frontmatter accepts. A
+    skill nothing registers is refused with the skills that are, as in
+    `Worker "scribe" names skill "license auditing", which this installation doesn't register. Remove it, or register it. Skills it registers: "cite", "summarize". Nothing was written.`
+    (or `It registers no skills.` when there are none);
   - `fork({ from, id })` returns `{ id, flow }`, copying a standard worker's, or one of the user's
     own, configuration: its flow, description, instructions, team instructions, skill names and
     settings; a later edit to the files doesn't reach the fork;
@@ -2136,13 +2139,16 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
 ## Coordinators
 
 A coordinator is a worker that hands each post to other workers on the same user's roster, its
-**delegates**. It runs on the `coordinator` flow, registered on the installation like any worker
-flow. A delegate's flow declares the internal entry that takes a delegated post; the built-in
-`agent` flow declares it, and your own flow does with `delegatedPostEntry`:
+**delegates**, by `judgment`, `best-fit`, `round-robin` or `everyone`. It runs on the
+`coordinator` flow, registered on the installation like any worker flow. A delegate's flow
+declares the internal entry that takes a delegated post; the built-in `agent` flow declares it,
+and your own flow does with `delegatedPostEntry`. The site's
+[Coordinators](https://flow-state.dev/docs/workforce/coordinators) page walks through setting one up.
 
 ```ts
 import {
   createWorkerInstallation,
+  DELEGATED_POST_ENTRY, // "onDelegatedPost"
   defineCoordinatorFlow,
   delegatedPostEntry,
   delegatedPostOnFinished,
@@ -2156,7 +2162,7 @@ const researchFlow = defineFlow({
   resources: { ...installation.resources },
   request: { onFinished: delegatedPostOnFinished }, // reports a cancelled delegated post
   actions: { run: { inputSchema, block: door, userMessage: (i) => i.message } },
-  internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } }, // takes delegated posts
+  internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }, // takes delegated posts
 });
 
 const coordinatorFlow = defineCoordinatorFlow({
@@ -2210,17 +2216,37 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   answers that landed stay, and nothing goes on.
 - **Open rounds.** A conversation keeps at most 50 rounds open at once. A post that would open one
   more is still delivered, but its round isn't opened: its answers land once and go no further,
-  and its routing record's `note` says so. The open rounds keep going on as before.
+  and its routing record's `note` says so. The rounds already open go on.
 - **Delegates per conversation.** Each conversation starts from a copy of the defaults, and its
   changes stay in it. Change them with the `addDelegate({ worker, note? })`,
   `removeDelegate({ worker })` and `setFallback({ worker | null })` actions, and read them with
-  `listDelegates({})`. The coordinator's turn has the same four as tools. A session create can't
-  set them: one that tries is refused with a 400 naming the field.
+  `listDelegates({})`. Each returns `{ delegates, fallback, max, filingSessionId }`, the list after
+  the call. `listDelegates` also gives each delegate, read from the roster when it is called, its
+  worker's `description` (`null` when it has none) and `takes`, from its flow: `posts`, `tasks`,
+  `both`, or `nothing` (fired, or on a flow that takes neither, with a `null` description). A refused
+  change writes nothing and fails its request with the refusal as the error message. The
+  coordinator's turn has the same four as tools, which hand a refusal back to the model as
+  `{ refused }`. A session create can't set them: one whose `state` carries `delegates`
+  is refused with a 400,
+  `Session state field "delegates" is written only by flow "coordinator"; a caller cannot set it.`
 - **Who can be a delegate.** A worker on the conversation's user's own roster, one of theirs or a
-  standard one, whose flow takes a delegated post or a task. Anything else is refused with the
-  same answer as a worker that doesn't exist: `No worker "<id>" on your roster.` A conversation
-  holds at most 25. A standard coordinator's defaults can name only standard workers;
-  `createWorkerInstallation` refuses the file otherwise.
+  standard one, whose flow takes a delegated post or a task. A conversation holds at most 25. A
+  standard coordinator's defaults can name only standard workers; `createWorkerInstallation`
+  refuses the file otherwise. The refusals:
+  - another user's worker, or one nobody holds: `No worker "<id>" on your roster.`
+  - a flow that takes neither:
+    `Worker "<id>" runs on flow "<flow>", which takes neither a delegated post nor a task.`
+  - one already on the list: `"<id>" is already a delegate in this conversation.`
+  - a 26th: `This conversation already has 25 delegates, the most it can hold. Remove one first.`
+  - removing one that isn't on the list: `"<id>" isn't a delegate in this conversation.`
+  - a fallback that isn't on the list:
+    `"<id>" isn't a delegate in this conversation, so it can't be the fallback.`
+
+  A worker whose flow takes tasks but no posts can be added. A post handed to it is skipped, and
+  the routing record gives the reason
+  `Worker "<id>" runs on flow "<flow>", which can't take a delegated post.` When the
+  coordinator's own turn hands it a post with `handOff`, the refusal adds the delegates that take
+  posts, `Delegates here that take posts: <ids>.`, or `No delegate here takes posts.` when none does.
 - **Delivery.** Each delegate gets its own session per conversation, created naming the delegate
   as its worker, and reused for that conversation's later posts. Its answer lands in the
   conversation under the delegate's name, once, however many times it is sent. The session
@@ -2228,13 +2254,17 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   with `findWorkerSession({ worker, filingSessionId })`. A conversation deleted and created again
   under the same id has a new `filingSessionId`, and its delegates get new sessions. A lookup
   naming only `{ worker }` never returns a delegate's session.
-- **The record.** Every routing decision leaves one `coordinator-route` component item: the post,
-  the round, the policy, `by` (`judgment`, `held`, `evaluated`, `fallback`, `round-robin`,
-  `everyone` or `unplaced`), what became of each delegate, and a `note` when the post's round was
-  refused at the cap on open rounds. Render it apart from the conversation's lines.
+- **The record.** Every routing decision leaves one `coordinator-route` component item:
+  `postId`, `round`, `policy`, `by` (`judgment`, `held`, `evaluated`, `fallback`,
+  `round-robin`, `everyone` or `unplaced`), `delegates` (each with `worker`, `outcome` of
+  `delivered`, `skipped` or `failed`, and a `reason` when it wasn't delivered), `none` (why
+  nobody was delivered to, when nobody was), and `note` (why the round's answers go no further,
+  when it was refused at the cap on open rounds). Render it apart from the conversation's lines.
 
-Call `installation.standardWorkerProblems()` once your worker flows are defined to refuse a broken
-standard worker at load, such as a coordinator whose `rounds:` is above 3.
+`hireWorkforce` refuses a broken standard coordinator at load, naming the problem: a `rounds:`
+above 3 (`rounds can be at most 3`), a `routing:` outside the four, a `fallback:` that isn't one
+of its `delegates:`, or a delegate named twice. `installation.standardWorkerProblems()` returns the
+same problems without throwing.
 
 ## Importing from a browser component
 

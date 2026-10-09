@@ -45,7 +45,7 @@ interface Observation {
   model: string;
 }
 
-await runGoal(() => {
+await runGoal((failures) => {
   let last: Observation | undefined;
 
   for (let i = 1; i <= MAX_ATTEMPTS; i++) {
@@ -68,7 +68,6 @@ await runGoal(() => {
     );
   }
 
-  const failures: string[] = [];
   if (last === undefined || !last.cardEmitted) {
     failures.push(
       `no audit-annotation component item was emitted after ${MAX_ATTEMPTS} attempts — either ` +
