@@ -8,7 +8,7 @@
  * connection and logs "stale-request sweeper iteration failed" on every
  * shutdown — a routine exit that reads like a database failure.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createFlowState, inMemoryStores, type StoreAdapter } from "../../src";
@@ -66,10 +66,14 @@ function closingAdapter(): StoreAdapter & { callsAfterClose: () => number } {
   };
 }
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 describe("FlowState.dispose() — sweeper shutdown ordering", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("no sweep reads the stores after they are closed", async () => {
+    // Only the interval is faked, so init and dispose keep their real timers.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const adapter = closingAdapter();
     const fs = createFlowState({
       flows: { noop: noopFlow },
@@ -79,11 +83,11 @@ describe("FlowState.dispose() — sweeper shutdown ordering", () => {
       staleSweepThresholdMs: 60_000
     });
     await fs.ready();
-    // Let the sweeper tick at least once so the test proves it was running.
-    await wait(SWEEP_INTERVAL_MS * 3);
+    // Let the sweeper tick so the test proves it was running.
+    await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS * 3);
 
     await fs.dispose();
-    await wait(SWEEP_INTERVAL_MS * 5);
+    await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS * 5);
 
     expect(adapter.callsAfterClose()).toBe(0);
   });
