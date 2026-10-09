@@ -545,9 +545,9 @@ describe("the grant is the factory's to read, never a setting the kind receives"
 describe("V9 · the narrowing is checked on the seat that was BUILT", () => {
   /**
    * The kind whose block ALSO declares a document the kind declares at flow
-   * level. Nothing distinguishes it from a kind no block mentions until a seat
-   * narrows: the flow-level entry shadows the block's at definition time, and
-   * the block's comes back the moment a seat's map replaces the flow-level one.
+   * level, with the same reference. Nothing distinguishes it from a kind no
+   * block mentions until a seat narrows: the block's declaration merges back
+   * the moment a seat's map replaces the flow-level one.
    */
   const restoringFlow = defineFlow({
     kind: "restoring-desk",

@@ -1099,10 +1099,15 @@ function mergeFlowResourceMap(
   // loop rather than an error. Refused by name, so the author can see which two
   // declarations disagree.
   for (const [accessor, blockEntry] of Object.entries(blockResources)) {
+    // Own keys only: `constructor` or `toString` would otherwise read off the
+    // prototype and refuse two disjoint maps.
+    if (!Object.hasOwn(flowResources, accessor)) continue;
     const flowEntry = (flowResources as DeclaredResources)[accessor];
     if (flowEntry === undefined || flowEntry === blockEntry) continue;
     const blockShared = (blockEntry as { sharedToLineage?: boolean }).sharedToLineage === true;
     const flowShared = (flowEntry as { sharedToLineage?: boolean }).sharedToLineage === true;
+    // A lineage mismatch gets the sharper message below; any other difference
+    // is the generic reference conflict.
     if (blockShared === flowShared) {
       throw new Error(
         `Resource conflict in flow "${flowKind}": "${accessor}" is declared at flow level ` +
