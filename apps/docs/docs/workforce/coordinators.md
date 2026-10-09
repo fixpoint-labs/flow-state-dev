@@ -158,12 +158,12 @@ Each action's output is the conversation's list as it stands after the call. `se
 }
 ```
 
-`listDelegates` also gives each delegate `takes`: what it can be handed now, read from the flow it runs on. It is `posts`, `tasks`, `both`, or `nothing` when the worker has been fired or its flow takes neither. The other three actions leave it out. With an EM that takes posts and a coder whose flow takes only tasks, its `delegates` read:
+`listDelegates` also gives each delegate two things read from the roster when it is called. `description` is what the worker does: the description in its `WORKER.md`, or the one it was hired with. `takes` is what it can be handed now, from the flow it runs on: `posts`, `tasks`, `both`, or `nothing` when the worker has been fired or its flow takes neither. A delegate that takes nothing has a `description` of `null`, and so does a worker with no description. The other three actions leave both out. With an EM that takes posts and a coder whose flow takes only tasks, its `delegates` read:
 
 ```json
 [
-  { "worker": "eng.em", "takes": "posts" },
-  { "worker": "eng.coder", "takes": "tasks" }
+  { "worker": "eng.em", "description": "Files each feature on the team's board.", "takes": "posts" },
+  { "worker": "eng.coder", "description": "Does the work a filed row names.", "takes": "tasks" }
 ]
 ```
 

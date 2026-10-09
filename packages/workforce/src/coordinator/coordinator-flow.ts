@@ -264,9 +264,14 @@ const delegateListOutputSchema = z.object({
   filingSessionId: z.string()
 });
 
-/** What `listDelegates` answers: the list, each delegate with what it takes now, read and never stored. */
+/**
+ * What `listDelegates` answers: the list, each delegate with what it does (its
+ * worker's description, or null) and what it takes now, read and never stored.
+ */
 const delegateReadOutputSchema = delegateListOutputSchema.extend({
-  delegates: z.array(delegateRecordSchema.extend({ takes: z.enum(DELEGATE_TAKES) }))
+  delegates: z.array(
+    delegateRecordSchema.extend({ description: z.string().nullable(), takes: z.enum(DELEGATE_TAKES) })
+  )
 });
 
 /** A conversation's delegates, and the conversation's `filingSessionId`. */
@@ -391,16 +396,21 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     return { list: await readDelegates(ctx.session, defaults), filingSessionId: await filingSessionIdOf(ctx.session) };
   };
   /**
-   * The list as `listDelegates` answers it, each delegate with what it takes
-   * now: what its flow takes, or nothing when it fails the check for an add
-   * (fired, or on a flow that takes neither).
+   * The list as `listDelegates` answers it, each delegate with what it does and
+   * what it takes now, from the roster row the check reads: its worker's
+   * description and what its flow takes. One that fails the check for an add
+   * (fired, or on a flow that takes neither) takes nothing, with no description.
    */
   const read = async (ctx: BlockContext) => {
     const listed = listOutput(await list(ctx));
-    const delegates: Array<DelegateRecord & { takes: DelegateTakes }> = [];
+    const delegates: Array<DelegateRecord & { description: string | null; takes: DelegateTakes }> = [];
     for (const record of listed.delegates) {
       const checked = await check(ctx as never, record.worker, "add");
-      delegates.push({ ...record, takes: checked.ok ? flowTakes(installation, postFlows, checked.worker.flow) : "nothing" });
+      delegates.push(
+        checked.ok
+          ? { ...record, description: checked.worker.description, takes: flowTakes(installation, postFlows, checked.worker.flow) }
+          : { ...record, description: null, takes: "nothing" }
+      );
     }
     return { ...listed, delegates };
   };
@@ -476,7 +486,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const listDelegatesTool = handler({
     name: LIST_DELEGATES,
     description:
-      "Read who this conversation's delegates are: every one, with its note and what it takes (`posts`, which `handOff` hands on; `tasks`; `both`; or `nothing`), and the fallback. Answer who your delegates are from this, never from memory.",
+      "Read who this conversation's delegates are: every one, with its note, what it does (`description`) and what it takes (`posts`, which `handOff` hands on; `tasks`; `both`; or `nothing`), and the fallback. Answer who your delegates are from this, never from memory.",
     inputSchema: z.object({}).strict(),
     outputSchema: delegateReadOutputSchema,
     ...blockBase,

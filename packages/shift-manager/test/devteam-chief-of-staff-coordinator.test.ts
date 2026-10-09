@@ -130,10 +130,11 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const id = await conversation(lab);
     const listed = await act(lab, id, "listDelegates", {});
     expect(listed.error).toBeUndefined();
-    // The EM's flow takes posts and the coder's only tasks: what the chief of staff picks a hand-off by.
+    // What each one does (its WORKER.md description) and takes: the EM's flow takes posts and the
+    // coder's only tasks. What the chief of staff picks a hand-off by.
     expect(listed.output.delegates).toEqual([
-      { worker: "eng.em", takes: "posts" },
-      { worker: "eng.coder", takes: "tasks" },
+      { worker: "eng.em", description: "Files each feature on the team's board; never does the work itself.", takes: "posts" },
+      { worker: "eng.coder", description: "Does the work a filed row names, in a checkout of its own.", takes: "tasks" },
     ]);
     // The agent flow refuses it: a session names the flow its worker runs on.
     const onAgent = await lab.door("POST", `agent/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: COS } } });
