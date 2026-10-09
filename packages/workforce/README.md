@@ -2283,6 +2283,21 @@ above 3 (`rounds can be at most 3`), a `routing:` outside the four, a `fallback:
 of its `delegates:`, or a delegate named twice. `installation.standardWorkerProblems()` returns the
 same problems without throwing.
 
+A coordinator conversation also keeps a task board, worked through Orchestration's eight task
+tools: on the coordinator's turn as tools (`addTask`, `assignTask`, `listTasks` and the rest), and
+on the conversation's session as actions named for the board, `addTask_tasks`, `listTasks_tasks`
+and so on. An assignee must be one of the conversation's delegates whose flow takes tasks; any
+other is answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored. `addTask`
+returns once the task is stored, and the task starts by itself in a new session of the delegate's,
+its task session: yours, a child of the conversation, born naming the worker, the task and the
+conversation's `filingSessionId`. Each conversation reads, runs and waits on only its own board.
+When a task completes, fails for good or stops on a question, the conversation hears it once, as a
+line under the delegate's name, and a coordinator that routes by judgment takes a turn on it.
+`findWorkerSession({ worker, taskId, filingSessionId })` finds a task's session within the
+conversation that filed it; `ensureWorkerSession` with a `taskId` never creates one. A task
+session can't file tasks of its own: its `addTask` is refused. See
+[Handing out tasks](https://flow-state.dev/docs/workforce/coordinators#handing-out-tasks).
+
 ## Importing from a browser component
 
 The package root is server code. The mailbox floor reaches the task board, which imports

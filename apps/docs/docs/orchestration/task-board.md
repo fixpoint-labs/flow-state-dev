@@ -484,7 +484,7 @@ An entry with `from` that a board in the same flow also hands off to is refused 
 
 - **`boardId` is set.** It is part of every dispatch run's session identity, so renaming it orphans work already in flight.
 - **The collection is a `defineTaskCollection()`.** The request, sequencer, and factory backings are refused: the run settles its row after the request that claimed it is gone.
-- **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the run resolves an empty ledger and never finds its row. `user` and `org` scope need nothing extra.
+- **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the run resolves an empty ledger and never finds its row. Its seats hand off within this flow; to hand rows to another flow, use a partitioned `user`-scoped collection ([A board per conversation](#a-board-per-conversation-worked-on-another-flow)). `user` and `org` scope need nothing extra.
 - **The dispatcher is a named registry entry or `defaultWorker`.** A uniform `workers` block has no assignee to route by, so it can't be a dispatcher. `defaultWorker` can: it hands each task over under the assignee the task names.
 
 `defineFlow()` throws for a dispatcher seat whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board hands off to and no `from` serves, for a task dispatcher reachable from an action without sitting on a board, for two boards handing off to the same entry, for an entry with `from` that a board in the same flow also hands off to, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a handed-off worker's state on the task. An entry with `from` can accept session state with `allowSessionState`; see [A task entry served by many boards](#a-task-entry-served-by-many-boards).
@@ -790,6 +790,8 @@ defineFlow({
 
 The actions are named for the board's collection: `addTask_todos`, `assignTask_todos`, `completeTask_todos`, `failTask_todos`, `blockTask_todos`, `cancelTask_todos`, `updateTask_todos` and `listTasks_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `cancelTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
 
+Pass a roster and the actions check assignees the way the model's tools do: `taskToolActions(board, roster)`, or `taskToolActions(collectionId, resolve, roster)`. An `addTask`, `assignTask` or `updateTask` naming someone the roster doesn't is answered `{ ok: false, error: "unknown_assignee: …" }` and writes nothing. The roster can also be a function of the running block's context, `(ctx) => roster`, read on every call that checks an assignee, for a board whose team changes from one session to the next. `createTaskToolsCapability(resolve, roster)` takes the same function. Without a roster, any assignee is accepted.
+
 Each one runs the same checked transition a worker's would. A move the task can't make comes back as `{ ok: false, error }` and writes nothing. None of them claims a task or drains the board. Settling a task a worker is still running is allowed, as it is for a coordinator: your write lands, and the worker's own result is declined when it arrives.
 
 The board needs a collection that outlives a request, built with `defineTaskCollection`. `taskToolActions` throws for a board on any other backing, because a later action could never find its tasks.
@@ -846,6 +848,44 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 ```
 
 `id` names the collection (it forms the resource pattern and the board's `collectionId`), `scope` sets its lifetime, and `stateSchema` types each task's `input` payload. The rest of the task envelope is validated for you. The board installs the collection on both its own drain and `board.capability`, so a sibling action that lists `board.capability` in `uses` reads and writes the same durable tasks.
+
+### A board per conversation, worked on another flow
+
+A `session`-scoped board with `sharedToLineage: true` can hand rows to a session on its own flow. It can't hand them to another flow: a task run there starts a lineage of its own, so it never finds the row. A `user`-scoped board does cross flows, but then every session of that user shares one set of rows, and one conversation's board runs another conversation's tasks.
+
+To keep a board per conversation and still hand its rows to another flow, give a `user`-scoped collection a `partitionBy` function:
+
+```ts
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+
+const work = defineTaskCollection({
+  id: "work",
+  scope: "user",
+  partitionBy: ({ sessionId, lineageId }) => `${sessionId}~${lineageId}`,
+});
+```
+
+Rows are stored at the user's scope, under the partition the running session's function returns. A board resolved in one session reads, claims, waits on and settles only its own partition, and so do its task tools and its `taskToolActions`. When the board hands a row off, the dispatch carries the partition, and the task entry on the other flow reads its one row there, with every check a board's own entry runs.
+
+On the receiving flow, declare the same collection and serve the task entry with [`taskLedgers`](#a-task-entry-served-by-many-boards). Its `resolve` gets the partition as a third argument; resolve the ledger at it:
+
+```ts
+import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
+import { getOrCreateTaskCollection, resolveResourceCollection } from "@flow-state-dev/orchestration/tasks";
+
+const from = taskLedgers({
+  name: "conversation-work",
+  resolve: async (ledgerId, ctx, partition) => {
+    const collection = resolveResourceCollection(ctx, ledgerId);
+    if (ledgerId !== work.id || collection === undefined || partition === undefined) return undefined;
+    return getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: work.id, collection, partition });
+  },
+});
+```
+
+The function is handed the running session's server-set identity, `{ sessionId, lineageId, userId, orgId, tenantId }`, and nothing a caller sends. Return a value a caller can't set. A session id is reused when a session is deleted and created again, so a partition built from the id alone hands the new session its predecessor's rows. `lineageId` is minted when the session's record is created, so the two together name one life of the session, and a recreated session starts with an empty board.
+
+The rows sit in the user's own storage, which every flow of theirs reads, even on a flow that keeps its other user state to itself with `isolateUserState`. Task ids on a partitioned ledger are a single path segment, with no `/`, and the collection doesn't take `maxInstances`.
 
 ### A board a mailbox holds
 

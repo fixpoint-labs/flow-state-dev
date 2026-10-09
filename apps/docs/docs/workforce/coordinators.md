@@ -265,6 +265,58 @@ export function SupportDesk({ children }: { children: ReactNode }) {
 
 Import names from `@flow-state-dev/workforce/browser` in a client component; the package root is server code. A type-only import from the root, as above, is fine.
 
+## Handing out tasks
+
+A post gets an answer. Some work needs doing instead: a change made, a report written, a run that takes an hour. For that a coordinator files a **task** on its conversation's board, for one of its delegates.
+
+```ts
+await help.sendAction(
+  "addTask_tasks",
+  { goal: "Audit our dependencies' licenses", assignee: "licenses" },
+  { sessionId: session.id },
+);
+```
+
+These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `addTask_tasks`, `assignTask_tasks`, `listTasks_tasks` and the rest. The coordinator has the same eight as tools (`addTask`, `assignTask`, `listTasks` and the others), so it files a task itself when you ask it for one.
+
+Either way, the assignee has to be one of this conversation's delegates that takes tasks: its `takes` in `listDelegates` is `tasks` or `both`. Anyone else is refused with one answer, the same for another user's worker as for a worker nobody holds, and nothing is stored:
+
+```json
+{ "ok": false, "error": "unknown_assignee: \"helper\" is not on this board's team. Available: support.devices, licenses. …" }
+```
+
+A task with no assignee goes to the conversation's only delegate that takes tasks. With several, it waits on the board until you assign it.
+
+`addTask` answers `{ ok: true, taskId }` once the task is stored, without waiting for it to run. The task starts by itself: the delegate works it in a new session of its own, its **task session**, which belongs to you like every other session your workers run, on whichever flow the delegate runs on. The delegate is checked again when the task is handed over, so one removed or fired in between doesn't run it, and the task fails instead.
+
+### Hearing how it went
+
+The conversation that filed a task hears once when it ends, in a line under the delegate's name:
+
+```text
+Task "Audit our dependencies' licenses" (task_…) completed by licenses: All 214 dependencies are MIT or Apache-2.0.
+```
+
+It hears when a task completes, with what came back; when it fails for good, with the error; and when it stops on a question, with the question. A task gets two attempts, and a first failure just runs it again without a word. A coordinator that routes by judgment then takes a turn to read the line and decide what to do next. One with a fixed routing policy shows the line and nothing more. A line that arrives while the coordinator is replying to you starts its turn right away, beside that reply.
+
+| Action | What it does |
+| --- | --- |
+| `listTasks_tasks` | This conversation's tasks, and nobody else's |
+| `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id and starts at once |
+| `cancelTask_tasks` | Cancels a task that hasn't finished. Nothing is said in the conversation |
+
+A running task can't be moved to another delegate. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, can't be reassigned or cancelled, and the tools answer `terminal_task_write_declined`. To have someone take on a failed task, file it again.
+
+To open the session working a task, look it up by the task's id and the conversation's `filingSessionId`, which `listDelegates` returns:
+
+```ts
+const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId });
+```
+
+Two conversations can file a task with the same id for the same worker, and each finds only its own task's session. A lookup without `taskId` never returns a task session, so a post to the same worker in this conversation still lands in its delegate session. `ensureWorkerSession` with a `taskId` never creates a session: until the board hands the task over, it throws.
+
+**Two conversations, two boards.** Each conversation's board is its own. Running one never takes, shows or waits on another conversation's tasks, even with the same coordinator and the same delegates.
+
 ## Making your own flow a delegate
 
 A worker on the built-in `agent` flow can take posts as it is. A [worker flow of your own](./workers-on-disk.md#which-flows-can-run-workers) takes them once it declares the delegated-post entry around its door, the block its `run` action runs. Here `door` and `inputSchema` are that flow's own:
@@ -300,6 +352,7 @@ Then add it to `delegateFlows`. The door is handed `{ message }`, where the mess
 - **Stop a delegate at the deadline.** The round closes without it; the delegate's turn runs on.
 - **Recall a post.** Removing a delegate doesn't take back what it was handed.
 - **Pick by a delegate's instructions.** Best fit reads the delegate's note, or else its description, and nothing else.
+- **Let a delegate file tasks of its own.** A task session's `addTask` is refused, from the delegate's tools and from your app alike, so a delegate works the task it was handed itself.
 
 ## Related pages
 

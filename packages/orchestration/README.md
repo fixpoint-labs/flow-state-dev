@@ -102,7 +102,8 @@ session. The function may be async, to look up a value the server keeps by that 
 Task ids on a partitioned ledger are one
 path segment, and `maxInstances` is refused, since it would count every partition.
 A request loads a partition's rows on that partition's first read, never the whole
-ledger.
+ledger. The rows sit in the user's own cell, which every flow of theirs reads, even on a flow
+that isolates its user state (`isolateUserState`).
 
 **Recording how a task ended.** `recordEnding` is handed every write that records an
 ending (a completion, a failure with or without attempts left, a park, a cancel, and
