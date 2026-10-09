@@ -1,5 +1,5 @@
 /**
- * Legs a to d and f: the DevTeam install, served by Shift Manager's own
+ * Legs a to d, f and g: the DevTeam install, served by Shift Manager's own
  * command, with Alice (its owner) and Bob (its second member) each acting
  * through the shipped clients with their own verified bearer, and the chief
  * of staff's turns on the real model its file names.
@@ -220,7 +220,7 @@ export interface DevteamOptions {
   /** The chief of staff's default delegates, read from its file on the commit. */
   defaults: string[];
   legs: ReadonlySet<string>;
-  asks: { a: string; c: string; d: string; f: string };
+  asks: { a: string; c: string; d: string; f: string; g: string };
   /** The mailboxes whose boards the EM files on, by id, read off the commit's tree. */
   boardMailboxes: string[];
   say: (line: string) => void;
@@ -294,13 +294,61 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
   const leg = (name: string): LegResult => (legs[name] ??= { failures: [], notes: [] });
   const alice = connect(o.shipped, o.origin, o.alice);
   const bob = connect(o.shipped, o.origin, o.bob);
+  const em = o.defaults.find((d) => /\.em$/.test(d)) ?? "eng.em";
+
+  /**
+   * Ask the chief of staff, in `cos`, for work the EM delegate does, and grade
+   * the turn as leg `name`: Alice's own workers are still `own0` (`no-hire`),
+   * the post's one delivery goes to the EM (`one-delivery`), the EM's session
+   * for this conversation holds the post, with the word, within 120 s
+   * (`session-120s`, `carries-word`), and one `by: judgment` record delivers
+   * to it (`judgment-record`). Returns the post's deliveries to the EM.
+   */
+  const askTheEm = async (name: string, cos: SessionSummary, ask: string, theWord: string, own0: string[]): Promise<Delivery[]> => {
+    const r = leg(name);
+    const sent = Date.now();
+    o.say(`leg ${name}: "${ask}"`);
+    const turn = await talk(turns, name, alice, cos, ask);
+    r.notes.push(`the turn ${turn.status}; tools: ${turn.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}; reply: ${turn.reply.slice(0, 300)}`);
+    const own = await ownWorkers(alice);
+    if (!same(own, own0)) r.failures.push(`${name}:no-hire — Alice's own workers went from [${own0.join(", ")}] to [${own.join(", ")}]`);
+    // The delivery to the EM, and its session, within 120 s of the post.
+    let mine: Delivery[] = [];
+    let opened: { at: number; holdsWord: boolean } | undefined;
+    for (const until = sent + 120_000; Date.now() < until; await sleep(1_000)) {
+      mine = (await recordOf(alice, cos.id)).ledger.filter((d) => d.postId === turn.requestId);
+      const toEm = mine.find((d) => d.delegate.worker === em && d.status === "delivered" && d.sessionId !== undefined);
+      if (toEm !== undefined) {
+        const items = await alice.routes.items(toEm.sessionId!, "message").catch(() => [] as StoredItem[]);
+        if (items.length > 0) {
+          opened = { at: Date.now() - sent, holdsWord: items.some((i) => i.role === "user" && textOf(i).includes(theWord)) };
+          if (opened.holdsWord) break;
+        }
+      }
+      if (turn.requestId === null) break;
+      // Nothing was handed on in the turn: no later delivery comes.
+      if (mine.length === 0 && Date.now() - sent > 20_000) break;
+    }
+    const toEm = mine.filter((d) => d.delegate.worker === em);
+    if (mine.length !== 1 || toEm.length !== 1 || toEm[0]!.status !== "delivered") {
+      r.failures.push(`${name}:one-delivery — wanted one delivery of the post, to ${em}; the conversation's ledger holds ${mine.length === 0 ? "none" : show(mine)}`);
+    } else r.notes.push(`one delivery of the post, to ${em}, into ${toEm[0]!.sessionId}`);
+    if (opened === undefined) r.failures.push(`${name}:session-120s — no session of ${em}'s for this conversation held the post within 120 s`);
+    else if (!opened.holdsWord) r.failures.push(`${name}:carries-word — ${em}'s session opened, but holds no line with the word "${theWord}"`);
+    else r.notes.push(`${em}'s session held the post, with the word, ${Math.round(opened.at / 1000)} s after it was sent`);
+    const records = await routingOf(alice, cos.id, turn.requestId);
+    const judged = records.filter((d) => d.by === "judgment");
+    if (records.length !== 1 || judged.length !== 1 || !(judged[0]!.delegates as any[]).some((d) => d.worker === em && d.outcome === "delivered")) {
+      r.failures.push(`${name}:judgment-record — wanted one \`by: judgment\` record delivering to ${em}; the post has ${records.length === 0 ? "none" : show(records)}`);
+    }
+    return toEm;
+  };
 
   // ---- a, b, c: one conversation, opened the way the app opens it --------------
   if (o.legs.has("a") || o.legs.has("b") || o.legs.has("c")) {
     const cos = await alice.workforce.ensureWorkerSession({ worker: COS });
     const own0 = await ownWorkers(alice);
     o.say(`Alice's chief of staff: session ${cos.id} on \`${cos.flowKind}\`; her own workers: ${own0.length === 0 ? "none" : own0.join(", ")}`);
-    const em = o.defaults.find((d) => /\.em$/.test(d)) ?? "eng.em";
     const slug = `cart-${hex()}`;
     const theWord = word();
     const askA = o.asks.a.replace("{slug}", slug).replace("{word}", theWord);
@@ -309,41 +357,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
     for (const name of ["a", "b"] as const) {
       if (!o.legs.has(name) && !(name === "a" && o.legs.has("b"))) continue;
       const r = leg(name);
-      const sent = Date.now();
-      o.say(`leg ${name}: "${askA}"`);
-      const turn = await talk(turns, name, alice, cos, askA);
-      r.notes.push(`the turn ${turn.status}; tools: ${turn.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}; reply: ${turn.reply.slice(0, 300)}`);
-      const own = await ownWorkers(alice);
-      if (!same(own, own0)) r.failures.push(`${name}:no-hire — Alice's own workers went from [${own0.join(", ")}] to [${own.join(", ")}]`);
-      // The delivery to the EM, and its session, within 120 s of the post.
-      let mine: Delivery[] = [];
-      let opened: { at: number; holdsWord: boolean } | undefined;
-      for (const until = sent + 120_000; Date.now() < until; await sleep(1_000)) {
-        mine = (await recordOf(alice, cos.id)).ledger.filter((d) => d.postId === turn.requestId);
-        const toEm = mine.find((d) => d.delegate.worker === em && d.status === "delivered" && d.sessionId !== undefined);
-        if (toEm !== undefined) {
-          const items = await alice.routes.items(toEm.sessionId!, "message").catch(() => [] as StoredItem[]);
-          if (items.length > 0) {
-            opened = { at: Date.now() - sent, holdsWord: items.some((i) => i.role === "user" && textOf(i).includes(theWord)) };
-            if (opened.holdsWord) break;
-          }
-        }
-        if (turn.requestId === null) break;
-        // Nothing was handed on in the turn: no later delivery comes.
-        if (mine.length === 0 && Date.now() - sent > 20_000) break;
-      }
-      const toEm = mine.filter((d) => d.delegate.worker === em);
-      if (mine.length !== 1 || toEm.length !== 1 || toEm[0]!.status !== "delivered") {
-        r.failures.push(`${name}:one-delivery — wanted one delivery of the post, to ${em}; the conversation's ledger holds ${mine.length === 0 ? "none" : show(mine)}`);
-      } else r.notes.push(`one delivery of the post, to ${em}, into ${toEm[0]!.sessionId}`);
-      if (opened === undefined) r.failures.push(`${name}:session-120s — no session of ${em}'s for this conversation held the post within 120 s`);
-      else if (!opened.holdsWord) r.failures.push(`${name}:carries-word — ${em}'s session opened, but holds no line with the word "${theWord}"`);
-      else r.notes.push(`${em}'s session held the post, with the word, ${Math.round(opened.at / 1000)} s after it was sent`);
-      const records = await routingOf(alice, cos.id, turn.requestId);
-      const judged = records.filter((d) => d.by === "judgment");
-      if (records.length !== 1 || judged.length !== 1 || !(judged[0]!.delegates as any[]).some((d) => d.worker === em && d.outcome === "delivered")) {
-        r.failures.push(`${name}:judgment-record — wanted one \`by: judgment\` record delivering to ${em}; the post has ${records.length === 0 ? "none" : show(records)}`);
-      }
+      const toEm = await askTheEm(name, cos, askA, theWord, own0);
       // The real outcome of the hand-off: the EM filed the feature line, and
       // the row is on the team's board, read the way Shift Manager reads it.
       if (name === "a") {
@@ -510,6 +524,18 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
         r.failures.push(`f:create-refused — a create carrying delegates wasn't refused with 400 naming the field: ${created}${exists ? ", and the session exists" : ""}`);
       }
     }
+  }
+
+  // ---- g: the plain ask, in a new conversation --------------------------------
+  // Alice asks for the feature to be filed and never says to hand it on: the
+  // chief of staff still hands it to the delegate that files features, and
+  // hires no one. Last, so a hire it makes here can't sway another leg.
+  if (o.legs.has("g")) {
+    const kind = (await alice.workforce.ensureWorkerSession({ worker: COS })).flowKind;
+    const conv = await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+    const theWord = word();
+    const ask = o.asks.g.replace("{slug}", `cart-${hex()}`).replace("{word}", theWord);
+    await askTheEm("g", { id: conv.id, flowKind: kind }, ask, theWord, await ownWorkers(alice));
   }
   return { legs, turns };
 }

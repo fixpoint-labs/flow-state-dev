@@ -6,7 +6,7 @@
  * within a set number of rounds; every routing decision is recorded; and no
  * other user's worker is ever a delegate (FIX-1791). See goal.md.
  *
- * - Legs a to d and f (`devteam.mts`): Shift Manager's DevTeam install, served
+ * - Legs a to d, f and g (`devteam.mts`): Shift Manager's DevTeam install, served
  *   by its own command over a fresh store, with Alice and Bob through the
  *   shipped clients and the chief of staff on the real model its file names.
  * - Leg e (`leg-e.mts`): a goal-local coordinator tree on the real engine and
@@ -17,7 +17,7 @@
  * Controls: GOAL_CONTROL=no-roster-check | no-round-limit | no-delegate-read
  *           (each runs the one leg it must fail, unless GOAL_LEGS says otherwise)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
- * Legs:     GOAL_LEGS=a,b,c,d,e,f (default: all)
+ * Legs:     GOAL_LEGS=a,b,c,d,e,f,g (default: all)
  * Attempts: GOAL_ATTEMPTS=<n> fresh Labs for the model-backed legs, each running
  *           only the legs still red (default 3; 1 under a control)
  */
@@ -34,7 +34,7 @@ import { boardMailboxes, COS, cosDefaults, devteamLegs, loadShipped, type LegRes
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("coordinators-delegates");
 const MODEL_KEYS = ["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"];
-const ALL_LEGS = ["a", "b", "c", "d", "e", "f"] as const;
+const ALL_LEGS = ["a", "b", "c", "d", "e", "f", "g"] as const;
 const say = (s: string) => console.error(`[coordinators ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
 const controlName = process.env.GOAL_CONTROL ?? "";
@@ -51,7 +51,7 @@ const legs = new Set(
 );
 for (const l of legs) if (!(ALL_LEGS as readonly string[]).includes(l)) throw new Error(`unknown leg "${l}" in GOAL_LEGS`);
 
-const asks = JSON.parse(readFileSync(join(HERE, "fixtures", "asks.json"), "utf8")) as { a: string; c: string; d: string; f: string };
+const asks = JSON.parse(readFileSync(join(HERE, "fixtures", "asks.json"), "utf8")) as { a: string; c: string; d: string; f: string; g: string };
 
 /** The tree a run serves: this checkout, or another commit's own tree and install. */
 function checkoutFor(commit: string | undefined): { root: string; commit: string; describe: string } {
