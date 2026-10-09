@@ -446,7 +446,7 @@ export function part4(base: string, report: Report): void {
 
   // Docs smoke (ER-14). Shift Manager is a package now, so labs/README.md points at it there.
   const labs = readFileSync(join(REPO_ROOT, "labs", "README.md"), "utf8");
-  if (!/\]\(\.\.\/packages\/shift-manager\/?\)/.test(labs)) report.fail("P4:docs", "labs/README.md does not point at Shift Manager's package");
+  if (!/\[`@flow-state-dev\/shift-manager`\]\(\.\.\/packages\/shift-manager\/?\)/.test(labs)) report.fail("P4:docs", "labs/README.md does not list Shift Manager's package");
   const readme = readFileSync(join(SHIFT_MANAGER, "README.md"), "utf8");
   for (const heading of ["## Run it", "## What a Lab's config provides", "## What you see", "## A task", "## Roster"]) {
     if (!readme.includes(heading)) report.fail("P4:docs", `Shift Manager's README has no "${heading}"`);

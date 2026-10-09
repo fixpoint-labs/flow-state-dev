@@ -78,7 +78,7 @@ const lab = await openLab({ /* the Lab's own options */ });
 export default lab.state;
 ```
 
-Some host modules do part of this setup for you, and the host's docs say which parts. If the host has an option that opens the inventory, turn it on and skip the `openInventory` call. If it has one that hands the page the Lab's user, turn it on and skip the `devtool` setting. A host that sets its own `resolvePrincipal` and calls `openMailboxes` takes care of the organization and the mailboxes. The config is then left to pick the store, turn those options on, pass any option the host's docs mark as required, and default-export the `FlowState` the host returns. Leave out every option the host's docs say a server can do without. The [`devteam`](#the-devteam-profile) profile's config works this way:
+Some host modules do part of this setup for you, and the host's docs say which parts. If the host has an option that opens the inventory, turn it on and skip the `openInventory` call. If it has one that hands the page the Lab's user, turn it on and skip the `devtool` setting. A host that sets its own `resolvePrincipal` and calls `openMailboxes` takes care of the organization and the mailboxes. The config is then left to pick the store, turn those options on, pass any option the host's docs mark as required, and default-export the `FlowState` the host returns. Leave out every other option. The [`devteam`](#the-devteam-profile) profile's config works this way:
 
 ```ts title="teams/devteam/fsdev.config.mts (excerpt)"
 const lab = await openLab({
@@ -99,7 +99,7 @@ export default lab.state;
 | `sqliteStores({ filename })` | `@flow-state-dev/store-sqlite` | Kept in the file. A relative `filename` lands under the directory you ran the command in. |
 | `postgresStores(options)` | `@flow-state-dev/store-postgres` | Kept in the database. |
 
-Use `inMemoryStores()` unless the Lab's own docs say it has to keep what it holds across a restart; then pick SQLite or Postgres. [`test/fixtures/multi-seat-collab/fsdev.config.mts`](test/fixtures/multi-seat-collab/fsdev.config.mts) runs on SQLite.
+Pick by whether what the Lab holds has to survive a restart, including the ones `--dev` does on each save. If it does, use SQLite or Postgres. If you don't need it kept and the Lab's docs don't say it must be, use `inMemoryStores()`. That is the rule to follow whenever a Lab's docs say nothing about restarts. [`test/fixtures/multi-seat-collab/fsdev.config.mts`](test/fixtures/multi-seat-collab/fsdev.config.mts) runs on SQLite.
 
 **An organization.** Every request a Lab serves runs in an organization, and Shift Manager shows it in the sidebar. A Lab names its own with `resolvePrincipal` on `createFlowState`, which returns who a request is:
 
