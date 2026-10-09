@@ -12,8 +12,9 @@
  * Checks (`specs/issues/FIX-1791/BUSINESS-RULES.md`): BR-33 (the chief of
  * staff runs on the coordinator flow, routing by judgment), BR-34's
  * mechanism (hire, add, hand off), BR-10 (its delegate read is the
- * conversation's list), BR-9's record of a default that can't take a post (the
- * coder, which takes tasks), and the EM as a delegate that takes posts: it
+ * conversation's list, with what each takes), BR-9's record of a default that
+ * can't take a post (the coder, which takes tasks), naming the delegate that
+ * can, and the EM as a delegate that takes posts: it
  * files the feature line a handed-on post carries, or says it filed nothing.
  */
 import { mkdtempSync } from "node:fs";
@@ -129,7 +130,11 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const id = await conversation(lab);
     const listed = await act(lab, id, "listDelegates", {});
     expect(listed.error).toBeUndefined();
-    expect(listed.output.delegates).toEqual([{ worker: "eng.em" }, { worker: "eng.coder" }]);
+    // The EM's flow takes posts and the coder's only tasks: what the chief of staff picks a hand-off by.
+    expect(listed.output.delegates).toEqual([
+      { worker: "eng.em", takes: "posts" },
+      { worker: "eng.coder", takes: "tasks" },
+    ]);
     // The agent flow refuses it: a session names the flow its worker runs on.
     const onAgent = await lab.door("POST", `agent/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: COS } } });
     expect(onAgent.status).toBe(400);
@@ -165,7 +170,11 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const items = await settledItems(lab, id);
     const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
     expect(record.data.delegates).toEqual([
-      { worker: "eng.coder", outcome: "skipped", reason: 'Worker "eng.coder" runs on flow "coder", which can\'t take a delegated post.' },
+      {
+        worker: "eng.coder",
+        outcome: "skipped",
+        reason: 'Worker "eng.coder" runs on flow "coder", which can\'t take a delegated post. Delegates here that take posts: eng.em.',
+      },
     ]);
   });
 

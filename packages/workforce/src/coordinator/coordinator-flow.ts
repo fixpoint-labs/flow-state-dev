@@ -91,7 +91,7 @@ import {
   type CoordinatorConfig,
   type CoordinatorRouting
 } from "./coordinator-config";
-import { createDelegateCheck, takesDelegatedPost } from "./coordinator-check";
+import { DELEGATE_TAKES, createDelegateCheck, flowTakes, takesDelegatedPost, type DelegateTakes } from "./coordinator-check";
 import {
   COORDINATOR_SERVER_OWNED,
   changeDelegates,
@@ -264,6 +264,11 @@ const delegateListOutputSchema = z.object({
   filingSessionId: z.string()
 });
 
+/** What `listDelegates` answers: the list, each delegate with what it takes now, read and never stored. */
+const delegateReadOutputSchema = delegateListOutputSchema.extend({
+  delegates: z.array(delegateRecordSchema.extend({ takes: z.enum(DELEGATE_TAKES) }))
+});
+
 /** A conversation's delegates, and the conversation's `filingSessionId`. */
 type Listed = { list: DelegateList; filingSessionId: string };
 
@@ -385,6 +390,20 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const { defaults } = await coordinatorOf(ctx);
     return { list: await readDelegates(ctx.session, defaults), filingSessionId: await filingSessionIdOf(ctx.session) };
   };
+  /**
+   * The list as `listDelegates` answers it, each delegate with what it takes
+   * now: what its flow takes, or nothing when it fails the check for an add
+   * (fired, or on a flow that takes neither).
+   */
+  const read = async (ctx: BlockContext) => {
+    const listed = listOutput(await list(ctx));
+    const delegates: Array<DelegateRecord & { takes: DelegateTakes }> = [];
+    for (const record of listed.delegates) {
+      const checked = await check(ctx as never, record.worker, "add");
+      delegates.push({ ...record, takes: checked.ok ? flowTakes(installation, postFlows, checked.worker.flow) : "nothing" });
+    }
+    return { ...listed, delegates };
+  };
 
   /** Throw a refusal, for the actions. */
   const orRefuse = (changed: Changed) => {
@@ -422,9 +441,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const listDelegatesAction = handler({
     name: "coordinator-list-delegates",
     inputSchema: z.object({}).strict(),
-    outputSchema: delegateListOutputSchema,
+    outputSchema: delegateReadOutputSchema,
     ...blockBase,
-    execute: async (_input, ctx) => listOutput(await list(ctx as never))
+    execute: async (_input, ctx) => read(ctx as never)
   });
 
   const addDelegateTool = handler({
@@ -457,11 +476,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const listDelegatesTool = handler({
     name: LIST_DELEGATES,
     description:
-      "Read who this conversation's delegates are: every one, with its note, and the fallback. Answer who your delegates are from this, never from memory.",
+      "Read who this conversation's delegates are: every one, with its note and what it takes (`posts`, which `handOff` hands on; `tasks`; `both`; or `nothing`), and the fallback. Answer who your delegates are from this, never from memory.",
     inputSchema: z.object({}).strict(),
-    outputSchema: delegateListOutputSchema,
+    outputSchema: delegateReadOutputSchema,
     ...blockBase,
-    execute: async (_input, ctx) => listOutput(await list(ctx as never))
+    execute: async (_input, ctx) => read(ctx as never)
   });
 
   // -------------------------------------------------------------------------
@@ -714,7 +733,20 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const handOffInputSchema = z.object({ worker: z.string().min(1) }).strict();
   const handOffRefusedSchema = z.object({ refused: z.string(), worker: z.string() });
 
-  /** Whether the coordinator may hand this post to `worker`: on the list, and passing the check now. */
+  /** The sentence a refused hand-off ends with: who on the list a hand-off reaches now, by the same check. */
+  const postTakers = async (ctx: BlockContext, delegates: readonly DelegateRecord[]): Promise<string> => {
+    const takers: string[] = [];
+    for (const { worker } of delegates) {
+      if (!takers.includes(worker) && (await check(ctx as never, worker, "post")).ok) takers.push(worker);
+    }
+    return takers.length === 0 ? "No delegate here takes posts." : `Delegates here that take posts: ${takers.join(", ")}.`;
+  };
+
+  /**
+   * Whether the coordinator may hand this post to `worker`: on the list, and
+   * passing the check now. A listed delegate the check refuses is refused with
+   * the delegates that would take the post.
+   */
   const handOffCheck = handler({
     name: "coordinator-hand-off-check",
     inputSchema: handOffInputSchema,
@@ -733,7 +765,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         };
       }
       const checked = await check(ctx as never, record.worker, "post");
-      if (!checked.ok) return { worker: input.worker, refused: checked.message };
+      if (!checked.ok) {
+        return { worker: input.worker, refused: `${checked.message} ${await postTakers(ctx as never, listed.delegates)}` };
+      }
       return deliveryOf(post, record, checked.worker.flow);
     }
   });

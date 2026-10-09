@@ -10,6 +10,7 @@
  *   `agent` flow declares both.
  * - The pinned names: the flow's kind, its `coordinator-route` record, its
  *   four delegate actions and its configuration keys.
+ * - `DelegateTakes`: what `listDelegates` says each delegate takes.
  */
 export { defineCoordinatorFlow, type CoordinatorFlowOptions } from "./coordinator-flow";
 export {
@@ -31,6 +32,7 @@ export {
   SET_FALLBACK
 } from "./coordinator-keys";
 export { delegateRecordSchema, type DelegateRecord } from "./coordinator-delegates";
+export type { DelegateTakes } from "./coordinator-check";
 export {
   coordinatorRouteRecordSchema,
   type CoordinatorRouteRecord,
