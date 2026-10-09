@@ -855,6 +855,20 @@ describe("a durable host with no retention policy still keeps its gates (BR-11a,
     }
   });
 
+  it("prunes nothing: the retention steps stay off without a policy", async () => {
+    const h = harness(parkingFlow([]));
+    const prune = vi.spyOn(h.provider, "pruneSuspensions");
+    const leases = vi.spyOn(h.stores.leases, "pruneExpired");
+    const checkpoints = vi.spyOn(h.provider, "cleanupCheckpoints");
+    await runTick({ ...tickArgs(h), prune: false });
+    expect(prune).not.toHaveBeenCalled();
+    expect(leases).not.toHaveBeenCalled();
+    expect(checkpoints).not.toHaveBeenCalled();
+    await runTick(tickArgs(h));
+    expect(prune).toHaveBeenCalled();
+    expect(leases).toHaveBeenCalled();
+  });
+
   it("a resolved gate is re-driven", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const seen: string[] = [];
