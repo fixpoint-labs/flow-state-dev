@@ -23,8 +23,9 @@
  * A nested level takes the parent's envelope and unwraps it on its evaluator
  * step and in its gate: a sequencer's `connectInput` runs as its first step,
  * so `ctx.parent.input` would be the pre-connector value anyway. The returned
- * block is a sequencer around the root level, because the steps of the block
- * a run starts at see no `ctx.parent.input`.
+ * block is a sequencer around the root level. That wrapper dates from when the
+ * steps of the block a run starts at saw no `ctx.parent.input`; the engine now
+ * records it there, so the wrapper is no longer load-bearing.
  */
 import { z, type ZodTypeAny } from "zod";
 import { handler, router, sequencer } from "../blocks";
