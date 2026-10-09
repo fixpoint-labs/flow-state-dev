@@ -19,7 +19,7 @@ import {
   resolveResourceCollection,
   type TaskCollectionRef
 } from "../../src/tasks";
-import { addTaskAndWait, resumeOwedAsks } from "../../src/skills/wait-for-response";
+import { addTaskAndWait, resumeOwedAsks } from "../../src/tasks/helpers/wait-for-response";
 
 export const USER = "u_asker";
 export const SESSION = "s_conversation";

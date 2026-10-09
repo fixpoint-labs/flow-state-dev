@@ -20,13 +20,19 @@
  *   turn its rows are owed, through `ctx.requestHost.resumeAsk`. It stops at
  *   once when no row owes one. Never called inside the asking turn.
  *
+ * Package-internal until FIX-1816 P3 wires it into `addTask` and the
+ * child-finished notice; nothing re-exports it yet.
+ *
  * `addTask`'s option, the schema it appears in and the check on who may ask
  * are the task tools' (FIX-1816 P3); this module is the mechanism under them.
  */
 import { AskEndedError, parkOnAsk, parseBlockInstanceId, requireRequestHost } from "@flow-state-dev/core";
 import type { AskOutcome, BlockContext } from "@flow-state-dev/core/types";
-import { isTerminalStatus, type Task, type TaskCollectionRef, type TaskInit } from "../tasks";
-import { generateId } from "../tasks/generate-id";
+import { isTerminalStatus } from "../schema/task-status";
+import type { Task } from "../schema/task";
+import type { TaskInit } from "../schema/task-init";
+import type { TaskCollectionRef } from "../collection/types";
+import { generateId } from "../generate-id";
 
 /** How long an ask may stay open before it times out: ten minutes, fixed. */
 export const ASK_DEADLINE_MS = 10 * 60_000;
@@ -59,13 +65,21 @@ export type WaitForResponseResult =
       readonly message?: string;
     };
 
-/** The tool call this block runs as: its logical id, and the step it belongs to. */
+/**
+ * The tool call this block runs as: its logical id, and the step it belongs to.
+ *
+ * The logical id is the runtime's `ctx.idempotencyKey` (`${requestId}:${blockPath}`,
+ * the same on every attempt and on the replay after a resume) when the context
+ * carries it. A generator's tool call does not today (only `executeBlock`
+ * stamps the key), so there it is derived from the block identity, to the same
+ * value. The step key is derived from the block path.
+ */
 function toolCallOf(ctx: BlockContext): { logicalId: string; stepKey: string } | undefined {
   const instanceId = ctx._blockIdentity?.blockInstanceId;
   if (instanceId === undefined) return undefined;
   const parsed = parseBlockInstanceId(instanceId);
   if (parsed === undefined) return undefined;
-  const logicalId = `${parsed.requestId}:${parsed.path}`;
+  const logicalId = ctx.idempotencyKey ?? `${parsed.requestId}:${parsed.path}`;
   // A generator's tool runs at `<generator>/tool[<name>][<step>%3A<call>]`.
   // Calls in one step share the generator and the step number. Anything else
   // (a tool called outside a generator's loop) is its own step.
@@ -191,8 +205,8 @@ export type ResumeOwedReport = {
 /**
  * Resume every turn this board's rows are owed (the board touch).
  *
- * Reads the marker through `count` first and stops at once when nothing is
- * owed. For each owed row it resumes the turn with the row's ending, through
+ * Reads the owed rows with one filtered `list` over the board's loaded rows,
+ * and stops at once when there are none. For each owed row it resumes the turn with the row's ending, through
  * the request host, which only reaches this conversation's own gates. The
  * marker clears when the resume is accepted, or refused because the gate was
  * already resolved. It stays when the gate cannot be found (the turn has not
@@ -203,11 +217,12 @@ export async function resumeOwedAsks(
   ctx: BlockContext,
   collection: TaskCollectionRef
 ): Promise<ResumeOwedReport> {
-  if (collection.count({ resumeOwed: true }) === 0) return { resumed: [], stillOwed: [] };
+  const owed = collection.list({ resumeOwed: true });
+  if (owed.length === 0) return { resumed: [], stillOwed: [] };
   const host = requireRequestHost(ctx);
   const resumed: string[] = [];
   const stillOwed: string[] = [];
-  for (const row of collection.list({ resumeOwed: true })) {
+  for (const row of owed) {
     if (row.ask == null || host.resumeAsk === undefined || collection.clearResumeOwed === undefined) {
       stillOwed.push(row.id);
       continue;

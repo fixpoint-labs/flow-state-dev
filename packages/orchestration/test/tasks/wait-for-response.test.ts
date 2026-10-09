@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { askGateId } from "../../src/skills/wait-for-response";
+import { askGateId } from "../../src/tasks/helpers/wait-for-response";
 import {
   act,
   askCall,
