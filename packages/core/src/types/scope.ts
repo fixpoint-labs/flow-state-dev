@@ -1,4 +1,4 @@
-import type { ItemStatus, ItemVisibility } from "../items/types";
+import type { ItemStatus, ItemVisibility, MessageItem } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { CostEstimate, TokenLedger } from "./flow";
 import type { ScopeStateOps } from "./state";
@@ -36,6 +36,12 @@ export type SessionItem = {
   /** Transport and memory visibility of this item. */
   itemVisibility?: ItemVisibility;
   agentName?: string;
+  /**
+   * A message item's `role`: `user` for the caller's message, `assistant` for
+   * one the flow emitted. The framework writes no other role on a message
+   * item. Absent on every other item type.
+   */
+  role?: MessageItem["role"];
 };
 
 /**

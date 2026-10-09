@@ -76,3 +76,9 @@ export const DELIVERIES_STATE = "deliveries";
 export const ROUND_ROBIN_STATE = "roundRobin";
 /** Server-written session state: the rounds still open, each waiting for its answers. */
 export const ROUNDS_STATE = "openRounds";
+/**
+ * Server-written session state: the answers that landed last, each with the
+ * request that landed it, so a post routed before that request has finished
+ * still reads the answer as a line.
+ */
+export const LANDED_STATE = "landedAnswers";
