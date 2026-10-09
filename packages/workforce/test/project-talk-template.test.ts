@@ -624,7 +624,10 @@ describe("a project's talk template at runtime", () => {
     // Both sides agree: the session names the row, and the row lists the session.
     // It is a child of the session whose turn created the row, keyed on the row.
     const record = (await h.call("GET", "alice", ["sessions", talk])).json.session;
-    expect(record).toMatchObject({ state: { resourceId: "apollo" }, userId: "alice", parentSessionId: h.app, topic: "talk:apollo" });
+    expect(record).toMatchObject({ userId: "alice", parentSessionId: h.app, topic: "talk:apollo" });
+    // The binding is server-side state the talk flow does not expose, so it is
+    // read from the store rather than the session route.
+    expect((await h.stores.session.get(talk))?.state).toMatchObject({ resourceId: "apollo" });
     expect((await h.rowOf("apollo"))!.sessions).toEqual([{ sessionId: talk, userId: "alice" }]);
 
     // The negative control: the same write with no template mints nothing.
