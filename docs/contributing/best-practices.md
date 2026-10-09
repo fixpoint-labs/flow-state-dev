@@ -219,7 +219,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-024 | Helpers when the body varies; factories when only identity varies |
 | BP-025 | Declare and validate sequencer output schemas deliberately |
 | BP-036 | Prefer conditional step variants (`.sideChainIf`/`.tapIf`/`.stepIf`) over wrapper sequencers |
-| BP-042 | A block's return is recorded — never return an unbounded payload or a secret; return what the next step needs to find it |
+| BP-042 | A handler's or action's return is recorded — never return an unbounded payload; bulk data between steps goes through `.map`, data for a person gets a read path |
 
 ### [Generators & Prompts](best-practices/generators.md)
 
