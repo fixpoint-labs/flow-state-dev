@@ -527,6 +527,10 @@ A reusable typed-edge primitive for relational state. `edgeSchema` describes a d
 
 Resources opt into a first-class edge graph with `defineResource({ edges: true })` (or `{ vocabulary, maxEdges }`): the framework stores an `edges` array in the resource's state and exposes an `.edges` API (`add`, `supersede`, `remove`, `all`, `neighbors`, `egoGraph`, `shortestPath`, `pruneDangling`) on the live resource reference. Resources without `edges` are unaffected.
 
+### Block builders without the root (`@flow-state-dev/core/blocks/handler`, `@flow-state-dev/core/blocks/sequencer`)
+
+The main entry reaches `node:module` and `node:url` through the model resolver, so a module that must bundle for a browser can't value-import from it. These two subpaths expose the same `handler` and `sequencer` builders (and the rest of each module's exports, such as `composeSideChainSignal`) without pulling in Node built-ins. Node code keeps importing from the main entry.
+
 ## Block state (and its sequencer special case)
 
 Any block — handler, generator, router, or sequencer — can declare its own request-scoped `stateSchema` and read/write it via `ctx.self`. A child block reaches its immediate parent's state the same way, via `ctx.parent`, when it declares `parentStateSchema`. Sequencer instance state below is the common case of this same primitive: `ctx.sequencer` is `ctx.self` addressed by "nearest enclosing sequencer" instead of "this block." See [Block State](https://flow-state.dev/docs/advanced/block-state) for the full addressing model (`ctx.self`, `ctx.parent`, `ctx.sequencer`, `ctx.targets`) and the fan-out/loop isolation contract.
