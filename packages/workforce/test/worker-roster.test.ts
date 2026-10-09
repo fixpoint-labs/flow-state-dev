@@ -90,6 +90,26 @@ describe("hiring a worker", () => {
     expect(messageOf(refused.error)).toContain("payroll");
     expect((await h.rosterAction("alice", "hire", { id: "b", flow: FIXTURE, settings: { resources: ["handbook"] } })).error).toBeUndefined();
   });
+
+  it("refuses a skill nothing registers, naming the skills that are, so the hire can be made again with one of them or none", async () => {
+    const h = host({ skills: [skill("summarize"), skill("cite")] });
+    const refused = await h.rosterAction("alice", "hire", { id: "auditor", flow: FIXTURE, skills: ["license auditing"] });
+    expect(messageOf(refused.error)).toBe(
+      'Worker "auditor" names skill "license auditing", which this installation doesn\'t register. ' +
+        'Remove it, or register it. Skills it registers: "cite", "summarize". Nothing was written.'
+    );
+    expect((await h.client("alice").roster()).filter((entry) => !entry.standard)).toEqual([]);
+    // The hire made again as the refusal says lands.
+    expect((await h.rosterAction("alice", "hire", { id: "auditor", flow: FIXTURE, skills: ["cite"] })).error).toBeUndefined();
+
+    const none = host({ skills: [] });
+    const bare = await none.rosterAction("alice", "hire", { id: "auditor", flow: FIXTURE, skills: ["a", "b"] });
+    expect(messageOf(bare.error)).toBe(
+      'Worker "auditor" names skill "a", which this installation doesn\'t register. Remove it, or register it; ' +
+        'names skill "b", which this installation doesn\'t register. Remove it, or register it. ' +
+        "It registers no skills. Nothing was written."
+    );
+  });
 });
 
 describe("forking a worker", () => {
