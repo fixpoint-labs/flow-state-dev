@@ -115,7 +115,7 @@ describe("reading this PR's issue ids", () => {
 
   it("ignores a random branch suffix that only looks like an id", () => {
     expect(prIds({ branch: "claude/project-thread-8ra0ke" })).toEqual([]);
-    expect(prIds({ branch: "cursor/define-channel-flow-7f2a" })).toEqual([]);
+    expect(prIds({ branch: "claude/charming-gates-4duri2" })).toEqual([]);
   });
 
   it("reads every id in the title", () => {
