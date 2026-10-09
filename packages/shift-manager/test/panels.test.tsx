@@ -43,6 +43,8 @@ async function openApp(path: string, userId = ASK_LAB_USER_ID) {
   };
 }
 
+/** The slot's width finishing its animation. happy-dom's TransitionEvent drops `propertyName`, so it is set here. */
+const widthTransitionEnd = () => Object.defineProperty(new Event("transitionend", { bubbles: true }), "propertyName", { value: "width" });
 const press = (key: string, target: Element = document.body) => act(() => void fireEvent.keyDown(target, { key }));
 
 describe("the sidebar", () => {
@@ -81,6 +83,9 @@ describe("the right panel", () => {
     expect(screen.queryByTestId("right-panel-rail")).toBeNull();
 
     act(() => fireEvent.click(screen.getByTestId("right-panel-toggle")));
+    // It slides shut: the panel stays, inert, under the strip until the slot's width has animated down.
+    expect(screen.getByTestId("right-panel").inert).toBe(true);
+    act(() => void screen.getByTestId("right-panel-slot").dispatchEvent(widthTransitionEnd()));
     expect(screen.queryByTestId("right-panel")).toBeNull();
     expect(screen.queryByTestId("cos-panel")).toBeNull();
     const rail = screen.getByTestId("right-panel-rail");
@@ -108,7 +113,7 @@ describe("the shortcuts", () => {
     expect(sidebar.getAttribute("data-collapsed")).toBe("true");
     expect(screen.getByTestId("cos-panel")).toBeTruthy();
     press("]");
-    expect(screen.queryByTestId("cos-panel")).toBeNull();
+    expect(screen.getByTestId("right-panel-rail")).toBeTruthy();
     expect(sidebar.getAttribute("data-collapsed")).toBe("true");
 
     // Typed into Jump to's field, both keys are characters, not toggles.
@@ -117,7 +122,7 @@ describe("the shortcuts", () => {
     press("[", field);
     press("]", field);
     expect(sidebar.getAttribute("data-collapsed")).toBe("true");
-    expect(screen.queryByTestId("cos-panel")).toBeNull();
+    expect(screen.getByTestId("right-panel-rail")).toBeTruthy();
     act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
 
     press("[");
@@ -173,7 +178,7 @@ describe("a narrow window", () => {
     expect(screen.getByTestId("cos-panel")).toBeTruthy();
     expect(screen.getByTestId("right-panel").getAttribute("data-overlay")).toBe("true");
     // Opened over the centre, the slot the centre sees stays the strip's width.
-    expect(screen.getByTestId("right-panel-slot").className).toContain("w-7");
+    expect(screen.getByTestId("right-panel-slot").className).toContain("w-[43px]");
     expect(window.localStorage.length).toBe(0);
 
     press("]");

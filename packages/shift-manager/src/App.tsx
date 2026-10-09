@@ -184,6 +184,8 @@ function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; rou
   }
 }
 
+const reducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 /** What the collapsed right panel's strip names, per level that has a panel. */
 const PANEL_NAMES: Partial<Record<Route["level"], string>> = { cos: "STREAMS", workstream: "WORKSTREAM", task: "TASK DETAIL" };
 
@@ -192,9 +194,12 @@ const PANEL_NAMES: Partial<Record<Route["level"], string>> = { cos: "STREAMS", w
  * panel, the task's slot, or nothing. v2's rail: 340px on the inspector
  * surface (v2:26, 1219).
  *
- * Collapsed, it is a 28px strip with the handle that opens it and the panel's
+ * Collapsed, it is a 43px strip with the handle that opens it and the panel's
  * name. On a window narrower than 1180px (v2:1121) it starts collapsed and
  * opens over the centre (`overlay`), so the centre keeps its width.
+ *
+ * Collapsing, the panel stays mounted under the strip until the slot's width
+ * has animated down, so it slides shut the way it slides open.
  */
 function Panel({
   snapshot,
@@ -220,6 +225,13 @@ function Panel({
   } else if (route.level === "task") {
     content = <TaskInspector snapshot={snapshot} gaps={gaps} />;
   }
+  // Adjusted during render, not in an effect, so the frame after the click already has the panel kept.
+  const [wasOpen, setWasOpen] = useState(open);
+  const [closing, setClosing] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    setClosing(!open && !overlay && !reducedMotion());
+  }
   if (content === null) return null;
   const label = open ? "Collapse panel" : "Expand panel";
   const handle = (
@@ -231,8 +243,8 @@ function Panel({
       aria-expanded={open}
       data-testid="right-panel-toggle"
       className={`flex size-[22px] shrink-0 items-center justify-center border bg-inspector font-mono text-xs text-muted-foreground hover:text-foreground ${
-        // Open, it sits across the panel's left border, wherever the panel's edge is.
-        open ? `absolute top-2.5 z-30 ${overlay ? "right-[329px]" : "-left-[11px]"}` : ""
+        // Open, it sits across the panel's left border, 3px left of centre so it clears the labels, wherever the panel's edge is.
+        open ? `absolute top-2.5 z-30 ${overlay ? "right-[332px]" : "-left-[14px]"}` : ""
       }`}
     >
       {open ? "›" : "‹"}
@@ -240,24 +252,28 @@ function Panel({
   );
   return (
     <div
-      className={`relative h-full shrink-0 transition-[width] duration-[180ms] ease-out motion-reduce:transition-none ${open && !overlay ? "w-[340px]" : "w-7"}`}
+      className={`relative h-full shrink-0 transition-[width] duration-[180ms] ease-out motion-reduce:transition-none ${open && !overlay ? "w-[340px]" : "w-[43px]"}`}
       data-testid="right-panel-slot"
+      onTransitionEnd={(e) => {
+        if (e.target === e.currentTarget && e.propertyName === "width") setClosing(false);
+      }}
     >
+      {(open || closing) && (
+        // The panel's content holds 340px, so the slot's width moving clips it rather than reflowing it.
+        <aside
+          className={`absolute inset-y-0 right-0 overflow-hidden border-l bg-inspector ${open && overlay ? "z-20 w-[340px] shadow-xl" : "w-full"}`}
+          data-testid="right-panel"
+          data-panel={route.level}
+          data-overlay={overlay}
+          inert={!open}
+        >
+          <div className="h-full w-[340px] overflow-y-auto">{content}</div>
+        </aside>
+      )}
       {open ? (
-        <>
-          {/* The panel's content holds 340px, so the slot's width moving clips it rather than reflowing it. */}
-          <aside
-            className={`absolute inset-y-0 right-0 overflow-hidden border-l bg-inspector ${overlay ? "z-20 w-[340px] shadow-xl" : "w-full"}`}
-            data-testid="right-panel"
-            data-panel={route.level}
-            data-overlay={overlay}
-          >
-            <div className="h-full w-[340px] overflow-y-auto">{content}</div>
-          </aside>
-          {handle}
-        </>
+        handle
       ) : (
-        <div className="absolute inset-y-0 right-0 flex w-7 flex-col items-center gap-3 border-l bg-inspector pt-2.5" data-testid="right-panel-rail" data-panel={route.level}>
+        <div className="absolute inset-y-0 right-0 z-10 flex w-[43px] flex-col items-center gap-3 border-l bg-inspector pt-2.5" data-testid="right-panel-rail" data-panel={route.level}>
           {handle}
           <span className="font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground [writing-mode:vertical-rl]" data-look="meta-label">
             {PANEL_NAMES[route.level]}
