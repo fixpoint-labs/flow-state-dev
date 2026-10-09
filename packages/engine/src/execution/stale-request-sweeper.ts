@@ -56,11 +56,7 @@ export type CreateStaleRequestSweeperOptions = {
 };
 
 export type StaleRequestSweeper = {
-  /**
-   * Stop the periodic sweep. Idempotent. Resolves once a pass that was
-   * already running has settled, so a caller that awaits it can close the
-   * stores without that pass reading a closed connection.
-   */
+  /** Stop the periodic sweep. Resolves once an in-flight pass has settled. Idempotent. */
   dispose(): Promise<void>;
 };
 

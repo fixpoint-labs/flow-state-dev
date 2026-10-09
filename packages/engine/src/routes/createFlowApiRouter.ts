@@ -625,9 +625,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // not part of the router's public shape (keeps `keyof typeof router`
   // narrow for consumers that index by HTTP method).
   const dispose = async (): Promise<void> => {
-    // Stop the sweepers first so their ticks can't race with adapter teardown,
-    // and let a stale-request pass already running finish before the caller
-    // goes on to close the stores it reads.
+    // Stop the sweepers first so their ticks can't race with adapter teardown.
     const staleSweepSettled = sweeper.dispose();
     durabilitySweeper.dispose();
     await staleSweepSettled;

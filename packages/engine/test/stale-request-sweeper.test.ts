@@ -148,9 +148,6 @@ describe("createStaleRequestSweeper", () => {
     expect(record?.status).toBe("in_progress");
   });
 
-  // Shutdown closes the stores right after disposing the sweeper. If dispose
-  // resolved while a pass was still reading, that pass would hit a closed
-  // connection and log "stale-request sweeper iteration failed".
   it("dispose resolves only after a pass already running has settled", async () => {
     vi.useFakeTimers();
 

@@ -1,13 +1,4 @@
-/**
- * `FlowState.dispose()` stops the router's sweepers before it closes the
- * store adapters.
- *
- * Why this matters: the router `ready()` / `getRouter()` builds runs a
- * periodic stale-request sweep against the stores. If disposal closes the
- * stores while that sweep is still scheduled, its next tick reads a closed
- * connection and logs "stale-request sweeper iteration failed" on every
- * shutdown — a routine exit that reads like a database failure.
- */
+/** `FlowState.dispose()` stops the router's sweepers before it closes the stores. */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";

@@ -428,21 +428,9 @@ class InternalFlowState<TSettings extends object>
       }
     }
 
-    // The router this handle built (`ready()` / `getRouter()`) runs a periodic
-    // stale-request sweep, and a durability sweep when retention is configured,
-    // against these same stores. Stop them before anything below closes the
-    // stores, or the next tick reads a closed connection and logs a failure on
-    // an ordinary shutdown. Idempotent, so a host that already disposed the
-    // router (`createServerApp`) is unaffected.
-    if (this.#initPromise !== null) {
-      let router: FlowApiRouter | undefined;
-      try {
-        router = await this.#initPromise;
-      } catch {
-        // init failed before a router (and its sweepers) existed.
-      }
-      if (router !== undefined) await disposeFlowApiRouter(router);
-    }
+    // Sweepers on this router read the stores closed below.
+    const router = await this.#initPromise?.catch(() => undefined);
+    if (router !== undefined) await disposeFlowApiRouter(router);
 
     // Detached children first, for the same reason the worker is stopped before
     // the stores: they are still writing. See `#drainDetachedChildren`.
