@@ -23,6 +23,7 @@ import {
   getString,
   isCheckedSession,
   jsonResponse,
+  loadCheckedSession,
   loadTenantSession,
   unknownSessionResponse,
   parseJsonBody,
@@ -67,7 +68,7 @@ type SessionRouteContext = {
   anonymousFlowIds?: Set<string>;
   /**
    * The session the owner check read and admitted the caller to, for a route
-   * that writes over its own read of it (`RouteAuthResult.session`).
+   * that acts under its own read of it (`RouteAuthResult.session`).
    */
   checkedSession?: SessionRecord | null;
 };
@@ -469,10 +470,11 @@ export async function handleDeleteSession(
   ctx: SessionRouteContext
 ): Promise<Response> {
   const sessionKey = resolveSessionStorageKey(route.sessionId, ctx.tenantId);
-  const existing = await loadTenantSession(
+  const existing = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (existing === undefined) {
     return unknownSessionResponse(route.sessionId);
@@ -562,10 +564,11 @@ export async function handleListSessionRequests(
   route: Extract<ParsedFlowRoute, { kind: "list_session_requests" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
-  const session = await loadTenantSession(
+  const session = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (session === undefined) {
     return unknownSessionResponse(route.sessionId);

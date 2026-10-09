@@ -27,7 +27,7 @@ import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestStore, SessionRecord, StoreRegistry } from "../stores/types";
 import { toBareSessionId } from "../stores/scope-keys";
-import { jsonResponse, loadTenantSession, unknownSessionResponse } from "./route-utils";
+import { jsonResponse, loadCheckedSession, unknownSessionResponse } from "./route-utils";
 import { DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT } from "../runtime-config";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -200,6 +200,11 @@ type ChildSessionRouteContext = {
    * {@link CHILD_LIST_MAX_LIMIT}.
    */
   maxListLimit?: number;
+  /**
+   * The session the owner check read and admitted the caller to
+   * (`RouteAuthResult.session`); the parent read here must be that one.
+   */
+  checkedSession?: SessionRecord | null;
 };
 
 /**
@@ -430,10 +435,11 @@ export async function handleListSessionChildren(
   route: Extract<ParsedFlowRoute, { kind: "list_session_children" }>,
   ctx: ChildSessionRouteContext
 ): Promise<Response> {
-  const parent = await loadTenantSession(
+  const parent = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (parent === undefined) {
     // Same shape the sibling session reads emit, and the same answer a parent

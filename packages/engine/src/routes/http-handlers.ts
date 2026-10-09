@@ -484,7 +484,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListSessionRequests(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -493,7 +494,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           tenantId,
-          maxListLimit: runtimeConfig.maxChildSessionListLimit
+          maxListLimit: runtimeConfig.maxChildSessionListLimit,
+          checkedSession: auth.session
         });
       }
 
@@ -528,7 +530,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleDeleteSession(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -632,7 +635,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleGetResourceContent(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -640,7 +644,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleGetCollectionItemContent(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -648,7 +653,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleCreateCollectionItem(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -656,7 +662,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleUpdateResourceContent(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -664,7 +671,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleDeleteCollectionItem(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
