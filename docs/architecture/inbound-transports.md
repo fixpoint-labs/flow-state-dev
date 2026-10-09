@@ -261,6 +261,23 @@ inherits it at the one shared seam. The arbiter resolves the effective policy
   returning the handle synchronously, so an SSE client gets an open stream while
   queued. An over-long wait rejects `finished` with `ConcurrencyQueueTimeoutError`
   (status 503).
+- `hold` takes a place in the key's line and starts at once, without waiting
+  for its turn. It is never refused. The place only marks the key busy, so a
+  `queue` waiter lines up behind it and a `reject` is refused while it runs.
+- `defer` takes nothing at admission. When the run is due, it claims the key
+  the way `reject` does, only if no place is held or waiting, and otherwise
+  waits and tries again: woken when the key empties in memory, on a backoff
+  over a shared backend. It takes the queued branch (stub record, heartbeat,
+  cancel watch). The wait has no budget, because every place it waits on ends:
+  its run settles and gives it back (success, error or abort), or, on a shared
+  backend, a crashed process stops renewing it and it expires. That expiry is
+  the crash path; nothing needs to give a dead holder's place back. A claimed
+  `defer` holds the key, so `defer` runs are serialized among themselves, and
+  a `hold` still starts beside one.
+- `hold` and `defer` are arbitrated in process only. A BullMQ worker waits
+  for a place's turn, which is `queue`; it has no form for a place that must
+  not wait or a claim that waits for a free key. An external dispatch under
+  either policy therefore resolves to `allow`.
 - `allow` (default) and a key that resolves to `undefined` (no session, `"none"`,
   or a custom key returning `undefined`) are passthroughs.
 
