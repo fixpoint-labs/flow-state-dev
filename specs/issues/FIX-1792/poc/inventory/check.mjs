@@ -199,7 +199,7 @@ const FILES = {
   "goals/shift-manager/it-draws-v2s-look/lab/workforce/teams/desk/mailboxes/front/MAILBOX.md":
     { target: "session", boards: ["work"], use: "every screen draws the board's rows in v2's look" },
   "goals/shift-manager/it-sends-a-turn-into-a-seat-session/lab/asker/workforce/teams/desk/mailboxes/front/MAILBOX.md":
-    { target: "coordinator", boards: [], use: "a person's line lands in a worker's session" },
+    { done: "P1", target: "coordinator", boards: [], use: "a person's line lands in a worker's session" },
   "goals/shift-manager/it-shows-who-is-on-shift/lab/workforce/teams/eng/mailboxes/desk/MAILBOX.md":
     { target: "session", boards: ["work"], use: "the roster shows the tasks each worker holds; the lead drains it" },
   "goals/shift-manager/it-shows-who-is-on-shift/lab/workforce/teams/ops/mailboxes/desk/MAILBOX.md":
@@ -272,6 +272,7 @@ const FILE_CLASS = {
   "packages/workforce/src/best-fit.ts": "E · S9 · a comment names the mailbox's route wrapper, routeByPurpose",
   "packages/shift-manager/test/devteam-cos-tool-names.test.ts": "E · S7 · the chief of staff loses setWorkstreams",
   "packages/shift-manager/test/devteam-chief-of-staff-coordinator.test.ts": "C · S7 · the DevTeam host's mailboxes option in a test; the host moves off mailboxes",
+  ".agents/skills/concept-doc/example/CONCEPT.md": "E · S12 · the concept-doc skill's worked example names removed exports; P4 edits it or `--after` fails on it",
   ".omp/extensions/mailbox.ts": "U · — · the agent-mailbox tool's command, not Workforce",
   "apps/docs/docs/client/react.md": "E · S12 · an example opens a session on flowKind \"mailbox\"",
   "apps/docs/docs/devtool/overview.md": "E · S12 · the inventory view's registered-mailboxes row",
