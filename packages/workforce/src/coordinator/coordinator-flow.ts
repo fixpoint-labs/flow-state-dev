@@ -30,10 +30,11 @@
  * without anyone editing the list.
  *
  * **The conversation's lines.** When a post opens, its conversation's recent
- * lines are read once from the conversation's own items
- * (`coordinator-lines.ts`): best fit's call reads the post with them, and
- * every delivery, by any policy, carries them to the delegate, whose model is
- * shown them for that turn (`delegated-post.ts`).
+ * lines are read once from the conversation's own items, with any answer that
+ * landed while its request is still finishing (`coordinator-lines.ts`): best
+ * fit's call reads the post with them, and every delivery, by any policy,
+ * carries them to the delegate, whose model is shown them for that turn as a
+ * message of the conversation, never as system text (`delegated-post.ts`).
  *
  * **How a delivery reaches a delegate.** Each delivery is opened in the
  * delivery ledger with a token, then dispatched to the delegate's flow on
@@ -128,6 +129,7 @@ import {
   DELIVERIES_STATE,
   HAND_OFF,
   HOLD_STATE,
+  LANDED_STATE,
   LIST_DELEGATES,
   MAX_DELEGATES,
   REMOVE_DELEGATE,
@@ -137,7 +139,7 @@ import {
   ROUTE_ON_ACTION,
   SET_FALLBACK
 } from "./coordinator-keys";
-import { conversationLineSchema, readRecentLines } from "./coordinator-lines";
+import { conversationLineSchema, keepLanded, linesField, readRecentLines } from "./coordinator-lines";
 import { emitCoordinatorRoute, routedDelegateSchema, type RoutedDelegate } from "./coordinator-route";
 import {
   MAX_OPEN_ROUNDS,
@@ -581,7 +583,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
           from: delivery.from,
           coordinator: delivery.coordinator,
           ...(delivery.deadlineAt === undefined ? {} : { deadlineAt: delivery.deadlineAt }),
-          ...(delivery.recent.length === 0 ? {} : { recent: delivery.recent })
+          ...linesField(delivery.recent)
         })
       })
     );
@@ -714,7 +716,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       coordinator: worker.id,
       filingSessionId: await filingSessionIdOf(ctx.session),
       // Read once, from the conversation's own items, and carried to best fit and every delivery.
-      recent: readRecentLines(ctx.session, { person: ctx.session.identity.userId ?? "", coordinator: worker.id }),
+      recent: readRecentLines(ctx.session, {
+        person: ctx.session.identity.userId ?? "",
+        coordinator: worker.id,
+        coordinatorNames: turn.answerNames
+      }),
       policy: config.routing,
       defaults: { delegates: [...defaults.delegates], ...(defaults.fallback === undefined ? {} : { fallback: defaults.fallback }) },
       handOffs: []
@@ -1479,6 +1485,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
           return {
             state: {
               [DELIVERIES_STATE]: claimed.ledger,
+              // Kept before the answer is said, so a post routed while this request finishes still reads it.
+              [LANDED_STATE]: keepLanded(state[LANDED_STATE], {
+                requestId: ctx.request.identity.id,
+                from: claimed.delivery.delegate.worker,
+                text: answer.body,
+                at: now
+              }),
               ...(releases ? { [HOLD_STATE]: null } : {}),
               ...(rounds.length === 0 ? {} : { [ROUNDS_STATE]: swept.rounds })
             },

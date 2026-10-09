@@ -2205,13 +2205,15 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   answering delegate's worker id). They are the last 10, at most 4,000 characters of text in all,
   counted back from the newest; the line that crosses the cap is cut short with `…`, and older ones
   are left out. They come from this conversation's own messages, as far back as the session's
-  history window reaches (its last 50 completed turns), never another conversation's. Best fit
-  reads the post with them, so a follow-up to a delegate's answer can go back to that delegate;
-  the other policies don't route by them. An evaluation model passed as
-  `routeModel` (a scripted one in a test, say) is handed `{ recent, post }`, each line and the post
-  as `{ from, text }`. Whatever the policy, the delegate that takes a post is shown them when its
-  generator has `delegatedPostCapability` on `uses`, for that turn only; the built-in `agent` flow's
-  turn has it. The delegate's own session never keeps them.
+  history window reaches (its last 50 completed turns), never another conversation's. An answer
+  that has just landed is among them even before the request that landed it has finished. Best fit
+  reads the post with them, so a follow-up to a delegate's answer can go back to that delegate; the
+  other policies don't route by them. An evaluation model passed as `routeModel` (a scripted one
+  in a test, say) is handed `{ recent, post }`, each line and the post as `{ from, text }`.
+  Whatever the policy, the delegate that takes a post is shown them when its generator's `history`
+  is `delegatedPostHistory`: one user-role message just before the post, never system text, for
+  that turn only. The built-in `agent` flow's turn uses it. The delegate's own session never keeps
+  them.
 - **Rounds.** With `rounds:` above 0, a delegate's answer goes back out, at most that many times.
   `best-fit` and `round-robin` route each answer again as it lands, never to its own author.
   `everyone` waits for the round to close, then sends each delegate the other delegates' answers
@@ -2315,7 +2317,7 @@ the root exports, and reaches no Node built-in.
 | `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. On a post whose answer can go back out, it also tells the coordinator when it has no answer: at once when its turn fails, and at the round's deadline while its turn is still running. The turn isn't stopped; a later answer still lands once. |
 | `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated post's run is cancelled before its answer went back, it tells the coordinator, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
-| `delegatedPostCapability` | On the `uses` of a delegate flow's generator: on a delegated post that came with the conversation's recent lines, its model is shown them as a context section (`Recent lines in the conversation with <coordinator> before this post, oldest first:`, then `- <from>: <text>` per line), for that turn only. Adds nothing on any other turn. The built-in `agent` flow's turn has it. |
+| `delegatedPostHistory` | A delegate flow generator's `history`, in place of `history: true`: the session's history, and on a delegated post that came with the conversation's recent lines, one user-role message just before the post (`Recent lines in the conversation with <coordinator> before this post, oldest first:`, then `- <from>: <text>` per line), for that turn only and never stored. On any other turn it is the session's history unchanged. The built-in `agent` flow's turn uses it. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `kinds` holds. |
 | `inventorySeats(installation)` | The standard workers as `openInventory` takes seats: each worker's id, its flow and that flow's actions. |

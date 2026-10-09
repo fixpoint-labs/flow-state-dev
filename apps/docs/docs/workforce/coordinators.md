@@ -130,7 +130,7 @@ Nobody took this post: best fit couldn't place it, and the coordinator's own tur
 
 A follow-up often makes sense only after what came before it. Say you ask about your laptop's wifi, `support.devices` answers, and you write back "It sees it. It fails right after the password." Read alone, that looks like a password question for `support.accounts`. Read with the lines before it, best fit can tell it's about the wifi and send it back to `support.devices`.
 
-So every post travels with the conversation's **recent lines**: your posts, the coordinator's own replies, and the delegates' answers that have landed, oldest first, each under who wrote it. Under `best-fit`, the evaluator call reads the post with them, so a follow-up to a delegate's answer can go back to that delegate. The other policies don't route by the lines. Whatever the `routing:`, the delegate that takes a post is shown the same lines beside it, as a context section like this:
+So every post travels with the conversation's **recent lines**: your posts, the coordinator's own replies, and the delegates' answers that have landed, oldest first, each under who wrote it. Under `best-fit`, the evaluator call reads the post with them, so a follow-up to a delegate's answer can go back to that delegate. The other policies don't route by the lines. Whatever the `routing:`, the delegate that takes a post is shown the same lines just before it, as one message with the `user` role, never as part of its instructions:
 
 ```text
 Recent lines in the conversation with support.help before this post, oldest first:
@@ -152,9 +152,10 @@ What a delegate gets:
 
 - **The last 10 lines, at most 4,000 characters in all.** They're counted back from the newest. The line that crosses 4,000 characters is cut short and ends with `…`, and anything older is left out.
 - **This conversation's lines only.** They're read from this conversation's own messages, as far back as the session's history window reaches: its last 50 completed turns, where each post, each answer that lands and each other action on the conversation counts as one. A delegate never sees another conversation's lines.
-- **Shown for one turn.** The lines reach the delegate's model as context for the turn that answers the post. The delegate's own session keeps the post and its answer, never the lines.
+- **Shown for one turn, as conversation.** The lines reach the delegate's model as a message beside the post, for the turn that answers it. They carry no more weight than the post itself: a line written like an instruction is read as something said in the conversation, not as part of the delegate's instructions. The delegate's own session keeps the post and its answer, never the lines.
+- **Including an answer that just landed.** A post sent the moment an answer shows up in the conversation is routed and delivered with that answer among its lines.
 
-The first post in a conversation has no lines, so it's routed and delivered alone. A delegate on the built-in `agent` flow shows its model the lines with no changes; a flow of your own shows them [once you add a capability](#making-your-own-flow-a-delegate).
+The first post in a conversation has no lines, so it's routed and delivered alone. A delegate on the built-in `agent` flow shows its model the lines with no changes; a flow of your own shows them [once its generator reads them](#making-your-own-flow-a-delegate).
 
 ## Changing the delegates
 
@@ -323,24 +324,24 @@ Then add it to `delegateFlows`. The door is handed `{ message }`, where the mess
 
 `delegatedPostOnFinished` tells the coordinator when a delegated run is cancelled, so its round doesn't wait for the deadline. Without it, a failed turn is reported at once, but a cancelled one holds its round until the deadline.
 
-To show your flow's model the conversation's [recent lines](#follow-ups-and-recent-lines), put `delegatedPostCapability` on the `uses` of the generator your door runs:
+To show your flow's model the conversation's [recent lines](#follow-ups-and-recent-lines), set the `history` of the generator your door runs to `delegatedPostHistory`, in place of `history: true`:
 
 ```ts
 import { generator } from "@flow-state-dev/core";
-import { delegatedPostCapability } from "@flow-state-dev/workforce";
+import { delegatedPostHistory } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 const door = generator({
   name: "research-answer",
   inputSchema: z.object({ message: z.string() }),
   model: "openai/gpt-5.4-mini",
-  uses: [delegatedPostCapability],
+  history: delegatedPostHistory,
   prompt: "You answer research questions in two or three sentences.",
   user: (input) => input.message,
 });
 ```
 
-On a delegated post that came with lines, the model gets the context section shown in [Follow-ups and recent lines](#follow-ups-and-recent-lines): a heading naming the coordinator's worker id, then one `- <from>: <text>` per line, where `<from>` is your user id, the coordinator's worker id or the answering delegate's worker id. On any other turn, and on a post with no lines, the capability adds nothing.
+It's the session's history, as `history: true` reads it. On a delegated post that came with lines, the message shown in [Follow-ups and recent lines](#follow-ups-and-recent-lines) goes in just before the post, with the `user` role: a heading naming the coordinator's worker id, then one `- <from>: <text>` per line, where `<from>` is your user id, the coordinator's worker id or the answering delegate's worker id. On any other turn, and on a post with no lines, it adds nothing.
 
 ## What it won't do
 

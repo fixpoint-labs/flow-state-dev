@@ -20,16 +20,19 @@
  *
  * **A post with the conversation's lines.** A post carries the coordinator
  * conversation's recent lines before it (`coordinator-lines.ts`). The entry
- * notes them for the request, and {@link delegatedPostCapability} shows them
- * to the turn's model, on that turn only: they are never the turn's message,
- * so the delegate's own conversation never keeps them.
+ * notes them for the request, and {@link delegatedPostHistory} hands them to
+ * the turn's model as one user-role message just before the post, on that
+ * turn only. They are data from the conversation, never system text, so a
+ * line written like an instruction carries no more authority than the post
+ * itself. They are never the turn's stored message either, so the delegate's
+ * own conversation never keeps them.
  *
  * A flow declares the entry with {@link delegatedPostEntry}, around the turn
  * it runs for any message. That is what makes its workers delegates that take
  * posts.
  */
-import { defineCapability, dispatcher, handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
-import type { BlockDefinition, RequestScopeHandle } from "@flow-state-dev/core/types";
+import { dispatcher, handler, sequencer } from "@flow-state-dev/core";
+import type { BlockContext, BlockDefinition, LLMMessage, RequestScopeHandle } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   COORDINATOR_KIND,
@@ -37,7 +40,7 @@ import {
   DELEGATE_ANSWER_ACTION,
   DELEGATE_MISSED_ACTION
 } from "./coordinator-keys";
-import { conversationLineSchema, type ConversationLine } from "./coordinator-lines";
+import { conversationLineSchema, linesField, type ConversationLine } from "./coordinator-lines";
 
 /** What a delegate is handed. */
 export const delegatedPostSchema = z.object({
@@ -159,7 +162,7 @@ const markDelivery = handler({
         token: post.token,
         coordinator: post.coordinator,
         ...(post.deadlineAt === undefined ? {} : { deadlineAt: post.deadlineAt }),
-        ...(post.recent === undefined || post.recent.length === 0 ? {} : { recent: post.recent })
+        ...linesField(post.recent)
       }
     });
     return {};
@@ -167,35 +170,43 @@ const markDelivery = handler({
 });
 
 /**
- * The context section for a delegated post's turn: the coordinator
- * conversation's lines before the post, oldest first, each `- <from>: <text>`.
- * `undefined` on any other turn and on a post with no lines, so the slot
- * drops it.
+ * A delegated post's lines as the turn's model reads them: one user-role
+ * message, `Recent lines in the conversation with <coordinator> before this
+ * post, oldest first:` and then `- <from>: <text>` per line. `undefined` on
+ * any other turn and on a post with no lines.
  */
-function delegatedPostLines(ctx: { readonly request: { readonly state: unknown } }): string | undefined {
+function delegatedPostLinesMessage(ctx: { readonly request: { readonly state: unknown } }): LLMMessage | undefined {
   const delivery = notedDelivery(ctx);
   const recent: readonly ConversationLine[] = delivery?.recent ?? [];
   if (delivery === undefined || recent.length === 0) return undefined;
-  return [
-    `Recent lines in the conversation with ${delivery.coordinator} before this post, oldest first:`,
-    ...recent.map((line) => `- ${line.from}: ${line.text}`)
-  ].join("\n");
+  return {
+    role: "user",
+    content: [
+      `Recent lines in the conversation with ${delivery.coordinator} before this post, oldest first:`,
+      ...recent.map((line) => `- ${line.from}: ${line.text}`)
+    ].join("\n")
+  };
 }
 
 /**
- * What a delegate's model is shown with a delegated post: the coordinator
- * conversation's recent lines before it, as a context section, on that turn
- * only. Put it on the `uses` of the generator inside the turn you hand
- * {@link delegatedPostEntry}; the built-in `agent` flow's turn has it. On any
- * other turn, and on a post that came with no lines, it adds nothing.
+ * A generator's `history` for a turn that may answer a delegated post: the
+ * session's history, as `history: true` reads it, with the post's lines as
+ * one user-role message between the earlier turns and this turn's own items,
+ * so just before the post. Resolved for each model call and never stored, so
+ * the delegate's own conversation never keeps the lines; on any other turn,
+ * and on a post with no lines, it is the session's history unchanged.
+ *
+ * Use it in place of `history: true` on the generator inside the turn you
+ * hand {@link delegatedPostEntry}. The built-in `agent` flow's turn does.
  */
-export const delegatedPostCapability: DefinedCapability = defineCapability({
-  name: "delegated-post-lines",
-  presets: {
-    lines: { context: [(_input: unknown, ctx) => delegatedPostLines(ctx as never)] },
-    default: ["lines"]
-  }
-});
+export async function delegatedPostHistory(_input: unknown, ctx: BlockContext): Promise<LLMMessage[]> {
+  const lines = delegatedPostLinesMessage(ctx);
+  const history = await ctx.session.items.history();
+  if (lines === undefined) return history;
+  // `history()` is the earlier turns with this request's own items after them.
+  const earlier = await ctx.session.items.history({ includeInFlight: false });
+  return [...history.slice(0, earlier.length), lines, ...history.slice(earlier.length)];
+}
 
 /** Note that the turn has ended, one way or the other, and wake this request's deadline watch. */
 const markEnded = handler({
@@ -318,8 +329,8 @@ const reportFailure = sequencer({ name: "delegated-post-report-failure", inputSc
  *
  * @param turn The flow's turn for one message, `{ message }` in and the reply
  *   out (a string, or `{ text }`). The worker's own door is usually it. Its
- *   model is shown the post's lines when its generator has
- *   {@link delegatedPostCapability} on its `uses`.
+ *   model is shown the post's lines when its generator's `history` is
+ *   {@link delegatedPostHistory}.
  */
 export function delegatedPostEntry(turn: BlockDefinition<any, any>) {
   const block = sequencer({ name: "delegated-post", inputSchema: delegatedPostSchema })
