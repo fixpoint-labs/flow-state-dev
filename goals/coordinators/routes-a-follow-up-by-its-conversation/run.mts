@@ -29,7 +29,10 @@ import {
   hireWorkforce
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { gatewayModel, goalAttempts, loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
+import { gatewayModel, goalAttempts, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
+
+// A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the answers' model under the resolver.
+stripIntentOverrides();
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -100,9 +103,10 @@ async function startApp(resolver: ModelResolver) {
     flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     stores: { default: { primary: inMemoryStores() } },
     resolvePrincipal: () => ({ userId: OWNER, orgId: ORG }),
-    modelResolver: resolver,
-    logger: silentLogger
+    modelResolver: resolver
   } as never);
+  // The runtime's own narration, off, so the attempts and the verdict are what the run prints.
+  (await state.getRuntime()).runtimeConfig.logger = silentLogger;
   return { state, router: await state.getRouter(), workers: read.workers };
 }
 

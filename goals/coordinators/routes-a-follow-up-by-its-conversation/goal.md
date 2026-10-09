@@ -32,3 +32,7 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-09 | `ddaec6167` + this change, uncommitted | route `vercel/typesafe-ai/jev`; answers on the container's `FSDEV_DEFAULT_MODEL` (`vercel/openai/gpt-5-nano`), which the run did not yet strip | PASS | First run. Both threads on attempt 1: the laptop thread's follow-up and the sign-in thread's follow-up each reached the specialist that answered the opener, `by: evaluated`, one answer each. |
+| 2026-10-09 | same | same | FAIL (control `no-recent`, expected) | Only `followup:delegate`, on both threads: "It sees it. It fails right after the password." → `support.accounts`; "It's on my laptop, the work one." → `support.devices`. `followup:evaluated` and `followup:answered` green. `support.devices`, never sent the sign-in post, still answered about resetting the password: the delegate is shown the conversation's lines whatever routed it. |
+| 2026-10-09 | `334c1e326` + the run's intent-override strip and quiet logger, uncommitted | route `vercel/typesafe-ai/jev`, answers `vercel/openai/gpt-5.4-mini` | PASS | Both threads on attempt 1 of 3, each follow-up to the opener's specialist `by: evaluated`, one answer each. |
+| 2026-10-09 | same | same | FAIL (control `no-recent`, expected) | Only `followup:delegate`, on both threads, as above. `support.accounts`, handed the wifi follow-up, answered "since it fails right after the password, please try forgetting the network, reconnecting…": it was shown the lines. |
