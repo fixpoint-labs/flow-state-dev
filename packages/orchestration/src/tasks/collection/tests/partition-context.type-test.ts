@@ -19,6 +19,7 @@ const sessionId: string = view.sessionId;
 const userId: string = view.userId;
 const orgId: string | undefined = view.orgId;
 const tenantId: string | undefined = view.tenantId;
+const lineageId: string | undefined = view.lineageId;
 
 // ── What it must not carry ──────────────────────────────────────────────────
 // @ts-expect-error — the parent block's input is caller input.
@@ -37,4 +38,4 @@ void view.session;
 // A partition function gets only this view.
 const byConversation: TaskPartitionFn = (ctx) => `${ctx.userId}/${ctx.sessionId}`;
 
-export { sessionId, userId, orgId, tenantId, byConversation };
+export { sessionId, userId, orgId, tenantId, lineageId, byConversation };

@@ -311,6 +311,28 @@ async function getCollection(
   });
 }
 
+/**
+ * The ownership guard for an iteration's write-back: the claim's own ticket,
+ * or, for a checkpoint saved before tickets, one fenced on its stored attempt.
+ *
+ * @see routedSpecialistsControlSchema for the legacy `currentAttempt` field.
+ */
+function writeBackGuard(
+  state: Pick<RoutedSpecialistsControlState, "currentClaim" | "currentAttempt">,
+  collection: TaskCollectionRef,
+  taskId: string
+): { claim?: TaskClaimTicket } {
+  if (state.currentClaim != null) return { claim: state.currentClaim };
+  // TODO(FIX-1025): legacy pre-FIX-981 branch; remove with currentAttempt (see the schema field).
+  if (state.currentAttempt == null) return {};
+  const task = collection.get(taskId);
+  // A missing row has nothing to fence; the write itself reports it.
+  if (task === undefined) return {};
+  return {
+    claim: { ...ticketForClaim(collection.collectionId, task), attempt: state.currentAttempt },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -439,6 +461,9 @@ export function routedSpecialists<
           done: input.done,
           currentTaskId,
           currentClaim,
+          // A legacy checkpoint's attempt belongs to the iteration it was taken
+          // in; left set, it would fence this iteration's task on a stale number.
+          currentAttempt: undefined,
         });
 
         if (input.done) {
@@ -471,7 +496,7 @@ export function routedSpecialists<
           const collection = await getCollection(ctx, collectionId);
           await collection.fail(state.currentTaskId, message, {
             ifAllowed: true,
-            ...(state.currentClaim !== undefined ? { claim: state.currentClaim } : {}),
+            ...writeBackGuard(state, collection, state.currentTaskId),
           });
         }
       } finally {
@@ -511,7 +536,7 @@ export function routedSpecialists<
           const collection = await getCollection(ctx, collectionId);
           await collection.complete(state.currentTaskId, input, {
             ifAllowed: true,
-            ...(state.currentClaim !== undefined ? { claim: state.currentClaim } : {}),
+            ...writeBackGuard(state, collection, state.currentTaskId),
           });
         }
       } finally {

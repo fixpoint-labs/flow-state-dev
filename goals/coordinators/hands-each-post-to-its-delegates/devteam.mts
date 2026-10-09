@@ -6,11 +6,14 @@
  *
  * Every change goes through the app: an action on a conversation, a person's
  * line to the chief of staff, or the roster flow's `hire`. Nothing is seeded
- * by a fixture or written to a store. Every grade is read back through the
- * install's routes as that person: the conversation's session record (its
- * delegates and its delivery ledger), its items (its routing records and the
- * turn's tool outputs), and the delegate's own session. A reply's words are
- * graded only in leg d, and only against the list the session holds.
+ * by a fixture or written to a store. Every grade is read back as that
+ * person: the conversation's items (its routing records and the turn's tool
+ * outputs) and the delegate's own session through the install's routes, and
+ * the conversation's session record (its delegates and its delivery ledger)
+ * from the install's store file, from the row that person owns. The session
+ * route sends a client only the state a flow exposes, and the coordinator
+ * exposes neither field. A reply's words are graded only in leg d, and only
+ * against the list the session holds.
  *
  * The clients are loaded from the checkout under test, so a run on another
  * commit drives that commit's own clients.
@@ -18,6 +21,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 
@@ -181,10 +185,26 @@ async function talk(turns: Turn[], leg: string, who: Connected, session: Session
 
 type Delivery = { postId: string; round: number; delegate: { worker: string; target?: string }; status: string; sessionId?: string; answered: boolean };
 
-/** A conversation's session record: its delegates, its fallback and its delivery ledger. */
-async function recordOf(who: Connected, sessionId: string): Promise<{ delegates: Array<{ worker: string }> | null; ledger: Delivery[] }> {
-  const { session } = await who.routes.get(`/sessions/${encodeURIComponent(sessionId)}`);
-  return { delegates: session?.state?.delegates ?? null, ledger: (session?.state?.deliveries ?? []) as Delivery[] };
+/**
+ * A conversation's session record (its delegates and its delivery ledger),
+ * read from the SQLite file the install writes, from the row `who` owns. Not
+ * through the session route: that sends a client only the state a flow
+ * exposes, and the coordinator exposes neither field (its ledger carries
+ * delivery tokens). A row is keyed by the session id, prefixed `<tenant>:`
+ * when the session has a tenant. Read-only, and closed after each read.
+ */
+async function recordOf(store: string, who: Connected, sessionId: string): Promise<{ delegates: Array<{ worker: string }> | null; ledger: Delivery[] }> {
+  const db = new DatabaseSync(store, { readOnly: true });
+  try {
+    db.exec("PRAGMA busy_timeout = 5000");
+    const row = db
+      .prepare("SELECT data FROM sessions WHERE (id = ? OR id = tenant_id || ':' || ?) AND user_id = ?")
+      .get(sessionId, sessionId, who.person.userId) as { data: string } | undefined;
+    const state = row === undefined ? undefined : (JSON.parse(row.data) as { state?: Record<string, any> }).state;
+    return { delegates: state?.delegates ?? null, ledger: (state?.deliveries ?? []) as Delivery[] };
+  } finally {
+    db.close();
+  }
 }
 
 /** The `coordinator-route` records for one post. */
@@ -214,6 +234,8 @@ export interface LegResult {
 /** What {@link devteamLegs} needs. */
 export interface DevteamOptions {
   origin: string;
+  /** The SQLite file the install writes (`DEVTEAM_STORE`), read for each conversation's session record. */
+  store: string;
   shipped: Shipped;
   alice: Person;
   bob: Person;
@@ -316,7 +338,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
     let mine: Delivery[] = [];
     let opened: { at: number; holdsWord: boolean } | undefined;
     for (const until = sent + 120_000; Date.now() < until; await sleep(1_000)) {
-      mine = (await recordOf(alice, cos.id)).ledger.filter((d) => d.postId === turn.requestId);
+      mine = (await recordOf(o.store, alice, cos.id)).ledger.filter((d) => d.postId === turn.requestId);
       const toEm = mine.find((d) => d.delegate.worker === em && d.status === "delivered" && d.sessionId !== undefined);
       if (toEm !== undefined) {
         const items = await alice.routes.items(toEm.sessionId!, "message").catch(() => [] as StoredItem[]);
@@ -388,7 +410,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       const hire = hired[0];
       if (hired.length !== 1) r.failures.push(`c:one-hire — wanted one hire on Alice's roster; her own workers went from [${own1.join(", ")}] to [${own2.join(", ")}]`);
       else r.notes.push(`hired \`${hire}\``);
-      const after1 = await recordOf(alice, cos.id);
+      const after1 = await recordOf(o.store, alice, cos.id);
       if (hire === undefined || !(after1.delegates ?? []).some((d) => d.worker === hire)) {
         r.failures.push(`c:added — the hire is not on this conversation's delegates: ${show(after1.delegates)}`);
       }
@@ -401,7 +423,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       r.notes.push(`second ask ${again.status}; tools: ${again.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}`);
       const own3 = await ownWorkers(alice);
       if (!same(own3, own2)) r.failures.push(`c:no-second-hire — asked again, her own workers went from [${own2.join(", ")}] to [${own3.join(", ")}]`);
-      const againDeliveries = (await recordOf(alice, cos.id)).ledger.filter((d) => d.postId === again.requestId);
+      const againDeliveries = (await recordOf(o.store, alice, cos.id)).ledger.filter((d) => d.postId === again.requestId);
       if (hire === undefined || !againDeliveries.some((d) => d.delegate.worker === hire && d.status === "delivered")) {
         r.failures.push(`c:same-worker — asked again, wanted a delivery to ${hire ?? "the hire"}; the ledger holds ${show(againDeliveries)}`);
       }
@@ -434,7 +456,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       r.failures.push(`d:changed — ${r.notRun}`);
     } else {
       r.notes.push(`Alice added \`${added}\` and removed \`${removeId}\` through the app`);
-      const list = ((await recordOf(alice, session.id)).delegates ?? []).map((d) => d.worker);
+      const list = ((await recordOf(o.store, alice, session.id)).delegates ?? []).map((d) => d.worker);
       r.notes.push(`the session holds [${list.join(", ")}]`);
       o.say(`leg d: "${o.asks.d}"`);
       const turn = await talk(turns, "d", alice, session, o.asks.d);
@@ -475,7 +497,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       const missing = `nobody-${word()}`;
       const viaApp = await act(alice, kind, conv.id, "addDelegate", { worker: bobWorker });
       const viaAppMissing = await act(alice, kind, conv.id, "addDelegate", { worker: missing });
-      const afterApp = ((await recordOf(alice, conv.id)).delegates ?? []).map((d) => d.worker);
+      const afterApp = ((await recordOf(o.store, alice, conv.id)).delegates ?? []).map((d) => d.worker);
       const answer = (acted: Acted) => (acted.status === "completed" ? undefined : (acted.error ?? acted.status));
       const shape = (text: string | undefined, id: string) => text?.split(id).join("<id>");
       r.notes.push(`in the app: Bob's worker → ${viaApp.status} "${answer(viaApp) ?? ""}"; a missing worker → ${viaAppMissing.status} "${answer(viaAppMissing) ?? ""}"`);
@@ -501,7 +523,7 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
         const turn = await talk(turns, "f", alice, { id: where.id, flowKind: kind }, ask);
         adds = turn.tools.filter((t) => t.name === "addDelegate");
         r.notes.push(`attempt ${attempt}: the turn ${turn.status}; tools: ${turn.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}; reply: ${turn.reply.slice(0, 200)}`);
-        const afterTool = ((await recordOf(alice, where.id)).delegates ?? []).map((d) => d.worker);
+        const afterTool = ((await recordOf(o.store, alice, where.id)).delegates ?? []).map((d) => d.worker);
         if (afterTool.includes(bobWorker)) r.failures.push(`f:bobs-worker-refused — Bob's worker is a delegate after the chief of staff's turn: [${afterTool.join(", ")}]`);
       }
       const refusedByTool = adds.find((t) => typeof t.output?.refused === "string");

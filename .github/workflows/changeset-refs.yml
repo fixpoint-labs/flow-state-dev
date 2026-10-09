@@ -1,0 +1,32 @@
+name: Changeset refs
+
+# Its own workflow, not a step in CI's Process guards, because it reads the PR
+# title: a title edit has to re-run it, and CI's bare `pull_request:` trigger
+# does not fire on `edited`. Putting `edited` on CI instead would re-run every
+# CI job on each title or description edit for one sub-minute check. No install.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changeset-refs:
+    name: Changesets name their Linear issue
+    runs-on: ubuntu-latest
+
+    steps:
+      # Full history so the guard can diff against the base branch.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Reads GITHUB_HEAD_REF for the branch and GITHUB_EVENT_PATH for the title.
+      - name: Changesets name their Linear issue
+        run: node scripts/validate-changeset-refs.mjs

@@ -19,6 +19,7 @@ import {
   isTransitionAllowed,
 } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
+import { applyEndingRecorder, endingOf, type TaskEndingRecorder } from "./ending";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
@@ -990,30 +991,74 @@ export function applyClaimToTask<TInput, TOutput>(
 export function applyAbandonmentSettlement<TInput, TOutput>(
   task: Task<TInput, TOutput>,
   now: number,
-  maxAbandonments: number
+  maxAbandonments: number,
+  recording?: EndingRecording
 ): Task<TInput, TOutput> {
-  return withResumeOwed(task, {
-    ...task,
-    status: "errored",
-    error: abandonmentExhaustedError(task.id, maxAbandonments),
-    completedAt: now,
-    leaseUntil: undefined,
-    claimedBy: undefined,
-    updatedAt: now,
-  });
+  return recordEnding(
+    task,
+    {
+      ...task,
+      status: "errored",
+      error: abandonmentExhaustedError(task.id, maxAbandonments),
+      completedAt: now,
+      leaseUntil: undefined,
+      claimedBy: undefined,
+      updatedAt: now,
+    },
+    recording
+  );
 }
 
 /**
- * Stamp the resume-owed marker when this write ends an asked row (FIX-1816).
- *
- * Every write that changes a row goes through {@link applyTransition} or
- * {@link applyAbandonmentSettlement}, so every way an asked row can end (its
- * worker's result, a failure past its retries, a cancel, a timeout, the
- * board's abandonment settle) writes the marker in the same write as the
- * ending. A retried failure re-pends the row, which is not an ending, and
- * writes nothing.
+ * What a write is told beyond its patch about recording an ending: the
+ * ledger's own recorder, and the one fact about a park its row can't say.
  */
-function withResumeOwed<TInput, TOutput>(
+export interface EndingRecording {
+  /**
+   * The ledger's declared recorder (`defineTaskCollection({ recordEnding })`).
+   * Runs after orchestration's own, and only its `metadata` is kept.
+   */
+  readonly recordEnding?: TaskEndingRecorder;
+  /**
+   * The park asks nobody anything (`awaitReview(..., { quiet: true })`). A park
+   * for a person's turn is quiet on its own, read off the row.
+   */
+  readonly quiet?: boolean;
+}
+
+/**
+ * The one ending signal (FIX-1794 P2 with FIX-1816). Every write that changes a
+ * row goes through {@link applyTransition} or {@link applyAbandonmentSettlement},
+ * on both backings, so this is where an ending is detected, once, and where
+ * every recorder runs, in that same write:
+ *
+ * 1. Orchestration's own: {@link recordResumeOwed}, which writes the typed
+ *    `Task.resumeOwed` on an asked row's ending.
+ * 2. The ledger's declared `recordEnding`, handed the {@link endingOf} this
+ *    write, metadata only.
+ *
+ * Nothing else records an ending, so none is recorded twice.
+ */
+function recordEnding<TInput, TOutput>(
+  prev: Task<TInput, TOutput>,
+  next: Task<TInput, TOutput>,
+  recording: EndingRecording | undefined
+): Task<TInput, TOutput> {
+  const resumed = recordResumeOwed(prev, next);
+  const ending = endingOf(prev as Task, next as Task, recording?.quiet);
+  return ending === undefined ? resumed : applyEndingRecorder(recording?.recordEnding, resumed, ending);
+}
+
+/**
+ * Orchestration's resume recorder (FIX-1816): stamp the resume-owed marker
+ * when this write ends an asked row.
+ *
+ * Every way an asked row can end (its worker's result, a failure past its
+ * retries, a cancel, the cancel its ask's timeout writes, the board's
+ * abandonment settle) reaches it in the same write as the ending. A retried
+ * failure re-pends the row, which is not an ending, and writes nothing.
+ */
+function recordResumeOwed<TInput, TOutput>(
   prev: Task<TInput, TOutput>,
   next: Task<TInput, TOutput>
 ): Task<TInput, TOutput> {
@@ -1024,20 +1069,26 @@ function withResumeOwed<TInput, TOutput>(
 }
 
 /**
- * Apply a generic field-level patch + status transition to a task. Does
- * not validate the transition itself — callers run `assertTransitionAllowed`
+ * Apply a generic field-level patch + status transition to a task, and
+ * record the ending it writes, if any ({@link recordEnding}). Does not
+ * validate the transition itself — callers run `assertTransitionAllowed`
  * inside the CAS mutator.
  */
 export function applyTransition<TInput, TOutput>(
   task: Task<TInput, TOutput>,
   patch: Partial<Task<TInput, TOutput>>,
-  now: number
+  now: number,
+  recording?: EndingRecording
 ): Task<TInput, TOutput> {
-  return withResumeOwed(task, {
-    ...task,
-    ...patch,
-    updatedAt: now,
-  });
+  return recordEnding(
+    task,
+    {
+      ...task,
+      ...patch,
+      updatedAt: now,
+    },
+    recording
+  );
 }
 
 /** Filter and clone tasks for query results — keeps consumers from mutating internal state. */

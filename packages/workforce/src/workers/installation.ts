@@ -45,6 +45,7 @@ import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from
 import {
   FILING_SESSION_STATE_KEY,
   STANDARD_WORKERS_RESOURCE,
+  TASK_ID_STATE_KEY,
   WORKERS_RESOURCE,
   WORKER_ID_STATE_KEY,
   WORKSTREAM_STATE_KEY
@@ -191,6 +192,7 @@ export type WorkerSessionStateShape = {
   readonly [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString>;
   readonly [FILING_SESSION_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [TASK_ID_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
 };
 
 /** The installation's worker model. Build it once, at boot. */
@@ -214,7 +216,8 @@ export interface WorkerInstallation extends WorkerGrants {
    * `workerId` names the session's worker; `filingSessionId`, when a
    * coordinator's delivery set it, names the conversation it was opened for;
    * `workstreamId`, when a workstream's open set it, names the workstream the
-   * session leads.
+   * session leads; `taskId`, when a conversation's board handed a task over,
+   * names the task the session works.
    */
   readonly sessionStateShape: WorkerSessionStateShape;
   /** The create check a worker flow declares as `session.createCheck`. */
@@ -367,7 +370,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   const sessionStateShape = {
     [WORKER_ID_STATE_KEY]: z.string().min(1).readonly(),
     [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional(),
-    [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional()
+    [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
+    [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional()
   } as const;
 
   /** Every resource a worker may be granted: the documents and the references. */
@@ -487,6 +491,16 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       return {
         ok: false,
         message: `A session of flow "${input.flow.kind}" runs one worker: name it as "${WORKER_ID_STATE_KEY}" when the session is created.`
+      };
+    }
+    // A task's session is opened only by its board's hand-over, a dispatch
+    // into a child of the conversation. A caller naming a task would make a
+    // decoy that lookups and `isTaskSession` take for the real one (BP-031).
+    if (input.state[TASK_ID_STATE_KEY] !== undefined && input.via !== "dispatch") {
+      return {
+        ok: false,
+        status: 400,
+        message: `"${TASK_ID_STATE_KEY}" is set only when a conversation's board hands a task over; a caller cannot set it.`
       };
     }
 

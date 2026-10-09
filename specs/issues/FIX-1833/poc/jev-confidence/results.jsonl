@@ -1,0 +1,112 @@
+{"set":"B · eng.em only (today's offer)","ask":"plain-1","rep":0,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"plain-1","rep":1,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"plain-2","rep":0,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"plain-2","rep":1,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"plain-3","rep":0,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"plain-3","rep":1,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"cos-hire","rep":0,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"cos-hire","rep":1,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"cos-fire","rep":0,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"cos-fire","rep":1,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"cos-project","rep":0,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"cos-project","rep":1,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"cos-who","rep":0,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"cos-who","rep":1,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"cos-leg-c","rep":0,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"B · eng.em only (today's offer)","ask":"cos-leg-c","rep":1,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"plain-1","rep":0,"choice":"eng.em","confidence":0.98,"probabilities":{"eng.em":0.99,"eng.coder":0.01},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"plain-1","rep":1,"choice":"eng.em","confidence":0.98,"probabilities":{"eng.em":0.99,"eng.coder":0.01},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"plain-2","rep":0,"choice":"eng.em","confidence":0.82,"probabilities":{"eng.em":0.91,"eng.coder":0.09},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"plain-2","rep":1,"choice":"eng.em","confidence":0.86,"probabilities":{"eng.em":0.93,"eng.coder":0.07},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"plain-3","rep":0,"choice":"eng.em","confidence":0.38,"probabilities":{"eng.em":0.69,"eng.coder":0.31},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"plain-3","rep":1,"choice":"eng.em","confidence":0.38,"probabilities":{"eng.em":0.69,"eng.coder":0.31},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"cos-hire","rep":0,"choice":"eng.em","confidence":0.26,"probabilities":{"eng.em":0.63,"eng.coder":0.37},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"cos-hire","rep":1,"choice":"eng.em","confidence":0.22,"probabilities":{"eng.em":0.61,"eng.coder":0.39},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"cos-fire","rep":0,"choice":"eng.coder","confidence":0.28,"probabilities":{"eng.em":0.36,"eng.coder":0.64},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"cos-fire","rep":1,"choice":"eng.coder","confidence":0.24,"probabilities":{"eng.em":0.38,"eng.coder":0.62},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"cos-project","rep":0,"choice":"eng.em","confidence":0.66,"probabilities":{"eng.em":0.83,"eng.coder":0.17},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"cos-project","rep":1,"choice":"eng.em","confidence":0.68,"probabilities":{"eng.em":0.84,"eng.coder":0.16},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"cos-who","rep":0,"choice":"eng.em","confidence":0.14,"probabilities":{"eng.em":0.57,"eng.coder":0.43},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"cos-who","rep":1,"choice":"eng.em","confidence":0.14,"probabilities":{"eng.em":0.57,"eng.coder":0.43},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"cos-leg-c","rep":0,"choice":"eng.coder","confidence":0.44,"probabilities":{"eng.em":0.28,"eng.coder":0.72},"model":"typesafe-ai/jev"}
+{"set":"A · eng.em + eng.coder","ask":"cos-leg-c","rep":1,"choice":"eng.coder","confidence":0.4,"probabilities":{"eng.em":0.3,"eng.coder":0.7},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"plain-1","rep":0,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1,"chief-of-staff":0},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"plain-1","rep":1,"choice":"eng.em","confidence":1,"probabilities":{"eng.em":1,"chief-of-staff":0},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"plain-2","rep":0,"choice":"eng.em","confidence":0.94,"probabilities":{"eng.em":0.97,"chief-of-staff":0.03},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"plain-2","rep":1,"choice":"eng.em","confidence":0.94,"probabilities":{"eng.em":0.97,"chief-of-staff":0.03},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"plain-3","rep":0,"choice":"eng.em","confidence":0.36,"probabilities":{"eng.em":0.68,"chief-of-staff":0.32},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"plain-3","rep":1,"choice":"eng.em","confidence":0.24,"probabilities":{"eng.em":0.62,"chief-of-staff":0.38},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"cos-hire","rep":0,"choice":"chief-of-staff","confidence":0.9,"probabilities":{"eng.em":0.05,"chief-of-staff":0.95},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"cos-hire","rep":1,"choice":"chief-of-staff","confidence":0.9,"probabilities":{"eng.em":0.05,"chief-of-staff":0.95},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"cos-fire","rep":0,"choice":"chief-of-staff","confidence":0.94,"probabilities":{"eng.em":0.03,"chief-of-staff":0.97},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"cos-fire","rep":1,"choice":"chief-of-staff","confidence":0.92,"probabilities":{"eng.em":0.04,"chief-of-staff":0.96},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"cos-project","rep":0,"choice":"eng.em","confidence":0.08,"probabilities":{"eng.em":0.54,"chief-of-staff":0.46},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"cos-project","rep":1,"choice":"eng.em","confidence":0,"probabilities":{"eng.em":0.5,"chief-of-staff":0.5},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"cos-who","rep":0,"choice":"chief-of-staff","confidence":0.94,"probabilities":{"eng.em":0.03,"chief-of-staff":0.97},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"cos-who","rep":1,"choice":"chief-of-staff","confidence":0.96,"probabilities":{"eng.em":0.02,"chief-of-staff":0.98},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"cos-leg-c","rep":0,"choice":"chief-of-staff","confidence":0.9,"probabilities":{"eng.em":0.05,"chief-of-staff":0.95},"model":"typesafe-ai/jev"}
+{"set":"E · eng.em + chief of staff (description as is)","ask":"cos-leg-c","rep":1,"choice":"chief-of-staff","confidence":0.92,"probabilities":{"eng.em":0.04,"chief-of-staff":0.96},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"plain-1","rep":0,"choice":"eng.em","confidence":0.98,"probabilities":{"eng.em":0.99,"eng.coder":0.01,"chief-of-staff":0},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"plain-1","rep":1,"choice":"eng.em","confidence":0.98,"probabilities":{"eng.em":0.99,"eng.coder":0.01,"chief-of-staff":0},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"plain-2","rep":0,"choice":"eng.em","confidence":0.83,"probabilities":{"eng.em":0.89,"eng.coder":0.1,"chief-of-staff":0.01},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"plain-2","rep":1,"choice":"eng.em","confidence":0.76,"probabilities":{"eng.em":0.84,"eng.coder":0.15,"chief-of-staff":0.01},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"plain-3","rep":0,"choice":"eng.em","confidence":0.38,"probabilities":{"eng.em":0.59,"eng.coder":0.25,"chief-of-staff":0.16},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"plain-3","rep":1,"choice":"eng.em","confidence":0.49,"probabilities":{"eng.em":0.66,"eng.coder":0.2,"chief-of-staff":0.14},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"cos-hire","rep":0,"choice":"chief-of-staff","confidence":0.89,"probabilities":{"eng.em":0.02,"eng.coder":0.05,"chief-of-staff":0.93},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"cos-hire","rep":1,"choice":"chief-of-staff","confidence":0.88,"probabilities":{"eng.em":0.03,"eng.coder":0.05,"chief-of-staff":0.92},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"cos-fire","rep":0,"choice":"chief-of-staff","confidence":0.72,"probabilities":{"eng.em":0.02,"eng.coder":0.17,"chief-of-staff":0.81},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"cos-fire","rep":1,"choice":"chief-of-staff","confidence":0.58,"probabilities":{"eng.em":0.04,"eng.coder":0.24,"chief-of-staff":0.72},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"cos-project","rep":0,"choice":"eng.em","confidence":0.2,"probabilities":{"eng.em":0.47,"eng.coder":0.12,"chief-of-staff":0.41},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"cos-project","rep":1,"choice":"eng.em","confidence":0.2,"probabilities":{"eng.em":0.47,"eng.coder":0.08,"chief-of-staff":0.45},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"cos-who","rep":0,"choice":"chief-of-staff","confidence":0.92,"probabilities":{"eng.em":0.01,"eng.coder":0.04,"chief-of-staff":0.95},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"cos-who","rep":1,"choice":"chief-of-staff","confidence":0.91,"probabilities":{"eng.em":0.02,"eng.coder":0.04,"chief-of-staff":0.94},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"cos-leg-c","rep":0,"choice":"chief-of-staff","confidence":0.82,"probabilities":{"eng.em":0.01,"eng.coder":0.11,"chief-of-staff":0.88},"model":"typesafe-ai/jev"}
+{"set":"F · eng.em + eng.coder + chief of staff (as is)","ask":"cos-leg-c","rep":1,"choice":"chief-of-staff","confidence":0.76,"probabilities":{"eng.em":0.02,"eng.coder":0.14,"chief-of-staff":0.84},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"plain-1","rep":0,"choice":"eng.em","confidence":0.98,"probabilities":{"eng.em":0.99,"chief-of-staff":0.01},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"plain-1","rep":1,"choice":"eng.em","confidence":0.98,"probabilities":{"eng.em":0.99,"chief-of-staff":0.01},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"plain-2","rep":0,"choice":"eng.em","confidence":0.92,"probabilities":{"eng.em":0.96,"chief-of-staff":0.04},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"plain-2","rep":1,"choice":"eng.em","confidence":0.88,"probabilities":{"eng.em":0.94,"chief-of-staff":0.06},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"plain-3","rep":0,"choice":"chief-of-staff","confidence":0.12,"probabilities":{"eng.em":0.44,"chief-of-staff":0.56},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"plain-3","rep":1,"choice":"eng.em","confidence":0.02,"probabilities":{"eng.em":0.51,"chief-of-staff":0.49},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"cos-hire","rep":0,"choice":"chief-of-staff","confidence":0.8,"probabilities":{"eng.em":0.1,"chief-of-staff":0.9},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"cos-hire","rep":1,"choice":"chief-of-staff","confidence":0.88,"probabilities":{"eng.em":0.06,"chief-of-staff":0.94},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"cos-fire","rep":0,"choice":"chief-of-staff","confidence":0.98,"probabilities":{"eng.em":0.01,"chief-of-staff":0.99},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"cos-fire","rep":1,"choice":"chief-of-staff","confidence":0.98,"probabilities":{"eng.em":0.01,"chief-of-staff":0.99},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"cos-project","rep":0,"choice":"chief-of-staff","confidence":0.96,"probabilities":{"eng.em":0.02,"chief-of-staff":0.98},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"cos-project","rep":1,"choice":"chief-of-staff","confidence":0.98,"probabilities":{"eng.em":0.01,"chief-of-staff":0.99},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"cos-who","rep":0,"choice":"chief-of-staff","confidence":1,"probabilities":{"eng.em":0,"chief-of-staff":1},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"cos-who","rep":1,"choice":"chief-of-staff","confidence":1,"probabilities":{"eng.em":0,"chief-of-staff":1},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"cos-leg-c","rep":0,"choice":"chief-of-staff","confidence":0.96,"probabilities":{"eng.em":0.02,"chief-of-staff":0.98},"model":"typesafe-ai/jev"}
+{"set":"D · eng.em + chief of staff (jobs named)","ask":"cos-leg-c","rep":1,"choice":"chief-of-staff","confidence":0.96,"probabilities":{"eng.em":0.02,"chief-of-staff":0.98},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"plain-1","rep":0,"choice":"eng.em","confidence":0.98,"probabilities":{"eng.em":0.99,"eng.coder":0.01,"chief-of-staff":0},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"plain-1","rep":1,"choice":"eng.em","confidence":0.97,"probabilities":{"eng.em":0.98,"eng.coder":0.01,"chief-of-staff":0.01},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"plain-2","rep":0,"choice":"eng.em","confidence":0.83,"probabilities":{"eng.em":0.89,"eng.coder":0.09,"chief-of-staff":0.02},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"plain-2","rep":1,"choice":"eng.em","confidence":0.8,"probabilities":{"eng.em":0.87,"eng.coder":0.1,"chief-of-staff":0.03},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"plain-3","rep":0,"choice":"eng.em","confidence":0.09,"probabilities":{"eng.em":0.39,"eng.coder":0.24,"chief-of-staff":0.37},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"plain-3","rep":1,"choice":"eng.em","confidence":0.13,"probabilities":{"eng.em":0.42,"eng.coder":0.29,"chief-of-staff":0.29},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"cos-hire","rep":0,"choice":"chief-of-staff","confidence":0.79,"probabilities":{"eng.em":0.05,"eng.coder":0.09,"chief-of-staff":0.86},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"cos-hire","rep":1,"choice":"chief-of-staff","confidence":0.76,"probabilities":{"eng.em":0.04,"eng.coder":0.12,"chief-of-staff":0.84},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"cos-fire","rep":0,"choice":"chief-of-staff","confidence":0.91,"probabilities":{"eng.em":0.01,"eng.coder":0.05,"chief-of-staff":0.94},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"cos-fire","rep":1,"choice":"chief-of-staff","confidence":0.92,"probabilities":{"eng.em":0.01,"eng.coder":0.04,"chief-of-staff":0.95},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"cos-project","rep":0,"choice":"chief-of-staff","confidence":0.97,"probabilities":{"eng.em":0.01,"eng.coder":0.01,"chief-of-staff":0.98},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"cos-project","rep":1,"choice":"chief-of-staff","confidence":0.97,"probabilities":{"eng.em":0.01,"eng.coder":0.01,"chief-of-staff":0.98},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"cos-who","rep":0,"choice":"chief-of-staff","confidence":1,"probabilities":{"eng.em":0,"eng.coder":0,"chief-of-staff":1},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"cos-who","rep":1,"choice":"chief-of-staff","confidence":1,"probabilities":{"eng.em":0,"eng.coder":0,"chief-of-staff":1},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"cos-leg-c","rep":0,"choice":"chief-of-staff","confidence":0.79,"probabilities":{"eng.em":0.02,"eng.coder":0.12,"chief-of-staff":0.86},"model":"typesafe-ai/jev"}
+{"set":"C · eng.em + eng.coder + chief of staff (jobs named)","ask":"cos-leg-c","rep":1,"choice":"chief-of-staff","confidence":0.77,"probabilities":{"eng.em":0.02,"eng.coder":0.13,"chief-of-staff":0.85},"model":"typesafe-ai/jev"}
+{"set":"K · support desk","ask":"desk-wifi","rep":0,"choice":"support.devices","confidence":1,"probabilities":{"support.accounts":0,"support.devices":1,"support.fsd":0,"support.general":0},"model":"typesafe-ai/jev"}
+{"set":"K · support desk","ask":"desk-wifi","rep":1,"choice":"support.devices","confidence":1,"probabilities":{"support.accounts":0,"support.devices":1,"support.fsd":0,"support.general":0},"model":"typesafe-ai/jev"}
+{"set":"K · support desk","ask":"desk-refund","rep":0,"choice":"support.accounts","confidence":1,"probabilities":{"support.accounts":1,"support.devices":0,"support.fsd":0,"support.general":0},"model":"typesafe-ai/jev"}
+{"set":"K · support desk","ask":"desk-refund","rep":1,"choice":"support.accounts","confidence":1,"probabilities":{"support.accounts":1,"support.devices":0,"support.fsd":0,"support.general":0},"model":"typesafe-ai/jev"}
+{"set":"K · support desk","ask":"desk-fsd","rep":0,"choice":"support.fsd","confidence":1,"probabilities":{"support.accounts":0,"support.devices":0,"support.fsd":1,"support.general":0},"model":"typesafe-ai/jev"}
+{"set":"K · support desk","ask":"desk-fsd","rep":1,"choice":"support.fsd","confidence":1,"probabilities":{"support.accounts":0,"support.devices":0,"support.fsd":1,"support.general":0},"model":"typesafe-ai/jev"}
+{"set":"K · support desk","ask":"desk-other","rep":0,"choice":"support.general","confidence":0.88,"probabilities":{"support.accounts":0,"support.devices":0.09,"support.fsd":0,"support.general":0.91},"model":"typesafe-ai/jev"}
+{"set":"K · support desk","ask":"desk-other","rep":1,"choice":"support.general","confidence":0.88,"probabilities":{"support.accounts":0,"support.devices":0.09,"support.fsd":0,"support.general":0.91},"model":"typesafe-ai/jev"}
+{"set":"L · support desk + support.help","ask":"desk-wifi","rep":0,"choice":"support.devices","confidence":1,"probabilities":{"support.accounts":0,"support.devices":1,"support.fsd":0,"support.general":0,"support.help":0},"model":"typesafe-ai/jev"}
+{"set":"L · support desk + support.help","ask":"desk-wifi","rep":1,"choice":"support.devices","confidence":1,"probabilities":{"support.accounts":0,"support.devices":1,"support.fsd":0,"support.general":0,"support.help":0},"model":"typesafe-ai/jev"}
+{"set":"L · support desk + support.help","ask":"desk-refund","rep":0,"choice":"support.accounts","confidence":1,"probabilities":{"support.accounts":1,"support.devices":0,"support.fsd":0,"support.general":0,"support.help":0},"model":"typesafe-ai/jev"}
+{"set":"L · support desk + support.help","ask":"desk-refund","rep":1,"choice":"support.accounts","confidence":1,"probabilities":{"support.accounts":1,"support.devices":0,"support.fsd":0,"support.general":0,"support.help":0},"model":"typesafe-ai/jev"}
+{"set":"L · support desk + support.help","ask":"desk-fsd","rep":0,"choice":"support.fsd","confidence":1,"probabilities":{"support.accounts":0,"support.devices":0,"support.fsd":1,"support.general":0,"support.help":0},"model":"typesafe-ai/jev"}
+{"set":"L · support desk + support.help","ask":"desk-fsd","rep":1,"choice":"support.fsd","confidence":1,"probabilities":{"support.accounts":0,"support.devices":0,"support.fsd":1,"support.general":0,"support.help":0},"model":"typesafe-ai/jev"}
+{"set":"L · support desk + support.help","ask":"desk-other","rep":0,"choice":"support.general","confidence":0.77,"probabilities":{"support.accounts":0,"support.devices":0.1,"support.fsd":0,"support.general":0.82,"support.help":0.08},"model":"typesafe-ai/jev"}
+{"set":"L · support desk + support.help","ask":"desk-other","rep":1,"choice":"support.general","confidence":0.81,"probabilities":{"support.accounts":0,"support.devices":0.08,"support.fsd":0,"support.general":0.85,"support.help":0.07},"model":"typesafe-ai/jev"}
