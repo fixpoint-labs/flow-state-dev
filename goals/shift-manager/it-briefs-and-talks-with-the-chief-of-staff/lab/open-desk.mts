@@ -2,8 +2,9 @@
  * The goal's fixture Labs, opened the way Shift Manager's command loads
  * one: a tree with one team, `desk`, whose seats run the turn goal's `asker`
  * kind or the built-in `agent` kind with a real model, in one mailbox with one
- * board. The organization's inventory is open, so each seat's row names its
- * door. In-memory stores and no credential, so every start is fresh. The check
+ * board. Each kind is one registered copy that every seat naming it runs on,
+ * and a seat's sessions name it in their state. The organization's inventory
+ * is open, so each seat's row names its door. In-memory stores and no credential, so every start is fresh. The check
  * raises the asks itself, through the Lab's own action route, so the Lab
  * reopens them when they are answered.
  *
@@ -22,13 +23,14 @@ import {
   mailboxBoardIds,
   mailboxInstances,
   defineMailboxFlow,
-  hireWorkforce,
+  inventorySeats,
   openMailboxes,
   openInventory,
   type InventoryActionRequest,
   type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { installWorkers } from "../../../lib/workers.mts";
 import { ASKER_KIND, defineAskerFlow } from "../../it-sends-a-turn-into-a-seat-session/lab/asker/asker.mts";
 
 /** The one person this Lab runs as. */
@@ -44,14 +46,13 @@ export async function openDesk(root: string) {
   const tree = await readDeclaredRoster(root);
   if (tree.problems.length > 0) throw new Error(`the desk tree did not load: ${tree.problems.map((p) => p.error.message).join("; ")}`);
 
-  const seats = hireWorkforce(tree.workers, {
-    workerFlows: { [ASKER_KIND]: defineAskerFlow() as never },
+  const { installation, copies } = installWorkers(tree.workers, (installation) => ({ [ASKER_KIND]: defineAskerFlow(installation) }), {
     mailboxBoards: mailboxBoardIds(tree.mailboxes),
   });
   const mailboxKind = defineMailboxFlow({ inventory: true });
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } }).map((i) => [i.kind, i])),
-    ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
+    ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
   };
   const flowState = createFlowState({
     flows,
@@ -93,7 +94,7 @@ export async function openDesk(root: string) {
 
   const runtime = await flowState.getRuntime();
   const opened = await openInventory(
-    { seats, mailboxes: tree.mailboxes },
+    { seats: inventorySeats(installation), mailboxes: tree.mailboxes },
     {
       run: async (request: InventoryActionRequest) => {
         const result = (await runAction({

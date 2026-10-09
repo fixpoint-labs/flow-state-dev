@@ -2,7 +2,7 @@
  * Goal check: Shift Manager takes its light and dark look from the design-system
  * package's one import, the FSD parts it reuses are the registry's copies,
  * with that import removed no Shift Manager value shows on any of them, and
- * the sidebar's shift switch changes the look live, both ways.
+ * the sidebar's theme mark changes the look live, both ways.
  *
  * Real path, no model, out of CI. See goal.md for the contract.
  *
@@ -11,7 +11,9 @@
  * run-lab (`packages/shift-manager/test/fixtures/run-lab/`), whose runs store
  * a message, a reasoning item and a tool call through the Claude Code harness's
  * emit path. Chromium opens a task from Tasks by clicking, opens its tool card,
- * and reads COMPUTED styles in a light pass and a dark pass, set through the browser's colour-scheme setting.
+ * and reads COMPUTED styles in a light pass and a dark pass, each over a Lab
+ * started on that shift (day, then night; `SHIFT_MANAGER_SHIFT`, as `--shift`
+ * sets it), which a browser that has picked nothing opens on.
  *
  * Builds:
  *   themed     Shift Manager as written
@@ -31,20 +33,21 @@
  *              on a swept part is any Shift Manager value (either variant), no
  *              font is one of its families, and the page declares no face of
  *              one, so the fonts arrive with the import and only with it
- *   switch     on the themed build, in a fresh browser: clicking Night shift
- *              while the OS prefers light paints the page's background with
- *              Shift Manager's dark value, clicking Day shift while the OS
- *              prefers dark paints its light value, the switch shows the shift
- *              it's on each time, and each pick survives a reload
+ *   switch     on the themed build, in a fresh browser, with the sidebar's theme
+ *              mark (which replaced the Day / Night switch, 36bed1297 / #2825):
+ *              over the Lab started on day, picking night paints the page's
+ *              background with Shift Manager's dark value; over the one started
+ *              on night, picking day paints its light value; the mark shows the
+ *              theme the page is on each time, and each pick survives a reload
  *
  * Control:
  *   GOAL_CONTROL=hardcoded-accent  Shift Manager's copy of the tool card paints its
  *                                  completed icon with Shift Manager's accent as a
  *                                  literal, in both builds. `neutral` must FAIL
  *                                  naming `tool`, and nothing else may fail.
- *   GOAL_CONTROL=switch-ignored    the shift switch's buttons do nothing when
- *                                  clicked. `switch` must FAIL, and nothing
- *                                  else may fail.
+ *   GOAL_CONTROL=switch-ignored    the theme mark does nothing when clicked.
+ *                                  `switch` must FAIL, and nothing else may
+ *                                  fail.
  *   GOAL_CONTROL=fonts-not-loaded  the themed build imports the design-system
  *                                  stylesheet with its font imports blanked, so
  *                                  the families are named but no face is declared.
@@ -62,7 +65,7 @@ import { declarations, hex, near, parseColour, readShiftManagerTheme, type Rgb }
 import { stripImportsAndComments } from "../../../labs/design-system/test/theme.ts";
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { buildShiftManagerCopy, startShiftManager, type Patch, type ServedShiftManager } from "../../lib/shift-manager.mts";
+import { buildShiftManagerCopy, pickShift, startShiftManager, type Patch, type ServedShiftManager } from "../../lib/shift-manager.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["hardcoded-accent", "switch-ignored", "fonts-not-loaded"] as const;
@@ -106,8 +109,9 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 // ---- serving -----------------------------------------------------------------
 
-const startLab = (pages: string): Promise<ServedShiftManager> =>
-  startShiftManager({ scratch: SCRATCH, label: "run-lab", config: join(RUN_LAB, "fsdev.config.mts"), pages });
+/** The run-lab served on `shift`: the theme a browser that has picked nothing opens on (`SHIFT_MANAGER_SHIFT`, as `--shift` sets it). */
+const startLab = (pages: string, shift: "day" | "night"): Promise<ServedShiftManager> =>
+  startShiftManager({ scratch: SCRATCH, label: `run-lab-${shift}`, config: join(RUN_LAB, "fsdev.config.mts"), pages, env: { SHIFT_MANAGER_SHIFT: shift } });
 
 /** A board row with a run, read through the Lab's own route. */
 async function rowWithRun(origin: string): Promise<string> {
@@ -196,8 +200,7 @@ function readPage(args: { swept: Record<string, string>; probeValues: string[] }
 
 /** Open the task from Tasks, open what its Session draws closed, and read one pass. */
 async function readPass(page: Page, origin: string, taskId: string, dark: boolean): Promise<PageRead> {
-  // Shift Manager follows the OS setting, so the pass sets the setting, not the class.
-  await page.emulateMedia({ colorScheme: dark ? "dark" : "light" });
+  // The Lab was started on the pass's shift, which a browser that has picked nothing opens on.
   await page.goto(`${origin}/tasks`);
   await page.getByTestId("tasks-table").waitFor({ timeout: 20_000 });
   await page.locator(`[data-testid=task-row][data-task-id="${taskId}"]`).click();
@@ -223,46 +226,51 @@ async function readPass(page: Page, origin: string, taskId: string, dark: boolea
   return page.evaluate(readPage, { swept: SWEPT, probeValues: [...THEME.light, ...THEME.dark] });
 }
 
-// ---- the shift switch ----------------------------------------------------------
+// ---- the theme mark -----------------------------------------------------------
 
 /**
- * The switch leg: a fresh browser (nothing picked yet), each click made
- * against the opposite OS setting so a page that ignored the click and
- * followed the OS fails, and each pick read again after a reload.
+ * Half the switch leg, on the theme mark that replaced the Day / Night switch
+ * (36bed1297 / #2825), over a Lab started on `started`: a fresh browser
+ * (nothing picked yet) opens on that shift, the mark picks the other one, so
+ * a page that ignored the click and kept the start fails, and the pick is
+ * read again after a reload, where the start would put it back. Run once over
+ * a Lab started on day and once over one started on night, it covers both ways.
  */
-async function switchLeg(browser: Browser, origin: string): Promise<{ failures: string[]; evidence: string }> {
+async function switchLeg(browser: Browser, origin: string, started: "day" | "night"): Promise<{ failures: string[]; evidence: string }> {
   const failures: string[] = [];
   const seen: string[] = [];
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+  const mark = page.getByTestId("theme-mark");
   const ready = async () => {
-    await page.getByTestId("shift-switch").waitFor({ timeout: 20_000 });
+    await mark.waitFor({ timeout: 20_000 });
     await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity));
   };
-  const expect = async (step: string, want: "light" | "dark") => {
+  const expect = async (step: string, want: "day" | "night") => {
     await ready();
+    const variant = want === "night" ? "dark" : "light";
     const got = parseColour(await page.evaluate(() => getComputedStyle(document.body).backgroundColor));
-    const shown = want === "dark" ? "Night shift" : "Day shift";
-    if (got === null || !near(got.rgb, BACKGROUND[want])) {
-      failures.push(`switch [${step}] the page background is ${got === null ? "transparent" : hex(got.rgb)}, not Shift Manager's ${want} ${hex(BACKGROUND[want])}`);
+    if (got === null || !near(got.rgb, BACKGROUND[variant])) {
+      failures.push(`switch [${step}] the page background is ${got === null ? "transparent" : hex(got.rgb)}, not Shift Manager's ${variant} ${hex(BACKGROUND[variant])}`);
     }
-    if ((await page.getByTestId(want === "dark" ? "shift-night" : "shift-day").getAttribute("aria-pressed")) !== "true") {
-      failures.push(`switch [${step}] the switch doesn't show ${shown}`);
-    }
+    const marked = await mark.getAttribute("data-theme");
+    if (marked !== want) failures.push(`switch [${step}] the theme mark shows ${marked}, not ${want}`);
     seen.push(`${step}: ${got === null ? "transparent" : hex(got.rgb)}`);
   };
+  const pick = async (step: string, want: "day" | "night") => {
+    try {
+      await pickShift(page, want);
+    } catch (error) {
+      failures.push(`switch [${step}] ${String((error as Error).message)}`);
+    }
+    await expect(step, want);
+  };
   try {
-    await page.emulateMedia({ colorScheme: "light" });
+    const want = started === "day" ? "night" : "day";
     await page.goto(`${origin}/tasks`);
-    await expect("OS light, nothing picked", "light");
-    await page.getByTestId("shift-night").click();
-    await expect("Night shift clicked, OS light", "dark");
+    await expect(`started on ${started}, nothing picked`, started);
+    await pick(`${want} picked, started on ${started}`, want);
     await page.reload();
-    await expect("reloaded after Night shift, OS light", "dark");
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.getByTestId("shift-day").click();
-    await expect("Day shift clicked, OS dark", "light");
-    await page.reload();
-    await expect("reloaded after Day shift, OS dark", "light");
+    await expect(`reloaded after ${want}, started on ${started}`, want);
   } finally {
     await page.close();
   }
@@ -343,10 +351,10 @@ await runGoal(async (failures) => {
       : CONTROL === "switch-ignored"
         ? [
             {
-              file: "src/surfaces/Sidebar.tsx",
-              from: "onClick={() => look.choose(scheme)}",
+              file: "src/components/ShiftManagerMark.tsx",
+              from: "onClick={look.cycle}",
               to: "onClick={() => undefined}",
-              why: "the shift switch's buttons do nothing when clicked",
+              why: "the theme mark does nothing when clicked",
             },
           ]
         : [];
@@ -381,16 +389,18 @@ await runGoal(async (failures) => {
   const browser = await launchChromium();
   try {
     for (const { name, pages } of builds) {
-      const served = await startLab(pages);
-      try {
-        const taskId = await rowWithRun(served.origin);
-        const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-        const errors: string[] = [];
-        page.on("pageerror", (e) => errors.push(e.message));
-        // tsx compiles this file with esbuild's keepNames, which wraps nested
-        // functions in readPage with a `__name` helper the page lacks.
-        await page.addInitScript("globalThis.__name = (fn) => fn;");
-        for (const variant of ["light", "dark"] as const) {
+      // One Lab per pass, started on the pass's shift: the light pass on day, the dark pass on night.
+      for (const variant of ["light", "dark"] as const) {
+        const shift = variant === "dark" ? "night" : "day";
+        const served = await startLab(pages, shift);
+        try {
+          const taskId = await rowWithRun(served.origin);
+          const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+          const errors: string[] = [];
+          page.on("pageerror", (e) => errors.push(e.message));
+          // tsx compiles this file with esbuild's keepNames, which wraps nested
+          // functions in readPage with a `__name` helper the page lacks.
+          await page.addInitScript("globalThis.__name = (fn) => fn;");
           const tag = `${name} ${variant}`;
           const read = await readPass(page, served.origin, taskId, variant === "dark");
           if (name === "themed" && variant === "light") {
@@ -403,17 +413,18 @@ await runGoal(async (failures) => {
             `${tag}: ${Object.entries(read.counts).map(([p, n]) => `${p} ${n}`).join(", ")} elements; ${read.colours.length} colours, ${read.fonts.length} fonts; faces loaded: ${loadedFaces.length === 0 ? "none" : [...new Set(loadedFaces)].join(", ")}`,
           );
           if (process.env.GOAL_KEEP === "1") await page.screenshot({ path: join(SCRATCH, `${name}-${variant}.png`), fullPage: true });
+          if (errors.length > 0) failures.push(`reach [${tag}] the page threw: ${errors.join(" | ")}`);
+          await page.close();
+          // Half the switch leg on each themed Lab, in a fresh browser: picked against the shift it started on.
+          if (name === "themed") {
+            const switched = await switchLeg(browser, served.origin, shift);
+            failures.push(...switched.failures);
+            evidence.push(switched.evidence);
+          }
+        } finally {
+          served.child.kill("SIGTERM");
+          await served.exited;
         }
-        if (errors.length > 0) failures.push(`reach [${name}] the page threw: ${errors.join(" | ")}`);
-        await page.close();
-        if (name === "themed") {
-          const switched = await switchLeg(browser, served.origin);
-          failures.push(...switched.failures);
-          evidence.push(switched.evidence);
-        }
-      } finally {
-        served.child.kill("SIGTERM");
-        await served.exited;
       }
     }
   } finally {

@@ -10,7 +10,7 @@
  * (`docs/architecture/workforce-default-worker-kind.md`):
  *
  *   0  fixture integrity — the tree and input.json agree, before any model call
- *   a  C1: two worker files hire with NO `kinds` argument, and register
+ *   a  C1: two worker files hire onto the built-in, from an installation given no worker flow
  *   b  C2: each seat's reply is steered by ITS OWN body, not its neighbour's
  *   c  C3: a mixed roster with one unregistered kind refuses, and nothing hires
  *
@@ -20,6 +20,7 @@
  * Run: pnpm tsx goals/workforce-seats/the-built-in-kind-answers-from-a-file-alone/run.mts
  */
 import { readFileSync } from "node:fs";
+import { ROSTER_FLOW_KIND } from "@flow-state-dev/workforce/browser";
 import {
   KITCHEN_SINK,
   fixturePath,
@@ -53,11 +54,13 @@ interface Observation {
   skillErrors: unknown[];
   rosterIds: string[];
   rosterBodies: Record<string, string>;
-  seatIds: string[];
+  /** Each worker the installation holds, and the flow it runs on. */
+  seats: Array<{ id: string; kind: string }>;
+  /** The copies `hireWorkforce` returned, by id, all registered. */
   registered: string[];
   attempts: Array<Record<string, string>>;
   mixedRosterIds: string[];
-  refusal: { threw: boolean; message: string; returnedSeatIds: string[] | null };
+  refusal: { threw: boolean; message: string; returnedCopyIds: string[] | null };
   validWorkerStatusAfterRefusal: number;
 }
 
@@ -172,30 +175,70 @@ function mixedRosterDrift(): string[] {
 }
 
 /**
- * Leg 0, half two — the hire call itself passes no `kinds`.
+ * Leg 0, half two — the installation names no worker flow, and the hire adds
+ * nothing to it.
  *
  * Read statically off the harness source, because a runtime report could only
- * say what the harness chose to say. Passing a `kinds` map would prove nothing
- * about the built-in, which is the whole subject.
+ * say what the harness chose to say. An installation handed a worker flow
+ * would prove nothing about the built-in, which is the whole subject.
  */
-function hireCallPassesNoKinds(): string[] {
+function installationNamesNoFlows(): string[] {
   const source = readFileSync(new URL("./harness.mts", import.meta.url), "utf8");
-  const calls = [...source.matchAll(/hireWorkforce\s*\(([\s\S]{0,200}?)\)\s*[;:\n]/g)].map((m) =>
-    m[1].replace(/\s+/g, " ").trim(),
-  );
-  if (calls.length === 0) {
-    return ["the harness contains no hireWorkforce call — the check is not driving the subject"];
+  const installs = callArguments(source, "createWorkerInstallation");
+  const hires = callArguments(source, "hireWorkforce");
+  if (installs.length === 0 || hires.length === 0) {
+    return ["the harness builds no installation or calls no hireWorkforce — the check is not driving the subject"];
   }
-  // Any second argument, not just one spelled `kinds` — `hireWorkforce(workers,
-  // options)` carries a kinds map the name never mentions, and goal.md's own
-  // criterion is `hireWorkforce(workers)` with one argument.
-  const withArgs = calls.filter((args) => hasSecondArgument(args));
-  return withArgs.length > 0
-    ? [
-        `the harness passes a second argument to hireWorkforce (${withArgs.join(" | ")}) — ` +
-          `anything beyond the roster can carry a kind, which proves nothing about the built-in`,
-      ]
-    : [];
+  const problems: string[] = [];
+  // Only the roster, as a literal: any other key, a spread or a variable can
+  // carry `workerFlows` without the name appearing at the call.
+  const carrying = installs.filter((args) => JSON.stringify(literalKeys(args)) !== JSON.stringify(["standardWorkers"]));
+  if (carrying.length > 0) {
+    problems.push(
+      `the harness builds an installation from more than its workers (${carrying.join(" | ")}) — ` +
+        `anything beyond the roster can carry a worker flow, which proves nothing about the built-in`,
+    );
+  }
+  // The installation is the hire's one argument.
+  const withArgs = hires.filter((args) => hasSecondArgument(args));
+  if (withArgs.length > 0) {
+    problems.push(`the harness passes a second argument to hireWorkforce (${withArgs.join(" | ")}) — the installation is all it takes`);
+  }
+  return problems;
+}
+
+/** The source inside each `name(...)` call, up to its matching parenthesis, whitespace collapsed. */
+function callArguments(source: string, name: string): string[] {
+  const found: string[] = [];
+  for (const match of source.matchAll(new RegExp(`\\b${name}\\s*\\(`, "g"))) {
+    const start = match.index! + match[0].length;
+    let depth = 1;
+    let at = start;
+    for (; at < source.length && depth > 0; at += 1) {
+      if ("([{".includes(source[at]!)) depth += 1;
+      else if (")]}".includes(source[at]!)) depth -= 1;
+    }
+    found.push(source.slice(start, at - 1).replace(/\s+/g, " ").trim());
+  }
+  return found;
+}
+
+/** An object literal's top-level keys (a spread reads as `...`), or `undefined` when the source isn't one. */
+function literalKeys(args: string): string[] | undefined {
+  if (!args.startsWith("{") || !args.endsWith("}")) return undefined;
+  const keys: string[] = [];
+  let depth = 0;
+  let entry = "";
+  for (const ch of `${args.slice(1, -1)},`) {
+    if ("([{".includes(ch)) depth += 1;
+    else if (")]}".includes(ch)) depth -= 1;
+    if (ch === "," && depth === 0) {
+      const text = entry.trim();
+      if (text !== "") keys.push(text.startsWith("...") ? "..." : text.split(":")[0]!.trim());
+      entry = "";
+    } else entry += ch;
+  }
+  return keys;
 }
 
 /** A comma outside every bracket in a captured argument list. */
@@ -219,12 +262,12 @@ await runGoal((failures) => {
   const evidence: string[] = [];
 
   // ---- leg 0 -------------------------------------------------------------
-  failures.push(...fixtureDrift(), ...mixedRosterDrift(), ...hireCallPassesNoKinds());
+  failures.push(...fixtureDrift(), ...mixedRosterDrift(), ...installationNamesNoFlows());
   if (failures.length > 0) {
     return { failures, evidence: "stopped at leg 0 — no model call was spent" };
   }
   evidence.push(
-    "leg 0: both fixture trees match input.json and the hire passes no `kinds`",
+    "leg 0: both fixture trees match input.json, and the installation names no worker flow",
   );
 
   const o = runHarness<Observation>({
@@ -259,18 +302,24 @@ await runGoal((failures) => {
 
   const expected = fixture.workers.map((w) => w.id).sort();
 
-  // ---- leg (a): C1 — hires from files alone, with no kinds ---------------
+  // ---- leg (a): C1 — hires from files alone, on the built-in --------------
   {
-    const seats = [...o.seatIds].sort();
+    const { builtInKind } = fixture.mixedRoster;
+    const seats = o.seats.map((s) => s.id).sort();
     if (JSON.stringify(seats) !== JSON.stringify(expected)) {
       failures.push(`hired ${JSON.stringify(seats)}, wanted ${JSON.stringify(expected)}`);
     }
+    for (const seat of o.seats) {
+      if (seat.kind !== builtInKind) failures.push(`${seat.id} runs on "${seat.kind}", not the built-in "${builtInKind}"`);
+    }
+    // One copy of the built-in beside the roster flow: no worker flow of the harness's own was registered.
     const registered = [...o.registered].sort();
-    if (JSON.stringify(registered) !== JSON.stringify(expected)) {
-      failures.push(`registered ${JSON.stringify(registered)}, wanted ${JSON.stringify(expected)}`);
+    const wanted = [builtInKind, ROSTER_FLOW_KIND].sort();
+    if (JSON.stringify(registered) !== JSON.stringify(wanted)) {
+      failures.push(`registered ${JSON.stringify(registered)}, wanted ${JSON.stringify(wanted)}`);
     }
     if (failures.length === 0) {
-      evidence.push(`leg (a): ${seats.join(", ")} hired from files alone with no \`kinds\`, and registered`);
+      evidence.push(`leg (a): ${seats.join(", ")} hired from files alone onto one registered copy of "${builtInKind}"`);
     }
   }
 
@@ -329,11 +378,11 @@ await runGoal((failures) => {
       );
     }
 
-    // THE load-bearing assertion. A partial hire returns an array containing
-    // the valid seat instead of throwing, and turns this red.
+    // THE load-bearing assertion. A partial hire returns the copies the valid
+    // worker runs on instead of throwing, and turns this red.
     if (!o.refusal.threw) {
       failures.push(
-        `leg (c): the hire returned ${JSON.stringify(o.refusal.returnedSeatIds)} instead of refusing — ` +
+        `leg (c): the hire returned ${JSON.stringify(o.refusal.returnedCopyIds)} instead of refusing — ` +
           `a refusal after a partial hire is not a refusal`,
       );
     } else {
@@ -356,15 +405,15 @@ await runGoal((failures) => {
     // Secondary, and meaningful only because the roster is mixed.
     if (o.validWorkerStatusAfterRefusal !== 404) {
       failures.push(
-        `leg (c): the valid worker ${validId} answered ${o.validWorkerStatusAfterRefusal} on a host built ` +
-          `from what came back — a seat was registered anyway`,
+        `leg (c): a session with the valid worker ${validId} on "${builtInKind}" answered ` +
+          `${o.validWorkerStatusAfterRefusal} on a host built from what came back — a copy was registered anyway`,
       );
     }
 
     if (o.refusal.threw && failures.length === 0) {
       evidence.push(
         `leg (c): a mixed roster (${validId} valid, ${invalidId} naming "${invalidKind}") refused by name, ` +
-          `listing "${builtInKind}", returning nothing — the valid worker's address 404s`,
+          `listing "${builtInKind}", returning nothing — a session with the valid worker 404s`,
       );
     }
   }

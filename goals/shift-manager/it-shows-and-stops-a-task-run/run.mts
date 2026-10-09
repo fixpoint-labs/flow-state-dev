@@ -91,7 +91,8 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 // ---- the tree on disk ----------------------------------------------------------
 
-type Tree = { mailboxId: string; boardRef: string; drainerId: string; members: string[] };
+/** `drainerFlow` is the flow the drainer's file names: a worker has no flow of its own, so its runs are on that flow's one copy. */
+type Tree = { mailboxId: string; boardRef: string; drainerId: string; drainerFlow: string; members: string[] };
 
 async function readTree(): Promise<Tree> {
   const roster = await readDeclaredRoster(TREE);
@@ -101,7 +102,7 @@ async function readTree(): Promise<Tree> {
   const members = (mailbox.declared.members as string[] | undefined) ?? [];
   const drainer = roster.workers.find((w) => members.includes(w.id) && w.declared.flow !== undefined && w.declared.handoff === undefined);
   if (drainer === undefined) throw new Error("the tree's mailbox has no member that drains its board");
-  return { mailboxId: mailbox.id, boardRef: `${mailbox.id}.${(mailbox.declared.boards as string[])[0]}`, drainerId: drainer.id, members };
+  return { mailboxId: mailbox.id, boardRef: `${mailbox.id}.${(mailbox.declared.boards as string[])[0]}`, drainerId: drainer.id, drainerFlow: String(drainer.declared.flow), members };
 }
 
 // ---- building Shift Manager --------------------------------------------------------
@@ -477,7 +478,7 @@ await runGoal(async (failures) => {
   const tree = await readTree();
   // GOAL_PAGES serves pages built elsewhere, e.g. from the commit before this
   // screen existed, to record the before-state.
-  const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL, tree.drainerId));
+  const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL, tree.drainerFlow));
   const evidence: string[] = [];
   const served = await startLab(pages);
   const browser = await launchChromium();
@@ -493,8 +494,9 @@ await runGoal(async (failures) => {
     const owners = new Map<string, string>();
     for (const row of rows) if (row.run !== null) owners.set(row.id, await api.ownerOf(row.run.sessionId));
     const held = rows.filter((r) => r.status === "in_progress" && r.run !== null);
-    const onDrainer = held.find((r) => owners.get(r.id) === tree.drainerId);
-    const ownFlow = held.find((r) => owners.get(r.id) !== tree.drainerId);
+    // A run's owner is the flow its session is on: the drainer's flow, or a seat's flow of its own.
+    const onDrainer = held.find((r) => owners.get(r.id) === tree.drainerFlow);
+    const ownFlow = held.find((r) => owners.get(r.id) !== tree.drainerFlow);
     const finished = rows.find((r) => r.status === "completed" && r.run !== null);
     const unclaimed = rows.find((r) => r.run === null && r.status !== "in_progress");
     if (onDrainer === undefined || ownFlow === undefined || finished === undefined || unclaimed === undefined) {

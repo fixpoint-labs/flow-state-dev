@@ -31,7 +31,9 @@
  *
  * Controls:
  *
- *   optimistic-reply  Shift Manager built with `src/lib/cos.ts` swapped for
+ *   optimistic-reply  Shift Manager built with `src/lib/conversation.ts` (the
+ *                     conversation hook) and `src/lib/send.ts` (the send path
+ *                     its composer calls) swapped for
  *                     `controls/optimistic-reply.ts`: the line and a canned
  *                     reply are drawn without calling the door. Must fail at
  *                     "talk".
@@ -50,15 +52,18 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
-import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
+import { SHIFT_MANAGER_COMMAND, servedAddresses, workerOf } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
+/** Each control's source modules, and the module under `controls/` that stands in for all of them. */
 const SWAPS = {
-  "optimistic-reply": { module: join("src", "lib", "cos.ts"), with: "optimistic-reply.ts" },
-  "static-brief": { module: join("src", "lib", "derive.ts"), with: "static-brief.ts" },
+  // The conversation hook, and the send path its composer calls: both, so the reply is drawn and nothing is sent.
+  "optimistic-reply": { modules: [join("src", "lib", "conversation.ts"), join("src", "lib", "send.ts")], with: "optimistic-reply.ts" },
+  "static-brief": { modules: [join("src", "lib", "derive.ts")], with: "static-brief.ts" },
 } as const;
 type Control = keyof typeof SWAPS;
 if (CONTROL === "list") {
@@ -95,8 +100,8 @@ async function buildShiftManager(control: string): Promise<string> {
   const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
   const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const spec = control === "" ? undefined : SWAPS[control as Control];
-  const swap = spec === undefined ? undefined : { target: join(SHIFT_MANAGER, spec.module), with: join(HERE, "controls", spec.with) };
-  let swapped = 0;
+  const swap = spec === undefined ? undefined : { targets: spec.modules.map((m) => join(SHIFT_MANAGER, m)), with: join(HERE, "controls", spec.with) };
+  const swapped = new Set<string>();
   await vite.build({
     root: SHIFT_MANAGER,
     configFile: join(SHIFT_MANAGER, "vite.config.ts"),
@@ -113,14 +118,15 @@ async function buildShiftManager(control: string): Promise<string> {
               async resolveId(this: any, source: string, importer: string | undefined, options: Record<string, unknown>) {
                 if (importer === undefined || importer === swap.with) return null;
                 const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-                if (resolved?.id !== swap.target) return null;
-                swapped += 1;
+                if (resolved === null || !swap.targets.includes(resolved.id)) return null;
+                swapped.add(resolved.id);
                 return swap.with;
               },
             },
           ],
   });
-  if (swap !== undefined && swapped === 0) throw new Error(`control ${control}: the build never imported ${swap.target}, so nothing was swapped`);
+  const missed = swap?.targets.filter((target) => !swapped.has(target)) ?? [];
+  if (missed.length > 0) throw new Error(`control ${control}: the build never imported ${missed.join(", ")}, so nothing was swapped there`);
   return outDir;
 }
 
@@ -188,7 +194,7 @@ function labApi(origin: string, bearer: string | undefined) {
     return out;
   };
   /** The person's sessions, dispatch runs included. */
-  const sessions = async (userId: string): Promise<Array<{ id: string; flowId?: string; parentSessionId?: string | null; createdAt: number }>> =>
+  const sessions = async (userId: string): Promise<Array<{ id: string; state?: Record<string, unknown>; parentSessionId?: string | null; createdAt: number }>> =>
     (await get(`/sessions?userId=${enc(userId)}&include=dispatch-runs`)).sessions ?? [];
   /** The suspension ids still pending in `sessionIds`, asking a person. */
   const pendingAsks = async (sessionIds: string[]): Promise<string[]> => {
@@ -287,10 +293,15 @@ await runGoal(async (failures) => {
       if (userId === undefined) throw new Error("the page was handed no userId");
       const api = labApi(served.desk.origin, config?.bearerToken);
 
-      // Two asks, raised by the person through the asker's own action route.
+      // Two asks, raised by the person through the asker's own action route: a
+      // worker has no flow address of its own, so each runs in a session of the
+      // flow its file names, created naming it.
+      const askerFlow = String(asker.declared.flow);
       const askSessions = [0, 1].map(() => `s_cos_goal_${randomBytes(3).toString("hex")}`);
       for (const [i, sessionId] of askSessions.entries()) {
-        const posted = await api.call("POST", `/${encodeURIComponent(asker.id)}/${encodeURIComponent(sessionId)}/actions/ask`, {
+        const opened = await api.call("POST", `/${encodeURIComponent(askerFlow)}/sessions`, { userId, sessionId, state: { [WORKER_ID_STATE_KEY]: asker.id } });
+        if (opened.status !== 201) throw new Error(`a session with ${asker.id} on "${askerFlow}": ${opened.status} ${JSON.stringify(opened.body)}`);
+        const posted = await api.call("POST", `/${encodeURIComponent(askerFlow)}/${encodeURIComponent(sessionId)}/actions/ask`, {
           userId,
           input: { what: `ship part ${i + 1}` },
         });
@@ -347,9 +358,9 @@ await runGoal(async (failures) => {
       await input.waitFor();
       const token = `cos-${randomBytes(4).toString("hex")}`;
       await input.fill(`Please repeat this code back to me exactly: ${token}`);
-      /** The person's direct sessions on the seat, and the one holding the token's user item. */
+      /** The person's direct sessions with the seat (the ones naming it as their worker), and the one holding the token's user item. */
       const findLine = async () => {
-        for (const session of (await api.sessions(userId)).filter((s) => s.flowId === cosSeat.id && s.parentSessionId == null)) {
+        for (const session of (await api.sessions(userId)).filter((s) => workerOf(s) === cosSeat.id && s.parentSessionId == null)) {
           const messages = await api.items(session.id, "message");
           const at = messages.findIndex((m) => m.role === "user" && textOf(m).includes(token));
           if (at >= 0) return { sessionId: session.id, messages, at };

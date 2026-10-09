@@ -65,7 +65,7 @@ import { RUN_STAMP, goalTmpDir, loadFixture, repoPath, runGoal } from "../../lib
 import { EM_KIND } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { hex, parseColour, type Rgb } from "../../lib/colour.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { buildShiftManagerCopy, labApi, startShiftManager, type LabApi, type Patch } from "../../lib/shift-manager.mts";
+import { buildShiftManagerCopy, labApi, pendingSeatAsks, pickShift, startShiftManager, type LabApi, type Patch } from "../../lib/shift-manager.mts";
 // ---- slice D ----
 import * as inboxTasksRoster from "./screens-inbox-tasks-roster.mts";
 // ---- end slice D ----
@@ -659,7 +659,11 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
           const id = String(r.id);
           return { id, kind: r.kind == null ? null : String(r.kind), name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
         });
-  const asks = await pendingAsksBySeat(api, userId, seats);
+  // The person's pending asks on the seats' sessions, by seat ("" for a session naming none).
+  // Dispatch runs included: a seat woken by a mailbox post asks from one, and the app lists them.
+  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
+  const asks = new Map<string, number>();
+  for (const ask of await pendingSeatAsks(api, listing.sessions ?? [], seats)) asks.set(ask.seatId ?? "", (asks.get(ask.seatId ?? "") ?? 0) + 1);
   const mailboxes: Store["mailboxes"] = {};
   const allRows: Array<Record<string, any>> = [];
   let running = 0;
@@ -710,49 +714,23 @@ async function mailboxKind(api: LabApi, mailbox: string): Promise<string> {
   return String(kind);
 }
 
-/** The person's pending asks, across the seats' sessions. */
-async function pendingAsks(api: LabApi, userId: string): Promise<number> {
-  return [...(await pendingAsksBySeat(api, userId)).values()].reduce((a, b) => a + b, 0);
-}
-
 /**
- * The person's pending asks, by the worker (the seat) whose session each waits in: the one
- * its state names (`workerId`). Given the inventory's seats, only their sessions count, as
- * Shift Manager reads asks: a session on a seat's kind that names that seat, or names no
- * worker at all (`packages/shift-manager/src/lib/reads.ts`).
+ * The person's pending asks in every session they hold. Not `pendingSeatAsks`:
+ * that one only counts a session on a seat's kind. Dispatch runs included: a seat
+ * a mailbox post woke asks from one, and the app lists them.
  */
-async function pendingAsksBySeat(api: LabApi, userId: string, seats?: ReadonlyArray<{ id: string; kind: string | null }>): Promise<Map<string, number>> {
-  // Dispatch runs included: a seat woken by a mailbox post asks from one, and the app lists them.
+async function pendingAsks(api: LabApi, userId: string): Promise<number> {
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
-  const ids = new Set(seats?.map((s) => s.id));
-  const kinds = new Set(seats?.flatMap((s) => (s.kind === null ? [] : [s.kind])));
-  const bySeat = new Map<string, number>();
+  let pending = 0;
   for (const session of (listing.sessions ?? []) as Array<Record<string, any>>) {
-    const worker = typeof session.state?.workerId === "string" ? session.state.workerId : null;
-    if (seats !== undefined && !(kinds.has(String(session.flowKind)) && (worker === null || ids.has(worker)))) continue;
     const found = await api.items(String(session.id), ["suspension", "suspension_resume"]);
     const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
-    const pending = found.filter((i) => i.type === "suspension" && PERSON_REASONS.has(String(i.reason)) && !resumed.has(String(i.suspensionId))).length;
-    const seat = worker ?? "";
-    if (pending > 0) bySeat.set(seat, (bySeat.get(seat) ?? 0) + pending);
+    pending += found.filter((i) => i.type === "suspension" && PERSON_REASONS.has(String(i.reason)) && !resumed.has(String(i.suspensionId))).length;
   }
-  return bySeat;
+  return pending;
 }
 
 // ---- driving the page --------------------------------------------------------------
-
-/**
- * Put the page in `shift` with the sidebar's theme mark, clicking it as a person cycles the
- * themes, and let each click's fade (the root's `theme-fade` class) end before the next.
- */
-async function pickShift(page: Page, shift: Shift): Promise<void> {
-  const mark = page.getByTestId("theme-mark");
-  for (let i = 0; i < 3 && (await mark.getAttribute("data-theme")) !== shift; i += 1) {
-    await mark.click();
-    await page.waitForFunction(() => !document.documentElement.classList.contains("theme-fade"), undefined, { timeout: 10_000 });
-  }
-  if ((await mark.getAttribute("data-theme")) !== shift) throw new Error(`the theme mark never reached "${shift}"`);
-}
 
 /** Wait until the page shows `shift` and nothing is still moving or loading. */
 async function settle(page: Page, shift: Shift): Promise<void> {

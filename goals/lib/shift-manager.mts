@@ -17,6 +17,11 @@
  *   itself.
  * - {@link labApi}: the Lab's HTTP routes, read with the goal's own requests,
  *   so a goal's oracle is the store and never Shift Manager's state.
+ * - {@link pendingSeatAsks}: the person's pending asks on the seats' sessions,
+ *   picked the way Shift Manager picks them, and {@link workerOf}, the worker
+ *   a listed session names.
+ * - {@link pickShift}: the page put in a theme with the sidebar's theme mark,
+ *   as a person picks one.
  *
  * `vite.build()` run in-process sets `process.env.NODE_ENV` to `production`
  * and never restores it. A Lab started after a build would inherit it, which
@@ -36,6 +41,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Browser, BrowserContext, Page } from "playwright";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { intentFreeEnv } from "./env.mts";
 import { REPO_ROOT, repoPath } from "./paths.mts";
 
@@ -237,6 +243,74 @@ export function labApi(origin: string, bearer: string | undefined) {
 
 /** A Lab's routes, as {@link labApi} reads them. */
 export type LabApi = ReturnType<typeof labApi>;
+
+/**
+ * Put the page in `shift` with the sidebar's theme mark, clicking it as a person cycles the
+ * themes (day, evening, night), and let each click's fade (the root's `theme-fade` class)
+ * end before the next. The mark replaced v2's Day / Night switch (36bed1297 / #2825).
+ *
+ * @throws When three clicks never bring the mark to `shift`.
+ */
+export async function pickShift(page: Page, shift: "day" | "evening" | "night"): Promise<void> {
+  const mark = page.getByTestId("theme-mark");
+  for (let i = 0; i < 3 && (await mark.getAttribute("data-theme")) !== shift; i += 1) {
+    await mark.click();
+    await page.waitForFunction(() => !document.documentElement.classList.contains("theme-fade"), undefined, { timeout: 10_000 });
+  }
+  if ((await mark.getAttribute("data-theme")) !== shift) throw new Error(`the theme mark never reached "${shift}"`);
+}
+
+/** Suspension reasons that are a person being asked something. */
+const PERSON_REASONS = new Set(["human_approval", "human_input"]);
+
+/** The worker a listed session runs, as its state names it (`workerId`), or `null` when it names none. */
+export function workerOf(session: Readonly<Record<string, any>>): string | null {
+  const worker = session.state?.[WORKER_ID_STATE_KEY];
+  return typeof worker === "string" ? worker : null;
+}
+
+/** A person-ask still pending in a seat's session. */
+export type PendingAsk = {
+  suspensionId: string;
+  /** The session it waits in. */
+  sessionId: string;
+  /** The seat that session names as its worker, or `null` when it names none. */
+  seatId: string | null;
+};
+
+/**
+ * The person's pending asks, read from the seats' sessions as Shift Manager
+ * reads them (`packages/shift-manager/src/lib/reads.ts`): a session on a
+ * seat's kind that names that seat as its worker, or names no worker at all,
+ * whose asks are then the seat-less ones. An ask is a suspension asking a
+ * person that holds no resume.
+ *
+ * @param api Reads one session's items by type: {@link LabApi}'s `items`, or a goal's own.
+ * @param sessions The person's session listing, dispatch runs included: a seat
+ *   a mailbox post woke asks from one.
+ * @param seats The inventory's seats, each with the kind it runs on.
+ */
+export async function pendingSeatAsks(
+  api: { items(sessionId: string, types: string[]): Promise<Array<Record<string, any>>> },
+  sessions: ReadonlyArray<Readonly<Record<string, any>>>,
+  seats: ReadonlyArray<{ id: string; kind: string | null }>,
+): Promise<PendingAsk[]> {
+  const ids = new Set(seats.map((s) => s.id));
+  const kinds = new Set(seats.flatMap((s) => (s.kind === null ? [] : [s.kind])));
+  const asks: PendingAsk[] = [];
+  for (const session of sessions) {
+    const seatId = workerOf(session);
+    if (!kinds.has(String(session.flowKind)) || (seatId !== null && !ids.has(seatId))) continue;
+    const found = await api.items(String(session.id), ["suspension", "suspension_resume"]);
+    const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
+    for (const item of found) {
+      if (item.type === "suspension" && PERSON_REASONS.has(String(item.reason)) && !resumed.has(String(item.suspensionId))) {
+        asks.push({ suspensionId: String(item.suspensionId), sessionId: String(session.id), seatId });
+      }
+    }
+  }
+  return asks;
+}
 
 /**
  * Build Shift Manager's pages into `outDir` with the Vite the checkout at

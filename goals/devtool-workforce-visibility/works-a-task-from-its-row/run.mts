@@ -415,7 +415,8 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
     await page.goto(served.origin, { waitUntil: "networkidle" });
 
     // ---- read: collapsed, then open, in the run the row parked in ------------
-    await openSession(page, WORKER_KIND, owner, lab.seatSession(owner));
+    // A seat has no copy of its own: its session is on the one copy of the worker flow (a copy's id is its kind).
+    await openSession(page, WORKER_KIND, WORKER_KIND, lab.seatSession(owner));
     await page.locator(`[data-session-id="${parkLine.session}"]`).click();
     await waitForBadge(page, parkLine.session);
     await openTasksTab(page);

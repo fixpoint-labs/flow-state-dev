@@ -410,7 +410,8 @@ const CHILDREN: Child[] = [
   { id: "P3.2 FIX-1688/1689/1725 it-takes-its-look-from-the-design-system", run: SM("it-takes-its-look-from-the-design-system"), control: "hardcoded-accent", must: /\] neutral .*tool:/, allowed: /\] neutral .*tool:/ },
   { id: "P3.2 FIX-1688/1689/1725 it-takes-its-look-from-the-design-system", run: SM("it-takes-its-look-from-the-design-system"), control: "switch-ignored", must: /\] switch /, allowed: /\] switch / },
   { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session") },
-  { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session"), control: "optimistic-turn", must: /\] delivered:/, allowed: /\] (delivered|stopped|continued|standing|heard):/ },
+  // Inbox's reply to the EM's ask goes through the same send path (FIX-1789's em door leg), so it goes red with delivered.
+  { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session"), control: "optimistic-turn", must: /\] delivered:/, allowed: /\] (delivered|stopped|continued|standing|heard|em door):/ },
   { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session"), control: "fresh-session", must: /\] continued:/, allowed: /\] continued:/ },
   { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-chief-of-staff", run: SM("it-briefs-and-talks-with-the-chief-of-staff") },
   { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-chief-of-staff", run: SM("it-briefs-and-talks-with-the-chief-of-staff"), control: "optimistic-reply", must: /\[desk\] talk/, allowed: /\[desk\] talk/ },

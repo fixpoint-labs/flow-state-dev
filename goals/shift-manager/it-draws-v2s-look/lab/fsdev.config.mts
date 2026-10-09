@@ -1,9 +1,11 @@
 /**
  * The look check's desk Lab, as Shift Manager's command loads it: one
- * team, `desk`, with a seat named `chief-of-staff` on the built-in `agent`
- * kind, in one mailbox with one board, and the organization's inventory open
- * so the seat's row names its door. In-memory stores and no credential, so
- * every start is fresh.
+ * team, `desk`, whose one worker, `chief-of-staff`, runs on the one copy of
+ * the built-in `agent` flow the installation registers (its WORKER.md names
+ * `flow: agent`), with no flow of its own: its sessions are on that copy and
+ * name it in their state. One mailbox with one board, and the organization's
+ * inventory open so the seat's row names its door. In-memory stores and no
+ * credential, so every start is fresh.
  *
  * No model key: the seat's model is `@flow-state-dev/testing`'s mock resolver
  * with one scripted reply, read from the check's fixture. The check sends one
