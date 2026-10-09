@@ -199,7 +199,7 @@ description: The person's one point of contact.
 flow: coordinator
 routing: judgment
 delegates: [eng.em, eng.coder]
-model: openai/gpt-5.4-mini
+model: anthropic/claude-haiku-5-5
 ---
 ```
 

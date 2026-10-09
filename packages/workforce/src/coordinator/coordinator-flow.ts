@@ -795,7 +795,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const handOffTool = sequencer({
     name: HAND_OFF,
     description:
-      "Hand the post you are reading to one of this conversation's delegates, by its worker id. Its answer lands in this conversation under its name. Each delegate takes a post once.",
+      "Hand the post you are reading to one of this conversation's delegates, by its worker id. Its answer lands in this conversation under its name. A delegate takes each post once per round; a new message is a new post, even when it repeats an earlier ask.",
     inputSchema: handOffInputSchema
   })
     .step(handOffCheck)

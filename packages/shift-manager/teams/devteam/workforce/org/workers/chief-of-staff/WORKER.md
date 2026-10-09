@@ -3,7 +3,7 @@ description: The person's one point of contact, and the one seat that hires work
 flow: coordinator
 routing: judgment
 delegates: [eng.em, eng.coder]
-model: openai/gpt-5.4-mini
+model: anthropic/claude-haiku-5-5
 tools: [hire, fire, post-to-mailbox, createProject, setWorkstreams, setRepository, memory/recall]
 ---
 

@@ -22,6 +22,8 @@
  *   a listed session names.
  * - {@link pickShift}: the page put in a theme with the sidebar's theme mark,
  *   as a person picks one.
+ * - {@link devteamCosModel}: the model DevTeam's chief of staff names, which a
+ *   goal that drives it on a real model gates its keys on.
  *
  * `vite.build()` run in-process sets `process.env.NODE_ENV` to `production`
  * and never restores it. A Lab started after a build would inherit it, which
@@ -50,6 +52,18 @@ export const SHIFT_MANAGER: string = repoPath("packages", "shift-manager");
 
 /** The `shift-manager` command's entry in the checkout, run with tsx. */
 export const SHIFT_MANAGER_COMMAND: string = join(SHIFT_MANAGER, "cli", "bin.ts");
+
+/**
+ * The model DevTeam's chief of staff names on its `WORKER.md`'s `model:` line,
+ * in the tree at `root` (this checkout by default). Read from the file, so a
+ * goal's key gate follows the model the chief of staff runs on.
+ */
+export function devteamCosModel(root: string = REPO_ROOT): string {
+  const file = join(root, "packages", "shift-manager", "teams", "devteam", "workforce", "org", "workers", "chief-of-staff", "WORKER.md");
+  const model = /^model:\s*(\S+)\s*$/m.exec(readFileSync(file, "utf8"))?.[1];
+  if (model === undefined) throw new Error(`setup: ${file} names no model`);
+  return model;
+}
 
 /**
  * The addresses a running `shift-manager` (`fsdev dev --app`) printed, once
