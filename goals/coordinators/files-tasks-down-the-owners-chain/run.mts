@@ -5,9 +5,10 @@
  * when its worker runs on another flow; and the conversation hears how it
  * ended, once, and can file it again (FIX-1794). See goal.md.
  *
- * - Legs a, c and d (`host.mts`): a goal-local coordinator tree on the real
- *   engine, its HTTP router and a SQLite store, two people with their own
- *   verified bearers, scripted models, run as its own process.
+ * - Legs a, c and d (`scripted.mts`): a goal-local Lab (`lab/`) on the real
+ *   engine and a SQLite store, served by Shift Manager's own command, two
+ *   people signed in over HTTP with their own verified bearers, scripted
+ *   models.
  * - Leg e (`devteam.mts`): Shift Manager's DevTeam install, served by its own
  *   command over a fresh store, its chief of staff on the real model its
  *   `WORKER.md` names.
@@ -22,15 +23,16 @@
  * Legs:     GOAL_LEGS=a,c,d,e (default: all)
  * Attempts: GOAL_ATTEMPTS=<n> fresh Labs for leg e, until it first passes (default 3; 1 under a control)
  */
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, keysServing, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 import { buildShiftManagerPages, devteamCosModel, startShiftManager } from "../../lib/shift-manager.mts";
 import { COS, legE, loadShipped, type LegE, type Person } from "./devteam.mts";
+import { loadScriptedClients, scriptedLegs } from "./scripted.mts";
 import { allTaskRows, items, requests, sessions, taskRows, textOf, toolOutput, type StoredItem, type StoredTask } from "./store.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -132,28 +134,18 @@ function checkoutFor(commit: string | undefined): { root: string; commit: string
   return { root, commit: sha, describe: `\`${sha.slice(0, 9)}\` (GOAL_COMMIT=${commit}), its own tree and install` };
 }
 
-/** Run the host in `root`'s goals, writing `store`, and read its one `__GOAL__` line. */
-async function runHost(root: string, store: string, hostLegs: string[], env: Record<string, string>): Promise<any> {
-  let dir = HERE;
-  if (root !== REPO_ROOT) {
-    dir = join(root, "goals", relative(join(REPO_ROOT, "goals"), HERE));
-    mkdirSync(dir, { recursive: true });
-    cpSync(join(HERE, "host.mts"), join(dir, "host.mts"));
-    cpSync(join(HERE, "fixtures"), join(dir, "fixtures"), { recursive: true });
-  }
-  const child = spawn(join(root, "node_modules", ".bin", "tsx"), [join(dir, "host.mts")], {
-    cwd: dir,
-    env: intentFreeEnv(process.env, { GOAL_CONTROL: "", GOAL_STORE: store, GOAL_LEGS: hostLegs.join(","), ...env }),
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let out = "";
-  let err = "";
-  child.stdout.on("data", (d) => (out += String(d)));
-  child.stderr.on("data", (d) => (err += String(d)));
-  const code = await new Promise<number | null>((resolve) => child.on("exit", resolve));
-  const line = out.split("\n").find((l) => l.startsWith("__GOAL__"));
-  if (line === undefined) return { setup: `the host printed no result (exit ${code}): ${(err || out).slice(-1500)}` };
-  return JSON.parse(line.slice("__GOAL__".length));
+/**
+ * The goal-local Lab's config in `root`'s goals: this checkout's own, or a
+ * copy of `lab/` and `fixtures/` placed in another commit's tree, so its
+ * imports resolve to that commit's packages.
+ */
+function labConfigIn(root: string): string {
+  if (root === REPO_ROOT) return join(HERE, "lab", "fsdev.config.mts");
+  const dir = join(root, "goals", relative(join(REPO_ROOT, "goals"), HERE));
+  mkdirSync(dir, { recursive: true });
+  cpSync(join(HERE, "lab"), join(dir, "lab"), { recursive: true });
+  cpSync(join(HERE, "fixtures"), join(dir, "fixtures"), { recursive: true });
+  return join(dir, "lab", "fsdev.config.mts");
 }
 
 // ---- grading ----------------------------------------------------------------------
@@ -404,11 +396,35 @@ await runGoal(async () => {
   const results: Record<string, LegResult> = {};
   const evidence: string[] = [];
 
+  say(`building Shift Manager's pages`);
+  const pages = await buildShiftManagerPages(join(SCRATCH, `pages-${checkout.commit.slice(0, 9)}`), join(checkout.root, "packages", "shift-manager"));
+  const serve = (label: string, config: string, labEnv: Record<string, string>) =>
+    startShiftManager({
+      scratch: SCRATCH,
+      label,
+      config,
+      pages,
+      env: { ...labEnv, ...env },
+      root: join(checkout.root, "packages", "shift-manager"),
+      tsx: join(checkout.root, "node_modules", ".bin", "tsx"),
+      timeoutMs: 180_000,
+    });
+
   const hostLegs = [...legs].filter((l) => HOST_LEGS.has(l));
   if (hostLegs.length > 0) {
-    const store = join(SCRATCH, "stores", `${RUN_STAMP}-host.sqlite`);
-    say(`legs ${hostLegs.join(", ")}: the goal-local tree, store ${store}`);
-    const o = await runHost(checkout.root, store, hostLegs, env);
+    const store = join(SCRATCH, "stores", `${RUN_STAMP}-scripted.sqlite`);
+    let o: Record<string, any>;
+    try {
+      const served = await serve(`scripted-${control?.name ?? "plain"}`, labConfigIn(checkout.root), { GOAL_STORE: store });
+      try {
+        say(`legs ${hostLegs.join(", ")}: the goal-local Lab at ${served.origin}, store ${store}`);
+        o = await scriptedLegs({ origin: served.origin, store, shipped: await loadScriptedClients(checkout.root), legs: new Set(hostLegs) });
+      } finally {
+        await served.stop();
+      }
+    } catch (error) {
+      o = { setup: error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error) };
+    }
     if (o.setup !== undefined) {
       for (const l of hostLegs) results[l] = { failures: [`${l}:setup — ${o.setup}`], notes: [] };
     } else {
@@ -420,7 +436,7 @@ await runGoal(async () => {
           results[l] = { failures: [`${l}:grade — grading threw: ${error instanceof Error ? error.message : String(error)}`], notes: [] };
         }
       }
-      evidence.push(`the goal-local tree as ${o.people.alice.userId} and ${o.people.bob.userId}`);
+      evidence.push(`the goal-local Lab on Shift Manager as ${o.people.alice.userId} and ${o.people.bob.userId}`);
     }
   }
 
@@ -435,8 +451,6 @@ await runGoal(async () => {
       const owner = host.LAB_USERS?.owner;
       if (owner === undefined || host.LAB_ORG_ID === undefined) throw new Error("setup: the DevTeam host exports no LAB_USERS owner or LAB_ORG_ID");
       const alice: Person = { label: "Alice", ...owner };
-      say(`building Shift Manager's pages`);
-      const pages = await buildShiftManagerPages(join(SCRATCH, `pages-${checkout.commit.slice(0, 9)}`), join(checkout.root, "packages", "shift-manager"));
       const shipped = await loadShipped(checkout.root);
       // Retry until it first passes, over the model's flakiness: each attempt is a fresh store and a fresh Lab.
       const attempts = Number(process.env.GOAL_ATTEMPTS ?? (control === undefined ? 3 : 1));
@@ -445,16 +459,7 @@ await runGoal(async () => {
         const storeDir = join(SCRATCH, "stores", `${RUN_STAMP}-${label}`);
         const store = join(storeDir, "devteam.sqlite");
         mkdirSync(storeDir, { recursive: true });
-        const served = await startShiftManager({
-          scratch: SCRATCH,
-          label: `devteam-${label}`,
-          config: join(profile, "fsdev.config.mts"),
-          pages,
-          env: { DEVTEAM_STORE: store, ...env },
-          root: join(checkout.root, "packages", "shift-manager"),
-          tsx: join(checkout.root, "node_modules", ".bin", "tsx"),
-          timeoutMs: 180_000,
-        });
+        const served = await serve(`devteam-${label}`, join(profile, "fsdev.config.mts"), { DEVTEAM_STORE: store });
         let graded: LegResult;
         try {
           say(`leg e attempt ${attempt} of ${attempts}: DevTeam at ${served.origin}, the chief of staff on ${cosModel}`);

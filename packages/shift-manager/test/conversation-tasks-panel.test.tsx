@@ -10,7 +10,7 @@
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TasksPanel } from "../src/components/TasksPanel";
+import { TASKS_POLL_MS, TasksPanel } from "../src/components/TasksPanel";
 import { toSeat } from "../src/lib/reads";
 
 type Row = { id: string; goal: string; status: string; assignee?: string; attempts: number };
@@ -18,8 +18,9 @@ let rows: Row[] = [];
 let refusal: string | null = null;
 const calls: string[] = [];
 
+const refreshes: number[] = [];
 vi.mock("../src/lib/lab-data", () => {
-  const lab = { clients: { userId: "alice" } };
+  const lab = { clients: { userId: "alice" }, refresh: async () => void refreshes.push(Date.now()) };
   return { useLab: () => lab };
 });
 vi.mock("../src/lib/conversation-tasks", () => ({
@@ -36,6 +37,7 @@ beforeEach(() => {
   rows = [];
   refusal = null;
   calls.length = 0;
+  refreshes.length = 0;
 });
 afterEach(cleanup);
 
@@ -118,5 +120,34 @@ describe("the tasks panel (S11)", () => {
     render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
     await settle();
     expect(screen.getByTestId("cos-tasks-failure").textContent).toContain("This conversation keeps no task board.");
+  });
+
+  describe("a task that ends between the person's lines", () => {
+    beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }));
+    afterEach(() => vi.useRealTimers());
+    const tick = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+
+    it("is read again while a task is open, and reloads the Lab when one ends, so the coordinator's turn on it shows", async () => {
+      rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
+      render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
+      await tick(0);
+      expect(calls).toHaveLength(1);
+      await tick(TASKS_POLL_MS);
+      expect(calls).toHaveLength(2);
+      expect(refreshes).toHaveLength(0);
+      rows = [{ id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 }];
+      await tick(TASKS_POLL_MS);
+      expect(shown()).toEqual([{ id: "t1", status: "completed", text: expect.stringContaining("Audit the licenses") }]);
+      expect(refreshes).toHaveLength(1);
+    });
+
+    it("reads nothing more while no task is open and none just ended", async () => {
+      rows = [{ id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 }];
+      render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
+      await tick(0);
+      await tick(TASKS_POLL_MS * 20);
+      expect(calls).toEqual(["list coordinator s1"]);
+      expect(refreshes).toHaveLength(0);
+    });
   });
 });
