@@ -37,7 +37,7 @@ type Session = ReturnType<typeof useSession>;
 export type RequestStatusLookup = (requestId: string) => Promise<string>;
 
 /** One line of a coordinator's conversation: who wrote it, and what it says. */
-export interface CoordinatorLine {
+interface CoordinatorLine {
   id: string;
   /** A delegate's worker id, the person's id, or, for the coordinator's own word, the coordinator. */
   label: string;
@@ -53,7 +53,7 @@ export interface CoordinatorLine {
  * @param items The session's items.
  * @param person The name the person's own posts are drawn under.
  */
-export function coordinatorLines(items: Session["items"], person: string): CoordinatorLine[] {
+function coordinatorLines(items: Session["items"], person: string): CoordinatorLine[] {
   return items.flatMap((item) => {
     const message = item as {
       type: string;
