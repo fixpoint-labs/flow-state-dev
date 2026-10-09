@@ -4,6 +4,7 @@
 import type { StoreRegistry } from "../stores/types";
 import type { ResolvedPrincipal } from "../transports/types";
 import { recordRequestStop } from "../execution/record-request-stop";
+import type { SuspendedStopDeps } from "../durability/stop-suspended";
 import { callerReachesRequest, jsonResponse, unknownRequestResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -13,6 +14,8 @@ type AbortRouteContext = {
   tenantId?: string;
   /** The authenticated caller, when route-level authentication is active. */
   principal?: ResolvedPrincipal;
+  /** How this host stops a parked request; absent without durable execution. */
+  parked?: SuspendedStopDeps;
 };
 
 /**
@@ -45,7 +48,7 @@ export async function handleAbortRequest(
     return unknownRequestResponse(requestId);
   }
 
-  const stop = await recordRequestStop(ctx.stores.request, record);
+  const stop = await recordRequestStop(ctx.stores.request, record, ctx.parked);
   switch (stop.kind) {
     case "gone":
       return unknownRequestResponse(requestId);
@@ -54,7 +57,12 @@ export async function handleAbortRequest(
         error: `Request "${requestId}" is already in terminal state "${stop.status}"`
       });
     case "fired":
+    case "stopped-parked":
       return new Response(null, { status: 204 });
+    case "already-resolved":
+      return jsonResponse(409, {
+        error: `Request "${requestId}" was resumed before the stop reached it; stop it again to stop the running turn`
+      });
     case "recorded":
       return new Response(null, { status: 202 });
   }

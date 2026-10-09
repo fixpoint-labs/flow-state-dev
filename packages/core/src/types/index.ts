@@ -40,7 +40,15 @@ export type {
 export { NoRequestHostError, requireRequestHost } from "./request-host";
 
 export type { AskEndingErrorCode, AskGateBinding, AskOutcome, ParkOnAskInput } from "./ask-gate";
-export { ASK_GATE_REASON, AskEndedError, isAskGate, parkOnAsk, parseAskOutcome } from "./ask-gate";
+export {
+  ASK_GATE_REASON,
+  AskEndedError,
+  AskStoppedError,
+  isAskGate,
+  parkOnAsk,
+  parseAskOutcome,
+  recordedAskOutcome
+} from "./ask-gate";
 
 export type {
   SessionCreateCheck,

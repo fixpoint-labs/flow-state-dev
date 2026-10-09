@@ -1041,7 +1041,7 @@ A generator tool can also suspend mid-loop (`ctx.suspend()` for tool-call approv
 
 ### Durability retention
 
-Durability records accumulate on long-lived hosts: a completed run's checkpoints are dead weight, a resolved suspension is only worth keeping for a window, and a crashed run leaves records that `cleanup()` never fires for. `createDurabilitySweeper` is an opt-in periodic job that reclaims them, modeled on the stale-request sweeper (`setInterval` + `unref`, `inFlight` guard, idempotent `dispose`, no-op handle when disabled).
+Durability records accumulate on long-lived hosts: a completed run's checkpoints are dead weight, a resolved suspension is only worth keeping for a window, and a crashed run leaves records that `cleanup()` never fires for. `createDurabilitySweeper` is an opt-in periodic job that reclaims them, modeled on the stale-request sweeper (a re-armed, `unref`ed timer, `inFlight` guard, idempotent `dispose`, no-op handle when disabled).
 
 Configure it via `RuntimeConfig.durabilityRetention` (forwarded by `createFlowState` and `createFlowApiRouter`). The sweeper is built only when both a `durabilityProvider` and a `durabilityRetention` policy are present.
 
@@ -1059,7 +1059,9 @@ createFlowState({
 });
 ```
 
-Each tick takes a single-holder sentinel lease (co-located hosts serialize), enforces suspension expiry (`pending` past `expiresAt` → `expired`), prunes resolved suspensions and expired leases past their windows, and prunes orphaned checkpoints. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
+Each tick takes a single-holder sentinel lease (co-located hosts serialize), enforces suspension expiry (`pending` past `expiresAt` → `expired`; an ask gate past its deadline is resumed with `wait_timed_out` instead), re-drives a request left `suspended` or `interrupted` behind a gate that is already resolved (an ask's recorded outcome continues it, a `stopped` gate ends it `aborted`; under the request's lease), prunes resolved suspensions and expired leases past their windows, and prunes orphaned checkpoints. The next tick runs at the earlier of `sweepIntervalMs` and the earliest pending ask deadline, never sooner than a second; an ask parked in this process brings it forward.
+
+**Stopping a suspended request.** The abort route and `ctx.session.stopRequest` also stop a `suspended` request when the host has durable execution: the stop resolves its pending gate `stopped` through the gate's single pending state. An ask gate continues the request with a stop outcome, so the parked call (`parkOnAsk` throws `AskStoppedError`) can end what it asked for and end its turn; any other gate ends the request `aborted` where it stands. A stop that finds the gate already resolved answers `409` on the route and `"already-resolved"` from `stopRequest`. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
 
 ## Connection resilience
 

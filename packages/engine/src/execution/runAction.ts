@@ -80,6 +80,8 @@ import { claimRequestRecord, principalOwnsRequest } from "../context/request-pri
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
+import { noteAskDeadline } from "../durability/ask-deadlines";
+import { isAskGate } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -2203,6 +2205,10 @@ async function runActionAttempt<
               : undefined
           };
           await provider.suspend(record);
+          // An ask's deadline can bring this host's sweep forward (FIX-1816).
+          if (isAskGate(record) && record.expiresAt !== undefined) {
+            noteAskDeadline(provider, record.expiresAt);
+          }
         }
 
         const suspItem: SuspensionItem = {

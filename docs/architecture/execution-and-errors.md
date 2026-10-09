@@ -190,6 +190,8 @@ Background `.sideChain()` tasks are decoupled from the request's transport-level
   - the run's own reads of the request store: once as it starts, then on each heartbeat tick, when the intent was recorded by another process (FIX-1026). Both reads are fenced the same way;
   - an unfenced fire (host shutdown, the CLI stopping its turn), which stops whatever runs under the id.
 
+  A `suspended` request has no run and so no controller. `recordRequestStop` hands it to `durability/stop-suspended.ts` when the host has durable execution: the pending gate is resolved `stopped` under the request's lease, through its single pending state (the fence every resume uses). A non-ask gate then ends the request `aborted` with a fenced write; an ask gate continues the request with a stop outcome, and the parked call cancels its asked row and stops its own run, which then ends through the path above. A stop that loses the fence reports `already-resolved`. The resolved gate is the record of what is owed: the durability sweep re-drives a request left `suspended` or `interrupted` behind a resolved ask gate or a `stopped` gate (`redriveResolvedGate`), so a crash between the gate's write and the request moving on loses nothing.
+
   A cross-process abort is therefore indistinguishable downstream from a local one. On the host's queued path, `registered` is the controller the host registered while the request waited, handed to the run rather than replaced, so a cancel that landed on it in between is kept.
 - `abortController`: the run's own controller. It fires when `registered` fires, but only once the run has settled which request it executes as (see below).
 - `sideChainController`: fires only when `abortController` fires.

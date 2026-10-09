@@ -12,7 +12,12 @@ export type SuspensionStatus =
   | "submitted"
   | "skipped"
   | "timed_out"
-  | "expired";
+  | "expired"
+  /**
+   * A person stopped the parked turn (FIX-1816). Absent on records written
+   * before it existed; a reader that does not know it treats it as resolved.
+   */
+  | "stopped";
 
 /**
  * Why a block suspended. The well-known reasons are enumerated; the open

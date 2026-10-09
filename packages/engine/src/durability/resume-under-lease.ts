@@ -21,7 +21,9 @@
 import {
   RESUME_ACTION_STATUS,
   type ResumeAction,
-  type SuspensionRecord
+  type ResumeContext,
+  type SuspensionRecord,
+  type SuspensionStatus
 } from "@flow-state-dev/core/types";
 import type { ContinueRequestResult } from "../execution/request-continuation";
 import type { HostContinueRequestOptions } from "../transports/types";
@@ -55,6 +57,8 @@ export async function resumeUnderLease<TRefusal>(
     action: ResumeAction;
     data?: unknown;
     resumedBy?: string;
+    /** The status the gate is recorded with, when it is not the action's own (a stop). */
+    status?: SuspensionStatus;
   }
 ): Promise<LeasedResume<TRefusal>> {
   const { provider } = deps;
@@ -80,7 +84,7 @@ export async function resumeUnderLease<TRefusal>(
   try {
     await provider.suspend({
       ...suspension,
-      status: RESUME_ACTION_STATUS[args.action],
+      status: args.status ?? RESUME_ACTION_STATUS[args.action],
       resolvedAt: Date.now(),
       resolvedBy: args.resumedBy,
       resumeData: args.data
@@ -97,6 +101,46 @@ export async function resumeUnderLease<TRefusal>(
     return { ok: true, handle };
   } catch (error) {
     await provider.suspend({ ...suspension, status: "pending" }).catch(() => {});
+    await provider.releaseLease(args.requestId, lease.leaseId).catch(() => {});
+    throw error;
+  }
+}
+
+/**
+ * Continue a request whose gate is already resolved, under the request's
+ * lease: the re-drive (BR-11a). The gate's recorded resolution is the record
+ * of what is owed, so nothing is written to it; the caller admits the request
+ * under the lease and names the resolution to replay. A live resume holds the
+ * lease, so this never races one. If setup fails before the run starts, the
+ * lease is released and the error rethrown; the gate stays resolved for the
+ * next attempt.
+ */
+export async function continueUnderLease<TRefusal>(
+  deps: ResumeDeps,
+  args: {
+    requestId: string;
+    holder: string;
+    admit: () => Promise<{ resumeContext: ResumeContext } | { refusal: TRefusal }>;
+  }
+): Promise<LeasedResume<TRefusal>> {
+  const { provider } = deps;
+  const lease = await provider.acquireLease(args.requestId, {
+    holder: generateId(args.holder),
+    durationMs: RESUME_LEASE_MS
+  });
+  if (lease === null) return { ok: false, busy: true };
+  try {
+    const admitted = await args.admit();
+    if ("refusal" in admitted) {
+      await provider.releaseLease(args.requestId, lease.leaseId);
+      return { ok: false, refusal: admitted.refusal };
+    }
+    const handle = await deps.continueRequest({
+      requestId: args.requestId,
+      resumeContext: admitted.resumeContext
+    });
+    return { ok: true, handle };
+  } catch (error) {
     await provider.releaseLease(args.requestId, lease.leaseId).catch(() => {});
     throw error;
   }

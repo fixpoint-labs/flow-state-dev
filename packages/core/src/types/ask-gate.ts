@@ -25,7 +25,7 @@
  * two strings, and the answer as `unknown`.
  */
 
-import type { SuspendOptions } from "../errors/suspension-error";
+import { SuspensionError, type SuspendOptions } from "../errors/suspension-error";
 
 /** The suspension reason an ask gate carries. */
 export const ASK_GATE_REASON = "ask" as const;
@@ -54,13 +54,31 @@ export type AskGateBinding = {
  */
 export type AskEndingErrorCode = "wait_timed_out" | "wait_task_failed" | "wait_task_cancelled";
 
-/** How an ask ended: the answer, or an error naming the ending. */
+/**
+ * How an ask ended: the answer, an error naming the ending, or a stop.
+ *
+ * A stop is a person stopping the parked turn. No model reads it: the parked
+ * call ends its asked row and the turn ends `aborted`.
+ */
 export type AskOutcome =
   | { readonly answered: true; readonly answer: unknown }
   | {
       readonly answered: false;
       readonly error: { readonly code: AskEndingErrorCode; readonly message: string };
-    };
+    }
+  | { readonly answered: false; readonly stopped: true };
+
+/**
+ * Thrown from {@link parkOnAsk} when a person stopped the parked turn. The
+ * caller ends what it asked for and lets the turn end; it is not a tool error
+ * for a model to read.
+ */
+export class AskStoppedError extends Error {
+  constructor() {
+    super("The asking turn was stopped.");
+    this.name = "AskStoppedError";
+  }
+}
 
 /**
  * Thrown from {@link parkOnAsk} when the ask ended without an answer. A
@@ -94,6 +112,9 @@ export function parseAskOutcome(value: unknown): AskOutcome | undefined {
   const record = value as Record<string, unknown>;
   if (record.answered === true) {
     return { answered: true, answer: record.answer };
+  }
+  if (record.answered === false && record.stopped === true) {
+    return { answered: false, stopped: true };
   }
   if (record.answered === false) {
     const error = record.error as Record<string, unknown> | null | undefined;
@@ -149,7 +170,17 @@ export async function parkOnAsk(
   if (ctx.suspend === undefined) {
     throw new Error("parkOnAsk needs ctx.suspend, which only a durable host provides.");
   }
-  const resumed = await ctx.suspend({
+  const resumed = await ctx.suspend(askSuspendOptions(input));
+  const outcome = parseAskOutcome(resumed);
+  if (outcome === undefined) {
+    throw new Error(`Ask gate "${input.gateId}" was resumed with something that is not an ask outcome.`);
+  }
+  return answerOf(outcome);
+}
+
+/** The suspension an ask gate is, for one park (or one read of it). */
+function askSuspendOptions(input: ParkOnAskInput): SuspendOptions {
+  return {
     reason: ASK_GATE_REASON,
     suspensionId: input.gateId,
     message: input.message ?? `Waiting for the answer to task "${input.binding.taskId}"`,
@@ -160,11 +191,33 @@ export async function parkOnAsk(
     ...(input.deadline !== undefined
       ? { timeoutMs: Math.max(1, input.deadline - Date.now()) }
       : {})
-  });
-  const outcome = parseAskOutcome(resumed);
-  if (outcome === undefined) {
-    throw new Error(`Ask gate "${input.gateId}" was resumed with something that is not an ask outcome.`);
+  };
+}
+
+function answerOf(outcome: AskOutcome): unknown {
+  if (outcome.answered) return outcome.answer;
+  if ("stopped" in outcome) throw new AskStoppedError();
+  throw new AskEndedError(outcome.error.code, outcome.error.message);
+}
+
+/**
+ * The outcome already recorded for this ask gate, or `undefined` when none
+ * is: read without parking.
+ *
+ * On a replay after the gate was resolved (an answer, a timeout, a stop), the
+ * recorded outcome comes back. When nothing is recorded, nothing is created:
+ * the park this would have been is discarded. A caller that holds its own
+ * answer (an ended row) uses this to learn whether a stop already won.
+ */
+export async function recordedAskOutcome(
+  ctx: { suspend?(options: SuspendOptions): Promise<unknown> },
+  input: ParkOnAskInput
+): Promise<AskOutcome | undefined> {
+  if (ctx.suspend === undefined) return undefined;
+  try {
+    return parseAskOutcome(await ctx.suspend(askSuspendOptions(input)));
+  } catch (error) {
+    if (error instanceof SuspensionError) return undefined;
+    throw error;
   }
-  if (!outcome.answered) throw new AskEndedError(outcome.error.code, outcome.error.message);
-  return outcome.answer;
 }

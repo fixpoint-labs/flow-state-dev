@@ -146,9 +146,11 @@ export type {
 export {
   ASK_GATE_REASON,
   AskEndedError,
+  AskStoppedError,
   isAskGate,
   parkOnAsk,
-  parseAskOutcome
+  parseAskOutcome,
+  recordedAskOutcome
 } from "./types/ask-gate";
 export type {
   AskEndingErrorCode,

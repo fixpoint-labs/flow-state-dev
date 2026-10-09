@@ -1085,6 +1085,14 @@ class InternalFlowState<TSettings extends object>
     const requestHost = runtimeConfig.requestHost;
     const provider = runtimeConfig.durabilityProvider;
     if (requestHost === undefined || provider === undefined) return;
+    // How a block's `ctx.session.stopRequest` stops a parked request: the same
+    // host, the same terms.
+    requestHost.parkedStop ??= {
+      provider,
+      stores,
+      continueRequest: (options) =>
+        this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options)
+    };
     if (requestHost.askResume !== undefined) return;
 
     let operation: AskResumeOperation | undefined;

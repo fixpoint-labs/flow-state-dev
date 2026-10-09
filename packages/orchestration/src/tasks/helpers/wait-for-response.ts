@@ -26,9 +26,16 @@
  * `addTask`'s option, the schema it appears in and the check on who may ask
  * are the task tools' (FIX-1816 P3); this module is the mechanism under them.
  */
-import { AskEndedError, parkOnAsk, parseBlockInstanceId, requireRequestHost } from "@flow-state-dev/core";
+import {
+  AskEndedError,
+  AskStoppedError,
+  parkOnAsk,
+  parseBlockInstanceId,
+  recordedAskOutcome,
+  requireRequestHost
+} from "@flow-state-dev/core";
 import type { AskOutcome, BlockContext } from "@flow-state-dev/core/types";
-import { isTerminalStatus } from "../schema/task-status";
+import { IllegalTaskTransitionError, isTerminalStatus } from "../schema/task-status";
 import type { Task } from "../schema/task";
 import type { TaskInit } from "../schema/task-init";
 import type { TaskCollectionRef } from "../collection/types";
@@ -60,7 +67,9 @@ export type WaitForResponseResult =
         | "wait_unavailable"
         | "wait_timed_out"
         | "wait_task_failed"
-        | "wait_task_cancelled";
+        | "wait_task_cancelled"
+        /** The person stopped the asking turn; the turn ends, so no model reads this. */
+        | "wait_stopped";
       readonly taskId?: string;
       readonly message?: string;
     };
@@ -89,7 +98,9 @@ function toolCallOf(ctx: BlockContext): { logicalId: string; stepKey: string } |
 }
 
 /** How an ended row answers the turn that asked. */
-function outcomeOf(task: Pick<Task, "status" | "output" | "error">): AskOutcome {
+function outcomeOf(
+  task: Pick<Task, "status" | "output" | "error">
+): Exclude<AskOutcome, { stopped: true }> {
   switch (task.status) {
     case "completed":
       return { answered: true, answer: task.output };
@@ -160,36 +171,75 @@ export async function addTaskAndWait(
   });
 
   const clearMarker = (): Promise<unknown> => collection.clearResumeOwed!(filed.taskId);
+  const park = {
+    gateId: filed.gateId,
+    binding: { board: collection.collectionId, taskId: filed.taskId },
+    deadline: filed.deadline,
+    message: `Waiting for the answer to "${init.goal}"`
+  };
 
-  // The row ended before the turn reached its park: answer now, no park.
+  /**
+   * The person stopped the turn while it waited (BR-16): end the asked row,
+   * clear what it owes, and end this turn `aborted`, with no further model
+   * call. Safe to run again on a re-drive after a crash (BR-16c): a row that
+   * already ended is left as it is.
+   */
+  const endStopped = async (): Promise<WaitForResponseResult> => {
+    await cancelIfOpen(collection, filed.taskId, "The asking turn was stopped.");
+    await clearMarker();
+    await ctx.session?.stopRequest?.(ctx.request.identity.id);
+    return {
+      ok: false,
+      error: "wait_stopped",
+      taskId: filed.taskId,
+      message: "The asking turn was stopped."
+    };
+  };
+
+  // The row ended before the turn reached its park: answer now, no park. A
+  // stop already recorded for this gate wins over that ending, so a re-drive
+  // after a stop still ends the turn (BR-16c).
   const row = collection.get(filed.taskId);
   if (row !== undefined && isTerminalStatus(row.status)) {
+    const recorded = await recordedAskOutcome(ctx, park);
+    if (recorded !== undefined && "stopped" in recorded) return endStopped();
     await clearMarker();
     return answerOf(filed.taskId, outcomeOf(row));
   }
 
   try {
-    const answer = await parkOnAsk(ctx, {
-      gateId: filed.gateId,
-      binding: { board: collection.collectionId, taskId: filed.taskId },
-      deadline: filed.deadline,
-      message: `Waiting for the answer to "${init.goal}"`
-    });
+    const answer = await parkOnAsk(ctx, park);
     await clearMarker();
     return { ok: true, taskId: filed.taskId, answer };
   } catch (error) {
+    if (error instanceof AskStoppedError) return endStopped();
     // Anything else, the park itself among it, is not ours to handle.
     if (!(error instanceof AskEndedError)) throw error;
     if (error.code === "wait_timed_out") {
       // The ask is over: end the row too, so its later ending is dropped.
-      await collection.cancel(filed.taskId, "The ask timed out before the task finished.");
+      await cancelIfOpen(collection, filed.taskId, "The ask timed out before the task finished.");
     }
     await clearMarker();
     return { ok: false, error: error.code, taskId: filed.taskId, message: error.message };
   }
 }
 
-function answerOf(taskId: string, outcome: AskOutcome): WaitForResponseResult {
+/**
+ * Cancel the asked row unless it already ended. Idempotent: a replay after a
+ * crash cancels again harmlessly, and an ending that won a race stands.
+ */
+async function cancelIfOpen(collection: TaskCollectionRef, taskId: string, reason: string): Promise<void> {
+  const row = collection.get(taskId);
+  if (row === undefined || isTerminalStatus(row.status)) return;
+  try {
+    await collection.cancel(taskId, reason);
+  } catch (error) {
+    // The row ended between the read and the write: its ending stands.
+    if (!(error instanceof IllegalTaskTransitionError)) throw error;
+  }
+}
+
+function answerOf(taskId: string, outcome: Exclude<AskOutcome, { stopped: true }>): WaitForResponseResult {
   if (outcome.answered) return { ok: true, taskId, answer: outcome.answer };
   return { ok: false, error: outcome.error.code, taskId, message: outcome.error.message };
 }

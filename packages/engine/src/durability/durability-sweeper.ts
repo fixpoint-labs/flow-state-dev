@@ -43,6 +43,8 @@ import {
 import type { DurabilityProvider } from "./types";
 import { isAskGate } from "@flow-state-dev/core/types";
 import { resumeAskGate } from "./resume-ask-gate";
+import { onAskDeadline } from "./ask-deadlines";
+import { redriveResolvedGate } from "./stop-suspended";
 import type { ResumeDeps } from "./resume-under-lease";
 
 /**
@@ -153,10 +155,34 @@ export function createDurabilitySweeper(
 
   let disposed = false;
   let inFlight = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  /** When the armed timer fires (epoch ms). */
+  let nextAt = Number.POSITIVE_INFINITY;
+
+  // The next tick is the earlier of the interval and the earliest pending ask
+  // deadline, so an ask times out within about a second of its deadline on a
+  // long-lived host rather than up to an interval late. Floored, never a busy
+  // loop; an idle host keeps its interval.
+  const arm = (delayMs: number): void => {
+    if (disposed) return;
+    if (timer !== undefined) clearTimeout(timer);
+    const delay = Math.min(sweepIntervalMs, Math.max(MIN_TICK_DELAY_MS, delayMs));
+    nextAt = Date.now() + delay;
+    timer = setTimeout(tick, delay);
+    // Don't keep a Node process alive solely for the sweeper.
+    if (typeof (timer as unknown as { unref?: () => void }).unref === "function") {
+      (timer as unknown as { unref: () => void }).unref();
+    }
+  };
 
   const tick = (): void => {
-    if (disposed || inFlight) return;
+    if (disposed) return;
+    if (inFlight) {
+      arm(MIN_TICK_DELAY_MS);
+      return;
+    }
     inFlight = true;
+    let earliestAskDeadline: number | undefined;
     void runTick({
       provider,
       stores,
@@ -169,6 +195,9 @@ export function createDurabilitySweeper(
       batchLimit,
       continueRequest
     })
+      .then((report) => {
+        earliestAskDeadline = report?.earliestAskDeadline;
+      })
       .catch((err) => {
         // A failure that escapes the per-step guards is still never thrown
         // out of the interval callback — log and continue next tick.
@@ -181,23 +210,34 @@ export function createDurabilitySweeper(
       })
       .finally(() => {
         inFlight = false;
+        arm(
+          earliestAskDeadline === undefined
+            ? sweepIntervalMs
+            : earliestAskDeadline - Date.now()
+        );
       });
   };
 
-  const timer = setInterval(tick, sweepIntervalMs);
-  // Don't keep a Node process alive solely for the sweeper.
-  if (typeof (timer as unknown as { unref?: () => void }).unref === "function") {
-    (timer as unknown as { unref: () => void }).unref();
-  }
+  arm(sweepIntervalMs);
+
+  // An ask parked in this process with an earlier deadline than the armed
+  // tick brings the tick forward.
+  const stopListening = onAskDeadline(provider, (deadline) => {
+    if (deadline < nextAt) arm(deadline - Date.now());
+  });
 
   return {
     dispose(): void {
       if (disposed) return;
       disposed = true;
-      clearInterval(timer);
+      stopListening();
+      if (timer !== undefined) clearTimeout(timer);
     }
   };
 }
+
+/** The soonest a tick runs after the last one, or after a deadline is noted. */
+const MIN_TICK_DELAY_MS = 1_000;
 
 type RunTickArgs = {
   provider: DurabilityProvider;
@@ -214,6 +254,12 @@ type RunTickArgs = {
   continueRequest?: ResumeDeps["continueRequest"];
 };
 
+/** What one tick saw that the next one is scheduled from. */
+export type TickReport = {
+  /** The earliest deadline of an ask gate still pending, if any. */
+  earliestAskDeadline?: number;
+};
+
 /** {@link RunTickArgs} with the logger resolved to a concrete sink. */
 type ResolvedTickArgs = RunTickArgs & { logger: RuntimeLogger };
 
@@ -225,7 +271,7 @@ type ResolvedTickArgs = RunTickArgs & { logger: RuntimeLogger };
  * Exported for direct invocation in tests (a single deterministic sweep
  * without driving the interval timer).
  */
-export async function runTick(rawArgs: RunTickArgs): Promise<void> {
+export async function runTick(rawArgs: RunTickArgs): Promise<TickReport | undefined> {
   // Normalize the logger once so each step's defensive logging has a sink.
   const args: ResolvedTickArgs = {
     ...rawArgs,
@@ -239,13 +285,15 @@ export async function runTick(rawArgs: RunTickArgs): Promise<void> {
     durationMs: sweepIntervalMs
   });
   // Another host holds the sweep lease — skip the entire tick.
-  if (lease === null) return;
+  if (lease === null) return undefined;
 
   try {
-    await enforceSuspensionExpiry(args, now);
+    const earliestAskDeadline = await enforceSuspensionExpiry(args, now);
+    await redriveResolvedGates(args);
     await pruneTerminalSuspensions(args, now);
     await pruneExpiredLeases(args);
     await pruneOrphanCheckpoints(args, now);
+    return { earliestAskDeadline };
   } finally {
     await provider
       .releaseLease(SWEEPER_LEASE_KEY, lease.leaseId)
@@ -261,8 +309,14 @@ export async function runTick(rawArgs: RunTickArgs): Promise<void> {
  * Step 2: re-set every `pending` suspension past its `expiresAt` to `expired`.
  * Closes the gate so the resume endpoint rejects it.
  */
-async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Promise<void> {
+async function enforceSuspensionExpiry(
+  args: ResolvedTickArgs,
+  now: number
+): Promise<number | undefined> {
   const { provider, logger } = args;
+  // The earliest deadline of an ask still pending after this step: when the
+  // next tick should run. Read off the listing this step already makes.
+  let earliestAskDeadline: number | undefined;
   try {
     // List ALL pending suspensions — deliberately unbounded. `listSuspended`
     // returns newest-first, so a `limit` would skip the OLDEST pending records,
@@ -275,7 +329,13 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
     const pending = await provider.listSuspended({ status: "pending" });
     let askGatesSkipped = 0;
     for (const record of pending) {
-      if (record.expiresAt == null || record.expiresAt > now) continue;
+      if (record.expiresAt == null) continue;
+      if (record.expiresAt > now) {
+        if (isAskGate(record) && (earliestAskDeadline === undefined || record.expiresAt < earliestAskDeadline)) {
+          earliestAskDeadline = record.expiresAt;
+        }
+        continue;
+      }
       if (isAskGate(record)) {
         // Never `expired`: nothing else may resume an ask gate, so that would
         // strand its turn. Without a way to continue a request, leave it
@@ -307,6 +367,54 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
     }
   } catch (err) {
     logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: expiry enforcement failed", {
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
+  return earliestAskDeadline;
+}
+
+/**
+ * Step 2b: re-drive a request left parked behind a gate that is already
+ * resolved (FIX-1816, BR-11a, BR-16c). An ask gate answered, failed, timed out
+ * or stopped, or any gate stopped, whose request is still `suspended` or
+ * `interrupted`: the process died after the gate's write and before the turn
+ * moved on. It is driven on under its lease with the recorded outcome, never a
+ * new one. A live resume holds that lease, so it is never raced.
+ *
+ * Bounded: one status-filtered listing per resolved status, capped at the
+ * batch limit, newest first.
+ */
+async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
+  const { provider, stores, logger, continueRequest, batchLimit } = args;
+  if (continueRequest === undefined) return;
+  try {
+    const resolved = [
+      ...(await provider.listSuspended({ status: "submitted", limit: batchLimit })).filter(isAskGate),
+      ...(await provider.listSuspended({ status: "stopped", limit: batchLimit }))
+    ];
+    const seen = new Set<string>();
+    for (const gate of resolved) {
+      if (seen.has(gate.requestId)) continue;
+      seen.add(gate.requestId);
+      try {
+        const result = await redriveResolvedGate({ provider, stores, continueRequest }, gate);
+        if (result === "redriven") {
+          logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: re-drove a parked request", {
+            requestId: gate.requestId,
+            suspensionId: gate.suspensionId,
+            status: gate.status
+          });
+        }
+      } catch (err) {
+        logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: re-drive failed", {
+          requestId: gate.requestId,
+          suspensionId: gate.suspensionId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }
+  } catch (err) {
+    logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: re-drive listing failed", {
       error: err instanceof Error ? err.message : String(err)
     });
   }

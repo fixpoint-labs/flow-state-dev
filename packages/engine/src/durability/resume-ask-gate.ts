@@ -75,7 +75,9 @@ export async function resumeAskGate(
     },
     action: "submit",
     data: parsed,
-    resumedBy
+    resumedBy,
+    // A stop is recorded as one, so the re-drive and any later reader know it.
+    ...("stopped" in parsed ? { status: "stopped" as const } : {})
   });
 
   if (resumed.ok) return { ok: true };
