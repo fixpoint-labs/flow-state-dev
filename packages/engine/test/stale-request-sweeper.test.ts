@@ -147,4 +147,42 @@ describe("createStaleRequestSweeper", () => {
     const record = await stores.request.get("req_after_dispose");
     expect(record?.status).toBe("in_progress");
   });
+
+  // Shutdown closes the stores right after disposing the sweeper. If dispose
+  // resolved while a pass was still reading, that pass would hit a closed
+  // connection and log "stale-request sweeper iteration failed".
+  it("dispose resolves only after a pass already running has settled", async () => {
+    vi.useFakeTimers();
+
+    let releaseRead!: () => void;
+    const readHeld = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    const listStale = stores.activeRequests.listStale.bind(stores.activeRequests);
+    let readStarted = false;
+    stores.activeRequests.listStale = async (thresholdMs) => {
+      readStarted = true;
+      await readHeld;
+      return listStale(thresholdMs);
+    };
+
+    const sweeper = createStaleRequestSweeper({
+      stores,
+      intervalMs: 1000,
+      staleThresholdMs: 30_000
+    });
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(readStarted).toBe(true);
+
+    let disposed = false;
+    const disposing = sweeper.dispose().then(() => {
+      disposed = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(disposed).toBe(false);
+
+    releaseRead();
+    await disposing;
+    expect(disposed).toBe(true);
+  });
 });
