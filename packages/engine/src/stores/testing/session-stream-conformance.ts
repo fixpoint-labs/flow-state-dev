@@ -604,14 +604,14 @@ export function createSessionStreamConformanceTests(
       expect(reads).toBe(atClose);
     });
 
-    // One read can be long: the first read of runs checks every run whose
-    // history holds an interrupted record one by one, two store reads each, to
-    // tell whether that record is the most recent. A connection that ends
-    // midway through it makes no further store read for nobody.
+    // One read can be several: the first read of runs takes three store reads
+    // when a run's history holds an interrupted record, the last to tell
+    // whether that record is the most recent. A connection that ends midway
+    // through it makes no further store read for nobody.
     it("stops reading the store when the connection ends midway through a read (BR-14)", async () => {
       const stores = await createStores();
       const runs = 20;
-      const readMs = 20;
+      const readMs = 50;
       let reads = 0;
       const slowed: StoreRegistry = {
         ...stores,
@@ -648,14 +648,14 @@ export function createSessionStreamConformanceTests(
       }
 
       const live = await stream(r, "s1");
-      // Midway through the first read of runs: a few checked, most not.
+      // Midway through the first read of runs: its second store read in flight.
       const deadline = Date.now() + 5_000;
-      while (reads < 4 && Date.now() < deadline) await delay(5);
+      while (reads < 2 && Date.now() < deadline) await delay(5);
       expect(live.events).toEqual([]);
       const atClose = reads;
       await live.close();
-      // Long enough for every remaining run to have been checked.
-      await delay(runs * 2 * readMs);
+      // Long enough for the rest of the read to have run.
+      await delay(4 * readMs);
       expect(reads).toBe(atClose);
     });
 

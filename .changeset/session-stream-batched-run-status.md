@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/engine": patch
+"@flow-state-dev/engine": minor
 "@flow-state-dev/store-sqlite": patch
 "@flow-state-dev/store-postgres": patch
 ---

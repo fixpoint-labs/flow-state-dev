@@ -120,20 +120,63 @@ describe.each(adapters)("resolveActiveDispatchRuns — $name adapter", ({ create
     ]);
   });
 
-  it("reads twice however many runs, plus two per run with an interrupted record", async () => {
+  it("reads twice however many runs, and three times when a run holds an interrupted record", async () => {
     const { request } = await create();
     await seed(request);
-    const { store, reads } = counting(request);
     const noInterrupted = ["run_none", "run_completed", "run_failed", "run_suspended_then_completed"];
 
-    await resolveActiveDispatchRuns(store, noInterrupted, identity);
-    expect(reads()).toBe(2);
+    const finished = counting(request);
+    await resolveActiveDispatchRuns(finished.store, noInterrupted, identity);
+    expect(finished.reads()).toBe(2);
 
+    // Three runs hold an interrupted record; still one read for all three.
     const withInterrupted = counting(request);
     await resolveActiveDispatchRuns(withInterrupted.store, Object.keys(histories), identity);
-    // Three runs hold an interrupted record; the one still in progress is
-    // settled by the first read and never asked about.
-    expect(withInterrupted.reads()).toBe(2 + 3 * 2);
+    expect(withInterrupted.reads()).toBe(3);
+  });
+
+  it("names a run that started between the reads", async () => {
+    const { request } = await create();
+    await seed(request);
+    // The run starts right after the first read has found it finished.
+    let reads = 0;
+    const racing = new Proxy(request, {
+      get(target, key) {
+        const value = Reflect.get(target, key, target) as unknown;
+        if (key === "list") {
+          return async (...args: Parameters<RequestStore["list"]>) => {
+            const rows = await target.list(...args);
+            reads += 1;
+            if (reads === 1) {
+              await target.set(
+                "run_completed_late",
+                {
+                  id: "run_completed_late",
+                  flowKind: "chat",
+                  actionName: "run",
+                  userId: identity.userId,
+                  orgId: identity.orgId,
+                  sessionId: "run_completed",
+                  source: "http",
+                  status: "in_progress",
+                  startedAtMs: 10_000,
+                  state: {},
+                  version: 0,
+                  createdAt: 10_000,
+                  updatedAt: 10_000
+                },
+                "any"
+              );
+            }
+            return rows;
+          };
+        }
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+
+    const active = await resolveActiveDispatchRuns(racing, ["run_completed"], identity);
+    expect([...active]).toEqual(["run_completed"]);
   });
 
   it("does not count another owner's live run", async () => {
