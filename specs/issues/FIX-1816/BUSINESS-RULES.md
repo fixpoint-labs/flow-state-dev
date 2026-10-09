@@ -55,10 +55,11 @@ flowchart LR
 | BR-16 | The person stops the conversation while its turn is parked on an ask | The asked row is cancelled through the board's own cancel transition, and the turn ends `aborted`, as a stopped running turn does, with no further model call. The row's later ending is dropped. A run already under way is not stopped ([FIX-1659](https://linear.app/fixpoint-labs/issue/FIX-1659)'s) | CI, on SQLite |
 | BR-16a | The person stops the conversation while its turn is parked on any other gate, such as an approval | The turn ends `aborted`. A later approve or answer for that gate is refused as already resolved, the `409` the resume route gives today. Today the stop itself is refused for any suspended turn | CI |
 | BR-16b | A stop and an answer (or the timeout) reach the same parked turn together | The gate's single pending state decides (BR-12): whichever resolves it first wins, and the other is refused as `already-resolved`. When the answer wins, the turn is running again: the stop reports `already-resolved`, and a second stop stops the running turn as today. When the stop wins, the answer's resume is refused and its resume-owed marker clears | CI, both orders |
+| BR-16c | The process dies after a stop is recorded and before it finishes: before the asked row is cancelled, or before the turn leaves `suspended` | The stop is not lost. The gate's resolved outcome, `stopped`, is the record that a stop is owed. The next durability sweep finds the request still `suspended` (or `interrupted`) behind a gate resolved `stopped`, and drives it on: the parked call cancels its row again, harmlessly if it is already cancelled, leaves a row that already ended as it is, and the turn ends `aborted` | CI on SQLite: killed between the stop and the row's cancel; after restart the row is `cancelled` and the request `aborted` |
 
 BR-15, BR-17 and BR-18 were cut before the gate, with nested asks
 ([why](DECISIONS.md#cut-before-the-gate)). The per-call timeout, cut with them, came back
-on 2026-10-09 as BR-14 and BR-14a; BR-16, BR-16a and BR-16b are the product owner's call to
+on 2026-10-09 as BR-14 and BR-14a; BR-16 to BR-16c are the product owner's call to
 build stopping a paused turn ([amendments](DECISIONS.md#product-owner-amendments-2026-10-09)).
 
 ## Failure taxonomy

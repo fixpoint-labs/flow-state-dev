@@ -92,6 +92,24 @@ reconcile the wording to that test as shipped.
 > `POST …/requests/:requestId/abort` stops a running or a suspended request. A suspended one
 > ends `aborted` at once; its pending suspension is closed.
 
+## UPDATE · `apps/docs/docs/server/connection-resilience.md` · the abort endpoint's answers (P2c)
+
+> It returns `404` when no request exists under that id, and `409` when the request has already
+> finished. A suspended request is stopped: it ends `aborted` at once, and the call returns `204`.
+
+## UPDATE · `packages/client/README.md` · `client.abortRequest` (P2c)
+
+> `client.abortRequest(requestId)` — Ask the server to stop a request that is running or
+> suspended. A suspended request ends `aborted` at once.
+
+## UPDATE · `docs/architecture/execution-and-errors.md` · cancellation (P2c, internal)
+
+Add a fourth path to the `registered` list: a stop of a **suspended** request goes through
+`recordRequestStop` too, but there is no controller to fire. It resolves the pending gate as
+`stopped` under the gate's fence and ends the request `aborted`; on an ask gate it continues the
+request only to the parked call, which cancels its row. The durability sweep re-drives a request
+left `suspended` or `interrupted` behind a gate resolved `stopped`.
+
 ## Not changed
 
 The "Which session a task runs in" section is FIX-1817's. The delegation guide that FIX-1814
