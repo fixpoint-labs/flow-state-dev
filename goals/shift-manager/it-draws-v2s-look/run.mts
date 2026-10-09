@@ -261,8 +261,8 @@ const LOOK: Row[] = [
   { id: "sidebar header", audit: "F10", shipped: { file: SIDEBAR_SRC, has: 'border-b px-3.5 pt-3.5 pb-3" data-testid="sidebar-header"' }, select: "[data-testid=sidebar-header]", min: 1, want: { surface: "none", padding: [14, 14, 12, 14], width: 247 } },
   { id: "theme mark", audit: "F10", shipped: { file: MARK_SRC, has: 'className="block h-auto w-[42px] overflow-visible"' }, select: "[data-testid=theme-mark], [data-testid=theme-mark] > svg", min: 2, want: { surface: "none", width: 42 } },
   { id: "app name", audit: "F10", shipped: { file: SIDEBAR_SRC, has: '<p className="text-sm font-bold tracking-tight">Shift Manager</p>' }, select: "[data-testid=sidebar-header] p", min: 1, want: { family: "sans", size: 14, weight: 700, tracking: -0.025, lineHeight: 20 / 14 } },
-  // The toggle that collapses the sidebar (#2932), at the header's end; v2 draws none.
-  { id: "sidebar toggle", audit: "F10", shipped: { file: SIDEBAR_SRC, has: 'data-testid="sidebar-toggle"', ref: "#2932" }, select: "[data-testid=sidebar-header] [data-testid=sidebar-toggle] > svg", min: 1, want: { width: 14 } },
+  // The toggle that collapses the sidebar (#2932), at the header's end, drawing the 14px nav icon; v2 draws none.
+  { id: "sidebar toggle", audit: "F10", shipped: { file: SIDEBAR_SRC, has: 'className="size-3.5 shrink-0 text-foreground" aria-hidden data-look="nav-icon"', ref: "#2932" }, select: "[data-testid=sidebar-header] [data-testid=sidebar-toggle] > svg", min: 1, want: { width: 14 } },
   { id: "theme name", audit: "F10", shipped: { file: SIDEBAR_SRC, has: '<Meta role="label" className="block truncate text-muted-foreground" testId="sidebar-theme-name">' }, select: "[data-testid=sidebar-theme-name]", min: 1, want: { family: "mono", size: 10, weight: 500, tracking: 0.14, lineHeight: 1.5 } },
 
   // A screen's title.
