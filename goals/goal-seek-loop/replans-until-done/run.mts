@@ -359,7 +359,7 @@ function runPlanAndExecuteArm(): string[] {
   return failures;
 }
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   let last: Observation | undefined;
   let lastNote = "";
 
@@ -427,7 +427,6 @@ await runGoal(async () => {
   }
 
   const term = last?.termination;
-  const failures: string[] = [];
   if (term === undefined) {
     failures.push("no termination item on the final attempt");
   } else {

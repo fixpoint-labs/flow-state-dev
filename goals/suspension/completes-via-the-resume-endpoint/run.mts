@@ -40,7 +40,7 @@ interface Observation {
   pendingAfterResume?: number;
 }
 
-await runGoal(() => {
+await runGoal((failures) => {
   const r = runHarness<Observation>({
     app: KITCHEN_SINK,
     harness: new URL("./harness.mts", import.meta.url),
@@ -58,7 +58,6 @@ await runGoal(() => {
   if (r.ok !== true) return { failures: [r.reason ?? "driver reported failure"], evidence: "" };
 
   const stream = String(r.streamText ?? "");
-  const failures: string[] = [];
   if (r.suspended !== true) failures.push("dispatch did not reach suspended");
   if ((r.pendingBeforeResume ?? 0) < 1) failures.push("no pending suspension was listed before resume");
   if (r.resumeStatus !== 202) failures.push(`resume endpoint returned ${r.resumeStatus}, expected 202`);

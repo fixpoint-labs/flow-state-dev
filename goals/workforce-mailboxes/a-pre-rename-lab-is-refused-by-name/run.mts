@@ -44,8 +44,7 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 const RENAME_NAMED = /before channels were renamed to mailboxes/;
 const now = Date.now();
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const fail = (leg: string, message: string) => failures.push(`[${leg}] ${message}`);
   const dirs: string[] = [];

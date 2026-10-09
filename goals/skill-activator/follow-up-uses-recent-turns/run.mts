@@ -184,8 +184,7 @@ async function session(model: string | EvaluationModel, exchange: Exchange) {
 const label = (model: string | EvaluationModel) =>
   typeof model === "string" ? model : `${model.provider}/${model.modelId}`;
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
 
   for (const [leg, model] of [

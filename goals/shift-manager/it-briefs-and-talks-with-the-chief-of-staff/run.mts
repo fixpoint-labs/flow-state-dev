@@ -245,7 +245,7 @@ const same = (a: readonly string[], b: readonly string[]) => a.length === b.leng
 
 // ---- the goal ----------------------------------------------------------------
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   if (!MODEL_KEYS.some((key) => (process.env[key] ?? "") !== "")) {
     return {
       failures: [`[desk] precondition: the chief of staff runs a real model, and none of ${MODEL_KEYS.join(", ")} is set, so nothing here was checked`],
@@ -261,7 +261,6 @@ await runGoal(async () => {
   const members = new Set((mailbox.declared.members as string[] | undefined) ?? []);
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
-  const failures: string[] = [];
   const evidence: string[] = [];
   const served = { desk: await startLab("desk", pages), "no-cos": await startLab("no-cos", pages) };
   const browser = await launchChromium();

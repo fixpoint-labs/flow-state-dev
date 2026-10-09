@@ -64,8 +64,7 @@ async function boot(root: string) {
   return { declared, installation, copies: () => hireWorkforce(installation) };
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
 
   // ---- (a) the real loader reads the tree; one copy of the flow runs every worker

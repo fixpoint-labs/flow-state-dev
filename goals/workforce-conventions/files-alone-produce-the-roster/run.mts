@@ -30,9 +30,8 @@ type Fixture = {
 const fixture = loadFixture<Fixture>(import.meta.url);
 const root = join(fixtureDir(import.meta.url), fixture.root);
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const { workers, errors } = await readWorkforceDirectory(root);
-  const failures: string[] = [];
 
   // 1. The roster is exactly the set the tree describes — no more, no fewer.
   const got = workers.map((w) => w.id).sort();

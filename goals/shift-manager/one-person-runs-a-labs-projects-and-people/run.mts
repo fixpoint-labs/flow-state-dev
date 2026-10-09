@@ -146,7 +146,7 @@ function todaysMainCheckout(): { root: string; tsx: string } {
   return { root, tsx: join(root, "node_modules", ".bin", "tsx") };
 }
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   if (!MODEL_KEYS.some((k) => (process.env[k] ?? "") !== "")) {
     return { failures: [`blocked (QR-4): no model key; none of ${MODEL_KEYS.join(", ")} is set`], evidence: "" };
   }
@@ -157,7 +157,6 @@ await runGoal(async () => {
   const browser = await launchChromium();
   const runs: LegsRun[] = [];
   const controlVerdicts: Array<{ control: string; ok: boolean; line: string }> = [];
-  const failures: string[] = [];
   let j4Result: J4Result | undefined;
   let p3: RunResult[] = [];
   let p4: SeamRow[] = [];

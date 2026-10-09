@@ -131,8 +131,7 @@ async function withLab<T>(
   }
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const note = (line: string): void => {
     failures.push(line);
   };

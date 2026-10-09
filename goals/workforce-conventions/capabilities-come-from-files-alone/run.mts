@@ -179,8 +179,7 @@ function harnessInstallsFromGeneratedModule(): string[] {
   return failures;
 }
 
-await runGoal(() => {
-  const failures: string[] = [];
+await runGoal((failures) => {
   const evidence: string[] = [];
 
   // ---- leg 0 -------------------------------------------------------------

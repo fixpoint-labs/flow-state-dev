@@ -95,9 +95,7 @@ function resolverFor(control: string | undefined): ModelResolver {
   return wrapped;
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
-
+await runGoal(async (failures) => {
   // ---- Leg (a): Jev through the gateway answers a held-out ticket ----------
   const triage = evaluator({
     name: "triage",
