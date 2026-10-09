@@ -359,7 +359,7 @@ export function part4(base: string, report: Report): void {
     "sendAction(": ["lib/send.ts", "lib/transcript.ts", "lib/talk.ts"],
     "abortRequest(": ["lib/run.ts"],
     "resumeSuspension(": ["lib/reads.ts"],
-    "createSession(": ["lib/reads.ts"],
+    "createSession(": ["lib/reads.ts", "lib/conversation.ts"],
   };
   const writes: string[] = [];
   for (const file of own) {
@@ -392,7 +392,15 @@ export function part4(base: string, report: Report): void {
   const creates = [...reads.matchAll(/\bcreateSession\(\s*\{([^}]*)\}/g)].map((m) => m[1]!);
   const createCount = reads.match(/\bcreateSession\(/g)?.length ?? 0;
   if (createCount !== creates.length || creates.some((args) => !/\bflowKind:\s*ROOM_KIND\b/.test(args))) report.fail("P4:ER-15", "lib/reads.ts creates a session on a kind other than the room kind");
-  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), the mailbox's post (transcript.ts), the project room's ${talkCalls.join("/")} on the room kind (talk.ts; ${roomCalls.length} call(s)), the person's room session (reads.ts; ${creates.length} createSession on ROOM_KIND), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
+  // A conversation's first line (FIX-1788 P4): a worker has no flow of its own, so the person's
+  // session with a seat is opened on the flow the seat runs on, naming it, before the door runs in it.
+  const conversation = stripComments(readFileSync(join(src, "lib", "conversation.ts"), "utf8"));
+  const opens = [...conversation.matchAll(/\bcreateSession\(\s*\{([^}]*\}[^}]*)\}/g)].map((m) => m[1]!);
+  const openCount = conversation.match(/\bcreateSession\(/g)?.length ?? 0;
+  if (openCount !== 1 || opens.length !== 1 || !/\bflowKind:\s*seat\.kind\b/.test(opens[0]!) || !/\bstate:\s*\{\s*\[WORKER_ID_STATE_KEY\]:\s*seat\.id\s*\}/.test(opens[0]!)) {
+    report.fail("P4:ER-15", "lib/conversation.ts opens a session other than the seat's own, on its flow and naming its worker");
+  }
+  report.note(`P4 ER-15: Shift Manager's writes are [${writes.join("; ")}]: the seat's door (send.ts), a conversation's session opened on the seat's flow naming its worker (conversation.ts; ${opens.length} createSession), the mailbox's post (transcript.ts), the project room's ${talkCalls.join("/")} on the room kind (talk.ts; ${roomCalls.length} call(s)), the person's room session (reads.ts; ${creates.length} createSession on ROOM_KIND), Interrupt's abort (run.ts) and the one resume (reads.ts); Inbox's reply is graded by FIX-1690's check in part 3`);
 
   // One ask rendering: Inbox's detail and the stream's card draw through AskCard.
   for (const surface of ["Inbox.tsx", "Stream.tsx", "ChiefOfStaff.tsx"]) {
