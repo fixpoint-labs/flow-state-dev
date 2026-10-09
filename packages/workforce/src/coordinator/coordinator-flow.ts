@@ -1629,7 +1629,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     ...turn.bound,
     session: {
       ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape }),
-      serverOwned: [...COORDINATOR_SERVER_OWNED, TASK_NOTICES_STATE]
+      serverOwned: [...COORDINATOR_SERVER_OWNED, TASK_NOTICES_STATE],
+      // Every answer, routing and pass-on writes this one record at once; a pass-on that
+      // runs out of retries fails after its round has closed, and its answers are lost.
+      cas: { maxRetries: 8 }
     },
     resources: { ...resources, ...(turn.bound.resources ?? {}), ...conversationBoard.resources },
     isolateUserState: options.agent?.isolateUserState ?? false,
