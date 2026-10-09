@@ -25,7 +25,7 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
 0. every held-out token lives in exactly one convention file, in none of `packages/shift-manager/teams/devteam/**/*.mts`, and in no
    part of the row the EM seat files — run **before** anything is built;
 1. one root produces exactly three team seats on the two kinds their files name, plus the org's
-   chief of staff on the built-in `agent` kind, two documents and one mailbox; a tree naming an unregistered kind refuses the **whole** roster by name, and its
+   chief of staff on the `coordinator` kind its file names, two documents and one mailbox; a tree naming an unregistered kind refuses the **whole** roster by name, and its
    corrected twin hires cleanly *(BR-1, BR-2)*;
 2. each seat reports its own instructions, document ref and **exact** skill union from inside a
    running block, and the coordinator kind declares no task entry at all *(BR-3, BR-4)*;
@@ -64,8 +64,6 @@ handed every skill in the tree.
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
-| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | FAIL (control) | `address-the-reviewer`: the drain dispatched to ["eng.reviewer"] and the coder's tokens missing. `no-commit` and `stopped-at-limit`: the row settled pending. `swap-documents`: eng.coder reads engineering-handbook. `drop-own-skill`: eng.coder holds only commit-style. |
-| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | The lab on one copy per worker flow (`em`, `coder`, `agent`): the EM's board handed the row to a session on `coder` naming `eng.coder`, graded on the dispatch record's `workerId`; the reviewer on the same flow never reached; each seat's own files in its prompt. A tree naming `codr` registered nothing. |
 | `address-the-reviewer` | the board's assignee address | the dispatch record names the seat that must never be reached |
 | `no-commit` | what the run leaves behind | the row does not settle done |
 | `swap-documents` | the working seat's `document:` | its own brief's token cannot reach the prompt |
@@ -97,3 +95,6 @@ is the sibling goal.
 | 2026-09-17 | 4d7a5749f | n/a | PASS | All seven legs green; all five controls red, each on clauses traceable to its one perturbation. |
 | 2026-09-30 | a1b122eb1 | n/a | PASS | Rows now on the feature mailbox's board. All five controls fail at their named legs. |
 | 2026-10-01 | a25134ebd+wip (FIX-1691/1692) | n/a | PASS | After the stub took optional narrated steps (unused here). All five controls FAIL. |
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | FAIL (control) | `address-the-reviewer`: the drain dispatched to ["eng.reviewer"] and the coder's tokens missing. `no-commit` and `stopped-at-limit`: the row settled pending. `swap-documents`: eng.coder reads engineering-handbook. `drop-own-skill`: eng.coder holds only commit-style. |
+| 2026-10-08 | `865abc573` + FIX-1788 P4 | n/a | PASS | The lab on one copy per worker flow (`em`, `coder`, `agent`): the EM's board handed the row to a session on `coder` naming `eng.coder`, graded on the dispatch record's `workerId`; the reviewer on the same flow never reached; each seat's own files in its prompt. A tree naming `codr` registered nothing. |
+| 2026-10-08 | fix/closure-children-one-copy (main 0f569d032) | n/a | PASS | The fixture's chief of staff is on `coordinator`, the flow its `WORKER.md` names since FIX-1791 P1. Before, it failed on "chief-of-staff was hired into kind `coordinator`, not `agent`". All five controls FAIL at their named legs. |
