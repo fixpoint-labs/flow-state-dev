@@ -1600,7 +1600,6 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // `addTask_tasks` and the rest, checked against its delegates.
       ...conversationBoard.actions,
       // The session names its worker, so a turn whose input carries any other key is refused.
-      // A reply: it starts at once, and a task's notice waits for it to end.
       run: {
         inputSchema: doorInputSchema.strict(),
         block: door,
@@ -1633,8 +1632,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         // Here only, never in `actions`: an answer, and a report of none, name their delivery.
         [DELEGATE_ANSWER_ACTION]: { inputSchema: delegatedAnswerSchema, block: delegateAnswer, concurrency: "queue" },
         [DELEGATE_MISSED_ACTION]: { inputSchema: delegatedMissSchema, block: delegateMissed, concurrency: "queue" },
-        // Only this conversation's own code sends answers back out. A round's
-        // routing can run the coordinator's turn, so it is a reply too.
+        // Only this conversation's own code sends answers back out.
         [ROUTE_ON_ACTION]: { inputSchema: routeOnSchema, block: routeOnEntry, concurrency: REPLY_CONCURRENCY },
         // A filing's wake: one run of this conversation's board, as its owner.
         [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: conversationBoard.runBoard },
