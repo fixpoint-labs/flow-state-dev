@@ -11,24 +11,39 @@ import { useEffect, useState } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import type { LoadedSnapshot } from "./derive";
 import { describeFailure, STAFF_TEAM, type Failure, type Seat } from "./reads";
+import { useLab } from "./lab-data";
 import { useWorkforce } from "./workforce";
 
 /** The roster read: its entries, its failure, or `undefined` until the first read lands. */
 export type RosterRead = { entries: RosterEntry[] } | { failure: Failure } | undefined;
 
 /**
+ * The roster read in flight or landed for each Lab connection, and the
+ * snapshot it was read for. Sidebar and Roster both draw the roster; sharing
+ * one read per snapshot keeps them from racing two first reads, which could
+ * each open the person's roster session.
+ */
+const reads = new WeakMap<object, { readAt: number; read: Promise<RosterEntry[]> }>();
+
+/**
  * The person's roster, read through Workforce's client with every snapshot
  * (`readAt`): `undefined` until the first read lands, and not read until
- * there is a snapshot.
+ * there is a snapshot. Every caller on one connection shares one read per
+ * snapshot.
  */
 export function useRoster(readAt: number | undefined): RosterRead {
+  const { clients } = useLab();
   const workforce = useWorkforce();
   const [read, setRead] = useState<RosterRead>(undefined);
   useEffect(() => {
     if (readAt === undefined) return;
+    let held = reads.get(clients);
+    if (held?.readAt !== readAt) {
+      held = { readAt, read: workforce.roster() };
+      reads.set(clients, held);
+    }
     let closed = false;
-    workforce
-      .roster()
+    held.read
       .then((entries) => {
         if (!closed) setRead({ entries });
       })
@@ -38,7 +53,7 @@ export function useRoster(readAt: number | undefined): RosterRead {
     return () => {
       closed = true;
     };
-  }, [workforce, readAt]);
+  }, [clients, workforce, readAt]);
   return read;
 }
 

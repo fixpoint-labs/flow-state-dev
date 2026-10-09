@@ -77,12 +77,11 @@ function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "fai
   };
 }
 
-const clients = { userId: "u_test" } as unknown as LabClients;
-
 async function open(path: string, snapshot: LabSnapshot = lab()) {
   fixture = snapshot;
   (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`http://lab.local${path}`);
-  render(<App clients={clients} />);
+  // A connection per page, as a fresh load makes: the roster read is shared per connection.
+  render(<App clients={{ userId: "u_test" } as unknown as LabClients} />);
   await screen.findByTestId("sidebar");
 }
 
@@ -378,6 +377,18 @@ describe("the sidebar (V4)", () => {
     await open("/inbox");
     expect((await screen.findByTestId("teams-own-failure")).textContent).toContain("roster offline");
     expect(attrs(screen.getAllByTestId("team"), "data-team")).toEqual([STAFF_TEAM, "eng", "ops"]);
+  });
+
+  it("Roster and TEAMS share one roster read per snapshot", async () => {
+    let reads = 0;
+    rosterRead = async () => {
+      reads += 1;
+      return [{ id: "amber-1f2e", flow: "coder", standard: false, description: null }];
+    };
+    await open("/roster");
+    await within(await screen.findByTestId("roster")).findByTestId("roster-worker-own");
+    await waitFor(() => expect(screen.getByTestId("teams").querySelector('[data-seat-id="amber-1f2e"]')).not.toBeNull());
+    expect(reads).toBe(1);
   });
 
   it("BR-20: the counts and the footer carry the partial mark when asks did not load", async () => {
