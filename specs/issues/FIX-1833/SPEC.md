@@ -31,7 +31,7 @@ project, change or list its delegates) still reaches its own turn.**
 ```mermaid
 flowchart LR
   F["DevTeam in Shift Manager · Jev routes · a real model turn"] --> A["legs a b g · plain asks"]
-  F --> H["leg h · a hire and a project"]
+  F --> H["leg h · hire · fire · who · project"]
   F --> E["leg e · scripted confidences"]
   A -->|"by evaluated · no chief-of-staff turn"| P["PASS · the goal is met"]
   H -->|"its own turn · nothing to a delegate"| P
