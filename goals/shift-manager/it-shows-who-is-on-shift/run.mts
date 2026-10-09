@@ -46,7 +46,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Browser, Page } from "playwright";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, loadFixture, runGoal } from "../../lib/index.mts";
-import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
+import { SHIFT_MANAGER_COMMAND, pendingSeatAsks, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -71,8 +71,6 @@ const CONFIG = join(HERE, "lab", "fsdev.config.mts");
 
 /** The group a seat with no team sits in, as the design names it. */
 const STAFF = "Staff";
-/** Suspension reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 const STATUSES = ["on shift", "on call", "off shift"] as const;
 type Status = (typeof STATUSES)[number];
 
@@ -213,14 +211,14 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
   const sessions = ((await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`)).sessions ?? []) as Array<Record<string, any>>;
   // The inventory, through a mailbox's session, by its published key patterns.
   const mailboxIds: string[] = [];
-  let seats: string[] = [];
+  let seatRows: Array<{ id: string; kind: string | null }> = [];
   for (const host of sessions.filter((s) => s.flowKind === "mailbox" && String(s.id).includes("."))) {
     const manifest = await api.get(`/sessions/${encodeURIComponent(host.id)}/manifest`);
     const refOf = (pattern: string) => (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
     const seatsRef = refOf("inventory/seats/*");
     const mailboxesRef = refOf("inventory/mailboxes/*");
     if (seatsRef === undefined || mailboxesRef === undefined) continue;
-    seats = (await api.collection(host.id, seatsRef)).map((r) => String(r.id));
+    seatRows = (await api.collection(host.id, seatsRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
     mailboxIds.push(...(await api.collection(host.id, mailboxesRef)).map((r) => String(r.id)));
     break;
   }
@@ -237,18 +235,9 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
       }
     }
   }
-  // Pending person-asks: a suspension with no resume, in a session a seat owns.
-  const asks: Array<{ seat: string; id: string }> = [];
-  for (const session of sessions) {
-    if (!seats.includes(String(session.flowId))) continue;
-    const found = await api.items(String(session.id), ["suspension", "suspension_resume"]);
-    const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
-    for (const item of found) {
-      if (item.type === "suspension" && PERSON_REASONS.has(String(item.reason)) && !resumed.has(String(item.suspensionId))) {
-        asks.push({ seat: String(session.flowId), id: String(item.suspensionId) });
-      }
-    }
-  }
+  const seats = seatRows.map((s) => s.id);
+  // Pending person-asks on the seats' sessions, by the seat each session names.
+  const asks = (await pendingSeatAsks(api, sessions, seatRows)).map((a) => ({ seat: a.seatId, id: a.suspensionId }));
   const unmatched = rows.filter((r) => seatOf(seats, r.assignee) === undefined).map((r) => `${r.key} (${r.assignee})`);
   const workers = seats.map((id): Worker => {
     const mine = rows.filter((r) => seatOf(seats, r.assignee) === id);
