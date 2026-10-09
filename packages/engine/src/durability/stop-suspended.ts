@@ -25,11 +25,11 @@
 import { isAskGate } from "@flow-state-dev/core/types";
 import type { ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
-import type { RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RequestStreamEvent, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { settledRecordFields } from "../execution/request-action-result";
 import { resumeAskGate } from "./resume-ask-gate";
-import { continueUnderLease, RESUME_LEASE_MS, type ResumeDeps } from "./resume-under-lease";
+import { continueUnderLease, latestGateIdOf, RESUME_LEASE_MS, type ResumeDeps } from "./resume-under-lease";
 import { generateId } from "../utils/generate-id";
 
 /** What a stop of a parked turn needs from the host. */
@@ -78,12 +78,15 @@ async function pendingGatesOf(
 /**
  * End a parked turn `aborted` where it stands, without running anything:
  * fenced on the turn still being parked, on the incarnation that was checked.
- * The record first, then its terminal `request.aborted` event, as a run that
- * ends writes them, so a stream following the turn through its park ends.
+ * Then, as a run that resumes and ends writes them: the gate's
+ * `suspension_resume` item recording the stop, persisted and streamed, so the
+ * gate no longer reads as open, and the terminal `request.aborted` event, so a
+ * stream following the turn through its park ends.
  */
 async function abortParked(
   deps: SuspendedStopDeps,
-  record: Pick<RequestRecord, "id" | "createdAt" | "incarnation">
+  record: Pick<RequestRecord, "id" | "createdAt" | "incarnation" | "items">,
+  gate: Pick<SuspensionRecord, "suspensionId" | "resolvedAt" | "resolvedBy">
 ): Promise<boolean> {
   const now = Date.now();
   const result = await deps.stores.request.setFieldsIfStatus(
@@ -102,16 +105,30 @@ async function abortParked(
   );
   if (!result.applied) return false;
   try {
-    const prior = await deps.stores.request.getEvents(record.id);
-    const event = {
-      stream: "request",
-      type: "request.aborted",
-      status: "aborted",
+    const resumeItem: SuspensionResumeItem = {
+      id: `item_suspension_resume_${now}_${Math.random().toString(16).slice(2)}`,
+      type: "suspension_resume",
+      status: "completed",
+      suspensionId: gate.suspensionId,
+      resolution: "stopped",
+      resolvedBy: gate.resolvedBy,
+      resolvedAt: gate.resolvedAt ?? now,
       requestId: record.id,
-      sequence_number: prior.reduce((max, e) => Math.max(max, e.sequence_number), 0) + 1,
+      itemIndex: (record.items ?? []).reduce((max, item) => Math.max(max, (item.itemIndex ?? -1) + 1), 0),
+      provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
       ts: now
-    } as RequestStreamEvent;
-    deps.stores.request.persistEvents(record.id, [event]);
+    };
+    deps.stores.request.persistItems(record.id, [resumeItem]);
+    await deps.stores.request.flushItems(record.id);
+    const prior = await deps.stores.request.getEvents(record.id);
+    const last = prior.reduce((max, e) => Math.max(max, e.sequence_number), 0);
+    const event = (sequence: number, body: Record<string, unknown>) =>
+      ({ stream: "request", requestId: record.id, sequence_number: sequence, ts: now, ...body }) as RequestStreamEvent;
+    deps.stores.request.persistEvents(record.id, [
+      event(last + 1, { type: "item.added", item: resumeItem }),
+      event(last + 2, { type: "item.done", item: resumeItem }),
+      event(last + 3, { type: "request.aborted", status: "aborted" })
+    ]);
     await deps.stores.request.flushEvents(record.id);
   } catch {
     // The turn is aborted: the record says so, and a reader falls back to it.
@@ -131,7 +148,11 @@ export async function stopSuspendedRequest(
   // No pending gate: an answer resolved it first, and the turn runs again.
   if (gate === undefined) return "already-resolved";
 
-  if (isAskGate(gate)) {
+  // An ask continues, so its call ends what it asked for. One whose turn was
+  // interrupted before its log held the gate can't be replayed onto it, so it
+  // is ended where it stands, as any other gate is.
+  const replayable = record.status === "suspended" || latestGateIdOf(record) === gate.suspensionId;
+  if (isAskGate(gate) && replayable) {
     const result = await resumeAskGate(deps, gate, { answered: false, stopped: true }, "stop");
     // A refusal is the race lost: an answer (or a timeout) resolved the gate
     // first, or holds the turn's lease to do so right now.
@@ -165,7 +186,7 @@ async function stopAtNonAskGate(
     await deps.provider.suspend({ ...current, status: "stopped", resolvedAt: now, resolvedBy: "stop" });
     // Fenced on the incarnation checked: if another request took the id in
     // between, nothing was stopped, and the caller hears `already-resolved`.
-    return abortParked(deps, record);
+    return abortParked(deps, record, { suspensionId: current.suspensionId, resolvedAt: now, resolvedBy: "stop" });
   } finally {
     await deps.provider.releaseLease(record.id, lease.leaseId).catch(() => {});
   }
@@ -200,7 +221,7 @@ export async function redriveResolvedGate(
       const record = await deps.stores.request.get(gate.requestId);
       if (record === undefined || !PARKED.includes(record.status)) return "not-parked";
       if (!isLatestGate(record, gate.suspensionId)) return "superseded";
-      return (await abortParked(deps, record)) ? "redriven" : "not-parked";
+      return (await abortParked(deps, record, gate)) ? "redriven" : "not-parked";
     } finally {
       await deps.provider.releaseLease(gate.requestId, lease.leaseId).catch(() => {});
     }
@@ -226,16 +247,6 @@ export async function redriveResolvedGate(
   });
   if (result.ok) return "redriven";
   return "refusal" in result ? result.refusal : "busy";
-}
-
-/** The last gate the request's item log parked on, if it has one. */
-export function latestGateIdOf(record: Pick<RequestRecord, "items">): string | undefined {
-  const items = record.items ?? [];
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i] as { type?: string; suspensionId?: string };
-    if (item.type === "suspension") return item.suspensionId;
-  }
-  return undefined;
 }
 
 /** Whether `suspensionId` is the last gate the request's item log parked on. */

@@ -64,7 +64,8 @@ import type { DurabilityProvider } from "./types";
 import { isAskGate } from "@flow-state-dev/core/types";
 import { resumeAskGate } from "./resume-ask-gate";
 import { onAskDeadline } from "./ask-deadlines";
-import { latestGateIdOf, PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
+import { PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
+import { latestGateIdOf } from "./resume-under-lease";
 import type { ResumeDeps } from "./resume-under-lease";
 
 /**

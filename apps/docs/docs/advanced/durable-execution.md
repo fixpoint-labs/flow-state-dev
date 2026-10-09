@@ -222,7 +222,7 @@ The sentinel never crosses the wire — only the string `resolution: "skipped"` 
 
 ### Resolution statuses
 
-A suspension's resolved status is one of `approved`, `rejected`, `submitted`, `skipped`, `timed_out`, or `expired` (`pending` is the sole non-resolved state). The resume action maps to the status one-to-one: `submit` → `submitted`, `skip` → `skipped`. The matching `suspension_resume` audit item carries the status in its `resolution` field.
+A suspension's resolved status is one of `approved`, `rejected`, `submitted`, `skipped`, `timed_out`, `expired`, or `stopped` (`pending` is the sole non-resolved state). The resume action maps to the status one-to-one: `submit` → `submitted`, `skip` → `skipped`. `stopped` comes from no resume action: it means the request was stopped while it waited on the suspension. The matching `suspension_resume` audit item carries the status in its `resolution` field.
 
 ## Error handling
 

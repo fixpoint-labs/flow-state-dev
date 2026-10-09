@@ -11,7 +11,7 @@
 import { isAskGate, parseAskOutcome } from "@flow-state-dev/core/types";
 import type { AskOutcome, ResumeAskResult, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../stores/types";
-import { resumeUnderLease, type ResumeDeps } from "./resume-under-lease";
+import { latestGateIdOf, resumeUnderLease, type ResumeDeps } from "./resume-under-lease";
 
 /** What {@link resumeAskGate} needs from the host. */
 export type AskResumeDeps = ResumeDeps & {
@@ -63,9 +63,17 @@ export async function resumeAskGate(
       }
       const request = await deps.stores.request.get(gate.requestId);
       // Parked on it: `suspended`, or `interrupted` when the process died
-      // before the park was written `suspended`. Its gate is still pending, so
-      // nothing has moved the turn past it.
-      if (request === undefined || (request.status !== "suspended" && request.status !== "interrupted")) {
+      // before the park was written `suspended`, and then only once its log
+      // holds the gate. A continuation replays the gate from the log; without
+      // it the replay parks again and writes the gate back pending, losing
+      // this outcome.
+      if (
+        request === undefined ||
+        !(
+          request.status === "suspended" ||
+          (request.status === "interrupted" && latestGateIdOf(request) === gate.suspensionId)
+        )
+      ) {
         return {
           refusal: {
             ok: false,

@@ -30,6 +30,19 @@ import type { HostContinueRequestOptions } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import type { DurabilityProvider } from "./types";
 
+/**
+ * The last gate the request's item log parked on, if it has one: the gate a
+ * continuation's replay can resolve.
+ */
+export function latestGateIdOf(record: { readonly items?: readonly unknown[] }): string | undefined {
+  const items = record.items ?? [];
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i] as { type?: string; suspensionId?: string };
+    if (item.type === "suspension") return item.suspensionId;
+  }
+  return undefined;
+}
+
 /** How long a resume holds the request's lease before the run takes over. */
 export const RESUME_LEASE_MS = 60_000;
 
