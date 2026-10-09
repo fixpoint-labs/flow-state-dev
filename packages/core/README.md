@@ -163,7 +163,7 @@ Any entry can declare a `concurrency` policy that decides what happens when two 
 
 The policy is enforced by the in-process dispatcher, or across worker processes when the worker adapter supplies a shared lease backend (`WorkerAdapter.leaseBackend`), as `bullmqWorker` does. A deployment that hands dispatches to an external queue whose adapter supplies no shared lease backend skips it, so requests on the same key can overlap there.
 
-`ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently).
+`ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject" | "hold" | "defer"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently). `hold` runs at once and marks the key busy; `defer` waits until nothing on the key is running or waiting, then runs.
 
 ```ts
 defineFlow({

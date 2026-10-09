@@ -44,6 +44,7 @@ export type { AuthenticationConfig, ResolvePrincipalFn } from "@flow-state-dev/c
 
 export {
   ConcurrencyLeaseLostError,
+  ConcurrencyDeferLimitError,
   ConcurrencyQueueTimeoutError,
   ConcurrencyRejectedError,
   OrgRequiredError,
