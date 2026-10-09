@@ -31,6 +31,11 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 It comes down to a hire on today's DevTeam: a floor alone delivers it to the EM at confidence 1.
 
+No description means the coordinator is not offered ([BR-2](BUSINESS-RULES.md#who-best-fit-can-pick)).
+
+**Ratified by the product owner on 2026-10-09:** the coordinator as a choice on every best-fit
+coordinator, plus a confidence floor, on the shared ladder.
+
 **What would change my mind:** the goal's runs showing Jev put a delegate above 0.7 for one of the
 chief of staff's own asks. Then the floor isn't what keeps them apart, and the description is.
 

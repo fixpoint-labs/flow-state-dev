@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
-(BR-n) and [DECISIONS.md](DECISIONS.md) (Dn). `tdd`. One PR, on `main` after #2955 (FIX-1828)
+(BR-n) and [DECISIONS.md](DECISIONS.md) (Dn). `tdd`. One implementation PR (S1–S9), on `main` after #2955 (FIX-1828)
 and #2959 (FIX-1826) merge.
 
 ## Surfaces

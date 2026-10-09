@@ -46,18 +46,18 @@ The cases, written as rules. Each says what a person or the system does and what
 | BR-20 | The gateway can't serve Jev, or refuses the call | Each post goes to the turn: today's behaviour, slower to start | CI (scripted failure) |
 | BR-21 | Alice asks it to hire while the EM still works her last post | The hire goes to the EM, which answers that nothing was filed ([D2](DECISIONS.md#d2)) | Stated, not tested |
 
-## Memory
-
-| # | When | Then | Proved by |
-|---|---|---|---|
-| BR-24 | The DevTeam runs with memory capture on, and a post is routed straight to a delegate | The chief of staff runs no turn on it, so its memory likely records nothing of the post. Confirm, and say so in the README | V5 |
-
 ## What the record says
 
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-22 | Best fit doesn't deliver to its pick, and the fallback or the coordinator's turn takes the post | The `by: fallback` or `by: judgment` record carries `fit`: the reason (`coordinator`, `below-floor`, `no-confidence`, `failed`, `not-a-choice`, `no-delegates`), and the pick, its confidence and the floor where they exist | CI · VG leg h, leg e |
 | BR-23 | The judgment policy's own turn routes a post | The record carries no best-fit reason, as today | CI |
+
+## Memory
+
+| # | When | Then | Proved by |
+|---|---|---|---|
+| BR-24 | The DevTeam runs with memory capture on, and a post is routed straight to a delegate | The chief of staff runs no turn on it, so its memory likely records nothing of the post. Confirm, and say so in the README | V5 |
 
 ## Failure taxonomy
 
