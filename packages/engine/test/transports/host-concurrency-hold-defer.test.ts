@@ -75,6 +75,11 @@ function buildHost(
           concurrency: policies.notify,
           inputSchema: z.object({ value: z.string() }),
           block: block("notify")
+        },
+        strict: {
+          concurrency: "reject",
+          inputSchema: z.object({ value: z.string() }),
+          block: block("strict")
         }
       }
     })({ id: "conversation" })
@@ -101,14 +106,14 @@ function buildHost(
     started,
     release: (id: string) => gate(id).release(),
     fail: (id: string, error: Error) => gate(id).fail(error),
-    dispatch: (action: "reply" | "notify", value: string, sessionId = "s_1") =>
+    dispatch: (action: "reply" | "notify" | "strict", value: string, sessionId = "s_1", userId = "u_1") =>
       host.dispatch({
         source: "http" as const,
         flowKind: "conversation",
         action,
         input: { value },
         sessionId,
-        principal: { userId: "u_1", orgId: DEFAULT_ORG_ID }
+        principal: { userId, orgId: DEFAULT_ORG_ID }
       })
   };
 }
@@ -347,7 +352,11 @@ describe("too many notices behind one reply", () => {
     await tick();
     const n1 = h.dispatch("notify", "notice-1");
     const n2 = h.dispatch("notify", "notice-2");
-    expect(() => h.dispatch("notify", "notice-3")).toThrow(ConcurrencyDeferLimitError);
+    await tick();
+    // Refused once its ownership is checked, through the handle, not by a
+    // throw: a defer takes its place only after the session is authorized.
+    const n3 = h.dispatch("notify", "notice-3");
+    await expect(n3.finished).rejects.toBeInstanceOf(ConcurrencyDeferLimitError);
 
     h.release("reply-1");
     await reply.finished;
@@ -357,5 +366,53 @@ describe("too many notices behind one reply", () => {
     h.release(h.live[0]!);
     await Promise.all([n1.finished, n2.finished]);
     expect(h.started).not.toContain("notice-3");
+  });
+});
+
+describe("a caller who does not own the session", () => {
+  /** u_1 owns s_1 once its first request has run there. */
+  async function ownedSession(h: ReturnType<typeof buildHost>) {
+    const first = h.dispatch("reply", "owner-first");
+    await tick();
+    h.release("owner-first");
+    await first.finished;
+  }
+
+  it("cannot use up the owner's defer cap", async () => {
+    const h = buildHost(HOLD_DEFER, createConcurrencyArbiter({ maxDeferredPerKey: 2 }));
+    await ownedSession(h);
+    const reply = h.dispatch("reply", "reply-1");
+    await tick();
+
+    // Another user fires defers at the owner's session, then the owner's
+    // notice arrives in the same tick.
+    const foreign = [h.dispatch("notify", "x-1", "s_1", "u_2"), h.dispatch("notify", "x-2", "s_1", "u_2")];
+    const notice = h.dispatch("notify", "notice-1");
+    for (const f of foreign) await expect(f.finished).rejects.not.toBeInstanceOf(ConcurrencyDeferLimitError);
+
+    h.release("reply-1");
+    await reply.finished;
+    await tick();
+    expect(h.live).toEqual(["notice-1"]);
+    h.release("notice-1");
+    await notice.finished;
+    expect(h.started).not.toContain("x-1");
+  });
+
+  it("cannot hold the owner's session, even for a moment", async () => {
+    const h = buildHost(HOLD_DEFER);
+    await ownedSession(h);
+
+    const foreign = h.dispatch("reply", "x-1", "s_1", "u_2");
+    // A `reject` action of the owner's in the same tick must find the key free.
+    let strict: ReturnType<typeof h.dispatch> | undefined;
+    expect(() => {
+      strict = h.dispatch("strict", "strict-1");
+    }).not.toThrow();
+    await expect(foreign.finished).rejects.toBeDefined();
+    await tick();
+    h.release("strict-1");
+    await strict!.finished;
+    expect(h.started).not.toContain("x-1");
   });
 });

@@ -282,6 +282,10 @@ inherits it at the one shared seam. The arbiter resolves the effective policy
   of the line, behind the runs present at that moment, and waits for its turn
   with no budget. A caller sending `hold` requests back to back delays it by
   at most the patience plus the runs it found.
+- `hold` and `defer` take their place only after `admitOwnership` passes, on
+  the in-memory default too, so a caller who does not own the session never
+  marks its key held or fills its defer cap. Neither is refused synchronously:
+  a `defer` over its cap is refused through `accepted` / `finished`.
 - The policy is read only from the flow's declaration (the entry's
   `concurrency`, else `request.concurrency`), found through the trusted
   `source`. Nothing in the body, `metadata` or headers selects it (BP-031).

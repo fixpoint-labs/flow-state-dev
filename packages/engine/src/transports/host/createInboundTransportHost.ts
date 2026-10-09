@@ -775,9 +775,14 @@ export function createInboundTransportHost(
       isExternalDispatcher && (resolved.policy === "hold" || resolved.policy === "defer")
         ? { policy: "allow" as const, key: undefined }
         : resolved;
-    const upFront = arbiter.arbitratesAcrossProcesses
-      ? undefined
-      : arbiter.admit(decision, requestId);
+    // `hold` and `defer` take their place only once ownership has passed, on
+    // every backend. Neither is refused synchronously (a `defer` over its cap
+    // is refused through the handle), so nothing is lost by waiting, and a
+    // caller who does not own the session never marks its key held or uses
+    // up its defer cap, not even for the moment before the refusal (BP-031).
+    const admitsAfterOwnership =
+      arbiter.arbitratesAcrossProcesses || decision.policy === "hold" || decision.policy === "defer";
+    const upFront = admitsAfterOwnership ? undefined : arbiter.admit(decision, requestId);
     // The admission once taken. From here until a branch below hands it to its
     // run, every failure gives it back: the synchronous setup is wrapped below,
     // and each asynchronous chain ends in `releaseHeldAdmission`. A place nobody
@@ -1191,7 +1196,7 @@ export function createInboundTransportHost(
           // Nothing is written before the run here (`runAction` writes its own
           // records), so a shared backend's place waits only on ownership.
           const arbitrated =
-            arbiter.arbitratesAcrossProcesses &&
+            admitsAfterOwnership &&
             decision.key !== undefined &&
             decision.policy !== "allow";
           finished = arbitrated
