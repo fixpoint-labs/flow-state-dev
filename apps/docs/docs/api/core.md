@@ -367,7 +367,7 @@ defineFlow({
 
 `expose` and `derived` share a namespace. A name in both throws at `defineFlow`. `expose` names that aren't on the scope's `stateSchema` throw too.
 
-`clientData` is not a scope config key: `defineFlow` throws if one sets it. Compute functions go under `client.derived`, plain passthroughs under `client.expose`.
+`clientData` is not a scope config key. Compute functions go under `client.derived`, plain passthroughs under `client.expose`.
 
 Clients read the result at `snapshot.clientData.<scope>.<name>`.
 

@@ -18,6 +18,11 @@
  * blue; the current row is v2's blue tint at 700; each workstream has its `#`
  * and its needs-you or running dot; TEAMS says what its counts are; and the
  * footer ends its counts with the person's initials (v2:52-113, 1173-1188).
+ *
+ * Collapsed, it is a 48px rail: the toggle that expands it, then an icon each
+ * for Shift Coordinator, Inbox (with its count while an ask waits), Tasks,
+ * Roster and Jump to. Each icon names itself on hover and navigates as its
+ * entry does.
  */
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { themeLabel, type ThemeLook } from "../lib/theme";
@@ -76,6 +81,9 @@ function NavItem({
 
 /** v2's 14px line icons for Inbox, Tasks and Roster (v2:58, 63, 68), stroked in the text's colour. */
 const ICON_PATHS = {
+  /** The toggle: a panel with its left column marked. */
+  panel: "M1.5 1.5h11v11h-11z M5 1.5v11",
+  jump: "M6 1.5a4.5 4.5 0 1 0 0 9a4.5 4.5 0 1 0 0-9z M9.3 9.3l3.2 3.2",
   inbox: "M1.5 1.5h11v11h-11z M1.5 8.5h3.2l1 1.8h2.6l1-1.8h3.2",
   tasks: "M1.5 3h2 M5.5 3h7 M1.5 7h2 M5.5 7h7 M1.5 11h2 M5.5 11h7",
   roster: "M1.5 1.5h4.5v4.5h-4.5z M8 1.5h4.5v4.5h-4.5z M1.5 8h4.5v4.5h-4.5z M8 8h4.5v4.5h-4.5z",
@@ -206,8 +214,26 @@ function OrgSwitcher({ orgId, onSwitch }: { orgId: string; onSwitch: () => void 
   );
 }
 
-/** The mark, the app's name, and the theme it's in: `Evening shift`. */
-function SidebarHeader({ look }: { look: ThemeLook }) {
+/** The control that collapses the sidebar to its rail, or expands it back (`[`). */
+function SidebarToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={`${label} ([)`}
+      aria-label={label}
+      aria-expanded={!collapsed}
+      data-testid="sidebar-toggle"
+      className="flex size-7 shrink-0 items-center justify-center hover:bg-foreground/6"
+    >
+      <NavIcon name="panel" />
+    </button>
+  );
+}
+
+/** The mark, the app's name, and the theme it's in: `Evening shift`. Then the toggle. */
+function SidebarHeader({ look, onToggle }: { look: ThemeLook; onToggle: () => void }) {
   const theme = useSyncExternalStore(look.subscribe, look.current);
   return (
     <div className="flex items-center gap-2.5 border-b px-3.5 pt-3.5 pb-3" data-testid="sidebar-header">
@@ -217,6 +243,81 @@ function SidebarHeader({ look }: { look: ThemeLook }) {
         <Meta role="label" className="block truncate text-muted-foreground" testId="sidebar-theme-name">
           {themeLabel(theme)}
         </Meta>
+      </div>
+      <SidebarToggle collapsed={false} onToggle={onToggle} />
+    </div>
+  );
+}
+
+/** One icon on the collapsed rail: named on hover, and the current screen's tinted as its entry is. */
+function RailItem({
+  label,
+  active = false,
+  onClick,
+  testId,
+  children,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  testId: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      data-testid={testId}
+      className={`relative flex size-8 items-center justify-center ${active ? "bg-accent text-accent-foreground" : "hover:bg-foreground/6"}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** The collapsed sidebar: the toggle, then the entries as icons. */
+function SidebarRail({
+  route,
+  onToggle,
+  onJump,
+  inboxCount,
+  waiting,
+}: {
+  route: Route;
+  onToggle: () => void;
+  onJump: () => void;
+  inboxCount: number | string;
+  waiting: boolean;
+}) {
+  return (
+    <div className="flex w-12 flex-col items-center gap-1 py-3" data-testid="sidebar-rail">
+      <SidebarToggle collapsed onToggle={onToggle} />
+      <div className="mt-2 flex flex-col items-center gap-1">
+        <RailItem label="Shift Coordinator" active={route.level === "cos"} onClick={() => navigate({ level: "cos" })} testId="rail-cos">
+          <span className="flex size-[18px] items-center justify-center border border-primary bg-primary font-mono text-[7.5px] font-semibold text-primary-foreground" aria-hidden>
+            SC
+          </span>
+        </RailItem>
+        <RailItem label="Inbox" active={route.level === "inbox"} onClick={() => navigate({ level: "inbox", suspensionId: null })} testId="rail-inbox">
+          <NavIcon name="inbox" />
+          {waiting ? (
+            <span className="absolute -top-0.5 -right-0.5 bg-attention px-[3px] font-mono text-[9px] font-semibold leading-tight text-attention-foreground tabular-nums" data-testid="rail-inbox-count">
+              {inboxCount}
+            </span>
+          ) : null}
+        </RailItem>
+        <RailItem label="Tasks" active={route.level === "tasks" || route.level === "task"} onClick={() => navigate({ level: "tasks", by: "state" })} testId="rail-tasks">
+          <NavIcon name="tasks" />
+        </RailItem>
+        <RailItem label="Roster" active={route.level === "roster"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
+          <NavIcon name="roster" />
+        </RailItem>
+        <RailItem label="Jump to (⌘K)" onClick={onJump} testId="rail-jump">
+          <NavIcon name="jump" />
+        </RailItem>
       </div>
     </div>
   );
@@ -284,7 +385,25 @@ function ProjectsSection({
   );
 }
 
-export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gaps; onJump: () => void; look?: ThemeLook }) {
+/**
+ * @param collapsed Draw the rail instead of the full nav.
+ * @param onToggle Collapse or expand it.
+ */
+export function Sidebar({
+  route,
+  gaps,
+  onJump,
+  look,
+  collapsed,
+  onToggle,
+}: {
+  route: Route;
+  gaps: Gaps;
+  onJump: () => void;
+  look?: ThemeLook;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const { snapshot, refresh, clients } = useLab();
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
   const retry = () => void refresh();
@@ -300,140 +419,158 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
   const partial = states?.partial === true ? <PartialMark title={gaps.roster.partial} /> : null;
 
   return (
-    <nav aria-label="Shift Manager" className="flex h-full w-[248px] shrink-0 flex-col border-r bg-sidebar" data-testid="sidebar">
-      {look === undefined ? null : <SidebarHeader look={look} />}
-      <div className="flex-1 overflow-y-auto p-3">
-        {loaded === undefined ? null : <OrgSwitcher orgId={loaded.orgId} onSwitch={retry} />}
-        <button
-          type="button"
-          onClick={onJump}
-          data-testid="jump-to"
-          className="mt-2 flex w-full items-center justify-between border bg-secondary px-2 py-1.5 text-muted-foreground"
-        >
-          <Meta role="control">Jump to…</Meta>
-          <kbd className="border px-1">
-            <Meta role="count">⌘K</Meta>
-          </kbd>
-        </button>
-
-        <div className="mt-3 space-y-0.5">
-          <ChiefOfStaffEntry active={route.level === "cos"} />
-          <NavItem
-            label="Inbox"
-            icon={<NavIcon name="inbox" />}
-            mark={
-              // v2's badge (v2:60): the highlighter only while an ask waits on the person.
-              <span
-                className={`px-[5px] font-mono text-[10.5px] font-semibold tabular-nums ${waiting ? "bg-attention text-attention-foreground" : "text-muted-foreground"}`}
-                data-look="meta-count"
-                data-testid="nav-inbox-count"
-                data-waiting={waiting}
-              >
-                {inboxCount}
-              </span>
-            }
-            active={route.level === "inbox"}
-            onClick={() => navigate({ level: "inbox", suspensionId: null })}
-            testId="nav-inbox"
-          />
-          <NavItem
-            label="Tasks"
-            icon={<NavIcon name="tasks" />}
-            mark={
-              <Meta role="count" className="ml-2 tabular-nums text-info" testId="nav-tasks-count">
-                {tasksCount}
-              </Meta>
-            }
-            active={route.level === "tasks" || route.level === "task"}
-            onClick={() => navigate({ level: "tasks", by: "state" })}
-            testId="nav-tasks"
-          />
-          <NavItem
-            label="Roster"
-            icon={<NavIcon name="roster" />}
-            count={counts === undefined ? undefined : `${counts["on shift"]}·${counts["on call"]}`}
-            mark={partial}
-            active={route.level === "roster" && route.team === null}
-            onClick={() => navigate({ level: "roster", team: null })}
-            testId="nav-roster"
-          />
-        </div>
-
-        <Heading testId="projects-heading" onClick={() => navigate({ level: "project", projectId: NO_PROJECT, tab: "stream" })}>
-          PROJECTS
-        </Heading>
-        <div data-testid="projects">
-          {loaded === undefined ? null : <ProjectsSection snapshot={loaded} route={route} marks={dots} onRetry={retry} />}
-        </div>
-
-        <Heading testId="teams-heading" aside="on shift">
-          TEAMS
-        </Heading>
-        <div data-testid="teams">
-          {loaded === undefined ? null : loaded.inventory.ok ? (
-            teamsOf(loaded.inventory.value.seats).map(({ team, seats }) => (
-              <button
-                key={team}
-                type="button"
-                aria-current={route.level === "roster" && route.team === team ? "page" : undefined}
-                onClick={() => navigate({ level: "roster", team })}
-                data-testid="team"
-                data-team={team}
-                className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[13px] ${
-                  route.level === "roster" && route.team === team ? "bg-accent text-accent-foreground" : "hover:bg-foreground/6"
-                }`}
-              >
-                <span className="flex-1 truncate">{team}</span>
-                <span className="flex gap-0.5">
-                  {seats.map((seat) => {
-                    const status = states?.seats.get(seat.id)?.status ?? "off shift";
-                    return (
-                      <span key={seat.id} title={`${seat.name} · ${status}`} data-testid="worker" data-seat-id={seat.id} data-status={status}>
-                        <ShiftMark status={status} className="block size-2" />
-                      </span>
-                    );
-                  })}
-                </span>
-                <Meta role="count" className="w-8 text-right tabular-nums text-muted-foreground" testId="team-on-shift">
-                  {states === undefined ? 0 : shiftCounts(states, team)["on shift"]}/{seats.length}
-                </Meta>
-              </button>
-            ))
+    <nav
+      aria-label="Shift Manager"
+      className={`h-full shrink-0 overflow-hidden border-r bg-sidebar transition-[width] duration-[180ms] ease-out motion-reduce:transition-none ${collapsed ? "w-12" : "w-[248px]"}`}
+      data-testid="sidebar"
+      data-collapsed={collapsed}
+    >
+      {collapsed ? (
+        <SidebarRail route={route} onToggle={onToggle} onJump={onJump} inboxCount={inboxCount} waiting={waiting} />
+      ) : (
+        // Held at its full width inside the border, so the width's change clips the nav rather than reflowing it.
+        <div className="flex h-full w-[247px] flex-col">
+          {look === undefined ? (
+            <div className="flex justify-end px-3.5 pt-3">
+              <SidebarToggle collapsed={false} onToggle={onToggle} />
+            </div>
           ) : (
-            <SectionFailure what="Teams" failure={loaded.inventory.failure} onRetry={retry} testId="teams-failure" />
+            <SidebarHeader look={look} onToggle={onToggle} />
           )}
-        </div>
-      </div>
-      <footer
-        className="flex flex-col gap-[9px] border-t border-foreground/20 px-3 pt-2.5 pb-3 font-mono text-[11px] font-medium text-muted-foreground"
-        data-testid="sidebar-footer"
-        data-look="meta-meta"
-      >
-        <p className="flex items-center gap-3">
-          {counts === undefined ? null : (
-            <>
-              <span className="inline-flex items-center gap-1.5">
-                <ShiftMark status="on shift" />
-                <span data-testid="footer-on-shift">{counts["on shift"]} on shift</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <ShiftMark status="on call" />
-                <span data-testid="footer-on-call">{counts["on call"]} on call</span>
-              </span>
-              {partial}
-            </>
-          )}
-          <span
-            className="ml-auto flex size-[22px] shrink-0 items-center justify-center border border-foreground text-[10px] text-foreground"
-            title={clients.userId}
-            aria-label={`Signed in as ${clients.userId}`}
-            data-testid="footer-user"
-            data-look="avatar"
+          <div className="flex-1 overflow-y-auto p-3">
+            {loaded === undefined ? null : <OrgSwitcher orgId={loaded.orgId} onSwitch={retry} />}
+            <button
+              type="button"
+              onClick={onJump}
+              data-testid="jump-to"
+              className="mt-2 flex w-full items-center justify-between border bg-secondary px-2 py-1.5 text-muted-foreground"
+            >
+              <Meta role="control">Jump to…</Meta>
+              <kbd className="border px-1">
+                <Meta role="count">⌘K</Meta>
+              </kbd>
+            </button>
+
+            <div className="mt-3 space-y-0.5">
+              <ChiefOfStaffEntry active={route.level === "cos"} />
+              <NavItem
+                label="Inbox"
+                icon={<NavIcon name="inbox" />}
+                mark={
+                  // v2's badge (v2:60): the highlighter only while an ask waits on the person.
+                  <span
+                    className={`px-[5px] font-mono text-[10.5px] font-semibold tabular-nums ${waiting ? "bg-attention text-attention-foreground" : "text-muted-foreground"}`}
+                    data-look="meta-count"
+                    data-testid="nav-inbox-count"
+                    data-waiting={waiting}
+                  >
+                    {inboxCount}
+                  </span>
+                }
+                active={route.level === "inbox"}
+                onClick={() => navigate({ level: "inbox", suspensionId: null })}
+                testId="nav-inbox"
+              />
+              <NavItem
+                label="Tasks"
+                icon={<NavIcon name="tasks" />}
+                mark={
+                  <Meta role="count" className="ml-2 tabular-nums text-info" testId="nav-tasks-count">
+                    {tasksCount}
+                  </Meta>
+                }
+                active={route.level === "tasks" || route.level === "task"}
+                onClick={() => navigate({ level: "tasks", by: "state" })}
+                testId="nav-tasks"
+              />
+              <NavItem
+                label="Roster"
+                icon={<NavIcon name="roster" />}
+                count={counts === undefined ? undefined : `${counts["on shift"]}·${counts["on call"]}`}
+                mark={partial}
+                active={route.level === "roster" && route.team === null}
+                onClick={() => navigate({ level: "roster", team: null })}
+                testId="nav-roster"
+              />
+            </div>
+
+            <Heading testId="projects-heading" onClick={() => navigate({ level: "project", projectId: NO_PROJECT, tab: "stream" })}>
+              PROJECTS
+            </Heading>
+            <div data-testid="projects">
+              {loaded === undefined ? null : <ProjectsSection snapshot={loaded} route={route} marks={dots} onRetry={retry} />}
+            </div>
+
+            <Heading testId="teams-heading" aside="on shift">
+              TEAMS
+            </Heading>
+            <div data-testid="teams">
+              {loaded === undefined ? null : loaded.inventory.ok ? (
+                teamsOf(loaded.inventory.value.seats).map(({ team, seats }) => (
+                  <button
+                    key={team}
+                    type="button"
+                    aria-current={route.level === "roster" && route.team === team ? "page" : undefined}
+                    onClick={() => navigate({ level: "roster", team })}
+                    data-testid="team"
+                    data-team={team}
+                    className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[13px] ${
+                      route.level === "roster" && route.team === team ? "bg-accent text-accent-foreground" : "hover:bg-foreground/6"
+                    }`}
+                  >
+                    <span className="flex-1 truncate">{team}</span>
+                    <span className="flex gap-0.5">
+                      {seats.map((seat) => {
+                        const status = states?.seats.get(seat.id)?.status ?? "off shift";
+                        return (
+                          <span key={seat.id} title={`${seat.name} · ${status}`} data-testid="worker" data-seat-id={seat.id} data-status={status}>
+                            <ShiftMark status={status} className="block size-2" />
+                          </span>
+                        );
+                      })}
+                    </span>
+                    <Meta role="count" className="w-8 text-right tabular-nums text-muted-foreground" testId="team-on-shift">
+                      {states === undefined ? 0 : shiftCounts(states, team)["on shift"]}/{seats.length}
+                    </Meta>
+                  </button>
+                ))
+              ) : (
+                <SectionFailure what="Teams" failure={loaded.inventory.failure} onRetry={retry} testId="teams-failure" />
+              )}
+            </div>
+          </div>
+          <footer
+            className="flex flex-col gap-[9px] border-t border-foreground/20 px-3 pt-2.5 pb-3 font-mono text-[11px] font-medium text-muted-foreground"
+            data-testid="sidebar-footer"
+            data-look="meta-meta"
           >
-            {initialsOf(clients.userId)}
-          </span>
-        </p>
-      </footer>
+            <p className="flex items-center gap-3">
+              {counts === undefined ? null : (
+                <>
+                  <span className="inline-flex items-center gap-1.5">
+                    <ShiftMark status="on shift" />
+                    <span data-testid="footer-on-shift">{counts["on shift"]} on shift</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <ShiftMark status="on call" />
+                    <span data-testid="footer-on-call">{counts["on call"]} on call</span>
+                  </span>
+                  {partial}
+                </>
+              )}
+              <span
+                className="ml-auto flex size-[22px] shrink-0 items-center justify-center border border-foreground text-[10px] text-foreground"
+                title={clients.userId}
+                aria-label={`Signed in as ${clients.userId}`}
+                data-testid="footer-user"
+                data-look="avatar"
+              >
+                {initialsOf(clients.userId)}
+              </span>
+            </p>
+          </footer>
+        </div>
+      )}
     </nav>
   );
 }

@@ -229,7 +229,7 @@ The same holds after a restart, whichever instances are registered afterwards an
 | POST | `/api/flows/:flowId/:sessionId/actions/:action` | Execute action (existing session) |
 | GET | `/api/flows/:flowId/requests/:requestId/stream` | SSE request stream |
 | GET | `/api/flows/sessions` | List sessions |
-| GET | `/api/flows/sessions/:sessionId` | Session detail |
+| GET | `/api/flows/sessions/:sessionId` | Session detail (`state` holds only the fields the flow exposes or declares readonly) |
 | GET | `/api/flows/sessions/:sessionId/state` | State snapshot (clientData) |
 | GET | `/api/flows/sessions/:sessionId/stream` | SSE session stream: every request's finished items, unfinished runs |
 | PATCH | `/api/flows/sessions/:sessionId/metadata` | Update title, description, tags, metadata |

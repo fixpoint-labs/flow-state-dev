@@ -219,13 +219,7 @@ After the change, an item INSERT pays the TOAST cost once. An UPDATE only rewrit
 
 ## Upgrading from older versions
 
-Migration of the items storage is lazy. There is no offline step and no required backfill for it. (Attributing owners to rows written before `flow_id` existed is the separate, operator-run step described under [Instance ownership](#instance-ownership).)
-
-- New requests after the deploy: items go straight to `request_items`. The `requests.data` JSONB no longer carries a `data.items` slice for new writes.
-- Legacy requests at deploy time: items still live in `data.items`. The adapter's read path returns them via a fallback that merges `request_items` rows with `data.items`, ordered by `itemIndex`.
-- In-flight requests at deploy time: items emitted before the deploy live in `data.items`; items emitted after live in `request_items`. The merge returns both, in order.
-
-The merge is one-directional, which makes this **a forward-only deploy**. Once new code has written even one row to `request_items`, that data is invisible to the old code (which only reads `data.items`). Rolling back requires manually exporting `request_items` rows back into `data.items` JSONB arrays. Validate the deploy in a staging environment before rolling out.
+Items are read from `request_items` only. Requests written by a version that kept items in the `requests.data` JSONB (`data.items`) are not read or migrated: their items do not appear in `get`, `list` or `countItems`. Start from a fresh database, or drop those requests, before deploying. (Attributing owners to rows written before `flow_id` existed is a separate, operator-run step described under [Instance ownership](#instance-ownership).)
 
 ## Reclaiming storage from the legacy bloat
 
@@ -240,7 +234,7 @@ After upgrade, the legacy `data.items` arrays on already-migrated requests are s
      AND data ? 'items';
    ```
 
-   The statement is idempotent and safe to run on a live database. After it runs, the lazy fallback in the read path is a no-op for those requests.
+   The statement is idempotent and safe to run on a live database. The read path ignores `data.items`, so this only frees space.
 
 2. Reclaim the dead TOAST tuples with [`pg_repack`](https://reorg.github.io/pg_repack/):
 

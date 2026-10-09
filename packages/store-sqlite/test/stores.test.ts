@@ -551,78 +551,6 @@ describe("SQLite store adapter", () => {
       expect(itemCount("req_coal")).toBe(2);
     });
 
-    it("get falls back to legacy data.items when request_items has no rows", async () => {
-      // Intent: requests persisted before the table existed still read their
-      // items from the JSONB blob.
-      const store = freshRequestStore();
-      const legacyItem = makeMessageItem("legacy_1", "legacy_a", 0, "legacy-x");
-      const record = makeRequestRecord("legacy_1", "flow-a", "run", "u", "sess", {
-        items: [legacyItem as unknown as OutputItem]
-      });
-      // Write the legacy shape directly: items inside data, no child rows.
-      db.prepare(
-        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
-          "VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)"
-      ).run(
-        "legacy_1",
-        record.flowKind,
-        record.userId,
-        record.sessionId ?? null,
-        record.status,
-        record.version,
-        record.createdAt,
-        record.updatedAt,
-        JSON.stringify(record)
-      );
-
-      const got = await store.get("legacy_1");
-      expect(got!.items).toHaveLength(1);
-      expect(got!.items![0]!.id).toBe("legacy_a");
-    });
-
-    it("merges legacy data.items with request_items rows, table wins on collision", async () => {
-      const store = freshRequestStore();
-      const legacyA = makeMessageItem("merge_1", "shared", 0, "legacy-version");
-      const legacyB = makeMessageItem("merge_1", "legacy-only", 1, "legacy-b");
-      const record = makeRequestRecord("merge_1", "flow-a", "run", "u", "sess", {
-        items: [legacyA as unknown as OutputItem, legacyB as unknown as OutputItem]
-      });
-      db.prepare(
-        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
-          "VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)"
-      ).run(
-        "merge_1",
-        record.flowKind,
-        record.userId,
-        record.sessionId ?? null,
-        record.status,
-        record.version,
-        record.createdAt,
-        record.updatedAt,
-        JSON.stringify(record)
-      );
-
-      // Table version of `shared` wins; `table-only` is new.
-      store.persistItems("merge_1", [
-        makeMessageItem("merge_1", "shared", 2, "table-version") as unknown as OutputItem,
-        makeMessageItem("merge_1", "table-only", 3, "table-c") as unknown as OutputItem
-      ]);
-      await store.flushItems("merge_1");
-
-      const got = await store.get("merge_1");
-      expect(got!.items).toHaveLength(3);
-      const sharedRow = got!.items!.find((i) => i.id === "shared")!;
-      expect((sharedRow.content as Array<{ text: string }>)[0]!.text).toBe(
-        "table-version"
-      );
-      // Ordered by itemIndex: legacy-only (1), shared (2), table-only (3).
-      expect(got!.items!.map((i) => i.id)).toEqual([
-        "legacy-only",
-        "shared",
-        "table-only"
-      ]);
-    });
-
     it("countItems counts table rows without parsing item payloads", async () => {
       const store = freshRequestStore();
       await seedRequest(store, "req_cnt");
@@ -639,40 +567,6 @@ describe("SQLite store adapter", () => {
       ).run("req_cnt");
 
       expect(await store.countItems("req_cnt")).toBe(2);
-    });
-
-    it("countItems merges legacy data.items with table rows, table wins on collision", async () => {
-      const store = freshRequestStore();
-      const legacyA = makeMessageItem("cnt_merge", "shared", 0, "legacy-version");
-      const legacyB = makeMessageItem("cnt_merge", "legacy-only", 1, "legacy-b");
-      const record = makeRequestRecord("cnt_merge", "flow-a", "run", "u", "sess", {
-        items: [legacyA as unknown as OutputItem, legacyB as unknown as OutputItem]
-      });
-      db.prepare(
-        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
-          "VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)"
-      ).run(
-        "cnt_merge",
-        record.flowKind,
-        record.userId,
-        record.sessionId ?? null,
-        record.status,
-        record.version,
-        record.createdAt,
-        record.updatedAt,
-        JSON.stringify(record)
-      );
-
-      store.persistItems("cnt_merge", [
-        makeMessageItem("cnt_merge", "shared", 2, "table-version") as unknown as OutputItem,
-        makeMessageItem("cnt_merge", "table-only", 3, "table-c") as unknown as OutputItem
-      ]);
-      await store.flushItems("cnt_merge");
-
-      // Union by id: shared, legacy-only, table-only — matches get().items.
-      expect(await store.countItems("cnt_merge")).toBe(3);
-      const got = await store.get("cnt_merge");
-      expect(got!.items).toHaveLength(3);
     });
 
     it("set strips items from the requests blob", async () => {
@@ -726,8 +620,8 @@ describe("SQLite store adapter", () => {
     });
 
     it("list default returns empty items and does not query request_items", async () => {
-      // Intent: the cheap list path never touches the child table; legacy
-      // blob items are stripped so the payload stays lean.
+      // Intent: the cheap list path never touches the child table, so the
+      // payload stays lean.
       const store = freshRequestStore();
       await seedRequest(store, "req_l1");
       store.persistItems("req_l1", [
@@ -743,7 +637,7 @@ describe("SQLite store adapter", () => {
       expect(target.items).toBeUndefined();
     });
 
-    it("list with withItems:true groups items per record, merging legacy + table", async () => {
+    it("list with withItems:true groups items per record", async () => {
       const store = freshRequestStore();
       await store.set(
         "req_l2",

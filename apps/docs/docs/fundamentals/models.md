@@ -92,7 +92,7 @@ You can replace which model a declared intent (or `defaultModel`) resolves to pe
 
 **Variable naming.** `FSDEV_INTENT_<NAME>` overrides intent `<name>`'s candidate list. `<NAME>` is the intent name uppercased with hyphens replaced by underscores, so `chat` → `FSDEV_INTENT_CHAT` and `my-custom` → `FSDEV_INTENT_MY_CUSTOM`. If two declared intents normalize to the same env-var name (`my-custom` and `my_custom` both → `FSDEV_INTENT_MY_CUSTOM`), construction throws.
 
-**Value shape.** A single `provider/model` or `gateway/provider/model` string. `intent/*`, `preset/*`, empty values, and malformed strings all throw at construction. Comma-separated multi-value lists are deliberately not supported in this phase.
+**Value shape.** A single `provider/model` or `gateway/provider/model` string. `intent/*` values, empty values, and malformed strings all throw at construction. Comma-separated multi-value lists are deliberately not supported in this phase.
 
 **`defaultModel` override.** `FSDEV_DEFAULT_MODEL` replaces `defaultModel`. This covers the fallback path for empty, unknown, or fully-unavailable intents.
 
@@ -100,7 +100,7 @@ You can replace which model a declared intent (or `defaultModel`) resolves to pe
 
 **What happens if it's wrong.** Most failure modes are construction-time errors, not silent fallbacks:
 
-- malformed value for a declared intent (`intent/foo`, `preset/fast`, empty, garbage)
+- malformed value for a declared intent (`intent/foo`, empty, garbage)
 - malformed `FSDEV_DEFAULT_MODEL`
 
 Two cases are deliberately **not** fatal. An `FSDEV_INTENT_<NAME>` that names an intent the resolver doesn't declare is warned and ignored, not thrown. And `FSDEV_DEFAULT_MODEL` applies whether or not the app declares intents, so an app that never resolves a model simply never reads it. Env vars are ambient — a shared or CI environment may pin an intent override for some other app, and your app must not crash because of it. A typo in an intent you *do* declare still surfaces as a warning and falls back to `defaultModel`.
@@ -687,21 +687,6 @@ const responder = generator({
 This is the supported path for completion-time state projection. The `meta` argument is typed per block kind: only generators receive `GeneratorCompletedMeta` today. Handlers, sequencers, and routers keep the existing two-argument `onCompleted(output, ctx)` signature.
 
 For the general hook mechanism, see [lifecycle hooks](../fundamentals/flows.md#lifecycle-hooks). For the per-item form, see [streaming/items.md](../streaming/items.md#observable-model-identity).
-
-## Migration from presets
-
-The `preset/*` API was removed as part of the intents rollout. Any `preset/*` string now throws at construction time with this mapping:
-
-```
-preset/fast, preset/tiny, preset/small  → intent/utility
-preset/medium                           → intent/chat
-preset/large                            → intent/code or intent/reason
-preset/thinking-*                       → intent/reason or intent/plan
-```
-
-An intent is a name pointing at a list of models, so the swap isn't only in the generator. Declare the intent on the resolver, then point the generator at `intent/<name>`. [Configuring intents](#configuring-intents) above has the shape.
-
-There is no framework-level setting for reasoning depth. Migrating from `preset/thinking-*` means picking the intent and then setting the provider's own reasoning option — see [Thinking and reasoning](#thinking-and-reasoning) above for the `providerOptions` escape hatch.
 
 ## AI SDK 7
 

@@ -110,23 +110,6 @@ describe("C1 · organization identity is resolved once, from a trusted source", 
       expect(defaultWarnings).toHaveLength(1);
     });
 
-    it("warns once that an obsolete body orgId was present, without logging its value", async () => {
-      const warn = vi.fn();
-      const host = buildHost({ logger: { warn } });
-
-      await host.resolvePrincipal(
-        contextFor("plain", { userId: "u1", orgId: "secret-tenant-name" })
-      );
-      await host.resolvePrincipal(
-        contextFor("plain", { userId: "u2", orgId: "secret-tenant-name" })
-      );
-
-      const legacyWarnings = warn.mock.calls.filter((call) =>
-        /orgId/.test(String(call[0])) && !String(call[0]).includes(DEFAULT_ORG_ID)
-      );
-      expect(legacyWarnings).toHaveLength(1);
-      expect(JSON.stringify(warn.mock.calls)).not.toContain("secret-tenant-name");
-    });
   });
 
   describe("BR-1 · a configured resolver's verified organization is authoritative", () => {

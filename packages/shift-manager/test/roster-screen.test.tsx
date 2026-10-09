@@ -88,6 +88,8 @@ async function open(path: string, snapshot: LabSnapshot = lab()) {
 
 const attrs = (els: HTMLElement[], name: string) => els.map((el) => el.getAttribute(name));
 
+// A wide window: the right panel is drawn beside the centre only from 1180px.
+beforeEach(() => (window as unknown as { happyDOM: { setViewport(viewport: { width: number; height: number }): void } }).happyDOM.setViewport({ width: 1600, height: 900 }));
 beforeEach(() => {
   fixture = lab();
   rosterRead = async () => [];

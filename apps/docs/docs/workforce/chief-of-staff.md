@@ -28,6 +28,8 @@ Shift Manager's [`devteam` profile](../shift-manager/overview.md#the-devteam-pro
 
 Add a `WORKER.md` for the worker, and build the `coordinator` flow with the hire and fire tools in its catalog.
 
+There's no switch for it: a chief of staff is a worker your files declare, like any other.
+
 The file goes under `org/workers/`, beside `teams/`. Its folder name is its id, so `org/workers/chief-of-staff/` is the worker `chief-of-staff`. It runs on the `coordinator` flow, routes by judgment, and names the delegates each conversation starts with and the tools it holds:
 
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
@@ -100,7 +102,12 @@ const askFire = handler({
 
 const installation = createWorkerInstallation({
   standardWorkers: roster.workers,
-  workerFlows: () => ({ em: emFlow, coder: coderFlow, agent, coordinator }),
+  workerFlows: () => ({
+    em: { flow: emFlow, standardOnly: true },
+    coder: coderFlow,
+    agent,
+    coordinator: { flow: coordinator, standardOnly: true },
+  }),
 });
 
 const { hire, fire } = createWorkerHireBlocks(installation);
@@ -165,9 +172,11 @@ Build in this order:
 
 `createWorkforceCapability` keeps the mailbox records it is given, so a record changed after step 2 never reaches `discover`. Pass `createWorkforceCapability` the same mailbox records you pass `mailboxInstances`, so `discover` answers from the mailboxes the app actually opens.
 
-`hire` asks the model for an id, a flow and `settings`, but doesn't say which flows require which settings. The chief of staff learns that from its `WORKER.md` body, so name each required setting and its value there, as the example file does for `coder`. A hire missing a required setting is refused with the setting named and nothing written, so the model can call `hire` again with it.
+`hire` asks the model for an id, a flow and `settings`, but doesn't say which flows it can hire onto or which settings each one requires. The chief of staff learns both from its `WORKER.md` body, so name the flows it hires onto there, and each required setting and its value, as the example file does for `agent` and `coder`. Without them, the model may ask the person which flow to use instead of calling `hire`. A hire missing a required setting is refused with the setting named and nothing written, so the model can call `hire` again with it.
 
 In the snippet above, `coderFlow` requires a `document` setting through its `configSchema`: `workerConfigSchema().extend({ document: z.string().min(1) })`.
+
+Every flow in `workerFlows` can take a hire, and so can the built-in `agent`, unless its entry is marked `standardOnly: true`. Leave a flow open to hires only when a person should be able to get a worker on it by asking. Mark the rest, such as a flow only your declared workers run or one that exists for tests. The example marks `em` and `coordinator`, so the chief of staff hires onto `agent` and `coder` only. [Which flows can run workers](./workers-on-disk.md#which-flows-can-run-workers) shows the mark. A hire onto a marked flow is refused, and the refusal names the flow.
 
 Putting the tools in the catalog doesn't hand them to every worker on either flow. A worker holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other.
 
@@ -202,6 +211,51 @@ The `devteam` profile's chief of staff holds all three.
 The `inventory` capability from [Adding one](#adding-one) is the inventory declaration the project tools read. Don't add a second one, such as a `defineMailboxInventoryCollection()` of your own: [Giving the writes to a seat](./projects.md#giving-the-writes-to-a-seat) shows the error the kind throws.
 
 A workstream belongs to one project at most. When the person asks for one another project holds, the tool is refused, and the chief of staff can tell them which project has it.
+
+## Giving it memory
+
+Without [memory](../memory/overview.md), a chief of staff on the `coordinator` flow remembers nothing from one conversation to the next. Add memory to the `agent` option of `defineCoordinatorFlow` only, as below, and leave `agentTurn` alone. The `agent` flow uses `agentTurn` too, so the workers the chief of staff hires onto it get no memory.
+
+```ts title="src/workforce.ts"
+// continuing the example above
+import { system } from "@flow-state-dev/memory";
+
+const mem = system({
+  model: "openai/gpt-5.4-mini",
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+  digest: true,
+});
+
+const coordinator = defineCoordinatorFlow({
+  installation,
+  delegateFlows: [agent, emFlow],
+  routeModel: "openai/gpt-5.4-mini",
+  agent: {
+    ...agentTurn,
+    catalog: { ...agentTurn.catalog, "memory/recall": mem.tool.recall() },
+    uses: [...agentTurn.uses, mem.capability],
+    isolateUserState: true,
+    afterAnswer: mem.captureFromItems, // leave out for read-side only
+  },
+});
+```
+
+- **`mem.capability`** puts working memory and a rolling digest of earlier conversations into each turn's `<memory>` context.
+- **`memory/recall`** is the [recall tool](../memory/recall-tool.md), which searches what memory has stored. The chief of staff holds it only when its `tools:` line names it: `tools: [hire, fire, post-to-mailbox, memory/recall]`.
+- **`isolateUserState: true`** keeps what the coordinator remembers per person, separate from that person's other flows. Every worker on this coordinator flow shares that memory.
+- **`afterAnswer`** records each conversation into memory after the chief of staff answers. It runs memory's capture pipeline, which makes extra model calls after every turn. Leave it out and nothing is written: working memory, the digest and `memory/recall` stay empty unless something else in your app stores into that same memory.
+
+Then tell it in the `WORKER.md` body what counts as memory, for example:
+
+```md
+Your memory of earlier conversations is what your `<memory>` context shows and
+what `memory/recall` finds, and nothing else. The earlier messages of this
+conversation, and what your tools return, are things you read now, not
+memories. When the person asks about an earlier conversation and your memory
+has nothing on it, say you have no memory of it. Never make up a memory.
+```
 
 ## The tools
 

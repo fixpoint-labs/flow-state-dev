@@ -1191,8 +1191,25 @@ const mailboxes: MailboxManifest[] = [
 flowRegistry.registerMany(mailboxInstances(mailboxes)); // one instance, id "mailbox"
 
 // Runtime, once the host is up. One named session per record.
-await openMailboxes(mailboxes, { client: sessionClient, userId: "u_42" });
+await openMailboxes(mailboxes, {
+  client: {
+    createSession: sessionClient.createSession,
+    deleteSession: sessionClient.deleteSession,
+    // The stored record, not `sessionClient.getSession`: see below.
+    getSession: async (id) => {
+      const stored = await runtime.stores.session.get(id);
+      if (stored === undefined) throw new Error(`no session "${id}"`);
+      return stored;
+    },
+  },
+  userId: "u_42",
+});
 ```
+
+`getSession` reads the session from the store because the binder needs a mailbox's whole state to
+tell an open mailbox from an empty one it may replace. The session API sends a client only the state
+a flow exposes, and a mailbox exposes none, so through it every open mailbox would look empty. The
+example reads the store by the bare id, which is its storage key in a single-tenant app.
 
 The two calls are separate because they happen at two different times: an instance is registered
 when the server is built, and a session can only be opened once it is running. `openMailboxes` needs
@@ -1724,7 +1741,7 @@ const instances = mailboxInstances(roster.mailboxes, { inventory: true });
 flowRegistry.registerMany([...seats, ...instances]);
 // server starts here
 
-await openMailboxes(roster.mailboxes, { client, userId: "u_boot" });
+await openMailboxes(roster.mailboxes, { client, userId: "u_boot" }); // `client` as above
 
 await openInventory(
   { seats, mailboxes: roster.mailboxes },
@@ -2298,7 +2315,7 @@ the root exports, and reaches no Node built-in.
 | `workforceManifestSources({ roster, inventory })` | The seat and mailbox sources on their own, for an app assembling its own manifest registry. |
 | `createWorkerInstallation({ standardWorkers?, workerFlows?, seatBlocks?, packageBlocks?, documents?, references?, skills?, packages? })` | The worker model's one module (see [Workers as data](#workers-as-data)). Returns `resources` and `session()` for a worker flow to spread in, the `createCheck` that names a session's worker at create, `resolveWorker(ctx, flowKind)` for each turn, `standardWorker(id)`, `workerFlows()` and `configurationProblems(id, row)`. `workerFlows` may be a function, read when first needed. |
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
-| `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
+| `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `delegatedPostEntry(turn)` | The internal `onDelegatedPost` entry that makes a flow's workers delegates that take posts. On a post whose answer can go back out, it also tells the coordinator when it has no answer: at once when its turn fails, and at the round's deadline while its turn is still running. The turn isn't stopped; a later answer still lands once. |
 | `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated post's run is cancelled before its answer went back, it tells the coordinator, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_KIND`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |

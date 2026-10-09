@@ -77,7 +77,7 @@ Each is a smaller first version, not a reversal; each can come back as its own i
 | The goal's nesting leg | Leg 1 alone proves the restart, the filing once and the waker; with nesting cut there is nothing for a second leg to prove |
 | A testing helper that answers an ask | Checks run on SQLite with a cold restart; no app has asked for the helper yet |
 | A cancel reaching into a run under way through a failed lease renewal | Cancelling the row and dropping its later ending meets ER-4; stopping a run under way stays [FIX-1659](https://linear.app/fixpoint-labs/issue/FIX-1659)'s |
-| A per-call timeout | Ten minutes, fixed. One bound to keep right, and no ceiling rule |
+| ~~A per-call timeout~~ **Reversed 2026-10-09** | Was: ten minutes, fixed, one bound to keep right and no ceiling rule. The product owner reversed this cut: the filer sets `timeoutMs`, default five minutes ([amendments](#product-owner-amendments-2026-10-09)) |
 | Several asks in one step | One ask per step in v1: a second waiting `addTask` in the same step is refused before anything is filed. No flow on `main` asks twice before using an answer |
 
 **For the epic to record**, under [ER-11](../../epics/FIX-1815/BUSINESS-RULES.md#what-no-child-may-do)
@@ -92,9 +92,11 @@ reads as an opt-in option on the call; D4's fire-and-forget default is unchanged
   reverse reply carrying a request id lands, is not needed: the board's notice wakes the ask.
 - **The timeout fires from the durability sweeper.** Its expiry step gains an ask branch: a
   pending ask gate past its deadline is resumed with a timeout error, not marked `expired`.
-  At a ten-minute deadline and the default ten-minute sweep, the error arrives between ten and
-  twenty minutes after the ask. A faster sweep for asks alone would be a second timer per host
-  for a bound whose job is "never forever". A host with no sweeper does not offer `waitForResponse`.
+  The error arrives at the first sweep after the deadline: for the five-minute default and the
+  default ten-minute sweep, between five and fifteen minutes after the ask. A faster sweep for
+  asks alone would be a second timer per host for a bound whose job is "never forever". A host
+  with no sweeper does not offer `waitForResponse`. (Amended 2026-10-09: the deadline was a
+  fixed ten minutes.)
 - **The resume-owed marker is stored, not derived.** "Row ended and gate pending" is derivable,
   but the gate lives in the engine's suspension store, so a derived check reads across stores on
   every touch. The marker is the index that lets a touch stop at once when nothing is owed, and
@@ -116,6 +118,9 @@ reads as an opt-in option on the call; D4's fire-and-forget default is unchanged
   tool beside the task tools (since folded into `addTask`, which adds no tool); three PRs, the last after FIX-1794 P2.
 - **Review round 1** — the product owner folded `askTask` into `addTask` as `waitForResponse`; six cuts before the gate; the timeout given a real trigger, the sweeper;
   D1's dependency on FIX-1794 P2 priced; the stored marker justified.
+- **Cross-spec alignment** — after merge, with FIX-1817 ([#2905](https://github.com/fixpoint-labs/flow-state-dev/pull/2905)); below.
+- **Product owner amendments, 2026-10-09** — after P1, P2 and P2b merged: stopping a paused
+  turn is built (new slice P2c), and the timeout is set per ask; below.
 
 ## Cross-spec alignment
 
@@ -131,5 +136,89 @@ Decided by the epic coordinator after the cross-spec pass with [FIX-1817](https:
 **Direction change, for the product owner's sign-off on this PR:**
 
 - **The ask gate binds to the row's identity and its terminal ending, not to the row's claim ticket** (BR-12, BR-12a, PLAN S3). As merged, the gate held the claim ticket. A board retry after a failed attempt gets a new per-attempt ticket, so a gate fenced on the old one would refuse the real ending and strand the asker until the timeout. The board's ticket already stops a stale attempt from settling the row (ER-6), so the gate needs only "this row ended", and it admits the ending of whichever attempt settles it, never an intermediate failure that was retried. If wrong: an ask whose colleague fails once and then succeeds times out instead of answering.
+
+**Open: none.**
+
+<a name="product-owner-amendments-2026-10-09"></a>
+## Product owner amendments, 2026-10-09
+
+Two direction calls by the product owner, made after P1 ([#2912](https://github.com/fixpoint-labs/flow-state-dev/pull/2912)),
+P2 ([#2920](https://github.com/fixpoint-labs/flow-state-dev/pull/2920)) and P2b
+([#2922](https://github.com/fixpoint-labs/flow-state-dev/pull/2922)) merged and before P3. Each is
+decided, and recorded here, not reopened. The coordinator's calls under them are engineering
+calls the product owner can overrule; each says what it would cost to be wrong.
+
+### A1 · Stopping a paused turn is built
+
+**The product owner:** stopping a conversation whose turn is parked on an ask cancels the asked
+task, and the turn ends. BR-16 said so from the start, but nothing on `main` could do it: the
+engine's stop acts only on a running turn, and refuses a suspended one as if it had finished.
+
+**What exists, checked on `main` after P2 and P2b merged (#2920, #2922):** task cancellation is complete. `cancelTask`
+is a task tool, the board has a cancel transition from every unfinished status, and a cancel
+that ends an asked row stamps its resume-owed marker in the same write, as every ending does.
+Nothing on the board side is missing. The stop is what is missing: it is written only while the
+turn is running.
+
+**What the amendment builds, in a new slice P2c** ([PLAN](PLAN.md#sequence)), which needs
+nothing from FIX-1794 P2:
+
+- The engine's stop works on any suspended turn, not only a running one.
+- On an ask, the stop resolves the gate with a stop outcome. The parked call, which holds the
+  same binding (the board and the row), cancels its row through the cancel transition, and the
+  turn ends `aborted` without another model call. The timeout already works this way: the
+  resumed call cancels its own row. The engine cannot import the board, so it never cancels the
+  row itself.
+- On any other gate, such as an approval, the stop resolves the gate and ends the turn
+  `aborted`. Nothing is continued.
+- A stop and an answer racing are settled by the gate's single pending state (BR-12):
+  whichever lands first wins, and the loser is refused as `already-resolved` (BR-16b).
+- A resolved ask survives a crash, whatever its outcome (BR-11a, BR-16c), with no new
+  infrastructure: the gate's resolved outcome is the record of what is owed; the durability
+  sweep re-drives a request left `suspended` behind it; the parked call's cancel is idempotent.
+  A coordinator call, after Codex's review found a stop could strand; the same gap stranded an
+  answered or timed-out ask in the merged P2 and P2b, so the rule is generic and built once.
+
+This is a Layer 1 change outside the epic's list, so it is recorded in the epic under
+[ER-11](../../epics/FIX-1815/BUSINESS-RULES.md#what-no-child-may-do), as L7's stop half.
+
+### A2 · The ask timeout is set per ask, with a lower default
+
+**The product owner:** the agent filing the ask knows roughly how long the work takes, so it
+sets the bound. `addTask` takes `timeoutMs` beside `waitForResponse`; the deadline is the
+filing time plus it. **This reverses a cut made before the gate** ([Cut before the gate](#cut-before-the-gate):
+"a per-call timeout · ten minutes, fixed"). The cut was a smaller first version; the product
+owner wants the bound in the filer's hands before ask ships in P3.
+
+### The coordinator's calls under A1 and A2, overrulable
+
+| Call | Instead of | If wrong |
+|---|---|---|
+| **Five minutes when `timeoutMs` is not set** | Keeping ten | A colleague whose real work takes six to ten minutes times out unless its filer asks for more. The model sees `wait_timed_out` and can ask again with a longer bound |
+| **`timeoutMs` from 30 seconds to 60 minutes** | No range, or a wider one | Under 30 seconds nothing useful finishes; past an hour the turn is closer to an assignment, and assign ([FIX-1817](https://linear.app/fixpoint-labs/issue/FIX-1817)) is the hand-off for it. A filer who needs more is refused and must assign instead |
+| **An out-of-range `timeoutMs` is refused with `wait_timeout_out_of_range`, nothing filed** | Clamping it into range | A model that asked for two hours is told so and picks again, rather than silently getting an hour it didn't ask for. Costs one wasted step when it happens |
+| **The sweep's next tick is the earliest pending ask deadline**, floor about a second | A fixed sweep, which leaves a timeout up to one interval late | A host with many asks sweeps more often. Each tick is a bounded batch, and an idle host keeps its interval |
+| **Stop works on every suspended turn, approval gates included** | Stopping only a turn parked on an ask | A person who today gets a refusal when stopping a turn waiting on an approval now ends it. No caller on `main` relies on that refusal; it reads as "already finished", which is false. Making stop ask-only would need a second rule for which suspensions it reaches |
+
+**The coordinator's call that makes A2 hold: the sweep's next tick is chosen from the earliest
+ask deadline.** On a fixed ten-minute sweep, a five-minute ask would time out anywhere from five to
+fifteen minutes, so a configured timeout would mean little. Instead, after each tick the sweeper
+schedules its next one at the earlier of its interval and the earliest pending ask deadline, with
+a floor of about a second and no busy loop. A turn that parks on an ask in this process tells the
+sweeper its deadline, so an ask filed just after a tick is not left waiting for the full interval.
+Asks then time out within seconds of their deadline, on any long-lived host. Where the sweep is an
+external cron, as on a serverless host, the bound is the cron's cadence: a timeout fires no later
+than the next sweep, and on a long-lived host that is the deadline itself.
+
+This is **not** the dedicated ask timer rejected before the gate
+([Decided, not asked](#decided-not-asked)), which stays rejected: there is still one sweeper per
+host and no timer per ask; only the moment of its next tick changes. *If wrong:* an early tick
+also runs the sweep's other steps, pruning included, more often while asks are pending; they are
+bounded batches, so the cost is a few extra store reads per ask.
+
+**Decided, not asked:** `timeoutMs` is offered only beside `waitForResponse`. Set without it,
+the call is refused before filing, never ignored, so a filer who meant to wait learns it didn't.
+The stop's outcome on an ask gate is internal: no model reads it, so its name is the
+implementer's, not pinned.
 
 **Open: none.**

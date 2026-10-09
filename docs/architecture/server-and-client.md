@@ -81,12 +81,14 @@ custom) mount alongside it via the `adapters` option — see
 | POST | `/api/flows/:flowId/:sessionId/actions/:action` | Execute action (existing session) |
 | GET | `/api/flows/:flowId/requests/:requestId/stream` | SSE request stream |
 | GET | `/api/flows/sessions` | List sessions (`flowKind` and exact `flowId` filters) |
-| GET | `/api/flows/sessions/:sessionId` | Session detail |
+| GET | `/api/flows/sessions/:sessionId` | Session detail (projected: `state` holds only `session.client.expose` and readonly fields; no journal or stored resources) |
 | GET | `/api/flows/sessions/:sessionId/requests` | Session requests |
 | GET | `/api/flows/sessions/:sessionId/state` | State snapshot |
 | GET | `/api/flows/sessions/:sessionId/stream` | SSE session stream (every request's finished items, unfinished runs) |
 | POST | `/api/flows/:flowId/sessions` | Create session |
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |
+
+Every route that answers with a session record (detail, listing, create, metadata edit) sends it projected the same way. Scope state is private by default, so a client receives only the fields the flow exposes, plus its readonly fields: those are the session's identity, set at create and already a listing filter. Server-side code that needs the whole record reads the session store.
 
 `:flowId` is the instance id (a singleton's kind, a collection member's own id). Every session and request records its owner as `flowId` beside the definition's `flowKind`, and every response that projects a session or request (`GET /api/flows` entries also carry `cardinality`) includes `flowId`. Routes that name a flow and a record check the two agree before the resolver runs (`409 wrong-instance-session` / `wrong-instance-request`, or `409 migration-required` for an ownerless record under a collection kind); routes that name only a record resolve the governing flow — whose resolver authorizes the read, and which decides the anonymous-listing filter (`anonymousFlowIds`) — from the record's owner. Retry, continue, resume, and interrupted-request recovery re-enter the recorded owner. Clients bind an instance id in `flowKind` and re-enter through the `flowId` on the records they hold.
 

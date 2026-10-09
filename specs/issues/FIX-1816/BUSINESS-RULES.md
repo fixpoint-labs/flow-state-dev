@@ -29,6 +29,7 @@ happens. The *proved by* column is the check the plan runs. Epic rules are cited
 | BR-9 | The process dies at any point while the turn is parked | The parked turn and the row survive. The ask completes after the restart | CI · goal |
 | BR-10 | The resumed turn replays and reaches the waiting `addTask` again | The call does not file again: one row per call (ER-1) | CI · goal control `no-run-once` |
 | BR-11 | The process dies after the row's ending is written and before the turn resumes | The row keeps a resume-owed marker. The next touch of the board resumes the turn once and clears it | CI, killed in that window · goal control `no-waker` |
+| BR-11a | The process dies after an ask gate is resolved, by an answer, a failure, a timeout or a stop, and before the turn continues | The resolution is not lost. The gate's resolved outcome is the record of what is owed. The next durability sweep finds the request still `suspended` (or `interrupted`) behind a resolved ask gate and drives it on under its lease, with that outcome, never a second one: the turn ends as it would have. One rule for every outcome, built once (PLAN S12, in P2c) | CI on SQLite: an answered ask killed between the gate resolving and the turn continuing; after restart and one sweep the turn ends `completed` with the answer, once |
 | BR-12 | The ending's notice arrives twice, or a touch replays the marker after the turn resumed | Nothing resumes twice. The gate fences on the row's identity and its terminal ending, not on a per-attempt claim ticket: the board's claim ticket already stops a stale attempt from settling the row (ER-6), so the gate needs only "this row ended". It does not depend on BR-5b. The row's single terminal ending and the parked turn's single pending gate each admit one answer | CI |
 | BR-12a | The asked row's attempt fails, and the board retries it | The asker resumes once, with the ending of the attempt that settles the row. An intermediate failure that was retried never resumes it | CI, a row failed once then completed: one resume, the final answer |
 | BR-13 | Anyone calls the public resume route for an asking turn | Not found, as today. Only the asker's own conversation resumes it | CI |
@@ -50,17 +51,24 @@ flowchart LR
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-14 | An ask is still open ten minutes after it was filed | The next durability sweep resumes the turn with `wait_timed_out`, so within twenty minutes, and the resumed call cancels the row. A later ending of that row is dropped | CI, a real sweep tick |
-| BR-16 | The person cancels the asking turn | The asked row is cancelled, and its later ending is dropped. A run already under way is not stopped ([FIX-1659](https://linear.app/fixpoint-labs/issue/FIX-1659)'s) | CI |
+| BR-14 | An ask is still open at its deadline: the filing time plus its `timeoutMs`, or five minutes when none was set | The first durability sweep after the deadline resumes the turn with `wait_timed_out`, and the resumed call cancels the row. A later ending of that row is dropped. A timeout fires no later than the next sweep; on a long-lived host, whose sweeper schedules its next tick at the earliest pending ask deadline, that is the deadline itself, within seconds. Where the sweep is an external cron, the bound is the cron's cadence | CI, a real sweep tick, one with the default and one with a set `timeoutMs`; a 30 s ask on a moved clock times out within seconds of 30 s |
+| BR-14a | `waitForResponse` is set with a `timeoutMs` under 30 seconds or over 60 minutes | Refused before anything is filed, as `wait_timeout_out_of_range`, naming the allowed range. Never clamped. Nothing parks. An accepted value is honoured as BR-14 says: a timeout fires no later than the next sweep; on long-lived hosts that is the deadline itself | CI, each bound and one past it |
+| BR-16 | The person stops the conversation while its turn is parked on an ask | The asked row is cancelled through the board's own cancel transition, and the turn ends `aborted`, as a stopped running turn does, with no further model call. The row's later ending is dropped. A run already under way is not stopped ([FIX-1659](https://linear.app/fixpoint-labs/issue/FIX-1659)'s) | CI, on SQLite |
+| BR-16a | The person stops the conversation while its turn is parked on any other gate, such as an approval | The turn ends `aborted`. A later approve or answer for that gate is refused as already resolved, the `409` the resume route gives today. Today the stop itself is refused for any suspended turn | CI |
+| BR-16b | A stop and an answer (or the timeout) reach the same parked turn together | The gate's single pending state decides (BR-12): whichever resolves it first wins, and the other is refused as `already-resolved`. When the answer wins, the turn is running again: the stop reports `already-resolved`, and a second stop stops the running turn as today. When the stop wins, the answer's resume is refused and its resume-owed marker clears | CI, both orders |
+| BR-16c | The process dies after a stop is recorded and before it finishes: before the asked row is cancelled, or before the turn leaves `suspended` | The stop is not lost: BR-11a's re-drive covers it, with the outcome `stopped`. The parked call cancels its row again, harmlessly if it is already cancelled, leaves a row that already ended as it is, and the turn ends `aborted` | CI on SQLite: killed between the stop and the row's cancel; after restart the row is `cancelled` and the request `aborted` |
 
-BR-15, BR-17 and BR-18 were cut before the gate, with nested asks and the per-call timeout
-([why](DECISIONS.md#cut-before-the-gate)).
+BR-15, BR-17 and BR-18 were cut before the gate, with nested asks
+([why](DECISIONS.md#cut-before-the-gate)). The per-call timeout, cut with them, came back
+on 2026-10-09 as BR-14 and BR-14a; BR-16 to BR-16c are the product owner's call to
+build stopping a paused turn ([amendments](DECISIONS.md#product-owner-amendments-2026-10-09)).
 
 ## Failure taxonomy
 
-A refused filing (BR-4, BR-5a, BR-8) is the call's error and parks nothing. On a `followUpOf` call,
+A refused filing (BR-4, BR-5a, BR-8, BR-14a) is the call's error and parks nothing. On a `followUpOf` call,
 FIX-1817's BR-21 and BR-25 refusals are refused filings too, before anything parks (BR-4a). A failed,
 cancelled or timed-out ask is the call's error and resumes the turn: the model decides what to do.
+A stopped ask is not: the person ended the turn, so it ends `aborted` and no model reads an error.
 A lost resume is never an error: the resume-owed marker holds it until the next touch. Nothing
 retries the asked work except the board's own attempts.
 

@@ -165,7 +165,7 @@ It comes down to ownership: a reopen or a new issue gives the signal two owners.
 |---|---|
 | **Instead of** | An ask that may wait without limit |
 | **Because** | A asks B while B asks A, and both wait forever. Nothing today carries a cancel from a parent to its child; `dispatch-and-execute.ts` combines only the request signal and lease loss |
-| **Locks in** | A mandatory timeout and a depth cap on every ask, and a cancel of the asker that reaches the asked child. As FIX-1816 settled them: the depth cap holds by construction at depth 1, since a turn working a task row cannot ask, and the timeout is fixed, fired by the durability sweeper's expiry step within 10 to 20 minutes (L7) |
+| **Locks in** | A mandatory timeout and a depth cap on every ask, and a cancel of the asker that reaches the asked child. As FIX-1816 settled them: the depth cap holds by construction at depth 1, since a turn working a task row cannot ask, and the timeout is set per ask (default five minutes), fired by the durability sweeper's expiry step. A stop reaches a turn parked on an ask (L7, amended 2026-10-09) |
 
 <a name="d4"></a>
 ## D4 · Dispatch stays fire-and-forget by default
@@ -193,7 +193,7 @@ It comes down to ownership: a reopen or a new issue gives the signal two owners.
 | L4 | The child-finished signal FIX-1780 promised: FIX-1794 P2 builds it (S6, S7) as one layer-clean module; FIX-1816 lifts it into `orchestration` and re-points S6 and S7 at it | `orchestration` board gate, after the lift; `workforce` `onTaskSettled` | FIX-1794 P2 builds · FIX-1816 lifts ([Q2](#q2)) | **Public** entry name | FIX-1794's V5, before and after the lift; leg a consumes it |
 | L5 | An ask is a task on the asker's own board: `addTask` with a `waitForResponse` option. No new tool, no new core export, no `awaitDispatch` or `resultOf`. `waitForResponse` adds no tool | `orchestration` · `addTask` | FIX-1816 (its D1) | **Public**: one option on an existing tool | Leg a's `runOnce` control must FAIL: B runs twice |
 | ~~L6~~ | **Dropped.** There are no nested asks: a turn that is itself working a task row cannot wait, so no asking worker parks its own row | — | — | — | — |
-| L7 | A timeout and a depth cap on each ask; a cancel reaches the asked child (D3). The depth half holds by construction, at depth 1. The timeout is fixed and fires from the durability sweeper's expiry step, within 10 to 20 minutes | `engine` sweeper expiry; `orchestration` cascade | FIX-1816 | **Persisted** deadline | An ask past its deadline resumes with a timeout error. Red: it waits forever |
+| L7 | A timeout and a depth cap on each ask; a cancel reaches the asked child (D3). The depth half holds by construction, at depth 1. The timeout is set per ask, `addTask`'s `timeoutMs` (30 s to 60 min, default 5 min, out of range refused), and fires from the durability sweeper's expiry step at the first sweep past the deadline. **Stop half** (2026-10-09): the engine's stop works on any suspended turn, not only a running one; a turn parked on an ask cancels its row through the board's cancel transition and ends `aborted`; a stop and an answer race through the gate's single pending state | `engine` sweeper expiry, and the stop (`record-request-stop`, the abort route); `orchestration` cascade | FIX-1816 (stop half: its P2c) | **Persisted** deadline. **Public**: the abort route's answer for a suspended request, a `409` today, becomes a stop; no new route | An ask past its deadline resumes with a timeout error. Red: it waits forever. A stopped ask's row reads `cancelled`. Red: today's stop refuses a suspended turn |
 | L8 | A test-harness dispatch seam with a durable in-memory runtime that survives a simulated restart | `@flow-state-dev/testing` | FIX-1816 | **Public export** | L1, L2, L5 and L7's tests run on it. Red: today's harness drops the wait on restart |
 | L9 | An answered park resumes the same task session; a finished session takes a follow-up question, and a follow-up task as a new row bound to it. `answerTask` joins the task tools, and `addTask.followUpOf` binds a follow-up to the root task's session; a follow-up is refused while that session has an unfinished task. `parkOnQuestion`, a new model-visible tool, parks an assigned task on its question; an asked task is not offered it (ER-22). A person's message keeps the shipped `allow` concurrency | `orchestration` park path and task tools; `workforce` task entry, which changes FIX-1794's S5 `work` entry, S6 session key and S7 capability (ER-12) | FIX-1817 | **Persisted**: a row keeps its session after it ends, and `turnReentries` now counts question re-entries as well as person turns. **Public**: two new tools, `answerTask` and `parkOnQuestion`, and one `addTask` option | Leg b. Red: FIX-1794 BR-25's answer has no path back |
 
@@ -263,6 +263,20 @@ Recorded here as decided:
    FIX-1786's ER-32 says "each of the eight task tools"; that literal is raised with
    `fix-1786-pm` as an amendment request, since ER-12 keeps this epic out of FIX-1786's specs.
 
+## D5 amendments from the product owner, 2026-10-09
+
+Two direction calls by the product owner on FIX-1816, after its P1, P2 and P2b merged.
+Recorded in FIX-1816's [amendments](../../issues/FIX-1816/DECISIONS.md#product-owner-amendments-2026-10-09);
+here only because they change L7 under [ER-11](BUSINESS-RULES.md#what-no-child-may-do):
+
+- **L7's stop half is built**, as FIX-1816's new slice P2c, which does not wait on FIX-1794 P2.
+  The engine's stop works on any suspended turn, asks and approval gates alike; on an ask it
+  cancels the asked row through the board's existing cancel transition. This is engine code
+  beyond L7's sweep and board, so it is listed here.
+- **L7's timeout is set per ask**, `addTask`'s `timeoutMs`. The fixed ten-minute timeout, cut
+  before FIX-1816's gate, is reversed. Default, range and refusal are the coordinator's calls,
+  overrulable, in FIX-1816's record.
+
 ## What the end-state POC showed
 
 None built. The spike was read-only, and the two kinds touch different callers, so a POC is the
@@ -292,3 +306,6 @@ first move inside FIX-1816's spec, not here.
   second agreed touch of FIX-1794's code (ER-12); L9 adds `parkOnQuestion` and widens
   `turnReentries`; the tool check is one set per turn, with FIX-1786's ER-32 raised as an
   amendment request. Recorded in [Decided in the cross-spec pass](#decided-in-the-cross-spec-pass), same PR.
+- **FIX-1816 amended (Oct 9)**: by the product owner. Stopping a paused turn is built, and the
+  ask timeout is set per ask. L7 changes; recorded in
+  [D5 amendments from the product owner](#d5-amendments-from-the-product-owner-2026-10-09).

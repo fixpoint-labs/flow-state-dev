@@ -67,7 +67,6 @@ import {
 import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
 import {
   defaultBodyUserIdPrincipalResolver,
-  hasLegacyBodyOrgId,
   isDefaultBodyUserIdPrincipalResolver
 } from "../auth/defaultBodyUserIdPrincipalResolver";
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
@@ -206,12 +205,11 @@ function createPrincipalResolution(options: {
 }): (context: PrincipalResolutionContext) => Promise<PrincipalResolution> {
   const { registry, resolvePrincipal, warn } = options;
 
-  // Both warnings below are once per host, not once per request. They report a
-  // deployment's configuration — "this app has no authentication", "this app's
-  // clients still send an org" — which is the same fact on every request, and a
-  // per-request line would bury it in the very logs an operator reads to find it.
+  // The warning below is once per host, not once per request. It reports a
+  // deployment's configuration — "this app has no authentication" — which is
+  // the same fact on every request, and a per-request line would bury it in the
+  // very logs an operator reads to find it.
   let warnedDevelopmentDefault = false;
-  let warnedLegacyBodyOrg = false;
 
   /**
    * The organization this request runs under, or a refusal.
@@ -233,18 +231,6 @@ function createPrincipalResolution(options: {
     resolvedOrgId: string | undefined
   ): string => {
     if (isDevelopmentDefault) {
-      if (warn !== undefined && hasLegacyBodyOrgId(context)) {
-        if (!warnedLegacyBodyOrg) {
-          warnedLegacyBodyOrg = true;
-          // Presence, never the value — it names somebody's organization.
-          warn(
-            "[flow-state] a request body still carries an `orgId` field; it is ignored. " +
-              "The organization comes from authentication.resolvePrincipal, or from " +
-              "DEFAULT_ORG_ID when no resolver is configured. Remove it from your client.",
-            { source: context.source }
-          );
-        }
-      }
       if (warn !== undefined && !warnedDevelopmentDefault) {
         warnedDevelopmentDefault = true;
         warn(

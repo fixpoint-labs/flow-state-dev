@@ -85,22 +85,6 @@ function withStoredAbortRequested(
  */
 const SQLITE_MAX_VARIABLE_NUMBER = 32766;
 
-/**
- * Merge per-row `request_items` with any legacy `data.items` slice that
- * predates the dedicated-table migration. Table version wins on item-id
- * collision; output is sorted by `itemIndex`.
- */
-function mergeLegacyWithTable(
-  fromTable: OutputItem[],
-  legacy: OutputItem[] | undefined
-): OutputItem[] {
-  if (!Array.isArray(legacy) || legacy.length === 0) return fromTable;
-  const seen = new Set(fromTable.map((i) => i.id));
-  const legacyOnly = legacy.filter((i) => !seen.has(i.id));
-  if (legacyOnly.length === 0) return fromTable;
-  return [...fromTable, ...legacyOnly].sort((a, b) => a.itemIndex - b.itemIndex);
-}
-
 /** Options for the SQLite-backed request store. */
 export type CreateSQLiteRequestStoreOptions = {
   /**
@@ -269,9 +253,6 @@ export function createSQLiteRequestStore(
   const countItemsStmt = db.prepare(
     "SELECT COUNT(*) AS c FROM request_items WHERE request_id = ?"
   );
-  const selectItemIdsStmt = db.prepare(
-    "SELECT item_id FROM request_items WHERE request_id = ?"
-  );
   const deleteItemsStmt = db.prepare(
     "DELETE FROM request_items WHERE request_id = ?"
   );
@@ -416,7 +397,7 @@ export function createSQLiteRequestStore(
     const base_ = base.getSync(id);
     if (base_ === undefined) return undefined;
     const record = withSourceDefault(base_) as RequestRecord;
-    return { ...record, items: mergeLegacyWithTable(queryItems(id), record.items) };
+    return { ...record, items: queryItems(id) };
   });
 
   /** `list({ withItems: true })`'s rows and their items, in one transaction (FIX-1619). */
@@ -447,7 +428,7 @@ export function createSQLiteRequestStore(
 
     return withSource.map((r) => ({
       ...r,
-      items: mergeLegacyWithTable(byRequestId.get(r.id) ?? [], r.items)
+      items: byRequestId.get(r.id) ?? []
     }));
   });
 
@@ -585,13 +566,10 @@ export function createSQLiteRequestStore(
     async list(options?: RequestListOptions): Promise<RequestRecord[]> {
       if (options?.withItems === true) return listWithItems(options);
 
-      // Default: do NOT query request_items. Strip any legacy blob items so
-      // list payloads stay lean (callers opt in with `withItems: true`).
+      // Default: do NOT query request_items, so list payloads stay lean
+      // (callers opt in with `withItems: true`).
       const records = await base.list(options);
-      return records.map((r) => {
-        const withSource = withSourceDefault(r) as RequestRecord;
-        return withSource.items === undefined ? withSource : { ...withSource, items: undefined };
-      });
+      return records.map((r) => withSourceDefault(r) as RequestRecord);
     },
 
     persistItems(requestId: string, items: OutputItem[]): void {
@@ -631,25 +609,7 @@ export function createSQLiteRequestStore(
     },
 
     async countItems(requestId: string): Promise<number> {
-      // Mirror the `get` dual-read (FIX-686): records persisted before the
-      // child table existed may still carry blob items, and the table wins on
-      // id collision. The common (post-migration) path is an indexed COUNT
-      // plus one record-row read — item payloads are never parsed.
-      const record = await base.get(requestId);
-      const legacy = record?.items;
-      if (!Array.isArray(legacy) || legacy.length === 0) {
-        return (countItemsStmt.get(requestId) as { c: number }).c;
-      }
-      const tableIds = new Set(
-        (selectItemIdsStmt.all(requestId) as Array<{ item_id: string }>).map(
-          (row) => row.item_id
-        )
-      );
-      let count = tableIds.size;
-      for (const item of legacy) {
-        if (!tableIds.has(item.id)) count += 1;
-      }
-      return count;
+      return (countItemsStmt.get(requestId) as { c: number }).c;
     },
 
     persistEvents(requestId: string, events: RequestStreamEvent[]): void {
