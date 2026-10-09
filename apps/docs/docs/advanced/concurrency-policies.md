@@ -117,7 +117,7 @@ The wait has no time limit. It ends when the request ahead of it ends, however t
 
 Two bounds keep a busy session from piling up deferred work:
 
-- **At most 32 `defer` requests wait on one key** in each server process. The next one is refused the way `reject` refuses: `409` over HTTP, a skipped `200` for webhooks and schedules. Nothing is created for it, so retry it once the session quiets down.
+- **At most 32 `defer` requests wait on one key** in each server process. On a queue, a request counts from when it's accepted until its job ends, so one that's running still counts. The next one is refused the way `reject` refuses: `409` over HTTP, a skipped `200` for webhooks and schedules. Nothing is created for it, so retry it once the session quiets down.
 - **A `defer` request waits for newer replies for 30 seconds at most.** After that it waits only for the replies already running, then runs, even if the person keeps sending messages.
 
 What `defer` won't do:
@@ -159,9 +159,9 @@ Where the policy holds depends on how your server runs requests.
 
 ### On a queue
 
-A run takes its place on the key when it's accepted, then waits for its turn in whichever worker picks it up. Runs start in the order they were accepted. A worker never spends one of its slots waiting: a run whose turn hasn't come goes back on the queue and is checked again shortly. The 30-second wait limit is the same as on one server, and it counts only time spent waiting for the key, not time queued behind unrelated work.
+A run takes its place on the key when it's accepted, then waits for its turn in whichever worker picks it up. Runs start in the order they were accepted. A worker never spends one of its slots waiting: a run whose turn hasn't come goes back on the queue for at most two seconds, then is checked again. The 30-second wait limit is the same as on one server, and it counts only time spent waiting for the key, not time queued behind unrelated work.
 
-`hold` and `defer` work the same way on a queue as on one server. A `hold` request runs as soon as a worker takes it, and the key reads busy from the moment it is accepted until it ends. A `defer` request takes no place when it's accepted. Its worker checks whether the key is free, and if it isn't, puts the request back on the queue to check again. The 32-request cap counts in the server that accepted the request, from acceptance until its job ends.
+`hold` and `defer` work the same way on a queue as on one server. A `hold` request runs as soon as a worker takes it, and the key reads busy from the moment it is accepted until it ends. A waiting `defer` request never ties up a worker, the same as a waiting `queue` run. For its first 30 seconds of waiting it doesn't hold the key, so `queue` requests don't wait behind it and `reject` requests aren't refused because of it. Once it lines up behind the running replies, or starts, it holds the key like any other run.
 
 A place on the key has a lease, which the worker running the job keeps renewing.
 
