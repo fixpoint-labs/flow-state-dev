@@ -27,7 +27,6 @@ import {
   until,
   USER
 } from "./ask-fixture";
-import { ASK_OVERDUE_GRACE_MS } from "../../src/tasks/helpers/wait-for-response";
 
 type State = ReturnType<typeof runtimeFor>;
 
@@ -116,15 +115,21 @@ describe("stop a turn parked on an ask", () => {
     expect((await stop(state, parked.requestId!)).status).toBe(204);
     await untilStatus(state, parked.requestId!, "aborted");
     expect(seen).toHaveLength(1);
-    // The cancel failed, so the row is still open: nobody waits for it now.
-    const [row] = await rows(state, flow);
-    expect(row).toMatchObject({ status: "pending" });
+  });
 
-    // Once the ask is over, the next touch of the board ends the row.
+  it("a touch long past an ask's deadline leaves a row whose turn still waits on it alone", async () => {
+    const { model } = stepModel([askCall("c1"), finalAnswer]);
+    const flow = askFlow(model);
+    const state = track(runtimeFor(flow));
+    const parked = await act(state, flow, "run");
+    const [row] = await rows(state, flow);
+
+    // No sweep has timed the ask out (a cron host between runs): it still waits.
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(row!.ask.deadline + ASK_OVERDUE_GRACE_MS + 1);
+    vi.setSystemTime(row!.ask.deadline + 10 * 60_000);
     expect((await act(state, flow, "touch")).output).toEqual({ resumed: [], stillOwed: [] });
-    expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
+    expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "pending" })]);
+    expect(await statusOf(state, parked.requestId!)).toBe("suspended");
   });
 
   it("an answer that wins leaves the stop to a finished turn (BR-16b, the answer first)", async () => {

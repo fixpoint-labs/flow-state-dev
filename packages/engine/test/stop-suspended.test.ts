@@ -156,6 +156,20 @@ describe("stop a parked turn", () => {
     expect(approve.status).toBe(409);
   });
 
+  it("a turn stopped at an approval records its terminal event, so a stream following it ends (BR-16a)", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId } = await park(h, flow, "approve");
+    const before = await h.stores.request.getEvents(requestId);
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    const events = await h.stores.request.getEvents(requestId);
+    const last = events.at(-1)!;
+    expect(last).toMatchObject({ type: "request.aborted", status: "aborted", requestId });
+    expect(last.sequence_number).toBe(Math.max(...before.map((e) => e.sequence_number)) + 1);
+  });
+
   it("a turn parked on an ask continues with the stop, so the parked call ends it (BR-16)", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
@@ -488,6 +502,48 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect(h.finished).toHaveLength(0);
   });
 
+  it("a stop recorded before a crash left the turn interrupted at its gate is carried by the sweep: approval", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    // The process died after the stop was recorded and before `suspended`
+    // was written; recovery marked the turn interrupted.
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", abortRequested: true }, ["suspended"], Date.now());
+
+    await runTick(tickArgs(h));
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
+  });
+
+  it("a stop recorded before a crash left the turn interrupted at its gate is carried by the sweep: ask", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "ask");
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", abortRequested: true }, ["suspended"], Date.now());
+
+    await runTick(tickArgs(h));
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
+    expect(h.finished).toHaveLength(1);
+    await h.finished[0];
+    expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
+  });
+
+  it("the re-drive of a stopped approval waits for a live stop holding the turn's lease", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    // A live stop holds the lease and has written the gate; it has not yet
+    // written the turn aborted.
+    await h.provider.acquireLease(requestId, { holder: "stop", durationMs: 60_000 });
+    await h.provider.suspend({ ...gate, status: "stopped", resolvedAt: Date.now(), resolvedBy: "stop" });
+
+    await runTick(tickArgs(h));
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+  });
+
   it("a pending gate is not re-driven", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
@@ -641,6 +697,34 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
       expect(h.finished).toHaveLength(1);
       await h.finished[0];
       expect(seen[0]).toContain("wait_timed_out");
+    } finally {
+      sweeper.dispose();
+    }
+  });
+
+  it("a tick that ran reads the pending gates once, and schedules the next tick from that read", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    const seen: string[] = [];
+    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 900_000 });
+    const h = harness(flow);
+    await park(h, flow, "ask");
+    const listSpy = vi.spyOn(h.provider, "listSuspended");
+    const sweeper = createDurabilitySweeper({
+      provider: h.provider,
+      stores: h.stores,
+      retention: { sweepIntervalMs: 600_000 },
+      continueRequest: h.cont
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(601_000);
+      const pendingReads = listSpy.mock.calls.filter(([filter]) => filter?.status === "pending");
+      expect(pendingReads).toHaveLength(1);
+      // The ask, due at 900 s, is what the next tick is armed for.
+      await vi.advanceTimersByTimeAsync(298_000);
+      expect(h.finished).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(h.finished).toHaveLength(1);
+      await h.finished[0];
     } finally {
       sweeper.dispose();
     }

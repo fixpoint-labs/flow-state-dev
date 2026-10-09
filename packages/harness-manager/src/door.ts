@@ -438,11 +438,14 @@ async function continueRun(
   // Wait for the stopped attempt to finish, so nothing it does lands after the
   // park. Asking again is the read: once the request has ended the stop
   // answers `already-finished`, and until then it rewrites the same flag, so
-  // a repeat is idempotent. An attempt that outlasts the wait is not parked:
-  // the turn is kept, and the attempt after it gets the line.
-  const ended = await pollUntil(TURN_STOP_WAIT_MS, ctx.signal, async () =>
-    (await ctx.session.stopRequest(runRequest)) === "stopped" ? undefined : true,
-  );
+  // a repeat is idempotent. `already-resolved` is an attempt resuming from a
+  // gate an answer resolved first: still running, so the wait goes on and the
+  // next ask stops it. An attempt that outlasts the wait is not parked: the
+  // turn is kept, and the attempt after it gets the line.
+  const ended = await pollUntil(TURN_STOP_WAIT_MS, ctx.signal, async () => {
+    const outcome = await ctx.session.stopRequest(runRequest);
+    return outcome === "stopped" || outcome === "already-resolved" ? undefined : true;
+  });
   if (ended === undefined) return kept;
 
   // Park it for a turn, fenced to the attempt that was stopped. Refused when

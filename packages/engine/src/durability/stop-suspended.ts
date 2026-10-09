@@ -25,6 +25,7 @@
 import { isAskGate } from "@flow-state-dev/core/types";
 import type { ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
+import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { settledRecordFields } from "../execution/request-action-result";
 import { resumeAskGate } from "./resume-ask-gate";
@@ -77,6 +78,8 @@ async function pendingGatesOf(
 /**
  * End a parked turn `aborted` where it stands, without running anything:
  * fenced on the turn still being parked, on the incarnation that was checked.
+ * The record first, then its terminal `request.aborted` event, as a run that
+ * ends writes them, so a stream following the turn through its park ends.
  */
 async function abortParked(
   deps: SuspendedStopDeps,
@@ -97,7 +100,23 @@ async function abortParked(
     now,
     resolveRequestIncarnation(record)
   );
-  return result.applied;
+  if (!result.applied) return false;
+  try {
+    const prior = await deps.stores.request.getEvents(record.id);
+    const event = {
+      stream: "request",
+      type: "request.aborted",
+      status: "aborted",
+      requestId: record.id,
+      sequence_number: prior.reduce((max, e) => Math.max(max, e.sequence_number), 0) + 1,
+      ts: now
+    } as RequestStreamEvent;
+    deps.stores.request.persistEvents(record.id, [event]);
+    await deps.stores.request.flushEvents(record.id);
+  } catch {
+    // The turn is aborted: the record says so, and a reader falls back to it.
+  }
+  return true;
 }
 
 /**
@@ -170,10 +189,21 @@ export async function redriveResolvedGate(
 ): Promise<"redriven" | "busy" | RedriveRefusal> {
   if (!isAskGate(gate)) {
     if (gate.status !== "stopped") return "not-parked";
-    const record = await deps.stores.request.get(gate.requestId);
-    if (record === undefined || !PARKED.includes(record.status)) return "not-parked";
-    if (!isLatestGate(record, gate.suspensionId)) return "superseded";
-    return (await abortParked(deps, record)) ? "redriven" : "not-parked";
+    // Under the request's lease, as the live stop that wrote the gate holds
+    // it until the turn is written aborted: the two never interleave.
+    const lease = await deps.provider.acquireLease(gate.requestId, {
+      holder: generateId("redrive"),
+      durationMs: RESUME_LEASE_MS
+    });
+    if (lease === null) return "busy";
+    try {
+      const record = await deps.stores.request.get(gate.requestId);
+      if (record === undefined || !PARKED.includes(record.status)) return "not-parked";
+      if (!isLatestGate(record, gate.suspensionId)) return "superseded";
+      return (await abortParked(deps, record)) ? "redriven" : "not-parked";
+    } finally {
+      await deps.provider.releaseLease(gate.requestId, lease.leaseId).catch(() => {});
+    }
   }
 
   const result = await continueUnderLease<RedriveRefusal>(deps, {

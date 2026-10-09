@@ -16,8 +16,8 @@
  *   2b. Re-drive a request left `suspended` or `interrupted` behind a gate that
  *      is already resolved (an ask's answer, failure, timeout or stop, or any
  *      gate stopped), under the request's lease, with the recorded outcome;
- *      and stop a `suspended` request whose stop was recorded while it was
- *      still running (`abortRequested`), as a stop of a parked turn does.
+ *      and stop a parked request whose stop was recorded while it was still
+ *      running (`abortRequested`), as a stop of a parked turn does.
  *   3. Prune resolved (terminal) suspensions older than the retention window.
  *   4. Prune expired leases (finally wiring `LeaseStore.pruneExpired`).
  *   5. Prune orphaned checkpoints for terminal/interrupted requests whose
@@ -34,8 +34,9 @@
  * surface as an unhandled rejection from the interval callback).
  *
  * Scheduling is deadline-aware, and derived from the store. After every tick,
- * whatever it came to (done, the sweep lease held by another host, or a
- * failure), the pending ask gates are read again and the timer is re-armed for
+ * whatever it came to, the timer is re-armed from the pending ask gates: those
+ * step 2 read and left pending when the tick ran, or a fresh read when it did
+ * not (the sweep lease held by another host, or a failure). It is re-armed for
  * the earlier of `sweepIntervalMs` and the earliest deadline among them, never
  * sooner than `MIN_TICK_DELAY_MS`. An ask still pending past its deadline (its
  * turn was busy, still being written parked, or the resume failed) is retried
@@ -196,14 +197,16 @@ export function createDurabilitySweeper(
     }
   };
 
-  // When the next tick is due, read from the store: the earliest pending ask
-  // deadline, an overdue one retried shortly, else the interval.
-  const nextDelay = async (): Promise<number> => {
+  // When the next tick is due, from the pending ask gates (the tick's own, or
+  // read here when it has none): the earliest deadline, an overdue one retried
+  // shortly, else the interval.
+  const nextDelay = async (tickPending: SuspensionRecord[] | undefined): Promise<number> => {
     if (continueRequest === undefined) return sweepIntervalMs;
     try {
+      const pending = tickPending ?? (await provider.listSuspended({ status: "pending" }));
       const now = Date.now();
       let due = Number.POSITIVE_INFINITY;
-      for (const gate of await provider.listSuspended({ status: "pending" })) {
+      for (const gate of pending) {
         if (!isAskGate(gate) || gate.expiresAt == null) continue;
         if (gate.expiresAt > now) due = Math.min(due, gate.expiresAt);
         else if (now - gate.expiresAt < sweepIntervalMs) due = Math.min(due, now + OVERDUE_ASK_RETRY_MS);
@@ -238,7 +241,7 @@ export function createDurabilitySweeper(
       batchLimit,
       continueRequest
     })
-      .catch((err) => {
+      .catch((err): undefined => {
         // A failure that escapes the per-step guards is still never thrown
         // out of the interval callback — log and continue next tick.
         logRuntimeEvent(
@@ -247,6 +250,7 @@ export function createDurabilitySweeper(
           "[flow-state] durability sweeper iteration failed",
           { error: err instanceof Error ? err.message : String(err) }
         );
+        return undefined;
       })
       .then(nextDelay)
       .then((delay) => {
@@ -304,7 +308,7 @@ type ResolvedTickArgs = RunTickArgs & { logger: RuntimeLogger };
  * Exported for direct invocation in tests (a single deterministic sweep
  * without driving the interval timer).
  */
-export async function runTick(rawArgs: RunTickArgs): Promise<void> {
+export async function runTick(rawArgs: RunTickArgs): Promise<SuspensionRecord[] | undefined> {
   // Normalize the logger once so each step's defensive logging has a sink.
   const args: ResolvedTickArgs = {
     ...rawArgs,
@@ -318,14 +322,15 @@ export async function runTick(rawArgs: RunTickArgs): Promise<void> {
     durationMs: sweepIntervalMs
   });
   // Another host holds the sweep lease — skip the entire tick.
-  if (lease === null) return;
+  if (lease === null) return undefined;
 
   try {
-    await enforceSuspensionExpiry(args, now);
+    const pending = await enforceSuspensionExpiry(args, now);
     await redriveResolvedGates(args);
     await pruneTerminalSuspensions(args, now);
     await pruneExpiredLeases(args);
     await pruneOrphanCheckpoints(args, now);
+    return pending;
   } finally {
     await provider
       .releaseLease(SWEEPER_LEASE_KEY, lease.leaseId)
@@ -341,7 +346,10 @@ export async function runTick(rawArgs: RunTickArgs): Promise<void> {
  * Step 2: re-set every `pending` suspension past its `expiresAt` to `expired`.
  * Closes the gate so the resume endpoint rejects it.
  */
-async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Promise<void> {
+async function enforceSuspensionExpiry(
+  args: ResolvedTickArgs,
+  now: number
+): Promise<SuspensionRecord[] | undefined> {
   const { provider, logger } = args;
   try {
     // List ALL pending suspensions — deliberately unbounded. `listSuspended`
@@ -353,15 +361,28 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
     // of them each tick is cheap. (A store-level `expiresBefore` predicate could
     // make this bounded-and-correct if pending volume ever grows.)
     const pending = await provider.listSuspended({ status: "pending" });
+    // The ask gates still pending after this step, which the next tick is
+    // scheduled from: those not yet due, and any overdue one its resume left
+    // pending (re-read, so a resumed gate does not count).
+    const stillPending: SuspensionRecord[] = [];
     let askGatesSkipped = 0;
     for (const record of pending) {
-      if (record.expiresAt == null || record.expiresAt > now) continue;
+      if (record.expiresAt == null) continue;
+      if (record.expiresAt > now) {
+        if (isAskGate(record)) stillPending.push(record);
+        continue;
+      }
       if (isAskGate(record)) {
         // Never `expired`: nothing else may resume an ask gate, so that would
         // strand its turn. Without a way to continue a request, leave it
         // pending for a sweeper that has one.
-        if (args.continueRequest === undefined) askGatesSkipped += 1;
-        else await resumeOverdueAsk(args, record);
+        if (args.continueRequest === undefined) {
+          askGatesSkipped += 1;
+          continue;
+        }
+        await resumeOverdueAsk(args, record);
+        const after = await provider.loadSuspension(record.requestId, record.suspensionId);
+        if (after?.status === "pending") stillPending.push(after);
         continue;
       }
       // Re-load immediately before writing: an operator may have approved or
@@ -385,10 +406,12 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
         { count: askGatesSkipped }
       );
     }
+    return stillPending;
   } catch (err) {
     logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: expiry enforcement failed", {
       error: err instanceof Error ? err.message : String(err)
     });
+    return undefined;
   }
 }
 
@@ -449,7 +472,7 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
         withItems: true
       });
       for (const record of batch) {
-        if (record.status === "suspended" && record.abortRequested === true) {
+        if (record.abortRequested === true) {
           stopOwed.push(record);
           continue;
         }

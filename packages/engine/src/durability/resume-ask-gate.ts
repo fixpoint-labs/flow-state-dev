@@ -23,7 +23,7 @@ export type AskResumeDeps = ResumeDeps & {
  *
  * The caller has already decided this gate is theirs to resume. This checks
  * only what makes a resume safe, under the request's lease: the gate is an ask,
- * it is still pending, and the request is suspended. A gate that is no longer
+ * it is still pending, and the request is parked on it. A gate that is no longer
  * pending is `already-resolved`, so a second resume (a notice delivered twice,
  * a marker replayed after the turn resumed) resumes nothing.
  */
@@ -62,12 +62,15 @@ export async function resumeAskGate(
         };
       }
       const request = await deps.stores.request.get(gate.requestId);
-      if (request === undefined || request.status !== "suspended") {
+      // Parked on it: `suspended`, or `interrupted` when the process died
+      // before the park was written `suspended`. Its gate is still pending, so
+      // nothing has moved the turn past it.
+      if (request === undefined || (request.status !== "suspended" && request.status !== "interrupted")) {
         return {
           refusal: {
             ok: false,
             refused: "already-resolved",
-            detail: `the turn parked on ask gate "${gate.suspensionId}" is "${request?.status ?? "gone"}", not suspended`
+            detail: `the turn parked on ask gate "${gate.suspensionId}" is "${request?.status ?? "gone"}", not parked`
           }
         };
       }

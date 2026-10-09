@@ -3,6 +3,7 @@
 "@flow-state-dev/core": minor
 "@flow-state-dev/engine": minor
 "@flow-state-dev/orchestration": patch
+"@flow-state-dev/harness-manager": patch
 "@flow-state-dev/react": patch
 "@flow-state-dev/devtool": patch
 ---
