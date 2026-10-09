@@ -135,7 +135,8 @@ export async function continueUnderLease<TRefusal>(
   args: {
     requestId: string;
     holder: string;
-    admit: () => Promise<{ resumeContext: ResumeContext } | { refusal: TRefusal }>;
+    /** The resolution to replay; absent → continued as crash recovery continues it. */
+    admit: () => Promise<{ resumeContext: ResumeContext | undefined } | { refusal: TRefusal }>;
   }
 ): Promise<LeasedResume<TRefusal>> {
   const { provider } = deps;
@@ -152,7 +153,7 @@ export async function continueUnderLease<TRefusal>(
     }
     const handle = await deps.continueRequest({
       requestId: args.requestId,
-      resumeContext: admitted.resumeContext
+      ...(admitted.resumeContext !== undefined ? { resumeContext: admitted.resumeContext } : {})
     });
     return { ok: true, handle };
   } catch (error) {

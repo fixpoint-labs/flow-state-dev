@@ -2007,13 +2007,21 @@ describe("a stop accepted in the window before the turn is written parked (FIX-1
       }
     });
     const hookedStores = { ...stores, request };
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const continued: Promise<unknown>[] = [];
+    const runtimeConfig: Parameters<typeof runAction>[0]["runtimeConfig"] = { durabilityProvider: provider };
     const parkedStop = createParkedStopDeps({
       provider,
       stores: hookedStores,
-      continueRequest: async () => {
-        throw new Error("an approval stop continues nothing");
+      // The stop continues the turn, which ends `aborted` through its own run.
+      continueRequest: async (opts) => {
+        const handle = await continueRequest({ ...opts, stores: hookedStores, flowRegistry: registry, runtimeConfig });
+        continued.push(handle.finished);
+        return handle;
       }
     });
+    runtimeConfig.requestHost = { parkedStop };
 
     const initial = await runAction({
       orgId: DEFAULT_ORG_ID,
@@ -2022,9 +2030,10 @@ describe("a stop accepted in the window before the turn is written parked (FIX-1
       input: {},
       userId: "u_teardown_stop",
       stores: hookedStores,
-      runtimeConfig: { durabilityProvider: provider, requestHost: { parkedStop } }
+      runtimeConfig
     });
     const requestId = initial.requestId!;
+    await Promise.all(continued);
 
     expect(intentRecorded).toBe(true);
     expect((await hookedStores.request.get(requestId))?.status).toBe("aborted");

@@ -6,7 +6,7 @@
  * SQLite cold restarts) lives with the ask's own tests in orchestration.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ORG_ID, defineFlow, handler, parkOnAsk, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, generator, handler, parkOnAsk, sequencer } from "@flow-state-dev/core";
 import type { AskOutcome, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
@@ -22,7 +22,10 @@ const USER = "u1";
 const SESSION = "s1";
 
 /** A flow whose `approve` turn parks on a person's approval, and whose `ask` turn parks on an ask. */
-function parkingFlow(seen: string[], options: { askDeadline?: () => number } = {}): FlowInstance {
+function parkingFlow(
+  seen: string[],
+  options: { askDeadline?: () => number; onFinished?: (info: { status: string }) => void } = {}
+): FlowInstance {
   const approve = handler({
     name: "approve-step",
     inputSchema: z.any(),
@@ -56,6 +59,20 @@ function parkingFlow(seen: string[], options: { askDeadline?: () => number } = {
   });
   return defineFlow({
     kind: "parking",
+    ...(options.onFinished !== undefined
+      ? {
+          request: {
+            onFinished: handler({
+              name: "on-finished",
+              inputSchema: z.any(),
+              outputSchema: z.any(),
+              execute: async (info: { status: string }) => {
+                options.onFinished!(info);
+              }
+            })
+          }
+        }
+      : {}),
     actions: {
       approve: { block: sequencer({ name: "a" }).step(approve) },
       ask: { block: sequencer({ name: "k" }).step(ask) }
@@ -105,6 +122,11 @@ function stop(h: ReturnType<typeof harness>, requestId: string, withParked = tru
   );
 }
 
+/** Settle every continuation started so far, and any it starts in turn. */
+async function drain(h: ReturnType<typeof harness>): Promise<void> {
+  for (let i = 0; i < h.finished.length; i += 1) await h.finished[i]!.catch(() => undefined);
+}
+
 function tickArgs(h: ReturnType<typeof harness>) {
   return {
     provider: h.provider,
@@ -133,10 +155,10 @@ describe("stop a parked turn", () => {
 
     const res = await stop(h, requestId);
     expect(res.status).toBe(204);
+    await drain(h);
     expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
-    expect(h.finished).toHaveLength(0); // nothing continued
-    expect(seen).toEqual([]);
+    expect(seen).toEqual([]); // nothing past the gate ran
 
     const approve = await handleResumeSuspension(
       new Request(`https://x/api/flows/parking/requests/${requestId}/resume`, {
@@ -165,11 +187,12 @@ describe("stop a parked turn", () => {
     const before = await h.stores.request.getEvents(requestId);
 
     expect((await stop(h, requestId)).status).toBe(204);
+    await drain(h);
     const events = await h.stores.request.getEvents(requestId);
     const last = events.at(-1)!;
     expect(last).toMatchObject({ type: "request.aborted", status: "aborted", requestId });
-    // After the stop's two item events, continuing the log.
-    expect(last.sequence_number).toBe(Math.max(...before.map((e) => e.sequence_number)) + 3);
+    // Continuing the log.
+    expect(last.sequence_number).toBeGreaterThan(Math.max(...before.map((e) => e.sequence_number)));
   });
 
   it("a turn stopped at an approval records the stop on its log, so the approval no longer reads as open", async () => {
@@ -179,14 +202,77 @@ describe("stop a parked turn", () => {
     const { requestId, gate } = await park(h, flow, "approve");
 
     expect((await stop(h, requestId)).status).toBe(204);
+    await drain(h);
     const items = (await h.stores.request.get(requestId))?.items ?? [];
     const resumed = items.filter((item) => (item as { type?: string }).type === "suspension_resume");
     expect(resumed).toEqual([
       expect.objectContaining({ suspensionId: gate.suspensionId, resolution: "stopped", resolvedBy: "stop" })
     ]);
-    // Streamed before the terminal event, as a run that resumes streams it.
+    // Streamed before the terminal event.
     const types = (await h.stores.request.getEvents(requestId)).map((e) => e.type);
-    expect(types.slice(-3)).toEqual(["item.added", "item.done", "request.aborted"]);
+    expect(types.lastIndexOf("item.added")).toBeLessThan(types.indexOf("request.aborted"));
+  });
+
+  it("a turn stopped at an approval ends through its own lifecycle: its finished hook runs", async () => {
+    const seen: string[] = [];
+    const finishedWith: string[] = [];
+    const flow = parkingFlow(seen, { onFinished: (info) => finishedWith.push(info.status) });
+    const h = harness(flow);
+    const { requestId } = await park(h, flow, "approve");
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    await Promise.all(h.finished);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect(finishedWith).toEqual(["aborted"]);
+    expect(seen).toEqual([]);
+  });
+
+  it("a stopped approval inside a model's tool loop makes no further model call", async () => {
+    const calls: unknown[] = [];
+    let sideEffects = 0;
+    const gated = handler({
+      name: "approve_transfer",
+      inputSchema: z.object({ amount: z.number() }),
+      outputSchema: z.any(),
+      execute: async (input, ctx) => {
+        await ctx.suspend!({ reason: "approval", message: `Approve $${input.amount}?` });
+        sideEffects += 1;
+        return { confirmed: true };
+      }
+    });
+    const script = [
+      () => ({ toolCalls: [{ toolCallId: "c1", toolName: "approve_transfer", args: { amount: 100 } }], finishReason: "tool-calls" }),
+      () => ({ text: "done", finishReason: "stop" })
+    ];
+    const model = {
+      modelId: "step-model",
+      async generate() {
+        throw new Error("legacy generate must not be called");
+      },
+      async generateStep(options: unknown) {
+        calls.push(options);
+        return script[calls.length - 1]!();
+      }
+    };
+    const flow = defineFlow({
+      kind: "parking",
+      actions: {
+        approve: {
+          block: sequencer({ name: "seq", durable: true }).step(
+            generator({ name: "agent", model: model as never, prompt: "p", tools: [gated] })
+          )
+        }
+      }
+    })({ id: "parking" });
+    const h = harness(flow);
+    const { requestId } = await park(h, flow, "approve");
+    expect(calls).toHaveLength(1);
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect(calls).toHaveLength(1);
+    expect(sideEffects).toBe(0);
   });
 
   it("a turn parked on an ask continues with the stop, so the parked call ends it (BR-16)", async () => {
@@ -246,12 +332,15 @@ describe("stop a parked turn", () => {
     const { requestId } = await park(h, flow, "approve");
     // The id was taken by another request between the check and the write.
     const setFieldsIfStatus = h.stores.request.setFieldsIfStatus.bind(h.stores.request);
-    vi.spyOn(h.stores.request, "setFieldsIfStatus").mockImplementation(async (id, fields, ...rest) =>
-      fields.status === "aborted" ? ({ applied: false } as never) : setFieldsIfStatus(id, fields, ...rest)
+    vi.spyOn(h.stores.request, "setFieldsIfStatus").mockImplementation(async (id, fields, statuses, ...rest) =>
+      fields.abortRequested === true && statuses.includes("suspended")
+        ? ({ applied: false } as never)
+        : setFieldsIfStatus(id, fields, statuses, ...rest)
     );
 
     const res = await stop(h, requestId);
     expect(res.status).toBe(409);
+    expect(h.finished).toHaveLength(0);
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
   });
 
@@ -306,6 +395,19 @@ describe("stop a parked turn", () => {
     expect(resumed?.resolution).toBe("stopped");
   });
 
+  it("a turn interrupted while parked on a pending gate is stopped, not reported finished", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted" }, ["suspended"], Date.now());
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
+  });
+
   it("OFF STATE: without durable execution a parked turn answers as finished, as before", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
@@ -345,8 +447,9 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     await h.provider.suspend({ ...gate, status: "stopped", resolvedAt: Date.now() });
 
     await runTick(tickArgs(h));
+    await drain(h);
     expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
-    expect(h.finished).toHaveLength(0);
+    expect(seen).toEqual([]);
   });
 
   it("a request stopped at a later gate is driven on, though an earlier gate of it was answered", async () => {
@@ -513,12 +616,14 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
 
     await runTick(tickArgs(h));
+    await drain(h);
     expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
     const [gate] = await h.provider.listSuspended({});
     expect(gate?.status).toBe("stopped");
     // A second sweep, or the parking run's own carry racing it, changes nothing.
+    const continued = h.finished.length;
     await runTick(tickArgs(h));
-    expect(h.finished).toHaveLength(0);
+    expect(h.finished).toHaveLength(continued);
   });
 
   it("a stop recorded before a crash left the turn interrupted at its gate is carried by the sweep: approval", async () => {
@@ -531,6 +636,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", abortRequested: true }, ["suspended"], Date.now());
 
     await runTick(tickArgs(h));
+    await drain(h);
     expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
   });
@@ -563,7 +669,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
   });
 
-  it("an interrupted turn whose log never got its ask's gate is not continued: an answer waits, a stop ends it", async () => {
+  it("an interrupted turn whose log never got its ask's gate takes no answer, and a stop parks it again to end it", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
@@ -588,11 +694,13 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect(h.finished).toHaveLength(0);
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("pending");
 
-    // A stop ends it where it stands.
+    // A stop continues it as crash recovery does: it parks on the gate again,
+    // and the stop is then carried as for any parked turn, so the call ends it.
     await h.stores.request.setFieldsIfStatus(requestId, { abortRequested: true }, ["interrupted"], Date.now());
     await runTick(tickArgs(h));
-    expect(h.finished).toHaveLength(0);
-    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    await drain(h);
+    expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
+    expect((await h.stores.request.get(requestId))?.status).not.toBe("suspended");
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
   });
 

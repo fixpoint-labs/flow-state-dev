@@ -11,7 +11,7 @@
 import { resolveRequestIncarnation } from "../stores/scope-keys";
 import type { RequestRecord, RequestStatus, RequestStore } from "../stores/types";
 import { abortRequest } from "./abort-registry";
-import { stopSuspendedRequest, type SuspendedStopDeps } from "../durability/stop-suspended";
+import { pendingGatesOf, stopSuspendedRequest, type SuspendedStopDeps } from "../durability/stop-suspended";
 
 /**
  * What recording a stop came to.
@@ -23,9 +23,9 @@ import { stopSuspendedRequest, type SuspendedStopDeps } from "../durability/stop
  *   was fired.
  * - `recorded`: the stop is recorded; the process running the request picks it
  *   up on its next heartbeat.
- * - `stopped-parked`: the request was parked (`suspended`) and the stop resolved
- *   its gate (FIX-1816). It ends `aborted`; a turn parked on an ask first
- *   cancels the task it asked for.
+ * - `stopped-parked`: the request was parked (`suspended`, or `interrupted` on a
+ *   pending gate) and the stop resolved its gate (FIX-1816). It ends
+ *   `aborted`; a turn parked on an ask first cancels the task it asked for.
  * - `already-resolved`: the request was parked, but its gate was resolved
  *   first (an answer won the race), so it runs again. Nothing was written.
  */
@@ -69,12 +69,22 @@ export async function recordRequestStop(
   );
 
   if (result.status === undefined) return { kind: "gone" };
-  if (!result.applied && result.status === "suspended" && parked !== undefined) {
+  // Parked: `suspended`, or `interrupted` (the process died) while a gate of
+  // it is still pending. An interrupted request with no pending gate is not
+  // waiting on anything, and answers as before.
+  if (
+    !result.applied &&
+    (result.status === "suspended" || result.status === "interrupted") &&
+    parked !== undefined
+  ) {
     // Re-read: the stop resolves the gate of the request the caller checked,
     // never of a later one that took the id.
     const current = await parked.stores.request.get(record.id);
     if (current === undefined || resolveRequestIncarnation(current) !== incarnation) {
       return { kind: "gone" };
+    }
+    if (current.status === "interrupted" && (await pendingGatesOf(parked, current)).length === 0) {
+      return { kind: "finished", status: "interrupted" };
     }
     const stopped = await stopSuspendedRequest(parked, current);
     return stopped === "stopped" ? { kind: "stopped-parked" } : { kind: "already-resolved" };
