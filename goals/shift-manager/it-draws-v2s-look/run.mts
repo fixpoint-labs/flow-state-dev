@@ -65,7 +65,7 @@ import { RUN_STAMP, goalTmpDir, loadFixture, repoPath, runGoal } from "../../lib
 import { EM_KIND } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { hex, parseColour, type Rgb } from "../../lib/colour.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { buildShiftManagerCopy, labApi, pendingSeatAsks, startShiftManager, type LabApi, type Patch } from "../../lib/shift-manager.mts";
+import { buildShiftManagerCopy, labApi, pendingSeatAsks, pickShift, startShiftManager, type LabApi, type Patch } from "../../lib/shift-manager.mts";
 // ---- slice D ----
 import * as inboxTasksRoster from "./screens-inbox-tasks-roster.mts";
 // ---- end slice D ----
@@ -740,19 +740,6 @@ async function pendingAsksBySeat(api: LabApi, userId: string): Promise<Map<strin
 }
 
 // ---- driving the page --------------------------------------------------------------
-
-/**
- * Put the page in `shift` with the sidebar's theme mark, clicking it as a person cycles the
- * themes, and let each click's fade (the root's `theme-fade` class) end before the next.
- */
-async function pickShift(page: Page, shift: Shift): Promise<void> {
-  const mark = page.getByTestId("theme-mark");
-  for (let i = 0; i < 3 && (await mark.getAttribute("data-theme")) !== shift; i += 1) {
-    await mark.click();
-    await page.waitForFunction(() => !document.documentElement.classList.contains("theme-fade"), undefined, { timeout: 10_000 });
-  }
-  if ((await mark.getAttribute("data-theme")) !== shift) throw new Error(`the theme mark never reached "${shift}"`);
-}
 
 /** Wait until the page shows `shift` and nothing is still moving or loading. */
 async function settle(page: Page, shift: Shift): Promise<void> {

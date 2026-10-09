@@ -20,6 +20,8 @@
  * - {@link pendingSeatAsks}: the person's pending asks on the seats' sessions,
  *   picked the way Shift Manager picks them, and {@link workerOf}, the worker
  *   a listed session names.
+ * - {@link pickShift}: the page put in a theme with the sidebar's theme mark,
+ *   as a person picks one.
  *
  * `vite.build()` run in-process sets `process.env.NODE_ENV` to `production`
  * and never restores it. A Lab started after a build would inherit it, which
@@ -241,6 +243,22 @@ export function labApi(origin: string, bearer: string | undefined) {
 
 /** A Lab's routes, as {@link labApi} reads them. */
 export type LabApi = ReturnType<typeof labApi>;
+
+/**
+ * Put the page in `shift` with the sidebar's theme mark, clicking it as a person cycles the
+ * themes (day, evening, night), and let each click's fade (the root's `theme-fade` class)
+ * end before the next. The mark replaced v2's Day / Night switch (36bed1297 / #2825).
+ *
+ * @throws When three clicks never bring the mark to `shift`.
+ */
+export async function pickShift(page: Page, shift: "day" | "evening" | "night"): Promise<void> {
+  const mark = page.getByTestId("theme-mark");
+  for (let i = 0; i < 3 && (await mark.getAttribute("data-theme")) !== shift; i += 1) {
+    await mark.click();
+    await page.waitForFunction(() => !document.documentElement.classList.contains("theme-fade"), undefined, { timeout: 10_000 });
+  }
+  if ((await mark.getAttribute("data-theme")) !== shift) throw new Error(`the theme mark never reached "${shift}"`);
+}
 
 /** Suspension reasons that are a person being asked something. */
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);
