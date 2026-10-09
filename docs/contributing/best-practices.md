@@ -191,7 +191,7 @@ Update policy:
 
 Full text lives in the category files. Open the file when working in that area.
 
-> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-042.
+> **Withdrawn:** BP-032 (a secondary model/tool call inherits its sibling's runtime contract) was cut during review as too framework-internal — app code never hand-calls the model SDK, and the runtime-contract paths it named now live in BP-035. Numbers are not reused; the next new BP is BP-043.
 
 ### [Process & Docs](best-practices/process.md)
 
@@ -219,6 +219,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-024 | Helpers when the body varies; factories when only identity varies |
 | BP-025 | Declare and validate sequencer output schemas deliberately |
 | BP-036 | Prefer conditional step variants (`.sideChainIf`/`.tapIf`/`.stepIf`) over wrapper sequencers |
+| BP-042 | A handler's or action's return is recorded — never return an unbounded payload; bulk data between steps goes through `.map`, data for a person gets a read path |
 
 ### [Generators & Prompts](best-practices/generators.md)
 

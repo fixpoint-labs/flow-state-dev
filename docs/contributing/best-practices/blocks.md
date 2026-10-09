@@ -84,3 +84,17 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Use `.stepIf(condition, block)` — not a wrapper sequencer with a `.map` + `.step`.
   - All conditional variants accept an inline connector as a second argument for input adaptation; don't create an intermediate sequencer just to `.map()` before a block.
 - Why: Conditional variants keep control flow legible; a wrapper sequencer just to gate one step is indirection that obscures it.
+
+### BP-042: A handler's or action's return is recorded — never return an unbounded payload
+
+- Status: Active
+- Date: 2026-10-09 (FIX-1772)
+- Scope: Blocks — handler, action and tool return values.
+- Rule:
+  - A handler or action must not return a payload whose size grows with the data: file bodies, a whole collection or table, a document set, raw API pages. Its return is recorded on its `block_trace`, on the `tool_output` item when it runs as a tool, streamed to every client watching the request, and replayed into the model's history on later turns.
+  - Transient bulk data that one step hands the next goes through the sequencer's `.map`. `.map` is an operation, not a block: it records nothing and runs again on resume. Keep it off the sequencer's last step, where its value becomes the sequencer's recorded output.
+  - Data meant for a person to read gets a proper read path (a resource the client can read), not an action's return.
+  - Never return a secret. Return a handle and resolve it in the step that uses it.
+  - `mapModelOutput` is not the fix: it changes what the model is told in the turn that called the tool, not what is recorded.
+  - The runtime's record limit (FIX-1772) is a backstop for when this rule is missed, not a budget to spend.
+- Why: A return is persisted whole, streamed and replayed into prompts. One action that returned every project file body, for a person to read, put the whole project into the session log and the model's context; nothing downstream used the bodies.
