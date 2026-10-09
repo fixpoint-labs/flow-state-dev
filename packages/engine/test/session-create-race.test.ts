@@ -68,10 +68,13 @@ describe("POST /sessions — concurrent creates of one session id", () => {
     expect(statuses).toEqual([201, 409]);
 
     // The winner's record is what is stored — the loser did not overwrite it.
+    // Matched on the lineage each create mints, since the response carries
+    // only the state the flow exposes (none here).
     const winner = first.status === 201 ? first : second;
-    const winnerBody = (await winner.json()) as { session: { state: Record<string, unknown> } };
+    const winnerBody = (await winner.json()) as { session: { lineageId?: string } };
     const stored = await stores.session.get("child_topic_a");
-    expect(stored?.state).toEqual(winnerBody.session.state);
+    expect(winnerBody.session.lineageId).toEqual(expect.any(String));
+    expect(stored?.lineageId).toBe(winnerBody.session.lineageId);
 
     const loser = first.status === 409 ? first : second;
     const loserBody = (await loser.json()) as { error: string };

@@ -444,12 +444,12 @@ export function part4(base: string, report: Report): void {
   }
   report.note(`P4 final visuals: hand-back v2 committed at ${handBack.slice(0, 9)}; shift-manager.css last changed at ${lastTheme.slice(0, 9)}, after it`);
 
-  // Docs smoke (ER-14).
+  // Docs smoke (ER-14). Shift Manager is a package now, so labs/README.md points at it there.
   const labs = readFileSync(join(REPO_ROOT, "labs", "README.md"), "utf8");
-  if (!/\[`shift-manager\/`\]\(shift-manager\)/.test(labs)) report.fail("P4:docs", "labs/README.md does not list Shift Manager");
+  if (!/\[`@flow-state-dev\/shift-manager`\]\(\.\.\/packages\/shift-manager\/?\)/.test(labs)) report.fail("P4:docs", "labs/README.md does not list Shift Manager's package");
   const readme = readFileSync(join(SHIFT_MANAGER, "README.md"), "utf8");
   for (const heading of ["## Run it", "## What a Lab's config provides", "## What you see", "## A task", "## Roster"]) {
     if (!readme.includes(heading)) report.fail("P4:docs", `Shift Manager's README has no "${heading}"`);
   }
-  report.note("P4 docs smoke: labs/README.md lists Shift Manager; its README says how to open a Lab and what each level shows (b0 and a3 followed it)");
+  report.note("P4 docs smoke: labs/README.md points at Shift Manager's package; its README says how to open a Lab and what each level shows (b0 and a3 followed it)");
 }

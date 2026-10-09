@@ -128,8 +128,12 @@ describe("GET /sessions — including dispatch runs", () => {
     await seedConversationAndRun(stores);
 
     const plain = await (await list(router, "?flowKind=reports")).text();
+    // The stored row as a client sees it: no journal or stored resources, and
+    // only the state the flow exposes (none here).
+    const { journal: _journal, resources: _resources, state: _state, ...row } =
+      (await stores.session.get("sess_talk"))!;
     const expected = JSON.stringify({
-      sessions: [{ ...(await stores.session.get("sess_talk")) }]
+      sessions: [{ ...row, id: "sess_talk", state: {} }]
     });
 
     // The serialized body, not a row count: this is the assertion that fails if

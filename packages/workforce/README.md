@@ -1191,8 +1191,25 @@ const mailboxes: MailboxManifest[] = [
 flowRegistry.registerMany(mailboxInstances(mailboxes)); // one instance, id "mailbox"
 
 // Runtime, once the host is up. One named session per record.
-await openMailboxes(mailboxes, { client: sessionClient, userId: "u_42" });
+await openMailboxes(mailboxes, {
+  client: {
+    createSession: sessionClient.createSession,
+    deleteSession: sessionClient.deleteSession,
+    // The stored record, not `sessionClient.getSession`: see below.
+    getSession: async (id) => {
+      const stored = await runtime.stores.session.get(id);
+      if (stored === undefined) throw new Error(`no session "${id}"`);
+      return stored;
+    },
+  },
+  userId: "u_42",
+});
 ```
+
+`getSession` reads the session from the store because the binder needs a mailbox's whole state to
+tell an open mailbox from an empty one it may replace. The session API sends a client only the state
+a flow exposes, and a mailbox exposes none, so through it every open mailbox would look empty. The
+example reads the store by the bare id, which is its storage key in a single-tenant app.
 
 The two calls are separate because they happen at two different times: an instance is registered
 when the server is built, and a session can only be opened once it is running. `openMailboxes` needs
@@ -1724,7 +1741,7 @@ const instances = mailboxInstances(roster.mailboxes, { inventory: true });
 flowRegistry.registerMany([...seats, ...instances]);
 // server starts here
 
-await openMailboxes(roster.mailboxes, { client, userId: "u_boot" });
+await openMailboxes(roster.mailboxes, { client, userId: "u_boot" }); // `client` as above
 
 await openInventory(
   { seats, mailboxes: roster.mailboxes },
