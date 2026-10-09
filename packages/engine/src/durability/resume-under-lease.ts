@@ -18,7 +18,11 @@
  *    tried again. Nothing after the run starts can reach this: see the
  *    containment note on `createInboundTransportHost`'s `continueRequest`.
  */
-import type { ResumeContext, SuspensionRecord, SuspensionStatus } from "@flow-state-dev/core/types";
+import {
+  RESUME_ACTION_STATUS,
+  type ResumeAction,
+  type SuspensionRecord
+} from "@flow-state-dev/core/types";
 import type { ContinueRequestResult } from "../execution/request-continuation";
 import type { HostContinueRequestOptions } from "../transports/types";
 import { generateId } from "../utils/generate-id";
@@ -33,19 +37,11 @@ export type ResumeDeps = {
   continueRequest: (options: HostContinueRequestOptions) => Promise<ContinueRequestResult>;
 };
 
-/** How the admitted suspension is resolved. */
-export type Resolution = {
-  status: SuspensionStatus;
-  resumeContext: ResumeContext;
-  resumeData?: unknown;
-  resolvedBy?: string;
-};
-
 /** The outcome of {@link resumeUnderLease}. */
 export type LeasedResume<TRefusal> =
   | { readonly ok: true; readonly handle: ContinueRequestResult }
   | { readonly ok: false; readonly busy: true }
-  | { readonly ok: false; readonly busy: false; readonly refusal: TRefusal };
+  | { readonly ok: false; readonly refusal: TRefusal };
 
 export async function resumeUnderLease<TRefusal>(
   deps: ResumeDeps,
@@ -55,7 +51,10 @@ export async function resumeUnderLease<TRefusal>(
     holder: string;
     /** Runs under the lease: the suspension to resolve, or why not. */
     admit: () => Promise<{ suspension: SuspensionRecord } | { refusal: TRefusal }>;
-    resolve: (suspension: SuspensionRecord) => Resolution;
+    /** How the admitted suspension resolves; its status follows from this. */
+    action: ResumeAction;
+    data?: unknown;
+    resumedBy?: string;
   }
 ): Promise<LeasedResume<TRefusal>> {
   const { provider } = deps;
@@ -70,7 +69,7 @@ export async function resumeUnderLease<TRefusal>(
     const admitted = await args.admit();
     if ("refusal" in admitted) {
       await provider.releaseLease(args.requestId, lease.leaseId);
-      return { ok: false, busy: false, refusal: admitted.refusal };
+      return { ok: false, refusal: admitted.refusal };
     }
     suspension = admitted.suspension;
   } catch (error) {
@@ -78,18 +77,22 @@ export async function resumeUnderLease<TRefusal>(
     throw error;
   }
 
-  const resolution = args.resolve(suspension);
   try {
     await provider.suspend({
       ...suspension,
-      status: resolution.status,
+      status: RESUME_ACTION_STATUS[args.action],
       resolvedAt: Date.now(),
-      resolvedBy: resolution.resolvedBy,
-      resumeData: resolution.resumeData
+      resolvedBy: args.resumedBy,
+      resumeData: args.data
     });
     const handle = await deps.continueRequest({
       requestId: args.requestId,
-      resumeContext: resolution.resumeContext
+      resumeContext: {
+        suspensionId: suspension.suspensionId,
+        action: args.action,
+        data: args.data,
+        resumedBy: args.resumedBy
+      }
     });
     return { ok: true, handle };
   } catch (error) {

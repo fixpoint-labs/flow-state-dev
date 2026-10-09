@@ -4,7 +4,6 @@
 import { Validator } from "@cfworker/json-schema";
 import type { Schema } from "@cfworker/json-schema";
 import type { ResumeAction } from "@flow-state-dev/core/types";
-import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
 import type { StoreRegistry } from "../stores/types";
@@ -226,17 +225,14 @@ export async function handleResumeSuspension(
       requestId: route.requestId,
       holder: "resume",
       admit: async () => ({ suspension }),
-      resolve: () => ({
-        status: RESUME_ACTION_STATUS[action],
-        resolvedBy: resumedBy,
-        resumeData,
-        resumeContext: { suspensionId, action, data: resumeData, resumedBy }
-      })
+      action,
+      data: resumeData,
+      resumedBy
     }
   );
 
   if (!resumed.ok) {
-    if (resumed.busy) {
+    if ("busy" in resumed) {
       return jsonResponse(409, {
         error: "Concurrent resume in progress. Try again later."
       });
