@@ -16,7 +16,7 @@ It sits next to [idempotency](./idempotency.md). Idempotency stops the *same* de
 - **`allow`** runs requests concurrently. It's the default. Reach for it on cheap, append-only work where ordering doesn't matter.
 - **`queue`** runs requests on the key one at a time, in arrival order (first in, first out). One finishes before the next starts. Use it for chat: a quick burst of messages gets ordered, coherent replies instead of racing duplicates. A run that waits more than 30 seconds for its turn fails with `ConcurrencyQueueTimeoutError` (status 503), which is safe to retry with backoff.
 - **`reject`** drops a competing request while another one holds the key. Use it for webhook double-fire: the duplicate is dropped, not queued. How the dropped caller hears about it depends on the transport, covered [below](#webhooks-dropping-the-double-fire).
-- **`hold`** runs at once, like `allow`, and marks the key busy while it runs. It never waits and is never refused. Put it on a turn that follow-up work must not overlap, such as a reply in a conversation.
+- **`hold`** runs at once, like `allow`, and marks the key busy while it runs. It never waits, whatever else holds the key, and is never refused. Put it on a turn that follow-up work must not overlap, such as a reply in a conversation.
 - **`defer`** waits until nothing on the key is running or waiting, then runs. Put it on follow-up work that should land after the current turn, not beside it. See [Follow-up work after a reply](#follow-up-work-after-a-reply-hold-and-defer).
 
 `debounce` (collapse a burst into one run) and `restart` (cancel the in-flight run) are reserved names, not implemented yet. Declaring either throws at definition time. See [Coming next](#coming-next).
@@ -89,7 +89,7 @@ A burst of messages all append immediately, and the queued `respond` answers the
 
 Some work arrives for a conversation from somewhere other than the person in it. A background job finishes, and the app wants the assistant to say so. If that follow-up starts while the assistant is still replying, the conversation shows two replies streaming at once. `queue` would stop that, but it would also make the person's own next message wait behind the reply, and fail after 30 seconds.
 
-`hold` and `defer` split the two. The person's turn holds the session without waiting for anything. The follow-up defers to it:
+`hold` and `defer` give the two kinds of work different rules. The person's turn runs at once and holds the session. The follow-up defers to it:
 
 ```ts
 defineFlow({
@@ -111,14 +111,14 @@ What happens on one session:
 
 A deferred request waits for every `hold` that is running, including one that started after it began waiting. Its request id and stream are available at once, and the stream stays open while it waits. If the caller cancels it while it waits, it never runs.
 
-The wait has no time limit. It ends when the request ahead of it ends, however that happens: it finishes, it throws, or it's cancelled. If the process running it dies, the wait ends when that process's place on the key expires (on a queue-backed deployment, see [Across processes](#across-processes)).
+The wait has no time limit. It ends when the request ahead of it ends, however that happens: it finishes, it throws, or it's cancelled. If a server crashes while it runs the request ahead, a deferred request waiting on another server starts once the crashed server's lease on the key runs out (ten seconds by default with `bullmqWorker`).
 
 `queue` and `reject` requests on the same key see a running `hold` too: a `queue` request waits for it, and a `reject` request is refused while it runs.
 
-Two limits:
+What `defer` won't do:
 
 - A person who keeps sending messages keeps the follow-up waiting. It runs in the first gap between replies.
-- A `defer` request waits for the replies running when it checks, not for replies that haven't arrived. A message sent while a deferred request is already running starts at once, beside it.
+- Once a deferred request starts, it doesn't wait for anything else. A message sent while it runs starts at once, beside it.
 
 ## Webhooks: dropping the double-fire
 
