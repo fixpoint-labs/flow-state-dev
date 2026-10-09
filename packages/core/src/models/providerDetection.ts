@@ -138,15 +138,6 @@ export interface ParsedModelString {
   intentName?: string;
 }
 
-const PRESET_MIGRATION_MESSAGE =
-  "preset/* model strings have been removed. Migrate to intent/<name> via\n" +
-  "createModelResolver({ intents }). Common mappings:\n" +
-  "  preset/fast, preset/tiny, preset/small  → intent/utility\n" +
-  "  preset/medium                           → intent/chat\n" +
-  "  preset/large                            → intent/code or intent/reason\n" +
-  "  preset/thinking-*                       → intent/reason or intent/plan\n" +
-  "See https://flow-state.dev/docs/fundamentals/models for the intent model.";
-
 /** Allowed shape for intent names referenced via `intent/<name>`. */
 export const INTENT_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
@@ -168,8 +159,6 @@ export function canonicalizeIntentName(intentName: string): string {
  * - `"provider/model"` → direct provider access
  * - `"gateway/provider/model"` → route through a gateway
  * - `"intent/name"` → resolve a named intent (configured via createModelResolver)
- *
- * `preset/*` strings are no longer supported and throw a migration error.
  */
 export function parseModelString(modelString: string): ParsedModelString {
   const trimmed = modelString.trim();
@@ -180,9 +169,6 @@ export function parseModelString(modelString: string): ParsedModelString {
   const parts = trimmed.split("/");
 
   if (parts.length === 2) {
-    if (parts[0] === "preset") {
-      throw new Error(PRESET_MIGRATION_MESSAGE);
-    }
     if (parts[0] === "intent") {
       const name = parts[1];
       if (!INTENT_NAME_REGEX.test(name)) {
@@ -196,10 +182,7 @@ export function parseModelString(modelString: string): ParsedModelString {
   }
 
   if (parts.length === 3) {
-    if (parts[0] === "intent" || parts[0] === "preset") {
-      if (parts[0] === "preset") {
-        throw new Error(PRESET_MIGRATION_MESSAGE);
-      }
+    if (parts[0] === "intent") {
       throw new Error(
         `Invalid model format: "${modelString}". intent/* model strings must be 2 parts (intent/name).`
       );

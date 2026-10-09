@@ -22,12 +22,6 @@ describe("parseModelString", () => {
     });
   });
 
-  it("throws migration error for legacy preset/* strings", () => {
-    expect(() => parseModelString("preset/fast")).toThrow(
-      /preset\/\* model strings have been removed/
-    );
-  });
-
   it("parses intent/name format", () => {
     expect(parseModelString("intent/utility")).toEqual({
       type: "intent",
@@ -45,12 +39,6 @@ describe("parseModelString", () => {
   it("rejects intent/foo/bar (3-part intent)", () => {
     expect(() => parseModelString("intent/foo/bar")).toThrow(
       /intent\/\* model strings must be 2 parts/
-    );
-  });
-
-  it("rejects preset/foo/bar (3-part preset) with migration error", () => {
-    expect(() => parseModelString("preset/foo/bar")).toThrow(
-      /preset\/\* model strings have been removed/
     );
   });
 

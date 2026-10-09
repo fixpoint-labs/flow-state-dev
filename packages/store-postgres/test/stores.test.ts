@@ -606,77 +606,6 @@ describe("PostgreSQL store adapter", () => {
       expect(Number((got.rows[0] as any).sequence)).toBe(12);
     });
 
-    it("get returns legacy data.items when request_items has no rows", async () => {
-      const s = await freshStores();
-      const legacyItem = makeMessageItem("legacy_1", "legacy_a", 0, "legacy-x");
-      // Seed the legacy shape: items live inside data.items on the
-      // requests row, with no rows in request_items.
-      const record = makeRequestRecord("legacy_1", "flow-a", "run", "u", "sess", {
-        items: [legacyItem as any]
-      });
-      // Bypass the new strip-on-set by writing the JSONB directly.
-      const executor = pgliteExecutor(pglite);
-      await executor.query(
-        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
-          "VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9::jsonb)",
-        [
-          "legacy_1",
-          record.flowKind,
-          record.userId,
-          record.sessionId ?? null,
-          record.status,
-          record.version,
-          record.createdAt,
-          record.updatedAt,
-          JSON.stringify(record)
-        ]
-      );
-      const got = await s.request.get("legacy_1");
-      expect(got!.items).toHaveLength(1);
-      expect(got!.items![0]!.id).toBe("legacy_a");
-    });
-
-    it("merges legacy data.items with request_items rows, table-wins on collision", async () => {
-      const s = await freshStores();
-      const legacyA = makeMessageItem("merge_1", "shared", 0, "legacy-version");
-      const legacyB = makeMessageItem("merge_1", "legacy-only", 1, "legacy-b");
-      const record = makeRequestRecord("merge_1", "flow-a", "run", "u", "sess", {
-        items: [legacyA as any, legacyB as any]
-      });
-      const executor = pgliteExecutor(pglite);
-      await executor.query(
-        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
-          "VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9::jsonb)",
-        [
-          "merge_1",
-          record.flowKind,
-          record.userId,
-          record.sessionId ?? null,
-          record.status,
-          record.version,
-          record.createdAt,
-          record.updatedAt,
-          JSON.stringify(record)
-        ]
-      );
-      // Write the table version for `shared` with new content (table wins).
-      const tableShared = makeMessageItem("merge_1", "shared", 2, "table-version");
-      const tableC = makeMessageItem("merge_1", "table-only", 3, "table-c");
-      s.request.persistItems("merge_1", [tableShared, tableC] as any);
-      await s.request.flushItems("merge_1");
-
-      const got = await s.request.get("merge_1");
-      expect(got!.items).toHaveLength(3);
-      const sharedRow = got!.items!.find((i) => i.id === "shared") as any;
-      expect(sharedRow.content[0].text).toBe("table-version");
-      // Ordered by itemIndex: legacy-only (1), shared (2), table-only (3)
-      expect(got!.items!.map((i) => i.id)).toEqual([
-        "legacy-only",
-        "shared",
-        "table-only"
-      ]);
-    });
-
     it("countItems counts table rows for a post-migration record", async () => {
       const s = await freshStores();
       await s.request.set(
@@ -692,41 +621,6 @@ describe("PostgreSQL store adapter", () => {
 
       expect(await s.request.countItems("req_cnt")).toBe(2);
       expect(await s.request.countItems("req_cnt_missing")).toBe(0);
-    });
-
-    it("countItems merges legacy data.items with table rows, table wins on collision", async () => {
-      const s = await freshStores();
-      const legacyA = makeMessageItem("cnt_merge", "shared", 0, "legacy-version");
-      const legacyB = makeMessageItem("cnt_merge", "legacy-only", 1, "legacy-b");
-      const record = makeRequestRecord("cnt_merge", "flow-a", "run", "u", "sess", {
-        items: [legacyA as any, legacyB as any]
-      });
-      const executor = pgliteExecutor(pglite);
-      await executor.query(
-        "INSERT INTO requests (id, flow_kind, user_id, session_id, org_id, status, version, created_at, updated_at, data) " +
-          "VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9::jsonb)",
-        [
-          "cnt_merge",
-          record.flowKind,
-          record.userId,
-          record.sessionId ?? null,
-          record.status,
-          record.version,
-          record.createdAt,
-          record.updatedAt,
-          JSON.stringify(record)
-        ]
-      );
-      s.request.persistItems("cnt_merge", [
-        makeMessageItem("cnt_merge", "shared", 2, "table-version") as any,
-        makeMessageItem("cnt_merge", "table-only", 3, "table-c") as any
-      ]);
-      await s.request.flushItems("cnt_merge");
-
-      // Union by id: shared, legacy-only, table-only — matches get().items.
-      expect(await s.request.countItems("cnt_merge")).toBe(3);
-      const got = await s.request.get("cnt_merge");
-      expect(got!.items).toHaveLength(3);
     });
 
     it("list default leaves items undefined", async () => {
@@ -746,7 +640,7 @@ describe("PostgreSQL store adapter", () => {
       expect(out[0]!.items).toBeUndefined();
     });
 
-    it("list with withItems:true populates items, merging legacy + table", async () => {
+    it("list with withItems:true populates items", async () => {
       const s = await freshStores();
       await s.request.set(
         "req_l2",

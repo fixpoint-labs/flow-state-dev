@@ -162,7 +162,7 @@ The host verifies credentials. The framework applies `defaultUserId` and `requir
 | `createCheck` | `(input) => Result \| Promise<Result>`, where `Result` is `{ ok: true } \| { ok: false, message, status? }` | none | Optional; most flows need only `stateSchema`. For a rule that depends on who is creating the session or on what exists in the store. Runs after `stateSchema` has parsed a new session's initial state, on every path that creates one, and receives that state and the caller's identity. A refusal answers with `status` (400, 403 or 404; default 400) and `message`. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project). |
 | `serverOwned` | `string[]` | none | Session-state fields only your flow's code writes. Creating a session with a value for one is refused with a 400 that names the field. |
 
-`clientData` is not a scope config key. `defineFlow` throws if a scope sets it: compute functions go under `client.derived`, verbatim passthrough under `client.expose`.
+`clientData` is not a scope config key: compute functions go under `client.derived`, verbatim passthrough under `client.expose`.
 
 ### `request`
 

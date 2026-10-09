@@ -88,27 +88,21 @@ export async function deleteRecord(rootDir: string, id: string): Promise<void> {
 }
 
 /**
- * Sidecar files the request store writes alongside the primary record:
- * the append-only NDJSON event log (`.events.json`) and runOnce result
- * files (`.runonce.json` legacy single-map, `.runonce.<key>.json` per-key in
- * the layout older versions wrote). Per-key files written today are named
- * `<id>@<key>.runonce` and never end in `.json`, so the listing never reaches
- * them. `listRecords` must skip these — they are not record documents and the
- * NDJSON event log is not even valid standalone JSON.
+ * The sidecar file the request store writes alongside the primary record that
+ * ends in `.json`: the append-only NDJSON event log (`.events.json`). Per-key
+ * runOnce files are named `<id>@<key>.runonce` and abort markers `<id>.abort`,
+ * so the listing never reaches them. `listRecords` must skip the event log —
+ * it is not a record document, nor even valid standalone JSON.
  *
  * This suffix match is a heuristic: `encodeURIComponent` does not escape `.`,
- * so an arbitrary record id ending in `.events`/`.runonce` would collide. It
+ * so an arbitrary record id ending in `.events` would collide. It
  * is therefore opt-in (`skipSidecars`) and used only by the request store,
  * whose ids are framework-generated (`req_*`) and never carry those suffixes.
  * Scope stores (session/user/org) live in sidecar-free directories and must
  * not enable it, or a caller-supplied id could be silently dropped.
  */
 function isSidecarFile(name: string): boolean {
-  return (
-    name.endsWith(".events.json") ||
-    name.endsWith(".runonce.json") ||
-    /\.runonce\..+\.json$/.test(name)
-  );
+  return name.endsWith(".events.json");
 }
 
 export async function listRecords<TValue>(
@@ -297,7 +291,7 @@ export type CreateFilesystemRecordStoreOptions<
    */
   unordered?: (options?: TListOptions) => boolean;
   /**
-   * Skip `.events.json`/`.runonce.*.json` sidecar files in `list`. Only the
+   * Skip `.events.json` sidecar files in `list`. Only the
    * request store (which co-locates sidecars with records and uses
    * framework-generated `req_*` ids) should enable this; see `isSidecarFile`.
    */

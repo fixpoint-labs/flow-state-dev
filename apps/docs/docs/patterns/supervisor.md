@@ -30,7 +30,7 @@ Each registered worker is wrapped at supervisor-construction time in a sequencer
 ```
 TaskWorkerInput
   → stashTaskId (.tap — capture taskId / goal / attempts)
-  → adaptedWorker        (the user's worker; legacyWorkerAdapter applied if needed)
+  → worker               (the user's worker)
   → stashWorkerOutput (.tap — capture worker output for applyVerdict)
   → stampReviewEntered (.tap — set metadata.review.entered for terminal labelling)
   → buildReviewerInput   (.map — { taskId, goal, attempts, workerOutput, criteria? })
@@ -94,23 +94,6 @@ The worker receives the substrate's `TaskWorkerInput`:
 ```
 
 On the first attempt, `feedback` is absent. On retry — after a reviewer rejection — it contains the verdict's feedback string so the worker can address it.
-
-### Legacy worker shape (back-compat)
-
-Pre-migration the supervisor used a simpler shape: `{ id, goal, context?, feedback? }`. Workers declaring `inputSchema: executableTaskSchema` are auto-adapted via `legacyWorkerAdapter` so existing code keeps working:
-
-```ts
-import { executableTaskSchema, supervisor } from "@flow-state-dev/patterns";
-
-const legacyWorker = handler({
-  inputSchema: executableTaskSchema,
-  // ... receives { id, goal, context?, feedback? }
-});
-
-supervisor({ worker: legacyWorker, ... });   // adapter wraps it transparently
-```
-
-The legacy adapter is detected by `inputSchema` reference equality. Workers without `inputSchema` are passed through unchanged — they receive `TaskWorkerInput`.
 
 ## Reviewer verdict shape
 
@@ -260,8 +243,6 @@ import {
   reviewerVerdictSchema,
   reviewerInputSchema,
   plannerOutputSchema,
-  executableTaskSchema,        // legacy worker input shape
-  legacyWorkerAdapter,          // back-compat shim
   buildReviewedWorker,          // build a per-task review chain manually
   createSupervisorCaptureAndPlan,
   createSupervisorSynthesize,
@@ -274,7 +255,6 @@ import type {
   ReviewerVerdict,
   ReviewerInput,
   PlannerOutput,
-  ExecutableTask,
 } from "@flow-state-dev/patterns";
 ```
 
