@@ -787,7 +787,7 @@ See [Flow Isolation](https://flow-state.dev/docs/advanced/flow-isolation) and th
 
 ## ContentStore
 
-`StoreRegistry` includes a required `content: ContentStore` field that separates resource content persistence from scope record persistence. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ContentStore`. The filesystem `ContentStore` writes each resource as a nested `.md` file (a key `concepts/overview` becomes `concepts/overview.md`), so the store root is a browsable file tree; a directory written in the older flat layout is refused with a clear error rather than silently misread.
+`StoreRegistry` includes a required `content: ContentStore` field that separates resource content persistence from scope record persistence. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ContentStore`. The filesystem `ContentStore` writes each resource as a nested `.md` file (a key `concepts/overview` becomes `concepts/overview.md`), so the store root is a browsable file tree.
 
 ```ts
 interface ContentStore {
@@ -831,7 +831,7 @@ Database adapters can implement `ContentStore` to route content to blob storage,
 
 ## ResourceStateStore
 
-`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`. The filesystem adapter writes each resource as a nested `.json` file mirroring the content store's layout (same nested-tree upgrade and legacy-layout guard).
+`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`. The filesystem adapter writes each resource as a nested `.json` file mirroring the content store's layout.
 
 It shares `ContentStore`'s addressing but **not** its concurrency model. `ContentStore` is last-write-wins, which is right for a document body nothing merges against a prior read. Resource state is read-modify-written by concurrent workers, so the contract is compare-and-swap: every write takes an `expectedVersion` and returns a `SetResult` saying whether it actually landed.
 
@@ -923,7 +923,7 @@ A number outside that domain — negative, fractional, `NaN`, `Infinity` — thr
 | `deleteAll` | Bulk-marks every live key in the scope. A scope operation, so it carries no expected version |
 | `purgeTombstones` | Removes the scope's tombstoned rows outright and touches no live one. The only operation that reclaims a tombstone |
 | Retention | The store **never reclaims a tombstone on its own** — no sweep, no TTL, in any scope. Only an explicit `purgeTombstones` removes one |
-| Legacy rows | A row written before versioning reads as **live at version 1** — never as absent |
+| Legacy rows | In the SQL adapters, a row written before versioning reads as **live at version 1** — never as absent. The filesystem adapter reads only its versioned record and refuses any other file |
 
 Retention is the guarantee, not an oversight: because a tombstone keeps its version, an observer holding a pre-delete version can never match the row that replaces it within the same incarnation of a scope id. A tombstone that is never aged out is always sound. It costs one row per deleted key.
 

@@ -4,11 +4,11 @@
  * form the provider does not serve, in prose and examples (FIX-1126).
  *
  * `preset/*` model strings and the `presets` resolver option were removed in
- * favour of intents. Both `throw` at runtime — `parseModelString` rejects the
- * first, `createModelResolver`'s option validation rejects the second by name.
- * Neither deprecates, and neither falls back. A doc page that still teaches
- * one is handing the reader code that crashes, and the crash lands on their
- * first run, which is the worst place we can put it.
+ * favour of intents. Neither deprecates, and neither falls back: a `preset/*`
+ * string names a provider that does not exist, and a `presets` option is never
+ * read. A doc page that still teaches one is handing the reader code that
+ * fails, and the failure lands on their first run, which is the worst place
+ * we can put it.
  *
  * The removal shipped and the docs kept teaching the old syntax for months
  * with nothing to notice. This script is what notices.
@@ -16,7 +16,7 @@
  * ## What this checks, and what it does not
  *
  * **It checks everything authored in this repo except the individual files
- * that implement the rejection.** The scanned surface is defined by what is
+ * whose job is to name the removed syntax.** The scanned surface is defined by what is
  * *excluded*, not by a list of roots that are included — see `isScannedPath`.
  * Anything a person reads, an agent copies, or a runtime executes is in.
  *
@@ -110,21 +110,6 @@ const REJECTION_IMPL_FILES = new Set([
   // guard works.
   "scripts/validate-model-strings.mjs",
   "packages/core/test/model-strings-check.test.ts",
-
-  // The parser that implements the rejection — listed by the rule, not because
-  // it fails today. It escapes `QUOTED_PRESET` only by an accident of
-  // formatting: its migration message opens `"preset/* model strings…"` (the
-  // `*` is outside the name character class) and `"  preset/fast, …"` (the
-  // leading spaces put the quote nowhere near the string). Reflow either line
-  // and the one file whose literal job is naming the removed syntax starts
-  // failing. Not dead weight; do not prune it for passing.
-  "packages/core/src/models/providerDetection.ts",
-
-  // The tests that pin the throw, one per entry point: the resolver's
-  // `defaultModel` and `intents`, its env overrides, and the parser directly.
-  "packages/core/test/models/create-model-resolver-intents.test.ts",
-  "packages/core/test/models/create-model-resolver-env-overrides.test.ts",
-  "packages/core/test/models/provider-detection.test.ts",
 ]);
 
 /**
@@ -261,7 +246,7 @@ const RULES = [
     rule: "preset-string",
     heading: (n) => `${n} quoted preset/* model string(s)`,
     fix:
-      `  preset/* strings throw at runtime. Use a direct "provider/model"` +
+      `  preset/* strings fail at runtime. Use a direct "provider/model"` +
       `\n  string, or "intent/<name>" on a resolver that declares that intent` +
       `\n  (an intent/* string with no matching intent and no defaultModel` +
       `\n  throws too). Naming preset/* as a rejected value stays fine —` +
@@ -271,7 +256,7 @@ const RULES = [
     rule: "presets-option",
     heading: (n) => `${n} use(s) of the removed 'presets' resolver option`,
     fix:
-      `  createModelResolver rejects 'presets' by name. Declare 'intents'` +
+      `  createModelResolver no longer reads 'presets'. Declare 'intents'` +
       `\n  plus the required 'defaultModel' instead.`,
   },
   {

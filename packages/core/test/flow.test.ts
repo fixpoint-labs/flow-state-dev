@@ -1034,19 +1034,6 @@ describe("defineFlow", () => {
       expect(typeof flow.session?.client?.derived?.greeting).toBe("function");
     });
 
-    it("rejects leftover session.clientData", () => {
-      expect(() =>
-        defineFlow({
-          kind: "ccnorm-2",
-          actions: {},
-          session: {
-            stateSchema: z.object({}),
-            clientData: { legacy: () => ({ ok: true }) }
-          } as any
-        })
-      ).toThrow(/session\.clientData was removed/);
-    });
-
     it("throws when expose and derived share a name", () => {
       expect(() =>
         defineFlow({

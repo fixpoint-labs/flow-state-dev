@@ -44,15 +44,6 @@ describe("createModelResolver — construction validation", () => {
     ).toThrow(/defaultModel must not be an intent\/\* string/);
   });
 
-  it("throws when defaultModel is a preset/* string (via parseModelString)", () => {
-    expect(() =>
-      createModelResolver({
-        intents: { utility: ["openai/gpt-5.4"] },
-        defaultModel: "preset/fast",
-      })
-    ).toThrow(/preset\/\* model strings have been removed/);
-  });
-
   it("throws when an intent candidate is an intent/* string", () => {
     expect(() =>
       createModelResolver({
@@ -60,15 +51,6 @@ describe("createModelResolver — construction validation", () => {
         defaultModel: "openai/gpt-5.4",
       })
     ).toThrow(/must not be an intent\/\* string/);
-  });
-
-  it("throws when an intent candidate is a preset/* string", () => {
-    expect(() =>
-      createModelResolver({
-        intents: { utility: ["preset/fast"] },
-        defaultModel: "openai/gpt-5.4",
-      })
-    ).toThrow(/preset\/\* model strings have been removed/);
   });
 
   it("throws on malformed candidate", () => {
@@ -105,15 +87,6 @@ describe("createModelResolver — construction validation", () => {
         defaultModel: "openai/gpt-5.4",
       })
     ).toThrow(/invalid intent name/);
-  });
-
-  it("throws when legacy `presets` option is passed", () => {
-    expect(() =>
-      createModelResolver({
-        // @ts-expect-error — legacy field intentionally tested
-        presets: { fast: { models: ["openai/gpt-5.4"] } },
-      })
-    ).toThrow(/'presets' option has been removed/);
   });
 
   it("allows empty intents object without defaultModel", () => {

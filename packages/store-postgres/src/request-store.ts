@@ -111,22 +111,6 @@ function upsertItemsStatement(
   };
 }
 
-/**
- * Merge per-row `request_items` with any legacy `data.items` slice that
- * predates the dedicated-table migration. Table version wins on item-id
- * collision; output is sorted by `itemIndex`.
- */
-function mergeLegacyWithTable(
-  fromTable: OutputItem[],
-  legacy: OutputItem[] | undefined
-): OutputItem[] {
-  if (!Array.isArray(legacy) || legacy.length === 0) return fromTable;
-  const seen = new Set(fromTable.map((i) => i.id));
-  const legacyOnly = legacy.filter((i) => !seen.has(i.id));
-  if (legacyOnly.length === 0) return fromTable;
-  return [...fromTable, ...legacyOnly].sort((a, b) => a.itemIndex - b.itemIndex);
-}
-
 export type CreatePostgresRequestStoreOptions = {
   /**
    * Dedicated `pg.Pool` for `LISTEN flow_events` checkouts. Reusing the
@@ -364,7 +348,7 @@ export function createPostgresRequestStore(
       const record = withSourceDefault(found.record) as RequestRecord;
       return {
         ...record,
-        items: mergeLegacyWithTable(parseTableItems(found.row.table_items), record.items)
+        items: parseTableItems(found.row.table_items)
       };
     },
     async set(
@@ -561,16 +545,13 @@ export function createPostgresRequestStore(
           const withSource = withSourceDefault(record) as RequestRecord;
           return {
             ...withSource,
-            items: mergeLegacyWithTable(parseTableItems(row.table_items), withSource.items)
+            items: parseTableItems(row.table_items)
           };
         });
       }
 
       const records = await base.list(options);
-      return records.map((r) => {
-        const withSource = withSourceDefault(r) as RequestRecord;
-        return withSource.items === undefined ? withSource : { ...withSource, items: undefined };
-      });
+      return records.map((r) => withSourceDefault(r) as RequestRecord);
     },
 
     persistItems(requestId: string, items: OutputItem[]): void {
@@ -601,30 +582,11 @@ export function createPostgresRequestStore(
     },
 
     async countItems(requestId: string): Promise<number> {
-      // Mirror the `get` dual-read (FIX-686): records persisted before the
-      // child table existed may still carry blob items, and the table wins on
-      // id collision. The common (post-migration) path is an indexed COUNT
-      // plus one record-row read — item payloads are never loaded.
-      const [countResult, record] = await Promise.all([
-        executor.query(
-          "SELECT COUNT(*)::int AS c FROM request_items WHERE request_id = $1",
-          [requestId]
-        ),
-        base.get(requestId)
-      ]);
-      const tableCount = (countResult.rows[0] as { c: number }).c;
-      const legacy = record?.items;
-      if (!Array.isArray(legacy) || legacy.length === 0) return tableCount;
       const { rows } = await executor.query(
-        "SELECT item_id FROM request_items WHERE request_id = $1",
+        "SELECT COUNT(*)::int AS c FROM request_items WHERE request_id = $1",
         [requestId]
       );
-      const tableIds = new Set(rows.map((row) => row.item_id as string));
-      let count = tableIds.size;
-      for (const item of legacy) {
-        if (!tableIds.has(item.id)) count += 1;
-      }
-      return count;
+      return (rows[0] as { c: number }).c;
     },
 
     persistEvents(requestId: string, events: RequestStreamEvent[]): void {

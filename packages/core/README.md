@@ -867,7 +867,7 @@ Env vars can replace which model a declared intent (or `defaultModel`) resolves 
 - `FSDEV_INTENT_<NAME>` — replace the candidate list for intent `<name>`. `<NAME>` is the intent name uppercased with hyphens replaced by underscores (`my-custom` → `FSDEV_INTENT_MY_CUSTOM`).
 - `FSDEV_DEFAULT_MODEL` — replace `defaultModel`. Useful when an intent falls through.
 
-Each value is a `provider/model` or `gateway/provider/model` string. `intent/*` and `preset/*` are rejected. Vars are read once at construction; setting them after the resolver is built has no effect.
+Each value is a `provider/model` or `gateway/provider/model` string. `intent/*` values are rejected. Vars are read once at construction; setting them after the resolver is built has no effect.
 
 ```bash
 # .env.local

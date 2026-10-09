@@ -73,14 +73,6 @@ export {
 } from "./work-recorder";
 export { ClaudeAgentSdkNotInstalledError, ClaudeAgentRunError } from "./errors";
 
-// Re-export the shared envelope so `/sdk` consumers don't need a second import.
-export {
-  remoteAgentTaskHandleSchema,
-  type RemoteAgentTaskHandle,
-  type RemoteAgentSource,
-  type RemoteAgentStatus,
-} from "../shared";
-
 export {
   createWorkspaceAgentCapability,
   containmentSandbox,

@@ -56,9 +56,8 @@ type ScopeWithClient = {
 };
 
 /**
- * Validate a scope's `client` config. Throws on a leftover `clientData`
- * key, an `expose`/`derived` name collision, or an `expose` key that
- * isn't on the scope state schema.
+ * Validate a scope's `client` config. Throws on an `expose`/`derived` name
+ * collision, or an `expose` key that isn't on the scope state schema.
  *
  * Validation only — nothing is rewritten, so the merged config the caller
  * already holds is the one the instance carries.
@@ -69,8 +68,6 @@ function validateScopeClientConfig(
   config: ScopeWithClient | undefined
 ): void {
   if (config === undefined) return;
-
-  rejectRemovedClientData(config, flowKind, scope);
 
   const client = config.client;
   if (client === undefined) return;
@@ -158,31 +155,6 @@ function rejectRemovedWork(value: object | undefined, location: string): void {
       "Its four hooks were never invoked, so no lifecycle behaviour is lost — but they were walked for " +
       "resource declaration, so any resource declared only there is no longer registered. " +
       "Move those declarations onto a block that runs, and dispatch background steps with `.sideChain()`."
-    );
-  }
-}
-
-/**
- * Reject the removed scope-config `clientData` option.
- *
- * `clientData` was the legacy authoring shape for a scope's client-facing
- * projection. It is gone from `SessionConfig` / `UserConfig` / `OrgConfig`
- * in favour of `client: { derived, expose }`, so a TypeScript caller passing
- * a fresh object literal now fails to compile; this is the runtime half, for
- * plain JS and for a non-fresh object TypeScript lets through.
- *
- * Failing loudly is the point: accepting-and-ignoring the key would silently
- * stop publishing data the frontend still reads, with no error anywhere near
- * the flow that authored it.
- *
- * Only the authoring key moved — the wire shape is unchanged, and clients
- * still read `snapshot.clientData.<scope>.<name>`.
- */
-function rejectRemovedClientData(value: object | undefined, flowKind: string, scope: ScopeKind): void {
-  if (value !== undefined && Object.hasOwn(value, "clientData")) {
-    throw new Error(
-      `Flow "${flowKind}" ${scope}.clientData was removed. ` +
-      `Use ${scope}.client: { derived: { ... } } (or expose: [...] for verbatim passthrough).`
     );
   }
 }
@@ -1166,29 +1138,6 @@ function validateRequireUserFalseConsistency(
  * through to the definition. Returns `undefined` only when neither side is
  * set so we don't materialize empty config objects on every flow.
  */
-/**
- * Refuse an `authentication.requireOrg` that a flow still declares (FIX-1442).
- *
- * Organization identity is unconditional now, so the flag has nothing left to
- * say — but an author who wrote it meant "this flow needs an org", and
- * accepting it silently would leave a config expressing an intent the framework
- * no longer reads. That is the one outcome worse than either keeping or
- * removing it, so the flow refuses to start and names the migration.
- */
-function rejectRetiredOrgRequirement(
-  flowKind: string,
-  authentication: AuthenticationConfig | undefined
-): void {
-  if (authentication === undefined) return;
-  if (!("requireOrg" in (authentication as Record<string, unknown>))) return;
-  throw new Error(
-    `Flow "${flowKind}" sets authentication.requireOrg, which no longer exists. ` +
-      `Organization identity is required on every request (FIX-1442): remove the flag. ` +
-      `Return a verified orgId from authentication.resolvePrincipal, or configure no ` +
-      `resolver to run under DEFAULT_ORG_ID.`
-  );
-}
-
 function mergeAuthentication(
   base: AuthenticationConfig | undefined,
   override: AuthenticationConfig | undefined
@@ -1293,9 +1242,6 @@ function normalizeFlowConfig(
   rejectInstanceCardinality(options, definition.kind);
   rejectInstanceConfigSchema(options, definition.kind);
   const cardinality = normalizeCardinality(definition.kind, definition.cardinality);
-
-  rejectRetiredOrgRequirement(definition.kind, definition.authentication);
-  rejectRetiredOrgRequirement(definition.kind, options?.authentication);
 
   const authentication = mergeAuthentication(
     definition.authentication,

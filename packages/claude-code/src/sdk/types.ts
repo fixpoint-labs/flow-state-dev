@@ -28,9 +28,6 @@ export type SdkResultSubtype =
  */
 export const CLAUDE_SDK_SOURCE = "claude-code/sdk" as const;
 
-/** The pre-LAB-152 spelling, still found in handles persisted before the rule. */
-const LEGACY_SDK_SOURCE = "sdk";
-
 /**
  * How the SDK's terminal subtype reads in the framework's neutral vocabulary.
  *
@@ -95,9 +92,8 @@ export interface SdkAgentHandle extends HarnessRunHandle {
 /**
  * Runtime validator for {@link SdkAgentHandle}.
  *
- * A handle persisted under the old `"sdk"` spelling reads through to the new
- * value, and one persisted before `outcome`/`cost` existed picks them up as
- * `null` from the neutral schema's defaults (BP-030).
+ * A handle persisted before `outcome`/`cost` existed picks them up as `null`
+ * from the neutral schema's defaults (BP-030).
  *
  * **`costUsd` is gone and is not rejected.** It was a dual carried beside the
  * neutral `cost` for one release, while the run manager still read it; the
@@ -106,10 +102,7 @@ export interface SdkAgentHandle extends HarnessRunHandle {
  * what BP-030 asks for on a field that was only ever a copy of one still here.
  */
 export const sdkAgentHandleSchema = harnessRunHandleSchema.extend({
-  source: z.preprocess(
-    (value) => (value === LEGACY_SDK_SOURCE ? CLAUDE_SDK_SOURCE : value),
-    z.literal(CLAUDE_SDK_SOURCE),
-  ),
+  source: z.literal(CLAUDE_SDK_SOURCE),
   status: z.enum(["running", "completed", "errored"]),
   resultSubtype: z
     .enum([

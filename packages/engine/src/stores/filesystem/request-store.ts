@@ -26,7 +26,7 @@ import {
 import { matchesOrgFilter, matchesTenantFilter, resolveRequestIncarnation } from "../scope-keys";
 import { compareRequestsForListing } from "../list-order";
 import { pollEvents } from "../subscribe-helpers";
-import { appendFile, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { appendFile, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   createSerializedWriteQueue,
@@ -50,10 +50,6 @@ export type FilesystemRequestStoreOptions = {
 
 function toEventsPath(rootDir: string, requestId: string): string {
   return toRecordPath(rootDir, requestId).replace(/\.json$/, ".events.json");
-}
-
-function toRunOncePath(rootDir: string, requestId: string): string {
-  return toRecordPath(rootDir, requestId).replace(/\.json$/, ".runonce.json");
 }
 
 /**
@@ -110,11 +106,6 @@ function safeDecode(name: string): string | undefined {
 /**
  * Whether `parsed`, read from the file `name`, reads back as the record of the
  * request whose id is the whole name (`<enc(id)>.json`).
- *
- * A pre-`@` per-key runOnce file can carry that same name, and a stored result
- * is arbitrary JSON, so no field can tell a record from a result shaped like
- * one. Such a file is therefore treated as possibly a record everywhere: never
- * deleted with another request, and never served as a runOnce result.
  */
 function readsBackAsRecordFile(name: string, parsed: unknown): boolean {
   return (
@@ -128,32 +119,6 @@ function readsBackAsRecordFile(name: string, parsed: unknown): boolean {
 function runOnceKeyPrefix(requestId: string): string {
   return `${encodeSegment(requestId)}@`;
 }
-
-/**
- * Per-key runOnce file path in the layout used before the `@` boundary:
- * `{rootDir}/<enc(requestId)>.runonce.<enc(key)>.json`. Read as a fallback and
- * removed on delete, never written (BP-030).
- *
- * The layout is ambiguous: `.` is not escaped, so `foo.runonce.bar.runonce.step.json`
- * is both ("foo", "bar.runonce.step") and ("foo.runonce.bar", "step"), and it is
- * also the record file of a request whose id is `foo.runonce.bar.runonce.step`.
- */
-function toLegacyRunOnceKeyPath(
-  rootDir: string,
-  requestId: string,
-  key: string
-): string {
-  return path.join(
-    rootDir,
-    `${encodeSegment(requestId)}.runonce.${encodeSegment(key)}.json`
-  );
-}
-
-/**
- * Suffix an ambiguous pre-`@` per-key runOnce file is renamed to on delete.
- * No read path opens it, and `listRecords` collects only `.json` files.
- */
-const QUARANTINE_SUFFIX = ".quarantined";
 
 // Module-scoped so the "warn once per corrupted file" guarantee holds across
 // reads and across store instances within the same process (mirrors the
@@ -173,9 +138,8 @@ const corruptionWarned = new Set<string>();
  * on the record would put that cost on every heartbeat poll. It lives in an
  * `.abort` marker file beside the record instead, making the poll a `stat`.
  * That divergence is why this adapter carries more abort code than the others:
- * `get`/`list` overlay the marker, and a pre-upgrade record carrying the flag
- * inline is migrated to a marker on its first write. Reads never mutate
- * storage; every write that touches a request's files takes the per-id lock.
+ * `get`/`list` overlay the marker. Reads never mutate storage; every write that
+ * touches a request's files takes the per-id lock.
  *
  * Multi-process disclaimer: this store assumes a single writer per request.
  * Ordering and the FIX-399 durability barrier are enforced within one process
@@ -204,28 +168,6 @@ export class FilesystemRequestStore implements RequestStore {
    * propagate persist failures instead of silently swallowing them (FIX-399).
    */
   private readonly lastEventError = new Map<string, Error>();
-  /**
-   * Requests whose event file has had its on-disk format verified (and
-   * migrated from legacy JSON-array to NDJSON if needed) at least once this
-   * process. Migration runs lazily on the first `persistEvents` per request.
-   */
-  private readonly eventsFormatVerified = new Set<string>();
-  /**
-   * Requests whose inline legacy abort intent has been dealt with by a write
-   * that completed (FIX-1026). Every write strips the inline field, so once
-   * one has landed the record can never carry it again and later writes can
-   * skip the check entirely — which is what keeps the legacy read at one per
-   * request per process instead of one per write, on an adapter whose records
-   * carry items and are therefore O(items) to read.
-   *
-   * A plain set of ids, checked synchronously, NOT a promise to await. The
-   * check has to stay synchronous: an `await` here would hand the per-id write
-   * lock to anything already queued, and a `delete` that slipped through would
-   * then be undone by the write that waited. Two writers both seeing "not yet"
-   * is harmless — they serialize on that lock, and the second finds the first
-   * has already stripped the field.
-   */
-  private readonly abortIntentMigrated = new Set<string>();
   private readonly pollIntervalMs: number;
   private readonly onPersistError?: PersistErrorHandler;
 
@@ -321,26 +263,8 @@ export class FilesystemRequestStore implements RequestStore {
       this.hasAbortMarker(id)
     ]);
     if (record === undefined) return undefined;
-
-    // BP-030 dual-read. The marker is authoritative once it exists; a record
-    // written before the flag moved off `set`'s surface still carries it
-    // inline, and must still read as requested.
-    //
-    // Read-only. An earlier revision created the marker here to "migrate" the
-    // record; a read does not mutate storage. Migrating from this path would
-    // also put a locked read-modify-write on the hot read path, and `get` is
-    // already the O(items) call the marker exists to keep off the poll.
-    //
-    // Migration happens on the write path instead — every write that strips
-    // the inline flag (`set` and `setFieldsIfStatus` alike) moves it into the
-    // marker first, so no write discards stored intent. Between an upgrade and
-    // a request's first write, the flag is therefore visible here but not to
-    // `isAbortRequested`, which is a bare `stat`. That gap is one write wide
-    // and closes on the first write, which every live request performs.
-    const inlineLegacy = record.abortRequested === true;
-
     return withRequestSourceDefault(
-      withStoredAbortRequested(record, marked || inlineLegacy ? true : undefined)
+      withStoredAbortRequested(record, marked ? true : undefined)
     );
   }
 
@@ -369,55 +293,8 @@ export class FilesystemRequestStore implements RequestStore {
       const isMarked = marked.has(
         path.basename(toAbortMarkerPath(this.rootDir, record.id))
       );
-      return withStoredAbortRequested(
-        record,
-        isMarked || record.abortRequested === true ? true : undefined
-      );
+      return withStoredAbortRequested(record, isMarked ? true : undefined);
     });
-  }
-
-  /**
-   * Move a pre-upgrade inline `abortRequested: true` into the marker, once per
-   * request per process (FIX-1026, BP-030).
-   *
-   * Both write paths strip the inline field — `set` always, and
-   * `setFieldsIfStatus` on every applied write regardless of whether its field
-   * set mentions `abortRequested`. On a record written before the flag moved
-   * off `set`'s write surface that field is the *only* copy of the
-   * cancellation, so stripping it without migrating would let an ordinary
-   * write clear stored intent, which the `set` contract forbids in both
-   * directions. It is not merely a lost read: `isAbortRequested` is a bare
-   * `stat`, so intent left inline is intent the cross-process poll can never
-   * deliver, and a request cancelled before the upgrade that reached
-   * `suspended` or `interrupted` would resume and run to completion.
-   *
-   * Runs inside the per-id lock the write has already taken, against the
-   * record that write is about to replace — never as an operation of its own.
-   * A separately-locked migration ahead of the write releases the lock in
-   * between, and a `delete` issued afterwards runs to completion in that gap;
-   * the trailing write then recreates the request the delete removed, with the
-   * deleted marker's cancellation gone. Sharing the caller's lock also means
-   * the strip and the migration that rescues the stripped value cannot be
-   * separated by another writer, which is what the memo used to buy.
-   *
-   * Takes no lock and reads nothing of its own, deliberately: reaching for
-   * either from in here would either deadlock against the lock the caller
-   * holds or reopen the window it exists to close.
-   */
-  private async migrateLegacyAbortIntent(
-    id: string,
-    current: RequestRecord | undefined
-  ): Promise<void> {
-    // Records written by this store never carry the field, so this writes
-    // nothing for every non-legacy request.
-    if (current?.abortRequested === true) {
-      await this.writeAbortMarker(id, true);
-    }
-    // Only once the marker is safely on disk. A failed marker write must leave
-    // the id unmarked so the next write retries it — and because this runs
-    // before the record is replaced, that failure also aborts the write rather
-    // than stripping a cancellation it could not move.
-    this.abortIntentMigrated.add(id);
   }
 
   async set(
@@ -428,24 +305,17 @@ export class FilesystemRequestStore implements RequestStore {
     // `abortRequested` is off `set`'s write surface (FIX-1026). The marker is
     // the only home, so the record body never carries the flag: stripping it
     // here means a full-record write can neither set the flag nor clear it,
-    // whatever snapshot the caller built its record from. The `beforeWrite`
-    // hook moves a legacy record's inline copy to the marker first — under
-    // this same write's lock — so stripping never discards stored intent.
+    // whatever snapshot the caller built its record from.
     const record = withStoredAbortRequested(value, undefined);
     // A record that leaves `items` off keeps the stored ones (FIX-1735), read
-    // under the write's lock. Only then does the write need the stored record
-    // for items; otherwise the hook is omitted once this request is known
-    // migrated, which spares the store the O(items) read on every write.
-    const keepsItems = record.items === undefined;
-    if (!keepsItems && this.abortIntentMigrated.has(id)) {
+    // under the write's lock. Only then does the write need the stored record,
+    // which spares the store the O(items) read on every other write.
+    if (record.items !== undefined) {
       return this.store.set(id, record, expectedVersion);
     }
-    return this.store.set(id, record, expectedVersion, async (current) => {
-      if (!this.abortIntentMigrated.has(id)) await this.migrateLegacyAbortIntent(id, current);
-      // A record replaces `record` in the write; `undefined` writes `record`
-      // as given. Omitting `items` costs this read of the stored record.
-      return keepsItems ? withHeldItems(record, current?.items) : undefined;
-    });
+    return this.store.set(id, record, expectedVersion, async (current) =>
+      withHeldItems(record, current?.items)
+    );
   }
 
   async isAbortRequested(requestId: string): Promise<boolean> {
@@ -486,31 +356,13 @@ export class FilesystemRequestStore implements RequestStore {
       // on a failed predicate is the price, and it only happens on a cancel
       // that arrives after the request is already terminal.
       if (!allowedStatuses.includes(current.status)) return current;
-      // Same obligation as `set`, for the same reason: the strip below runs
-      // unconditionally, but the marker is only written when `fields` carries
-      // `abortRequested`. A conditional write of any OTHER field would
-      // therefore strip a legacy record's only copy of its cancellation with
-      // nothing to replace it — gone from `get()` and from `isAbortRequested()`
-      // alike. So the guard holds for callers that do not exist yet: the verb
-      // is deliberately general, and today's two callers both happening to
-      // pass `abortRequested` is a property of the callers, not of this
-      // method. An explicit value in `fields` is the caller's decision and
-      // wins outright; there is nothing to carry forward.
-      if (abortRequested === undefined) {
-        await this.migrateLegacyAbortIntent(id, current);
-      } else {
+      if (abortRequested !== undefined) {
         await this.writeAbortMarker(id, abortRequested);
-        this.abortIntentMigrated.add(id);
       }
-      // Drop any inline copy on the way out. The marker is the sole home, and
-      // a pre-upgrade record that still carries the flag inline would
-      // otherwise outlive an applied `{ abortRequested: false }`: the marker
-      // would be removed, the inline `true` would remain, and the next `get`
-      // would report the cancellation as still standing.
       const next: RequestRecord = { ...current, ...recordFields, updatedAt };
       // A status move whose result is `undefined` removes the stored result.
       if (fields.status !== undefined && fields.result === undefined) delete next.result;
-      return withStoredAbortRequested(next, undefined);
+      return next;
     });
 
     if (found === undefined || otherRecord) return { applied: false, status: undefined };
@@ -566,10 +418,6 @@ export class FilesystemRequestStore implements RequestStore {
     // outside the lock, where a conditional write can slip in between and be
     // left holding a marker whose record is already gone.
     await this.store.delete(id, () => this.deleteSidecars(id));
-    // The record and its marker are gone, so "already migrated" is no longer a
-    // fact about anything. Dropping it keeps the skip above answering a
-    // question about a record that exists.
-    this.abortIntentMigrated.delete(id);
     // An event write failure not yet reported belonged to the deleted
     // request; the id's next owner must not be handed it by its first flush.
     this.lastEventError.delete(id);
@@ -577,34 +425,20 @@ export class FilesystemRequestStore implements RequestStore {
 
   /**
    * Remove the sidecar files the request store writes alongside the primary
-   * record: the NDJSON event log and every runOnce file (single-map, per-key,
-   * and per-key in the layout before the `@` boundary). Without this, deleting
-   * a request orphans those files on disk and they accumulate for high-churn
-   * deployments.
+   * record: the NDJSON event log, the abort marker and every per-key runOnce
+   * file. Without this, deleting a request orphans those files on disk and
+   * they accumulate for high-churn deployments.
    *
-   * Per-key files are matched by prefix. In the current layout the prefix ends
-   * at the first `@`, which no encoded id contains, so it matches this id's
-   * files and no other's. Older per-key files carry no such boundary (see
-   * {@link toLegacyRunOnceKeyPath}); see {@link classifyLegacyRunOnceKeyFile}
-   * for which are removed, which are quarantined, and which are left.
+   * Per-key files are matched by prefix. The prefix ends at the first `@`,
+   * which no encoded id contains, so it matches this id's files and no other's.
    */
   private async deleteSidecars(id: string): Promise<void> {
-    // `<id>.events.json` and `<id>.runonce.json` are also the record files of
-    // the requests whose ids are `<id>.events` and `<id>.runonce`. Such a file
-    // that reads back as that record is left; see `isRecordFile`.
-    const exactJson = new Set([
-      path.basename(toEventsPath(this.rootDir, id)),
-      path.basename(toRunOncePath(this.rootDir, id))
-    ]);
+    // `<id>.events.json` is also the record file of the request whose id is
+    // `<id>.events`. Such a file that reads back as that record is left; see
+    // `isRecordFile`.
+    const eventsFile = path.basename(toEventsPath(this.rootDir, id));
     const abortMarker = path.basename(toAbortMarkerPath(this.rootDir, id));
     const keyPrefix = runOnceKeyPrefix(id);
-    // The events/single-map paths encode the id with `encodeURIComponent`;
-    // per-key files use `encodeSegment` (which also escapes `:`). Both agree
-    // for framework `req_*` ids; matching both keeps the sweep correct for any id.
-    const legacyKeyPrefixes = [
-      `${encodeURIComponent(id)}.runonce.`,
-      `${encodeSegment(id)}.runonce.`
-    ];
     let entries: string[];
     try {
       entries = await readdir(this.rootDir);
@@ -623,17 +457,8 @@ export class FilesystemRequestStore implements RequestStore {
           await rm(filePath, { force: true });
           return;
         }
-        if (exactJson.has(name)) {
-          if (!(await this.isRecordFile(name))) await rm(filePath, { force: true });
-          return;
-        }
-        const legacy = await this.classifyLegacyRunOnceKeyFile(name, legacyKeyPrefixes);
-        if (legacy === "remove") {
+        if (name === eventsFile && !(await this.isRecordFile(name))) {
           await rm(filePath, { force: true });
-        } else if (legacy === "quarantine") {
-          await rename(filePath, `${filePath}${QUARANTINE_SUFFIX}`).catch((err) => {
-            if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-          });
         }
       })
     );
@@ -661,40 +486,6 @@ export class FilesystemRequestStore implements RequestStore {
     } catch {
       return false;
     }
-  }
-
-  /**
-   * What deleting the request whose prefixes are given does to `name`, when it
-   * may be a per-key runOnce file in the pre-`@` layout.
-   *
-   * The name is `<id>.runonce.<key>.json` with `.` unescaped, and the same name
-   * is also the record file of the request whose id is the whole name. So:
-   *
-   * - `"keep"`: not such a file, or it reads back as that other request's
-   *   record.
-   * - `"remove"`: `.runonce.` appears once, so this id and this key are the
-   *   only way to read the name.
-   * - `"quarantine"`: `.runonce.` appears more than once, so another id could
-   *   have written the same name (`foo.runonce.bar.runonce.step.json` is both
-   *   ("foo", "bar.runonce.step") and ("foo.runonce.bar", "step")). Left where
-   *   it is, the next request to take this id could read another request's
-   *   result as its own; removed, it could be another live request's. It is
-   *   renamed out of every read path instead, which cannot hand a result to
-   *   the wrong request. The price, only for such ids and only for results
-   *   stored before the upgrade, is that the other request may run that step
-   *   again.
-   */
-  private async classifyLegacyRunOnceKeyFile(
-    name: string,
-    prefixes: readonly string[]
-  ): Promise<"keep" | "remove" | "quarantine"> {
-    if (!name.endsWith(".json")) return "keep";
-    const prefix = prefixes.find((candidate) => name.startsWith(candidate));
-    if (prefix === undefined) return "keep";
-    const keyPart = name.slice(prefix.length, -".json".length);
-    if (keyPart.length === 0) return "keep";
-    if (await this.isRecordFile(name)) return "keep";
-    return name.split(".runonce.").length > 2 ? "quarantine" : "remove";
   }
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {
@@ -769,39 +560,11 @@ export class FilesystemRequestStore implements RequestStore {
 
       await ensureDirectory(this.rootDir);
       const targetPath = toEventsPath(this.rootDir, requestId);
-
-      // First persist this process for this request: migrate a legacy
-      // JSON-array file to NDJSON before appending. Migration/append errors
-      // propagate to the queue's onError (FIX-399) — never swallowed.
-      if (!this.eventsFormatVerified.has(requestId)) {
-        await this.migrateLegacyEventsIfNeeded(targetPath);
-        this.eventsFormatVerified.add(requestId);
-      }
-
+      // Append errors propagate to the queue's onError (FIX-399) — never
+      // swallowed.
       const lines = newEvents.map((e) => `${JSON.stringify(e)}\n`).join("");
       await appendFile(targetPath, lines, "utf8");
     });
-  }
-
-  /**
-   * If `targetPath` holds a legacy JSON-array events file (first non-whitespace
-   * byte is `[`), rewrite it as NDJSON via an atomic temp-write + rename so the
-   * subsequent append lands in a uniform format. No-op for missing files or
-   * files already in NDJSON shape. Errors propagate to the caller.
-   */
-  private async migrateLegacyEventsIfNeeded(targetPath: string): Promise<void> {
-    let raw: string;
-    try {
-      raw = await readFile(targetPath, "utf8");
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
-      throw err;
-    }
-    const firstNonWhitespace = raw.match(/\S/);
-    if (firstNonWhitespace?.[0] !== "[") return; // already NDJSON or empty
-    const events = JSON.parse(raw) as RequestStreamEvent[];
-    const ndjson = events.map((e) => `${JSON.stringify(e)}\n`).join("");
-    await atomicWrite(targetPath, ndjson);
   }
 
   async flushEvents(requestId: string): Promise<void> {
@@ -834,12 +597,6 @@ export class FilesystemRequestStore implements RequestStore {
 
     const matchInclude = (e: RequestStreamEvent): boolean =>
       fromSequence === undefined || e.sequence_number > fromSequence;
-
-    // Legacy JSON-array format: first non-whitespace byte is `[`.
-    if (raw.match(/\S/)?.[0] === "[") {
-      const events = JSON.parse(raw) as RequestStreamEvent[];
-      return events.filter(matchInclude);
-    }
 
     // NDJSON: one event per line. Skip blank lines; on a parse failure (e.g. a
     // torn final append) skip the line and warn once per file. The store is
@@ -879,49 +636,14 @@ export class FilesystemRequestStore implements RequestStore {
     requestId: string,
     key: string
   ): Promise<{ found: boolean; value?: unknown }> {
-    // Per-key file is the source of truth post-upgrade.
     const keyPath = toRunOnceKeyPath(this.rootDir, requestId, key);
     try {
       const raw = await readFile(keyPath, "utf8");
       return { found: true, value: JSON.parse(raw) as unknown };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-
-    // Lazy fallbacks for files written by older versions, which are read-only
-    // after upgrade — never rewritten. First the per-key file in the layout
-    // before the `@` boundary, then the single-map file before that.
-    //
-    // An older per-key file that reads back as the record whose id is its
-    // whole name is not served: it may be that request's record, which delete
-    // leaves in place, and serving it could hand a previous owner's result to
-    // whoever takes this id next. A genuine result of that shape costs one
-    // re-run of its step.
-    const legacyKeyPath = toLegacyRunOnceKeyPath(this.rootDir, requestId, key);
-    try {
-      const value = JSON.parse(await readFile(legacyKeyPath, "utf8")) as unknown;
-      if (!readsBackAsRecordFile(path.basename(legacyKeyPath), value)) {
-        return { found: true, value };
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-    const legacyPath = toRunOncePath(this.rootDir, requestId);
-    let map: Record<string, unknown>;
-    try {
-      const raw = await readFile(legacyPath, "utf8");
-      map = JSON.parse(raw) as Record<string, unknown>;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return { found: false };
-      }
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { found: false };
       throw error;
     }
-    // The single-map name is also the record file of request `<id>.runonce`;
-    // that record is never read as this request's results.
-    if (readsBackAsRecordFile(path.basename(legacyPath), map)) return { found: false };
-    if (!Object.prototype.hasOwnProperty.call(map, key)) return { found: false };
-    return { found: true, value: map[key] };
   }
 
   async setRunOnceResult(

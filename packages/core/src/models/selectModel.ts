@@ -9,10 +9,6 @@
  *   short-circuit; collection continues so `when` rules can still fire.
  * - `when` — first truthy condition wins and replaces the model. Short-circuits
  *   the model axis but does not affect the collected `preferProvider`.
- *
- * The legacy `prefer` rule is no longer supported and throws a migration
- * error at function-builder time. Use `preferProvider` for provider-name
- * semantics, or restructure as a `when` rule for full model replacement.
  */
 import type { BlockContext } from "../types/block";
 import type { MaybePromise } from "../schema/common";
@@ -65,12 +61,6 @@ export type ModelSelection =
   | string[]
   | { model: string | string[]; preferProvider?: ProviderPreference };
 
-const LEGACY_PREFER_MIGRATION_MESSAGE =
-  "selectModel: the `prefer` rule has been replaced. Use `preferProvider` for\n" +
-  "provider-name semantics, or restructure as a `when` rule for model\n" +
-  "replacement. See https://flow-state.dev/docs/fundamentals/models for the\n" +
-  "selection rules.";
-
 /**
  * Type-guard for the structured {@link ModelSelection} object form.
  * Returns true when `v` is `{ model, preferProvider? }`.
@@ -116,13 +106,6 @@ export function selectModel<TInput = unknown, TCtx extends BlockContext = LooseB
   rules: ModelRule<TInput, TCtx> | ModelRule<TInput, TCtx>[]
 ): (input: any, ctx: any) => Promise<ModelSelection> {
   const ruleList = Array.isArray(rules) ? rules : [rules];
-
-  // Validate rule shapes at builder time so misuse fails immediately.
-  for (const rule of ruleList) {
-    if ("prefer" in rule) {
-      throw new Error(LEGACY_PREFER_MIGRATION_MESSAGE);
-    }
-  }
 
   return async (input: TInput, ctx: TCtx): Promise<ModelSelection> => {
     let collectedPreferProvider: ProviderPreference | undefined;

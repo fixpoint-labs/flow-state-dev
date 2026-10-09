@@ -93,19 +93,4 @@ export const plannerOutputSchema = z.object({
 
 export type PlannerOutput = z.infer<typeof plannerOutputSchema>;
 
-/**
- * Legacy worker input shape — `{ id, goal, context?, feedback? }`.
- * `legacyWorkerAdapter` detects this schema by reference equality and
- * adapts the substrate's `TaskWorkerInput` into it before invoking a
- * pre-migration worker.
- */
-export const executableTaskSchema = z.object({
-  id: z.string(),
-  goal: z.string(),
-  context: z.string().optional(),
-  feedback: z.string().optional(),
-});
-
-export type ExecutableTask = z.infer<typeof executableTaskSchema>;
-
 export type SubTaskErrorStrategy = "skip" | "fail";
