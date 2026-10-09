@@ -1,20 +1,19 @@
 /**
- * The rebuilt shell, against the built app: the rail browses mailboxes and
- * the worker flow to the depth each flow declares, the roster panel lists each
- * worker with its flow and what it handles, the panel stands beside the
+ * The rebuilt shell, against the built app: the rail browses the coordinator
+ * and the worker flow to the depth each flow declares, the roster panel lists
+ * each worker with its flow and what it handles, the panel stands beside the
  * stream, and the three regions give way in the right order as the window
  * narrows.
  *
  * Every worker runs on one copy of the flow it names, so the rail's worker
  * section is the `agent` kind, its one copy, and that copy's conversations:
- * each one a session that names its worker when it is created.
+ * each one a session that names its worker when it is created. The
+ * coordinator flow is a singleton: its row opens straight into the person's
+ * conversation with each coordinator the tree declares.
  *
- * These open the app as `devuser`, not a per-test user, because that is who
- * the boot opens the mailboxes for: a fresh user would see no mailbox
- * conversations at all. Nothing here writes to a mailbox, so sharing the user
- * across parallel tests is safe. The first test does store a session for a
- * mailbox the tree no longer declares, as a store kept across an upgrade
- * would; the rail never draws it, and no scenario posts to it.
+ * These open the app as `devuser`, the one user this app runs as. Nothing
+ * here posts to a coordinator, so sharing the user across parallel tests is
+ * safe.
  *
  * The network half of the first test is what makes it more than a picture.
  * Fetch sessions for every row up front and every DOM assertion still passes;
@@ -32,8 +31,8 @@ import { test, expect, openKitchenSink } from "./fixtures";
 const SEAT = "support.devices";
 /** The flow every worker in this app runs on, registered as one copy at its kind. */
 const WORKER_FLOW = "agent";
-/** A mailbox the old roster declared and this one does not. */
-const RETIRED_MAILBOX = "support.desk";
+/** The coordinator the app's workforce tree declares. */
+const COORDINATOR = "support.help";
 
 /** Session-list requests, recorded from the moment this is called. */
 function sessionListRequests(page: Page): { take: () => string[] } {
@@ -53,18 +52,6 @@ function requestsMatching(page: Page, pattern: RegExp): { take: () => string[] }
       return out;
     },
   };
-}
-
-/**
- * What a store kept across an upgrade still holds from the old roster: a
- * session of the mailbox kind for a mailbox the tree no longer declares.
- */
-async function seedRetiredMailbox(page: Page): Promise<void> {
-  const response = await page.request.post(`/api/flows/mailbox/sessions`, {
-    data: { userId: "devuser", sessionId: RETIRED_MAILBOX },
-  });
-  // Already there from an earlier scenario on this server is as good.
-  expect([200, 201, 409], await response.text()).toContain(response.status());
 }
 
 /**
@@ -92,38 +79,34 @@ const kindRow = (page: Page, kind: string) => rail(page).locator(`button[data-ki
 /** A copy's row under its kind. */
 const copyRow = (page: Page, id: string) => rail(page).locator(`button[data-instance-id="${id}"]`);
 
-test("the rail opens a mailbox kind into conversations and the worker flow into its one copy, reading only leaves", async ({
+test("the rail opens the coordinator into the person's conversation with it and the worker flow into its one copy, reading only leaves", async ({
   page,
   consoleErrors: _consoleErrors,
 }) => {
   const seatSessionId = await seedSeatSession(page);
-  await seedRetiredMailbox(page);
   const requests = sessionListRequests(page);
   await openShell(page);
-  await expect(rail(page).getByRole("list", { name: "Mailboxes" })).toBeVisible();
+  await expect(rail(page).getByRole("list", { name: "Coordinators" })).toBeVisible();
   await expect(rail(page).getByRole("list", { name: "Workers" })).toBeVisible();
   // Drawing the rail reads no session list of its own. The reads at load are
   // the assistant's, for the conversation the stream opens on, and the roster
-  // panel's, for the person's roster session. The team panel's live board
-  // holds its mailbox's stream open, so the page never goes network-idle:
-  // wait for the board's first read, then the half-second quiet that
-  // network-idle means.
-  await expect(page.getByTestId("board-support.help.escalations").locator('[data-panel="board"]')).toBeVisible();
-  await page.waitForTimeout(500);
+  // panel's, for the person's roster session.
+  await page.waitForLoadState("networkidle");
   expect(
     requests.take().filter((url) => !url.includes("flowKind=chat-agent") && !url.includes("flowKind=workforce-roster")),
   ).toEqual([]);
 
-  // A mailbox kind is a singleton: its row is the leaf, so opening it lands
-  // straight on the mailbox conversations. It is ONE read, of the mailbox the
-  // tree declares, by id: the kind is never listed, so a mailbox the store
-  // still holds from the old roster is never drawn.
-  const mailboxReads = requestsMatching(page, /\/api\/flows\/sessions\/support\.help$/);
-  await row(page, "mailbox").click();
-  await expect(row(page, "support.help")).toBeVisible();
-  await expect(row(page, RETIRED_MAILBOX)).toHaveCount(0);
-  expect(mailboxReads.take()).toHaveLength(1);
-  expect(requests.take()).toEqual([]);
+  // The coordinator flow is a singleton: its row is the leaf, so opening it
+  // lands straight on the person's conversation with each coordinator the
+  // tree declares, found by the coordinator's id. The kind is never listed
+  // whole: every list it reads names the coordinator's worker.
+  await row(page, "coordinator").click();
+  await expect(row(page, COORDINATOR)).toBeVisible();
+  const coordinatorReads = requests.take().filter((url) => !url.includes("flowKind=workforce-roster"));
+  expect(coordinatorReads.length).toBeGreaterThan(0);
+  for (const url of coordinatorReads) {
+    expect(new URL(url).searchParams.get("state.workerId"), url).toBe(COORDINATOR);
+  }
 
   // The worker flow is a collection with one copy: opening its kind lists the
   // copy and reads nothing. No copy is drawn per worker.
@@ -144,15 +127,15 @@ test("the rail opens a mailbox kind into conversations and the worker flow into 
 
 /**
  * The header's model is the assistant's own preference, and only the assistant
- * answers with it. A mailbox or a seat answers through its model intents, which
- * an `FSDEV_*` override can point anywhere, and its replies carry the model
- * that ran. So on those views the header names no model: one it named could
- * contradict every reply beneath it.
+ * answers with it. A coordinator or a seat answers through its model intents,
+ * which an `FSDEV_*` override can point anywhere, and its replies carry the
+ * model that ran. So on those views the header names no model: one it named
+ * could contradict every reply beneath it.
  *
  * Red state produced before this was trusted: pass the assistant's model to the
- * header whatever is picked, and the mailbox assertion fails (the label is still there).
+ * header whatever is picked, and the coordinator assertion fails (the label is still there).
  */
-test("the header names the assistant's model on the assistant only, never on a mailbox or a seat", async ({
+test("the header names the assistant's model on the assistant only, never on a coordinator or a seat", async ({
   page,
   consoleErrors: _consoleErrors,
 }) => {
@@ -165,8 +148,8 @@ test("the header names the assistant's model on the assistant only, never on a m
   const expand = async (button: Locator) => {
     if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
   };
-  await expand(row(page, "mailbox"));
-  await row(page, "support.help").click();
+  await expand(row(page, "coordinator"));
+  await row(page, COORDINATOR).click();
   await expect(page.locator('[data-testid="picked-session"]:visible')).toBeVisible();
   await expect(headerModel).toHaveCount(0);
 
@@ -608,8 +591,8 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
 }) => {
   test.setTimeout(180_000);
   // The worker flow's copy holding a conversation with no title and one with a
-  // title too long for the rail, a copy with none, and the singleton mailboxes
-  // the boot opens. The app draws no detail under a copy: a worker's flow and
+  // title too long for the rail, a copy with none, and the singleton
+  // coordinator flow. The app draws no detail under a copy: a worker's flow and
   // what it handles are on the roster panel, which the VG test below reads.
   await seedSeatSession(page);
   await seedSeatSession(page, LONG_TITLE);
@@ -628,7 +611,7 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
   expect((await measureRows(shellNav)).scrollers).toBe(1);
   await checkRail(page, shellNav, "/", {
     hoverRow: `[data-kind="${SHELL_KIND}"]`,
-    quietRow: '[data-kind="mailbox"]',
+    quietRow: '[data-kind="coordinator"]',
     container: rail(page),
     file: "rail-kitchen-sink.png",
   });
@@ -719,15 +702,15 @@ for (const { width, rail: railShown, panel: panelShown } of [
 
     // What yielded is still one tap away, from the header.
     if (!panelShown) {
-      await page.getByRole("button", { name: "Open boards and roster" }).click();
+      await page.getByRole("button", { name: "Open the roster" }).click();
       await expect(page.getByTestId("team-panel")).toBeVisible();
       await expect(page.getByTestId("roster-panel")).toBeVisible();
-      await page.getByRole("button", { name: "Close boards and roster" }).last().click();
+      await page.getByRole("button", { name: "Close the roster" }).last().click();
     }
     if (!railShown) {
       await page.getByRole("button", { name: "Browse" }).click();
       await expect(rail(page)).toBeVisible();
-      await expect(row(page, "mailbox")).toBeVisible();
+      await expect(row(page, "coordinator")).toBeVisible();
     }
   });
 }

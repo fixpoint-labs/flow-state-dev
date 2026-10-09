@@ -1,74 +1,53 @@
 /**
  * The names the shell writes down, held to the tree they describe.
  *
- * The rail's kind lists and the panel's board ids are literals in
+ * The rail's kind lists and the coordinators it lists are literals in
  * `lib/workforce-shell.ts`, because a browser cannot read `workforce/`. That
- * makes them a second copy, and a copy drifts: add a worker flow or a board to
- * a `MAILBOX.md`, and the rail or the panel silently shows the old one. These
+ * makes them a second copy, and a copy drifts: add a worker flow or a
+ * coordinator's `WORKER.md`, and the rail silently shows the old one. These
  * cases fail on that drift.
  *
  * Red states produced before these were trusted:
- *   - add a kind to the tree and not to `SEAT_KINDS`: the seat-kind case fails.
+ *   - add a kind to the tree and not to `SEAT_KINDS` or `COORDINATOR_KINDS`:
+ *     the worker-flow case fails.
  *   - drop `agent`'s entry from `SEAT_ASKS`: the answering-action case fails,
  *     naming the kind with no entry.
  *   - misname `agent`'s field `message`: the answering-action case fails,
  *     naming the field the kind actually takes.
- *   - drop the board from `SHELL_BOARDS`: the board case fails.
- *   - drop the board from `support.help`'s `MAILBOX.md`: the board case and
- *     the mailbox flow's declaration case both fail.
+ *   - drop `support.help` from `SHELL_COORDINATORS`: the coordinator case
+ *     fails.
  */
 import { describe, expect, it } from "vitest";
 import { z, type ZodTypeAny } from "zod";
-import { MAILBOX_KIND, mailboxBoard, mailboxBoardIds } from "@flow-state-dev/workforce";
-import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
+import { COORDINATOR_KIND } from "@flow-state-dev/workforce";
+import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
 import { buildKitchenSinkWorkforce, workforceRoot } from "../workforce/hire";
-import { mailboxKinds } from "../workforce/workforce.gen";
 import {
-  MAILBOX_KINDS,
+  COORDINATOR_ASK,
+  COORDINATOR_KINDS,
   defaultConversation,
+  delegateOfRun,
   SEAT_ASKS,
   SEAT_KINDS,
-  SHELL_BOARDS,
-  SHELL_MAILBOXES,
+  SHELL_COORDINATORS,
   seatAskFor,
-  wokenWorkerOf,
 } from "../lib/workforce-shell";
 
 describe("the shell's names match the workforce tree", () => {
-  it("lists every worker flow the app runs workers on", async () => {
+  it("lists every worker flow the app runs workers on, the coordinator's apart", async () => {
     const { installation } = await buildKitchenSinkWorkforce();
-    expect([...SEAT_KINDS].sort()).toEqual(Object.keys(installation.workerFlows()).sort());
+    expect([...SEAT_KINDS, ...COORDINATOR_KINDS].sort()).toEqual(Object.keys(installation.workerFlows()).sort());
+    expect([...COORDINATOR_KINDS]).toEqual([COORDINATOR_KIND]);
   });
 
-  it("lists every mailbox kind: the framework's own, plus the tree's", () => {
-    expect([...MAILBOX_KINDS].sort()).toEqual(["mailbox", ...Object.keys(mailboxKinds)].sort());
-  });
-
-  it("draws every board the tree's mailboxes declare, under the id the package mints", async () => {
-    const { mailboxes, errors } = await readMailboxesDirectory(workforceRoot);
+  it("lists every coordinator the tree declares, by its worker id", async () => {
+    const { workers, errors } = await readWorkforce(workforceRoot);
     expect(errors).toEqual([]);
-    const declared = mailboxBoardIds(mailboxes);
-    // Not vacuous: the tree does declare boards.
+    const declared = workers.filter((worker) => worker.declared.flow === COORDINATOR_KIND).map((worker) => worker.id);
+    // Not vacuous: the tree does declare a coordinator.
     expect(declared.length).toBeGreaterThan(0);
-    expect(SHELL_BOARDS.map((board) => board.ref).sort()).toEqual(declared);
-    for (const board of SHELL_BOARDS) {
-      expect(mailboxBoard(board.mailboxId, board.board).id).toBe(board.ref);
-    }
-  });
-
-  it("lists every mailbox the tree declares, under the kind its file selects", async () => {
-    const { mailboxes, errors } = await readMailboxesDirectory(workforceRoot);
-    expect(errors).toEqual([]);
-    // Not vacuous: the tree does declare mailboxes.
-    expect(mailboxes.length).toBeGreaterThan(0);
-    // A file with no `flow:` line selects the built-in kind.
-    const declared = mailboxes.map((mailbox) => ({
-      id: mailbox.id,
-      kind: (mailbox.declared as { flow?: string }).flow ?? MAILBOX_KIND,
-    }));
-    const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
-    expect(SHELL_MAILBOXES.map(({ id, kind }) => ({ id, kind })).sort(byId)).toEqual(declared.sort(byId));
+    expect([...SHELL_COORDINATORS].sort()).toEqual(declared.sort());
   });
 });
 
@@ -111,36 +90,10 @@ describe("each seat kind's composer sends to an action the kind declares", () =>
   });
 });
 
-/** Whether `resources` declares `ref` so a browser may read its rows. */
-function expectBrowserReadable(resources: Record<string, unknown>, ref: string, flow: string): void {
-  const declared = resources[ref] as { client?: { state?: { read?: boolean } } } | undefined;
-  expect(declared, `${flow} declares no resource "${ref}"`).toBeDefined();
-  expect(declared!.client?.state?.read).toBe(true);
-}
-
-describe("each board the panel reads is declared where it reads it", () => {
-  // Each board is read through its mailbox's session, so it is the flow that
-  // session runs on, the one the mailbox's file selects, that must declare it.
-  it.each(SHELL_BOARDS.map((board) => [board.ref, board] as const))(
-    "board %s, readable by a browser through its mailbox's session",
-    async (_ref, board) => {
-      const { mailboxFlows } = await buildKitchenSinkWorkforce();
-      const mailbox = SHELL_MAILBOXES.find(({ id }) => id === board.mailboxId);
-      expect(mailbox, `SHELL_MAILBOXES has no mailbox "${board.mailboxId}"`).toBeDefined();
-      const flow = mailboxFlows.find(({ kind }) => kind === mailbox!.kind);
-      expect(flow, `no mailbox flow of kind "${mailbox!.kind}"`).toBeDefined();
-      expectBrowserReadable(
-        (flow!.resources ?? {}) as Record<string, unknown>,
-        board.ref,
-        `the "${mailbox!.kind}" mailbox flow`,
-      );
-    },
-  );
-
-  it("uses refs the collection route can address: one path segment each", () => {
-    for (const ref of SHELL_BOARDS.map((b) => b.ref)) {
-      expect(ref).not.toContain("/");
-    }
+describe("a coordinator's composer sends to the coordinator flow's door", () => {
+  it("names the action that takes exactly the post, one string field", async () => {
+    const actions = await oneStringActions(COORDINATOR_KIND);
+    expect(actions[COORDINATOR_ASK.action], `the coordinator's one-string actions: ${JSON.stringify(actions)}`).toBe(COORDINATOR_ASK.field);
   });
 });
 
@@ -161,12 +114,14 @@ describe("the conversation the page opens on", () => {
   });
 });
 
-describe("a mailbox's working row names the worker it woke", () => {
+describe("a coordinator's working row names the delegate it handed the post to", () => {
   // Every worker runs on the one `agent` copy, so a run's flow id is `agent`
-  // for all of them; only the wake's key says which worker it is.
-  it("reads the worker off the wake's key, and nothing off any other run", () => {
-    expect(wokenWorkerOf({ topic: "mailbox:support.help:support.devices" })).toBe("support.devices");
-    expect(wokenWorkerOf({ topic: "brief:billing" })).toBeUndefined();
-    expect(wokenWorkerOf({})).toBeUndefined();
+  // for all of them; only the delivery's key says which worker it is. The key
+  // a real delivery carries is held in `test/mailbox-wake.test.ts`.
+  it("reads the worker off the delivery's key, and nothing off any other run", () => {
+    expect(delegateOfRun({ topic: `delegate:${JSON.stringify(["support.devices", null])}` })).toBe("support.devices");
+    expect(delegateOfRun({ topic: "delegate:not json" })).toBeUndefined();
+    expect(delegateOfRun({ topic: "brief:billing" })).toBeUndefined();
+    expect(delegateOfRun({})).toBeUndefined();
   });
 });

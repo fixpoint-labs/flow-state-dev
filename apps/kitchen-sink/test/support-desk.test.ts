@@ -1,20 +1,25 @@
 /**
- * The boot serves the support desk the team's files describe: one routed
- * mailbox, four specialists on the built-in kind, and one board nobody
- * drains.
+ * The boot serves the support desk the team's files describe: one best-fit
+ * coordinator, `support.help`, and four specialists on the built-in `agent`
+ * flow.
  *
- * Checks, by the spec's ids (`specs/issues/FIX-1611/PLAN.md`, V1):
+ * Checks, by the spec's ids (`specs/issues/FIX-1611/PLAN.md`, V1, converted by
+ * `specs/issues/FIX-1792/PLAN.md`, S6):
  *
- *   - the boot hires `support.devices`, `support.accounts`, `support.fsd` and
- *     `support.general`, each on the `agent` kind, and no other seat;
- *   - it opens one mailbox, `support.help`, on the built-in mailbox kind;
- *   - it warns once that a board is unattended, and names `escalations`
- *     (BR-12);
- *   - the generated map holds `escalate` and no kind of the app's own;
- *   - the rail lists `support.help` alone under the mailbox kind, though a
- *     store kept across the upgrade still holds a mailbox the old roster
- *     declared (BR-1). Red: the rail reading the kind's listing, which draws
- *     `support.desk` beside it.
+ *   - the boot runs `support.devices`, `support.accounts`, `support.fsd` and
+ *     `support.general` on one copy of `agent`, and `support.help` on one copy
+ *     of `coordinator`, and no copy per worker;
+ *   - it serves the coordinator flow beside the app's own flows, and no
+ *     mailbox flow;
+ *   - the generated map holds no block and no kind of the app's own (the
+ *     `escalate` block went with the escalation feature);
+ *   - the rail lists `support.help` under the coordinator kind as the person's
+ *     one conversation with it, found by the coordinator's id (BR-7a). Red:
+ *     the rail reading the kind's listing, which on a fresh store lists
+ *     nothing.
+ *
+ * FIX-1611's BR-12 (the boot warns that `escalations` is unattended) left with
+ * the board: the escalation feature is removed, and no file declares a board.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __resetDeprecationWarningsForTests } from "@flow-state-dev/core";
@@ -67,8 +72,8 @@ async function boot() {
   return { get, sessions, workforce };
 }
 
-describe("V1 · the boot serves one routed mailbox and four specialists", () => {
-  it("runs the four specialists as standard workers on one copy of agent, and registers no copy per worker", async () => {
+describe("V1 · the boot serves one best-fit coordinator and four specialists", () => {
+  it("runs the specialists on one copy of agent and support.help on one copy of coordinator, and no copy per worker", async () => {
     const { get, workforce } = await boot();
     const roster = await workforce.roster();
     expect(roster.map((worker) => [worker.id, worker.flow, worker.standard]).sort()).toEqual([
@@ -76,69 +81,58 @@ describe("V1 · the boot serves one routed mailbox and four specialists", () => 
       ["support.devices", "agent", true],
       ["support.fsd", "agent", true],
       ["support.general", "agent", true],
+      ["support.help", "coordinator", true],
     ]);
     const { flows } = (await get([])) as { flows: Array<{ id: string; kind: string }> };
     expect(flows.filter((flow) => flow.kind === "agent").map((flow) => flow.id)).toEqual(["agent"]);
+    expect(flows.filter((flow) => flow.kind === "coordinator").map((flow) => flow.id)).toEqual(["coordinator"]);
     expect(flows.filter((flow) => roster.some((worker) => worker.id === flow.id))).toEqual([]);
   });
 
-  it("opens one mailbox, support.help, on the built-in mailbox kind, beside the app's own flows", async () => {
+  it("serves the coordinator flow beside the app's own flows, and no mailbox flow", async () => {
     const { get } = await boot();
     const { flows } = (await get([])) as { flows: Array<{ id: string; kind: string }> };
-    // The workforce's kinds are the built-ins: `agent`, the mailbox and the roster flow. The rest are the app's own flows.
+    // The workforce's kinds are the built-ins: `agent`, `coordinator` and the roster flow. The rest are the app's own flows.
     expect([...new Set(flows.map((flow) => flow.kind))].sort()).toEqual([
       "agent",
       "chat-agent",
-      "mailbox",
+      "coordinator",
       "rich-text-component",
       "weekly-digest",
       "workforce-roster",
     ]);
-    const { sessions } = (await get(["sessions"], "?flowId=mailbox&limit=100")) as { sessions: Array<{ id: string }> };
-    expect(sessions.map((session) => session.id)).toEqual(["support.help"]);
   });
 
-  it("lists support.help alone in the rail, though a kept store still holds a retired mailbox", async () => {
-    const { sessions } = await boot();
+  it("lists support.help in the rail as the person's one conversation with it, a session on coordinator naming it", async () => {
+    const { sessions, workforce } = await boot();
     const { railSessions } = await import("@/lib/rail-sessions");
-    // What an earlier roster leaves in a store kept across the upgrade: a
-    // session of the same mailbox kind, for a mailbox the tree no longer declares.
-    await sessions.createSession({ flowKind: "mailbox", userId: "devuser", sessionId: "support.desk" });
-    // Not vacuous: the store holds it, and a listing by kind returns it.
-    const stored = await sessions.listSessions({ flowKind: "mailbox", userId: "devuser" });
-    expect(stored.map((session) => session.id).sort()).toEqual(["support.desk", "support.help"]);
+    // Not vacuous: on a fresh store the coordinator kind's own listing holds nothing.
+    expect(await sessions.listSessions({ flowKind: "coordinator", userId: "devuser" })).toEqual([]);
 
-    // The navigator's own query for a singleton kind's leaf.
-    const listed = await railSessions(sessions).listSessions({
-      flowKind: "mailbox",
-      userId: "devuser",
-      include: "dispatch-runs",
-    });
-    expect(listed.map((session) => session.id)).toEqual(["support.help"]);
+    // The navigator's own query for the kind's leaf.
+    const query = { flowKind: "coordinator", userId: "devuser", include: "dispatch-runs" } as const;
+    const listed = await railSessions(sessions, workforce).listSessions(query);
+    expect(listed.map((session) => [session.title, session.flowKind])).toEqual([["support.help", "coordinator"]]);
+    // The same conversation every time, and the one the coordinator's id finds (BR-7a).
+    const again = await railSessions(sessions, workforce).listSessions(query);
+    expect(again.map((session) => session.id)).toEqual(listed.map((session) => session.id));
+    expect((await workforce.findWorkerSession({ worker: "support.help" }))?.id).toBe(listed[0]!.id);
   });
 
   it("lists every other kind in the rail as the store has it", async () => {
-    const { sessions } = await boot();
+    const { sessions, workforce } = await boot();
     const { railSessions } = await import("@/lib/rail-sessions");
     const created = await sessions.createSession({ flowKind: "chat-agent", userId: "devuser" });
     const query = { flowKind: "chat-agent", userId: "devuser" } as const;
-    const listed = await railSessions(sessions).listSessions(query);
+    const listed = await railSessions(sessions, workforce).listSessions(query);
     expect(listed.map((session) => session.id)).toContain(created.id);
     expect(listed).toEqual(await sessions.listSessions(query));
   });
 
-  it("warns once that a board is unattended, and names support.help's escalations", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await boot();
-    const unattended = warn.mock.calls.map((call) => call.join(" ")).filter((line) => line.includes("holds board"));
-    expect(unattended).toHaveLength(1);
-    expect(unattended[0]).toContain('mailbox "support.help" holds board "escalations"');
-  });
-
-  it("generates escalate into the catalog, and no kind of the app's own", async () => {
+  it("generates no block and no kind of the app's own", async () => {
     const generated = await import("@/workforce/workforce.gen");
     expect(Object.keys(generated.kinds)).toEqual([]);
     expect(Object.keys(generated.mailboxKinds)).toEqual([]);
-    expect(Object.keys(generated.blocks)).toEqual(["escalate"]);
+    expect(Object.keys(generated.blocks)).toEqual([]);
   });
 });

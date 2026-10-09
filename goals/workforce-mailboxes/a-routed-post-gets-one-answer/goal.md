@@ -1,39 +1,44 @@
 # workforce-mailboxes › a routed post gets one answer
 
-**Issue:** FIX-1610 (VG of the spec's PLAN; feeds the epic FIX-1592's closure, FIX-1601)
+**Issue:** FIX-1610 (VG of the spec's PLAN; feeds the epic FIX-1592's closure, FIX-1601). Converted by FIX-1792 (BR-8, BR-9): the two mailboxes are coordinators' worker files now.
 
-**Outcome:** A person's post to a mailbox that declares `routing:` runs exactly one specialist, the one its purpose and the recent lines point to. That specialist answers with the recent lines in view, and its answer lands in the mailbox as its own line every time, whatever the model does with its tools. A mailbox without the line behaves as before. The host writes no router: it passes `routeByPurpose(seats, { model })`.
+**Outcome:** A person's post to a coordinator on `routing: best-fit` runs exactly one specialist, the one its purpose points to, and that specialist's answer lands in the person's conversation as its own line every time. A post sent while that specialist has not answered yet goes to it too, with no model call. A coordinator on `routing: everyone` hands each post to every delegate. The host writes no router: it registers Workforce's `coordinator` flow and names the model best fit's one call runs on.
 
-**Input:** `fixtures/workforce/`: one team, four agent specialists (no `flow:`, each with a `description:`), one routed mailbox (`routing: fallback:` naming one of them), and one unrouted mailbox naming all four. `host.mts` is the app: the tree, the published packages, `wakeMemberSeats(seats)` and `routeByPurpose(seats, { model })`. Held-out: the specialists and the fallback are read off the tree (the routed mailbox's `members:` and `fallback:`), never hardcoded, and each run's posts carry fresh tokens. Renaming the team, both mailboxes and every worker, and reordering `members:`, passed unchanged.
+**Converted (FIX-1792).** The folder name is kept so its verdict history stays in one place. Until FIX-1792 the routed mailbox was a `MAILBOX.md` with `routing: fallback:`, routed by `routeByPurpose`, and the unrouted one woke every member through `wakeMemberSeats`. They are coordinators now, key by key: `members:` became `delegates:`, `routing: { fallback: x }` became `routing: best-fit` and `fallback: x`, and the file with no `routing:` line got `routing: everyone`. The **unrouted** leg is now **everyone**: on a coordinator each delegate's answer lands in the conversation, where the unrouted mailbox kept none.
 
-**Signal:** the host served in-process on in-memory stores and scripted models. One person posts eight times to the routed mailbox and once to the unrouted one. Everything graded is read back through the host's own router (each seat's conversations, dispatch runs included, and the mailbox's `mailbox-post` lines), plus the route model's own calls.
+**Retired legs.** Two legs, and the two controls that served only them, have no subject on the coordinator flow, and are retired here under FIX-1792 BR-24 with the run that shows it (logged below):
 
-- **import**: `routeByPurpose` resolves from `@flow-state-dev/workforce`. Checked first; the rest needs it.
-- **source**: `host.mts` imports only `@flow-state-dev/*`, calls `routeByPurpose`, and builds no `dispatcher`, `keyedRouter` or `router`; exactly one mailbox file declares `routing:`.
-- **one**: a device, an account and a framework post are each heard by their specialist and by no other member.
-- **lands**: each of those, and the unclear post, has exactly one answer line in the mailbox, by the seat that was routed it. The answer script never calls the post tool, so a line there is the landing's.
-- **followup**: a follow-up after the account answer is heard by the account specialist alone, routed by one evaluation whose lines included that answer.
-- **held**: a post sent while the device specialist has not answered its last post (its answer to that one was empty, so no line) is heard by it alone, with no evaluation call.
-- **context**: "where can I buy it?", routed to the fallback specialist, which was never sent the post naming "it", is answered by naming that post's item. The fallback's stored conversation keeps neither that post nor any message carrying another post's line.
+- **followup** (a follow-up after an answer is routed by an evaluation that saw that answer's line) and its control `no-transcript`. The coordinator's best fit routes a post on its own words: its one evaluation is handed the post, not the conversation's recent lines. A follow-up sent while the specialist is still on the last post is still held for it (**held**); one sent after the answer is placed on its words alone. Live, "It sees it. It fails right after the password." went to `support.accounts`, where the mailbox sent it to `support.devices`.
+- **context** ("where can I buy it?" answered by a specialist never sent the post naming "it", from that post's line) and its control `no-context`. A delegate's turn is handed the post it is delivered, and its own earlier deliveries from this conversation; never another delegate's lines.
+
+No goal proves either outcome on `main` after the conversion: the coordinator flow (FIX-1791) does not offer it. Whether it should is put to the product owner on FIX-1792's P1 PR.
+
+**Input:** `fixtures/workforce/`: one team, four agent specialists (no `flow:`, each with a `description:`), one coordinator on `routing: best-fit` with a `fallback:` naming one of them, and one on `routing: everyone` naming all four. `host.mts` is the app: the tree, the published packages, and the `coordinator` flow registered with the built-in `agent` as the flow its delegates take posts on. Held-out: the specialists and the fallback are read off the tree (the routed coordinator's `delegates:` and `fallback:`), never hardcoded, and each run's posts carry fresh tokens.
+
+**Signal:** the host served in-process on in-memory stores and scripted models. One person opens a conversation with each coordinator the way a page does (a session on `coordinator` naming it), posts six times to the routed one and once to the other. Everything graded is read back through the host's own router (each delegate's conversations, dispatch runs included, and the answer lines of the person's conversations), plus the route model's own calls.
+
+- **import**: `defineCoordinatorFlow` resolves from `@flow-state-dev/workforce`. Checked first; the rest needs it.
+- **source**: `host.mts` imports only `@flow-state-dev/*`, calls `defineCoordinatorFlow`, and builds no `dispatcher`, `keyedRouter` or `router`; exactly one coordinator in the tree declares `routing: best-fit`.
+- **one**: a device, an account and a framework post are each heard by their specialist and by no other delegate.
+- **lands**: each of those, and the unclear post, has exactly one answer line in the conversation, by the specialist that was routed it.
+- **held**: a post sent while the device specialist has not answered its last post (its turn on that one replied with nothing, so no line) is heard by it alone, with no evaluation call.
 - **fallback**: a post the evaluation cannot place is heard by the fallback alone.
-- **unrouted**: the unrouted mailbox's post is heard once by each of the four agents, and nothing lands there.
+- **everyone**: the post to the coordinator on `routing: everyone` is heard once by each of the four agents, and each one's answer lands in that conversation once.
 
-**Anti-game:** no assertion on a route record, a dispatch handle, a router decision, or a unit test. Who ran is read from each seat's own kept conversation; what landed is read from the mailbox's lines; "no evaluation" and "the evaluation saw the line" are read from the route model's own calls, a real side effect. The scripts answer only from what they are handed: the route from the lines and post the route read (`[route:<member>]`, else `[follow-up]` to whoever last spoke in those lines, else a failed call), the answer from its turn and the context it was shown. Waiting is polling until every request in the host settles, ungraded.
+**Anti-game:** no assertion on a routing record, a dispatch handle, a router decision, or a unit test. Who ran is read from each delegate's own kept conversation; what landed is read from the person's conversation; "no evaluation" is read from the route model's own calls, a real side effect. The scripts answer only from what they are handed: the route from the post (`[route:<delegate>]`, else a failed call), the answer from its turn. Waiting is polling until every request in the host settles, ungraded.
 
 **Model:** scripted, keyless (epic FIX-1592 D3), for every graded leg. The live leg (below) runs once with a key: the route on the host's own model string `vercel/typesafe-ai/jev` through the app's resolver, the answers on `vercel/openai/gpt-5.4-mini`.
 
 **Run:** `pnpm --dir goals exec tsx workforce-mailboxes/a-routed-post-gets-one-answer/run.mts`
 
-**Live:** `GOAL_LIVE=1` on the same command, with `AI_GATEWAY_API_KEY`. After the scripted legs, the same host on real models: the POC's five posts, the laptop post its follow-up answers, and "where can I buy it?". Each post must reach one member (the expected one where the POC named it) and get one line by it.
+**Live:** `GOAL_LIVE=1` on the same command, with `AI_GATEWAY_API_KEY`. After the scripted legs, the same host on real models: the POC's five posts, the laptop post's follow-up, and "where can I buy it?". Each post must reach one delegate (the expected one where the POC named it) and get one line by it. The follow-up names no expected delegate since the retirement above.
 
 **Controls:** on the same command. Each is applied by the check around the host, never inside a package.
 
-- `GOAL_CONTROL=no-route`: the `routing:` line stripped from the mailbox file. Every agent hears every post and nothing lands. Must FAIL at **one**, **lands**, **followup**, **held**, **context** and **fallback**, and at nothing else.
-- `GOAL_CONTROL=no-landing`: the agent kind replaced by one of the app's own that hears posts, answers with the recent lines in view, and posts nothing. Must FAIL at **lands**, and, because no specialist ever has a line so the hold keeps each next post on the last one, at **one**, **followup**, **held** and **context**. Nothing else.
-- `GOAL_CONTROL=no-transcript`: the route's evaluation is handed the post without the recent lines. Must FAIL at **followup**, and at nothing else.
-- `GOAL_CONTROL=no-context`: the host's notify strips the recent lines from each delivery. Must FAIL at **context**, and at nothing else.
+- `GOAL_CONTROL=no-route`: the best-fit coordinator's file read as `routing: everyone`. Every delegate hears every post and each answers it. Must FAIL at **one**, **lands**, **held** and **fallback**, and at nothing else.
+- `GOAL_CONTROL=no-landing`: the `agent` flow replaced by one of the app's own that takes a delegated post, answers it in its own conversation, and hands nothing back. Must FAIL at **lands**; because no specialist ever answers, the hold keeps each next post on the first specialist, so at **one** and **fallback** too; and at **everyone**, whose answers never land. Nothing else.
 
-The **import**, **source** and **unrouted** legs have no control; each was reddened by hand, logged below.
+The **import** and **source** legs have no control; each was reddened by hand, logged below.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

@@ -15,9 +15,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handler } from "@flow-state-dev/core";
-import { createWorkerInstallation, mailboxPostCapability, type MailboxManifest } from "@flow-state-dev/workforce";
-import { z } from "zod";
+import { createWorkerInstallation, type WorkerManifest } from "@flow-state-dev/workforce";
 
 import { goalControl, pageGoalControl } from "@/lib/goal-control";
 
@@ -27,7 +25,7 @@ afterEach(() => {
 
 describe("goalControl", () => {
   it("names no control outside test mode, whatever GOAL_CONTROL says", () => {
-    vi.stubEnv("GOAL_CONTROL", "no-author-filter");
+    vi.stubEnv("GOAL_CONTROL", "no-route");
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "");
     expect(goalControl()).toBeUndefined();
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "0");
@@ -36,8 +34,8 @@ describe("goalControl", () => {
 
   it("names the control in test mode, and none when GOAL_CONTROL is empty", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
-    vi.stubEnv("GOAL_CONTROL", "no-author-filter");
-    expect(goalControl()).toBe("no-author-filter");
+    vi.stubEnv("GOAL_CONTROL", "no-route");
+    expect(goalControl()).toBe("no-route");
     vi.stubEnv("GOAL_CONTROL", "");
     expect(goalControl()).toBeUndefined();
   });
@@ -82,17 +80,17 @@ describe("V4 · every control is read through the gate, and only in this app (BR
   });
 
   /** Each control, off and on: what it hands back outside test mode, and in it. */
-  const wake = handler({ name: "a-wake", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => null });
-  const catalog = { escalate: handler({ name: "escalate", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => null }) };
-  const routed = [{ id: "support.help", declared: { routing: { fallback: "support.general" } } }] as unknown as MailboxManifest[];
+  const catalog = {};
+  const workers = [
+    { id: "support.help", declared: { flow: "coordinator", routing: "best-fit", delegates: ["support.general"] }, body: "", skills: [] },
+  ] as unknown as WorkerManifest[];
+  const flows = [{ kind: "agent" }];
 
   const controls: Array<[name: string, apply: () => Promise<{ swapped: boolean }>]> = [
-    ["no-landing", async () => ({ swapped: (await import("@/lib/mailbox-landing-control")).mailboxLandingControl(catalog, mailboxPostCapability, createWorkerInstallation()) !== undefined })],
-    ["no-filing", async () => ({ swapped: (await import("@/lib/escalate-control")).escalateControl(catalog) !== undefined })],
-    ["no-route", async () => ({ swapped: (await import("@/lib/mailbox-route-control")).withMailboxRouteControl(routed) !== routed })],
-    ["name-only-notify", async () => ({ swapped: (await import("@/lib/mailbox-wake-control")).withMailboxWakeControl(wake) !== wake })],
-    ["no-author-filter", async () => ({ swapped: (await import("@/lib/mailbox-wake-control")).withMailboxWakeControl(wake) !== wake })],
-    ["post-without-author", async () => ({ swapped: (await import("@/lib/mailbox-post-control")).mailboxPostControl() !== undefined })],
+    ["no-landing", async () => ({ swapped: (await import("@/lib/landing-control")).landingControl(catalog, createWorkerInstallation()) !== undefined })],
+    ["no-route", async () => ({ swapped: (await import("@/lib/coordinator-control")).coordinatorWorkersUnderControl(workers) !== workers })],
+    ["answers-go-on", async () => ({ swapped: (await import("@/lib/coordinator-control")).coordinatorWorkersUnderControl(workers) !== workers })],
+    ["no-delivery", async () => ({ swapped: (await import("@/lib/coordinator-control")).delegateFlowsUnderControl(flows) !== flows })],
   ];
 
   it.each(controls)("%s: inert outside test mode, and swapped in under it", async (name, apply) => {

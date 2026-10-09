@@ -16,7 +16,7 @@ import {
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
 } from "@flow-state-dev/react";
-import { createClient, createResourceClient, createSessionClient, type ClientFetch } from "@flow-state-dev/client";
+import { createClient, createSessionClient, type ClientFetch } from "@flow-state-dev/client";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageSquareText, Package, Plus, RotateCcw, Users, Wrench, X } from "lucide-react";
 
@@ -58,7 +58,7 @@ import { SessionItemsProvider } from "@/components/flow-state/session-items-cont
 import { ChatAgentMessage } from "@/components/chat-agent/message";
 import { cn } from "@/lib/utils";
 import { railSessions } from "@/lib/rail-sessions";
-import { MAILBOX_KINDS, defaultConversation, isMailboxKind, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
+import { COORDINATOR_KINDS, defaultConversation, isCoordinatorKind, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
 import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
@@ -78,27 +78,27 @@ type MobilePanel = "chat" | "artifacts";
  * Whether the rail lists the person's conversations with workers: the
  * sessions on the one `agent` copy every worker runs on. A conversation is
  * started from the roster panel's "Talk", which names its worker. Set this to
- * `false` to ship the rail with mailboxes only.
+ * `false` to ship the rail with coordinators only.
  */
 const SHOW_SEATS_IN_RAIL = true;
 
 /**
- * The `fetch` the panels read with, and a board's live stream is sent with, so
- * the stream goes out the way the reads do. This app sends no credential; a
- * host that does adds it here, once, for both.
+ * The `fetch` the roster and the person's conversations with workers are read
+ * with. This app sends no credential; a host that does adds it here, once.
  */
 const panelFetch: ClientFetch = (input, init) => fetch(input, init);
 
 /**
  * The rail's sections. How deep each kind goes is read off the flow's declared
- * cardinality, never written here: a mailbox kind opens straight into its
- * conversations, and so does `agent`, whose one copy holds every worker's.
+ * cardinality, never written here: the coordinator flow opens straight into
+ * the person's conversations with its workers, and so does `agent`, whose one
+ * copy holds every worker's.
  *
  * "Assistant" is this app's own chat flow, so its conversations stay one click
  * away.
  */
 const RAIL_SECTIONS: readonly FlowNavigatorSection[] = [
-  { label: "Mailboxes", kinds: MAILBOX_KINDS },
+  { label: "Coordinators", kinds: COORDINATOR_KINDS },
   ...(SHOW_SEATS_IN_RAIL ? [{ label: "Workers", kinds: SEAT_KINDS }] : []),
   { label: "Assistant", kinds: [SHELL_FLOW_KIND] },
 ];
@@ -114,9 +114,9 @@ const RAIL_THEME = {
 
 /**
  * A session picked in the rail that is not one of the assistant's own.
- * `address` is the flow it belongs to: the kind for a mailbox, and the worker
- * flow's copy for a conversation with a worker. Continuing or retrying a
- * request is routed by it.
+ * `address` is the worker flow's copy it belongs to (`coordinator` for a
+ * conversation with a coordinator, `agent` for one with a specialist).
+ * Continuing or retrying a request is routed by it.
  */
 type PickedSession = { sessionId: string; kind: string; address: string };
 
@@ -153,9 +153,8 @@ function PageInner() {
     process.env.NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE === "1"
       ? searchParams.get("e2eSession")
       : null;
-  // The goal control `no-live` opens the rail's panels and the team panel's
-  // boards without following their session, so a goal check can be seen to
-  // fail without it.
+  // The goal control `no-live` opens the rail's panels without following their
+  // session, so a goal check can be seen to fail without it.
   const pickedLive = pageGoalControl(searchParams) !== "no-live";
   return (
     <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAgentRenderers}>
@@ -235,11 +234,11 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     autoPlayTTS: ttsEnabled,
   });
 
-  // A mailbox's or a seat's session, when one is picked in the rail. Its panel
-  // has a composer of its own, which calls the picked flow's own action on
-  // this session; the assistant's composer stays wired to the assistant.
+  // A coordinator's or a seat's session, when one is picked in the rail. Its
+  // panel has a composer of its own, which calls the picked flow's own action
+  // on this session; the assistant's composer stays wired to the assistant.
   // It follows the whole session (`live`), because others write here too: a
-  // seat answering a post, a person in another tab. The assistant's session
+  // delegate's answer landing, a person in another tab. The assistant's session
   // (`session`, above) is not live: only this person writes there, and their
   // own requests already stream.
   const pickedSession = useSession(picked?.sessionId, {
@@ -257,10 +256,6 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     return async (requestId: string) => (await client.getRequestStatus(requestId)).status;
   }, [pickedAddress]);
 
-  // One resource client for every panel read, held stable: the panels fence
-  // their reads on it, so a new object each render would read as a new
-  // backend each render. Each board reads through its own mailbox's session.
-  const resourceClient = useMemo(() => createResourceClient({ baseUrl: "", fetcher: panelFetch }), []);
   // The person's roster and their conversations with workers.
   const workforce = useMemo(
     () => createWorkforceClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }),
@@ -268,10 +263,10 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   );
 
   const sessionClient = useMemo(() => createSessionClient({ baseUrl: "" }), []);
-  // What the rail lists: a mailbox kind's declared mailboxes, never one a kept
-  // store holds from an earlier roster. Stable, so the navigator's reads stay
-  // fenced on it.
-  const railSessionSource = useMemo(() => railSessions(sessionClient), [sessionClient]);
+  // What the rail lists: under the coordinator kind, the person's conversation
+  // with each coordinator the tree declares. Stable, so the navigator's reads
+  // stay fenced on it.
+  const railSessionSource = useMemo(() => railSessions(sessionClient, workforce), [sessionClient, workforce]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
@@ -403,8 +398,9 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
 
   const railSlots = useMemo(
     () => ({
-      // "New session" sits on the assistant's own row. Mailboxes get none; the
-      // boot opens them. A conversation with a worker starts from the roster.
+      // "New session" sits on the assistant's own row. Coordinators get none:
+      // the rail opens the person's one conversation with each. A conversation
+      // with a worker starts from the roster.
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
         leaf.kind === SHELL_FLOW_KIND ? (
           <AssistantLeafToolbar
@@ -492,9 +488,10 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
       <PickedSessionPanel
         session={pickedSession}
         kind={picked.kind}
+        person={KITCHEN_SINK_USER_ID}
         requestStatus={pickedRequestStatus}
         conversation={
-          isMailboxKind(picked.kind) ? null : (
+          isCoordinatorKind(picked.kind) ? null : (
           <Conversation className="min-h-0 flex-1" data-testid="conversation">
             <ConversationBody
               items={pickedSession.items}
@@ -517,9 +514,6 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     <TeamPanel
       workforce={workforce}
       onTalk={handleTalk}
-      resourceClient={resourceClient}
-      fetcher={panelFetch}
-      live={pickedLive}
       top={
         mode === "build" ? (
           <ArtifactPanel
@@ -558,7 +552,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
             : "hidden",
         )}
         data-testid="rail"
-        aria-label="Mailboxes, seats and conversations"
+        aria-label="Coordinators, workers and conversations"
       >
         <Rail
           slots={railSlots}
@@ -598,7 +592,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
             variant="outline"
             size="sm"
             className="gap-2"
-            aria-label="Open boards and roster"
+            aria-label="Open the roster"
             onClick={() => setIsTeamSheetOpen(true)}
           >
             <Users className="h-4 w-4" />
@@ -610,7 +604,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
         </div>
 
         {/* The model named here is the assistant's own preference, and only the
-            assistant answers with it. A picked mailbox or seat answers through
+            assistant answers with it. A picked coordinator or seat answers through
             its model intents (an `FSDEV_*` override lands there), and each reply
             carries the model that produced it, so the bar names none there. */}
         <ClientDataBar
@@ -649,7 +643,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
         <button
           type="button"
           className="fixed inset-0 z-40 bg-black/40 lg:hidden"
-          aria-label="Close boards and roster"
+          aria-label="Close the roster"
           onClick={() => setIsTeamSheetOpen(false)}
         />
       )}
@@ -662,10 +656,10 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
         )}
         style={teamPanelStyle}
         data-testid="team-panel"
-        aria-label="Boards and roster"
+        aria-label="Roster"
       >
         <div className="flex items-center justify-end border-b px-2 py-1 lg:hidden">
-          <Button variant="ghost" size="icon-sm" aria-label="Close boards and roster" onClick={() => setIsTeamSheetOpen(false)}>
+          <Button variant="ghost" size="icon-sm" aria-label="Close the roster" onClick={() => setIsTeamSheetOpen(false)}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -736,8 +730,9 @@ function Rail({
   return (
     <>
       <div className="min-h-0 flex-1 py-1" style={RAIL_THEME}>
-        {/* Dispatch runs too: a seat's conversation for a mailbox is a run the
-            mailbox started, and is listed only when they are included. */}
+        {/* Dispatch runs too: a specialist's session for a coordinator's post is
+            a run the coordinator started, and is listed only when they are
+            included. */}
         <FlowNavigator
           sections={RAIL_SECTIONS}
           sessionClient={sessionSource}
