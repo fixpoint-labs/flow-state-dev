@@ -318,6 +318,27 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect(seen).toEqual(["answer:renewed"]);
   });
 
+  it("a re-drive of an answered ask whose run fails before it starts keeps the answer for the next sweep", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "ask");
+    const answer: AskOutcome = { answered: true, answer: "renewed" };
+    await h.provider.suspend({ ...gate, status: "submitted", resolvedAt: Date.now(), resumeData: answer });
+    vi.spyOn(h.stores.checkpoints, "latest").mockRejectedValueOnce(new Error("checkpoint boom"));
+
+    await runTick(tickArgs(h));
+    await expect(h.finished[0]).rejects.toThrow("checkpoint boom");
+    // Nobody sends an ask's answer twice: rolled back to pending, it would be lost.
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("submitted");
+
+    await runTick(tickArgs(h));
+    expect(h.finished).toHaveLength(2);
+    await h.finished[1];
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(seen).toEqual(["answer:renewed"]);
+  });
+
   it("a pending gate is not re-driven", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);

@@ -1796,7 +1796,8 @@ async function runActionAttempt<
   //
   //   1. Resume only: revert the suspension `approved`/`rejected` → `pending` so
   //      the resume stays re-attemptable (its guard requires `pending`). A
-  //      `stopped` gate is never reverted: a stop is terminal.
+  //      `stopped` gate, or an answered (`submitted`) ask, is never reverted:
+  //      the sweep's re-drive finishes it from the recorded resolution.
   //   2. Both paths: release the continuation lease keyed on this request id —
   //      otherwise it lingers until its 60s TTL and the next resume/continue
   //      attempt 409s even though the request is back to a retryable state.
@@ -1816,11 +1817,17 @@ async function runActionAttempt<
           requestId,
           resumeContextRaw.suspensionId
         );
-        // A stop is terminal (FIX-1816, BR-16): whoever stopped the turn has
-        // already been told it stopped, so the gate stays `stopped` and the
-        // sweep's re-drive finishes it. Reopening it would let a later answer
-        // resume a stopped turn.
-        if (suspension !== null && suspension.status !== "stopped") {
+        // Two resolutions stay resolved, and the sweep's re-drive finishes
+        // them (FIX-1816, BR-11a). A stop is terminal (BR-16): whoever stopped
+        // the turn was told it stopped, and reopening it would let a later
+        // answer resume it. An ask's answer comes from its task settling, and
+        // nobody sends it again: reopened, it would be lost and the ask would
+        // time out. A person's approval is reopened, since they resubmit it.
+        const keepsResolution =
+          suspension !== null &&
+          (suspension.status === "stopped" ||
+            (suspension.status === "submitted" && isAskGate(suspension)));
+        if (suspension !== null && !keepsResolution) {
           await provider.suspend({
             ...suspension,
             status: "pending",

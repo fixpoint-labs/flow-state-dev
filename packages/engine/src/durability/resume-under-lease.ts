@@ -112,8 +112,10 @@ export async function resumeUnderLease<TRefusal>(
  * of what is owed, so nothing is written to it; the caller admits the request
  * under the lease and names the resolution to replay. A live resume holds the
  * lease, so this never races one. If setup fails before the run starts, the
- * lease is released and the error rethrown; the gate stays resolved for the
- * next attempt.
+ * lease is released and the gate keeps its resolution for the next sweep: here
+ * the error is rethrown; after the handle is returned, `runAction`'s
+ * pre-transition recovery leaves the gates a re-drive continues (an answered
+ * ask, a stop) resolved.
  */
 export async function continueUnderLease<TRefusal>(
   deps: ResumeDeps,
