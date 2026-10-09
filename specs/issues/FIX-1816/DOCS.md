@@ -108,7 +108,8 @@ Add a fourth path to the `registered` list: a stop of a **suspended** request go
 `recordRequestStop` too, but there is no controller to fire. It resolves the pending gate as
 `stopped` under the gate's fence and ends the request `aborted`; on an ask gate it continues the
 request only to the parked call, which cancels its row. The durability sweep re-drives a request
-left `suspended` or `interrupted` behind a gate resolved `stopped`.
+left `suspended` or `interrupted` behind a resolved ask gate, whatever its outcome, or behind any
+gate resolved `stopped`.
 
 ## Not changed
 

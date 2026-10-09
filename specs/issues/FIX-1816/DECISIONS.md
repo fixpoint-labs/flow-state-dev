@@ -173,10 +173,11 @@ nothing from FIX-1794 P2:
   `aborted`. Nothing is continued.
 - A stop and an answer racing are settled by the gate's single pending state (BR-12):
   whichever lands first wins, and the loser is refused as `already-resolved` (BR-16b).
-- A stop survives a crash (BR-16c), with no new infrastructure: the gate's resolved outcome,
-  `stopped`, is the record of what is owed; the durability sweep re-drives a request left
-  `suspended` behind it; the parked call's cancel is idempotent. A coordinator call, after
-  Codex's review found a stop could strand.
+- A resolved ask survives a crash, whatever its outcome (BR-11a, BR-16c), with no new
+  infrastructure: the gate's resolved outcome is the record of what is owed; the durability
+  sweep re-drives a request left `suspended` behind it; the parked call's cancel is idempotent.
+  A coordinator call, after Codex's review found a stop could strand; the same gap stranded an
+  answered or timed-out ask in the merged P2 and P2b, so the rule is generic and built once.
 
 This is a Layer 1 change outside the epic's list, so it is recorded in the epic under
 [ER-11](../../epics/FIX-1815/BUSINESS-RULES.md#what-no-child-may-do), as L7's stop half.
