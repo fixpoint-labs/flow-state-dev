@@ -81,6 +81,7 @@ import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 import { noteAskDeadline } from "../durability/ask-deadlines";
+import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { isAskGate } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
@@ -1858,6 +1859,10 @@ async function runActionAttempt<
   // from the replay log — so it can only ever resolve the gate this request
   // actually suspended at.
   let resumeContext: ResumeContext | undefined;
+  // How the gate being resumed was recorded resolved, read with it below. The
+  // audit item reports it: a stopped ask continues with a `submit` action,
+  // but was stopped (FIX-1816).
+  let resumedGateStatus: SuspensionRecord["status"] | undefined;
   let replayLog: ReplayLog | undefined;
   let ctx: ExecutionContext;
   try {
@@ -1969,6 +1974,7 @@ async function runActionAttempt<
           requestId,
           resumeContext.suspensionId
         );
+        if (suspension !== null && suspension.status !== "pending") resumedGateStatus = suspension.status;
         if (suspension !== null && suspension.stepIndex >= 0) {
           // The suspension's `blockInstanceId` is the durable sequencer's
           // checkpoint key. In replay mode the request id is unchanged, so the
@@ -2073,7 +2079,7 @@ async function runActionAttempt<
       type: "suspension_resume",
       status: "completed",
       suspensionId: resumeContext.suspensionId,
-      resolution: RESUME_ACTION_STATUS[resumeContext.action],
+      resolution: resumedGateStatus ?? RESUME_ACTION_STATUS[resumeContext.action],
       resolvedBy: resumeContext.resumedBy,
       resumeData: resumeContext.data,
       resolvedAt: Date.now(),
@@ -2295,6 +2301,28 @@ async function runActionAttempt<
           } catch (err) {
             logRuntimeEvent(logger, "warn", "[flow-state] lease release failed on re-suspend", {
               requestId, leaseKey: reSuspendLeaseKey, error: String(err)
+            });
+          }
+        }
+
+        // A stop accepted while this turn was being written parked found it
+        // still running, so it only recorded its intent, and nothing runs now
+        // to read it (FIX-1816). Carry it onto the gate, as a stop of a parked
+        // turn does. After the lease release, which the stop takes.
+        const parkedStop = options.runtimeConfig.requestHost?.parkedStop;
+        if (parkedStop !== undefined) {
+          try {
+            const parked = await options.stores.request.get(requestId);
+            if (
+              parked?.status === "suspended" &&
+              parked.abortRequested === true &&
+              resolveRequestIncarnation(parked) === currentIncarnation
+            ) {
+              await stopSuspendedRequest(parkedStop, parked);
+            }
+          } catch (err) {
+            logRuntimeEvent(logger, "warn", "[flow-state] a stop recorded while parking was not carried onto the gate", {
+              requestId, error: String(err)
             });
           }
         }

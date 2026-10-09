@@ -68,13 +68,14 @@ function harness(flow: FlowInstance) {
   const registry = createFlowRegistry();
   registry.register(flow as never);
   const finished: Promise<ExecutionResult>[] = [];
-  const runtimeConfig: RuntimeConfig = { durabilityProvider: provider };
+  const runtimeConfig: RuntimeConfig = { durabilityProvider: provider, requestHost: {} };
   const cont = async (opts: Parameters<typeof continueRequest>[0]) => {
     const result = await continueRequest({ ...opts, stores, flowRegistry: registry, runtimeConfig });
     finished.push(result.finished);
     return result;
   };
   const parked = { provider, stores, continueRequest: cont };
+  runtimeConfig.requestHost!.parkedStop = parked;
   return { stores, provider, registry, runtimeConfig, finished, parked, cont };
 }
 
@@ -219,6 +220,53 @@ describe("stop a parked turn", () => {
     const res = await stop(h, requestId);
     expect(res.status).toBe(409);
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+  });
+
+  it("a stop recorded while an ask turn is parking is carried onto the gate: the call ends it (BR-16)", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    // The stop lands after the gate is written and before the turn is
+    // written `suspended`: the running-request stop applies, nothing else runs.
+    const set = h.stores.request.set.bind(h.stores.request);
+    let stopped = false;
+    vi.spyOn(h.stores.request, "set").mockImplementation(async (id, value, version) => {
+      if (!stopped && value.status === "suspended") {
+        stopped = true;
+        const accepted = await h.stores.request.setFieldsIfStatus(id, { abortRequested: true }, ["in_progress"], Date.now());
+        expect(accepted.applied).toBe(true);
+      }
+      return set(id, value, version);
+    });
+
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "ask",
+      input: {},
+      userId: USER,
+      sessionId: SESSION,
+      stores: h.stores,
+      runtimeConfig: h.runtimeConfig
+    });
+    expect(stopped).toBe(true);
+    expect(h.finished).toHaveLength(1);
+    await h.finished[0];
+    expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
+    expect((await h.stores.request.get(result.requestId!))?.status).not.toBe("suspended");
+  });
+
+  it("a stopped ask's continuation records the stop, not a submission, on its audit item", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId } = await park(h, flow, "ask");
+    expect((await stop(h, requestId)).status).toBe(204);
+    await h.finished[0];
+    const resumed = ((await h.stores.request.get(requestId))?.items ?? []).find(
+      (item) => (item as { type?: string }).type === "suspension_resume"
+    ) as { resolution?: string } | undefined;
+    expect(resumed?.resolution).toBe("stopped");
   });
 
   it("OFF STATE: without durable execution a parked turn answers as finished, as before", async () => {
@@ -478,6 +526,65 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
       await vi.advanceTimersByTimeAsync(32_000);
       expect(h.finished).toHaveLength(0);
       await vi.advanceTimersByTimeAsync(20_000); // the lease lapses at 40 s
+      expect(h.finished).toHaveLength(1);
+      await h.finished[0];
+      expect(seen[0]).toContain("wait_timed_out");
+    } finally {
+      sweeper.dispose();
+    }
+  });
+
+  it("a deadline tick that loses the sweep lease to another host retries soon, not at the interval", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    const seen: string[] = [];
+    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
+    const h = harness(flow);
+    const sweeper = createDurabilitySweeper({
+      provider: h.provider,
+      stores: h.stores,
+      retention: { sweepIntervalMs: 600_000 },
+      continueRequest: h.cont
+    });
+    try {
+      // Another host holds the sweep until 35 s, and never times the ask out.
+      await h.provider.acquireLease("__durability_sweeper__", { holder: "other-host", durationMs: 35_000 });
+      const { requestId } = await park(h, flow, "ask");
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(h.finished).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(h.finished).toHaveLength(1);
+      await h.finished[0];
+      expect(seen[0]).toContain("wait_timed_out");
+      expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    } finally {
+      sweeper.dispose();
+    }
+  });
+
+  it("an overdue ask whose turn is still being written parked is retried soon, not at the interval", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    const seen: string[] = [];
+    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
+    const h = harness(flow);
+    const sweeper = createDurabilitySweeper({
+      provider: h.provider,
+      stores: h.stores,
+      retention: { sweepIntervalMs: 600_000 },
+      continueRequest: h.cont
+    });
+    try {
+      const { requestId } = await park(h, flow, "ask");
+      // The gate is pending, but the turn still reads `in_progress` at the deadline.
+      let publishing = true;
+      const get = h.stores.request.get.bind(h.stores.request);
+      vi.spyOn(h.stores.request, "get").mockImplementation(async (id) => {
+        const record = await get(id);
+        return publishing && id === requestId && record !== undefined ? { ...record, status: "in_progress" } : record;
+      });
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(h.finished).toHaveLength(0);
+      publishing = false;
+      await vi.advanceTimersByTimeAsync(15_000);
       expect(h.finished).toHaveLength(1);
       await h.finished[0];
       expect(seen[0]).toContain("wait_timed_out");

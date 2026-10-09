@@ -31,14 +31,18 @@
  * skip the others, and a tick failure is logged but NEVER thrown (it would
  * surface as an unhandled rejection from the interval callback).
  *
- * Scheduling is deadline-aware. After each tick the timer is re-armed for
- * the earlier of `sweepIntervalMs` and the earliest deadline among the ask
- * gates still pending (read off step 2's listing), never sooner than
- * `MIN_TICK_DELAY_MS`; an idle host keeps its interval. A turn that parks on an
- * ask in this process notes its deadline (`ask-deadlines.ts`, keyed on the
- * durability provider), and the `onAskDeadline` listener re-arms the timer
- * when that deadline is earlier than the armed tick. One timer per host, never
- * one per ask.
+ * Scheduling is deadline-aware, and derived from the store. After every tick,
+ * whatever it came to (done, the sweep lease held by another host, or a
+ * failure), the pending ask gates are read again and the timer is re-armed for
+ * the earlier of `sweepIntervalMs` and the earliest deadline among them, never
+ * sooner than `MIN_TICK_DELAY_MS`. An ask still pending past its deadline (its
+ * turn was busy, still being written parked, or the resume failed) is retried
+ * after `OVERDUE_ASK_RETRY_MS`, for up to one interval past its deadline; an
+ * idle host keeps its interval. A turn that parks on an ask in this process
+ * also notes its deadline (`ask-deadlines.ts`, keyed on the durability
+ * provider), and the `onAskDeadline` listener brings the armed tick forward:
+ * an optimization the re-arm does not depend on. One timer per host, never one
+ * per ask.
  *
  * Otherwise mirrors `execution/stale-request-sweeper.ts`: `unref()` on the
  * timer, an `inFlight` re-entrancy guard (a tick due while one runs is pushed
@@ -169,14 +173,8 @@ export function createDurabilitySweeper(
   let disposed = false;
   let inFlight = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  /** When the armed timer fires (epoch ms). */
+  /** When the armed timer fires (epoch ms); infinite while none is armed. */
   let nextAt = Number.POSITIVE_INFINITY;
-  /**
-   * The earliest ask deadline noted while a tick runs. That tick's report may
-   * have been read before the ask parked, so the re-arm takes the earlier of
-   * the two.
-   */
-  let notedDuringTick: number | undefined;
 
   // The next tick is the earlier of the interval and the earliest pending ask
   // deadline, so an ask times out within about a second of its deadline on a
@@ -184,8 +182,10 @@ export function createDurabilitySweeper(
   // loop; an idle host keeps its interval.
   const arm = (delayMs: number): void => {
     if (disposed) return;
-    if (timer !== undefined) clearTimeout(timer);
     const delay = Math.min(sweepIntervalMs, Math.max(MIN_TICK_DELAY_MS, delayMs));
+    // Never push back a tick already armed sooner.
+    if (Date.now() + delay >= nextAt) return;
+    if (timer !== undefined) clearTimeout(timer);
     nextAt = Date.now() + delay;
     timer = setTimeout(tick, delay);
     // Don't keep a Node process alive solely for the sweeper.
@@ -194,15 +194,36 @@ export function createDurabilitySweeper(
     }
   };
 
+  // When the next tick is due, read from the store: the earliest pending ask
+  // deadline, an overdue one retried shortly, else the interval.
+  const nextDelay = async (): Promise<number> => {
+    if (continueRequest === undefined) return sweepIntervalMs;
+    try {
+      const now = Date.now();
+      let due = Number.POSITIVE_INFINITY;
+      for (const gate of await provider.listSuspended({ status: "pending" })) {
+        if (!isAskGate(gate) || gate.expiresAt == null) continue;
+        if (gate.expiresAt > now) due = Math.min(due, gate.expiresAt);
+        else if (now - gate.expiresAt < sweepIntervalMs) due = Math.min(due, now + OVERDUE_ASK_RETRY_MS);
+      }
+      return due === Number.POSITIVE_INFINITY ? sweepIntervalMs : due - now;
+    } catch (err) {
+      logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: next tick read failed", {
+        error: err instanceof Error ? err.message : String(err)
+      });
+      return sweepIntervalMs;
+    }
+  };
+
   const tick = (): void => {
     if (disposed) return;
+    timer = undefined;
+    nextAt = Number.POSITIVE_INFINITY;
     if (inFlight) {
       arm(MIN_TICK_DELAY_MS);
       return;
     }
     inFlight = true;
-    notedDuringTick = undefined;
-    let earliestAskDeadline: number | undefined;
     void runTick({
       provider,
       stores,
@@ -215,9 +236,6 @@ export function createDurabilitySweeper(
       batchLimit,
       continueRequest
     })
-      .then((report) => {
-        earliestAskDeadline = report?.earliestAskDeadline;
-      })
       .catch((err) => {
         // A failure that escapes the per-step guards is still never thrown
         // out of the interval callback — log and continue next tick.
@@ -228,28 +246,18 @@ export function createDurabilitySweeper(
           { error: err instanceof Error ? err.message : String(err) }
         );
       })
-      .finally(() => {
+      .then(nextDelay)
+      .then((delay) => {
         inFlight = false;
-        const earliest = Math.min(
-          earliestAskDeadline ?? Number.POSITIVE_INFINITY,
-          notedDuringTick ?? Number.POSITIVE_INFINITY
-        );
-        notedDuringTick = undefined;
-        arm(earliest === Number.POSITIVE_INFINITY ? sweepIntervalMs : earliest - Date.now());
+        arm(delay);
       });
   };
 
   arm(sweepIntervalMs);
 
-  // An ask parked in this process with an earlier deadline than the armed
-  // tick brings the tick forward. While a tick runs, the deadline is held for
-  // its re-arm instead, which would otherwise clear the timer armed here.
+  // An ask parked in this process brings the armed tick forward.
   const stopListening = onAskDeadline(provider, (deadline) => {
-    if (inFlight) {
-      notedDuringTick = Math.min(notedDuringTick ?? Number.POSITIVE_INFINITY, deadline);
-      return;
-    }
-    if (deadline < nextAt) arm(deadline - Date.now());
+    arm(deadline - Date.now());
   });
 
   return {
@@ -265,7 +273,7 @@ export function createDurabilitySweeper(
 /** The soonest a tick runs after the last one, or after a deadline is noted. */
 const MIN_TICK_DELAY_MS = 1_000;
 
-/** How soon an overdue ask still pending after its tick is tried again. */
+/** How soon an ask still pending past its deadline is tried again. */
 const OVERDUE_ASK_RETRY_MS = 5_000;
 
 type RunTickArgs = {
@@ -283,12 +291,6 @@ type RunTickArgs = {
   continueRequest?: ResumeDeps["continueRequest"];
 };
 
-/** What one tick saw that the next one is scheduled from. */
-export type TickReport = {
-  /** The earliest deadline of an ask gate still pending, if any. */
-  earliestAskDeadline?: number;
-};
-
 /** {@link RunTickArgs} with the logger resolved to a concrete sink. */
 type ResolvedTickArgs = RunTickArgs & { logger: RuntimeLogger };
 
@@ -300,7 +302,7 @@ type ResolvedTickArgs = RunTickArgs & { logger: RuntimeLogger };
  * Exported for direct invocation in tests (a single deterministic sweep
  * without driving the interval timer).
  */
-export async function runTick(rawArgs: RunTickArgs): Promise<TickReport | undefined> {
+export async function runTick(rawArgs: RunTickArgs): Promise<void> {
   // Normalize the logger once so each step's defensive logging has a sink.
   const args: ResolvedTickArgs = {
     ...rawArgs,
@@ -314,15 +316,14 @@ export async function runTick(rawArgs: RunTickArgs): Promise<TickReport | undefi
     durationMs: sweepIntervalMs
   });
   // Another host holds the sweep lease — skip the entire tick.
-  if (lease === null) return undefined;
+  if (lease === null) return;
 
   try {
-    const earliestAskDeadline = await enforceSuspensionExpiry(args, now);
+    await enforceSuspensionExpiry(args, now);
     await redriveResolvedGates(args);
     await pruneTerminalSuspensions(args, now);
     await pruneExpiredLeases(args);
     await pruneOrphanCheckpoints(args, now);
-    return { earliestAskDeadline };
   } finally {
     await provider
       .releaseLease(SWEEPER_LEASE_KEY, lease.leaseId)
@@ -338,14 +339,8 @@ export async function runTick(rawArgs: RunTickArgs): Promise<TickReport | undefi
  * Step 2: re-set every `pending` suspension past its `expiresAt` to `expired`.
  * Closes the gate so the resume endpoint rejects it.
  */
-async function enforceSuspensionExpiry(
-  args: ResolvedTickArgs,
-  now: number
-): Promise<number | undefined> {
+async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Promise<void> {
   const { provider, logger } = args;
-  // The earliest deadline of an ask still pending after this step: when the
-  // next tick should run. Read off the listing this step already makes.
-  let earliestAskDeadline: number | undefined;
   try {
     // List ALL pending suspensions — deliberately unbounded. `listSuspended`
     // returns newest-first, so a `limit` would skip the OLDEST pending records,
@@ -358,25 +353,13 @@ async function enforceSuspensionExpiry(
     const pending = await provider.listSuspended({ status: "pending" });
     let askGatesSkipped = 0;
     for (const record of pending) {
-      if (record.expiresAt == null) continue;
-      if (record.expiresAt > now) {
-        if (isAskGate(record) && (earliestAskDeadline === undefined || record.expiresAt < earliestAskDeadline)) {
-          earliestAskDeadline = record.expiresAt;
-        }
-        continue;
-      }
+      if (record.expiresAt == null || record.expiresAt > now) continue;
       if (isAskGate(record)) {
         // Never `expired`: nothing else may resume an ask gate, so that would
         // strand its turn. Without a way to continue a request, leave it
         // pending for a sweeper that has one.
-        if (args.continueRequest === undefined) {
-          askGatesSkipped += 1;
-        } else if (await resumeOverdueAsk(args, record)) {
-          // Still pending (the turn was busy, or the resume failed): retry
-          // shortly rather than an interval late.
-          const retryAt = now + OVERDUE_ASK_RETRY_MS;
-          if (earliestAskDeadline === undefined || retryAt < earliestAskDeadline) earliestAskDeadline = retryAt;
-        }
+        if (args.continueRequest === undefined) askGatesSkipped += 1;
+        else await resumeOverdueAsk(args, record);
         continue;
       }
       // Re-load immediately before writing: an operator may have approved or
@@ -405,7 +388,6 @@ async function enforceSuspensionExpiry(
       error: err instanceof Error ? err.message : String(err)
     });
   }
-  return earliestAskDeadline;
 }
 
 /**
@@ -478,14 +460,13 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
  * The ask branch of step 2: resume an overdue ask gate with `wait_timed_out`,
  * through the same resume every ask takes (fenced on the gate still being
  * pending, under the request's lease). The resumed call ends the asked task.
- * Per-gate failures are logged and the sweep moves on. Returns whether the
- * gate may still be pending and owed a timeout: another resume held the
- * turn's lease, or the resume failed. An answer that won the race needs
- * nothing more.
+ * Per-gate failures are logged and the sweep moves on. A gate this leaves
+ * pending (the turn busy, not yet written parked, or the resume failed) is
+ * retried by the next tick, which is scheduled from the pending gates.
  */
-async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord): Promise<boolean> {
+async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord): Promise<void> {
   const { provider, stores, logger, continueRequest } = args;
-  if (continueRequest === undefined) return false;
+  if (continueRequest === undefined) return;
   try {
     const result = await resumeAskGate(
       { provider, stores, continueRequest },
@@ -499,7 +480,7 @@ async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord
       },
       "durability-sweeper"
     );
-    if (result.ok) return false;
+    if (result.ok) return;
     if (result.refused === "already-resolved") {
       // The gate was listed pending this tick, yet the resume found it (or its
       // turn) already past waiting: the answer won the race, or the record and
@@ -509,21 +490,19 @@ async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord
         suspensionId: record.suspensionId,
         detail: result.detail
       });
-      return false;
+      return;
     }
     logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: overdue ask not resumed", {
       requestId: record.requestId,
       suspensionId: record.suspensionId,
       refused: result.refused
     });
-    return result.refused === "busy";
   } catch (err) {
     logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: overdue ask resume failed", {
       requestId: record.requestId,
       suspensionId: record.suspensionId,
       error: err instanceof Error ? err.message : String(err)
     });
-    return true;
   }
 }
 
