@@ -1,31 +1,37 @@
 # kitchen-sink-talk › it answers a clerk note or files it
 
-**Issue:** FIX-1611 (VG of the spec's PLAN), re-pointed from FIX-1589 (the epic FIX-1592's leg a). The path is kept: retained specs cite it.
+**Issue:** FIX-1611 (VG of the spec's PLAN), re-pointed from FIX-1589 (the epic FIX-1592's leg a); rewritten by FIX-1792 P1. The path is kept: retained specs cite it.
 
-**Outcome:** A person who opens kitchen-sink finds one support mailbox and four specialists named for what they handle. A question gets one specialist's answer in the mailbox; a case that needs a person is filed onto `escalations` and the specialist says so. Nobody gets their own words back, and after a reload the answer is still under the specialist's name and a filed case is a row in the team panel.
+**Outcome:** A person who opens kitchen-sink finds one support coordinator and four specialists named for what they handle. A question posted to the coordinator gets one specialist's answer, under the specialist's name, and nobody gets their own words back. After a reload the answer is still there.
 
-**Input:** `fixtures/input.json`: the mailbox and its board, the one seat kind, the four specialists with their `description:` lines, the specialist both legs aim at (`support.devices`), the scenario markers the scripted model keys on and the reply markers each writes, and the live leg's five posts. Held-out: each post carries a fresh token per run, and only that token is graded, so a line or row another run left behind can never be the one that passes. `GOAL_SEAT` aims both legs at another specialist; a correct build still passes.
+**Rewritten (FIX-1792 P1).** `support.help` is a coordinator worker file on `routing: best-fit`, and the escalation feature is removed, not replaced (FIX-1792 BR-14; product owner, 2026-10-06): no specialist files a case, and there is no `escalations` board. So the filing half of this goal goes, with its control. What went, and why:
 
-**Signal:** one real browser against kitchen-sink's **production build** (built by the run, never assumed), served by `next start` on the scripted model, the in-memory store and **no model key**. Each post is routed with `[route:<seat>]`, which the scripted route honours. Everything graded is read off the page as drawn.
+- **file:line** and **file:row**: nothing files a case, so there is no "filed" line to read and no row to list.
+- **warning**: the boot warned that `escalations` was unattended. With no board there is nothing to warn about.
+- `GOAL_CONTROL=no-filing`: the stand-in for a tool that is gone.
+- The live leg's filing half: its five posts now check one answer each, by a specialist.
+- `main`'s roster red state (three mailboxes on two kinds) is history: the roster leg now reads the coordinator and the roster panel.
 
-- **roster**: the rail's Mailboxes section lists one kind, `mailbox`, holding one mailbox, `support.help`; its Seats section lists one kind, `agent`, holding exactly the four specialists. Opened, each shows the kind `agent` and its `description:` as the fixture has it. No "Hire another" anywhere on the page.
-- **answer**: post a question with `[scenario:wake]` and a fresh token; reload. The mailbox shows exactly one line after the post, labelled with the seat, carrying `[reply:wake]` and not the token.
-- **file**: post a case with `[scenario:needs-a-person]` and a fresh token; reload. Graded as two assertions: **file:line**, exactly one line after the post, labelled with the seat, carrying `[reply:escalated]`; **file:row**, the team panel's `escalations` board shows exactly one row carrying the token.
-- **warning**: the boot warns that `support.help`'s `escalations` is unattended, and warns about no other board (filing is not draining).
+Since FIX-1788 the rail lists each flow, not each worker, so "four specialists named for what they handle" is read off the roster panel, where each worker shows its flow and its `description:`.
 
-**Anti-game:** no assertion on the generated map, the ledger or the request log: the rail, the mailbox and the board column as drawn. A "filed" line alone never passes: the row is its own assertion. The reply must not carry the post's token, which is what an echo cannot avoid. Only this run's tokens count. Waiting before the reload polls the server until the seat's line lands and the row is written; none of that is graded.
+**Input:** `fixtures/input.json`: the coordinator and its `description:`, the one specialist flow, the four specialists with their `description:` lines, the specialist the answer leg aims at (`support.devices`), the scenario marker the scripted model keys on and the reply marker it writes, and the live leg's five posts. Held-out: the post carries a fresh token per run, and only that token is graded, so a line another run left behind can never be the one that passes. `GOAL_SEAT` aims the answer leg at another specialist; a correct build still passes.
 
-**Model:** n/a for the graded legs: kitchen-sink's scripted model answers and routes (epic FIX-1592 D3). The goal is which path ran and what was kept, not what the reply says. Keyless: the server runs with `AI_GATEWAY_API_KEY` empty.
+**Signal:** one real browser against kitchen-sink's **production build** (built by the run, never assumed), served by `next start` on the scripted model, the in-memory store and **no model key**. The post is routed with `[route:<seat>]`, which the scripted evaluation honours. Everything graded is read off the page as drawn.
+
+- **roster**: the rail's Coordinators section lists one kind, `coordinator`, opening on the person's conversation with `support.help`; its Workers section lists one kind, `agent`. The roster panel lists exactly `support.help` on `coordinator` and the four specialists on `agent`, each with its `description:` as the fixture has it. No "Hire another" anywhere on the page.
+- **answer**: post a question with `[scenario:wake]` and a fresh token; reload. The conversation shows exactly one line after the post, labelled with the specialist, carrying `[reply:wake]` and not the token.
+
+**Anti-game:** no assertion on the generated map, the ledger, the routing record or the request log: the rail, the roster panel and the conversation as drawn. The reply must not carry the post's token, which is what an echo cannot avoid. Only this run's token counts. Waiting before the reload polls the server until the specialist's line lands; that is not graded.
+
+**Model:** n/a for the graded legs: kitchen-sink's scripted model answers and scripts best fit's evaluation (epic FIX-1592 D3). The goal is which path ran and what was kept, not what the reply says. Keyless: the server runs with `AI_GATEWAY_API_KEY` empty.
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/answers-a-clerk-note-or-files-it/run.mts`
 
-**Live:** `GOAL_LIVE=1` on the same command, with `AI_GATEWAY_API_KEY`. After the scripted legs, the same build served out of test mode, on the app's own models and route. Three posts that plainly need a person must each add one row to `escalations`; two that do not must add none; each must get one answer line.
+**Live:** `GOAL_LIVE=1` on the same command, with `AI_GATEWAY_API_KEY`. After the scripted legs, the same build served out of test mode, on the app's own models and best fit. Each of five posts must get exactly one answer line, by one of the four specialists.
 
-**Controls:** on the same command. The app honours each only under `KITCHEN_SINK_TEST_MODE=1` (`apps/kitchen-sink/lib/goal-control.ts`).
+**Controls:** on the same command. The app honours it only under `KITCHEN_SINK_TEST_MODE=1` (`apps/kitchen-sink/lib/landing-control.ts`).
 
-- `GOAL_CONTROL=no-landing` (`apps/kitchen-sink/lib/mailbox-landing-control.ts`): the agent kind swapped for one that hears posts and answers with the seat's tools, and lands no text answer. A text answer no longer lands, and the specialist's "filed" is a text answer too, so it must FAIL at **answer** and **file:line**. The row still lands, so **file:row** stays green: nothing else.
-- `GOAL_CONTROL=no-filing` (`apps/kitchen-sink/lib/escalate-control.ts`): `escalate` swapped for a stand-in that says it filed and files nothing. Must FAIL at **file:row** only: the line still says it filed.
-- Today's `main`, before this issue, must FAIL at **roster**: it lists three mailboxes on two kinds, and six seats on three kinds. Its "Hire another" is never reached there: the button draws only on an opened seat, and none of the four specialists exists to open. That assertion's own red state is the button put back by hand, recorded below.
+- `GOAL_CONTROL=no-landing`: the `agent` flow swapped for one that hears the delegated post and answers in the specialist's own session, and hands nothing back. The answer never reaches the conversation, so it must FAIL at **answer**. **roster** stays green: nothing else.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -46,3 +52,6 @@
 | 2026-09-28 | `fix/fix-1623` (FIX-1624) on 9a55b79e4, uncommitted (control: `no-landing`) | scripted | FAIL (expected) | Re-taken after the stand-in began carrying `post-to-mailbox` and drawing its answers as the real kind does. **answer** and **file:line** only: after the reload no line answers either token. **file:row**, **roster** and **warning** green. |
 | 2026-09-28 | same | scripted | **PASS** | roster as above; after a reload one line by `support.devices`, `[reply:wake] Heard it in the mailbox.`; the filed line and the `escalations` row as above. |
 | 2026-09-28 | FIX-1622 branch at 91a5afdc4 (the escalations board is a live list read through `support.help`) | scripted | **PASS** | Neighbour re-run. roster as above; after a reload one line by `support.devices`, `[reply:wake] Heard it in the mailbox.`; the line reads `[reply:escalated] Filed onto escalations.`, and after a reload the board's `li[data-task-id]` shows `Needs a person: case-token-…` with its status `pending`. The boot warns about `support.help.escalations` and no other board. |
+| 2026-10-09 | `main` at 57d2c10e9 | scripted | FAIL | **Rewritten for FIX-1792 P1; the check before the rewrite taken first, on clean `main`.** It failed at **roster**: the rail's Seats section lists the kinds `[]` (since FIX-1788 P4 the section is Workers, and holds one `agent` copy). |
+| 2026-10-09 | `fix/FIX-1792-p1` on 54fcd1b15, uncommitted | scripted | **PASS** | **Rewritten.** Fresh production build, keyless. **roster:** the rail lists `coordinator`, opening on `["support.help"]`, and `agent`; the roster panel lists `support.help` (coordinator) *Ask the support team anything.* and the four specialists (agent), each with its description as the fixture has it; no "Hire another". **answer:** after a reload, one line answering the post, by `support.devices`: *[reply:wake] Heard it.*, without the token. |
+| 2026-10-09 | same | scripted | FAIL (expected) | `GOAL_CONTROL=no-landing`: **answer** only — after the reload no line answers the token. **roster** green. |

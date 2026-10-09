@@ -1,31 +1,32 @@
 /**
  * Goal check: when a person posts to `support.help` from the kitchen-sink page,
- * the one specialist the mailbox's route picks runs once on the post and no
- * other member runs, and that run is there in the specialist's conversation
+ * the one specialist the coordinator's best fit picks runs once on the post and
+ * no other delegate runs, and that run is there in the specialist's session
  * after a reload.
  *
  * Real path, scripted model, out of CI. See goal.md for the contract.
  *
  * One real browser against the app's PRODUCTION build (built here, never
- * assumed), on its scripted model, keyless. The scripted route picks the
- * member a post names in `[route:<member>]`. Two legs:
+ * assumed), on its scripted model, keyless. The scripted evaluation picks the
+ * delegate a post names in `[route:<worker>]`. Two legs:
  *
  *   support.accounts  post a line naming it, carrying a fresh token, from the
- *         mailbox's panel; reload; open every conversation the seat lists.
- *         Exactly one holds the token: the post heard once, as the seat's
- *         turn, with one reply carrying the wake marker under it. Then a
- *         second line, different text; reload; it is in that same
- *         conversation, heard once, answered once.
- *   others  support.devices, support.fsd and support.general, the members the
- *         route did not pick, hold nothing with either token.
+ *         coordinator's panel; reload; open every session the specialist
+ *         has. Exactly one holds the token: the post heard once, as the
+ *         specialist's turn, with one reply carrying the wake marker under it.
+ *         Then a second line, different text; reload; it is in that same
+ *         session, heard once, answered once.
+ *   others  support.devices, support.fsd and support.general, the delegates
+ *         best fit did not pick, hold nothing with either token.
  *
- * Everything graded is read off the page after a reload, from the seats' own
- * conversations, so only a run the server kept can pass.
+ * Which sessions are a specialist's is read from the server, by the session's
+ * `workerId`, as an index; what each holds is read off the page after a
+ * reload, so only a run the server kept can pass.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/a-post-runs-each-member-agent-once/run.mts
- * Controls: GOAL_CONTROL=name-only-notify  (a line naming each member, no seat run: must FAIL at support.accounts, and nothing else)
- *           GOAL_CONTROL=no-route          (the mailbox's `routing:` lines taken off, so every member hears: must FAIL at others, and nothing else)
- *           GOAL_CONTROL=no-author-filter  (leg c's control: must leave every leg here green)
+ * Controls: GOAL_CONTROL=no-delivery    (no flow takes a delegated post, so nobody runs: must FAIL at support.accounts, and nothing else)
+ *           GOAL_CONTROL=no-route       (best fit read as `everyone`, so every delegate hears: must FAIL at others, and nothing else)
+ *           GOAL_CONTROL=answers-go-on  (agent-replies-in-the-mailbox's control: must leave every leg here green)
  */
 import { randomUUID } from "node:crypto";
 import type { Page } from "playwright";
@@ -33,13 +34,14 @@ import { loadFixture, runGoal } from "../../lib/index.mts";
 import {
   buildKitchenSink,
   conversation,
-  open,
+  coordinatorConversation,
   openShell,
+  openWorkerCopy,
   panel,
-  rail,
   readUntil,
-  row,
+  showCoordinator,
   startKitchenSink,
+  workerSessions,
   type KitchenSinkServer,
 } from "../../lib/kitchen-sink.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -51,10 +53,10 @@ interface Seat {
 
 interface Fixture {
   port: number;
-  mailbox: Seat;
+  coordinator: Seat;
   agents: Seat[];
   others: Seat[];
-  /** The tag the scripted route reads to pick who answers. */
+  /** The tag the scripted evaluation reads to pick who answers. */
   route: string;
   marker: string;
   replyMarker: string;
@@ -65,13 +67,13 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 
 /** The legs each control must redden, and only those. */
 const EXPECTED: Record<string, string[]> = {
-  "name-only-notify": fixture.agents.map((seat) => seat.id),
-  // Every member hears an unrouted post, so the members the route would have
-  // passed over run too. The routed specialist still answers.
+  "no-delivery": fixture.agents.map((seat) => seat.id),
+  // Every delegate hears a post handed to everyone, so the delegates best fit
+  // would have passed over run too. The picked specialist still answers.
   "no-route": ["others"],
-  // Leg c's control (a seat's own post wakes nobody). A post from the page has
-  // no author, so here it must change nothing.
-  "no-author-filter": [],
+  // agent-replies-in-the-mailbox's control (an answer wakes nobody). The
+  // answers here carry no token, so here it must change nothing.
+  "answers-go-on": [],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -79,29 +81,26 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 
 type Conversation = { sessionId: string; runOf: string | null; messages: Array<{ role: string; text: string }> };
 
-/** Post a line to the mailbox from its panel, and wait until it shows. */
+/** Post a line to the coordinator from its panel, and wait until it shows. */
 async function post(page: Page, origin: string, line: string): Promise<void> {
   await openShell(page, origin);
-  await open(page, fixture.mailbox.kind);
-  await row(page, fixture.mailbox.id).click();
-  await panel(page).getByLabel("Post to this mailbox").fill(line);
+  await showCoordinator(page, fixture.coordinator.id);
+  await panel(page).getByLabel("Post to this coordinator").fill(line);
   await panel(page).getByRole("button", { name: "Send" }).click();
   await readUntil(
-    () => panel(page).getByTestId("mailbox-line").filter({ hasText: line }).count(),
+    () => panel(page).getByTestId("coordinator-line").filter({ hasText: line }).count(),
     (n) => n > 0,
     10_000,
   );
 }
 
 /**
- * Let the routed specialist answer `token` before the reload. Not graded: a seat
- * that never ran simply times out here and fails on the page below.
+ * Let the picked specialist answer `token` before the reload. Not graded: a
+ * specialist that never ran simply times out here and fails on the page below.
  */
 async function letAgentsAnswer(page: Page, origin: string, token: string, replies: number): Promise<void> {
   const answered = async (seat: string): Promise<boolean> => {
-    const listed = await page.request.get(`${origin}/api/flows/sessions?flowId=${seat}&include=dispatch-runs&limit=100`);
-    const { sessions } = (await listed.json()) as { sessions: Array<{ id: string }> };
-    for (const session of sessions) {
+    for (const session of await workerSessions(page, origin, seat, { runs: true })) {
       const state = await page.request.get(`${origin}/api/flows/sessions/${session.id}/state?include_items=true&item_types=message&limit=1000`);
       const text = await state.text();
       if (text.includes(token) && text.split(fixture.replyMarker).length - 1 >= replies) return true;
@@ -115,31 +114,24 @@ async function letAgentsAnswer(page: Page, origin: string, token: string, replie
   );
 }
 
-/** Reload, then open every conversation `seat` lists and read each as drawn. */
+/** Reload, then open every session `seat` has, from the worker copy in the rail, and read each as drawn. */
 async function conversationsOf(page: Page, origin: string, seat: Seat): Promise<Conversation[]> {
   await page.reload();
   await openShell(page, origin);
-  await open(page, seat.kind);
-  await open(page, seat.id);
-  const leaf = rail(page).locator(`ul[data-leaf="${seat.id}"]`);
-  await leaf.waitFor({ timeout: 15_000 });
-  // The list is loaded once it shows a row or says it has none.
-  await readUntil(
-    async () => (await leaf.locator("[data-session-id]").count()) + (await leaf.getByText("No sessions yet").count()),
-    (n) => n > 0,
-    10_000,
-  );
-  const rows = await leaf.locator("[data-session-id]").evaluateAll((buttons) =>
-    buttons.map((button) => ({
-      sessionId: button.getAttribute("data-session-id") ?? "",
-      runOf: button.getAttribute("data-dispatch-run-of"),
-    })),
-  );
+  const listed = await workerSessions(page, origin, seat.id, { runs: true });
+  if (listed.length === 0) return [];
+  const leaf = await openWorkerCopy(page);
   const out: Conversation[] = [];
-  for (const listed of rows) {
-    await leaf.locator(`[data-session-id="${listed.sessionId}"]`).click();
-    const messages = await readUntil(() => conversation(page), (ms) => ms.length > 0, 5_000);
-    out.push({ ...listed, messages });
+  let last = "";
+  for (const session of listed) {
+    const button = leaf.locator(`[data-session-id="${session.id}"]`);
+    await button.waitFor({ timeout: 10_000 });
+    await button.click();
+    await readUntil(() => button.getAttribute("aria-current"), (v) => v === "true", 5_000);
+    // The panel keeps the last session until this one replaces it.
+    const messages = await readUntil(() => conversation(page), (ms) => ms.length > 0 && JSON.stringify(ms) !== last, 5_000);
+    last = JSON.stringify(messages);
+    out.push({ sessionId: session.id, runOf: await button.getAttribute("data-dispatch-run-of"), messages });
   }
   return out;
 }
@@ -166,23 +158,23 @@ await runGoal(async () => {
     const origin = server.origin;
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
-    /** One agent seat's conversations holding `token`, graded: one, heard once, one reply under it. */
+    /** One agent's sessions holding `token`, graded: one, heard once, one reply under it. */
     const gradeAgent = (seat: Seat, convs: Conversation[], token: string, label: string): Conversation | undefined => {
       const holding = convs.filter((c) => c.messages.some((m) => m.text.includes(token)));
       if (holding.length !== 1) {
-        fail(seat.id, `after the reload, ${holding.length} of ${seat.id}'s ${convs.length} conversations hold the ${label} post (want 1): it never ran on it, or ran in more than one`);
+        fail(seat.id, `after the reload, ${holding.length} of ${seat.id}'s ${convs.length} sessions hold the ${label} post (want 1): it never ran on it, or ran in more than one`);
         return undefined;
       }
       const [conv] = holding;
       const heard = conv!.messages.findIndex((m) => m.role === "user" && m.text.includes(token));
       const heardCount = conv!.messages.filter((m) => m.role === "user" && m.text.includes(token)).length;
       if (heard === -1 || heardCount !== 1) {
-        fail(seat.id, `${seat.id}'s conversation holds the ${label} post as its turn ${heardCount} times (want 1); roles on screen: ${conv!.messages.map((m) => m.role).join(", ")}`);
+        fail(seat.id, `${seat.id}'s session holds the ${label} post as its turn ${heardCount} times (want 1); roles on screen: ${conv!.messages.map((m) => m.role).join(", ")}`);
         return undefined;
       }
       const next = conv!.messages[heard + 1];
       if (next === undefined || next.role !== "assistant" || !next.text.includes(fixture.replyMarker)) {
-        fail(seat.id, `no reply carrying ${fixture.replyMarker} sits under the ${label} post in ${seat.id}'s conversation; under it: ${JSON.stringify(next ?? null)}`);
+        fail(seat.id, `no reply carrying ${fixture.replyMarker} sits under the ${label} post in ${seat.id}'s session; under it: ${JSON.stringify(next ?? null)}`);
         return undefined;
       }
       return conv;
@@ -197,21 +189,22 @@ await runGoal(async () => {
       if (conv !== undefined) firstConversation.set(seat.id, conv);
     }
 
-    // ---- a second post, different text: the same conversation --------------
+    // ---- a second post, different text: the same session ------------------
     await post(page, origin, secondLine);
     await letAgentsAnswer(page, origin, secondToken, 2);
+    const helpConversation = await coordinatorConversation(page, origin, fixture.coordinator.id);
     for (const seat of fixture.agents) {
       const convs = await conversationsOf(page, origin, seat);
       const conv = gradeAgent(seat, convs, secondToken, "second");
       const first = firstConversation.get(seat.id);
       if (conv === undefined || first === undefined) continue;
       if (conv.sessionId !== first.sessionId) {
-        fail(seat.id, `the second post landed in ${conv.sessionId}, not in the conversation the first one did (${first.sessionId})`);
+        fail(seat.id, `the second post landed in ${conv.sessionId}, not in the session the first one did (${first.sessionId})`);
       } else if (!conv.messages.some((m) => m.role === "user" && m.text.includes(firstToken))) {
-        fail(seat.id, `the conversation holding the second post no longer shows the first`);
+        fail(seat.id, `the session holding the second post no longer shows the first`);
       } else {
         evidence.push(
-          `${seat.id}: after a reload, one conversation ${conv.sessionId} (listed as a run of ${conv.runOf ?? "nothing"}) holds both posts as its turns, ` +
+          `${seat.id}: after a reload, one session ${conv.sessionId} (listed as a run of ${conv.runOf ?? "nothing"}, the person's conversation with ${fixture.coordinator.id} being ${helpConversation ?? "none"}) holds both posts as its turns, ` +
             `${JSON.stringify(conv.messages.find((m) => m.role === "user" && m.text.includes(firstToken))!.text)} with a ${fixture.replyMarker} reply under each`,
         );
       }
@@ -222,9 +215,9 @@ await runGoal(async () => {
       const convs = await conversationsOf(page, origin, seat);
       const holding = convs.filter((c) => c.messages.some((m) => m.text.includes(firstToken) || m.text.includes(secondToken)));
       if (holding.length > 0) {
-        fail("others", `${seat.id} holds ${holding.length} conversation(s) with the posts' tokens: a post ran a member the route did not pick`);
+        fail("others", `${seat.id} holds ${holding.length} session(s) with the posts' tokens: a post ran a delegate best fit did not pick`);
       } else {
-        evidence.push(`${seat.id}: none of its ${convs.length} conversations holds either token`);
+        evidence.push(`${seat.id}: none of its ${convs.length} sessions holds either token`);
       }
     }
   } finally {

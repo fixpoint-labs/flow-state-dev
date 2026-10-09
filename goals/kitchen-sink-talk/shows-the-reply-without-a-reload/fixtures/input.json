@@ -1,6 +1,6 @@
 {
   "port": 3041,
-  "mailbox": { "kind": "mailbox", "id": "support.help" },
+  "coordinator": { "kind": "coordinator", "id": "support.help" },
   "replier": { "kind": "agent", "id": "support.devices" },
   "route": "[route:support.devices]",
   "marker": "[scenario:reply-after-a-hold]",

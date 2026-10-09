@@ -1,31 +1,31 @@
 /**
- * Goal check: a person posts to `support.help`, and the specialist the route
- * picks, `support.devices`, answers in that mailbox under its own name through
- * its `post-to-mailbox` tool. The line is still there after a reload, and
- * wakes nobody.
+ * Goal check: a person posts to `support.help`, and the specialist the
+ * coordinator's best fit picks, `support.devices`, answers in the person's
+ * conversation under its own name. The line is still there after a reload,
+ * and wakes nobody.
  *
  * Real path, scripted model, out of CI. See goal.md for the contract.
  *
  * One real browser against the app's PRODUCTION build (built here, never
- * assumed), on its scripted model, keyless. Two posts from the mailbox's
- * panel, each naming the specialist in `[route:<member>]` and carrying a fresh
- * token, then one reload. Three legs, graded per post:
+ * assumed), on its scripted model, keyless. Two posts from the coordinator's
+ * panel, each naming `support.devices` (`[route:support.devices]`) and each
+ * with a fresh token; then one reload, after which everything is read off
+ * the page:
  *
- *   line        the mailbox shows exactly one line carrying the post's token
- *               and the line marker: the specialist's answer, kept by the
- *               mailbox.
- *   author      that line is labelled `support.devices`.
- *   woken-once  `support.devices` lists one run of the mailbox, holding the
- *               token in exactly one turn: the person's post. The members the
- *               route passed over hold no run with the token. A second turn,
- *               or another member's run, is the specialist's line waking a seat.
+ *   line        for each token, the conversation shows exactly one line
+ *               carrying it and the line marker: the specialist's answer.
+ *   author      that line is labelled `support.devices`, not `devuser`.
+ *   woken-once  `support.devices` has one session for the conversation, and in
+ *               it each token is in exactly one turn, the person's post.
+ *               support.accounts, support.fsd and support.general hold no
+ *               session with either token.
  *
- * Everything graded is read off the page after a reload, so only what the
- * server kept can pass.
+ * Which sessions are a specialist's is read from the server, by the session's
+ * `workerId`, as an index; what each holds is read off the page.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/agent-replies-in-the-mailbox/run.mts
- * Controls: GOAL_CONTROL=no-author-filter     (must FAIL at woken-once, and nothing else)
- *           GOAL_CONTROL=post-without-author  (must FAIL at author and woken-once, and nothing else)
+ * Controls: GOAL_CONTROL=answers-go-on   (the coordinator read with `rounds: 1`: must FAIL at woken-once, and nothing else)
+ *           GOAL_CONTROL=no-author-name  (the page served each line without its writer's name: must FAIL at author, and nothing else)
  */
 import { randomUUID } from "node:crypto";
 import type { Page } from "playwright";
@@ -33,13 +33,14 @@ import { loadFixture, runGoal } from "../../lib/index.mts";
 import {
   buildKitchenSink,
   conversation,
-  open,
+  coordinatorConversation,
   openShell,
+  openWorkerCopy,
   panel,
-  rail,
   readUntil,
-  row,
+  showCoordinator,
   startKitchenSink,
+  workerSessions,
   type KitchenSinkServer,
 } from "../../lib/kitchen-sink.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -51,11 +52,11 @@ interface Seat {
 
 interface Fixture {
   port: number;
-  mailbox: Seat;
+  coordinator: Seat;
   replier: Seat;
-  /** The members the route passes over. */
+  /** The delegates best fit passes over. */
   others: Seat[];
-  /** The tag the scripted route reads to pick who answers. */
+  /** The tag the scripted evaluation reads to pick who answers. */
   route: string;
   marker: string;
   lineMarker: string;
@@ -66,85 +67,136 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 
 /** The legs each control must redden, and only those. */
 const EXPECTED: Record<string, string[]> = {
-  // The wake's author filter dropped: the specialist's line, still signed, is
-  // a seat's post, so it fans out unrouted and wakes every member.
-  "no-author-filter": ["woken-once"],
-  // The tool sends no author: the line reads as the principal, and a line with
-  // no author is a person's post, so the route places it and a seat hears the
-  // specialist's own words.
-  "post-without-author": ["author", "woken-once"],
+  // Each answer goes back out, never to its writer: best fit places it on the
+  // fallback, which is handed the specialist's words, token and all.
+  "answers-go-on": ["woken-once"],
+  // The page reads each line's writer off what the server keeps; served
+  // without it, the answer is drawn under no specialist's name.
+  "no-author-name": ["author"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
 }
 
-/** Open the mailbox's panel. */
-async function openMailbox(page: Page, origin: string): Promise<void> {
+/**
+ * `no-author-name`, at the page's `fetch`: every session read, action stream
+ * and live session stream reaches the page with each message's `agentName`
+ * taken off, before and after the reload alike. What the page sees when the
+ * server keeps no writer on a line. The server is untouched: the control
+ * graded here is that the page draws the writer the server kept.
+ *
+ * At the page's `fetch`, not with Playwright's routing: the live session
+ * stream never ends, and a routed response is read whole before the page gets
+ * any of it. Plain JavaScript in a string: a function handed to Playwright is
+ * compiled by tsx first, which adds helpers the page does not have.
+ */
+const STRIP_AUTHOR = `(() => {
+  const strip = (item) => {
+    if (item != null && item.type === "message" && "agentName" in item) delete item.agentName;
+    return item;
+  };
+  const original = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, location.href);
+    const method = String((init && init.method) || (input instanceof Request ? input.method : "GET")).toUpperCase();
+    const read = method === "GET" && /^\\/api\\/flows\\/sessions\\/[^/]+\\/(state|stream)$/.test(url.pathname);
+    const action = method === "POST" && /\\/actions\\/[^/]+$/.test(url.pathname);
+    const response = await original(input, init);
+    if (!read && !action) return response;
+    const type = response.headers.get("content-type") || "";
+    if (type.includes("application/json")) {
+      const json = await response.json();
+      if (json && Array.isArray(json.items)) json.items.forEach(strip);
+      return new Response(JSON.stringify(json), { status: response.status, statusText: response.statusText, headers: response.headers });
+    }
+    if (!type.includes("text/event-stream") || response.body === null) return response;
+    const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
+    let buffer = "";
+    const rewrite = (frame) => frame.split("\\n").map((line) => {
+      if (!line.startsWith("data:")) return line;
+      try {
+        const parsed = JSON.parse(line.slice(5).trim());
+        if (parsed && parsed.item) strip(parsed.item);
+        return "data: " + JSON.stringify(parsed);
+      } catch { return line; }
+    }).join("\\n");
+    const filtered = response.body.pipeThrough(new TransformStream({
+      transform(chunk, controller) {
+        buffer += decoder.decode(chunk, { stream: true });
+        for (let at = buffer.indexOf("\\n\\n"); at !== -1; at = buffer.indexOf("\\n\\n")) {
+          const frame = buffer.slice(0, at);
+          buffer = buffer.slice(at + 2);
+          controller.enqueue(encoder.encode(rewrite(frame) + "\\n\\n"));
+        }
+      },
+      flush(controller) { if (buffer !== "") controller.enqueue(encoder.encode(rewrite(buffer))); },
+    }));
+    return new Response(filtered, { status: response.status, statusText: response.statusText, headers: response.headers });
+  };
+})();`;
+
+/** Open the person's conversation with the coordinator in the panel. */
+async function openHelpDesk(page: Page, origin: string): Promise<void> {
   await openShell(page, origin);
-  await open(page, fixture.mailbox.kind);
-  await row(page, fixture.mailbox.id).click();
-  await panel(page).getByTestId("mailbox-transcript").waitFor({ timeout: 15_000 });
+  await showCoordinator(page, fixture.coordinator.id);
 }
 
-/** Post a line from the mailbox's panel, and wait until it shows. */
+/** Post a line from the conversation's panel, and wait until it shows. */
 async function post(page: Page, line: string): Promise<void> {
-  await panel(page).getByLabel("Post to this mailbox").fill(line);
+  await panel(page).getByLabel("Post to this coordinator").fill(line);
   await panel(page).getByRole("button", { name: "Send" }).click();
   await readUntil(
-    () => panel(page).getByTestId("mailbox-line").filter({ hasText: line }).count(),
+    () => panel(page).getByTestId("coordinator-line").filter({ hasText: line }).count(),
     (n) => n > 0,
     10_000,
   );
 }
 
 /**
- * Let the specialist's line land and its answer finish before the reload, then
- * give a wrongly woken seat time to run. Not graded: whatever did not happen fails
- * on the page below.
+ * Let the specialist's line land and its turn finish before the reload, then
+ * give a wrongly woken delegate time to run. Not graded: whatever did not
+ * happen fails on the page below.
  */
 async function settle(page: Page, origin: string, token: string): Promise<void> {
-  const mailboxHolds = async () => {
-    const res = await page.request.get(
-      `${origin}/api/flows/sessions/${fixture.mailbox.id}/state?include_items=true&item_types=component&limit=1000`,
-    );
+  const conversationHolds = async () => {
+    const id = await coordinatorConversation(page, origin, fixture.coordinator.id);
+    if (id === undefined) return false;
+    const res = await page.request.get(`${origin}/api/flows/sessions/${id}/state?include_items=true&item_types=message&limit=1000`);
     const text = await res.text();
     return text.includes(fixture.lineMarker) && text.includes(token);
   };
   const answered = async (seat: string) => {
-    const listed = await page.request.get(`${origin}/api/flows/sessions?flowId=${seat}&include=dispatch-runs&limit=100`);
-    const { sessions } = (await listed.json()) as { sessions: Array<{ id: string }> };
-    for (const session of sessions) {
+    for (const session of await workerSessions(page, origin, seat, { runs: true })) {
       const state = await page.request.get(`${origin}/api/flows/sessions/${session.id}/state?include_items=true&item_types=message&limit=1000`);
       if ((await state.text()).includes(token)) return true;
     }
     return false;
   };
   await readUntil(
-    async () => (await mailboxHolds()) && (await answered(fixture.replier.id)),
+    async () => (await conversationHolds()) && (await answered(fixture.replier.id)),
     (done) => done,
     20_000,
   );
   await page.waitForTimeout(1_500);
 }
 
-/** A seat's runs of the mailbox, each read as drawn. The page is already reloaded. */
-async function mailboxRunsOf(page: Page, origin: string, seat: Seat): Promise<Array<Array<{ role: string; text: string }>>> {
+/** A delegate's sessions for the person's conversation, each read as drawn. The page is already reloaded. */
+async function delegateRunsOf(page: Page, origin: string, seat: Seat): Promise<Array<Array<{ role: string; text: string }>>> {
   await openShell(page, origin);
-  await open(page, seat.kind);
-  await open(page, seat.id);
-  const leaf = rail(page).locator(`ul[data-leaf="${seat.id}"]`);
-  await leaf.waitFor({ timeout: 15_000 });
-  await readUntil(
-    async () => (await leaf.locator("[data-session-id]").count()) + (await leaf.getByText("No sessions yet").count()),
-    (n) => n > 0,
-    10_000,
-  );
-  const runs = leaf.locator(`[data-dispatch-run-of="${fixture.mailbox.id}"]`);
-  const ids = await runs.evaluateAll((buttons) => buttons.map((b) => b.getAttribute("data-session-id") ?? ""));
+  const parent = await coordinatorConversation(page, origin, fixture.coordinator.id);
+  const runs = (await workerSessions(page, origin, seat.id, { runs: true })).filter((s) => s.parentSessionId === parent);
+  if (runs.length === 0) return [];
+  const leaf = await openWorkerCopy(page);
   const out: Array<Array<{ role: string; text: string }>> = [];
-  for (const id of ids) {
-    await leaf.locator(`[data-session-id="${id}"]`).click();
-    out.push(await readUntil(() => conversation(page), (ms) => ms.length > 0, 5_000));
+  let last = "";
+  for (const { id } of runs) {
+    const button = leaf.locator(`[data-session-id="${id}"]`);
+    await button.waitFor({ timeout: 10_000 });
+    await button.click();
+    const messages = await readUntil(() => conversation(page), (ms) => ms.length > 0 && JSON.stringify(ms) !== last, 5_000);
+    last = JSON.stringify(messages);
+    out.push(messages);
   }
   return out;
 }
@@ -171,23 +223,24 @@ await runGoal(async () => {
     server = await startKitchenSink(fixture.port, { AI_GATEWAY_API_KEY: "" });
     const origin = server.origin;
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    if (CONTROL === "no-author-name") await page.addInitScript({ content: STRIP_AUTHOR });
 
-    await openMailbox(page, origin);
+    await openHelpDesk(page, origin);
     for (const [i, line] of lines.entries()) {
       await post(page, line);
       await settle(page, origin, tokens[i]!);
     }
 
-    // ---- after one reload, the mailbox as drawn ------------------------------
+    // ---- after one reload, the conversation as drawn ------------------------
     await page.reload();
-    await openMailbox(page, origin);
+    await openHelpDesk(page, origin);
     const drawn = await readUntil(
       () =>
         panel(page)
-          .getByTestId("mailbox-line")
+          .getByTestId("coordinator-line")
           .evaluateAll((els) =>
             els.map((el) => ({
-              label: el.querySelector('[data-testid="mailbox-line-label"]')?.textContent ?? "",
+              label: el.querySelector('[data-testid="coordinator-line-label"]')?.textContent ?? "",
               text: el.textContent ?? "",
             })),
           ),
@@ -197,20 +250,20 @@ await runGoal(async () => {
     for (const token of tokens) {
       const replies = drawn.filter((l) => l.text.includes(token) && l.text.includes(fixture.lineMarker));
       if (replies.length !== 1) {
-        fail("line", `after the reload, ${fixture.mailbox.id} shows ${replies.length} lines carrying ${token} and ${fixture.lineMarker} (want 1)`);
+        fail("line", `after the reload, the conversation with ${fixture.coordinator.id} shows ${replies.length} lines carrying ${token} and ${fixture.lineMarker} (want 1)`);
         continue;
       }
       if (replies[0]!.label !== fixture.replier.id) {
         fail("author", `the reply line for ${token} is labelled "${replies[0]!.label}", not ${fixture.replier.id}`);
         continue;
       }
-      evidence.push(`${fixture.mailbox.id}: one line for ${token}, labelled ${replies[0]!.label}: ${JSON.stringify(replies[0]!.text)}`);
+      evidence.push(`the conversation with ${fixture.coordinator.id}: one line for ${token}, labelled ${replies[0]!.label}: ${JSON.stringify(replies[0]!.text)}`);
     }
 
     // ---- the specialist heard each post once, and nobody heard its line ----
-    const runs = await mailboxRunsOf(page, origin, fixture.replier);
+    const runs = await delegateRunsOf(page, origin, fixture.replier);
     if (runs.length !== 1) {
-      fail("woken-once", `${fixture.replier.id} lists ${runs.length} runs of ${fixture.mailbox.id} (want 1)`);
+      fail("woken-once", `${fixture.replier.id} has ${runs.length} sessions for the conversation with ${fixture.coordinator.id} (want 1)`);
     } else {
       let once = true;
       for (const token of tokens) {
@@ -223,15 +276,15 @@ await runGoal(async () => {
           );
         }
       }
-      if (once) evidence.push(`${fixture.replier.id}: one run of ${fixture.mailbox.id}, each token heard once, in the person's post`);
+      if (once) evidence.push(`${fixture.replier.id}: one session for the conversation, each token heard once, in the person's post`);
     }
     for (const seat of fixture.others) {
-      const theirs = await mailboxRunsOf(page, origin, seat);
+      const theirs = await delegateRunsOf(page, origin, seat);
       const holding = theirs.filter((ms) => ms.some((m) => tokens.some((t) => m.text.includes(t))));
       if (holding.length > 0) {
-        fail("woken-once", `${seat.id} holds ${holding.length} run(s) of ${fixture.mailbox.id} with a post's token: the specialist's line woke it`);
+        fail("woken-once", `${seat.id} holds ${holding.length} session(s) for the conversation with a post's token: the specialist's line woke it`);
       } else {
-        evidence.push(`${seat.id}: none of its ${theirs.length} runs of ${fixture.mailbox.id} holds either token`);
+        evidence.push(`${seat.id}: none of its ${theirs.length} sessions for the conversation holds either token`);
       }
     }
   } finally {
