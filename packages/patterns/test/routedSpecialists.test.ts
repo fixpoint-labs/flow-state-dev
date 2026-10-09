@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import {
   routedSpecialists,
@@ -308,5 +309,133 @@ describe("routedSpecialists", () => {
     // The dispatch is rescued, so the run does NOT error at the top level —
     // the failure surfaces as an empty iteration with no contribution.
     expect(result.error).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Legacy checkpoints (BP-030)
+// ---------------------------------------------------------------------------
+
+/**
+ * A checkpoint written before the claim ticket existed carries the claimed
+ * attempt as a bare `currentAttempt` and no `currentClaim`. These tests put
+ * the control state into exactly that shape while the specialist runs — the
+ * point a resumed run would pick up from — and then let the pattern's own
+ * write-back record (or decline) the iteration.
+ */
+describe("routedSpecialists — legacy checkpoint (currentAttempt, no currentClaim)", () => {
+  type LegacyCtx = {
+    sequencer: {
+      state: { currentTaskId?: string; currentClaim?: { attempt: number } };
+      patchState: (patch: Record<string, unknown>) => Promise<void>;
+    };
+  };
+
+  /** Rewrite the live control state into the pre-ticket shape. */
+  async function rewriteAsLegacyCheckpoint(ctx: LegacyCtx): Promise<string> {
+    const { currentTaskId, currentClaim } = ctx.sequencer.state;
+    if (currentTaskId === undefined || currentClaim === undefined) {
+      throw new Error("expected a claimed iteration to rewrite");
+    }
+    await ctx.sequencer.patchState({
+      currentClaim: undefined,
+      currentAttempt: currentClaim.attempt,
+    });
+    return currentTaskId;
+  }
+
+  async function boardFor(ctx: unknown, collectionId: string) {
+    return getOrCreateTaskCollection({
+      ctx: ctx as never,
+      backing: "state",
+      collectionId,
+      state: (ctx as { sequencer: never }).sequencer,
+    });
+  }
+
+  it("does not let attempt 1's late result overwrite a second attempt that holds the task", async () => {
+    // The overwrite the old `expectAttempt` guard declined: the task was
+    // reclaimed and claimed again (attempt 2) while attempt 1's specialist
+    // was still running. Attempt 1's write-back is an ordinary
+    // `in_progress -> completed` transition, so only an ownership guard can
+    // refuse it — and a legacy record must still carry one.
+    let taskId = "";
+    const lateSpecialist = handler({
+      name: "late-specialist",
+      inputSchema: z.any(),
+      outputSchema: z.object({ contributed: z.string() }),
+      resources: { workspace },
+      execute: async (_input, ctx) => {
+        taskId = await rewriteAsLegacyCheckpoint(ctx as unknown as LegacyCtx);
+        const board = await boardFor(ctx, "rs-legacy-reclaimed");
+        // Attempt 1's lease is treated as lapsed and a second attempt takes the task.
+        await board.reclaim(Number.MAX_SAFE_INTEGER);
+        const second = await board.claim("second-attempt", {
+          eligibility: (t) => t.id === taskId,
+        });
+        expect(second?.attempts).toBe(2);
+        return { contributed: "attempt-1 (stale)" };
+      },
+    });
+
+    const pattern = routedSpecialists({
+      name: "rs-legacy-reclaimed",
+      workspace,
+      specialists: { late: lateSpecialist },
+      controller: makeScriptedController("rs-legacy-reclaimed", [
+        { specialist: "late", done: false, reasoning: "go" },
+        { specialist: null, done: true, reasoning: "complete" },
+      ]),
+      synthesizer: false,
+      initialState: { goal: "legacy", status: "active" },
+    });
+
+    const result = await testBlock(pattern, {
+      input: { message: "go" },
+      session: { resources: { workspace: emptyWorkspaceState } },
+    });
+
+    expect(result.error).toBeNull();
+    const out = result.output as { history: Array<{ output: unknown }> };
+    // Attempt 1's stale output must not have been recorded as the result.
+    expect(out.history).toEqual([]);
+    expect(taskId).not.toBe("");
+  });
+
+  it("still records the iteration when the legacy attempt is the one holding the task", async () => {
+    // The guard must not strand a healthy legacy iteration `in_progress`
+    // (the "skip the write-back" option would): with no reclaim, attempt 1
+    // still owns the task and its result lands.
+    const specialist = handler({
+      name: "legacy-specialist",
+      inputSchema: z.any(),
+      outputSchema: z.object({ contributed: z.string() }),
+      resources: { workspace },
+      execute: async (_input, ctx) => {
+        await rewriteAsLegacyCheckpoint(ctx as unknown as LegacyCtx);
+        return { contributed: "legacy" };
+      },
+    });
+
+    const pattern = routedSpecialists({
+      name: "rs-legacy-healthy",
+      workspace,
+      specialists: { legacy: specialist },
+      controller: makeScriptedController("rs-legacy-healthy", [
+        { specialist: "legacy", done: false, reasoning: "go" },
+        { specialist: null, done: true, reasoning: "complete" },
+      ]),
+      synthesizer: false,
+      initialState: { goal: "legacy", status: "active" },
+    });
+
+    const result = await testBlock(pattern, {
+      input: { message: "go" },
+      session: { resources: { workspace: emptyWorkspaceState } },
+    });
+
+    expect(result.error).toBeNull();
+    const out = result.output as { history: Array<{ output: unknown }> };
+    expect(out.history.map((h) => h.output)).toEqual([{ contributed: "legacy" }]);
   });
 });
