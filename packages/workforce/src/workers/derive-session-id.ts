@@ -16,14 +16,20 @@
  * Isomorphic: Web Crypto's SHA-256, which browsers and Node 22 both carry.
  */
 import { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "../projects/workstream-ref";
-import { DERIVED_WORKER_SESSION_PREFIX, FILING_SESSION_STATE_KEY, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "./keys";
+import {
+  DERIVED_WORKER_SESSION_PREFIX,
+  FILING_SESSION_STATE_KEY,
+  TASK_ID_STATE_KEY,
+  WORKER_ID_STATE_KEY,
+  WORKSTREAM_STATE_KEY
+} from "./keys";
 
 /**
  * What a worker session is looked up and created by. FIX-1788 defines
  * `worker`; later issues add their own keys (a task, a workstream, a
  * coordinator's conversation), each pinned by its issue and each a readonly
  * session-state field. FIX-1791 defines `filingSessionId`; FIX-1793
- * `workstreamId`.
+ * `workstreamId`; FIX-1794 `taskId`.
  */
 export type WorkerSessionCriteria = {
   /** The worker the session runs: a worker id on the user's roster, or a standard one. */
@@ -43,6 +49,14 @@ export type WorkerSessionCriteria = {
    * for, or one its entry doesn't name this worker to lead, is refused.
    */
   workstreamId?: WorkstreamAddress;
+  /**
+   * The task the session was opened for, on the board of the conversation
+   * `filingSessionId` names: a task session, which a conversation's board
+   * opens when it hands the task over. Named, the lookup returns that task's
+   * session within that conversation; omitted, it never returns a task
+   * session. `ensureWorkerSession` never creates one.
+   */
+  taskId?: string;
 };
 
 /**
@@ -54,6 +68,7 @@ export function criteriaState(criteria: WorkerSessionCriteria): Record<string, s
   const state: Record<string, string> = { [WORKER_ID_STATE_KEY]: criteria.worker };
   if (criteria.filingSessionId !== undefined) state[FILING_SESSION_STATE_KEY] = criteria.filingSessionId;
   if (criteria.workstreamId !== undefined) state[WORKSTREAM_STATE_KEY] = workstreamRef(criteria.workstreamId);
+  if (criteria.taskId !== undefined) state[TASK_ID_STATE_KEY] = criteria.taskId;
   return state;
 }
 
@@ -66,15 +81,22 @@ export function criteriaOfState(workerId: string, state: Readonly<Record<string,
   const filing = state[FILING_SESSION_STATE_KEY];
   const workstream = state[WORKSTREAM_STATE_KEY];
   const address = typeof workstream === "string" ? parseWorkstreamRef(workstream) : undefined;
+  const task = state[TASK_ID_STATE_KEY];
   return {
     worker: workerId,
     ...(typeof filing === "string" ? { filingSessionId: filing } : {}),
-    ...(address !== undefined ? { workstreamId: address } : {})
+    ...(address !== undefined ? { workstreamId: address } : {}),
+    ...(typeof task === "string" ? { taskId: task } : {})
   };
 }
 
 /** The session-state fields a criteria key can name, by key. A lookup returns only sessions carrying none it didn't name. */
-export const CRITERIA_STATE_KEYS: readonly string[] = [WORKER_ID_STATE_KEY, FILING_SESSION_STATE_KEY, WORKSTREAM_STATE_KEY];
+export const CRITERIA_STATE_KEYS: readonly string[] = [
+  WORKER_ID_STATE_KEY,
+  FILING_SESSION_STATE_KEY,
+  WORKSTREAM_STATE_KEY,
+  TASK_ID_STATE_KEY
+];
 
 /** The inputs a derived id is computed from. */
 export type DeriveWorkerSessionIdInput = {
