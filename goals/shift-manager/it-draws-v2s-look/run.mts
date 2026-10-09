@@ -14,7 +14,8 @@
  * the computed style of every visible element in one `page.evaluate` per
  * screen state. What it reads is graded against the v2 look table below: each
  * row a role, the elements that play it, the computed values v2 gives it, and
- * the v2 line it came from.
+ * the v2 line it came from. The sidebar header's rows grade the shipped design
+ * that replaced v2's shift switch (36bed1297 / #2825) and cite its source.
  *
  * Legs (each failure is tagged `<leg> [<screen> <shift> <width>]`):
  *   type     both fonts loaded, not only named: every text element's family
@@ -183,13 +184,15 @@ export type Want = {
   absent?: true;
 };
 
-/** One row: a role, the elements that play it, what v2 gives it, and the v2 line it came from. */
+/**
+ * One row: a role, the elements that play it, what v2 gives it, and the v2 line it came from.
+ * A part v2 doesn't draw that Shift Manager shipped in its place cites the shipped design
+ * ({@link SHIPPED}) and the source line that sets it instead.
+ */
 export type Row = {
   id: string;
   /** The audit rows (`assets/GAPS.md`) it grades. */
   audit: string;
-  /** The v2 line it cites, and text that line holds; setup fails when it doesn't. */
-  v2: { line: number; has: string };
   select: string;
   /** Screens it applies on (default: every screen). */
   on?: readonly Screen[];
@@ -198,7 +201,23 @@ export type Row = {
   /** Elements it must match per screen state, at least. */
   min: number | ((where: Where) => number);
   want: Want;
-};
+} & (
+  | {
+      /** The v2 line it cites, and text that line holds; setup fails when it doesn't. */
+      v2: { line: number; has: string };
+      shipped?: never;
+    }
+  | {
+      /** The source file (from the repository root) of the shipped design it cites, and text that file holds; setup fails when it doesn't. */
+      shipped: { file: string; has: string };
+      v2?: never;
+    }
+);
+
+/** The shipped design the sidebar header's rows cite: day, evening and night themes behind a logo mark, in place of v2's shift switch. */
+const SHIPPED = "36bed1297 / #2825";
+const SIDEBAR_SRC = "packages/shift-manager/src/surfaces/Sidebar.tsx";
+const MARK_SRC = "packages/shift-manager/src/components/ShiftManagerMark.tsx";
 
 const OFF_COS: readonly Screen[] = SCREENS.filter((s) => s !== "cos");
 const WITH_RAIL: readonly Screen[] = ["cos", "workstream", "board", "task"];
@@ -235,7 +254,11 @@ const LOOK: Row[] = [
   { id: "footer", audit: "F2", v2: { line: 107, has: "font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=sidebar-footer], [data-testid=sidebar-footer] > p, [data-testid=sidebar-footer] span:not([data-mark]):not([data-look=avatar])", min: 1, want: { family: "mono", size: 11 } },
   // The sidebar's entries and Chief of Staff: slice B's rows.
   ...SIDEBAR_AND_COS_ROWS,
-  { id: "shift switch", audit: "F2", v2: { line: 113, has: "border:1px solid var(--ink);font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=shift-switch], [data-testid=shift-switch] > button", min: 3, want: { family: "mono", size: 11 } },
+  // The sidebar's header, as shipped: the theme mark in place of v2's shift switch, the app's name, and the theme it's in.
+  { id: "sidebar header", audit: "F10", shipped: { file: SIDEBAR_SRC, has: 'border-b px-3.5 pt-3.5 pb-3" data-testid="sidebar-header"' }, select: "[data-testid=sidebar-header]", min: 1, want: { surface: "none", padding: [14, 14, 12, 14], width: 247 } },
+  { id: "theme mark", audit: "F10", shipped: { file: MARK_SRC, has: 'className="block h-auto w-[42px] overflow-visible"' }, select: "[data-testid=theme-mark], [data-testid=theme-mark] > svg", min: 2, want: { surface: "none", width: 42 } },
+  { id: "app name", audit: "F10", shipped: { file: SIDEBAR_SRC, has: '<p className="text-sm font-bold tracking-tight">Shift Manager</p>' }, select: "[data-testid=sidebar-header] p", min: 1, want: { family: "sans", size: 14, weight: 700, tracking: -0.025, lineHeight: 20 / 14 } },
+  { id: "theme name", audit: "F10", shipped: { file: SIDEBAR_SRC, has: '<Meta role="label" className="block truncate text-muted-foreground" testId="sidebar-theme-name">' }, select: "[data-testid=sidebar-theme-name]", min: 1, want: { family: "mono", size: 10, weight: 500, tracking: 0.14, lineHeight: 1.5 } },
 
   // A screen's title.
   { id: "screen title", audit: "F5", v2: { line: 215, has: "font-size:18px;font-weight:700;letter-spacing:-.02em" }, select: "[data-look=screen-title]", on: OFF_COS, min: 1, want: { family: "sans", size: 18, weight: 700, tracking: -0.02 } },
@@ -474,7 +497,7 @@ class Failures {
 
 const rgbOf = (value: string): Rgb | null => parseColour(value)?.rgb ?? null;
 const same = (a: Rgb | null, b: Rgb | null) => a !== null && b !== null && a.every((v, i) => Math.abs(v - b[i]!) <= 3);
-const cite = (row: Row) => `(v2:${row.v2.line}, audit ${row.audit})`;
+const cite = (row: Row) => (row.v2 !== undefined ? `(v2:${row.v2.line}, audit ${row.audit})` : `(${SHIPPED}, ${row.shipped.file.split("/").at(-1)}, audit ${row.audit})`);
 const px = (n: number) => `${Math.round(n * 100) / 100}px`;
 
 function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: LabName): void {
@@ -994,12 +1017,18 @@ function controlPatches(control: string): Patch[] {
   }
 }
 
-// ---- SP-1: every row cites a v2 line that holds what it claims --------------------
+// ---- SP-1: every row cites a v2 line (or the shipped source) that holds what it claims ----
 
 function checkCitations(): string[] {
   const lines = readFileSync(V2, "utf8").split("\n");
   const problems: string[] = [];
   for (const row of LOOK) {
+    if (row.shipped !== undefined) {
+      if (!readFileSync(repoPath(row.shipped.file), "utf8").includes(row.shipped.has)) {
+        problems.push(`setup: row "${row.id}" cites ${SHIPPED} in ${row.shipped.file}, which doesn't hold ${JSON.stringify(row.shipped.has)}`);
+      }
+      continue;
+    }
     const line = lines[row.v2.line - 1];
     if (line === undefined || !line.includes(row.v2.has)) problems.push(`setup: row "${row.id}" cites v2:${row.v2.line}, which doesn't hold ${JSON.stringify(row.v2.has)}`);
   }
