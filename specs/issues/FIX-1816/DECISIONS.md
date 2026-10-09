@@ -154,7 +154,7 @@ calls the product owner can overrule; each says what it would cost to be wrong.
 task, and the turn ends. BR-16 said so from the start, but nothing on `main` could do it: the
 engine's stop acts only on a running turn, and refuses a suspended one as if it had finished.
 
-**What exists, checked on `main` at `e0dfb33b`:** task cancellation is complete. `cancelTask`
+**What exists, checked on `main` after P2 and P2b merged (#2920, #2922):** task cancellation is complete. `cancelTask`
 is a task tool, the board has a cancel transition from every unfinished status, and a cancel
 that ends an asked row stamps its resume-owed marker in the same write, as every ending does.
 Nothing on the board side is missing. The stop is what is missing: it is written only while the

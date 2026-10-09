@@ -27,7 +27,9 @@ reconcile the wording to that test as shipped.
 > seconds to an hour. If the task hasn't ended by then, the turn gets a timeout error at the next
 > background sweep, and the task is cancelled. On a long-lived server the sweep wakes for the
 > earliest deadline, so the error arrives within seconds of the limit. Where the sweep runs as an
-> external cron job, as on a serverless host, a timeout fires no later than the next run.
+> external cron job, as on a serverless host, a timeout fires no later than the next run, so a
+> `timeoutMs` shorter than the cron's cadence can't fire sooner than that. Choose the limit with
+> your host's sweep in mind: on a long-lived server it fires at the deadline.
 > Stopping the conversation while it waits cancels the task and ends the turn. A worker that is itself
 > working a task can't wait; it files without waiting, so asks never nest.
 >
@@ -47,7 +49,7 @@ reconcile the wording to that test as shipped.
 > | Input | |
 > |---|---|
 > | `waitForResponse` | `true` to wait for the answer. Everything else is as for `addTask`, and an assignee it would refuse is refused the same way, with nothing parked |
-> | `timeoutMs` | How long to wait, from 30 000 (30 seconds) to 3 600 000 (an hour). Defaults to five minutes. Only with `waitForResponse` |
+> | `timeoutMs` | How long to wait, from 30 000 (30 seconds) to 3 600 000 (an hour). Defaults to five minutes. Only with `waitForResponse`. Fires at the deadline on a long-lived server; where the sweep is an external cron, not sooner than its next run |
 >
 > | Error | When |
 > |---|---|
