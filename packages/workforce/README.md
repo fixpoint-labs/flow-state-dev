@@ -2218,9 +2218,11 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   changes stay in it. Change them with the `addDelegate({ worker, note? })`,
   `removeDelegate({ worker })` and `setFallback({ worker | null })` actions, and read them with
   `listDelegates({})`. Each returns `{ delegates, fallback, max, filingSessionId }`, the list after
-  the call. A refused change writes nothing and fails its request with the refusal as the error
-  message. The coordinator's turn has the same four as tools, which hand a refusal back to the
-  model as `{ refused }`. A session create can't set them: one whose `state` carries `delegates`
+  the call. `listDelegates` also gives each delegate `takes`, read from its flow when it is called:
+  `posts`, `tasks`, `both`, or `nothing` (fired, or on a flow that takes neither). A refused
+  change writes nothing and fails its request with the refusal as the error message. The
+  coordinator's turn has the same four as tools, which hand a refusal back to the model as
+  `{ refused }`. A session create can't set them: one whose `state` carries `delegates`
   is refused with a 400,
   `Session state field "delegates" is written only by flow "coordinator"; a caller cannot set it.`
 - **Who can be a delegate.** A worker on the conversation's user's own roster, one of theirs or a
@@ -2238,7 +2240,9 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
 
   A worker whose flow takes tasks but no posts can be added. A post handed to it is skipped, and
   the routing record gives the reason
-  `Worker "<id>" runs on flow "<flow>", which can't take a delegated post.`
+  `Worker "<id>" runs on flow "<flow>", which can't take a delegated post.` When the
+  coordinator's own turn hands it a post with `handOff`, the refusal adds the delegates that take
+  posts, `Delegates here that take posts: <ids>.`, or `No delegate here takes posts.` when none does.
 - **Delivery.** Each delegate gets its own session per conversation, created naming the delegate
   as its worker, and reused for that conversation's later posts. Its answer lands in the
   conversation under the delegate's name, once, however many times it is sent. The session

@@ -158,6 +158,15 @@ Each action's output is the conversation's list as it stands after the call. `se
 }
 ```
 
+`listDelegates` also gives each delegate `takes`: what it can be handed now, read from the flow it runs on. It is `posts`, `tasks`, `both`, or `nothing` when the worker has been fired or its flow takes neither. The other three actions leave it out. With an EM that takes posts and a coder whose flow takes only tasks, its `delegates` read:
+
+```json
+[
+  { "worker": "eng.em", "takes": "posts" },
+  { "worker": "eng.coder", "takes": "tasks" }
+]
+```
+
 `filingSessionId` identifies this conversation to its delegates. Each delegate works this conversation's posts in a session of its own, and `workforce.findWorkerSession({ worker, filingSessionId })` returns it. A lookup that names only the worker never does.
 
 A refused change writes nothing. Its request fails, and the refusal is in `result.error.message`.
@@ -183,7 +192,13 @@ A delegate is a worker on your own roster, one of yours or a standard one, whose
 | Removing a worker that isn't on the list | `"<id>" isn't a delegate in this conversation.` |
 | A fallback that isn't on the list | `"<id>" isn't a delegate in this conversation, so it can't be the fallback.` |
 
-A worker whose flow takes tasks but not posts can be added. A post handed to it is skipped, and the record's reason is `Worker "<id>" runs on flow "<flow>", which can't take a delegated post.` Only the flows in `delegateFlows` take posts: a worker on any other flow counts as one that can't, even when its flow declares the entry.
+A worker whose flow takes tasks but not posts can be added. A post handed to it is skipped, and the record's reason is `Worker "<id>" runs on flow "<flow>", which can't take a delegated post.` When the coordinator's own turn hands it a post with `handOff`, the refusal goes on to name the delegates in the conversation that do take posts, so the turn can pick one of them:
+
+```text
+Worker "eng.coder" runs on flow "coder", which can't take a delegated post. Delegates here that take posts: eng.em.
+```
+
+When none does, it ends `No delegate here takes posts.` instead. Only the flows in `delegateFlows` take posts: a worker on any other flow counts as one that can't, even when its flow declares the entry.
 
 Removing checks only the list, so you can remove a delegate that has since been fired. A delegate you remove still answers a post it was already handed. Removing the fallback clears it; best fit then hands what it can't place to the coordinator's own turn until you set another with `setFallback`.
 
@@ -213,7 +228,7 @@ Every routing decision leaves one `coordinator-route` item in the conversation. 
   "by": "judgment",
   "delegates": [
     { "worker": "eng.em", "outcome": "delivered" },
-    { "worker": "eng.coder", "outcome": "skipped", "reason": "Worker \"eng.coder\" runs on flow \"coder\", which can't take a delegated post." }
+    { "worker": "eng.coder", "outcome": "skipped", "reason": "Worker \"eng.coder\" runs on flow \"coder\", which can't take a delegated post. Delegates here that take posts: eng.em." }
   ]
 }
 ```
