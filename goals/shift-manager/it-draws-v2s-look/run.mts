@@ -714,29 +714,20 @@ async function mailboxKind(api: LabApi, mailbox: string): Promise<string> {
   return String(kind);
 }
 
-/** The person's pending asks, in every session they hold. */
-async function pendingAsks(api: LabApi, userId: string): Promise<number> {
-  return [...(await pendingAsksBySeat(api, userId)).values()].reduce((a, b) => a + b, 0);
-}
-
 /**
- * The person's pending asks in every session they hold, by the worker (the seat) whose
- * session each waits in: the one its state names (`workerId`). The seats' own read, as
- * Shift Manager picks their sessions, is `pendingSeatAsks`.
+ * The person's pending asks in every session they hold. Not `pendingSeatAsks`:
+ * that one only counts a session on a seat's kind. Dispatch runs included: a seat
+ * a mailbox post woke asks from one, and the app lists them.
  */
-async function pendingAsksBySeat(api: LabApi, userId: string): Promise<Map<string, number>> {
-  // Dispatch runs included: a seat woken by a mailbox post asks from one, and the app lists them.
+async function pendingAsks(api: LabApi, userId: string): Promise<number> {
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
-  const bySeat = new Map<string, number>();
+  let pending = 0;
   for (const session of (listing.sessions ?? []) as Array<Record<string, any>>) {
-    const worker = typeof session.state?.workerId === "string" ? session.state.workerId : null;
     const found = await api.items(String(session.id), ["suspension", "suspension_resume"]);
     const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
-    const pending = found.filter((i) => i.type === "suspension" && PERSON_REASONS.has(String(i.reason)) && !resumed.has(String(i.suspensionId))).length;
-    const seat = worker ?? "";
-    if (pending > 0) bySeat.set(seat, (bySeat.get(seat) ?? 0) + pending);
+    pending += found.filter((i) => i.type === "suspension" && PERSON_REASONS.has(String(i.reason)) && !resumed.has(String(i.suspensionId))).length;
   }
-  return bySeat;
+  return pending;
 }
 
 // ---- driving the page --------------------------------------------------------------
