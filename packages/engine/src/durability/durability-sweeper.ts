@@ -1,7 +1,7 @@
 /**
  * Server-internal retention sweeper for durable-execution artifacts.
  *
- * Runs on a fixed interval and, on each tick, performs five independent
+ * Runs on a re-armed timer and, on each tick, performs six independent
  * maintenance steps against the durability stores:
  *
  *   1. Acquire a single-holder sentinel lease so only one host sweeps at a
@@ -13,6 +13,9 @@
  *      reject stale gates). An **ask gate** is the exception: it is resumed
  *      with `wait_timed_out` instead (FIX-1816), because an `expired` ask gate
  *      would strand its turn: nothing else may resume it.
+ *   2b. Re-drive a request left `suspended` or `interrupted` behind a gate that
+ *      is already resolved (an ask's answer, failure, timeout or stop, or any
+ *      gate stopped), under the request's lease, with the recorded outcome.
  *   3. Prune resolved (terminal) suspensions older than the retention window.
  *   4. Prune expired leases (finally wiring `LeaseStore.pruneExpired`).
  *   5. Prune orphaned checkpoints for terminal/interrupted requests whose
@@ -28,9 +31,19 @@
  * skip the others, and a tick failure is logged but NEVER thrown (it would
  * surface as an unhandled rejection from the interval callback).
  *
- * Mirrors `execution/stale-request-sweeper.ts` for the timer mechanics:
- * `setInterval` + `unref()`, an `inFlight` re-entrancy guard, an idempotent
- * `dispose()`, and a no-op handle when the interval is disabled.
+ * Scheduling is deadline-aware. After each tick the timer is re-armed for
+ * the earlier of `sweepIntervalMs` and the earliest deadline among the ask
+ * gates still pending (read off step 2's listing), never sooner than
+ * `MIN_TICK_DELAY_MS`; an idle host keeps its interval. A turn that parks on an
+ * ask in this process notes its deadline (`ask-deadlines.ts`, keyed on the
+ * durability provider), and the `onAskDeadline` listener re-arms the timer
+ * when that deadline is earlier than the armed tick. One timer per host, never
+ * one per ask.
+ *
+ * Otherwise mirrors `execution/stale-request-sweeper.ts`: `unref()` on the
+ * timer, an `inFlight` re-entrancy guard (a tick due while one runs is pushed
+ * back by the floor), an idempotent `dispose()` that also stops listening, and
+ * a no-op handle when the interval is disabled.
  */
 
 import type { StoreRegistry } from "../stores/types";
@@ -125,8 +138,8 @@ const MAX_SCAN_PAGES = 1000;
 
 /**
  * Build a durability retention sweeper. Returns a handle whose `dispose`
- * clears the underlying interval — call it on router teardown to avoid
- * leaking a timer. When `sweepIntervalMs <= 0` (or non-finite) the returned
+ * clears the underlying timer and its deadline listener — call it on router
+ * teardown to avoid leaking a timer. When `sweepIntervalMs <= 0` (or non-finite) the returned
  * handle is a no-op with no timer.
  */
 export function createDurabilitySweeper(

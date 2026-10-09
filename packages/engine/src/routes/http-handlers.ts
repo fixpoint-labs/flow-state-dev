@@ -74,6 +74,7 @@ import { createInstanceCallerResolver, type InstanceCallerResolver } from "./ins
 import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 import { createAskResumeOperation } from "../context/ask-resume-operation";
+import { createParkedStopDeps } from "../durability/stop-suspended";
 
 export type RequestContext = {
   method: string;
@@ -309,29 +310,24 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       continueRequest: (opts) => host.continueRequest(opts)
     });
   }
-  // And how a block's `ctx.session.stopRequest` stops a parked request.
+  // How this router stops a parked request (FIX-1816), with durable
+  // execution only: for the abort route, and, on the same last-resort terms,
+  // for a block's `ctx.session.stopRequest`.
+  const parkedStop =
+    runtimeConfig.durabilityProvider !== undefined
+      ? createParkedStopDeps({
+          provider: runtimeConfig.durabilityProvider,
+          stores,
+          continueRequest: (opts) => host.continueRequest(opts)
+        })
+      : undefined;
   if (
     runtimeConfig.requestHost !== undefined &&
     runtimeConfig.requestHost.parkedStop === undefined &&
-    runtimeConfig.durabilityProvider !== undefined
+    parkedStop !== undefined
   ) {
-    runtimeConfig.requestHost.parkedStop = {
-      provider: runtimeConfig.durabilityProvider,
-      stores,
-      continueRequest: (opts) => host.continueRequest(opts)
-    };
+    runtimeConfig.requestHost.parkedStop = parkedStop;
   }
-
-  // The abort route stops a parked request through this router's own host,
-  // with durable execution only (FIX-1816).
-  const parkedStop =
-    runtimeConfig.durabilityProvider !== undefined
-      ? {
-          provider: runtimeConfig.durabilityProvider,
-          stores,
-          continueRequest: (opts: Parameters<typeof host.continueRequest>[0]) => host.continueRequest(opts)
-        }
-      : undefined;
 
   // Same last-resort terms, one field over: the exact-address lookup a
   // cross-instance dispatch resolves through. A router mounted without a

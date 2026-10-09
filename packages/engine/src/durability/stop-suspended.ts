@@ -36,6 +36,20 @@ export type SuspendedStopDeps = ResumeDeps & {
   stores: Pick<StoreRegistry, "request">;
 };
 
+/**
+ * The one way a host builds what stopping a parked turn needs: its durability
+ * provider, its stores, and how it continues a request. Every site that wires
+ * the stop (the abort route, `ctx.session.stopRequest` through the request
+ * host) builds it here.
+ */
+export function createParkedStopDeps(deps: {
+  provider: SuspendedStopDeps["provider"];
+  stores: SuspendedStopDeps["stores"];
+  continueRequest: SuspendedStopDeps["continueRequest"];
+}): SuspendedStopDeps {
+  return { provider: deps.provider, stores: deps.stores, continueRequest: deps.continueRequest };
+}
+
 /** What stopping a parked turn came to. */
 export type SuspendedStopResult = "stopped" | "already-resolved";
 
@@ -47,13 +61,17 @@ async function pendingGatesOf(
   deps: SuspendedStopDeps,
   record: Pick<RequestRecord, "id" | "sessionId" | "userId">
 ): Promise<SuspensionRecord[]> {
-  // Bounded by one session's pending gates: a conversation has few.
+  // Bounded by one session's pending gates: a conversation has few. (A
+  // request-id filter on the store is the follow-up if stopping grows hot.)
   const pending = await deps.provider.listSuspended({
     userId: record.userId,
     ...(record.sessionId !== undefined ? { sessionId: record.sessionId } : {}),
     status: "pending"
   });
-  return pending.filter((s) => s.requestId === record.id);
+  // Newest first, sorted here rather than trusted to the store's order.
+  return pending
+    .filter((s) => s.requestId === record.id)
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 /**
