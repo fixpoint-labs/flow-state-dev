@@ -54,14 +54,9 @@ const tasksRecordSchema: ZodTypeAny = z
  * Optional, so a run resumed from a checkpoint taken before this field
  * existed still completes its tasks.
  *
- * `currentAttempt` is that earlier checkpoint's shape, **read, never
- * set** (BP-030). Before the ticket, the step stored the claim's
- * `attempts` here and the write-back fenced on it. A legacy record has no
- * ticket and cannot rebuild one from its own state — the ticket also needs
- * the task's `createdAt` — so the write-back reads that one field off the
- * row and fences on the stored attempt instead (`writeBackGuard` in
- * `index.ts`). Declared so a parse through this schema keeps it rather than
- * stripping it; cleared by the next iteration, which writes a real ticket.
+ * `currentAttempt` is that earlier checkpoint's shape, read and never set
+ * (BP-030). Declared so a parse keeps it; the next iteration clears it.
+ * `writeBackGuard` is the fence.
  */
 export const routedSpecialistsControlSchema: ZodTypeAny = z.object({
   iteration: z.number().default(0),
