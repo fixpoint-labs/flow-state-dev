@@ -301,6 +301,78 @@ export async function resolveDispatchRunStatus(
   return TERMINAL_WIRE_STATUS[mostRecent.status];
 }
 
+/** How many runs one batched read names: keeps an `IN (…)` list within SQL parameter limits. */
+const ACTIVE_RUNS_BATCH = 500;
+
+/**
+ * Which of `childSessionIds` are `active`, by the same rule as
+ * {@link resolveDispatchRunStatus}, in at most three reads per batch however
+ * many runs it names.
+ *
+ * One run at a time costs two reads per run, and on an adapter with no index
+ * (the filesystem store reads every request record for any list) that is
+ * quadratic: a session with a hundred runs took seconds to open its stream.
+ *
+ * A run is `active` when it has a live record, or when its most recent record
+ * is `interrupted`. The reads mirror the single-run pair:
+ *
+ * 1. The live records of every run, unordered: those runs are active.
+ * 2. For the rest, records in any status that is live when most recent. A
+ *    live one here started after read 1, and is active for the reason read 2
+ *    of the single-run resolve reclassifies: a live run existed at that
+ *    instant. A run with only `interrupted` records here is a candidate.
+ * 3. For the candidates, their records newest first: a candidate is active
+ *    when its first record is live when most recent. Only candidates' history
+ *    is read, never every run's.
+ */
+export async function resolveActiveDispatchRuns(
+  store: RequestStore,
+  childSessionIds: readonly string[],
+  identity: ParentIdentity
+): Promise<Set<string>> {
+  const active = new Set<string>();
+  for (let start = 0; start < childSessionIds.length; start += ACTIVE_RUNS_BATCH) {
+    const batch = childSessionIds.slice(start, start + ACTIVE_RUNS_BATCH);
+    const live = await store.list({
+      sessionId: batch,
+      status: LIVE_STATUSES,
+      orderBy: "none",
+      ...identity
+    });
+    for (const record of live) if (record.sessionId !== undefined) active.add(record.sessionId);
+
+    const rest = batch.filter((id) => !active.has(id));
+    if (rest.length === 0) continue;
+    const liveWhenMostRecent = await store.list({
+      sessionId: rest,
+      status: LIVE_WHEN_MOST_RECENT,
+      orderBy: "none",
+      ...identity
+    });
+    const candidates = new Set<string>();
+    for (const record of liveWhenMostRecent) {
+      if (record.sessionId === undefined) continue;
+      if (LIVE_STATUSES.includes(record.status)) active.add(record.sessionId);
+      else candidates.add(record.sessionId);
+    }
+    for (const id of active) candidates.delete(id);
+    if (candidates.size === 0) continue;
+
+    const history = await store.list({
+      sessionId: [...candidates],
+      orderBy: "startedAtMs",
+      ...identity
+    });
+    const decided = new Set<string>();
+    for (const record of history) {
+      if (record.sessionId === undefined || decided.has(record.sessionId)) continue;
+      decided.add(record.sessionId);
+      if (isLiveWhenMostRecent(record.status)) active.add(record.sessionId);
+    }
+  }
+  return active;
+}
+
 /**
  * Project the two labels the dispatch seam stamps onto the row.
  *
