@@ -212,6 +212,51 @@ The `inventory` capability from [Adding one](#adding-one) is the inventory decla
 
 A workstream belongs to one project at most. When the person asks for one another project holds, the tool is refused, and the chief of staff can tell them which project has it.
 
+## Giving it memory
+
+Without [memory](../memory/overview.md), a chief of staff on the `coordinator` flow remembers nothing from one conversation to the next. Add memory to the `agent` option of `defineCoordinatorFlow` only, as below, and leave `agentTurn` alone. The `agent` flow uses `agentTurn` too, so the workers the chief of staff hires onto it get no memory.
+
+```ts title="src/workforce.ts"
+// continuing the example above
+import { system } from "@flow-state-dev/memory";
+
+const mem = system({
+  model: "openai/gpt-5.4-mini",
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+  digest: true,
+});
+
+const coordinator = defineCoordinatorFlow({
+  installation,
+  delegateFlows: [agent, emFlow],
+  routeModel: "openai/gpt-5.4-mini",
+  agent: {
+    ...agentTurn,
+    catalog: { ...agentTurn.catalog, "memory/recall": mem.tool.recall() },
+    uses: [...agentTurn.uses, mem.capability],
+    isolateUserState: true,
+    afterAnswer: mem.captureFromItems, // leave out for read-side only
+  },
+});
+```
+
+- **`mem.capability`** puts working memory and a rolling digest of earlier conversations into each turn's `<memory>` context.
+- **`memory/recall`** is the [recall tool](../memory/recall-tool.md), which searches what memory has stored. The chief of staff holds it only when its `tools:` line names it: `tools: [hire, fire, post-to-mailbox, memory/recall]`.
+- **`isolateUserState: true`** keeps what the coordinator remembers per person, separate from that person's other flows. Every worker on this coordinator flow shares that memory.
+- **`afterAnswer`** records each conversation into memory after the chief of staff answers. It runs memory's capture pipeline, which makes extra model calls after every turn. Leave it out and nothing is written: working memory, the digest and `memory/recall` stay empty unless something else in your app stores into that same memory.
+
+Then tell it in the `WORKER.md` body what counts as memory, for example:
+
+```md
+Your memory of earlier conversations is what your `<memory>` context shows and
+what `memory/recall` finds, and nothing else. The earlier messages of this
+conversation, and what your tools return, are things you read now, not
+memories. When the person asks about an earlier conversation and your memory
+has nothing on it, say you have no memory of it. Never make up a memory.
+```
+
 ## The tools
 
 | Tool | What it does | Asks first |
