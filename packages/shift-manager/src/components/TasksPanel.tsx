@@ -22,6 +22,10 @@ export function TasksPanel({ seat, sessionId, readAt }: { seat: Seat; sessionId:
   const { clients } = useLab();
   const [read, setRead] = useState<Read>(undefined);
 
+  // Another conversation's tasks never show under this one. A read again of the
+  // same conversation keeps its list up until the new answer lands.
+  useEffect(() => setRead(undefined), [seat.kind, sessionId]);
+
   useEffect(() => {
     if (sessionId === null || seat.kind === null) return;
     let closed = false;

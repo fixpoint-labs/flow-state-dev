@@ -96,6 +96,23 @@ describe("the tasks panel (S11)", () => {
     expect(shown()).toEqual([{ id: "t1", status: "completed", text: expect.stringContaining("Audit the licenses") }]);
   });
 
+  it("never shows one conversation's tasks under another, but keeps its own list while reading it again", async () => {
+    rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
+    const view = render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
+    await settle();
+    // Same conversation, read again: its list stays up until the new answer lands.
+    view.rerender(<TasksPanel seat={cos} sessionId="s1" readAt={2} />);
+    expect(shown().map((task) => task.id)).toEqual(["t1"]);
+    await settle();
+    // Another conversation: the first one's tasks are gone before its read answers.
+    rows = [{ id: "t2", goal: "Write the release notes", status: "pending", attempts: 0 }];
+    view.rerender(<TasksPanel seat={cos} sessionId="s2" readAt={2} />);
+    expect(shown()).toEqual([]);
+    expect(screen.getByTestId("cos-tasks-reading")).toBeTruthy();
+    await settle();
+    expect(shown().map((task) => task.id)).toEqual(["t2"]);
+  });
+
   it("shows why the read failed", async () => {
     refusal = "This conversation keeps no task board.";
     render(<TasksPanel seat={cos} sessionId="s1" readAt={1} />);
