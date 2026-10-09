@@ -4,7 +4,7 @@
  * BR-28). What the screen draws is compared with what the Lab's routes hold.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { App } from "../src/App";
 import { Composer } from "../src/surfaces/Stream";
@@ -36,6 +36,8 @@ async function seatAction(
 }
 
 const served: ServedLab[] = [];
+// A wide window: the right panel is drawn beside the centre only from 1180px.
+beforeEach(() => (window as unknown as { happyDOM: { setViewport(viewport: { width: number; height: number }): void } }).happyDOM.setViewport({ width: 1600, height: 900 }));
 afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
