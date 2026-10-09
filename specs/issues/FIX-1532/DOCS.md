@@ -24,5 +24,5 @@ Replace its last sentence with:
 
 ## Publication ownership
 
-FIX-1532's implementation PR publishes both edits after V4 and V5 pass, so the docs describe the
+FIX-1532's implementation PR publishes both edits after V3 and V4 pass, so the docs describe the
 rule the guard actually enforces.

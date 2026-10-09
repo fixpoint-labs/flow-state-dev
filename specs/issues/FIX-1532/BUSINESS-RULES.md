@@ -27,6 +27,7 @@ otherwise.
 | BR-10 | The branch or title carries `LAB-138a` | This PR's ids include `LAB-138` ([E4](DECISIONS.md#e4)) | Unit |
 | BR-11 | The PR body names other ids | They are not read | Unit · #1391's real body |
 | BR-12 | The run has no event payload (a local run) | This PR's ids come from the current branch alone; no title | Unit |
+| BR-17 | The PR title is edited after a green run | The guard runs again on the new title ([E7](DECISIONS.md#e7)) | Observed once on the implementation PR: edit its title, see a new run |
 
 ## Suffixed ids in a fragment (FIX-1263)
 
@@ -40,8 +41,7 @@ otherwise.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-16 | An existing fragment's body is edited, or a bump is added or swapped | Today's presence check only; not matched ([E3](DECISIONS.md#e3)) | Unit |
-| BR-17 | An existing fragment only applies `RENAMED_PACKAGES` | Passes, as today | Unit |
+| BR-16 | An existing fragment is edited | Today's presence check only: it needs some issue id, not this PR's ([E3](DECISIONS.md#e3)) | Unit |
 | BR-18 | The PR adds no fragment | Passes | Unit |
 
 ## Failure taxonomy
@@ -53,5 +53,5 @@ event payload or an unreadable one is not a failure: the guard falls back to the
 ## Acceptance criteria this issue owns
 
 [The goal](SPEC.md#the-goal-and-how-well-know-its-met): #1391's case fails naming both ids, a
-fragment citing only `LAB-138a` fails naming `LAB-138`, and the replay over merged PRs fails only
-the four bundles [D1](DECISIONS.md#d1) priced. Today's guard passes #1391's case.
+fragment citing only `LAB-138a` fails naming `LAB-138`, and editing a PR's title re-runs the
+guard. Today's guard passes #1391's case.

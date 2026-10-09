@@ -26,23 +26,23 @@ use.**
 | **The real need** | The guard, not reviewer attention, stops a wrong id ([FIX-1532](https://linear.app/fixpoint-labs/issue/FIX-1532); [cycle 15](../../../docs/internal/cycle-ledger/cycle-15.md), "Filed, not proposed"). A suffix failure says what is wrong ([FIX-1263](https://linear.app/fixpoint-labs/issue/FIX-1263)) |
 | **Smaller, and rejected** | Warn instead of fail. A warning on a green run is the same as today for anyone who doesn't open the log, and the ledger filed this as a guard because attention already failed once |
 | **Bigger, and not this issue's** | Check the id against Linear (does it exist, is it linked to this PR). That needs a network call and a secret in a check that runs with no install. Nothing shows the cheaper check leaves a gap that matters |
-| **Not done if** | The tests pass but the #1391 case still goes green · the PRs we merged start failing in numbers nobody priced · a suffixed id is accepted as if it were bare (that is a grammar change FIX-1263 rules out) |
+| **Not done if** | The tests pass but the #1391 case still goes green · editing the PR title after a green run leaves the old verdict standing · a suffixed id is accepted as if it were bare (that is a grammar change FIX-1263 rules out) |
 
 ```mermaid
 flowchart LR
   A["#1391's case · fragment FIX-1209 · title FIX-1215 · branch with no id"] --> V["the guard"]
-  V -->|"fails, naming FIX-1209 and FIX-1215"| P["PASS · goal met"]
-  R["replay · every PR merged to main since the changeset reset (212)"] --> V
-  V -->|"fails only the four known bundles"| P2["PASS · cost as priced"]
+  S["a fragment citing only LAB-138a"] --> V
+  V -->|"fails, naming FIX-1209 and FIX-1215 · and naming LAB-138"| P["PASS · goal met"]
   C["control · today's guard on main"] -.-> A
-  V -.->|"under the control"| F["must FAIL · it goes green"]
+  V -.->|"under the control"| F["must FAIL · #1391's case goes green"]
 ```
 
-The check runs the new guard on #1391's real inputs and on every changeset PR merged since the
-reset, and reads the verdicts. Today's guard must pass #1391's case, or the check proves nothing.
+The check runs the new guard on #1391's real inputs and on a suffix-only fragment, and reads the
+verdicts. Today's guard must pass #1391's case, or the check proves nothing.
 
 No goal check under `goals/` applies: this is a CI script with no flow and no model. The proof is
-the unit tests and the replay in [PLAN → Checks](PLAN.md#checks).
+the unit tests in [PLAN → Checks](PLAN.md#checks). What D1 costs was measured once, before
+approval, and is recorded in [D1](DECISIONS.md#d1); it is not a check the implementation re-runs.
 
 ## What changes
 
@@ -66,12 +66,14 @@ What the author sees when the check fails. Wording is illustrative; the content 
 **How:** the guard reads this PR's issue ids from its branch name and its title, and each new
 fragment must cite at least one of them. The PR body is not read: #1391's body named `FIX-1209`
 four times, so reading it would have passed the exact case this exists for ([E1](DECISIONS.md#e1)).
+Because the title is a source, the guard re-runs when the title is edited, in a small workflow of
+its own so an edit does not re-run the rest of CI ([E7](DECISIONS.md#e7)).
 
 ## What stays as it is
 
 - A PR with no changeset passes. This guard never requires one (BP-022).
 - The id grammar, `TEAM-123`. A suffixed id is still not an id; it is now explained.
-- Edited fragments and the package-rename exemption: unchanged rules ([E3](DECISIONS.md#e3)).
+- Edited fragments: still only need some issue id, as today ([E3](DECISIONS.md#e3)).
 - No Linear call, no secret, no install. The guard stays a dependency-free script.
 
 ## Sign off
