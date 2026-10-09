@@ -40,7 +40,8 @@ import {
   runAction
 } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
-import { createAskResumeOperation, resumeAskGate } from "../src/context/ask-resume-operation";
+import { createAskResumeOperation } from "../src/context/ask-resume-operation";
+import { resumeAskGate } from "../src/durability/resume-ask-gate";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
 import { runTick } from "../src/durability/durability-sweeper";
 import type { ExecutionResult } from "../src/execution/types";
@@ -575,8 +576,11 @@ describe("ask gate on the shipped runtime, with no router (the colocated-worker 
 });
 
 describe("ask gate past its deadline: the durability sweep resumes it with wait_timed_out", () => {
-  function tick(h: Harness, withContinue = true) {
+  function tick(h: Harness, withContinue = true, logs: Array<[string, string, unknown]> = []) {
+    const record = (level: string) => (message: string, context: Record<string, unknown>) =>
+      logs.push([level, message, context]);
     return runTick({
+      logger: { info: record("info"), warn: record("warn"), error: record("error") },
       provider: h.provider,
       stores: h.stores,
       holder: "sweeper-test",
@@ -639,9 +643,33 @@ describe("ask gate past its deadline: the durability sweep resumes it with wait_
     const parked = await startTurn(h, flow);
     await new Promise((r) => setTimeout(r, 20));
 
-    await tick(h, false);
+    const logs: Array<[string, string, unknown]> = [];
+    await tick(h, false, logs);
 
     expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
     expect((await h.stores.request.get(parked.requestId!))?.status).toBe("suspended");
+    // Said once per tick, with how many were left.
+    const skipped = logs.filter(([, m]) => m.includes("overdue ask gates left pending"));
+    expect(skipped).toEqual([["warn", expect.any(String), { count: 1 }]]);
+  });
+
+  it("an overdue gate still listed pending whose turn is past waiting is left alone, with one warning", async () => {
+    const { model } = askingModel();
+    const flow = askFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
+    const h = setup(flow);
+    const parked = await startTurn(h, flow);
+    await new Promise((r) => setTimeout(r, 20));
+    // The record and its request disagree: the gate reads pending, the turn does not.
+    const request = await h.stores.request.get(parked.requestId!);
+    await h.stores.request.set(parked.requestId!, { ...request!, status: "in_progress" }, "any");
+
+    const logs: Array<[string, string, unknown]> = [];
+    await tick(h, true, logs);
+
+    expect(h.continued).toHaveLength(0);
+    expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
+    const warned = logs.filter(([, m]) => m.includes("overdue ask gate already resolved"));
+    expect(warned).toHaveLength(1);
+    expect(warned[0]![0]).toBe("warn");
   });
 });

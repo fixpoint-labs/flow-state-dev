@@ -236,9 +236,14 @@ export async function handleResumeSuspension(
   );
 
   if (!resumed.ok) {
-    return jsonResponse(409, {
-      error: "Concurrent resume in progress. Try again later."
-    });
+    if (resumed.busy) {
+      return jsonResponse(409, {
+        error: "Concurrent resume in progress. Try again later."
+      });
+    }
+    // `admit` above never refuses, so a refusal here is a broken invariant,
+    // not a caller's mistake.
+    return jsonResponse(500, { error: "Resume refused unexpectedly." });
   }
 
   const handle = resumed.handle;

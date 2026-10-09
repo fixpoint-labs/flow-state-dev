@@ -42,7 +42,7 @@ import {
 } from "../execution/logging";
 import type { DurabilityProvider } from "./types";
 import { isAskGate } from "@flow-state-dev/core/types";
-import { resumeAskGate } from "../context/ask-resume-operation";
+import { resumeAskGate } from "./resume-ask-gate";
 import type { ResumeDeps } from "./resume-under-lease";
 
 /**
@@ -273,10 +273,15 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
     // of them each tick is cheap. (A store-level `expiresBefore` predicate could
     // make this bounded-and-correct if pending volume ever grows.)
     const pending = await provider.listSuspended({ status: "pending" });
+    let askGatesSkipped = 0;
     for (const record of pending) {
       if (record.expiresAt == null || record.expiresAt > now) continue;
       if (isAskGate(record)) {
-        await resumeOverdueAsk(args, record);
+        // Never `expired`: nothing else may resume an ask gate, so that would
+        // strand its turn. Without a way to continue a request, leave it
+        // pending for a sweeper that has one.
+        if (args.continueRequest === undefined) askGatesSkipped += 1;
+        else await resumeOverdueAsk(args, record);
         continue;
       }
       // Re-load immediately before writing: an operator may have approved or
@@ -291,6 +296,14 @@ async function enforceSuspensionExpiry(args: ResolvedTickArgs, now: number): Pro
       );
       if (current === null || current.status !== "pending") continue;
       await provider.suspend({ ...current, status: "expired", resolvedAt: now });
+    }
+    if (askGatesSkipped > 0) {
+      logRuntimeEvent(
+        logger,
+        "warn",
+        "[flow-state] durability sweeper: overdue ask gates left pending, no way to continue a request",
+        { count: askGatesSkipped }
+      );
     }
   } catch (err) {
     logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: expiry enforcement failed", {
@@ -322,13 +335,23 @@ async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord
       },
       "durability-sweeper"
     );
-    if (!result.ok && result.refused !== "already-resolved") {
-      logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: overdue ask not resumed", {
+    if (result.ok) return;
+    if (result.refused === "already-resolved") {
+      // The gate was listed pending this tick, yet the resume found it (or its
+      // turn) already past waiting: the answer won the race, or the record and
+      // its request disagree. Nothing to change; worth seeing if it recurs.
+      logRuntimeEvent(logger, "warn", "[flow-state] durability sweeper: overdue ask gate already resolved", {
         requestId: record.requestId,
         suspensionId: record.suspensionId,
-        refused: result.refused
+        detail: result.detail
       });
+      return;
     }
+    logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: overdue ask not resumed", {
+      requestId: record.requestId,
+      suspensionId: record.suspensionId,
+      refused: result.refused
+    });
   } catch (err) {
     logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: overdue ask resume failed", {
       requestId: record.requestId,
