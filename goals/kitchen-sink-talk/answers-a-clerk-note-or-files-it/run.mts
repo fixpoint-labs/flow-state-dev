@@ -244,8 +244,7 @@ async function gradeRoster(page: Page, origin: string, failLeg: Fail, evidence: 
 
 // ---------------------------------------------------------------------------
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const fail: Fail = (leg, line) => failures.push(`[${leg}] ${line}`);
   const run = randomUUID().replace(/-/g, "").slice(0, 10);

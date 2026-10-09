@@ -354,7 +354,7 @@ const myFlow = defineFlow({
 });
 ```
 
-Flow-level resource declarations take priority. If both a block and the flow declare a resource with the same name, the flow's version wins.
+If both a block and the flow declare a resource with the same name, they must pass the same `defineResource()` object (the one the block imported), not a second definition with the same config. A different definition under that name throws when the flow is defined, so a block never reads from a resource it didn't ask for.
 
 See [State](/docs/fundamentals/state-and-scopes) for details on scopes, resources, and the `client` block.
 

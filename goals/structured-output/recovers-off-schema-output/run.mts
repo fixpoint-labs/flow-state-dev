@@ -43,7 +43,7 @@ const fixture = loadFixture<{ message: string; minAnswerChars: number }>(
   "goal.json",
 );
 
-await runGoal(() => {
+await runGoal((failures) => {
   runFsdev({
     app: KITCHEN_SINK,
     flow: "chat-agent",
@@ -54,7 +54,6 @@ await runGoal(() => {
   });
 
   const capture = readCapture(CAPTURE);
-  const failures: string[] = [];
 
   // 1) The run completed — no execution_error. This is the headline: pre-fix it
   //    aborts here.

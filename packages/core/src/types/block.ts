@@ -93,7 +93,7 @@ export type ExecutionParent = {
   parentInstanceId?: string;
   transient?: boolean;
   stateSchema?: ZodTypeAny;
-  /** The input value passed to this block when it was executed. Populated for sequencers. */
+  /** The input value passed to this block when it was executed — what its children read as `ctx.parent.input`. */
   input?: unknown;
   /**
    * Structural path locator for deterministic instance IDs. Format is a

@@ -1324,6 +1324,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
+      '@flow-state-dev/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing

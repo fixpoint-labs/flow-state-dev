@@ -76,6 +76,7 @@
   },
   "devDependencies": {
     "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "vitest": "^3.2.4",

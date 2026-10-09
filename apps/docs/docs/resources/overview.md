@@ -354,7 +354,7 @@ This is a per-resource data spine, not a cache — there's no time-based expiry.
 
 ## Automatic resource collection
 
-Sequencers merge `declaredResources` from all child blocks. `defineFlow` collects resources from action blocks and merges them into the flow's `resources` map. Flow-level resource declarations take priority over block-level ones. Blocks are self-documenting: their resource needs bubble up automatically.
+Sequencers merge `declaredResources` from all child blocks. `defineFlow` collects resources from action blocks and merges them into the flow's `resources` map. If the flow declares a resource under the same name as a block, it must pass the same `defineResource()` object, not a second definition with the same config; anything else throws when the flow is defined. Blocks are self-documenting: their resource needs bubble up automatically.
 
 ## Only declared resources load
 

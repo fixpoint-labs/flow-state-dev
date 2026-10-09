@@ -210,8 +210,7 @@ function gradeTask(
   }
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const note = (leg: string, why: string): void => {
     failures.push(`leg ${leg}: ${CONTROL === "" ? "" : `[control ${CONTROL}] `}${why}`);

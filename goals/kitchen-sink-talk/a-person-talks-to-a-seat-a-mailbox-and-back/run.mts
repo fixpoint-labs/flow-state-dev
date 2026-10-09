@@ -931,8 +931,7 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
 
 // ---------------------------------------------------------------------------
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
 
   // Keyless: a provider key here could be what answers a gated leg.

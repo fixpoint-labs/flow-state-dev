@@ -171,9 +171,8 @@ function execution(name: string, body: (tasks: Board) => Promise<unknown>) {
   })();
 }
 
-await runGoal(async (): Promise<GoalResult> => {
+await runGoal(async (failures): Promise<GoalResult> => {
   const fixture = loadFixture<Fixture>(import.meta.url);
-  const failures: string[] = [];
   const dir = mkdtempSync(join(tmpdir(), "fsd-claim-safety-"));
   const dbFile = join(dir, "goal.db");
   let stores = createSQLiteStores({ filename: dbFile });

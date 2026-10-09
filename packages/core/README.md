@@ -527,6 +527,10 @@ A reusable typed-edge primitive for relational state. `edgeSchema` describes a d
 
 Resources opt into a first-class edge graph with `defineResource({ edges: true })` (or `{ vocabulary, maxEdges }`): the framework stores an `edges` array in the resource's state and exposes an `.edges` API (`add`, `supersede`, `remove`, `all`, `neighbors`, `egoGraph`, `shortestPath`, `pruneDangling`) on the live resource reference. Resources without `edges` are unaffected.
 
+### Block builders without the root (`@flow-state-dev/core/blocks/handler`, `@flow-state-dev/core/blocks/sequencer`)
+
+The main entry reaches `node:module` and `node:url` through the model resolver, so a module that must bundle for a browser can't value-import from it. These two subpaths expose the same `handler` and `sequencer` builders (and the rest of each module's exports, such as `composeSideChainSignal`) without pulling in Node built-ins. Node code keeps importing from the main entry.
+
 ## Block state (and its sequencer special case)
 
 Any block — handler, generator, router, or sequencer — can declare its own request-scoped `stateSchema` and read/write it via `ctx.self`. A child block reaches its immediate parent's state the same way, via `ctx.parent`, when it declares `parentStateSchema`. Sequencer instance state below is the common case of this same primitive: `ctx.sequencer` is `ctx.self` addressed by "nearest enclosing sequencer" instead of "this block." See [Block State](https://flow-state.dev/docs/advanced/block-state) for the full addressing model (`ctx.self`, `ctx.parent`, `ctx.sequencer`, `ctx.targets`) and the fan-out/loop isolation contract.
@@ -755,7 +759,7 @@ Which of the host's verbs answer depends on the deployment:
 
 The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `SettleParentTaskResult`, `LivenessAnswers`, `ResumeAskInput`, and `ResumeAskResult`.
 
-`parkOnAsk(ctx, { gateId, binding: { board, taskId } })` parks the running turn on an ask gate and returns the answer once its conversation resumes it; an ask that ended without one throws `AskEndedError` with `code` `wait_task_failed` or `wait_task_cancelled`, which a generator's tool surfaces to the model as a failed call. `wait_timed_out` is reserved for asks past their deadline; nothing sets a deadline or resumes an overdue ask yet. The public resume route never resumes an ask gate. Nothing on the interface names a store, a flow, a session record, or a task row, and no verb takes an identity or a session id: each closes over the running request's own. To start work in another session, use a [`dispatcher()`](#dispatches-entries-and-dispatcher) block; the flow checks its address when it is defined.
+`parkOnAsk(ctx, { gateId, binding: { board, taskId }, deadline? })` parks the running turn on an ask gate and returns the answer once its conversation resumes it; an ask that ended without one throws `AskEndedError` with `code` `wait_task_failed`, `wait_task_cancelled` or `wait_timed_out`, which a generator's tool surfaces to the model as a failed call (the message leads with the code). With a `deadline`, a host running the durability sweeper resumes a gate still pending past it with `wait_timed_out` on its next sweep, never marking it expired. The public resume route never resumes an ask gate. Nothing on the interface names a store, a flow, a session record, or a task row, and no verb takes an identity or a session id: each closes over the running request's own. To start work in another session, use a [`dispatcher()`](#dispatches-entries-and-dispatcher) block; the flow checks its address when it is defined.
 
 ## Key design decisions
 
@@ -765,7 +769,7 @@ The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `Sett
 
 **Request-scoped status slot.** `emit.status` writes to a single request-scoped slot — the latest message wins. Clients render one in-flight indicator line, falling back to "Working..." when the slot is empty. See `docs/architecture/items.md` for the full semantics.
 
-**Automatic resource collection.** Blocks declare their resource dependencies via a flat `resources` map of `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's `resources` map automatically — blocks bring their own resource requirements, just like partial state schemas. Flow-level declarations take priority.
+**Automatic resource collection.** Blocks declare their resource dependencies via a flat `resources` map of `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's `resources` map automatically — blocks bring their own resource requirements, just like partial state schemas. If the flow declares a resource under the same name as a block, it must pass the same `defineResource()` object, or `defineFlow` throws.
 
 **Resource content handles.** `ResourceRef.readContent()` returns rendered text or `null`; `readContentRaw()` returns raw text or `null`; `writeContent()` overwrites content when writable.
 

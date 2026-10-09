@@ -144,8 +144,7 @@ async function continueAndApprove(
   return { continuation: contItems[0], finalStatus: finalRecord?.status ?? "unknown", failures };
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const counterA = { runs: 0 };
   const counterB = { runs: 0 };
   const flowA = buildFlow("goal-continue-two-a", counterA);

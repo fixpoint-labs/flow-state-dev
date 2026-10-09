@@ -107,8 +107,7 @@ async function content(router: Router, sessionId: string, ref: string[]): Promis
   return (body as { content?: unknown }).content;
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const dir = mkdtempSync(join(tmpdir(), "fsd-private-per-copy-"));
   const dbFile = join(dir, "goal.db");

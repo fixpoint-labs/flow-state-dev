@@ -86,8 +86,7 @@ function expected(seat: Seat) {
   };
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const dir = mkdtempSync(join(tmpdir(), "fsd-seat-config-"));
   const dbFile = join(dir, "goal.db");

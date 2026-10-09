@@ -15,10 +15,12 @@
  * package, which is why the check has to walk the reachable graph from the
  * entry rather than scan `src/` the way the contracts guard does.
  *
- * Scope: our own relative module graph. A bare specifier (`zod`,
- * `@flow-state-dev/core`) is not followed — those carry their own guarantees,
- * and `contracts-zero-dep.spec.ts` is the precedent for pinning them at their
- * own boundary.
+ * Scope: our own module graph and the workspace packages it imports, followed
+ * into their source through each package's `exports`. The walk has to cross
+ * packages: the `@flow-state-dev/core` root reaches `node:module` through its
+ * model resolver, so a value import from that root breaks this entry even
+ * though nothing here names a built-in. Import from a core subpath instead.
+ * Other bare specifiers (`zod`) are not followed.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -32,11 +34,8 @@ const pkgRoot = path.resolve(here, "..");
 /** Entry points this package publishes as safe to bundle for a browser. */
 const BROWSER_SAFE_ENTRIES = ["src/tasks/index.ts"];
 
-// Package-local on purpose (see "Scope" above). Following workspace packages
-// today reaches `node:module`/`node:url` via define-task-collection.ts -> the
-// `@flow-state-dev/core` root -> core/src/models/createModelResolver.ts.
 const findNodeBuiltins = (entry: string): string[] =>
-  findNodeBuiltinsFromEntry(path.join(pkgRoot, entry), { followWorkspacePackages: false });
+  findNodeBuiltinsFromEntry(path.join(pkgRoot, entry), { followWorkspacePackages: true });
 
 describe("browser-safe subpath exports", () => {
   for (const entry of BROWSER_SAFE_ENTRIES) {
@@ -51,6 +50,15 @@ describe("browser-safe subpath exports", () => {
       ).toEqual([]);
     });
   }
+
+  it("follows workspace packages into core's root", () => {
+    // Proves the walk crosses packages: the fixture's only Node built-ins sit
+    // behind its value import from the `@flow-state-dev/core` root. A walk that
+    // stopped at bare specifiers would report nothing, and the guard above
+    // would pass on an entry that imports the root.
+    const offenders = findNodeBuiltins("test/fixtures/imports-core-root.ts");
+    expect(offenders.join("\n")).toMatch(/"node:module" via .*core\/src\/index\.ts/);
+  });
 
   it("the entry still exports the utility the docs promise", () => {
     // Guards the other direction: "fix" the check by emptying the entry and

@@ -34,7 +34,9 @@ export type TaskChangeKind =
    * the run makes; a view following another session sees the link on its next
    * read of the row.
    */
-  | "run_linked";
+  | "run_linked"
+  /** An asked row's resume-owed marker was cleared: its asking turn has its answer (FIX-1816). */
+  | "resume_settled";
 
 /**
  * Substrate-internal event published on every task mutation. Carries the

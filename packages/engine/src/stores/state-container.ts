@@ -47,14 +47,6 @@ function toRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function toArray(value: unknown): unknown[] {
-  if (Array.isArray(value)) {
-    return value;
-  }
-
-  return [];
-}
-
 export class MemoryStateContainer<TState> implements StateContainer<TState> {
   private state: TState;
   private version: number;
@@ -446,8 +438,17 @@ export function createScopeStateOps<TState extends object>(
           ...state
         } as Record<string, unknown>;
 
-        const currentArray = toArray(next[field]);
-        next[field] = [...currentArray, value];
+        // Own fields only: `toString` and friends are inherited, not stored.
+        const current = Object.hasOwn(next, field) ? next[field] : undefined;
+        // Only an absent field starts a new array. Anything else that is not
+        // an array, null included, is refused rather than replaced, matching
+        // the store adapters' `pushToArray`.
+        if (current !== undefined && !Array.isArray(current)) {
+          throw new Error(
+            `pushState target "${field}" is not an array (got ${current === null ? "null" : typeof current})`
+          );
+        }
+        next[field] = [...(current ?? []), value];
         return next as TState;
       },
       hint

@@ -113,8 +113,7 @@ async function settled(stores: StoreRegistry, requestId: string): Promise<string
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const dir = mkdtempSync(join(tmpdir(), "fsd-non-agent-skills-"));
   const dbFile = join(dir, "goal.db");

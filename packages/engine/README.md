@@ -559,10 +559,13 @@ A store adapter shows it serves the stream with
 ## Store list options
 
 `SessionListOptions` and `RequestListOptions` are part of the store contract.
-Adapters must implement all four options:
+Adapters must implement all of these options:
 
 - `RequestListOptions.status` accepts a `RequestStatus` **or an array** of them.
   An array matches set membership; an empty array matches nothing.
+- `RequestListOptions.sessionId` accepts a session id **or an array** of them,
+  matched the same way. The session stream uses it to ask about all of a
+  session's child runs in one read instead of one read per run.
 - `RequestListOptions.orderBy` accepts `"none"` alongside `"startedAtMs"` and
   `"updatedAt"`. `"none"` returns the matching set unordered. An
   existence check needs that: its work must not grow with the set it selects

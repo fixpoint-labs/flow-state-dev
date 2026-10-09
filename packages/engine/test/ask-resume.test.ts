@@ -40,8 +40,10 @@ import {
   runAction
 } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
-import { createAskResumeOperation, resumeAskGate } from "../src/context/ask-resume-operation";
+import { createAskResumeOperation } from "../src/context/ask-resume-operation";
+import { resumeAskGate } from "../src/durability/resume-ask-gate";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
+import { runTick } from "../src/durability/durability-sweeper";
 import type { ExecutionResult } from "../src/execution/types";
 import type { RuntimeConfig } from "../src/runtime-config";
 
@@ -83,7 +85,11 @@ const GATE_ID = "gate_ask_1";
  * A flow with an asking turn and a `touch` action that resumes an ask gate,
  * standing in for the board touch that will call the verb.
  */
-function askFlow(model: GeneratorModel, sideEffects: { count: number }) {
+function askFlow(
+  model: GeneratorModel,
+  sideEffects: { count: number },
+  options: { deadline?: () => number } = {}
+) {
   const ask = handler({
     name: "ask_colleague",
     inputSchema: z.object({ question: z.string() }),
@@ -91,7 +97,8 @@ function askFlow(model: GeneratorModel, sideEffects: { count: number }) {
     execute: async (_input, ctx) => {
       const answer = await parkOnAsk(ctx, {
         gateId: GATE_ID,
-        binding: { board: "conversation", taskId: "task_1" }
+        binding: { board: "conversation", taskId: "task_1" },
+        ...(options.deadline !== undefined ? { deadline: options.deadline() } : {})
       });
       sideEffects.count += 1;
       return { answer };
@@ -565,5 +572,104 @@ describe("ask gate on the shipped runtime, with no router (the colocated-worker 
     } finally {
       await state.dispose();
     }
+  });
+});
+
+describe("ask gate past its deadline: the durability sweep resumes it with wait_timed_out", () => {
+  function tick(h: Harness, withContinue = true, logs: Array<[string, string, unknown]> = []) {
+    const record = (level: string) => (message: string, context: Record<string, unknown>) =>
+      logs.push([level, message, context]);
+    return runTick({
+      logger: { info: record("info"), warn: record("warn"), error: record("error") },
+      provider: h.provider,
+      stores: h.stores,
+      holder: "sweeper-test",
+      sweepIntervalMs: 600_000,
+      checkpointMaxAgeMs: 86_400_000,
+      suspensionTerminalMaxAgeMs: 604_800_000,
+      orphanCheckpointThresholdMs: 86_400_000,
+      batchLimit: 1000,
+      ...(withContinue
+        ? {
+            continueRequest: async (opts: Parameters<typeof continueRequest>[0]) => {
+              const result = await continueRequest({
+                ...opts,
+                stores: h.stores,
+                flowRegistry: h.registry,
+                runtimeConfig: h.runtimeConfig
+              });
+              h.continued.push(result.finished);
+              return result;
+            }
+          }
+        : {})
+    } as never);
+  }
+
+  it("a real sweep tick resumes the overdue turn with the timeout error, never marking the gate expired", async () => {
+    const { model, seen } = askingModel();
+    const flow = askFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
+    const h = setup(flow);
+    const parked = await startTurn(h, flow);
+    const requestId = parked.requestId!;
+    const gate = await h.provider.loadSuspension(requestId, GATE_ID);
+    expect(gate?.expiresAt).toBeDefined();
+    await new Promise((r) => setTimeout(r, 20));
+
+    await tick(h);
+
+    expect(h.continued).toHaveLength(1);
+    await h.continued[0];
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(toolResults(seen[1]!.messages).join("")).toContain("wait_timed_out");
+  });
+
+  it("an ask gate not yet past its deadline is left alone", async () => {
+    const { model } = askingModel();
+    const flow = askFlow(model, { count: 0 }, { deadline: () => Date.now() + 600_000 });
+    const h = setup(flow);
+    const parked = await startTurn(h, flow);
+
+    await tick(h);
+
+    expect(h.continued).toHaveLength(0);
+    expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
+  });
+
+  it("a sweep with no way to continue a request leaves an overdue ask pending rather than stranding it", async () => {
+    const { model } = askingModel();
+    const flow = askFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
+    const h = setup(flow);
+    const parked = await startTurn(h, flow);
+    await new Promise((r) => setTimeout(r, 20));
+
+    const logs: Array<[string, string, unknown]> = [];
+    await tick(h, false, logs);
+
+    expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
+    expect((await h.stores.request.get(parked.requestId!))?.status).toBe("suspended");
+    // Said once per tick, with how many were left.
+    const skipped = logs.filter(([, m]) => m.includes("overdue ask gates left pending"));
+    expect(skipped).toEqual([["warn", expect.any(String), { count: 1 }]]);
+  });
+
+  it("an overdue gate still listed pending whose turn is past waiting is left alone, with one warning", async () => {
+    const { model } = askingModel();
+    const flow = askFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
+    const h = setup(flow);
+    const parked = await startTurn(h, flow);
+    await new Promise((r) => setTimeout(r, 20));
+    // The record and its request disagree: the gate reads pending, the turn does not.
+    const request = await h.stores.request.get(parked.requestId!);
+    await h.stores.request.set(parked.requestId!, { ...request!, status: "in_progress" }, "any");
+
+    const logs: Array<[string, string, unknown]> = [];
+    await tick(h, true, logs);
+
+    expect(h.continued).toHaveLength(0);
+    expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).toBe("pending");
+    const warned = logs.filter(([, m]) => m.includes("overdue ask gate already resolved"));
+    expect(warned).toHaveLength(1);
+    expect(warned[0]![0]).toBe("warn");
   });
 });

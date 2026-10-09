@@ -45,6 +45,8 @@ switch (process.env.FAKE_CODEX_MODE ?? "ok") {
       stdio: ["ignore", "inherit", "inherit"],
       detached: true,
     }).unref();
+    // Only now is the pipe held, so only now may the spec fire its deadline.
+    if (log) appendFileSync(log, "HOLDING\n");
     await new Promise((resolve) => setTimeout(resolve, 5000));
     break;
   }

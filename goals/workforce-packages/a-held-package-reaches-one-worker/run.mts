@@ -182,8 +182,7 @@ function movedTree(): { root: string; cleanup: () => void } {
   return { root, cleanup: () => rmSync(scratch, { recursive: true, force: true }) };
 }
 
-await runGoal(() => {
-  const failures: string[] = [];
+await runGoal((failures) => {
   const evidence: string[] = [];
 
   // ---- leg 0 -------------------------------------------------------------

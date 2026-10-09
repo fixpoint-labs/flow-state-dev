@@ -147,8 +147,7 @@ const answersOf = (run: Run, block: string) =>
 
 const inUnit = (n: unknown) => typeof n === "number" && n >= 0 && n <= 1;
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
   /** Name why a line failed: a refused credential, an unavailable provider, or `otherwise`. */

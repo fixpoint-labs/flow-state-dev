@@ -215,8 +215,7 @@ function carriesToken(reply: string, token: string): boolean {
   return norm(reply).includes(norm(token));
 }
 
-await runGoal(() => {
-  const failures: string[] = [];
+await runGoal((failures) => {
   const evidence: string[] = [];
 
   // ---- leg 0 -------------------------------------------------------------

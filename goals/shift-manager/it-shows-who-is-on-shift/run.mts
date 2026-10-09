@@ -418,9 +418,8 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
   }
 }
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const pages = await buildShiftManager(CONTROL);
-  const failures: string[] = [];
   const evidence: string[] = [];
   for (const [i, spread] of fixture.spreads.entries()) await checkSpread(i + 1, spread, pages, failures, evidence);
   return {

@@ -54,7 +54,7 @@ function evaluationModel(): { model: string | EvaluationModel; label: string } {
   };
 }
 
-await runGoal(async () => {
+await runGoal(async (failures) => {
   const { model, label } = evaluationModel();
   const gate = captureEvaluator(model);
   const chat = await conversation({
@@ -67,7 +67,6 @@ await runGoal(async () => {
   const turns: Turn[] = [];
   for (const text of fx.turns) turns.push(await chat.say(text));
 
-  const failures: string[] = [];
   turns.forEach((turn, i) => {
     const at = `turn ${i + 1} ${JSON.stringify(turn.text.slice(0, 40))}`;
     // d0: the capture succeeded and the evaluator answered with one of its options.

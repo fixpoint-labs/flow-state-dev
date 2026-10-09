@@ -1001,6 +1001,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       });
     },
 
+    async clearResumeOwed(id) {
+      return patchRef(id, "resume_settled", (task) =>
+        task.resumeOwed === true ? { resumeOwed: undefined } : undefined
+      );
+    },
+
     get(id) {
       const taskRef = mirror.get(id);
       return taskRef === undefined

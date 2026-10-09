@@ -174,8 +174,7 @@ async function storedFiles(lab: Lab): Promise<Record<string, string | null>> {
   return out;
 }
 
-await runGoal(async () => {
-  const failures: string[] = [];
+await runGoal(async (failures) => {
   const evidence: string[] = [];
   const note = (assertion: string, why: string): void => {
     failures.push(`${CONTROL === "" ? "" : `[control ${CONTROL}] `}${assertion} — ${why}`);

@@ -32,7 +32,7 @@ const fixture = loadFixture<{ message: string; mustContain: string }>(import.met
 
 const CAPTURE = join(goalTmpDir("<slug>"), "run.json");
 
-await runGoal(() => {
+await runGoal((failures) => {
   // 2. Drive the REAL path with a REAL model, capturing the run. cwd must be
   //    the app dir — `fsdev` config search is cwd-only.
   const exit = runFsdev({
@@ -62,7 +62,6 @@ await runGoal(() => {
   //    the action's terminal output, which is the surface a user sees.
   //    Note: worker/block execution items are `type: "block_trace"` carrying an
   //    internal `BlockValueInternal` value — never unwrap those.
-  const failures: string[] = [];
   const answer = answerText(capture);
   if (!answer.toLowerCase().includes(fixture.mustContain.toLowerCase())) {
     failures.push(
