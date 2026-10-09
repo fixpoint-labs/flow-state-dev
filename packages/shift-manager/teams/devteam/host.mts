@@ -927,16 +927,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ],
   };
   const agentKind = defineAgentWorkerFlow({ installation, ...agentTurn });
-  // The coordinator's judgment turn is the agent's turn plus the standard
-  // memory pack, composed here and not into `agent`, so a worker hired onto
-  // `agent` still remembers nothing of its own.
-  const memory = coordinatorMemory({ model: "openai/gpt-5.4-mini", capture: options.memoryCapture === true });
-  const coordinatorTurn = {
-    ...agentTurn,
-    ...memory,
-    catalog: { ...agentTurn.catalog, ...memory.catalog },
-    uses: [...agentTurn.uses, ...memory.uses],
-  };
   kinds = {
     [EM_KIND]: emKind as never,
     [CODER_KIND]: coderKind as never,
@@ -951,7 +941,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       installation,
       delegateFlows: [agentKind, emKind as never],
       routeModel: "openai/gpt-5.4-mini",
-      agent: coordinatorTurn,
+      agent: coordinatorMemory(agentTurn, {
+        model: "openai/gpt-5.4-mini",
+        capture: options.memoryCapture === true,
+      }),
     }) as never,
   };
 

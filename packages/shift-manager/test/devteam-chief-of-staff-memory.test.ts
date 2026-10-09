@@ -23,7 +23,7 @@ import type { FlowInstance, GeneratorModel, GeneratorModelCallOptions, ModelReso
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
-import { CAPTURE_OFF, CAPTURE_ON, RECALL_TOOL } from "../teams/devteam/memory.mts";
+import { CAPTURE_OFF, CAPTURE_ON } from "../teams/devteam/memory.mts";
 import { createNotifyLog } from "../teams/devteam/notify.mts";
 
 const COS = "chief-of-staff";
@@ -143,9 +143,9 @@ describe("the shift coordinator's memory", () => {
     const runtime = await lab.state.getRuntime();
     const coordinator = runtime.registry.get("coordinator") as FlowInstance;
     const agent = runtime.registry.get("agent") as FlowInstance;
-    const memoryKeys = (flow: FlowInstance) =>
-      Object.keys(flow.resources ?? {}).filter((key) => /memory|digest|episodic|semantic/i.test(key));
-    expect(memoryKeys(coordinator)).not.toEqual([]);
+    const MEMORY_KEYS = ["workingMemory", "episodicMemory", "semanticMemory", "digestMemory"];
+    const memoryKeys = (flow: FlowInstance) => Object.keys(flow.resources ?? {}).filter((key) => MEMORY_KEYS.includes(key));
+    expect(memoryKeys(coordinator).sort()).toEqual([...MEMORY_KEYS].sort());
     expect(memoryKeys(agent)).toEqual([]);
     expect(coordinator.isolateUserState).toBe(true);
     expect(agent.isolateUserState).toBe(false);
@@ -156,9 +156,8 @@ describe("the shift coordinator's memory", () => {
     await say(lab, await conversation(lab), "what do you remember about our releases?");
     // The tool's name as the provider sees it: `/` is not allowed there.
     expect(lastTools().some((name) => name.includes("recall"))).toBe(true);
-    expect(lastPrompt()).toContain(JSON.stringify(CAPTURE_OFF).slice(1, -1));
-    expect(lastPrompt()).not.toContain(JSON.stringify(CAPTURE_ON).slice(1, -1));
-    expect(RECALL_TOOL).toBe("memory/recall");
+    expect(lastPrompt()).toContain(CAPTURE_OFF);
+    expect(lastPrompt()).not.toContain(CAPTURE_ON);
   });
 
   it("with capture on, reads back what the person said on the next turn, from working memory", async () => {
@@ -167,7 +166,7 @@ describe("the shift coordinator's memory", () => {
     await say(lab, id, `remember: ${FACT}`);
     // The first turn's prompt never had it: nothing was recorded yet.
     expect(lastPrompt()).not.toContain(FACT);
-    expect(lastPrompt()).toContain(JSON.stringify(CAPTURE_ON).slice(1, -1));
+    expect(lastPrompt()).toContain(CAPTURE_ON);
     await say(lab, id, "when does the train leave?");
     expect(lastPrompt()).toContain(FACT);
   });
