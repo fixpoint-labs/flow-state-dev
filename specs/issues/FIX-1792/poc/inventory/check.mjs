@@ -484,6 +484,7 @@ const FILE_CLASS = {
 const GOALS = {
   "goals/README.md": "EDIT · the word, FIX-1796",
   "goals/lib/workers.mts": "EDIT · the hire's mailboxBoards option goes with S9",
+  "goals/coordinators/hands-each-post-to-its-delegates": "CONVERT · FIX-1791's goal check reads the DevTeam's mailbox boards; it follows the DevTeam in P3 (S7)",
   "goals/agent-discovery/an-orchestrator-routes-a-task-by-asking": "EDIT · a roster literal's mailboxes field",
   "goals/design-system/skins-reused-components-from-one-token-set": "EDIT · a rail label in a demo host",
   "goals/devforce-lab/it-codes-in-the-projects-repository": "CONVERT · the run finds its project through the feature workstream",
