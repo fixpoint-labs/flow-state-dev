@@ -43,7 +43,7 @@ const wants = (part: (typeof ALL)[number]) => ONLY.length === 0 || ONLY.includes
 
 /** The commit before FIX-1650's first child merged (FIX-1718's #2647): today's `main`, as a control. */
 const TODAYS_MAIN = "1afe16ffeed2ed6c6ac1c4391ceaedbc2b9fb4e1";
-const MODEL = "openai/gpt-5.4-mini";
+const MODEL = "anthropic/claude-haiku-5-5";
 const MODEL_KEYS = ["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"];
 const CONFIG = join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "fsdev.config.mts");
 const git = (...args: string[]) => execFileSync("git", ["-C", REPO_ROOT, ...args], { encoding: "utf8" }).trim();
