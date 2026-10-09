@@ -56,6 +56,7 @@ export function boardWorkers(overrides: Partial<Record<string, Record<string, un
       delegates: ["eng.tasker"],
       fallback: "eng.tasker"
     }),
+    worker("rota", { flow: "coordinator", routing: "round-robin", delegates: ["eng.tasker", "eng.writer"] }),
     worker("mixed", { flow: "coordinator", delegates: ["eng.helper", "eng.tasker"] }),
     worker("boss", { flow: "coordinator", delegates: ["lead"] }, "Run the team."),
     worker("front", { flow: "coordinator", routing: "best-fit", delegates: ["otto"], fallback: "otto" }),

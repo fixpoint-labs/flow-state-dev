@@ -54,6 +54,20 @@ describe("an attempt that completes (BR-22)", () => {
     }
   });
 
+  it("lands as a line, with no turn, under every fixed policy: round robin too", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "rota");
+      await file(host, "alice", conv, { goal: "Count seats", assignee: "eng.writer" });
+      await host.settled();
+      await touch(host, "alice", conv);
+      expect(await linesAbout(host, conv, "Count seats")).toEqual([expect.stringContaining("completed by eng.writer")]);
+      expect(host.judgment.calls).toEqual([]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("wakes the coordinator's judgment turn once, with the notice as its message", async () => {
     const judgment = mockGenerator({
       script: [
