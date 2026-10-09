@@ -15,6 +15,11 @@
  * handed across flows to the seat a Markdown file declared, rather than to a
  * task entry co-located on this flow.
  *
+ * It takes a coordinator's delegated post, so an EM worker can be a delegate:
+ * the chief of staff hands it feature work, and it files the feature line the
+ * post carries, through the same row writer as its door, or says it filed
+ * nothing.
+ *
  * Every EM worker runs on this kind's one copy. A session names its worker
  * (`installation.session()`), and a block reads that worker's own settings
  * through the installation, never `ctx.flow.config`.
@@ -28,7 +33,7 @@ import { defineFlow, dispatcher, handler, sequencer, SuspensionRejectedError } f
 import type { BlockContext, TaskFlowTarget, TaskStateTarget } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
-import { MAILBOX_KIND, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { DELEGATED_POST_ENTRY, delegatedPostEntry, MAILBOX_KIND, type WorkerInstallation } from "@flow-state-dev/workforce";
 
 /**
  * The mailbox kind's internal entry a seat's reply to a routed post goes
@@ -196,6 +201,16 @@ const answerRoomPost = dispatcher({
  */
 const POST_SHAPE = /^\s*([a-z0-9][a-z0-9-]*)\s*:\s*(\S.*)$/;
 
+/**
+ * Where a handed-on post carries its feature line: the first
+ * `<issue-slug>: <what the feature is>` that starts a line or follows a
+ * colon. A coordinator hands the EM the person's own words, after its
+ * `<from>, through <coordinator>: ` heading, so "file this for the team:
+ * cart-badge: show a badge" files `cart-badge` as the door would file the
+ * line typed alone.
+ */
+const HANDED_ON_LINE = /(?:^|:\s+)([a-z0-9][a-z0-9-]*\s*:\s*\S.*)$/m;
+
 export interface EmWorkerFlowOptions {
   /** The installation whose workers run on this kind. */
   installation: WorkerInstallation;
@@ -336,6 +351,14 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     execute: async (input: z.infer<typeof postInputSchema>, ctx: BlockContext) => await fileFromLine(input.body, ctx),
   });
 
+  /** What the EM says about a line it read: what it filed, or why nothing. */
+  const saidOf = (result: z.infer<typeof lineFiledSchema>): string =>
+    result.reason !== undefined
+      ? `Nothing filed: ${result.reason}.`
+      : result.filed
+        ? `Filed ${result.taskId} on the board.`
+        : `${result.taskId} is already on the board.`;
+
   /**
    * The door: a person's line, read and answered in the EM's own session.
    * Files nothing it can't read, and says so; never runs the board, which
@@ -348,15 +371,25 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     uses: [board.capability],
     execute: async (input: { message: string }, ctx: BlockContext) => {
       const result = await fileFromLine(input.message, ctx);
-      ctx.emit.message(
-        result.reason !== undefined
-          ? `Nothing filed: ${result.reason}.`
-          : result.filed
-            ? `Filed ${result.taskId} on the board.`
-            : `${result.taskId} is already on the board.`,
-      );
+      ctx.emit.message(saidOf(result));
       return result;
     },
+  });
+
+  /**
+   * A post a coordinator hands the EM (the chief of staff's `handOff`):
+   * its feature line ({@link HANDED_ON_LINE}) filed through the same row
+   * writer as the door, and what the EM says about it as the answer, which
+   * lands in the coordinator's conversation under the EM's name. Like the
+   * door, it never runs the board.
+   */
+  const fileFromHandedOn = handler({
+    name: "devforce-em-file-handed-on",
+    inputSchema: z.object({ message: z.string() }),
+    outputSchema: z.string(),
+    uses: [board.capability],
+    execute: async (input: { message: string }, ctx: BlockContext) =>
+      saidOf(await fileFromLine(HANDED_ON_LINE.exec(input.message)?.[1] ?? input.message, ctx)),
   });
 
   // ---- the asking door --------------------------------------------------
@@ -508,6 +541,10 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
         // a run for a person's message, in the session that claimed the row:
         // the hand-off then lands in the run's own session again.
         [RESUME_ENTRY]: { block: board.drain },
+        // A coordinator's delegated post (FIX-1791): what makes an EM worker a
+        // delegate that takes posts. Internal like the post door: only a
+        // coordinator's delivery, with its token, reaches it.
+        [DELEGATED_POST_ENTRY]: delegatedPostEntry(fileFromHandedOn),
       },
     },
   } as never);

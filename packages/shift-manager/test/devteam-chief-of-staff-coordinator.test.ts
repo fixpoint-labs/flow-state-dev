@@ -12,7 +12,9 @@
  * Checks (`specs/issues/FIX-1791/BUSINESS-RULES.md`): BR-33 (the chief of
  * staff runs on the coordinator flow, routing by judgment), BR-34's
  * mechanism (hire, add, hand off), BR-10 (its delegate read is the
- * conversation's list), and BR-9's record of a default that can't take a post.
+ * conversation's list), BR-9's record of a default that can't take a post (the
+ * coder, which takes tasks), and the EM as a delegate that takes posts: it
+ * files the feature line a handed-on post carries, or says it filed nothing.
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,7 +22,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import { selectHarness } from "../teams/devteam/harness.mts";
+import { PHASE } from "../teams/devteam/phase.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createNotifyLog } from "../teams/devteam/notify.mts";
 
@@ -156,12 +160,51 @@ describe("the chief of staff as a coordinator (S10)", () => {
   it("records a default delegate whose flow can't take a post as skipped, with why (BR-9)", async () => {
     const lab = await open();
     const id = await conversation(lab);
-    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }]);
+    model = scripted([{ toolName: "handOff", args: { worker: "eng.coder" } }]);
     expect((await act(lab, id, "run", { message: "plan the release" })).error).toBeUndefined();
     const items = await settledItems(lab, id);
     const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
     expect(record.data.delegates).toEqual([
-      { worker: "eng.em", outcome: "skipped", reason: 'Worker "eng.em" runs on flow "em", which can\'t take a delegated post.' },
+      { worker: "eng.coder", outcome: "skipped", reason: 'Worker "eng.coder" runs on flow "coder", which can\'t take a delegated post.' },
     ]);
   });
+
+  it("hands feature work to its EM delegate, which files the feature line the post carries and says so (BR-12, BR-20)", async () => {
+    const lab = await open();
+    const id = await conversation(lab);
+    const issue = `cart-${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }]);
+    const post = `Get this filed for the team: ${issue}: show a badge on the cart`;
+    expect((await act(lab, id, "run", { message: post })).error).toBeUndefined();
+    const items = await settledItems(lab, id);
+    const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
+    expect(record.data).toMatchObject({ by: "judgment", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
+    // The row the door would file for the line typed alone, on the EM's board.
+    const taskId = harnessTaskId(issue, PHASE);
+    expect((await lab.row(taskId))?.goal).toBe("show a badge on the cart");
+    // The EM's answer lands under its name, once.
+    const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
+    expect(answers).toEqual([`Filed ${taskId} on the board.`]);
+  });
+
+  it("has its EM delegate say it filed nothing when the post names no feature line", async () => {
+    const lab = await open();
+    const id = await conversation(lab);
+    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }]);
+    const before = Object.keys(await lab.rows()).length;
+    expect((await act(lab, id, "run", { message: "can the team make the cart nicer?" })).error).toBeUndefined();
+    const items = await settledItems(lab, id);
+    const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
+    expect(answers).toEqual([
+      'Nothing filed: the line does not name a feature; this seat files from "<issue-slug>: <what the feature is>".',
+    ]);
+    expect(Object.keys(await lab.rows())).toHaveLength(before);
+  });
 });
+
+/** A stored message's text. */
+function textOf(item: { content?: unknown; text?: unknown }): string {
+  if (typeof item.text === "string") return item.text;
+  if (typeof item.content === "string") return item.content;
+  return ((item.content ?? []) as Array<{ text?: string }>).map((part) => part.text ?? "").join("");
+}

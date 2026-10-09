@@ -925,12 +925,14 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     [CODER_KIND]: coderKind as never,
     [AGENT_KIND]: agentKind as never,
     // The chief of staff's flow. A delivery reaches a delegate on a flow that
-    // takes a delegated post: here, `agent`. Best fit's evaluator runs on the
-    // Lab's small model; the chief of staff routes by judgment, so it calls it
-    // only for a coordinator that names `routing: best-fit`.
+    // takes a delegated post: here, `agent` and the EM's `em`, so the chief of
+    // staff can hand feature work to its EM delegate. `coder` takes tasks, not
+    // posts. Best fit's evaluator runs on the Lab's small model; the chief of
+    // staff routes by judgment, so it calls it only for a coordinator that
+    // names `routing: best-fit`.
     [COORDINATOR_KIND]: defineCoordinatorFlow({
       installation,
-      delegateFlows: [agentKind],
+      delegateFlows: [agentKind, emKind as never],
       routeModel: "openai/gpt-5.4-mini",
       agent: agentTurn,
     }) as never,
