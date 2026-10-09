@@ -223,9 +223,19 @@ export function planQueueWait(input: {
       error: new ConcurrencyQueueTimeoutError(input.key, QUEUE_WAIT_TIMEOUT_MS)
     };
   }
-  const ceiling = Math.min(QUEUE_WAIT_CAP_MS, QUEUE_WAIT_BASE_MS * 2 ** Math.min(input.attempt, 20));
-  const jittered = Math.max(QUEUE_WAIT_MIN_MS, (input.random ?? Math.random)() * ceiling);
-  return { kind: "wait", delayMs: Math.min(Math.round(jittered), remaining) };
+  return { kind: "wait", delayMs: Math.min(recheckDelayMs(input.attempt, input.random), remaining) };
+}
+
+/**
+ * How long a waiter on a backend with no in-process wake sleeps before its
+ * next check: exponential backoff from a short base to a cap of a few
+ * seconds, with full jitter. `attempt` counts checks made so far, from 0.
+ * `planQueueWait` clamps this to its budget; a `defer` wait, which has none,
+ * uses it as is.
+ */
+export function recheckDelayMs(attempt: number, random: () => number = Math.random): number {
+  const ceiling = Math.min(QUEUE_WAIT_CAP_MS, QUEUE_WAIT_BASE_MS * 2 ** Math.min(attempt, 20));
+  return Math.round(Math.max(QUEUE_WAIT_MIN_MS, random() * ceiling));
 }
 
 /** A place in the in-memory line, with the waiter to wake when it reaches the front. */
@@ -251,6 +261,12 @@ export interface InMemoryLeaseInternals {
    * place back.
    */
   waitForTurn(place: LeasePlace, timeoutMs: number): Promise<void>;
+  /**
+   * Resolve once `key` has no places, at once when it has none now, or when
+   * `signal` fires. The caller re-checks: another request may take the key
+   * between the wake and its next call.
+   */
+  whenFree(key: string, signal?: AbortSignal): Promise<void>;
 }
 
 const inMemoryInternals = new WeakMap<ConcurrencyLeaseBackend, InMemoryLeaseInternals>();
@@ -277,6 +293,8 @@ export function inMemoryInternalsOf(
  */
 export function createInMemoryLeaseBackend(): ConcurrencyLeaseBackend {
   const lines = new Map<string, InMemoryPlace[]>();
+  // Waiters for a key to empty, woken when its last place is given back.
+  const freeWaiters = new Map<string, Set<() => void>>();
   let nextTicket = 0;
 
   const internals: InMemoryLeaseInternals = {
@@ -299,6 +317,9 @@ export function createInMemoryLeaseBackend(): ConcurrencyLeaseBackend {
       line.splice(index, 1);
       if (line.length === 0) {
         lines.delete(key);
+        const waiters = freeWaiters.get(key);
+        freeWaiters.delete(key);
+        waiters?.forEach((wake) => wake());
         return;
       }
       // The front changed: hand the turn straight to whoever now holds it.
@@ -326,6 +347,23 @@ export function createInMemoryLeaseBackend(): ConcurrencyLeaseBackend {
           // Don't keep the event loop alive solely for a queued wait.
           (timer as { unref?: () => void }).unref?.();
         }
+      });
+    },
+
+    whenFree(key, signal) {
+      if (!lines.has(key) || signal?.aborted) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        const wake = (): void => {
+          const waiters = freeWaiters.get(key);
+          waiters?.delete(wake);
+          if (waiters?.size === 0) freeWaiters.delete(key);
+          signal?.removeEventListener("abort", wake);
+          resolve();
+        };
+        let waiters = freeWaiters.get(key);
+        if (waiters === undefined) freeWaiters.set(key, (waiters = new Set()));
+        waiters.add(wake);
+        signal?.addEventListener("abort", wake, { once: true });
       });
     }
   };

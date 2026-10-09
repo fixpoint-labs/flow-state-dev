@@ -50,6 +50,19 @@ export function goalModel(fallback: string = DEFAULT_MODEL): string {
 }
 
 /**
+ * The environment keys that let this repo's `createModelResolver` serve
+ * `model`, read off its provider prefix. The AI Gateway's key serves every
+ * provider. A provider's own key counts only where that provider's AI SDK
+ * package is installed here: `@ai-sdk/openai` is; `@ai-sdk/anthropic` and
+ * OpenRouter's `@openrouter/ai-sdk-provider` aren't, so the resolver refuses an
+ * Anthropic or OpenRouter key on its own. With none of these keys set, a goal
+ * on `model` is blocked, not failed.
+ */
+export function keysServing(model: string): string[] {
+  return model.startsWith("openai/") ? ["AI_GATEWAY_API_KEY", "OPENAI_API_KEY"] : ["AI_GATEWAY_API_KEY"];
+}
+
+/**
  * How many times to retry a model-flakiness-tolerant goal. Model judgment is
  * probabilistic; a goal that retries is retrying the MODEL's call, never the
  * mechanism under test. Override per-run with `GOAL_ATTEMPTS`.

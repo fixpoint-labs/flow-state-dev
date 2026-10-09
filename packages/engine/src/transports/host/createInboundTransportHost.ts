@@ -762,13 +762,27 @@ export function createInboundTransportHost(
     // caller that does not own the session or request id must not hold, or
     // stand in line on, its key, where every process would honour the place.
     // That refusal, and the backend's own errors, arrive through `accepted`.
-    const decision =
+    //
+    // `hold` and `defer` are arbitrated in this process only. A job's worker
+    // waits for its place's turn, which is `queue`; it knows neither a place
+    // that must not wait nor a claim that waits for a free key. So an
+    // external dispatch under either runs as `allow`, today's behaviour.
+    const resolved =
       isExternalDispatcher && !arbitratesExternalDispatch
         ? { policy: "allow" as const, key: undefined }
         : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
-    const upFront = arbiter.arbitratesAcrossProcesses
-      ? undefined
-      : arbiter.admit(decision, requestId);
+    const decision =
+      isExternalDispatcher && (resolved.policy === "hold" || resolved.policy === "defer")
+        ? { policy: "allow" as const, key: undefined }
+        : resolved;
+    // `hold` and `defer` take their place only once ownership has passed, on
+    // every backend. Neither is refused synchronously (a `defer` over its cap
+    // is refused through the handle), so nothing is lost by waiting, and a
+    // caller who does not own the session never marks its key held or uses
+    // up its defer cap, not even for the moment before the refusal (BP-031).
+    const admitsAfterOwnership =
+      arbiter.arbitratesAcrossProcesses || decision.policy === "hold" || decision.policy === "defer";
+    const upFront = admitsAfterOwnership ? undefined : arbiter.admit(decision, requestId);
     // The admission once taken. From here until a branch below hands it to its
     // run, every failure gives it back: the synchronous setup is wrapped below,
     // and each asynchronous chain ends in `releaseHeldAdmission`. A place nobody
@@ -943,7 +957,11 @@ export function createInboundTransportHost(
         const isDispatched =
           envelope.source === INTERNAL_SOURCE || envelope.source === TASK_SOURCE;
 
-        if (isDispatched || (decision.policy === "queue" && decision.key !== undefined)) {
+        // A `defer` run waits for its key like a `queue` run, so it needs the
+        // same discoverable stub, heartbeat and cancel watch while it waits.
+        const waitsForKey =
+          (decision.policy === "queue" || decision.policy === "defer") && decision.key !== undefined;
+        if (isDispatched || waitsForKey) {
           // Registered HERE rather than left to `runAction`, because between this
           // dispatch and the run's own registration the request is real,
           // discoverable, and cancellable by anyone reading the store — and yet
@@ -1178,7 +1196,7 @@ export function createInboundTransportHost(
           // Nothing is written before the run here (`runAction` writes its own
           // records), so a shared backend's place waits only on ownership.
           const arbitrated =
-            arbiter.arbitratesAcrossProcesses &&
+            admitsAfterOwnership &&
             decision.key !== undefined &&
             decision.policy !== "allow";
           finished = arbitrated

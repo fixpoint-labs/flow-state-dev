@@ -1,0 +1,93 @@
+<svg viewBox="0 0 940 410" role="img" aria-label="Jev's reported confidence for 8 asks, twice each, on a line from 0 to 1, with the floor at 0.7. Top, today's offer of one delegate: every ask, the hire included, picks the EM at confidence 1, so no floor can stop a hire. Middle, a floor alone over two delegates: asks meant for the chief of staff land on a delegate between 0.14 and 0.68, and plain asks between 0.38 and 0.98, so the two overlap and no floor separates them. Bottom, the chief of staff as a choice: it is picked for its own asks at 0.80 to 1; the only delegate picks on its asks are at 0.08 and 0, below the floor; plain asks pick the EM at 0.88 to 1, except the vague one at 0.02 to 0.36, which goes to the chief of staff's turn."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .axis  { stroke:var(--rule); stroke-width:1.2; }
+    .floor { stroke:var(--accent); stroke-width:2; stroke-dasharray:5 4; }
+    .plain { fill:var(--code); }
+    .wrong { fill:var(--gone); }
+    .self  { fill:none; stroke:var(--accent); stroke-width:1.8; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-n   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="410"/>
+
+  <g id="axis-labels">
+    <text class="t-lbl" x="196" y="24">0</text>
+    <text class="t-lbl" x="540" y="24">0.5</text>
+    <text class="t-lbl" x="894" y="24">1</text>
+    <text class="t-acc" x="662" y="24">FLOOR 0.7</text>
+  </g>
+
+  <g id="today-one-option">
+    <rect class="panel" x="16" y="36" width="908" height="70" rx="5"/>
+    <text class="t-lbl" x="28" y="56">TODAY'S OFFER</text>
+    <text class="t-h" x="28" y="74">eng.em only</text>
+    <text class="t-s" x="28" y="92">a floor alone</text>
+    <line class="axis" x1="200" y1="60" x2="900" y2="60"/>
+    <line class="axis" x1="200" y1="84" x2="900" y2="84"/>
+    <circle class="plain" cx="900" cy="60" r="5"/><text class="t-n" x="836" y="64">plain ×6</text>
+    <circle class="wrong" cx="900" cy="84" r="5"/><text class="t-n" x="764" y="88">its own asks ×10</text>
+  </g>
+
+  <g id="floor-alone">
+    <rect class="panel" x="16" y="116" width="908" height="70" rx="5"/>
+    <text class="t-lbl" x="28" y="136">A FLOOR ALONE</text>
+    <text class="t-h" x="28" y="154">eng.em + eng.coder</text>
+    <text class="t-s" x="28" y="172">both offered</text>
+    <line class="axis" x1="200" y1="140" x2="900" y2="140"/>
+    <line class="axis" x1="200" y1="164" x2="900" y2="164"/>
+    <circle class="plain" cx="886" cy="140" r="5"/><circle class="plain" cx="802" cy="140" r="5"/>
+    <circle class="plain" cx="774" cy="140" r="5"/><circle class="plain" cx="466" cy="140" r="5"/>
+    <circle class="wrong" cx="298" cy="164" r="5"/><circle class="wrong" cx="354" cy="164" r="5"/>
+    <circle class="wrong" cx="368" cy="164" r="5"/><circle class="wrong" cx="382" cy="164" r="5"/>
+    <circle class="wrong" cx="396" cy="164" r="5"/><circle class="wrong" cx="480" cy="164" r="5"/>
+    <circle class="wrong" cx="508" cy="164" r="5"/><circle class="wrong" cx="662" cy="164" r="5"/>
+    <circle class="wrong" cx="676" cy="164" r="5"/>
+    <text class="t-n" x="560" y="180">project .66 · .68</text>
+  </g>
+
+  <g id="self-as-a-choice">
+    <rect class="panel" x="16" y="196" width="908" height="144" rx="5"/>
+    <text class="t-lbl" x="28" y="216">CHOSEN</text>
+    <text class="t-h" x="28" y="234">eng.em + the chief</text>
+    <text class="t-h" x="28" y="250">of staff as a choice</text>
+    <text class="t-s" x="28" y="268">two descriptions, D and E</text>
+    <line class="axis" x1="200" y1="222" x2="900" y2="222"/>
+    <line class="axis" x1="200" y1="270" x2="900" y2="270"/>
+    <line class="axis" x1="200" y1="318" x2="900" y2="318"/>
+    <circle class="plain" cx="900" cy="222" r="5"/><circle class="plain" cx="886" cy="222" r="5"/>
+    <circle class="plain" cx="858" cy="222" r="5"/><circle class="plain" cx="844" cy="222" r="5"/>
+    <circle class="plain" cx="816" cy="222" r="5"/><circle class="plain" cx="452" cy="222" r="5"/>
+    <circle class="plain" cx="368" cy="222" r="5"/><circle class="plain" cx="214" cy="222" r="5"/>
+    <text class="t-n" x="224" y="240">vague plain ask .02 – .36 → its turn</text>
+    <circle class="wrong" cx="200" cy="270" r="5"/><circle class="wrong" cx="256" cy="270" r="5"/>
+    <text class="t-n" x="268" y="288">project, description as is: .08 · 0 → its turn</text>
+    <circle class="self" cx="760" cy="318" r="5"/><circle class="self" cx="816" cy="318" r="5"/>
+    <circle class="self" cx="830" cy="318" r="5"/><circle class="self" cx="844" cy="318" r="5"/>
+    <circle class="self" cx="858" cy="318" r="5"/><circle class="self" cx="872" cy="318" r="5"/>
+    <circle class="self" cx="886" cy="318" r="5"/><circle class="self" cx="900" cy="318" r="5"/>
+    <circle class="self" cx="284" cy="318" r="5"/>
+    <text class="t-n" x="490" y="334">its own asks pick it: .80 – 1</text>
+  </g>
+
+  <line class="floor" x1="690" y1="30" x2="690" y2="340"/>
+
+  <g id="legend">
+    <circle class="plain" cx="28" cy="368" r="5"/><text class="t-s" x="40" y="372">a plain ask picks a delegate</text>
+    <circle class="wrong" cx="228" cy="368" r="5"/><text class="t-s" x="240" y="372">an ask for the chief of staff picks a delegate</text>
+    <circle class="self" cx="520" cy="368" r="5"/><text class="t-s" x="532" y="372">picks the chief of staff: its own turn, at any confidence</text>
+    <text class="t-s" x="28" y="396">Jev, typesafe-ai/jev, through the AI Gateway, 2026-10-09 · 8 asks × 2 · poc/jev-confidence</text>
+  </g>
+</svg>
