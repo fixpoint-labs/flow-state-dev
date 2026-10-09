@@ -27,10 +27,12 @@
  * - a delegate answers `<worker> answers: <what it was handed>`, and holds its
  *   answer for {@link SLOW_MS} on a `[slow:<worker>]` mark.
  *
- * Every grade is read back through the router as Alice: the conversation's
- * items (records and lines) and its session record (its delegates and its
- * delivery ledger). The engine's request store is read only to wait until
- * nothing is running.
+ * Every grade is read back as Alice: the conversation's items (records and
+ * lines) through the router, and its session record (its delegates, its
+ * fallback and its delivery ledger) from the engine's session store, from the
+ * row Alice owns. The session route sends a client only the state a flow
+ * exposes, and the coordinator exposes none of those fields. The engine's
+ * request store is read only to wait until nothing is running.
  */
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
@@ -208,7 +210,9 @@ async function conversation(worker: string) {
       items.push(...(page.items ?? []));
       if (page.pagination?.hasMore !== true) break;
     }
-    const record = (await get(`/sessions/${encodeURIComponent(session.id)}`)).session;
+    // The stored record, not the session route's projection of it.
+    const stored = await (await state.getRuntime()).stores.session.get(session.id);
+    const record = stored?.userId === ALICE ? stored : undefined;
     const text = (i: Item) => (typeof i.text === "string" ? i.text : Array.isArray(i.content) ? i.content.map((p: any) => p?.text ?? "").join("") : String(i.content ?? ""));
     return {
       records: items.filter((i) => i.type === "component" && i.component === (wf.COORDINATOR_ROUTE ?? "coordinator-route")).map((i) => i.data),

@@ -214,20 +214,21 @@ await runGoal(async () => {
     for (let attempt = 1; attempt <= attempts && pending.length > 0; attempt += 1) {
       const label = `${control?.name ?? "plain"}-${attempt}`;
       const storeDir = join(SCRATCH, "stores", `${RUN_STAMP}-${label}`);
+      const store = join(storeDir, "devteam.sqlite");
       mkdirSync(storeDir, { recursive: true });
       const served = await startShiftManager({
         scratch: SCRATCH,
         label: `devteam-${label}`,
         config: join(profile, "fsdev.config.mts"),
         pages,
-        env: { DEVTEAM_STORE: join(storeDir, "devteam.sqlite"), ...env },
+        env: { DEVTEAM_STORE: store, ...env },
         root: join(checkout.root, "packages", "shift-manager"),
         tsx: join(checkout.root, "node_modules", ".bin", "tsx"),
         timeoutMs: 180_000,
       });
       try {
         say(`attempt ${attempt} of ${attempts}, legs ${pending.join(", ")}: DevTeam at ${served.origin}; the chief of staff's defaults: [${defaults.join(", ")}]`);
-        const ran = await devteamLegs({ origin: served.origin, shipped, alice, bob, defaults, legs: new Set(pending), asks, boardMailboxes: boardMailboxes(checkout.root), say });
+        const ran = await devteamLegs({ origin: served.origin, store, shipped, alice, bob, defaults, legs: new Set(pending), asks, boardMailboxes: boardMailboxes(checkout.root), say });
         for (const t of ran.turns) say(`attempt ${attempt} turn (${t.leg}) ${t.status}: tools ${t.tools.map((x) => x.name).join(", ") || "none"}; reply: ${t.reply.slice(0, 240).replace(/\n/g, " ")}${t.providerRetry === undefined ? "" : ` (re-run after a provider error: ${t.providerRetry})`}`);
         for (const l of pending) {
           const r = ran.legs[l];
