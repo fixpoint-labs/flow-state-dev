@@ -27,6 +27,7 @@
  *   BR-28  every decision, in every round, is one `coordinator-route` record.
  */
 import { describe, expect, it } from "vitest";
+import { inMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
 import {
   MAX_OPEN_ROUNDS,
@@ -666,5 +667,41 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect(records.filter((record: any) => record.postId === live.postId).map((record: any) => record.round)).toEqual([0, 1]);
     expect(passedToCoder(host, "status?")).toHaveLength(1);
     expect((await host.sessionState(id)).openRounds).toHaveLength(MAX_OPEN_ROUNDS - 1);
+  });
+});
+
+describe("a conversation's writes under contention (V5)", () => {
+  it("passes a closed round's answers on when its first delivery loses its write to four others in a row", async () => {
+    // Each delegate's answer, each routing and each pass-on writes this one conversation's
+    // state. Here the write that opens the EM's pass-on delivery loses to another writer
+    // four times in a row.
+    const adapter = inMemoryStores();
+    const registry = await adapter.resolve();
+    const set = registry.session.set.bind(registry.session);
+    const opensPassOnToEm = (state: unknown) =>
+      ((state as { deliveries?: Array<{ round: number; delegate: { worker: string } }> } | undefined)?.deliveries ?? []).some(
+        (d) => d.round === 1 && d.delegate.worker === "eng.em"
+      );
+    let lost = 0;
+    registry.session.set = async (id, value, expected) => {
+      const stored = await registry.session.get(id);
+      if (stored !== undefined && lost < 4 && opensPassOnToEm(value.state) && !opensPassOnToEm(stored.state)) {
+        lost += 1;
+        return { ok: false, conflict: { currentValue: stored, currentVersion: stored.version } };
+      }
+      return set(id, value, expected);
+    };
+    const host = bootHost({ standard: pairDesk("everyone", 1), stores: adapter as never });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "status?");
+    await quiet(host);
+
+    expect(lost).toBe(4);
+    const passed = (to: string, from: string) =>
+      host.heard.filter((h) => h.worker === to && h.message.startsWith(`${from}, through desk: ${from} heard: alice, through desk: status?`));
+    expect(passed("eng.coder", "eng.em")).toHaveLength(1);
+    expect(passed("eng.em", "eng.coder")).toHaveLength(1);
+    const runtime = await host.state.getRuntime();
+    expect((await runtime.stores.request.list({ sessionId: id })).filter((r) => r.status === "failed")).toEqual([]);
   });
 });

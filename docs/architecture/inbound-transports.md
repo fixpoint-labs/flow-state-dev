@@ -261,6 +261,38 @@ inherits it at the one shared seam. The arbiter resolves the effective policy
   returning the handle synchronously, so an SSE client gets an open stream while
   queued. An over-long wait rejects `finished` with `ConcurrencyQueueTimeoutError`
   (status 503).
+- `hold` takes a place in the key's line and starts at once, without waiting
+  for its turn. It is never refused. The place only marks the key busy, so a
+  `queue` waiter lines up behind it and a `reject` is refused while it runs.
+- `defer` takes nothing at admission. When the run is due, it claims the key
+  the way `reject` does, only if no place is held or waiting, and otherwise
+  waits and tries again: woken when the key empties in memory, on a backoff
+  over a shared backend. It takes the queued branch (stub record, heartbeat,
+  cancel watch). The wait has no budget, because every place it waits on ends:
+  its run settles and gives it back (success, error or abort), or, on a shared
+  backend, a crashed process stops renewing it and it expires. That expiry is
+  the crash path; nothing needs to give a dead holder's place back. A claimed
+  `defer` holds the key, so `defer` runs are serialized among themselves, and
+  a `hold` still starts beside one. Two bounds make "no budget" safe. At most
+  `maxDeferredPerKey` (32) defers wait on a key per process; the next is
+  refused at admission with `ConcurrencyDeferLimitError`, a subclass of
+  `ConcurrencyRejectedError`, so every adapter maps it as a `reject` refusal
+  and nothing is materialized. And a defer yields to newer `hold` runs for
+  `deferPatienceMs` (30 s) only: then it takes an ordinary place at the back
+  of the line, behind the runs present at that moment, and waits for its turn
+  with no budget. A caller sending `hold` requests back to back delays it by
+  at most the patience plus the runs it found.
+- `hold` and `defer` take their place only after `admitOwnership` passes, on
+  the in-memory default too, so a caller who does not own the session never
+  marks its key held or fills its defer cap. Neither is refused synchronously:
+  a `defer` over its cap is refused through `accepted` / `finished`.
+- The policy is read only from the flow's declaration (the entry's
+  `concurrency`, else `request.concurrency`), found through the trusted
+  `source`. Nothing in the body, `metadata` or headers selects it (BP-031).
+- `hold` and `defer` are arbitrated in process only. A BullMQ worker waits
+  for a place's turn, which is `queue`; it has no form for a place that must
+  not wait or a claim that waits for a free key. An external dispatch under
+  either policy therefore resolves to `allow`.
 - `allow` (default) and a key that resolves to `undefined` (no session, `"none"`,
   or a custom key returning `undefined`) are passthroughs.
 
