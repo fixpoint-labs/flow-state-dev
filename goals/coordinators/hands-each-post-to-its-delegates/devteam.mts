@@ -409,16 +409,22 @@ export async function devteamLegs(o: DevteamOptions): Promise<{ legs: Record<str
       if (answer(viaApp) !== undefined && shape(answer(viaApp), bobWorker) !== shape(answer(viaAppMissing), missing)) {
         r.failures.push(`f:same-answer — Bob's worker and a missing one get different answers: "${answer(viaApp)}" / "${answer(viaAppMissing)}"`);
       }
-      // Through the coordinator's own tool.
+      // Through the coordinator's own tool. A turn that calls no `addDelegate`
+      // shows nothing about the tool, so the ask is made once more, in a fresh
+      // conversation; the list is graded after every turn.
       const ask = o.asks.f.replace("{worker}", bobWorker);
-      o.say(`leg f: "${ask}"`);
-      const turn = await talk(turns, "f", alice, { id: conv.id, flowKind: kind }, ask);
-      const adds = turn.tools.filter((t) => t.name === "addDelegate");
-      r.notes.push(`the turn ${turn.status}; tools: ${turn.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}`);
-      const afterTool = ((await recordOf(alice, conv.id)).delegates ?? []).map((d) => d.worker);
-      if (afterTool.includes(bobWorker)) r.failures.push(`f:bobs-worker-refused — Bob's worker is a delegate after the chief of staff's turn: [${afterTool.join(", ")}]`);
+      let adds: Turn["tools"] = [];
+      for (let attempt = 1; attempt <= 2 && adds.length === 0; attempt += 1) {
+        const where = attempt === 1 ? conv : await alice.sessions.createSession({ flowKind: kind, userId: o.alice.userId, state: { workerId: COS } });
+        o.say(`leg f, attempt ${attempt}: "${ask}"`);
+        const turn = await talk(turns, "f", alice, { id: where.id, flowKind: kind }, ask);
+        adds = turn.tools.filter((t) => t.name === "addDelegate");
+        r.notes.push(`attempt ${attempt}: the turn ${turn.status}; tools: ${turn.tools.map((t) => `${t.name}(${t.args}) → ${show(t.output)}`).join("; ") || "none"}; reply: ${turn.reply.slice(0, 200)}`);
+        const afterTool = ((await recordOf(alice, where.id)).delegates ?? []).map((d) => d.worker);
+        if (afterTool.includes(bobWorker)) r.failures.push(`f:bobs-worker-refused — Bob's worker is a delegate after the chief of staff's turn: [${afterTool.join(", ")}]`);
+      }
       const refusedByTool = adds.find((t) => typeof t.output?.refused === "string");
-      if (adds.length === 0) r.failures.push(`f:tool-refused — the chief of staff never called addDelegate for \`${bobWorker}\`, so the tool's answer wasn't seen`);
+      if (adds.length === 0) r.failures.push(`f:tool-refused — in two asks the chief of staff never called addDelegate for \`${bobWorker}\`, so the tool's answer wasn't seen`);
       else if (refusedByTool === undefined) r.failures.push(`f:tool-refused — the tool took Bob's worker: ${show(adds.map((t) => t.output))}`);
       else if (shape(refusedByTool.output.refused, bobWorker) !== shape(answer(viaAppMissing), missing)) {
         r.failures.push(`f:tool-refused — the tool's refusal differs from a missing worker's: "${refusedByTool.output.refused}" / "${answer(viaAppMissing)}"`);
