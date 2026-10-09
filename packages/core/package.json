@@ -75,6 +75,14 @@
     "./errors/suspension-error": {
       "types": "./dist/errors/suspension-error.d.ts",
       "default": "./src/errors/suspension-error.ts"
+    },
+    "./blocks/handler": {
+      "types": "./dist/blocks/handler.d.ts",
+      "default": "./src/blocks/handler.ts"
+    },
+    "./blocks/sequencer": {
+      "types": "./dist/blocks/sequencer.d.ts",
+      "default": "./src/blocks/sequencer.ts"
     }
   },
   "license": "MIT",
@@ -134,6 +142,14 @@
       "./errors/suspension-error": {
         "types": "./dist/errors/suspension-error.d.ts",
         "default": "./dist/errors/suspension-error.js"
+      },
+      "./blocks/handler": {
+        "types": "./dist/blocks/handler.d.ts",
+        "default": "./dist/blocks/handler.js"
+      },
+      "./blocks/sequencer": {
+        "types": "./dist/blocks/sequencer.d.ts",
+        "default": "./dist/blocks/sequencer.js"
       }
     }
   },

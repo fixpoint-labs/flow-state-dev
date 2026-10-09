@@ -19,7 +19,7 @@
  *    `custom(fn)`. All return a `TaskFlowPolicy` shape the board calls
  *    once per dispatch.
  */
-import { defineCapability } from "@flow-state-dev/core";
+import { defineCapability } from "@flow-state-dev/core/capability";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
