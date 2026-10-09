@@ -394,12 +394,6 @@ function intentDefaultsToFallbackDefaults(
 function validateOptions(options: CreateModelResolverOptions | undefined): void {
   if (!options) return;
 
-  if ("presets" in options) {
-    throw new Error(
-      "createModelResolver: 'presets' option has been removed. Migrate to intents."
-    );
-  }
-
   const intents = options.intents;
   const intentEntries = intents ? Object.entries(intents) : [];
 

@@ -7,11 +7,10 @@
  * `<root>/content/session/s1/concepts/x/overview.md`).
  *
  * The factory owns every guard: scope-id validation + containment, per-op
- * symlink safety (ancestors and leaf), a durable clean-break legacy marker
- * (BP-030), collision surfacing, and the one-shot ENOENT-retry atomic write
- * both stores share. The two public stores are thin config over this.
+ * symlink safety (ancestors and leaf), collision surfacing, and the one-shot
+ * ENOENT-retry atomic write both stores share. The two public stores are thin config over this.
  */
-import { link, lstat, mkdir, readdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import type { StorageScopeType } from "../types";
@@ -19,29 +18,6 @@ import {
   collectRecords,
   keyToRelativePath
 } from "./resource-path";
-
-/** Basename of the durable per-subtree layout marker file. */
-const LAYOUT_MARKER_NAME = ".fsdev-store-layout";
-/** Current on-disk layout tag stored in the marker. */
-const LAYOUT_VERSION = "nested-v1";
-
-/**
- * Files that never count as "real data" when the legacy guard scans an
- * unmarked subtree — ubiquitous OS/VCS metadata a fresh vault may carry.
- */
-const METADATA_FILE_DENYLIST: ReadonlySet<string> = new Set([
-  ".DS_Store",
-  "Thumbs.db",
-  ".gitignore",
-  ".gitkeep"
-]);
-
-/**
- * Directories descended-into but never counted as data by the legacy guard —
- * dot-dirs are NOT blanket-skipped (a scope id may legitimately start with "."),
- * only these known metadata directories are.
- */
-const METADATA_DIRS: ReadonlySet<string> = new Set([".git", ".obsidian", ".svn", ".hg"]);
 
 /** Configuration for {@link createFilesystemResourceStore}. */
 export type FilesystemResourceStoreOptions<T> = {
@@ -56,40 +32,6 @@ export type FilesystemResourceStoreOptions<T> = {
   /** Parse an on-disk string back into a value. */
   deserialize: (raw: string) => T;
 };
-
-/**
- * Layout-aware operations the versioned resource-state store needs on top of
- * the six methods, and which `ContentStore` does not.
- *
- * `ResourceStateStore` replaced its `deleteAll` with an enumerate-and-mark
- * pass (a scope purge must retain each key's version, so it cannot `rm -rf`),
- * but it still has to honour the same legacy-layout rules the factory owns.
- * Rather than reimplementing the marker protocol outside the factory, the
- * versioned store asks these two questions and composes the answers.
- */
-export interface KeyedResourceStoreLayoutOps {
-  /**
-   * True when a valid nested-layout marker is present. False when it is
-   * absent (fresh subtree, or one predating the nested layout). Throws on a
-   * marker this build cannot interpret, exactly as every other op does.
-   */
-  hasValidLayoutMarker(): Promise<boolean>;
-  /**
-   * Re-validate before a mutating op: reject an incompatible marker, and — if
-   * the marker is absent — re-scan for legacy data the memoized layout result
-   * may have missed. The versioned store decides some writes (a conflict, a
-   * delete of an absent key) without reaching the factory's own mutators, so
-   * it has to run this guard itself or those paths would skip it.
-   */
-  assertWritableLayout(): Promise<void>;
-  /**
-   * Remove a scope's directory outright — the pre-nested-layout escape hatch
-   * `deleteAll` has always provided, so an upgraded install can tear down old
-   * flat scopes without a read first. Only reachable when no valid marker is
-   * present; a marked subtree is purged by marking, not by removal.
-   */
-  purgeScopeDirectory(scopeType: StorageScopeType, scopeId: string): Promise<void>;
-}
 
 /** The six-method keyed-resource-store contract shared by both public stores. */
 export interface KeyedResourceStore<T> {
@@ -109,21 +51,17 @@ function errno(error: unknown): string | undefined {
   return (error as NodeJS.ErrnoException | undefined)?.code;
 }
 
-class FilesystemResourceStore<T> implements KeyedResourceStore<T>, KeyedResourceStoreLayoutOps {
+class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
   private readonly root: string;
   private readonly ext: string;
   private readonly serialize: (value: T) => string;
   private readonly deserialize: (raw: string) => T;
-  private readonly markerPath: string;
-  /** Memoized layout resolution — cached on SUCCESS only (see ensureLayout). */
-  private layoutPromise?: Promise<void>;
 
   constructor(options: FilesystemResourceStoreOptions<T>) {
     this.root = path.join(options.rootDir, options.subdir);
     this.ext = options.ext;
     this.serialize = options.serialize;
     this.deserialize = options.deserialize;
-    this.markerPath = path.join(this.root, LAYOUT_MARKER_NAME);
   }
 
   // --- path building + validation -----------------------------------------
@@ -141,10 +79,7 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T>, KeyedResource
 
   private scopeDir(scopeType: StorageScopeType, scopeId: string): string {
     this.validateScopeId(scopeId);
-    // `encodeURIComponent` (NOT encodeSegment) keeps the scope dir name
-    // byte-identical to the legacy layout, so a dotted userId (e.g. an email)
-    // maps to the same dir the flat store used and the legacy guard/deleteAll
-    // stay consistent. It also escapes "/", so a "/"-bearing scope id stays one
+    // `encodeURIComponent` escapes "/", so a "/"-bearing scope id stays one
     // flat dir rather than nesting.
     const dir = path.join(this.root, scopeType, encodeURIComponent(scopeId));
     const base = path.resolve(path.join(this.root, scopeType));
@@ -187,161 +122,6 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T>, KeyedResource
     }
   }
 
-  // --- legacy layout guard (BP-030) ---------------------------------------
-
-  private ensureLayout(): Promise<void> {
-    return (this.layoutPromise ??= this.resolveLayout().catch((error) => {
-      // Cache SUCCESS only: clear so a later op re-scans once the operator
-      // moves/deletes the offending subtree.
-      this.layoutPromise = undefined;
-      throw error;
-    }));
-  }
-
-  /**
-   * Read + validate the layout marker. Returns `true` if a valid marker is
-   * present, `false` if absent. THROWS if the marker is present but
-   * unreadable / corrupt / a version this build can't interpret — a marker we
-   * can't trust must block, never be treated as absent.
-   */
-  private async markerValidOrAbsent(): Promise<boolean> {
-    // `lstat` first and reject a symlinked marker: a path-based read would
-    // follow it and trust a `nested-v1` marker outside the subtree, bypassing
-    // the legacy-data scan (existing flat resources then read as missing).
-    let linkStat;
-    try {
-      linkStat = await lstat(this.markerPath);
-    } catch (error) {
-      if (errno(error) === "ENOENT") return false;
-      throw error;
-    }
-    if (linkStat.isSymbolicLink()) {
-      throw new Error(
-        `Filesystem store layout marker at ${this.markerPath} is a symlink; refusing to trust it`
-      );
-    }
-    let raw: string;
-    try {
-      raw = await readFile(this.markerPath, "utf8");
-    } catch (error) {
-      if (errno(error) === "ENOENT") return false;
-      throw new Error(
-        `Filesystem store layout marker at ${this.markerPath} is unreadable: ${String(error)}`
-      );
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new Error(`Filesystem store layout marker at ${this.markerPath} is corrupt`);
-    }
-    if ((parsed as { layout?: unknown } | null)?.layout !== LAYOUT_VERSION) {
-      throw new Error(
-        `Filesystem store layout marker at ${this.markerPath} has an unexpected version; expected "${LAYOUT_VERSION}"`
-      );
-    }
-    return true;
-  }
-
-  private async resolveLayout(): Promise<void> {
-    if (await this.markerValidOrAbsent()) return; // valid marker -> new layout, proceed
-
-    if (await this.subtreeHasDataFile(this.root)) {
-      throw new Error(
-        `Filesystem store subtree at ${this.root} predates the nested-layout change; ` +
-          `will not read its flat files — move it aside or delete it.`
-      );
-    }
-    // Fresh (empty / only empty dirs / only denylisted metadata): proceed
-    // WITHOUT writing anything, so read-only deployments and fresh-root probes
-    // stay non-mutating. The marker is a `set` responsibility.
-  }
-
-  /** True if `dir`'s subtree holds ≥1 real data file. Short-circuits on the first. */
-  private async subtreeHasDataFile(dir: string): Promise<boolean> {
-    let entries;
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch (error) {
-      if (errno(error) === "ENOENT") return false;
-      throw error;
-    }
-    for (const entry of entries) {
-      // A symlink COUNTS as legacy data (something is here) but is never
-      // followed: an old flat store could have used a symlink as a resource
-      // file, and skipping it would misclassify the subtree as fresh and
-      // silently drop that data. Refuse loudly instead.
-      if (entry.isSymbolicLink()) return true;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (METADATA_DIRS.has(entry.name)) continue;
-        if (await this.subtreeHasDataFile(full)) return true;
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      // Skip the marker and its in-flight publish temps (`<marker>.tmp-…`) ONLY —
-      // not every file sharing the prefix (a legacy key `.fsdev-store-layout-x`
-      // is real data that must still trip the guard).
-      if (entry.name === LAYOUT_MARKER_NAME || entry.name.startsWith(`${LAYOUT_MARKER_NAME}.tmp-`)) {
-        continue;
-      }
-      if (METADATA_FILE_DENYLIST.has(entry.name)) continue;
-      return true; // a real data file
-    }
-    return false;
-  }
-
-  /**
-   * Guard a destructive or marker-publishing op: reject an incompatible marker,
-   * and — if the marker is absent — re-scan for legacy data the memoized
-   * `ensureLayout` result may have missed (a cold read can cache "fresh" before
-   * another process writes flat files). Returns `true` if a valid marker is
-   * already present.
-   */
-  private async assertNoUnmarkedLegacyData(): Promise<boolean> {
-    if (await this.markerValidOrAbsent()) return true;
-    if (await this.subtreeHasDataFile(this.root)) {
-      throw new Error(
-        `Filesystem store subtree at ${this.root} predates the nested-layout change; ` +
-          `will not read its flat files — move it aside or delete it.`
-      );
-    }
-    return false;
-  }
-
-  /**
-   * Stamp the layout marker before the first data file of a `set` lands. No-ops
-   * if a valid marker is already present; refuses an incompatible marker or
-   * unmarked legacy data (via {@link assertNoUnmarkedLegacyData}).
-   */
-  private async ensureMarker(): Promise<void> {
-    await mkdir(this.root, { recursive: true });
-    if (await this.assertNoUnmarkedLegacyData()) return; // valid marker already present
-    // Publish atomically AND exclusively: write a temp INSIDE the owned subtree
-    // (so a read-only or separately-mounted parent can't break it, and the
-    // rename/link stays on the destination filesystem), then hard-`link` it into
-    // place. `link` is atomic (no torn marker) and fails `EEXIST` if another
-    // process published first — re-validate theirs rather than clobbering a
-    // marker another version may own. The temp is `<marker>.tmp-…`, which the
-    // legacy scan and enumeration both skip.
-    const tmp = path.join(
-      this.root,
-      `${LAYOUT_MARKER_NAME}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    );
-    try {
-      await writeFile(tmp, JSON.stringify({ layout: LAYOUT_VERSION }), "utf8");
-      try {
-        await link(tmp, this.markerPath);
-      } catch (error) {
-        if (errno(error) !== "EEXIST") throw error;
-        // Concurrently published — trust/validate the existing marker instead.
-        await this.markerValidOrAbsent();
-      }
-    } finally {
-      await rm(tmp, { force: true }).catch(() => {});
-    }
-  }
-
   private collisionError(
     error: unknown,
     scopeType: StorageScopeType,
@@ -366,7 +146,6 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T>, KeyedResource
     scopeId: string,
     resourceKey: string
   ): Promise<T | undefined> {
-    await this.ensureLayout();
     const target = this.filePath(scopeType, scopeId, resourceKey);
     await this.assertAncestorsSafe(target);
     let stat;
@@ -388,15 +167,10 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T>, KeyedResource
     resourceKey: string,
     value: T
   ): Promise<void> {
-    await this.ensureLayout();
     const target = this.filePath(scopeType, scopeId, resourceKey);
     const parentDir = path.dirname(target);
     const serialized = this.serialize(value);
-    // Validate ancestors (incl. the subtree root) BEFORE stamping the marker,
-    // so a symlinked `<root>/content` can't have `.fsdev-store-layout` written
-    // through it by a set() that assertAncestorsSafe is about to reject.
     await this.assertAncestorsSafe(target);
-    await this.ensureMarker();
 
     // The parent dir can be transiently absent at write time — concurrent
     // writers racing the recursive mkdir on a fresh scope, or a sibling request
@@ -427,12 +201,6 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T>, KeyedResource
     scopeId: string,
     resourceKey: string
   ): Promise<void> {
-    await this.ensureLayout();
-    // Re-validate before a destructive op: reject an incompatible marker AND
-    // (if the marker is absent) re-scan for legacy data the cached layout check
-    // may have missed — delete must never mutate a subtree this build can't
-    // interpret or remove a flat legacy file (matches set's publish path).
-    await this.assertNoUnmarkedLegacyData();
     const target = this.filePath(scopeType, scopeId, resourceKey);
     await this.assertAncestorsSafe(target);
     let stat;
@@ -461,7 +229,6 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T>, KeyedResource
     scopeId: string,
     keyPrefix: string
   ): Promise<Record<string, T>> {
-    await this.ensureLayout();
     const dir = this.scopeDir(scopeType, scopeId);
     await this.assertAncestorsSafe(dir);
     const records = await collectRecords(dir, this.ext, keyPrefix);
@@ -474,39 +241,14 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T>, KeyedResource
     return result;
   }
 
-  /** See {@link KeyedResourceStoreLayoutOps.hasValidLayoutMarker}. */
-  async hasValidLayoutMarker(): Promise<boolean> {
-    return this.markerValidOrAbsent();
-  }
-
-  /** See {@link KeyedResourceStoreLayoutOps.assertWritableLayout}. */
-  async assertWritableLayout(): Promise<void> {
-    await this.ensureLayout();
-    await this.assertNoUnmarkedLegacyData();
-  }
-
   async deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void> {
-    // Skips the has-data legacy SCAN — an absent marker (legacy or fresh) must
-    // stay deletable so an upgraded install can tear old scopes down without a
-    // read first. But still refuse a PRESENT-but-incompatible marker: never
-    // `rm -rf` data owned by a layout this build can't interpret (e.g. after a
-    // version rollback), which the full-bypass would have destroyed.
-    await this.markerValidOrAbsent();
-    await this.purgeScopeDirectory(scopeType, scopeId);
-  }
-
-  /** See {@link KeyedResourceStoreLayoutOps.purgeScopeDirectory}. */
-  async purgeScopeDirectory(scopeType: StorageScopeType, scopeId: string): Promise<void> {
     const dir = this.scopeDir(scopeType, scopeId);
     await this.assertAncestorsSafe(dir);
     let stat;
     try {
       stat = await lstat(dir);
     } catch (error) {
-      if (errno(error) === "ENOENT") {
-        this.layoutPromise = undefined;
-        return;
-      }
+      if (errno(error) === "ENOENT") return;
       throw error;
     }
     if (stat.isSymbolicLink()) {
@@ -514,9 +256,6 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T>, KeyedResource
     } else {
       await rm(dir, { recursive: true, force: true });
     }
-    // Re-scan next op: after deleting a legacy scope's files the subtree may now
-    // be fresh (empty scaffolding doesn't count as data).
-    this.layoutPromise = undefined;
   }
 }
 
@@ -532,16 +271,3 @@ export function createFilesystemResourceStore<T>(
   return new FilesystemResourceStore<T>(options);
 }
 
-/**
- * Same store, widened to expose {@link KeyedResourceStoreLayoutOps}.
- *
- * Used by the filesystem `ResourceStateStore`, which layers versioning and an
- * enumerate-and-mark `deleteAll` over this factory and needs to ask about the
- * layout marker to do it. `ContentStore` keeps the narrow factory above, so
- * its surface is unchanged by the state store's divergence.
- */
-export function createFilesystemResourceStoreWithLayoutOps<T>(
-  options: FilesystemResourceStoreOptions<T>
-): KeyedResourceStore<T> & KeyedResourceStoreLayoutOps {
-  return new FilesystemResourceStore<T>(options);
-}

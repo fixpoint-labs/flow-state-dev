@@ -16,6 +16,7 @@ import type { Browser, Page } from "playwright";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
 import { REPO_ROOT } from "../../lib/index.mts";
+import { pickShift } from "../../lib/shift-manager.mts";
 import { findThemeValues, themeValues } from "../../../labs/design-system/test/theme.ts";
 import {
   SHIFT_MANAGER,
@@ -214,16 +215,22 @@ export async function walkSurfaces(
   );
   if (!same(streams, store.mailboxes.map((c) => c.id))) reach(`PROJECTS lists ${diff(store.mailboxes.map((c) => c.id), streams)}`);
 
-  // The Day / Night switch: there, and each half marks itself when clicked.
-  if (!(await visible(page, "shift-switch", 3_000))) reach("the Day / Night switch is not in the sidebar");
+  // The theme mark, which replaced v2's Day / Night switch (36bed1297 / #2825): there, and
+  // clicked as a person cycles it, it reaches night and day, the page taking each, then the
+  // theme it started on.
+  if (!(await visible(page, "theme-mark", 3_000))) reach("the theme mark is not in the sidebar");
   else {
-    const day = (await page.getByTestId("shift-day").getAttribute("aria-pressed")) === "true";
-    const other = day ? "shift-night" : "shift-day";
-    const back = day ? "shift-day" : "shift-night";
-    await page.getByTestId(other).click();
-    if ((await page.getByTestId(other).getAttribute("aria-pressed")) !== "true") reach(`the switch does not mark ${other} once clicked`);
-    await page.getByTestId(back).click();
-    if ((await page.getByTestId(back).getAttribute("aria-pressed")) !== "true") reach(`the switch does not mark ${back} once clicked back`);
+    const start = (await page.getByTestId("theme-mark").getAttribute("data-theme")) as "day" | "evening" | "night";
+    for (const shift of ["night", "day", start] as const) {
+      try {
+        await pickShift(page, shift);
+      } catch (error) {
+        reach(String((error as Error).message));
+        break;
+      }
+      const shown = await page.evaluate(() => document.documentElement.getAttribute("data-theme"));
+      if (shown !== shift) reach(`the theme mark reads ${shift}, and the page is in ${shown}`);
+    }
   }
 
   // The project level: No project, then each of the store's projects, in four
@@ -369,7 +376,7 @@ async function inboxJourney(page: Page, api: LabApi, store: Store, tree: Tree, s
   // the ask's session has one as its parent, otherwise every mailbox the store lists the seat in.
   const session = await api.get(`/sessions/${encodeURIComponent(ask.sessionId)}`);
   const parent = (session.session ?? session).parentSessionId as string | null | undefined;
-  const memberOf = store.mailboxes.filter((c) => c.members.includes(ask.seat)).map((c) => c.id);
+  const memberOf = store.mailboxes.filter((c) => ask.seat !== null && c.members.includes(ask.seat)).map((c) => c.id);
   const streams = parent != null && store.mailboxes.some((c) => c.id === parent) ? [parent] : memberOf;
   const workstream = streams[0];
   await page.getByTestId("nav-inbox").click();
@@ -773,7 +780,7 @@ export async function legC(ctx: LegCtx): Promise<void> {
         await page.locator(`[data-testid=inbox-item][data-suspension-id="${ask.suspensionId}"]`).click();
         await page.locator("[data-testid=inbox-detail] [data-testid=ask-card]").waitFor();
         await sweep(page, { ask: `[data-testid=inbox-detail] ${SWEPT.ask}` }, tally);
-        const workstream = tree.mailboxes.find((c) => c.members.includes(ask.seat))!.id;
+        const workstream = tree.mailboxes.find((c) => ask.seat !== null && c.members.includes(ask.seat))!.id;
         await page.getByTestId(`nav-workstream-${workstream}`).click();
         await page.locator("[data-testid=feed-ask] [data-testid=ask-card]").waitFor().catch(() => undefined);
         await sweep(page, { ask: `[data-testid=feed-ask] ${SWEPT.ask}` }, tally);

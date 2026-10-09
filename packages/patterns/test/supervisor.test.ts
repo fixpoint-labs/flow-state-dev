@@ -8,20 +8,15 @@
  *
  * Adds per-task review tests covering: approve, reject-then-retry,
  * exhaust-retries → terminal error labelled `failed-review`, custom
- * rubric forwarding, reviewer service error path, and
- * `legacyWorkerAdapter` round-trip.
+ * rubric forwarding, and reviewer service error path.
  */
 import { describe, expect, it } from "vitest";
-import { testBlock, runForTest } from "@flow-state-dev/testing";
+import { testBlock } from "@flow-state-dev/testing";
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   supervisor,
   reviewerVerdictSchema,
-  executableTaskSchema,
-  legacyWorkerAdapter,
-  type ExecutableTask,
   type ReviewerInput,
   type ReviewerVerdict,
 } from "../src/supervisor";
@@ -676,100 +671,5 @@ describe("supervisor per-task context (FIX-827)", () => {
 
     expect(result.error).toBeNull();
     expect(seenContext).toBe("support text");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Legacy worker adapter
-// ---------------------------------------------------------------------------
-
-describe("legacyWorkerAdapter", () => {
-  it("passes through workers that don't declare executableTaskSchema", () => {
-    const w = handler({
-      name: "modern-w",
-      inputSchema: z.object({ goal: z.string() }),
-      outputSchema: z.string(),
-      execute: () => "ok",
-    });
-    const adapted = legacyWorkerAdapter(w);
-    expect(adapted).toBe(w);
-  });
-
-  it("wraps workers declaring executableTaskSchema and round-trips inputs", async () => {
-    const seen: Array<{ id: string; goal: string; context?: string; feedback?: string }> = [];
-    const legacyWorker = handler({
-      name: "legacy-w",
-      inputSchema: executableTaskSchema,
-      outputSchema: z.object({ ok: z.boolean() }),
-      execute: (input) => {
-        seen.push(input);
-        return { ok: true };
-      },
-    });
-
-    const planner = makeDeterministicPlanner("lw-planner", [
-      { id: "t1", goal: "Legacy task" },
-    ]);
-    const reviewer = makeApprovingReviewer("lw-reviewer");
-    const synth = makeDeterministicSynthesizer("lw-synth");
-
-    const sup = supervisor({
-      name: "legacy-roundtrip",
-      worker: legacyWorker,
-      planner,
-      reviewer,
-      synthesizer: synth,
-    });
-
-    const result = await testBlock(sup, { input: { goal: "Legacy round-trip" } });
-
-    expect(result.error).toBeNull();
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.id).toBe("t1");
-    expect(seen[0]?.goal).toBe("Legacy task");
-  });
-
-  it("maps TaskWorkerInput.context → ExecutableTask.context (FIX-827)", async () => {
-    const seen: ExecutableTask[] = [];
-    const legacyWorker = handler({
-      name: "lw-ctx",
-      inputSchema: executableTaskSchema,
-      outputSchema: z.null(),
-      execute: (input) => {
-        seen.push(input);
-        return null;
-      },
-    });
-    const adapted = legacyWorkerAdapter(legacyWorker);
-
-    await runForTest(
-      adapted,
-      { taskId: "t1", goal: "g", context: "first-class support", attempts: 1 } as any,
-      {} as BlockContext,
-    );
-
-    expect(seen[0]?.context).toBe("first-class support");
-  });
-
-  it("falls back to input-as-context when context is absent (transitional)", async () => {
-    const seen: ExecutableTask[] = [];
-    const legacyWorker = handler({
-      name: "lw-ctx-fallback",
-      inputSchema: executableTaskSchema,
-      outputSchema: z.null(),
-      execute: (input) => {
-        seen.push(input);
-        return null;
-      },
-    });
-    const adapted = legacyWorkerAdapter(legacyWorker);
-
-    await runForTest(
-      adapted,
-      { taskId: "t1", goal: "g", input: "legacy context", attempts: 1 } as any,
-      {} as BlockContext,
-    );
-
-    expect(seen[0]?.context).toBe("legacy context");
   });
 });

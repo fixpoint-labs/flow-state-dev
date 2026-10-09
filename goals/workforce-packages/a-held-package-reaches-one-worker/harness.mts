@@ -6,9 +6,11 @@
  * directory, not the subject.
  *
  * Drives what a team adopting packages would do: read the tree with the real
- * loader, import the module `fsdev gen` wrote from it, hire every seat onto the
- * built-in agent kind with the generated `packageBlocks`, and ask each seat the
- * same question over the real HTTP route.
+ * loader, import the module `fsdev gen` wrote from it, build the installation
+ * over every seat with the generated `packageBlocks`, register the copies
+ * `hireWorkforce` returns (every seat runs on the one built-in `agent` copy),
+ * and ask each seat the same question over the real HTTP route, in a session
+ * on that copy that names it.
  *
  * OBSERVES ONLY. Every assertion lives in run.mts; this file reports what
  * happened on one `__GOAL__` line. The tool calls are observed as a real side
@@ -24,7 +26,12 @@
 import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import { defineAgentWorkerFlow, hireWorkforce } from "@flow-state-dev/workforce";
+import {
+  WORKER_ID_STATE_KEY,
+  createWorkerInstallation,
+  hireWorkforce,
+  inventorySeats,
+} from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
 const MODEL = process.env.GOAL_MODEL ?? "vercel/openai/gpt-5.4-mini";
@@ -107,23 +114,42 @@ async function main(): Promise<void> {
     Object.entries(generated.packageBlocks).map(([address, blocks]) => [address, Object.keys(blocks)]),
   );
 
-  const agent = defineAgentWorkerFlow();
-  const seats = hireWorkforce(loaded.workers, {
-    workerFlows: { agent },
+  // No worker flow is given, so every seat runs on the built-in `agent`, bound
+  // to this installation.
+  const installation = createWorkerInstallation({
+    standardWorkers: loaded.workers,
     packageBlocks: generated.packageBlocks,
   });
+  const copies = hireWorkforce(installation);
+  // Each seat, and the flow it runs on.
+  const seats = inventorySeats(installation);
   out.seatIds = seats.map((s) => s.id);
 
   const flowState = createFlowState({
-    flows: Object.fromEntries(seats.map((seat) => [seat.id, seat])),
+    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     stores: { dev: { primary: inMemoryStores() } },
     modelResolver,
   } as never);
   const router = await flowState.getRouter();
   const stores = (await flowState.getRuntime()).stores;
 
-  async function ask(address: string, sessionId: string): Promise<string> {
-    const path = [address, sessionId, "actions", "run"];
+  async function ask(seat: { id: string; kind: string }, sessionId: string): Promise<string> {
+    const address = seat.id;
+    // A seat has no flow address of its own: it answers in a session of the
+    // flow it runs on, created naming it.
+    const sessionPath = [seat.kind, "sessions"];
+    const opened = await router.POST(
+      new Request(`http://goal/api/flows/${sessionPath.join("/")}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: USER_ID, sessionId, state: { [WORKER_ID_STATE_KEY]: seat.id } }),
+      }),
+      { params: { path: sessionPath } } as never,
+    );
+    if (opened.status !== 201) {
+      throw new Error(`${address}: a session on "${seat.kind}" naming it answered ${opened.status}: ${await opened.text()}`);
+    }
+    const path = [seat.kind, sessionId, "actions", "run"];
     const res = await router.POST(
       new Request(`http://goal/api/flows/${path.join("/")}`, {
         method: "POST",
@@ -161,7 +187,7 @@ async function main(): Promise<void> {
     const turns: Record<string, { reply: string; calls: number }> = {};
     for (const seat of seats) {
       counter.__goalStampCalls = 0;
-      const reply = await ask(seat.id, `s_${attempt}_${seat.id.replace(/\W/g, "_")}`);
+      const reply = await ask(seat, `s_${attempt}_${seat.id.replace(/\W/g, "_")}`);
       turns[seat.id] = { reply, calls: counter.__goalStampCalls ?? 0 };
     }
     attempts.push(turns);

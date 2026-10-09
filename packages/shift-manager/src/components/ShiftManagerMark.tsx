@@ -54,7 +54,7 @@ export function ShiftManagerMark({ look }: { look: ThemeLook }) {
       data-theme={theme}
       className="flex shrink-0 cursor-pointer py-0.5"
     >
-      <svg viewBox="28 -2 94 88" className="block h-auto w-[42px] overflow-visible" aria-hidden>
+      <svg viewBox="28 -2 94 88" fill="none" className="block h-auto w-[42px] overflow-visible" aria-hidden>
         <path d="M31 24 Q75 -4 119 24" fill="none" strokeWidth={2} strokeDasharray="3 4" className="stroke-muted-foreground" />
         <g fill="none" strokeWidth={2.4} strokeDasharray="14 4 3 4 3 4" className="stroke-muted-foreground">
           {PETALS.map((d, i) => (

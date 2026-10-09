@@ -141,6 +141,8 @@ const lab = await openLab({
   ask: ASK_FEATURE,
   devtool: true,
   projects: DEFAULT_PROJECTS,
+  // The shift coordinator records each conversation into its memory only when asked.
+  memoryCapture: process.env.DEVTEAM_MEMORY_CAPTURE === "1",
 });
 
 export default lab.state;

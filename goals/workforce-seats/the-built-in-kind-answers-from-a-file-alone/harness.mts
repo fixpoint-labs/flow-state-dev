@@ -6,9 +6,10 @@
  * kitchen-sink; it is the working directory, not the subject.
  *
  * Drives the path a team adopting the framework would: read worker Markdown
- * files from disk, hire them with NO `kinds` argument so only the built-in
- * `agent` kind can answer, register the seats, and ask each one a question over
- * the real HTTP route.
+ * files from disk, build the installation over them with NO worker flows so
+ * only the built-in `agent` flow can answer, register the copies `hireWorkforce`
+ * returns, and ask each worker a question over the real HTTP route, in a
+ * session on the one `agent` copy that names it.
  *
  * OBSERVES ONLY — every assertion lives in run.mts. This file must not decide
  * whether anything passed; it reports what happened on one `__GOAL__` line.
@@ -30,7 +31,13 @@
 import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import { hireWorkforce } from "@flow-state-dev/workforce";
+import {
+  AGENT_KIND,
+  WORKER_ID_STATE_KEY,
+  createWorkerInstallation,
+  hireWorkforce,
+  inventorySeats,
+} from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
 const MODEL = process.env.GOAL_MODEL ?? "vercel/openai/gpt-5.4-mini";
@@ -124,25 +131,56 @@ async function main(): Promise<void> {
   out.rosterIds = workers.map((w) => w.id);
   out.rosterBodies = Object.fromEntries(workers.map((w) => [w.id, w.body]));
 
-  // THE call under test: no `kinds` argument, so only the built-in can answer.
-  const seats = hireWorkforce(workers);
-  out.seatIds = seats.map((s) => s.id);
+  // THE calls under test: an installation over the files' workers that names
+  // no worker flow, so only the built-in `agent` can answer, and the copies it
+  // registers.
+  const installation = createWorkerInstallation({ standardWorkers: workers });
+  const copies = hireWorkforce(installation);
+  // Each worker, and the flow it runs on.
+  const seats = inventorySeats(installation).map((seat) => ({ id: seat.id, kind: seat.kind }));
+  out.seats = seats;
 
   // ---- register and ask, over the real route ------------------------------
   // `createFlowState` is the path a real app uses: it builds the flow registry
   // AND registers each flow's declared resources (the built-in kind declares a
   // skills collection), then resolves the same HTTP router.
   const flowState = createFlowState({
-    flows: Object.fromEntries(seats.map((seat) => [seat.id, seat])),
+    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     stores: { dev: { primary: inMemoryStores() } },
     modelResolver,
   } as never);
   const router = await flowState.getRouter();
   const stores = (await flowState.getRuntime()).stores;
-  out.registered = seats.map((s) => s.id);
+  out.registered = copies.map((copy) => copy.id);
 
-  async function ask(address: string, sessionId: string): Promise<string> {
-    const path = [address, sessionId, "actions", "run"];
+  /** Create a session on `flow` naming `worker`, as an app opens one: the route's status and body. */
+  async function openSession(
+    on: { POST(request: Request, context: never): Promise<Response> },
+    flow: string,
+    worker: string,
+    sessionId: string,
+  ): Promise<{ status: number; text: string }> {
+    const path = [flow, "sessions"];
+    const res = await on.POST(
+      new Request(`http://goal/api/flows/${path.join("/")}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: USER_ID, sessionId, state: { [WORKER_ID_STATE_KEY]: worker } }),
+      }),
+      { params: { path } } as never,
+    );
+    return { status: res.status, text: await res.text() };
+  }
+
+  async function ask(seat: { id: string; kind: string }, sessionId: string): Promise<string> {
+    // A worker has no flow address of its own: it answers in a session of the
+    // flow it runs on, created naming it.
+    const opened = await openSession(router as never, seat.kind, seat.id, sessionId);
+    if (opened.status !== 201) {
+      throw new Error(`${seat.id}: a session on "${seat.kind}" naming it answered ${opened.status}: ${opened.text}`);
+    }
+    const address = seat.id;
+    const path = [seat.kind, sessionId, "actions", "run"];
     const res = await router.POST(
       new Request(`http://goal/api/flows/${path.join("/")}`, {
         method: "POST",
@@ -195,7 +233,7 @@ async function main(): Promise<void> {
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
     const replies: Record<string, string> = {};
     for (const seat of seats) {
-      replies[seat.id] = await ask(seat.id, `s_${attempt}_${seat.id.replace(/\W/g, "_")}`);
+      replies[seat.id] = await ask(seat, `s_${attempt}_${seat.id.replace(/\W/g, "_")}`);
     }
     attempts.push(replies);
     if (everySeatOnItsOwnToken(replies)) break;
@@ -209,41 +247,31 @@ async function main(): Promise<void> {
 
   let threw = false;
   let refusal = "";
-  let hiredSeats: Array<{ id: string }> = [];
-  let returned: string[] | null = null;
+  let returned: Array<{ id: string }> = [];
   try {
-    hiredSeats =
-      CONTROL === "partial-hire"
-        ? // The failure mode the leg exists to catch: admit the good record and
-          // report the bad one, instead of refusing the whole call.
-          hireWorkforce(mixedRecords.filter((w) => w.id === MIXED_VALID_ID))
-        : hireWorkforce(mixedRecords);
-    returned = hiredSeats.map((s) => s.id);
+    // The failure mode the leg exists to catch: admit the good record and
+    // report the bad one, instead of refusing the whole call.
+    const admitted = CONTROL === "partial-hire" ? mixedRecords.filter((w) => w.id === MIXED_VALID_ID) : mixedRecords;
+    const mixedInstallation = createWorkerInstallation({ standardWorkers: admitted });
+    returned = hireWorkforce(mixedInstallation);
   } catch (error) {
     threw = true;
     refusal = error instanceof Error ? error.message : String(error);
   }
-  out.refusal = { threw, message: refusal, returnedSeatIds: returned };
+  out.refusal = { threw, message: refusal, returnedCopyIds: threw ? null : returned.map((copy) => copy.id) };
 
-  // A host built from exactly what came back. Meaningful only because the
-  // roster is mixed: with a valid record in play, a seat reaching the registry
+  // A host built from exactly what came back, asked for a session with the
+  // valid worker on the built-in flow it runs on. Meaningful only because the
+  // roster is mixed: with a valid record in play, a copy reaching the registry
   // is a real failure mode rather than an impossibility.
   {
     const afterState = createFlowState({
-      flows: Object.fromEntries(hiredSeats.map((seat) => [seat.id, seat])),
+      flows: Object.fromEntries(returned.map((copy) => [copy.id, copy])),
       stores: { dev: { primary: inMemoryStores() } },
       modelResolver,
     } as never);
     const afterRouter = await afterState.getRouter();
-    const path = [MIXED_VALID_ID, "s_after_refusal", "actions", "run"];
-    const res = await afterRouter.POST(
-      new Request(`http://goal/api/flows/${path.join("/")}`, {
-        method: "POST",
-        body: JSON.stringify({ userId: USER_ID, input: { message: QUESTION } }),
-      }),
-      { params: { path } } as never,
-    );
-    out.validWorkerStatusAfterRefusal = res.status;
+    out.validWorkerStatusAfterRefusal = (await openSession(afterRouter as never, AGENT_KIND, MIXED_VALID_ID, "s_after_refusal")).status;
   }
 
   out.ok = true;

@@ -1445,6 +1445,9 @@ importers:
       '@flow-state-dev/harness-manager':
         specifier: workspace:*
         version: link:../harness-manager
+      '@flow-state-dev/memory':
+        specifier: workspace:*
+        version: link:../memory
       '@flow-state-dev/node':
         specifier: workspace:*
         version: link:../node

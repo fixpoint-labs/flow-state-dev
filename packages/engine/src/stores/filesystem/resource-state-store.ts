@@ -23,21 +23,8 @@
  * atomically or not at all. That is the crash-atomicity requirement, closed by
  * construction rather than by a protocol layered on top.
  *
- * ## Telling a legacy leaf from a versioned one
- *
- * A leaf written before versioning is the caller's `JsonObject` verbatim, so
- * the legacy test must not be "does this object have a `version` key" — the
- * object is user-controlled, and a state that happens to carry `version` or
- * `lifecycle` would be misread as store metadata (a `{lifecycle:"deleted"}`
- * field would hide a live row). It must read a fact the store owns.
- *
- * It does: the **root JSON type**. A stored state is a `JsonObject`, which is
- * an object by contract and can never be an array, so an array root is
- * unambiguously this store's envelope and an object root is unambiguously a
- * legacy value. The leading tag makes the intent legible on disk and guards
- * against a hand-edited file. No user object can forge either. A legacy leaf
- * therefore reads as **live at version 1**, and round-trips byte-identically
- * until something writes it.
+ * The leading tag makes the intent legible on disk and guards against a
+ * hand-edited file.
  *
  * ## Guarantee
  *
@@ -67,7 +54,7 @@ import {
   toStoredState
 } from "../resource-state-predicate";
 import { createKeyedAsyncGate } from "../../utils/keyed-async-gate";
-import { createFilesystemResourceStoreWithLayoutOps } from "./filesystem-resource-store";
+import { createFilesystemResourceStore } from "./filesystem-resource-store";
 
 /** Tag in slot 0 of a versioned leaf. Bumped only if the encoding changes. */
 const ENVELOPE_TAG = "fsdev.resource-state/1";
@@ -79,29 +66,22 @@ type ResourceStateLeaf = {
   lifecycle: "live" | "deleted";
 };
 
-/**
- * Encode a leaf as its single on-disk record. The array root is what makes a
- * versioned leaf distinguishable from a legacy `JsonObject` one.
- */
+/** Encode a leaf as its single on-disk record. */
 function serializeLeaf(leaf: ResourceStateLeaf): string {
   return JSON.stringify([ENVELOPE_TAG, leaf.version, leaf.lifecycle, leaf.state]);
 }
 
-/**
- * Decode an on-disk leaf. An array root carrying the tag is a versioned
- * record; anything else is a pre-versioning value and reads as live at
- * version 1 — never as absent (BP-030).
- */
+/** Decode an on-disk leaf. Anything but a tagged envelope is refused. */
 function deserializeLeaf(raw: string): ResourceStateLeaf {
   const parsed: unknown = JSON.parse(raw);
-  if (Array.isArray(parsed) && parsed[0] === ENVELOPE_TAG) {
-    return {
-      version: parsed[1] as number,
-      lifecycle: parsed[2] as "live" | "deleted",
-      state: parsed[3] as JsonObject
-    };
+  if (!Array.isArray(parsed) || parsed[0] !== ENVELOPE_TAG) {
+    throw new Error(`Resource state leaf is not a "${ENVELOPE_TAG}" record`);
   }
-  return { state: parsed as JsonObject, version: 1, lifecycle: "live" };
+  return {
+    version: parsed[1] as number,
+    lifecycle: parsed[2] as "live" | "deleted",
+    state: parsed[3] as JsonObject
+  };
 }
 
 /**
@@ -109,7 +89,7 @@ function deserializeLeaf(raw: string): ResourceStateLeaf {
  * `rootDir/state`.
  */
 export function createFilesystemResourceStateStore(rootDir: string): ResourceStateStore {
-  const leaves = createFilesystemResourceStoreWithLayoutOps<ResourceStateLeaf>({
+  const leaves = createFilesystemResourceStore<ResourceStateLeaf>({
     rootDir,
     subdir: "state",
     ext: ".json",
@@ -175,11 +155,6 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
       // adapter commit, and refuse, exactly what the others do.
       const snapshot = toStoredState(state);
       return gate.runExclusive(lockKey(scopeType, scopeId, resourceKey), async () => {
-        // Guard first: a write that conflicts never reaches the factory's own
-        // mutator, so the legacy re-scan has to happen here or a conflicting
-        // write against an uninterpretable subtree would quietly succeed at
-        // reporting a conflict instead of refusing.
-        await leaves.assertWritableLayout();
         const leaf = await leaves.get(scopeType, scopeId, resourceKey);
         const conflict = checkWriteVersion(leaf, expectedVersion);
         if (conflict !== undefined) return conflict;
@@ -205,10 +180,6 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
       // `expectedVersion` is refused for every key, live or not.
       assertDeleteExpectedVersion(expectedVersion);
       return gate.runExclusive(lockKey(scopeType, scopeId, resourceKey), async () => {
-        // Same reason as `set`, and sharper: a delete of an absent key returns
-        // without writing anything, so without this guard the destructive path
-        // would stop re-scanning a subtree this build cannot interpret.
-        await leaves.assertWritableLayout();
         const leaf = await leaves.get(scopeType, scopeId, resourceKey);
         // Nothing live to remove: idempotent, and no tombstone is minted for a
         // key that never existed — there is no observer to fence.
@@ -244,16 +215,6 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
       // A scope purge must retain every key's version — that retention is what
       // stops a straggler from the previous generation matching a row in the
       // next one — so this enumerates and marks instead of removing the tree.
-      //
-      // The one exception is a subtree with no valid layout marker: it either
-      // predates the nested layout (its keys are not enumerable, and having
-      // never been versioned it has no version to retain) or is empty. The
-      // outright removal `deleteAll` has always offered stays available there,
-      // so an upgraded install can still tear down old scopes.
-      if (!(await leaves.hasValidLayoutMarker())) {
-        await leaves.purgeScopeDirectory(scopeType, scopeId);
-        return;
-      }
 
       const all = await leaves.getAll(scopeType, scopeId);
       for (const [resourceKey, leaf] of Object.entries(all)) {
@@ -277,14 +238,6 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
       // The inverse of `deleteAll` above, and the same enumerate-and-act shape
       // with the lifecycle test flipped: it marks the live ones, this removes
       // the dead ones.
-      //
-      // An unmarked subtree has nothing to do here. It either predates the
-      // nested layout — never versioned, so it holds no tombstone — or is
-      // empty. `deleteAll` removes the directory in that case because it is
-      // tearing the scope down; this one is preparing a scope to be used, so
-      // removing the tree would be destroying live legacy rows, not reclaiming
-      // dead ones.
-      if (!(await leaves.hasValidLayoutMarker())) return;
 
       const all = await leaves.getAll(scopeType, scopeId);
       for (const [resourceKey, leaf] of Object.entries(all)) {

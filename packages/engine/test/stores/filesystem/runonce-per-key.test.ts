@@ -3,16 +3,14 @@
  *
  * The runOnce result store now writes one file per (requestId, key) pair
  * instead of a single read-merge-write map file, eliminating write
- * amplification across keys. Tests verify round-trip, atomic overwrite,
- * cross-key isolation under concurrency, and lazy read-only fallback to a
- * legacy single-map file written by an older version.
+ * amplification across keys. Tests verify round-trip, atomic overwrite, and
+ * cross-key isolation under concurrency.
  */
 import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFilesystemRequestStore } from "../../../src/stores/filesystem/request-store";
-import { toRecordPath } from "../../../src/stores/filesystem/shared";
 import { makeRequestStreamEvent } from "../../../src/testing";
 
 let rootDir: string;
@@ -65,47 +63,6 @@ describe("FilesystemRequestStore — runOnce per-key files", () => {
     expect(await store.getRunOnceResult("r1", "c")).toEqual({ found: true, value: 3 });
   });
 
-  it("falls back to a legacy single-map file when no per-key file exists", async () => {
-    // Simulate a file written by the pre-upgrade single-map implementation.
-    const legacyPath = toRecordPath(rootDir, "r1").replace(
-      /\.json$/,
-      ".runonce.json"
-    );
-    await writeFile(
-      legacyPath,
-      JSON.stringify({ old: "value", other: 42 }),
-      "utf8"
-    );
-
-    const store = createFilesystemRequestStore({ rootDir });
-    expect(await store.getRunOnceResult("r1", "old")).toEqual({
-      found: true,
-      value: "value"
-    });
-    expect(await store.getRunOnceResult("r1", "other")).toEqual({
-      found: true,
-      value: 42
-    });
-    expect(await store.getRunOnceResult("r1", "absent")).toEqual({
-      found: false
-    });
-  });
-
-  it("prefers a per-key file over the legacy map", async () => {
-    const legacyPath = toRecordPath(rootDir, "r1").replace(
-      /\.json$/,
-      ".runonce.json"
-    );
-    await writeFile(legacyPath, JSON.stringify({ k1: "legacy" }), "utf8");
-
-    const store = createFilesystemRequestStore({ rootDir });
-    await store.setRunOnceResult("r1", "k1", "fresh");
-    expect(await store.getRunOnceResult("r1", "k1")).toEqual({
-      found: true,
-      value: "fresh"
-    });
-  });
-
   it("writes one file per key — writing one key does not rewrite another", async () => {
     // The write-amplification fix: each key is its own file, so persisting
     // key "b" must not touch key "a"'s file. We assert distinct per-key files
@@ -116,10 +73,7 @@ describe("FilesystemRequestStore — runOnce per-key files", () => {
     const filesAfterA = (await readdir(rootDir)).filter((f) =>
       f.endsWith(".runonce")
     );
-    // A per-key file carries the key in its name, distinguishing it from the
-    // legacy single `<id>.runonce.json` map.
     expect(filesAfterA.length).toBe(1);
-    expect(filesAfterA[0]).not.toMatch(/^[^.]*\.runonce\.json$/);
 
     const aPath = path.join(rootDir, filesAfterA[0]);
     const aStatBefore = await stat(aPath);
@@ -171,107 +125,6 @@ describe("FilesystemRequestStore — runOnce per-key files", () => {
   });
 });
 
-describe("FilesystemRequestStore — per-key files from the older layout", () => {
-  // Older versions named per-key files `<id>.runonce.<key>.json`. Results a
-  // request stored before an upgrade must still be found after it, and still
-  // go when the request is deleted.
-  const writeLegacyKeyFile = (name: string, value: unknown) =>
-    writeFile(path.join(rootDir, name), JSON.stringify(value), "utf8");
-
-  it("reads a result stored in the older per-key layout", async () => {
-    await writeLegacyKeyFile("req_old.runonce.step.json", { owner: "old" });
-    const store = createFilesystemRequestStore({ rootDir });
-
-    expect(await store.getRunOnceResult("req_old", "step")).toEqual({
-      found: true,
-      value: { owner: "old" }
-    });
-  });
-
-  it("delete removes the request's older per-key files", async () => {
-    await writeLegacyKeyFile("req_old.runonce.step.json", { owner: "old" });
-    const store = createFilesystemRequestStore({ rootDir });
-
-    await store.delete("req_old");
-
-    expect(await readdir(rootDir)).toEqual([]);
-    expect(await store.getRunOnceResult("req_old", "step")).toEqual({ found: false });
-  });
-
-  it("delete quarantines an older per-key file another id could have written, so the id's next owner cannot read it", async () => {
-    // `foo.runonce.bar.runonce.step.json` is ("foo", "bar.runonce.step") or
-    // ("foo.runonce.bar", "step"). Deleting "foo" frees the id; left readable,
-    // the next request to take "foo" would get this result as its own, and it
-    // may be the previous "foo"'s. Removed, it may be a live
-    // "foo.runonce.bar"'s. So it is moved out of every read path: the worst
-    // case is that "foo.runonce.bar" runs that step again, never that a result
-    // reaches a request it does not belong to.
-    await writeLegacyKeyFile("foo.runonce.bar.runonce.step.json", { owner: "previous foo" });
-    const store = createFilesystemRequestStore({ rootDir });
-
-    await store.delete("foo");
-
-    expect(await store.getRunOnceResult("foo", "bar.runonce.step")).toEqual({ found: false });
-    expect(await store.getRunOnceResult("foo.runonce.bar", "step")).toEqual({ found: false });
-    expect(await readdir(rootDir)).toEqual(["foo.runonce.bar.runonce.step.json.quarantined"]);
-  });
-
-  it("delete of the longer id quarantines the same ambiguous file too", async () => {
-    await writeLegacyKeyFile("foo.runonce.bar.runonce.step.json", { owner: "foo?" });
-    const store = createFilesystemRequestStore({ rootDir });
-
-    await store.delete("foo.runonce.bar");
-
-    expect(await store.getRunOnceResult("foo.runonce.bar", "step")).toEqual({ found: false });
-    expect(await store.getRunOnceResult("foo", "bar.runonce.step")).toEqual({ found: false });
-  });
-
-  it("never hands a result shaped like a record to the id's next owner", async () => {
-    // A stored result is arbitrary JSON, so ("foo", "bar") can hold one that
-    // reads back exactly like the record of request "foo.runonce.bar" (whose
-    // record file has the same name). Nothing tells the two apart, so delete
-    // leaves the file (it may be that request's record) and the read path
-    // refuses to serve it as a result, to anyone.
-    await writeLegacyKeyFile("foo.runonce.bar.json", {
-      id: "foo.runonce.bar",
-      secret: "previous foo's result"
-    });
-    const store = createFilesystemRequestStore({ rootDir });
-
-    await store.delete("foo");
-
-    // A new request takes the id "foo" and asks for the same key.
-    expect(await store.getRunOnceResult("foo", "bar")).toEqual({ found: false });
-  });
-
-  it("delete leaves another request's record that looks like an older per-key file", async () => {
-    // The record of request "foo.runonce.bar" is `foo.runonce.bar.json`, which
-    // is also the older per-key name for ("foo", "bar").
-    const store = createFilesystemRequestStore({ rootDir });
-    await store.set(
-      "foo.runonce.bar",
-      {
-        id: "foo.runonce.bar",
-        flowKind: "test",
-        actionName: "run",
-        userId: "u1",
-        source: "http",
-        status: "completed",
-        startedAtMs: 1,
-        state: {},
-        version: 0,
-        createdAt: 1,
-        updatedAt: 1
-      },
-      "any"
-    );
-
-    await store.delete("foo");
-
-    expect((await store.get("foo.runonce.bar"))?.id).toBe("foo.runonce.bar");
-  });
-});
-
 // A request's event log and single-map runOnce file are named
 // `<id>.events.json` and `<id>.runonce.json`, which are also the record files
 // of the requests whose ids are `<id>.events` and `<id>.runonce`. Deleting
@@ -291,25 +144,6 @@ describe("FilesystemRequestStore — sidecar names shared with another request's
     updatedAt: 1
   });
 
-  it("delete of foo leaves the record of request foo.runonce", async () => {
-    const store = createFilesystemRequestStore({ rootDir });
-    await store.set("foo", recordFor("foo"), "any");
-    await store.set("foo.runonce", recordFor("foo.runonce"), "any");
-
-    await store.delete("foo");
-
-    expect(await store.get("foo")).toBeUndefined();
-    expect((await store.get("foo.runonce"))?.id).toBe("foo.runonce");
-  });
-
-  it("never reads another request's record as foo's single-map runOnce results", async () => {
-    const store = createFilesystemRequestStore({ rootDir });
-    await store.set("foo.runonce", recordFor("foo.runonce"), "any");
-
-    // A request that takes the id foo asks for a key the record happens to have.
-    expect(await store.getRunOnceResult("foo", "status")).toEqual({ found: false });
-  });
-
   it("delete of foo leaves the record of request foo.events", async () => {
     const store = createFilesystemRequestStore({ rootDir });
     await store.set("foo", recordFor("foo"), "any");
@@ -320,18 +154,6 @@ describe("FilesystemRequestStore — sidecar names shared with another request's
     expect((await store.get("foo.events"))?.id).toBe("foo.events");
   });
 
-  it("still removes foo's own single-map runOnce file", async () => {
-    await writeFile(
-      path.join(rootDir, "foo.runonce.json"),
-      JSON.stringify({ step: "foo's result" }),
-      "utf8"
-    );
-    const store = createFilesystemRequestStore({ rootDir });
-
-    await store.delete("foo");
-
-    expect(await readdir(rootDir)).toEqual([]);
-  });
 });
 
 // The record is what makes an id taken. While any of its children remain,

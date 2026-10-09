@@ -95,19 +95,6 @@ describe("selectModel", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Legacy `prefer` migration error
-  // ---------------------------------------------------------------------------
-
-  it("legacy `prefer` rule throws migration error at builder time", () => {
-    expect(() =>
-      selectModel("intent/utility", {
-        // @ts-expect-error — legacy field intentionally tested
-        prefer: () => "x",
-      })
-    ).toThrow(/`prefer` rule has been replaced/);
-  });
-
-  // ---------------------------------------------------------------------------
   // Default as string[]
   // ---------------------------------------------------------------------------
 

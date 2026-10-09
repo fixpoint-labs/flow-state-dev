@@ -189,7 +189,9 @@ export interface CoordinatorFlowOptions {
    * built-in `agent` flow (its tool catalog, capabilities, skills and model
    * choices). Judgment is the agent's own turn, so a coordinator worker's
    * `model`, `tools`, `skills` and `capabilities` read the way an `agent`
-   * worker's do, against the same catalog. Omitted, the agent's defaults.
+   * worker's do, against the same catalog. Its `isolateUserState` keys this
+   * flow's user-scoped storage by its copy, as it does the agent flow's.
+   * Omitted, the agent's defaults.
    */
   agent?: Omit<AgentWorkerFlowOptions, "installation" | "taskLists">;
   /**
@@ -1588,6 +1590,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       serverOwned: [...COORDINATOR_SERVER_OWNED, TASK_NOTICES_STATE]
     },
     resources: { ...resources, ...(turn.bound.resources ?? {}), ...conversationBoard.resources },
+    isolateUserState: options.agent?.isolateUserState ?? false,
     actions: {
       // The eight task tools, as actions on this conversation's board:
       // `addTask_tasks` and the rest, checked against its delegates.

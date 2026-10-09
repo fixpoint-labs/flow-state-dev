@@ -78,6 +78,7 @@
     "@flow-state-dev/design-system": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/harness-manager": "workspace:*",
+    "@flow-state-dev/memory": "workspace:*",
     "@flow-state-dev/node": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/react": "workspace:*",

@@ -87,10 +87,10 @@ function legVerdict(id: string, prefix: string[], report: ReturnType<typeof coll
 const NO_THEME: Patch = { file: "src/styles.css", from: THEME_IMPORT, to: "", why: "the design-system import line removed (leg c)" };
 const ACCENT = readShiftManagerTheme().attentionLight;
 const HARDCODED_ACCENT: Patch = {
-  file: "src/components/flow-state/tool.tsx",
-  from: /CheckCircleIcon className="size-4 text-success"/g,
-  to: `CheckCircleIcon className="size-4 text-[${ACCENT}]"`,
-  why: `control hardcoded-accent: Shift Manager's copy of the tool card paints its completed icon with Shift Manager's accent ${ACCENT} as a literal`,
+  file: "src/components/ToolLine.tsx",
+  from: "text-sm text-muted-foreground hover:text-foreground",
+  to: `text-sm text-[${ACCENT}]`, // no hover colour: the sweep clicks the line open, so the pointer rests on it
+  why: `control hardcoded-accent: Shift Manager's quiet tool line paints its label with Shift Manager's accent ${ACCENT} as a literal`,
 };
 const NO_ORG: Patch = {
   file: "src/surfaces/Sidebar.tsx",
@@ -410,7 +410,8 @@ const CHILDREN: Child[] = [
   { id: "P3.2 FIX-1688/1689/1725 it-takes-its-look-from-the-design-system", run: SM("it-takes-its-look-from-the-design-system"), control: "hardcoded-accent", must: /\] neutral .*tool:/, allowed: /\] neutral .*tool:/ },
   { id: "P3.2 FIX-1688/1689/1725 it-takes-its-look-from-the-design-system", run: SM("it-takes-its-look-from-the-design-system"), control: "switch-ignored", must: /\] switch /, allowed: /\] switch / },
   { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session") },
-  { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session"), control: "optimistic-turn", must: /\] delivered:/, allowed: /\] (delivered|stopped|continued|standing|heard):/ },
+  // Inbox's reply to the EM's ask goes through the same send path (FIX-1789's em door leg), so it goes red with delivered.
+  { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session"), control: "optimistic-turn", must: /\] delivered:/, allowed: /\] (delivered|stopped|continued|standing|heard|em door):/ },
   { id: "P3.2 FIX-1690 it-sends-a-turn-into-a-seat-session", run: SM("it-sends-a-turn-into-a-seat-session"), control: "fresh-session", must: /\] continued:/, allowed: /\] continued:/ },
   { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-chief-of-staff", run: SM("it-briefs-and-talks-with-the-chief-of-staff") },
   { id: "P3.2 FIX-1722 it-briefs-and-talks-with-the-chief-of-staff", run: SM("it-briefs-and-talks-with-the-chief-of-staff"), control: "optimistic-reply", must: /\[desk\] talk/, allowed: /\[desk\] talk/ },

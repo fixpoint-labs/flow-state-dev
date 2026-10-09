@@ -16,7 +16,7 @@
  * a writer mid-callback and issue the delete into that window deliberately,
  * rather than firing both and hoping the scheduler produces the race.
  */
-import { mkdtempSync, rmSync, existsSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -116,189 +116,6 @@ describe("FilesystemRequestStore — abort marker is written under the record lo
     expect(readdirSync(rootDir).filter((f) => f.endsWith(".abort"))).toEqual([]);
   });
 
-  /**
-   * Write a record file directly, carrying `abortRequested` INLINE — the shape
-   * a record persisted before the flag moved off `set`'s write surface has.
-   * The store's own `set` strips the field, so this is the only way to produce
-   * one.
-   */
-  function writeLegacyRecord(requestId: string, status: RequestRecord["status"]): void {
-    writeFileSync(
-      path.join(rootDir, `${encodeURIComponent(requestId)}.json`),
-      JSON.stringify({ ...makeRecord(requestId, status), abortRequested: true })
-    );
-  }
-
-  it("an applied clear survives a re-read of a legacy inline record", async () => {
-    const requestId = "req_marker_clear_legacy";
-    writeLegacyRecord(requestId, "in_progress");
-
-    // Record the cancellation, then withdraw it.
-    await store.setFieldsIfStatus(
-      requestId,
-      { abortRequested: true },
-      ["in_progress"],
-      Date.now()
-    );
-    const cleared = await store.setFieldsIfStatus(
-      requestId,
-      { abortRequested: false },
-      ["in_progress"],
-      Date.now()
-    );
-    expect(cleared.applied).toBe(true);
-
-    // Removing the marker is not enough while the record still carries the
-    // flag inline: the next read would treat the inline copy as authoritative
-    // and the withdrawn cancellation would come back.
-    expect(await store.isAbortRequested(requestId)).toBe(false);
-    expect((await store.get(requestId))?.abortRequested).not.toBe(true);
-    // ...and it must stay withdrawn across repeated reads.
-    expect(await store.isAbortRequested(requestId)).toBe(false);
-  });
-
-  it("reading a legacy inline record does not create a marker", async () => {
-    const requestId = "req_marker_read_only";
-    writeLegacyRecord(requestId, "in_progress");
-
-    // The dual-read reports the flag...
-    expect((await store.get(requestId))?.abortRequested).toBe(true);
-
-    // ...but a read must not mutate storage. Migration belongs on the write
-    // path (see the legacy full-write case below), which keeps the locked
-    // read-modify-write off `get` — the O(items) call the marker exists to
-    // keep off the poll in the first place.
-    expect(existsSync(path.join(rootDir, `${encodeURIComponent(requestId)}.abort`))).toBe(false);
-    expect(readdirSync(rootDir).filter((f) => f.endsWith(".abort"))).toEqual([]);
-  });
-
-  it("preserves legacy inline abort intent across a full-record write", async () => {
-    const requestId = "req_legacy_full_write";
-    // Cancelled before the upgrade: the intent is inline on the record and
-    // there is no marker, because markers did not exist when it was written.
-    writeLegacyRecord(requestId, "suspended");
-    expect((await store.get(requestId))?.abortRequested).toBe(true);
-
-    // A normal full-record write — the shape all six full-record writers
-    // perform, none of which knows the flag exists. `set` may not clear stored
-    // intent in either direction; a legacy record is still stored intent.
-    await store.set(requestId, makeRecord(requestId, "in_progress"), "any");
-
-    // Two assertions, and they discriminate different halves. This one only
-    // requires that the intent survive somewhere readable...
-    expect((await store.get(requestId))?.abortRequested).toBe(true);
-    // ...this one requires it to have moved to the marker, which is the half
-    // that matters: the cross-process poll is a bare `stat` and never parses
-    // the record, so intent left inline is intent the poll cannot deliver.
-    expect(await store.isAbortRequested(requestId)).toBe(true);
-  });
-
-  it("preserves legacy inline abort intent across a conditional write of another field", async () => {
-    const requestId = "req_legacy_conditional_other_field";
-    // Cancelled before the upgrade: intent is inline, no marker exists.
-    writeLegacyRecord(requestId, "in_progress");
-    expect((await store.get(requestId))?.abortRequested).toBe(true);
-
-    // A conditional write that never mentions `abortRequested`. The verb is
-    // deliberately general — its field set is a parameter, not an abort-shaped
-    // `markAborted()` — so a caller writing any other field is exactly what it
-    // is for. Such a write skips the marker branch but still strips the inline
-    // copy on the way out, which is the whole loss: nothing moved the intent
-    // to the marker first.
-    const applied = await store.setFieldsIfStatus(
-      requestId,
-      { interruptedAt: Date.now() },
-      ["in_progress"],
-      Date.now()
-    );
-    expect(applied.applied).toBe(true);
-
-    // Same two halves as the full-record case above, and they discriminate
-    // differently. This one only asks that the intent survive somewhere
-    // readable...
-    expect((await store.get(requestId))?.abortRequested).toBe(true);
-    // ...this one asks that it reached the marker, which is the half that
-    // decides whether the cancellation can still be delivered: the
-    // cross-process poll is a bare `stat` and never parses the record.
-    expect(await store.isAbortRequested(requestId)).toBe(true);
-  });
-
-  it("does not lose legacy inline intent to a write that overlaps the migration", async () => {
-    const requestId = "req_legacy_overlap";
-    writeLegacyRecord(requestId, "suspended");
-    expect((await store.get(requestId))?.abortRequested).toBe(true);
-
-    // Park writer A inside its migration, at the marker write. The migration
-    // runs within the same lock hold as the write it belongs to, so this is
-    // the whole window: a second writer can only be ahead of A if it took the
-    // lock first, and then A's own migration would see the record it left.
-    const entered = createGate();
-    const parked = createGate();
-    const seam = store as unknown as {
-      writeAbortMarker: (id: string, requested: boolean) => Promise<void>;
-    };
-    const originalWriteMarker = seam.writeAbortMarker.bind(store);
-    seam.writeAbortMarker = async (id: string, requested: boolean) => {
-      entered.open();
-      await parked.wait;
-      await originalWriteMarker(id, requested);
-    };
-
-    const writeA = store.set(requestId, makeRecord(requestId, "in_progress"), "any");
-    await entered.wait; // A holds the lock, mid-migration
-
-    // B is an ordinary second full-record write — the shape that does the
-    // damage, because it strips the inline flag without knowing the flag
-    // exists. It must queue behind A rather than slip past it.
-    const writeB = store.set(requestId, makeRecord(requestId, "in_progress"), "any");
-    parked.open();
-    await Promise.all([writeA, writeB]);
-
-    // Both writes reported success and no I/O failed — this loss is silent.
-    // The cancellation must still reach the cross-process poll, which consults
-    // the marker and nothing else.
-    expect(await store.isAbortRequested(requestId)).toBe(true);
-    expect((await store.get(requestId))?.abortRequested).toBe(true);
-  });
-
-  it("fails the write loudly rather than stripping intent it could not migrate", async () => {
-    const requestId = "req_legacy_retry";
-    writeLegacyRecord(requestId, "suspended");
-
-    // Fail the migration's marker write exactly once. That write is the
-    // fallible step: the record it migrates from is handed to it by the lock
-    // the write already holds, so there is no separate read to fail.
-    const seam = store as unknown as {
-      writeAbortMarker: (id: string, requested: boolean) => Promise<void>;
-    };
-    const originalWriteMarker = seam.writeAbortMarker.bind(store);
-    let failNextMarker = true;
-    seam.writeAbortMarker = async (id: string, requested: boolean) => {
-      if (failNextMarker && id === requestId) {
-        failNextMarker = false;
-        throw Object.assign(new Error("EIO: simulated marker failure"), {
-          code: "EIO"
-        });
-      }
-      await originalWriteMarker(id, requested);
-    };
-
-    // Fail-closed: the migration runs before the record is replaced, so a
-    // failure leaves the inline copy intact instead of stripping a
-    // cancellation it could not move.
-    await expect(
-      store.set(requestId, makeRecord(requestId, "in_progress"), "any")
-    ).rejects.toThrow("simulated marker failure");
-    expect((await store.get(requestId))?.abortRequested).toBe(true);
-
-    // And the next write must still migrate. A failure that were remembered —
-    // as "checked" or as a cached rejection — would leave the request
-    // permanently unable to move its intent to the marker, where the
-    // cross-process poll is the only reader that matters.
-    await store.set(requestId, makeRecord(requestId, "in_progress"), "any");
-    expect(await store.isAbortRequested(requestId)).toBe(true);
-  });
-
   it("does not resurrect a deleted record when the delete lands mid-callback", async () => {
     const requestId = "req_marker_delete_interleave";
     await store.set(requestId, makeRecord(requestId, "in_progress"), "any");
@@ -343,53 +160,16 @@ describe("FilesystemRequestStore — abort marker is written under the record lo
 
   /**
    * `set` must claim its place in the per-id queue when it is CALLED, not
-   * after an `await`. The legacy migration used to run as its own locked
-   * operation ahead of the write, which released the lock in between — long
-   * enough for a delete issued afterwards to run to completion and for the
-   * trailing write to put the record straight back.
+   * after an `await`. Work that ran as its own locked operation ahead of the
+   * write would release the lock in between — long enough for a delete issued
+   * afterwards to run to completion and for the trailing write to put the
+   * record straight back.
    */
-  it("does not resurrect a record deleted while the legacy migration held the lock", async () => {
-    const requestId = "req_migrate_delete_resurrect";
-    writeLegacyRecord(requestId, "in_progress");
-
-    // Park the migration at its marker write, where it holds the per-id lock.
-    const entered = createGate();
-    const parked = createGate();
-    const seam = store as unknown as {
-      writeAbortMarker: (id: string, requested: boolean) => Promise<void>;
-    };
-    const originalWriteMarker = seam.writeAbortMarker.bind(store);
-    seam.writeAbortMarker = async (id: string, requested: boolean) => {
-      entered.open();
-      await parked.wait;
-      await originalWriteMarker(id, requested);
-    };
-
-    const writeA = store.set(requestId, makeRecord(requestId, "in_progress"), "any");
-    await entered.wait; // A is inside the lock, migrating
-
-    // Issued while A holds the lock, so it queues behind it. The lock is a
-    // FIFO chain, so the order is fixed here rather than raced: migration →
-    // delete → whatever A does next.
-    const deletion = store.delete(requestId);
-    parked.open();
-    await Promise.all([writeA, deletion]);
-
-    // The delete was issued last and reported success, so it is the final
-    // writer. A `set` that only reached for the lock after its migration
-    // released it lands third and recreates the request — a record that no
-    // caller asked to exist, and (since the delete swept the marker) one
-    // whose accepted cancellation is gone with it.
-    expect(await store.get(requestId)).toBeUndefined();
-    expect(await store.isAbortRequested(requestId)).toBe(false);
-    expect(readdirSync(rootDir).filter((f) => f.endsWith(".abort"))).toEqual([]);
-  });
-
   it("lets a delete issued after an ordinary set be the final writer", async () => {
     const requestId = "req_set_then_delete";
     await store.set(requestId, makeRecord(requestId, "in_progress"), "any");
 
-    // No parking and no legacy record: the plainest possible statement of the
+    // No parking: the plainest possible statement of the
     // ordering, and the one every caller relies on. Both calls are issued in
     // program order without awaiting the first, which is how the request
     // executor's terminal write and a cleanup delete actually overlap.

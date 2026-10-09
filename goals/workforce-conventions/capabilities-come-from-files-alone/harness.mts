@@ -32,9 +32,13 @@ import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import {
+  WORKER_ID_STATE_KEY,
+  createWorkerInstallation,
   defineAgentWorkerFlow,
   hireWorkforce,
+  inventorySeats,
   splitResourceModules,
+  workerFlow,
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
@@ -148,22 +152,44 @@ async function main(): Promise<void> {
         )
       : capabilities;
 
-  const agent = defineAgentWorkerFlow({ uses: installed as never });
-  const seats = hireWorkforce(workers, { workerFlows: { agent } });
+  // The kind, carrying the capabilities, built on the installation that runs
+  // both seats on its one copy.
+  const installation = createWorkerInstallation({
+    standardWorkers: workers,
+    workerFlows: { agent: workerFlow((on) => defineAgentWorkerFlow({ installation: on, uses: installed as never })) },
+  });
+  const copies = hireWorkforce(installation);
+  // Each seat, and the flow it runs on.
+  const seats = inventorySeats(installation);
   out.seatIds = seats.map((s) => s.id);
 
   // ---- register and ask, over the real route ------------------------------
   const flowState = createFlowState({
-    flows: Object.fromEntries(seats.map((seat) => [seat.id, seat])),
+    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     stores: { dev: { primary: inMemoryStores() } },
     modelResolver,
   } as never);
   const router = await flowState.getRouter();
   const stores = (await flowState.getRuntime()).stores;
-  out.registered = seats.map((s) => s.id);
+  out.registered = copies.map((copy) => copy.id);
 
-  async function ask(address: string, sessionId: string): Promise<string> {
-    const path = [address, sessionId, "actions", "run"];
+  async function ask(seat: { id: string; kind: string }, sessionId: string): Promise<string> {
+    const address = seat.id;
+    // A seat has no flow address of its own: it answers in a session of the
+    // flow it runs on, created naming it.
+    const sessionPath = [seat.kind, "sessions"];
+    const opened = await router.POST(
+      new Request(`http://goal/api/flows/${sessionPath.join("/")}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: USER_ID, sessionId, state: { [WORKER_ID_STATE_KEY]: seat.id } }),
+      }),
+      { params: { path: sessionPath } } as never,
+    );
+    if (opened.status !== 201) {
+      throw new Error(`${address}: a session on "${seat.kind}" naming it answered ${opened.status}: ${await opened.text()}`);
+    }
+    const path = [seat.kind, sessionId, "actions", "run"];
     const res = await router.POST(
       new Request(`http://goal/api/flows/${path.join("/")}`, {
         method: "POST",
@@ -212,7 +238,7 @@ async function main(): Promise<void> {
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
     const replies: Record<string, string> = {};
     for (const seat of seats) {
-      replies[seat.id] = await ask(seat.id, `s_${attempt}_${seat.id.replace(/\W/g, "_")}`);
+      replies[seat.id] = await ask(seat, `s_${attempt}_${seat.id.replace(/\W/g, "_")}`);
     }
     attempts.push(replies);
     if (eachSeatOnItsOwnFile(replies)) break;
