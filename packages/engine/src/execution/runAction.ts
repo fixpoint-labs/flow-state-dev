@@ -1795,7 +1795,8 @@ async function runActionAttempt<
   // `interrupted`, never `failed`, since we never crossed the point of no return):
   //
   //   1. Resume only: revert the suspension `approved`/`rejected` → `pending` so
-  //      the resume stays re-attemptable (its guard requires `pending`).
+  //      the resume stays re-attemptable (its guard requires `pending`). A
+  //      `stopped` gate is never reverted: a stop is terminal.
   //   2. Both paths: release the continuation lease keyed on this request id —
   //      otherwise it lingers until its 60s TTL and the next resume/continue
   //      attempt 409s even though the request is back to a retryable state.
@@ -1815,7 +1816,11 @@ async function runActionAttempt<
           requestId,
           resumeContextRaw.suspensionId
         );
-        if (suspension !== null) {
+        // A stop is terminal (FIX-1816, BR-16): whoever stopped the turn has
+        // already been told it stopped, so the gate stays `stopped` and the
+        // sweep's re-drive finishes it. Reopening it would let a later answer
+        // resume a stopped turn.
+        if (suspension !== null && suspension.status !== "stopped") {
           await provider.suspend({
             ...suspension,
             status: "pending",

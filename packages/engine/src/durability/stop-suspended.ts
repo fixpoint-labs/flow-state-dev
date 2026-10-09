@@ -175,6 +175,12 @@ export async function redriveResolvedGate(
     return (await abortParked(deps, record)) ? "redriven" : "not-parked";
   }
 
+  // Read without the lease first: the sweep visits every resolved ask, and
+  // almost all of them belong to turns long since finished. The read under the
+  // lease below is the one that decides.
+  const unleased = await deps.stores.request.get(gate.requestId);
+  if (unleased === undefined || !PARKED.includes(unleased.status)) return "not-parked";
+
   const result = await continueUnderLease<RedriveRefusal>(deps, {
     requestId: gate.requestId,
     holder: "redrive",

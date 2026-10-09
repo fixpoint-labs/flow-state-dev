@@ -171,6 +171,12 @@ export function createDurabilitySweeper(
   let timer: ReturnType<typeof setTimeout> | undefined;
   /** When the armed timer fires (epoch ms). */
   let nextAt = Number.POSITIVE_INFINITY;
+  /**
+   * The earliest ask deadline noted while a tick runs. That tick's report may
+   * have been read before the ask parked, so the re-arm takes the earlier of
+   * the two.
+   */
+  let notedDuringTick: number | undefined;
 
   // The next tick is the earlier of the interval and the earliest pending ask
   // deadline, so an ask times out within about a second of its deadline on a
@@ -195,6 +201,7 @@ export function createDurabilitySweeper(
       return;
     }
     inFlight = true;
+    notedDuringTick = undefined;
     let earliestAskDeadline: number | undefined;
     void runTick({
       provider,
@@ -223,19 +230,25 @@ export function createDurabilitySweeper(
       })
       .finally(() => {
         inFlight = false;
-        arm(
-          earliestAskDeadline === undefined
-            ? sweepIntervalMs
-            : earliestAskDeadline - Date.now()
+        const earliest = Math.min(
+          earliestAskDeadline ?? Number.POSITIVE_INFINITY,
+          notedDuringTick ?? Number.POSITIVE_INFINITY
         );
+        notedDuringTick = undefined;
+        arm(earliest === Number.POSITIVE_INFINITY ? sweepIntervalMs : earliest - Date.now());
       });
   };
 
   arm(sweepIntervalMs);
 
   // An ask parked in this process with an earlier deadline than the armed
-  // tick brings the tick forward.
+  // tick brings the tick forward. While a tick runs, the deadline is held for
+  // its re-arm instead, which would otherwise clear the timer armed here.
   const stopListening = onAskDeadline(provider, (deadline) => {
+    if (inFlight) {
+      notedDuringTick = Math.min(notedDuringTick ?? Number.POSITIVE_INFINITY, deadline);
+      return;
+    }
     if (deadline < nextAt) arm(deadline - Date.now());
   });
 
@@ -394,36 +407,65 @@ async function enforceSuspensionExpiry(
  * moved on. It is driven on under its lease with the recorded outcome, never a
  * new one. A live resume holds that lease, so it is never raced.
  *
- * Bounded: one status-filtered listing per resolved status, capped at the
- * batch limit, newest first.
+ * Pages through every resolved gate of each status, newest first, a batch
+ * at a time, so a stranded request older than the newest batch is still
+ * reached. One request is driven at most once a tick; a gate a newer one has
+ * superseded does not count, since the request's latest gate may still be
+ * owed. Bounded by {@link MAX_SCAN_PAGES} pages per status, and by retention:
+ * resolved gates are pruned after `suspensionTerminalMaxAgeMs`.
  */
 async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
   const { provider, stores, logger, continueRequest, batchLimit } = args;
   if (continueRequest === undefined) return;
-  try {
-    const resolved = [
-      ...(await provider.listSuspended({ status: "submitted", limit: batchLimit })).filter(isAskGate),
-      ...(await provider.listSuspended({ status: "stopped", limit: batchLimit }))
-    ];
-    const seen = new Set<string>();
-    for (const gate of resolved) {
-      if (seen.has(gate.requestId)) continue;
-      seen.add(gate.requestId);
-      try {
-        const result = await redriveResolvedGate({ provider, stores, continueRequest }, gate);
-        if (result === "redriven") {
-          logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: re-drove a parked request", {
-            requestId: gate.requestId,
-            suspensionId: gate.suspensionId,
-            status: gate.status
-          });
-        }
-      } catch (err) {
-        logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: re-drive failed", {
+  const driven = new Set<string>();
+  const redriveOne = async (gate: SuspensionRecord): Promise<void> => {
+    if (driven.has(gate.requestId)) return;
+    try {
+      const result = await redriveResolvedGate({ provider, stores, continueRequest }, gate);
+      // A superseded gate says nothing about the request's latest one.
+      if (result !== "superseded") driven.add(gate.requestId);
+      if (result === "redriven") {
+        logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: re-drove a parked request", {
           requestId: gate.requestId,
           suspensionId: gate.suspensionId,
-          error: err instanceof Error ? err.message : String(err)
+          status: gate.status
         });
+      }
+    } catch (err) {
+      driven.add(gate.requestId);
+      logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: re-drive failed", {
+        requestId: gate.requestId,
+        suspensionId: gate.suspensionId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  };
+  try {
+    for (const status of ["submitted", "stopped"] as const) {
+      const visited = new Set<string>();
+      let createdBefore: number | undefined;
+      for (let page = 0; page < MAX_SCAN_PAGES; page++) {
+        const batch = await provider.listSuspended({
+          status,
+          limit: batchLimit,
+          ...(createdBefore !== undefined ? { createdBefore } : {})
+        });
+        let fresh = 0;
+        for (const gate of batch) {
+          const key = `${gate.requestId}/${gate.suspensionId}`;
+          if (visited.has(key)) continue;
+          visited.add(key);
+          fresh += 1;
+          // Only an ask's `submitted` is owed a re-drive; another gate's is not.
+          if (status === "submitted" && !isAskGate(gate)) continue;
+          await redriveOne(gate);
+        }
+        if (batch.length < batchLimit) break;
+        // The next page starts at the oldest millisecond seen, read again in
+        // case its gates straddle the page, and moves past it once a page
+        // brings nothing new.
+        const oldest = batch.reduce((min, gate) => Math.min(min, gate.createdAt), Number.POSITIVE_INFINITY);
+        createdBefore = fresh > 0 ? oldest + 1 : oldest;
       }
     }
   } catch (err) {

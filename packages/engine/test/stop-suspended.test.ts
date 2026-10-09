@@ -186,6 +186,25 @@ describe("stop a parked turn", () => {
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("submitted");
   });
 
+  it("a stop whose continued run fails before it starts stays a stop, and the sweep finishes it (BR-16)", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "ask");
+    // The continued run fails setup after the stop was reported.
+    vi.spyOn(h.stores.checkpoints, "latest").mockRejectedValueOnce(new Error("checkpoint boom"));
+
+    expect((await stop(h, requestId)).status).toBe(204);
+    await expect(h.finished[0]).rejects.toThrow("checkpoint boom");
+    // Told it stopped: the gate is not reopened for a later answer.
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
+
+    await runTick(tickArgs(h));
+    expect(h.finished).toHaveLength(2);
+    await h.finished[1];
+    expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
+  });
+
   it("OFF STATE: without durable execution a parked turn answers as finished, as before", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
@@ -229,6 +248,76 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect(h.finished).toHaveLength(0);
   });
 
+  it("a request stopped at a later gate is driven on, though an earlier gate of it was answered", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "ask");
+    // An ask the turn asked and had answered before it parked again.
+    await h.provider.suspend({
+      ...gate,
+      suspensionId: "susp_earlier",
+      createdAt: gate.createdAt - 60_000,
+      status: "submitted",
+      resolvedAt: gate.createdAt - 30_000,
+      resumeData: { answered: true, answer: "earlier" }
+    });
+    // Stopped at the latest gate; the process died before the turn moved on.
+    await h.provider.suspend({
+      ...gate,
+      status: "stopped",
+      resolvedAt: Date.now(),
+      resumeData: { answered: false, stopped: true }
+    });
+
+    await runTick(tickArgs(h));
+    expect(h.finished).toHaveLength(1);
+    await h.finished[0];
+    expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
+  });
+
+  it("a stranded request older than a full batch of handled gates is still reached", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "ask");
+    await h.provider.suspend({
+      ...gate,
+      status: "submitted",
+      resolvedAt: Date.now(),
+      resumeData: { answered: true, answer: "renewed" }
+    });
+    // Newer resolved gates whose turns are long finished, and a newer
+    // submitted approval, each fill a batch ahead of the stranded one.
+    for (let i = 0; i < 3; i += 1) {
+      await h.provider.suspend({
+        ...gate,
+        requestId: `req_done_${i}`,
+        suspensionId: `susp_done_${i}`,
+        createdAt: gate.createdAt + 1_000 + i,
+        status: "submitted",
+        resolvedAt: Date.now(),
+        resumeData: { answered: true, answer: "done" }
+      });
+    }
+    await h.provider.suspend({
+      ...gate,
+      requestId: "req_approval",
+      suspensionId: "susp_approval",
+      reason: "human_approval",
+      data: undefined,
+      createdAt: gate.createdAt + 2_000,
+      status: "submitted",
+      resolvedAt: Date.now()
+    });
+
+    await runTick({ ...tickArgs(h), batchLimit: 2 });
+    expect(h.finished).toHaveLength(1);
+    await h.finished[0];
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(seen).toEqual(["answer:renewed"]);
+  });
+
   it("a pending gate is not re-driven", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
@@ -254,6 +343,42 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
     });
     try {
       const { requestId } = await park(h, flow, "ask");
+      await vi.advanceTimersByTimeAsync(29_000);
+      expect(h.finished).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(h.finished).toHaveLength(1);
+      await h.finished[0];
+      expect(seen[0]).toContain("wait_timed_out");
+      expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    } finally {
+      sweeper.dispose();
+    }
+  });
+
+  it("an ask parked while a tick runs keeps its deadline: the tick's re-arm does not push it back", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    const seen: string[] = [];
+    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
+    const h = harness(flow);
+    // The tick's pending listing is read before the ask parks, and returns late.
+    let releaseListing!: () => void;
+    const listed = new Promise<void>((resolve) => {
+      releaseListing = resolve;
+    });
+    vi.spyOn(h.provider, "listSuspended").mockImplementationOnce(async () => {
+      await listed;
+      return [];
+    });
+    const sweeper = createDurabilitySweeper({
+      provider: h.provider,
+      stores: h.stores,
+      retention: { sweepIntervalMs: 600_000 },
+      continueRequest: h.cont
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(600_000); // the tick starts, and waits on its listing
+      const { requestId } = await park(h, flow, "ask");
+      releaseListing();
       await vi.advanceTimersByTimeAsync(29_000);
       expect(h.finished).toHaveLength(0);
       await vi.advanceTimersByTimeAsync(3_000);
