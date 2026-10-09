@@ -8,6 +8,7 @@
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -38,15 +39,39 @@ function row(patch: Partial<Task> = {}): Task {
   } as Task;
 }
 
+/**
+ * Every module a source pulls in, in any form: `import … from`, a bare
+ * `import "x"`, `export … from`, a dynamic `import("x")`, `require("x")` and
+ * `import x = require("x")`. TypeScript's own pre-processor reads them, so a
+ * form a hand-written pattern would miss can't slip past.
+ */
+function specifiersOf(source: string): string[] {
+  return ts.preProcessFile(source, true, true).importedFiles.map((file) => file.fileName);
+}
+
 describe("the module is layer-clean", () => {
   it("imports nothing from workforce: only orchestration's types", () => {
-    const source = readFileSync(MODULE, "utf8");
-    const specifiers = [...source.matchAll(/^\s*(?:import|export)[^;]*?from\s+["']([^"']+)["']/gm)].map((m) => m[1]!);
+    const specifiers = specifiersOf(readFileSync(MODULE, "utf8"));
     expect(specifiers.length).toBeGreaterThan(0);
     for (const specifier of specifiers) {
       expect(specifier, `${specifier} reaches into the package`).not.toMatch(/^\.|^@flow-state-dev\/workforce/);
       expect(specifier).toMatch(/^@flow-state-dev\/orchestration(\/|$)/);
     }
+  });
+
+  it("reads every form an import can take, so none gets past the check", () => {
+    const forms = [
+      'import { a } from "../workers/a";',
+      'import "../workers/b";',
+      'export { c } from "../workers/c";',
+      'export * from "../workers/d";',
+      'const e = await import("../workers/e");',
+      'const f = require("../workers/f");',
+      'import g = require("../workers/g");'
+    ];
+    expect(specifiersOf(forms.join("\n"))).toEqual(["a", "b", "c", "d", "e", "f", "g"].map((name) => `../workers/${name}`));
+    // A comment that names a module imports nothing.
+    expect(specifiersOf('// import("../workers/h")\n/* import "../workers/i"; */')).toEqual([]);
   });
 });
 
