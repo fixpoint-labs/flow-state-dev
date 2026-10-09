@@ -146,27 +146,30 @@ describe("the installed SDK against the pinned wire", () => {
     // that waited for it would not bound what it promised — so the block races
     // its own signal, and this is the spec that holds it.
     const seen: string[] = [];
+    let sessionSeen!: () => void;
+    const session = new Promise<void>((r) => (sessionSeen = r));
     const block = codexAgent({
       client: client("hang"),
       thread: { skipGitRepoCheck: true },
       onSession: (id) => {
         seen.push(id);
+        sessionSeen();
       },
     });
     const runtime = await createTestContext({});
     const ac = new AbortController();
     (runtime.ctx as { signal?: AbortSignal }).signal = ac.signal;
 
-    // The deadline fires once the grandchild holds the pipe, not after a fixed
-    // delay: a timer started before the CLI is spawned can fire before the
-    // fake has said a word on a loaded runner, and then the spec proves
-    // neither the hold nor the id. Timed from the abort, which is what
-    // "promptly" is measured against.
+    // The deadline fires once the grandchild holds the pipe AND the block has
+    // read the thread id, not after a fixed delay: a timer started before the
+    // CLI is spawned can fire before the fake has said a word on a loaded
+    // runner, and the fake writing `thread.started` is not the block reading
+    // it. Timed from the abort, which is what "promptly" is measured against.
     const run = block.config.execute?.({ prompt: "hang" }, runtime.ctx as never);
     run?.catch(() => {});
     // Raced against the run, so a run that fails before the hold fails here
     // with its own error rather than as a timeout.
-    await Promise.race([logged("HOLDING"), run]);
+    await Promise.race([Promise.all([logged("HOLDING"), session]), run]);
     const abortedAt = Date.now();
     ac.abort();
 
