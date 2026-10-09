@@ -38,9 +38,29 @@ async function seatAction(
 const served: ServedLab[] = [];
 // A wide window: the right panel is drawn beside the centre only from 1180px.
 beforeEach(() => (window as unknown as { happyDOM: { setViewport(viewport: { width: number; height: number }): void } }).happyDOM.setViewport({ width: 1600, height: 900 }));
+// Every request a test's page makes, so the test can let them land before
+// its Lab closes: a read the sidebar started can still be in flight after
+// unmount, and would otherwise be counted by the next test's spy.
+const inFlight = new Set<Promise<unknown>>();
+const realFetch = globalThis.fetch;
+beforeEach(() => {
+  globalThis.fetch = (input, init) => {
+    const request = realFetch(input, init);
+    const settled = request.catch(() => {}).finally(() => inFlight.delete(settled));
+    inFlight.add(settled);
+    return request;
+  };
+});
 afterEach(async () => {
   cleanup();
+  // Settled for two ticks running: a chained read starts its next request only after the last one lands.
+  for (let quiet = 0; quiet < 2; ) {
+    await Promise.all(inFlight);
+    await new Promise((r) => setTimeout(r, 0));
+    quiet = inFlight.size === 0 ? quiet + 1 : 0;
+  }
   vi.restoreAllMocks();
+  globalThis.fetch = realFetch;
   await Promise.all(served.splice(0).map((lab) => lab.handle.close()));
 });
 

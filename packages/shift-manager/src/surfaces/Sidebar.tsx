@@ -8,7 +8,8 @@
  * opens always agree; every status and status count from its one
  * `seatStates` result, so they agree with Roster. PROJECTS lists each project
  * with its workstreams, then No project; TEAMS is one row per
- * team with a status square per seat, opening Roster for that team. A failed
+ * team with a status square per seat, the person's own workers included,
+ * opening Roster for that team. A failed
  * read shows its section's Retry and nothing else changes (BR-11).
  *
  * Drawn in design v2's frame: 248px wide on v2's sidebar surface, darker than
@@ -28,6 +29,7 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { themeLabel, type ThemeLook } from "../lib/theme";
 import { navigate, NO_PROJECT, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
+import { useRoster, withRoster } from "../lib/roster";
 import { openRows, projectsOf, seatStates, shiftCounts, streamCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import type { Workstream } from "../lib/reads";
 import { initialsOf, streamMark } from "../lib/shell";
@@ -414,7 +416,12 @@ export function Sidebar({
   // Each workstream's dot (v2:1183-1184): needs-you first, then running.
   const streams = loaded === undefined ? undefined : streamCounts(loaded);
   const dots = new Map(streams?.ok === true ? streams.value.map((stream) => [stream.workstream.id, streamMark(stream)]) : []);
-  const states = loaded === undefined || !loaded.inventory.ok ? undefined : seatStates(loaded);
+  // The person's own workers are on their roster, not in the inventory: joined as Roster joins them.
+  const roster = useRoster(loaded?.readAt);
+  const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
+  // With the inventory unread and nobody on the roster, TEAMS has only its failure to show.
+  const drawn = joined !== undefined && (loaded?.inventory.ok === true || joined.seats.length > 0) ? joined : undefined;
+  const states = drawn === undefined ? undefined : seatStates(drawn.snapshot);
   const counts = states === undefined ? undefined : shiftCounts(states);
   const partial = states?.partial === true ? <PartialMark title={gaps.roster.partial} /> : null;
 
@@ -505,8 +512,8 @@ export function Sidebar({
               TEAMS
             </Heading>
             <div data-testid="teams">
-              {loaded === undefined ? null : loaded.inventory.ok ? (
-                teamsOf(loaded.inventory.value.seats).map(({ team, seats }) => (
+              {drawn === undefined ? null : (
+                teamsOf(drawn.seats).map(({ team, seats }) => (
                   <button
                     key={team}
                     type="button"
@@ -534,7 +541,8 @@ export function Sidebar({
                     </Meta>
                   </button>
                 ))
-              ) : (
+              )}
+              {loaded === undefined || loaded.inventory.ok ? null : (
                 <SectionFailure what="Teams" failure={loaded.inventory.failure} onRetry={retry} testId="teams-failure" />
               )}
             </div>
