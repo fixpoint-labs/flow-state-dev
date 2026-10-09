@@ -20,6 +20,7 @@ import {
 } from "../../../src/transports/concurrency/lease-backend";
 import {
   ConcurrencyDeferLimitError,
+  ConcurrencyLeaseLostError,
   ConcurrencyRejectedError
 } from "../../../src/transports/errors";
 import type { DispatchEnvelope } from "../../../src/transports/dispatcher";
@@ -297,5 +298,67 @@ describe("a defer request a caller keeps holding off", () => {
     // Without the patience bound it runs only after the whole chain (~1.15s).
     expect(ranAt).toBeDefined();
     expect(ranAt!).toBeLessThan(600);
+  });
+});
+
+describe("a claimed defer's release and lost signal", () => {
+  it("frees its cap slot when released without running", async () => {
+    const arbiter = createConcurrencyArbiter({ maxDeferredPerKey: 1 });
+    const held = deferred();
+    const reply = admitAndRun(arbiter, arbiter.resolve(conversation, "reply", envelope("r1", "reply")), "r1")(
+      () => held.promise
+    );
+    const decision = arbiter.resolve(conversation, "notify", envelope("n1", "notify"));
+    const first = arbiter.admit(decision, "n1") as Awaited<ReturnType<typeof arbiter.admit>>;
+    await first.release();
+    // The slot is free again, and the released defer took no place.
+    const second = admitAndRun(arbiter, arbiter.resolve(conversation, "notify", envelope("n2", "notify")), "n2")(
+      async () => undefined
+    );
+    held.resolve();
+    await Promise.all([reply, second]);
+  });
+
+  it("gives the key back when its run settles, so the next defer runs", async () => {
+    const arbiter = createConcurrencyArbiter();
+    const order: string[] = [];
+    const notify = (id: string) =>
+      admitAndRun(arbiter, arbiter.resolve(conversation, "notify", envelope(id, "notify")), id)(async () => {
+        order.push(id);
+        await tick();
+      });
+    await Promise.all([notify("n1"), notify("n2")]);
+    expect(order).toEqual(["n1", "n2"]);
+    // Nothing is left on the key: a reject claims it.
+    await admitAndRun(arbiter, arbiter.resolve(conversation, "strict", envelope("s1", "strict")), "s1")(
+      async () => undefined
+    );
+  });
+
+  it("fires lost while it runs when its claimed place can no longer be kept, and never before the claim", async () => {
+    const inner = createInMemoryLeaseBackend();
+    let keep = true;
+    const backend: ConcurrencyLeaseBackend = {
+      leaseMs: 200,
+      take: (input) => inner.take(input),
+      isMyTurn: (place) => inner.isMyTurn(place),
+      giveBack: (place) => inner.giveBack(place),
+      renew: async () => keep
+    };
+    const arbiter = createConcurrencyArbiter({ backend });
+    const admission = await arbiter.admit(
+      arbiter.resolve(conversation, "notify", envelope("n1", "notify")),
+      "n1"
+    );
+    expect(admission.lost.aborted).toBe(false);
+    let reason: unknown;
+    await admission.run(async () => {
+      // The host reads `lost` here, when the run starts.
+      const lost = admission.lost;
+      keep = false;
+      await new Promise<void>((resolve) => lost.addEventListener("abort", () => resolve(), { once: true }));
+      reason = lost.reason;
+    });
+    expect(reason).toBeInstanceOf(ConcurrencyLeaseLostError);
   });
 });

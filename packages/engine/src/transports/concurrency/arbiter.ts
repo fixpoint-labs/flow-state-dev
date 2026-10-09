@@ -215,6 +215,42 @@ export function isPendingAdmission(
 /** A signal that never fires, for an admission that cannot lose its place. */
 const NEVER_LOST: AbortSignal = new AbortController().signal;
 
+/**
+ * The turn budget of a wait that never times out: a `defer` that ran out of
+ * patience and lines up behind the runs on its key.
+ */
+const UNBOUNDED_TURN_BUDGET = Infinity;
+
+/**
+ * How a place reaches its turn. `has-turn`: it already has it (`reject` and a
+ * `defer` claimed a free key; `hold` never waits). `waits`: it waits in line
+ * for at most `budgetMs`, as `queue` does.
+ */
+type TurnRule = { kind: "has-turn" } | { kind: "waits"; budgetMs: number };
+
+/** The turn rule `queue` and every other waiting policy uses. */
+const QUEUE_TURN: TurnRule = { kind: "waits", budgetMs: QUEUE_WAIT_TIMEOUT_MS };
+
+/**
+ * Sleep `ms`, ending early when `signal` fires. Doesn't keep the event loop
+ * alive on its own.
+ */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const wake = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", wake);
+      resolve();
+    };
+    const timer = setTimeout(wake, Math.max(0, ms));
+    (timer as { unref?: () => void }).unref?.();
+    signal?.addEventListener("abort", wake, { once: true });
+    // Re-read once the listener is in place, so a cancel that fired before it
+    // was added still ends the sleep rather than waiting it out.
+    if (signal?.aborted) wake();
+  });
+}
+
 /** Nothing to hold: the run starts on the caller's own timing. */
 const UNARBITRATED: ConcurrencyAdmission = {
   place: undefined,
@@ -369,33 +405,19 @@ export function createConcurrencyArbiter(
       // A wait with no budget (a `defer` that ran out of patience) backs off
       // the same way and never times out.
       const step =
-        budgetMs === Infinity
+        budgetMs === UNBOUNDED_TURN_BUDGET
           ? { kind: "wait" as const, delayMs: recheckDelayMs(attempt) }
           : planQueueWait({ key: place.key, waitedMs, attempt });
       if (step.kind === "timeout") throw step.error;
-      await new Promise<void>((resolve) => {
-        const wake = (): void => {
-          clearTimeout(timer);
-          signal?.removeEventListener("abort", wake);
-          resolve();
-        };
-        const timer = setTimeout(wake, step.delayMs);
-        // Don't keep the event loop alive solely for a queued wait.
-        (timer as { unref?: () => void }).unref?.();
-        signal?.addEventListener("abort", wake, { once: true });
-        // Re-read once the listener is in place, so a cancel that fired before
-        // it was added still ends the sleep rather than waiting it out.
-        if (signal?.aborted) wake();
-      });
+      await sleep(step.delayMs, signal);
     }
   };
 
   /** Build the admission for a place, once taken. Shared by both backends. */
   const admissionFor = (
-    policy: ConcurrencyPolicyName,
+    turn: TurnRule,
     requestId: string,
-    taken: LeasePlace,
-    turnBudgetMs: number = QUEUE_WAIT_TIMEOUT_MS
+    taken: LeasePlace
   ): ConcurrencyAdmission => {
     let place = taken;
     let running = false;
@@ -490,15 +512,12 @@ export function createConcurrencyArbiter(
       return givenBack;
     };
 
-    // `reject` claimed a free key: it is this place's turn already. `hold`
-    // never waits: its place only marks the key held. Every other arbitrated
-    // policy waits in line as `queue` does.
     const waitForTurn =
-      policy === "reject" || policy === "hold"
+      turn.kind === "has-turn"
         ? undefined
         : inMemory !== undefined
-          ? () => inMemory.waitForTurn(place, turnBudgetMs)
-          : (signal?: AbortSignal) => pollForTurn(() => place, retake, reclaim, signal, turnBudgetMs);
+          ? () => inMemory.waitForTurn(place, turn.budgetMs)
+          : (signal?: AbortSignal) => pollForTurn(() => place, retake, reclaim, signal, turn.budgetMs);
     const startInTurn = <T>(start: () => Promise<T>): Promise<T> => {
       startHolding();
       return runThenGiveBack(start, giveBack);
@@ -537,7 +556,11 @@ export function createConcurrencyArbiter(
     result: LeaseTakeResult
   ): ConcurrencyAdmission => {
     if ("heldBy" in result) throw new ConcurrencyRejectedError(key, result.heldBy);
-    return admissionFor(policy, requestId, result.place);
+    // `reject` claimed a free key: it is this place's turn already. `hold`
+    // never waits: its place only marks the key held. Every other arbitrated
+    // policy waits in line as `queue` does.
+    const turn: TurnRule = policy === "reject" || policy === "hold" ? { kind: "has-turn" } : QUEUE_TURN;
+    return admissionFor(turn, requestId, result.place);
   };
 
   /**
@@ -551,26 +574,13 @@ export function createConcurrencyArbiter(
     patienceLeftMs: number,
     signal?: AbortSignal
   ): Promise<void> => {
-    if (inMemory !== undefined) {
-      // Woken when the key empties, or when patience runs out, whichever is first.
-      const patience = new AbortController();
-      const timer = setTimeout(() => patience.abort(), Math.max(0, patienceLeftMs));
-      (timer as { unref?: () => void }).unref?.();
-      const stop = signal === undefined ? patience.signal : AbortSignal.any([signal, patience.signal]);
-      return inMemory.whenFree(key, stop).finally(() => clearTimeout(timer));
-    }
-    return new Promise<void>((resolve) => {
-      const wake = (): void => {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", wake);
-        resolve();
-      };
-      const timer = setTimeout(wake, Math.max(0, Math.min(recheckDelayMs(attempt), patienceLeftMs)));
-      // Don't keep the event loop alive solely for a deferred wait.
-      (timer as { unref?: () => void }).unref?.();
-      signal?.addEventListener("abort", wake, { once: true });
-      if (signal?.aborted) wake();
-    });
+    if (inMemory === undefined) return sleep(Math.min(recheckDelayMs(attempt), patienceLeftMs), signal);
+    // Woken when the key empties, or when patience runs out, whichever is first.
+    const patience = new AbortController();
+    const timer = setTimeout(() => patience.abort(), Math.max(0, patienceLeftMs));
+    (timer as { unref?: () => void }).unref?.();
+    const stop = signal === undefined ? patience.signal : AbortSignal.any([signal, patience.signal]);
+    return inMemory.whenFree(key, stop).finally(() => clearTimeout(timer));
   };
 
   /**
@@ -597,7 +607,11 @@ export function createConcurrencyArbiter(
     if (waitingNow >= maxDeferredPerKey) throw new ConcurrencyDeferLimitError(key, maxDeferredPerKey);
     deferredWaiting.set(key, waitingNow + 1);
     let counted = true;
-    /** Leave the count once: when the run starts, or when the wait ends without one. */
+    /**
+     * Leave the count, once. Called when the run starts (so a defer in line
+     * after its patience still counts while it waits its turn) and when `run`
+     * settles or the dispatch is released unrun; whichever comes first wins.
+     */
     const leaveWaiting = (): void => {
       if (!counted) return;
       counted = false;
@@ -606,7 +620,6 @@ export function createConcurrencyArbiter(
       else deferredWaiting.set(key, left);
     };
 
-    const lost = new AbortController();
     let claimed: ConcurrencyAdmission | undefined;
     let running = false;
     const claim = async (signal?: AbortSignal): Promise<ConcurrencyAdmission> => {
@@ -622,12 +635,11 @@ export function createConcurrencyArbiter(
           // `hold` runs join behind this place, so they no longer delay it.
           const behind = inMemory !== undefined ? inMemory.take({ key, requestId }) : await backend.take({ key, requestId });
           if (!("place" in behind)) throw new ConcurrencyRejectedError(key, behind.heldBy);
-          return admissionFor("defer", requestId, behind.place, Infinity);
+          return admissionFor({ kind: "waits", budgetMs: UNBOUNDED_TURN_BUDGET }, requestId, behind.place);
         }
         const result = inMemory !== undefined ? inMemory.take(free) : await backend.take(free);
-        // Claimed only because the key was free, as `reject` claims: it is
-        // this place's turn already.
-        if ("place" in result) return admissionFor("reject", requestId, result.place);
+        // Claimed only because the key was free: it is this place's turn already.
+        if ("place" in result) return admissionFor({ kind: "has-turn" }, requestId, result.place);
         await untilKeyMayBeFree(key, attempt, patienceLeftMs, signal);
       }
     };
@@ -635,26 +647,22 @@ export function createConcurrencyArbiter(
       get place() {
         return claimed?.place;
       },
-      lost: lost.signal,
+      // Nothing can be lost before the key is claimed. The host reads this
+      // when the run starts, which is inside the claimed admission's `run`.
+      get lost() {
+        return claimed?.lost ?? NEVER_LOST;
+      },
       run(start, signal) {
         running = true;
-        return claim(signal).then(
-          (admission) => {
+        return claim(signal)
+          .then((admission) => {
             claimed = admission;
-            // The host reads `lost` when the run starts, which is after this.
-            const forward = (): void => lost.abort(admission.lost.reason);
-            if (admission.lost.aborted) forward();
-            else admission.lost.addEventListener("abort", forward, { once: true });
             return admission.run(() => {
               leaveWaiting();
               return start();
-            }, signal).finally(leaveWaiting);
-          },
-          (error: unknown) => {
-            leaveWaiting();
-            throw error;
-          }
-        );
+            }, signal);
+          })
+          .finally(leaveWaiting);
       },
       // Nothing is taken before `run`, and `run` gives back what it claims.
       // A dispatch that fails before running leaves the count here.
