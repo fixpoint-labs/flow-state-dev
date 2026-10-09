@@ -69,5 +69,10 @@ export function applyEndingRecorder<T extends Task>(
   const recorded = recorder(row, ending);
   const metadata = recorded.metadata;
   if (metadata === row.metadata) return row;
-  return metadata === undefined ? row : { ...row, metadata: { ...metadata } };
+  if (metadata === undefined) {
+    // The recorder dropped the metadata: the row keeps none.
+    const { metadata: _dropped, ...rest } = row;
+    return rest as T;
+  }
+  return { ...row, metadata: { ...metadata } };
 }

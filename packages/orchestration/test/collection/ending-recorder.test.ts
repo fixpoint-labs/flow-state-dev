@@ -172,6 +172,18 @@ describe("an ending written with its recorder's metadata, in one write", () => {
     expect(ref.get("t1")).toMatchObject({ status: "completed", output: "real", metadata: { owed: 1 } });
   });
 
+  it("removes the metadata when the recorder returns none: its metadata is what the row keeps", async () => {
+    const { ref } = await ledgerWith((row) => {
+      const { metadata: _dropped, ...rest } = row;
+      return rest as Task;
+    });
+    await ref.addTask({ goal: "g", id: "t1", metadata: { stale: true } });
+    const task = (await ref.claim("w"))!;
+    await ref.complete("t1", "done", { claim: ticketForClaim(ref.collectionId, task) });
+    expect(ref.get("t1")).toMatchObject({ status: "completed", output: "done" });
+    expect(ref.get("t1")!.metadata).toBeUndefined();
+  });
+
   it("is not called for a write that declined, and the decline writes nothing", async () => {
     const r = recorder();
     const { ref } = await ledgerWith(r.recordEnding);
