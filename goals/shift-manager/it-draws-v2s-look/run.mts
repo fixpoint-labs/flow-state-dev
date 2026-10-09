@@ -208,8 +208,11 @@ export type Row = {
       shipped?: never;
     }
   | {
-      /** The source file (from the repository root) of the shipped design it cites, and text that file holds; setup fails when it doesn't. */
-      shipped: { file: string; has: string };
+      /**
+       * The source file (from the repository root) of the shipped design it cites, and text that file holds; setup fails when it doesn't.
+       * `ref` names the change that shipped it, when that isn't {@link SHIPPED}.
+       */
+      shipped: { file: string; has: string; ref?: string };
       v2?: never;
     }
 );
@@ -258,6 +261,8 @@ const LOOK: Row[] = [
   { id: "sidebar header", audit: "F10", shipped: { file: SIDEBAR_SRC, has: 'border-b px-3.5 pt-3.5 pb-3" data-testid="sidebar-header"' }, select: "[data-testid=sidebar-header]", min: 1, want: { surface: "none", padding: [14, 14, 12, 14], width: 247 } },
   { id: "theme mark", audit: "F10", shipped: { file: MARK_SRC, has: 'className="block h-auto w-[42px] overflow-visible"' }, select: "[data-testid=theme-mark], [data-testid=theme-mark] > svg", min: 2, want: { surface: "none", width: 42 } },
   { id: "app name", audit: "F10", shipped: { file: SIDEBAR_SRC, has: '<p className="text-sm font-bold tracking-tight">Shift Manager</p>' }, select: "[data-testid=sidebar-header] p", min: 1, want: { family: "sans", size: 14, weight: 700, tracking: -0.025, lineHeight: 20 / 14 } },
+  // The toggle that collapses the sidebar (#2932), at the header's end; v2 draws none.
+  { id: "sidebar toggle", audit: "F10", shipped: { file: SIDEBAR_SRC, has: 'data-testid="sidebar-toggle"', ref: "#2932" }, select: "[data-testid=sidebar-header] [data-testid=sidebar-toggle] > svg", min: 1, want: { width: 14 } },
   { id: "theme name", audit: "F10", shipped: { file: SIDEBAR_SRC, has: '<Meta role="label" className="block truncate text-muted-foreground" testId="sidebar-theme-name">' }, select: "[data-testid=sidebar-theme-name]", min: 1, want: { family: "mono", size: 10, weight: 500, tracking: 0.14, lineHeight: 1.5 } },
 
   // A screen's title.
@@ -497,7 +502,7 @@ class Failures {
 
 const rgbOf = (value: string): Rgb | null => parseColour(value)?.rgb ?? null;
 const same = (a: Rgb | null, b: Rgb | null) => a !== null && b !== null && a.every((v, i) => Math.abs(v - b[i]!) <= 3);
-const cite = (row: Row) => (row.v2 !== undefined ? `(v2:${row.v2.line}, audit ${row.audit})` : `(${SHIPPED}, ${row.shipped.file.split("/").at(-1)}, audit ${row.audit})`);
+const cite = (row: Row) => (row.v2 !== undefined ? `(v2:${row.v2.line}, audit ${row.audit})` : `(${row.shipped.ref ?? SHIPPED}, ${row.shipped.file.split("/").at(-1)}, audit ${row.audit})`);
 const px = (n: number) => `${Math.round(n * 100) / 100}px`;
 
 function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: LabName): void {
@@ -734,6 +739,9 @@ async function pendingAsks(api: LabApi, userId: string): Promise<number> {
 
 /** Wait until the page shows `shift` and nothing is still moving or loading. */
 async function settle(page: Page, shift: Shift): Promise<void> {
+  // Two frames first: a resize reaches the page's layout state a frame late, so a width
+  // transition it starts (the panels' 180ms) isn't running yet when the resize returns.
+  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
   await page.waitForFunction(
     (dark) =>
       document.documentElement.classList.contains("dark") === dark &&
@@ -1003,7 +1011,7 @@ function checkCitations(): string[] {
   for (const row of LOOK) {
     if (row.shipped !== undefined) {
       if (!readFileSync(repoPath(row.shipped.file), "utf8").includes(row.shipped.has)) {
-        problems.push(`setup: row "${row.id}" cites ${SHIPPED} in ${row.shipped.file}, which doesn't hold ${JSON.stringify(row.shipped.has)}`);
+        problems.push(`setup: row "${row.id}" cites ${row.shipped.ref ?? SHIPPED} in ${row.shipped.file}, which doesn't hold ${JSON.stringify(row.shipped.has)}`);
       }
       continue;
     }

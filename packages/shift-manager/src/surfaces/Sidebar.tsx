@@ -428,8 +428,8 @@ export function Sidebar({
       {collapsed ? (
         <SidebarRail route={route} onToggle={onToggle} onJump={onJump} inboxCount={inboxCount} waiting={waiting} />
       ) : (
-        // Held at its full width, so the width's change clips the nav rather than reflowing it.
-        <div className="flex h-full w-[248px] flex-col">
+        // Held at its full width inside the border, so the width's change clips the nav rather than reflowing it.
+        <div className="flex h-full w-[247px] flex-col">
           {look === undefined ? (
             <div className="flex justify-end px-3.5 pt-3">
               <SidebarToggle collapsed={false} onToggle={onToggle} />
