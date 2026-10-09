@@ -1,8 +1,9 @@
 /**
  * In-process registry of AbortControllers for active requests.
  *
- * Each runAction call registers a controller here. The controller is
- * deregistered when the request reaches any terminal state.
+ * Each runAction call (each run attempt of a request) registers its own
+ * controller here, and deregisters that controller when the attempt reaches
+ * any terminal state.
  *
  * This map is per-process, and deliberately so: it is the single point a run
  * is torn down at, not the channel a cancellation travels on. Both delivery
@@ -156,8 +157,11 @@ export function replaceAbortController(
 /**
  * Remove a controller from the registry. Called by a run attempt on any
  * terminal state, with its own `controller`, so the controllers of other
- * attempts still live under the id stay registered. Without `controller`,
- * every controller under the id is removed.
+ * attempts still live under the id stay registered.
+ *
+ * @remarks Called with `requestId` alone, it bulk-clears every live attempt's
+ * controller under the id. Use that form only in tests and for a bulk clear;
+ * a run attempt always passes its own `controller`.
  */
 export function deregisterAbortController(requestId: string, controller?: AbortController): void {
   if (controller === undefined) {
