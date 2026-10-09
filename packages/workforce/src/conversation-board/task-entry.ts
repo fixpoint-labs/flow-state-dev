@@ -28,7 +28,7 @@ import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestratio
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { mailboxBoardLedger, resolveMailboxBoard } from "../mailbox/mailbox-board";
-import { FILING_SESSION_STATE_KEY } from "../workers/keys";
+import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { TASK_SETTLED_ENTRY } from "./board";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { clearNotice, owedNotices } from "./task-notice";
@@ -51,24 +51,9 @@ function hasInput(input: unknown): boolean {
   return true;
 }
 
-/**
- * Request state: the task this request's attempt holds, off the input the
- * gate handed the entry (packed by the board from the row it claimed).
- */
-const HELD_TASK_STATE = "heldTask";
-
-const heldTaskStateSchema = z.object({
-  [HELD_TASK_STATE]: z.object({ taskId: z.string() }).optional()
-});
-
-/**
- * The partition a task session's tasks are on: the conversation it was opened
- * for, as its board's hand-over named it at birth (a readonly field). The
- * conversation ledger's partition is that same value.
- */
-function filingPartitionOf(ctx: BlockContext): string | undefined {
-  const filing = (ctx.session.state as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
-  return typeof filing === "string" ? filing : undefined;
+function sessionField(ctx: BlockContext, key: string): string | undefined {
+  const value = (ctx.session.state as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
 }
 
 /**
@@ -110,7 +95,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     resolve: async (ledgerId, ctx, partition) => {
       if (ledgerId === CONVERSATION_LEDGER_ID) {
         // A task session works only the conversation it was opened for.
-        if (partition === undefined || filingPartitionOf(ctx) !== partition) return undefined;
+        if (partition === undefined || sessionField(ctx, FILING_SESSION_STATE_KEY) !== partition) return undefined;
         return conversationLedgerAt(ctx, partition);
       }
       return lists.has(ledgerId) && partition === undefined ? resolveMailboxBoard(ctx, ledgerId) : undefined;
@@ -121,20 +106,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     allowSessionState: true
   });
 
-  /** Note the task this attempt holds, so the notice after the gate reads its row. */
-  const noteHeldTask = handler({
-    name: `${name}-note-task`,
-    inputSchema: taskWorkerInputSchema,
-    outputSchema: z.object({}),
-    requestStateSchema: heldTaskStateSchema,
-    execute: async (task: TaskWorkerInput, ctx) => {
-      await ctx.request.patchState({ [HELD_TASK_STATE]: { taskId: task.taskId } });
-      return {};
-    }
-  });
-
   const block = sequencer({ name, inputSchema: taskWorkerInputSchema })
-    .tap(noteHeldTask)
     .step((task: TaskWorkerInput) => ({ message: taskMessage(task) }), options.turn);
 
   /** Send what the row this attempt held owes, to the conversation that filed it. */
@@ -142,18 +114,18 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     name: `${name}-tell`,
     inputSchema: z.unknown(),
     outputSchema: z.object({ sent: z.number() }),
-    requestStateSchema: heldTaskStateSchema,
     resources: { ...conversationLedgerResources },
     execute: async (_input, ctx) => ({ sent: await sendOwedNotices(ctx as never) })
   });
 
   const sendOwedNotices = async (ctx: BlockContext): Promise<number> => {
-    const held = (ctx.request.state as z.infer<typeof heldTaskStateSchema>)[HELD_TASK_STATE];
-    const partition = filingPartitionOf(ctx);
+    // The hand-over names the task on the session it opens, one session per task.
+    const taskId = sessionField(ctx, TASK_ID_STATE_KEY);
+    const partition = sessionField(ctx, FILING_SESSION_STATE_KEY);
     // A task off a mailbox list owes no notice: its ledger records none.
-    if (held === undefined || partition === undefined) return 0;
+    if (taskId === undefined || partition === undefined) return 0;
     const ref = await conversationLedgerAt(ctx, partition);
-    const row = ref?.get(held.taskId);
+    const row = ref?.get(taskId);
     if (ref === undefined || row === undefined) return 0;
     let sent = 0;
     for (const notice of owedNotices(row, CONVERSATION_LEDGER_ID)) {
