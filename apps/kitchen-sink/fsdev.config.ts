@@ -308,7 +308,19 @@ const RESET_THE_STORE =
 }
 
 await openMailboxes(workforce.mailboxes, {
-  client: mailboxSessions,
+  client: {
+    createSession: mailboxSessions.createSession,
+    deleteSession: mailboxSessions.deleteSession,
+    // The binder reads the mailbox's raw state to tell an open mailbox from an
+    // empty one, and the session route sends a client only the state its flow
+    // exposes. So the occupant is read from the store, as the checks above
+    // read it: single-tenant, so the storage key is the bare id.
+    getSession: async (sessionId) => {
+      const stored = await runtime.stores.session.get(sessionId);
+      if (stored === undefined) throw new Error(`[workforce] no session "${sessionId}" behind the taken id`);
+      return stored;
+    },
+  },
   userId: MAILBOX_OWNER,
 });
 
