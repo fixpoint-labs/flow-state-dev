@@ -19,8 +19,7 @@ import {
   pushToArrayInMap
 } from "./shared";
 import {
-  matchesRequestSessionFilter,
-  matchesRequestStatusFilter,
+  matchesMembership,
   mergeItemsById,
   withHeldItems,
   withRequestSourceDefault,
@@ -317,7 +316,7 @@ export class InMemoryRequestStore implements RequestStore {
         return false;
       }
 
-      if (!matchesRequestSessionFilter(options?.sessionId, record.sessionId)) {
+      if (!matchesMembership(options?.sessionId, record.sessionId)) {
         return false;
       }
 
@@ -333,7 +332,7 @@ export class InMemoryRequestStore implements RequestStore {
         return false;
       }
 
-      if (!matchesRequestStatusFilter(options?.status, record.status)) {
+      if (!matchesMembership(options?.status, record.status)) {
         return false;
       }
 
