@@ -136,6 +136,40 @@ describe("stop a turn parked on an ask", () => {
     expect(await statusOf(state, parked.requestId!)).toBe("suspended");
   });
 
+  it("an answer refused while the turn is interrupted before its log holds the gate stays owed, and arrives once it parks again", async () => {
+    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
+    const flow = askFlow(model);
+    const state = track(runtimeFor(flow));
+    const parked = await act(state, flow, "run");
+    const requestId = parked.requestId!;
+    const stores = (await state.getRuntime()).stores;
+    const parkedRecord = (await stores.request.get(requestId))!;
+    // The process died after the gate was written and before its log item
+    // was; recovery marked the turn interrupted.
+    await stores.request.set(
+      requestId,
+      {
+        ...parkedRecord,
+        status: "interrupted",
+        items: (parkedRecord.items ?? []).filter((item) => (item as { type?: string }).type !== "suspension")
+      },
+      "any"
+    );
+
+    await act(state, flow, "settle", { outcome: { kind: "complete", output: "the answer" } });
+    const [row] = await rows(state, flow);
+    const first = (await act(state, flow, "touch")).output;
+    expect(first).toEqual({ resumed: [], stillOwed: [row!.id] });
+    expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "completed", resumeOwed: true })]);
+
+    // The turn parks on its gate again (as crash recovery's replay does).
+    const current = (await stores.request.get(requestId))!;
+    await stores.request.set(requestId, { ...current, status: "suspended", items: parkedRecord.items }, "any");
+    expect((await act(state, flow, "touch")).output).toEqual({ resumed: [row!.id], stillOwed: [] });
+    await until(state, requestId, "completed");
+    expect(toolResults(seen[1]!.messages)).toContain("the answer");
+  });
+
   it("an answer that wins leaves the stop to a finished turn (BR-16b, the answer first)", async () => {
     const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
     const flow = askFlow(model);

@@ -62,18 +62,22 @@ export async function resumeAskGate(
         };
       }
       const request = await deps.stores.request.get(gate.requestId);
-      // Parked on it: `suspended`, or `interrupted` when the process died
-      // before the park was written `suspended`, and then only once its log
-      // holds the gate. A continuation replays the gate from the log; without
-      // it the replay parks again and writes the gate back pending, losing
-      // this outcome.
-      if (
-        request === undefined ||
-        !(
-          request.status === "suspended" ||
-          (request.status === "interrupted" && latestGateIdOf(request) === gate.suspensionId)
-        )
-      ) {
+      // Interrupted before its log held the gate (the process died between
+      // writing the gate and its log item): a continuation could not replay
+      // this outcome onto the gate, and would park on it again. Not resolved,
+      // only not yet resumable, so refused as retryable: the outcome's sender
+      // keeps it and tries again once the turn has parked again.
+      if (request?.status === "interrupted" && latestGateIdOf(request) !== gate.suspensionId) {
+        return {
+          refusal: {
+            ok: false,
+            refused: "busy",
+            detail: `the turn parked on ask gate "${gate.suspensionId}" was interrupted before it parked; try again once it has`
+          }
+        };
+      }
+      // Parked on it: `suspended`, or `interrupted` with the gate on its log.
+      if (request === undefined || (request.status !== "suspended" && request.status !== "interrupted")) {
         return {
           refusal: {
             ok: false,
