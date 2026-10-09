@@ -74,6 +74,8 @@ These are Shift Manager's own screens and words. Where one maps onto a Workforce
 
 The sidebar lists the projects with their workstreams under PROJECTS, then the teams under TEAMS. Workstreams that no project lists sit under **No project**. Jump to (⌘K) finds workstreams, workers, tasks and the Lab's readable documents.
 
+Shift Coordinator, a workstream and a task also have a panel on the right. The sidebar and the right panel each collapse from their own toggle or from the keyboard: `[` for the sidebar, which shrinks to a column of icons, and `]` for the right panel, which shrinks to a strip. Each one's state is kept in the browser for the signed-in user. On a window narrower than 1180px, the right panel starts collapsed and opens over the center.
+
 A board has five columns: QUEUED, RUNNING, IN REVIEW, NEEDS YOU and DONE. In a workstream's composer, a message that starts with `@` and a worker's name goes to that worker's task in the workstream, not to the mailbox.
 
 For the components behind screens like these in your own app, see [Workforce components](../workforce/ui.md).
