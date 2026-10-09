@@ -327,6 +327,36 @@ export const taskSchema = z.object({
    */
   createdBy: z.string().optional(),
 
+  /**
+   * Set when this row is an **ask**: a turn filed it and parked until it ends
+   * (FIX-1816). `gateId` names the gate the asking turn parks on, derived from
+   * this row, so it is unique within the conversation; `deadline` is when the
+   * ask times out (epoch ms), the same instant the gate expires.
+   *
+   * Written once, in the write that files the row, by the ask path only. Never
+   * a model-facing field: the task tools build a row's init field by field.
+   * **Absent** on every row that is not an ask (BP-030).
+   */
+  ask: z
+    .object({
+      gateId: z.string(),
+      deadline: z.number(),
+    })
+    .optional(),
+
+  /**
+   * The asking turn is owed its answer: written in the same write that ends an
+   * asked row (`ask` set), whoever ends it, and cleared once the turn has its
+   * answer (FIX-1816). A touch of the board replays it by resuming the parked
+   * turn, so an ending that lands while nothing is listening, or a resume lost
+   * to a restart, is never lost.
+   *
+   * Top level and server-written for `abandonments`' reason (BP-031): it
+   * drives a resume, so no caller-writable surface reaches it. **Absent reads
+   * as not owed** (BP-030).
+   */
+  resumeOwed: z.boolean().optional(),
+
   createdAt: z.number(),
   updatedAt: z.number(),
   startedAt: z.number().optional(),
