@@ -147,15 +147,10 @@ describe("a task parked on a question (BR-25)", () => {
       expect(await linesAbout(host, conv, "pick a region [park:Which region?]")).toEqual([
         expect.stringMatching(/is waiting on a question from eng\.tasker: Which region\?$/)
       ]);
-      // Answered: back in the queue with its answer and its start owed, as an answer leaves it.
+      // Answered: back in the queue with its answer, as an answer leaves it.
       const parked = (await host.row("alice", filing, filed.taskId!))!;
       const { partition: _p, ...stored } = parked;
-      await host.writeRow("alice", filing, {
-        ...(stored as Task),
-        status: "pending",
-        feedback: "eu",
-        metadata: { ...(stored.metadata ?? {}), startOwed: true }
-      });
+      await host.writeRow("alice", filing, { ...(stored as Task), status: "pending", feedback: "eu" });
       await touch(host, "alice", conv);
       await touch(host, "alice", conv);
       const lines = await linesAbout(host, conv, "pick a region [park:Which region?]");

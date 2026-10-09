@@ -15,11 +15,11 @@
  *   resolver is the running session's own board, and none for a task session
  *   (a task session can't file yet: FIX-1802 swaps in its rule). The roster is
  *   the session's delegates that take a task, read on every call.
- * - **The start.** A filing marks the row's start owed in the add's own write,
- *   then dispatches a run of the board into the conversation as a request of
- *   its own, and returns without waiting for it. A refused or lost wake leaves
- *   the marker, and any later action on the board starts it. So does a
- *   reassign.
+ * - **The start.** A filing or an assign dispatches a run of the board into
+ *   the conversation as a request of its own, and returns without waiting for
+ *   it. The start it owes is the row's own state, pending and assigned
+ *   (`./ledger`), so a refused or lost wake strands nothing: any later action
+ *   on the board starts every row in that state.
  * - **The outbox.** Any action on the board, and every run of it, replays the
  *   notices its rows still owe into the conversation (`./task-notice`).
  */
@@ -50,21 +50,13 @@ import {
   callerMetadata,
   conversationLedger,
   conversationLedgerResources,
-  isStartOwed,
-  ownConversationLedger,
-  startOwed,
-  startTaken
+  ownConversationLedger
 } from "./ledger";
-import { owedNotices, type TaskNotice } from "./task-notice";
+import { sendOwedNotices } from "./notice-delivery";
+import { owedNotices } from "./task-notice";
 
 /** The internal entry a filing dispatches to run its conversation's board. */
 export const RUN_BOARD_ENTRY = "runTaskBoard";
-
-/**
- * The internal entry a task's notice arrives on in the conversation that
- * filed it. **Pinned** (FIX-1780): a goal check reads notices by it.
- */
-export const TASK_SETTLED_ENTRY = "onTaskSettled";
 
 /**
  * How many attempts a filed task gets: a failure with one left runs the task
@@ -124,19 +116,24 @@ const assignedOnly: TaskDispatcher = {
   claim: (collection, workerId) => collection.claim(workerId, { eligibility: (task) => task.assignee !== undefined })
 };
 
-/** Whether a row this board can start is waiting: assigned, and claimable now (a dead run's row included). */
-function hasStartable(collection: TaskCollectionRef): boolean {
+/**
+ * Whether a row this board can start is waiting: assigned, and claimable now
+ * (a dead run's row included). Such a row is owed a run of the board; this is
+ * the whole of a start's debt (`./ledger`). With `id`, only that row.
+ */
+function hasStartable(collection: TaskCollectionRef, id?: string): boolean {
   const now = collection.now();
-  const lookup = (id: string): Task | undefined => collection.get(id);
+  const lookup = (taskId: string): Task | undefined => collection.get(taskId);
   return collection
     .list({ status: ["pending", "in_progress"] })
-    .some((task) => task.assignee !== undefined && isClaimable(task, lookup, now));
+    .some((task) => (id === undefined || task.id === id) && task.assignee !== undefined && isClaimable(task, lookup, now));
 }
 
 /**
  * Dispatch a run of the running conversation's board into the conversation,
  * as a request of its own. Never waits for it, and never fails the caller: a
- * refused or thrown dispatch leaves the start owed for the next touch.
+ * refused or thrown dispatch leaves the row pending, which is its start debt,
+ * for the next touch.
  */
 async function wake(ctx: BlockContext): Promise<void> {
   try {
@@ -148,32 +145,21 @@ async function wake(ctx: BlockContext): Promise<void> {
       from: "conversation-board-wake"
     });
   } catch {
-    // The marker stays on the row; the next filing or action retries it.
+    // The row stays pending and assigned; the next filing or action retries it.
   }
 }
 
 /**
  * Send each notice the conversation's rows still owe into the conversation
- * itself, as requests of their own. The receiving entry dedupes, so a notice
- * replayed while its first send is in flight is acted on once.
+ * itself, as requests of their own. Only rows that still carry a notice
+ * marker are sent; the receiving entry dedupes, so a notice replayed while
+ * its first send is in flight is acted on once.
  */
 async function replayNotices(ctx: BlockContext, rows: readonly Task[]): Promise<number> {
+  const owing = rows.filter((row) => owedNotices(row, CONVERSATION_LEDGER_ID).length > 0);
   let sent = 0;
-  for (const row of rows) {
-    for (const notice of owedNotices(row, CONVERSATION_LEDGER_ID)) {
-      try {
-        const outcome = await dispatchThroughSeam(ctx, {
-          type: "internal",
-          action: TASK_SETTLED_ENTRY,
-          session: { id: ctx.session.identity.id },
-          payload: notice satisfies TaskNotice,
-          from: "conversation-board-replay"
-        });
-        if (outcome.ok) sent += 1;
-      } catch {
-        // Still owed on the row: the next touch sends it.
-      }
-    }
+  for (const row of owing) {
+    sent += await sendOwedNotices(ctx, row, { session: { id: ctx.session.identity.id }, from: "conversation-board-replay" });
   }
   return sent;
 }
@@ -254,8 +240,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
 
   /**
    * The ledger the tools and actions write through: the running session's
-   * own board, guarded. A filing marks its start owed in the add's write and
-   * wakes the board; a reassign does too. No caller write reaches a marker.
+   * own board, guarded. A filing or an assign that leaves a row startable
+   * wakes the board, and a retried one wakes it again. No caller write
+   * reaches a notice marker.
    */
   const guarded = (ctx: BlockContext, ref: TaskCollectionRef): TaskCollectionRef => {
     const addTask: TaskCollectionRef["addTask"] = async (init) => {
@@ -271,11 +258,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ...init,
         maxAttempts: init.maxAttempts ?? TASK_ATTEMPTS,
         ...(assignee !== undefined ? { assignee } : {}),
-        ...(assignee !== undefined
-          ? { metadata: startOwed(metadata) }
-          : metadata !== undefined
-            ? { metadata }
-            : {})
+        ...(metadata !== undefined ? { metadata } : {})
       });
       if (assignee !== undefined) await wake(ctx);
       return added;
@@ -290,12 +273,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       },
       async setAssignee(id, assignee) {
         const outcome = await ref.setAssignee(id, assignee);
-        if (outcome.outcome === "recorded" && ref.get(id)?.status === "pending") {
-          // A second write: the ref sets an assignee and nothing else. A crash
-          // between the two leaves the row waiting for the board's next run.
-          await ref.patchMetadata(id, startOwed(undefined));
-          await wake(ctx);
-        }
+        // `unchanged` too: an assign retried after a lost wake starts the row.
+        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
         return outcome;
       },
       async patchMetadata(id, patch) {
@@ -310,17 +289,18 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     if (isTaskSession(ctx)) return undefined;
     const ref = await ownConversationLedger(ctx);
     if (ref === undefined) return undefined;
-    // The outbox: an owed start or notice is sent on any touch.
-    const rows = ref.list();
-    if (rows.some((row) => row.status === "pending" && row.assignee !== undefined && isStartOwed(row))) await wake(ctx);
-    await replayNotices(ctx, rows);
+    // The outbox, on every touch, a read included. A crash after an ending's
+    // write and before its notice's send (BR-26a), or a wake lost after an add
+    // or an assign (BR-10a), leaves the debt only on the row, and nothing
+    // sweeps for it: this touch is what pays it. Don't narrow it to writes.
+    if (hasStartable(ref)) await wake(ctx);
+    await replayNotices(ctx, ref.list());
     return guarded(ctx, ref);
   };
 
   /**
-   * After a run: clear the start marker on every row the run took, and send
-   * what the rows owe, including what this run's own refusals and settled
-   * dead runs owe.
+   * After a run: send what the rows owe, including what this run's own
+   * refusals and settled dead runs owe.
    */
   const afterRun = handler({
     name: "conversation-board-after-run",
@@ -330,9 +310,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     execute: async (_input, ctx) => {
       const ref = await ownConversationLedger(ctx as never);
       if (ref === undefined) return { replayed: 0 };
-      for (const row of ref.list()) {
-        if (isStartOwed(row) && row.status !== "pending") await ref.patchMetadata(row.id, startTaken());
-      }
       return { replayed: await replayNotices(ctx as never, ref.list()) };
     }
   });

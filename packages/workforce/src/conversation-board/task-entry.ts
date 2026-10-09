@@ -11,8 +11,10 @@
  *   A task session takes tasks only from the conversation it was opened for.
  * - **The ending.** The gate settles the row through the ledger, whose ending
  *   recorder marks the notice owed in that same write (`./task-notice`).
- * - **The notice.** After the gate, on success or failure, each notice the row
- *   still owes goes to the conversation that dispatched this request, its
+ * - **The notice.** After the gate, on success or failure, each notice the
+ *   session's task still owes (the task the hand-over named at the session's
+ *   birth; a task session is one task) goes to the conversation that
+ *   dispatched this request, its
  *   stamped sender (`{ from: true }`), never an address from the row or the
  *   task. Delivery clears the marker in the conversation. A refusal (the
  *   conversation is gone) clears it here and says so in this session; the
@@ -22,16 +24,15 @@
  *   stays owed, and this session never hears of that refusal.
  */
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
-import { dispatchThroughSeam } from "@flow-state-dev/core/types";
-import type { BlockContext, BlockDefinition, DispatchOutcome, DispatchRefusal } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition, DispatchRefusal } from "@flow-state-dev/core/types";
 import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { mailboxBoardLedger, resolveMailboxBoard } from "../mailbox/mailbox-board";
-import { FILING_SESSION_STATE_KEY } from "../workers/keys";
-import { TASK_SETTLED_ENTRY } from "./board";
+import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
-import { clearNotice, owedNotices } from "./task-notice";
+import { sendOwedNotices } from "./notice-delivery";
+import { clearNotice } from "./task-notice";
 
 /**
  * A task as a worker reads it: the title when there is one, the goal, the
@@ -52,16 +53,6 @@ function hasInput(input: unknown): boolean {
 }
 
 /**
- * Request state: the task this request's attempt holds, off the input the
- * gate handed the entry (packed by the board from the row it claimed).
- */
-const HELD_TASK_STATE = "heldTask";
-
-const heldTaskStateSchema = z.object({
-  [HELD_TASK_STATE]: z.object({ taskId: z.string() }).optional()
-});
-
-/**
  * The partition a task session's tasks are on: the conversation it was opened
  * for, as its board's hand-over named it at birth (a readonly field). The
  * conversation ledger's partition is that same value.
@@ -69,6 +60,17 @@ const heldTaskStateSchema = z.object({
 function filingPartitionOf(ctx: BlockContext): string | undefined {
   const filing = (ctx.session.state as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
   return typeof filing === "string" ? filing : undefined;
+}
+
+/**
+ * The task a task session was opened for, as its board's hand-over named it
+ * at birth: readonly, and refused at create on any other path, so no caller
+ * sets it. The session is keyed by this task and its worker, and the gate
+ * admits only the row whose run link names this session, so it is one task.
+ */
+function sessionTaskOf(ctx: BlockContext): string | undefined {
+  const taskId = (ctx.session.state as Record<string, unknown>)[TASK_ID_STATE_KEY];
+  return typeof taskId === "string" ? taskId : undefined;
 }
 
 /**
@@ -121,72 +123,41 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     allowSessionState: true
   });
 
-  /** Note the task this attempt holds, so the notice after the gate reads its row. */
-  const noteHeldTask = handler({
-    name: `${name}-note-task`,
-    inputSchema: taskWorkerInputSchema,
-    outputSchema: z.object({}),
-    requestStateSchema: heldTaskStateSchema,
-    execute: async (task: TaskWorkerInput, ctx) => {
-      await ctx.request.patchState({ [HELD_TASK_STATE]: { taskId: task.taskId } });
-      return {};
-    }
-  });
+  const block = sequencer({ name, inputSchema: taskWorkerInputSchema }).step(
+    (task: TaskWorkerInput) => ({ message: taskMessage(task) }),
+    options.turn
+  );
 
-  const block = sequencer({ name, inputSchema: taskWorkerInputSchema })
-    .tap(noteHeldTask)
-    .step((task: TaskWorkerInput) => ({ message: taskMessage(task) }), options.turn);
-
-  /** Send what the row this attempt held owes, to the conversation that filed it. */
+  /** Send what the session's task owes, to the conversation that filed it. */
   const tell = handler({
     name: `${name}-tell`,
     inputSchema: z.unknown(),
     outputSchema: z.object({ sent: z.number() }),
-    requestStateSchema: heldTaskStateSchema,
     resources: { ...conversationLedgerResources },
-    execute: async (_input, ctx) => ({ sent: await sendOwedNotices(ctx as never) })
+    execute: async (_input, ctx) => ({ sent: await tellFiler(ctx as never) })
   });
 
-  const sendOwedNotices = async (ctx: BlockContext): Promise<number> => {
-    const held = (ctx.request.state as z.infer<typeof heldTaskStateSchema>)[HELD_TASK_STATE];
+  const tellFiler = async (ctx: BlockContext): Promise<number> => {
+    const taskId = sessionTaskOf(ctx);
     const partition = filingPartitionOf(ctx);
-    // A task off a mailbox list owes no notice: its ledger records none.
-    if (held === undefined || partition === undefined) return 0;
+    // A task off a mailbox list owes no notice: its ledger records none, and
+    // its session names no conversation.
+    if (taskId === undefined || partition === undefined) return 0;
     const ref = await conversationLedgerAt(ctx, partition);
-    const row = ref?.get(held.taskId);
+    const row = ref?.get(taskId);
     if (ref === undefined || row === undefined) return 0;
-    let sent = 0;
-    for (const notice of owedNotices(row, CONVERSATION_LEDGER_ID)) {
-      let outcome: DispatchOutcome;
-      try {
-        outcome = await dispatchThroughSeam(ctx, {
-          type: "internal",
-          action: TASK_SETTLED_ENTRY,
-          flowKind: options.noticeFlow,
-          session: { from: true },
-          payload: notice,
-          from: `${name}-tell`
-        });
-      } catch {
-        // Not definitive: the marker stays, and the conversation's next touch
-        // of its board sends it.
-        continue;
-      }
-      if (outcome.ok) {
-        sent += 1;
-        continue;
-      }
+    const address = { session: { from: true }, flowKind: options.noticeFlow, from: `${name}-tell` } as const;
+    return sendOwedNotices(ctx, row, address, async (notice, refusal) => {
       // Any other refusal (the host turned it away, the store was down) may
       // pass: the marker stays for the conversation's next touch.
-      if (!CONVERSATION_GONE.has(outcome.refused)) continue;
+      if (!CONVERSATION_GONE.has(refusal.refused)) return;
       // The conversation can't be told (it was deleted): the notice is
       // dropped and said here. The task's ending stands.
       await ref.patchMetadata(row.id, clearNotice(notice));
       ctx.emit.message(
-        `The conversation that filed task "${row.title ?? row.goal}" couldn't be told it ${notice.ending}: ${outcome.detail}`
+        `The conversation that filed task "${row.title ?? row.goal}" couldn't be told it ${notice.ending}: ${refusal.detail}`
       );
-    }
-    return sent;
+    });
   };
 
   return { block, from, onCompleted: tell, onErrored: tell };

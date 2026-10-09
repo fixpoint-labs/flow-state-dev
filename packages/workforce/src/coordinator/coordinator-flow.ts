@@ -83,13 +83,9 @@ import {
   type DeliveryRecord
 } from "../delivery-ledger";
 import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
-import {
-  RUN_BOARD_ENTRY,
-  TASK_SETTLED_ENTRY,
-  defineConversationBoard,
-  type TaskDelegates
-} from "../conversation-board/board";
+import { RUN_BOARD_ENTRY, defineConversationBoard, type TaskDelegates } from "../conversation-board/board";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
+import { TASK_SETTLED_ENTRY } from "../conversation-board/notice-delivery";
 import { workerTaskEntry } from "../conversation-board/task-entry";
 import {
   TASK_NOTICES_STATE,

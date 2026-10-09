@@ -44,8 +44,6 @@ describe("filing a task for one of this conversation's delegates (BR-1, BR-10)",
       expect(host.runs[0]).toMatchObject({ worker: "eng.tasker", userId: "alice", taskId: filed.taskId });
       const actions = (await host.requestsOf(conv)).map((request) => request.actionName);
       expect(actions).toContain("runTaskBoard");
-      // Its start marker went with the run that took it.
-      expect(row?.metadata?.startOwed ?? null).toBeNull();
     } finally {
       await host.dispose();
     }
@@ -238,7 +236,7 @@ describe("what a filing can't name (BR-8)", () => {
         board: "elsewhere",
         partition: "someone-else",
         owner: "bob",
-        metadata: { startOwed: true, "noticeOwed:1:completed": { attempt: 1, ending: "completed" }, note: "kept" }
+        metadata: { "noticeOwed:1:completed": { attempt: 1, ending: "completed" }, note: "kept" }
       });
       expect(filed.ok).toBe(true);
       const rows = await host.rows("alice");

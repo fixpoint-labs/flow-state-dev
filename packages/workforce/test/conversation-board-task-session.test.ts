@@ -76,6 +76,23 @@ describe("the session a task runs in (BR-16, BR-19)", () => {
     }
   });
 
+  it("is one task: two tasks for one worker in one conversation run in two sessions, each naming its own", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "desk");
+      const a = await file(host, "alice", conv, { goal: "first", assignee: "eng.tasker" });
+      const b = await file(host, "alice", conv, { goal: "second", assignee: "eng.tasker" });
+      await host.settled();
+      expect(host.runs.map((run) => run.taskId).sort()).toEqual([a.taskId, b.taskId].sort());
+      expect(new Set(host.runs.map((run) => run.sessionId)).size).toBe(2);
+      for (const run of host.runs) {
+        expect((await host.session(run.sessionId)).state).toMatchObject({ taskId: run.taskId });
+      }
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("isn't where a post to the same worker in the same conversation lands: that goes to its delegate session (BR-19)", async () => {
     const agentAnswer = mockGenerator({ script: [{ when: () => true, then: { text: "Otto's answer." } }] });
     const host = bootBoardHost({ agentAnswer });
@@ -221,12 +238,12 @@ describe("a task session can't file yet (BR-7)", () => {
 });
 
 describe("a filing's start, when its wake is lost (BR-10a)", () => {
-  it("leaves the row stored with its start owed, written with the add; the next touch of the board starts it, once", async () => {
+  it("leaves the row pending and assigned, which is its start's debt, written by the add; the next touch starts it, once", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
       const filing = await host.filingOf("alice", conv);
-      // A row with no start owed, for the revision one bare add leaves.
+      // A row started as usual, for the revision one bare add leaves.
       const bare = await file(host, "alice", conv, { goal: "first, started as usual" });
       await host.settled();
       const lost = await host.loseDispatches("runTaskBoard");
@@ -235,9 +252,10 @@ describe("a filing's start, when its wake is lost (BR-10a)", () => {
       expect(lost.lost()).toBe(1);
       await host.settled();
       const owed = await host.row("alice", filing, filed.taskId!);
-      expect(owed).toMatchObject({ status: "pending", metadata: { startOwed: true } });
-      // The marker came with the add: the row was written once, at an add's
-      // own revision, so no crash could have come between the two.
+      // The debt is the row itself, pending and assigned: the add wrote it,
+      // once, at an add's own revision, so no crash could come between the
+      // row and its debt.
+      expect(owed).toMatchObject({ status: "pending", assignee: "eng.tasker" });
       expect(owed!.revision).toBe(1);
       expect(host.runs.map((run) => run.taskId)).toEqual([bare.taskId]);
 
@@ -248,11 +266,62 @@ describe("a filing's start, when its wake is lost (BR-10a)", () => {
       expect(host.runs.map((run) => run.taskId)).toEqual([bare.taskId, filed.taskId]);
       const started = await host.row("alice", filing, filed.taskId!);
       expect(started?.status).toBe("completed");
-      expect(started?.metadata?.startOwed ?? null).toBeNull();
       // Touched again, it starts nothing twice.
       await host.act("alice", conv, "listTasks_tasks", {});
       await host.settled();
       expect(host.runs).toHaveLength(2);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  /**
+   * A row pending for a delegate, with nothing else on it: what a crash leaves
+   * after a retried notice was acted on and before the board run it asked for
+   * started, or after an assign committed and before its wake.
+   */
+  const strandedRow = async (host: BoardHost, conv: string, goal: string, patch: Partial<Task>) => {
+    const filing = await host.filingOf("alice", conv);
+    const lost = await host.loseDispatches("runTaskBoard");
+    const filed = await file(host, "alice", conv, { goal, assignee: "eng.tasker" });
+    lost.restore();
+    await host.settled();
+    const { partition: _p, ...stored } = (await host.row("alice", filing, filed.taskId!))!;
+    await host.writeRow("alice", filing, { ...(stored as Task), ...patch, status: "pending", metadata: {} });
+    expect(host.runs).toEqual([]);
+    return { filing, taskId: filed.taskId! };
+  };
+
+  it("starts a retry whose run never started on the next touch: the pending row is the debt (Codex P1)", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "desk");
+      // Attempt 1 failed with one left; its notice was acted on and the
+      // conversation crashed before the board run it asked for.
+      const { filing, taskId } = await strandedRow(host, conv, "flaky [fail-until:2]", { attempts: 1, maxAttempts: 2 });
+      await host.act("alice", conv, "listTasks_tasks", {});
+      await host.settled();
+      expect(host.runs.map((run) => run.attempt)).toEqual([2]);
+      expect((await host.row("alice", filing, taskId))?.status).toBe("completed");
+      await host.act("alice", conv, "listTasks_tasks", {});
+      await host.settled();
+      expect(host.runs).toHaveLength(1);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("starts a reassigned row whose wake was lost when the assign is retried, once (Codex P2)", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "pm");
+      // The assign to eng.writer committed; the crash came before its wake.
+      const { filing, taskId } = await strandedRow(host, conv, "rewrite it", { assignee: "eng.writer" });
+      const again = await host.act("alice", conv, "assignTask_tasks", { taskId, assignee: "eng.writer" });
+      expect(again.output).toEqual({ ok: true });
+      await host.settled();
+      expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);
+      expect((await host.row("alice", filing, taskId))?.status).toBe("completed");
     } finally {
       await host.dispose();
     }
@@ -276,7 +345,6 @@ describe("a filing's start, when its wake is lost (BR-10a)", () => {
       for (const id of [stranded.taskId!, next.taskId!]) {
         const row = await host.row("alice", filing, id);
         expect(row?.status).toBe("completed");
-        expect(row?.metadata?.startOwed ?? null).toBeNull();
       }
     } finally {
       await host.dispose();

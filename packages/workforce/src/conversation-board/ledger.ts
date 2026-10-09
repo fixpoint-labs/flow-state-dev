@@ -1,6 +1,5 @@
 /**
- * The ledger a conversation's task board keeps its rows in (FIX-1794 S3), and
- * the start marker its filings leave on a row.
+ * The ledger a conversation's task board keeps its rows in (FIX-1794 S3).
  *
  * One durable collection for every conversation, at the owner's user scope,
  * which crosses flows, so a task session on another flow reads and settles the
@@ -10,8 +9,20 @@
  * deleted and created again under the same id starts with an empty board; the
  * old rows stay in the store, unread.
  *
- * Every ending written here goes through `recordEnding`, so the notice it owes
- * the conversation lands in the same write (`./task-notice`).
+ * ## What a row owes, and how durably
+ *
+ * - **A notice** is a marker the ending's own write puts on the row: every
+ *   ending written here goes through `recordEnding` (`./task-notice`), so the
+ *   ending and the debt to tell the conversation land together or not at all.
+ *   Only the notice's delivery clears it.
+ * - **A start** is no marker at all: it is the row's own state. A row that is
+ *   pending, assigned and claimable is owed a board run, so whatever wrote it
+ *   that way (an add, an assign, a retry, an answered park) wrote the debt in
+ *   that same write. The run that claims it pays it. Nothing can strand a
+ *   start between two writes, because there is no second write.
+ *
+ * Both are sent on the board's next touch when the dispatch that should have
+ * sent them was lost (`./board`).
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
@@ -19,7 +30,6 @@ import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
   resolveResourceCollection,
-  type Task,
   type TaskCollectionRef,
   type TaskPartitionContext
 } from "@flow-state-dev/orchestration/tasks";
@@ -84,36 +94,11 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
 }
 
 /**
- * The marker a filing leaves on a row whose start is owed: written with the
- * add, and cleared by the board run that took the row. A refused or lost wake
- * leaves it for the next touch of the board to retry.
- */
-const START_OWED_KEY = "startOwed";
-
-/** Whether the row's start is still owed. */
-export function isStartOwed(row: Task): boolean {
-  return row.metadata?.[START_OWED_KEY] === true;
-}
-
-/** The metadata that marks a row's start owed. */
-export function startOwed(metadata: Readonly<Record<string, unknown>> | undefined): Record<string, unknown> {
-  return { ...(metadata ?? {}), [START_OWED_KEY]: true };
-}
-
-/** The metadata patch that clears a row's start marker. */
-export function startTaken(): Record<string, null> {
-  return { [START_OWED_KEY]: null };
-}
-
-/**
  * Metadata a caller hands in, without any marker this board keeps: a filing
- * or a patch can't forge an owed start or notice, or clear one.
+ * or a patch can't forge an owed notice, or clear one.
  */
 export function callerMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): Record<string, unknown> | undefined {
-  const kept = withoutNoticeMarkers(metadata);
-  if (kept === undefined) return undefined;
-  const { [START_OWED_KEY]: _dropped, ...rest } = kept;
-  return rest;
+  return withoutNoticeMarkers(metadata);
 }
