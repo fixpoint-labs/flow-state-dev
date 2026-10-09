@@ -37,7 +37,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { LAB_USER_ID, readLabTree } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
-import { LAB_CONFIG, Scenario, actionOutputOf, serveLab, terminationReasonOf, type ActResult } from "../run-scenario.mts";
+import { LAB_CONFIG, Scenario, actionOutputOf, serveLab, terminationReasonOf, type ActResult, type ChangeRecord } from "../run-scenario.mts";
 import { DRAIN_ENTRY, type WorkLine } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
 
 type Fixture = {
@@ -139,12 +139,20 @@ function preinstalledChromium(): string | undefined {
 // The browser half: the DevTool's own navigation, nothing else
 // ---------------------------------------------------------------------------
 
-/** Open one session from the navigator: kind, then instance, then the session row. */
-async function openSession(page: Page, kind: string, instance: string, sessionId: string): Promise<void> {
-  const kindRow = page.locator(`[data-kind="${kind}"]`);
+/**
+ * Open the one copy of `flow` in the navigator: its kind row, then the copy's
+ * own row (a copy's id is its kind), which lists the sessions on it.
+ */
+async function openCopy(page: Page, flow: string): Promise<void> {
+  const kindRow = page.locator(`[data-kind="${flow}"]`);
   if ((await kindRow.getAttribute("aria-expanded")) !== "true") await kindRow.click();
-  const instanceRow = page.locator(`[data-instance-id="${instance}"]`);
-  if ((await instanceRow.getAttribute("aria-expanded")) !== "true") await instanceRow.click();
+  const copyRow = page.locator(`[data-instance-id="${flow}"]`);
+  if ((await copyRow.getAttribute("aria-expanded")) !== "true") await copyRow.click();
+}
+
+/** Open one session from the navigator: the copy of the flow it is on, then the session row. */
+async function openSession(page: Page, flow: string, sessionId: string): Promise<void> {
+  await openCopy(page, flow);
   await page.locator(`[data-session-id="${sessionId}"]`).click();
   await waitForBadge(page, sessionId);
 }
@@ -303,7 +311,8 @@ async function main() {
     }
     const owner = parkedLine.seat;
     notes.push(`the claiming drain on ${owner} ended "${drain1.find((drain) => drain.seat === owner)?.terminationReason}"`);
-    const overParked = await lab.act(owner, lab.seatSession(owner), DRAIN_ENTRY, {}, LAB_USER_ID, 10_000);
+    const ownerFlow = tree.seatFlows[owner]!;
+    const overParked = await lab.act(ownerFlow, lab.seatSession(owner), DRAIN_ENTRY, {}, LAB_USER_ID, 10_000);
     const overParkedReason = terminationReasonOf(overParked.items);
     if (overParked.status !== "completed" || overParkedReason !== "parked-for-review") {
       fail("V3", `${owner}'s drain over the parked row ended ${overParked.status} / "${overParkedReason}", not completed / parked-for-review`);
@@ -312,12 +321,17 @@ async function main() {
     if (stillParked?.status !== "parked") fail("V3", `after that drain returned the first row is "${stillParked?.status}", not parked`);
 
     // ---- VB (1). the seat's Tasks tab: the row, and its dispatch-run link --
-    await page.locator('[data-kind="worker"]').click();
-    const listed = await page.locator("[data-instance-id]").evaluateAll((els) => els.map((el) => el.getAttribute("data-instance-id")));
+    // A seat has no flow of its own: the navigator lists the one copy of the
+    // flow it runs on, and each seat's own session under it.
+    for (const flow of new Set(seats.map((seat) => tree.seatFlows[seat]!))) await openCopy(page, flow);
+    await page.locator(`[data-session-id="${lab.seatSession(owner)}"]`).waitFor();
+    const listed = await page.locator("[data-session-id]").evaluateAll((els) => els.map((el) => el.getAttribute("data-session-id")));
     for (const seat of seats) {
-      if (!listed.includes(seat)) fail("VB", `the navigator has no row for seat ${seat} (listed: ${listed.join(", ")})`);
+      if (!listed.includes(lab.seatSession(seat))) {
+        fail("VB", `the navigator lists no session of seat ${seat} under the copy of "${tree.seatFlows[seat]}" (listed: ${listed.join(", ")})`);
+      }
     }
-    await openSession(page, "worker", owner, lab.seatSession(owner));
+    await openSession(page, ownerFlow, lab.seatSession(owner));
     const screen1 = await taskRow(page, firstId);
     await page.screenshot({ path: join(SHOTS, "1-seat-tasks.png") });
     if (screen1 === undefined) {
@@ -454,7 +468,7 @@ async function main() {
     const firstNow = ledgerNow.find((row) => row.id === firstId);
     if (childSession !== undefined) {
       // Re-selected through the navigator, the way a person comes back to it.
-      await openSession(page, "worker", owner, lab.seatSession(owner));
+      await openSession(page, ownerFlow, lab.seatSession(owner));
       await page.locator(`[data-session-id="${childSession}"]`).click();
       await waitForBadge(page, childSession);
       const screen2b = await taskRow(page, firstId, (cells) => cells.Status === firstNow?.status);
@@ -554,9 +568,12 @@ async function main() {
     for (const id of [...new Set(ran.map((line) => line.taskId))]) {
       if (!claims.some((claim) => claim.taskId === id)) fail("V4", `row ${id} ran with no claim on record`);
     }
+    // A seat is the worker its session's state names, not the flow it runs on.
+    const seatsOwn = (change: ChangeRecord) =>
+      change.workerId !== null && seats.includes(change.workerId) && change.sessionId === lab.seatSession(change.workerId);
     for (const claim of claims) {
-      if (!seats.includes(claim.flowId) || claim.sessionId !== lab.seatSession(claim.flowId)) {
-        fail("V4", `row ${claim.taskId} was claimed from ${claim.flowId} session ${claim.sessionId}, not from a seat's own session`);
+      if (!seatsOwn(claim)) {
+        fail("V4", `row ${claim.taskId} was claimed from session ${claim.sessionId} (worker ${claim.workerId ?? "none"}), not from a seat's own session`);
       }
       if (claim.action !== "drain" && claim.action !== "answer") fail("V4", `row ${claim.taskId} was claimed by a "${claim.action}" request`);
       if (claim.userId !== LAB_USER_ID) fail("V4", `row ${claim.taskId} was claimed as ${claim.userId}`);
@@ -572,8 +589,8 @@ async function main() {
       }
     }
     for (const settled of changes.filter((change) => change.kind === "errored")) {
-      if (!seats.includes(settled.flowId) || settled.sessionId !== lab.seatSession(settled.flowId)) {
-        fail("V4", `row ${settled.taskId} was taken and refused from ${settled.flowId} session ${settled.sessionId}`);
+      if (!seatsOwn(settled)) {
+        fail("V4", `row ${settled.taskId} was taken and refused from session ${settled.sessionId} (worker ${settled.workerId ?? "none"})`);
       }
     }
     // And the row for nobody must HAVE such a record: an errored row with no
@@ -584,8 +601,7 @@ async function main() {
         (change) =>
           change.taskId === orphan.id &&
           (change.kind === "claimed" || change.kind === "errored") &&
-          seats.includes(change.flowId) &&
-          change.sessionId === lab.seatSession(change.flowId) &&
+          seatsOwn(change) &&
           (change.action === "drain" || change.action === "answer") &&
           change.userId === LAB_USER_ID,
       );

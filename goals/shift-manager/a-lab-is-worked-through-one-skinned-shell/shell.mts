@@ -16,7 +16,7 @@ import { pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, intentFreeEnv } from "../../lib/index.mts";
-import { SHIFT_MANAGER, SHIFT_MANAGER_COMMAND, buildShiftManagerCopy, labApi as labRoutes, servedAddresses, type Patch } from "../../lib/shift-manager.mts";
+import { SHIFT_MANAGER, SHIFT_MANAGER_COMMAND, buildShiftManagerCopy, labApi as labRoutes, pendingSeatAsks, servedAddresses, type Patch } from "../../lib/shift-manager.mts";
 
 export { SHIFT_MANAGER, type Patch };
 
@@ -218,8 +218,11 @@ export async function readTree(root: string): Promise<Tree> {
 
 /** A stored board row, as the store returns it. */
 export type StoredRow = { ref: string; id: string; status: string; title: string; run: { sessionId: string; requestId: string } | null; raw: Record<string, any> };
-/** A pending ask: a suspension with no resume, on a seat's session, asking a person. */
-export type StoredAsk = { suspensionId: string; sessionId: string; seat: string };
+/**
+ * A pending ask: a suspension with no resume, on a seat's session, asking a person. `seat` is the
+ * worker the session names, or `null` for a session on a seat's kind that names none.
+ */
+export type StoredAsk = { suspensionId: string; sessionId: string; seat: string | null };
 
 /** What the store holds, read through the Lab's routes by this script. */
 export type Store = {
@@ -233,9 +236,6 @@ export type Store = {
   projects: Array<{ id: string; title: string; brief: string | null; workstreams: string[] }>;
 };
 
-/** Suspension reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
-
 export async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store> {
   // The inventory, through the first mailbox's session, by its published key patterns.
   const host = tree.mailboxes[0]!.id;
@@ -244,7 +244,8 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
     (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
   const seatsRef = refOf("inventory/seats/*");
   const mailboxesRef = refOf("inventory/mailboxes/*");
-  const seats = seatsRef === undefined ? [] : (await api.collection(host, seatsRef)).map((r) => String(r.id));
+  const seatRows = seatsRef === undefined ? [] : (await api.collection(host, seatsRef)).map((r) => ({ id: String(r.id), kind: r.kind == null ? null : String(r.kind) }));
+  const seats = seatRows.map((s) => s.id);
   const mailboxes =
     mailboxesRef === undefined
       ? []
@@ -281,18 +282,8 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
   const sessions = (listing.sessions ?? []) as Array<Record<string, any>>;
   const orgs = [...new Set(sessions.map((s) => s.orgId).filter((o): o is string => typeof o === "string" && o.length > 0))];
-  const seatSet = new Set(seats);
-  const asks: StoredAsk[] = [];
-  for (const session of sessions) {
-    if (!seatSet.has(String(session.flowId))) continue;
-    const found = await api.items(String(session.id), ["suspension", "suspension_resume"]);
-    const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
-    for (const item of found) {
-      if (item.type === "suspension" && PERSON_REASONS.has(String(item.reason)) && !resumed.has(String(item.suspensionId))) {
-        asks.push({ suspensionId: String(item.suspensionId), sessionId: String(session.id), seat: String(session.flowId) });
-      }
-    }
-  }
+  // The seat an ask belongs to is the worker its session names, not the flow the session is on.
+  const asks: StoredAsk[] = (await pendingSeatAsks(api, sessions, seatRows)).map((a) => ({ suspensionId: a.suspensionId, sessionId: a.sessionId, seat: a.seatId }));
   return { seats, mailboxes, rows, asks, orgs, projects };
 }
 

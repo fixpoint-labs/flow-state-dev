@@ -92,14 +92,15 @@ async function waitForBadge(page: Page, sessionId: string): Promise<void> {
 }
 
 /**
- * Open a session the way a person does: the kind, then the seat, then the
- * seat's own session, then the run it spawned.
+ * Open a session the way a person does: the kind, then its one copy (a seat
+ * has none of its own; a copy's id is its kind), then the seat's own session
+ * on it, then the run it spawned.
  */
-async function openRun(page: Page, seat: string, seatSession: string, run: string): Promise<void> {
+async function openRun(page: Page, seatSession: string, run: string): Promise<void> {
   const kindRow = page.locator(`[data-kind="${WORKER_KIND}"]`);
   if ((await kindRow.getAttribute("aria-expanded")) !== "true") await kindRow.click();
-  const seatRow = page.locator(`[data-instance-id="${seat}"]`);
-  if ((await seatRow.getAttribute("aria-expanded")) !== "true") await seatRow.click();
+  const copyRow = page.locator(`[data-instance-id="${WORKER_KIND}"]`);
+  if ((await copyRow.getAttribute("aria-expanded")) !== "true") await copyRow.click();
   await page.locator(`[data-session-id="${seatSession}"]`).click();
   await waitForBadge(page, seatSession);
   await page.locator(`[data-session-id="${run}"]`).click();
@@ -290,7 +291,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       // ---- the screen ------------------------------------------------------
       const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
       await page.goto(served.origin, { waitUntil: "networkidle" });
-      await openRun(page, owner, lab.seatSession(owner), parkLine.session);
+      await openRun(page, lab.seatSession(owner), parkLine.session);
       const onScreen = await readTaskRow(page, parked.id, (cells) => cells.Status === "parked");
       await page.screenshot({ path: join(SHOTS, "row4-parked.png") });
 

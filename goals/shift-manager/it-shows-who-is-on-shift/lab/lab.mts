@@ -17,7 +17,11 @@
  *   aborted;
  * - `parked`: a row its run parks for a person (`awaitReview`), then returns;
  * - `queued`: a row filed after the only drain, so nothing ever claims it;
- * - `ask`: a pending approval in a session of its own, on its own flow.
+ * - `ask`: a pending approval in a session of its own, on the flow it runs on,
+ *   naming it.
+ *
+ * Every worker runs on one copy of the flow its file names (`lead` or
+ * `seat`), and each of its sessions names it in its state (`workerId`).
  *
  * Every row is filed through the mailbox's own `fileTask`, assigned by the
  * worker's name. No model: the runs are scripted.
@@ -30,11 +34,12 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 import { getOrCreateTaskCollection, type TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import {
   MAILBOX_KIND,
+  WORKER_ID_STATE_KEY,
   mailboxBoard,
   mailboxBoardIds,
   mailboxInstances,
   defineMailboxFlow,
-  hireWorkforce,
+  inventorySeats,
   openMailboxes,
   openInventory,
   workerConfigSchema,
@@ -46,6 +51,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { workerDoor } from "../../../lib/worker-door.mts";
+import { installWorkers } from "../../../lib/workers.mts";
 
 /** The tree this Lab reads. */
 const SHIFT_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
@@ -159,37 +165,54 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
     },
   });
 
+  // A row runs on the lead's flow, in a session of its own that names the lead
+  // whose drain handed it over, as the session it was drained from does.
   const leadBoard = taskBoard({
     name: "shift-lab-lead",
     boardId: `${ledger.id}-board`,
     collection: ledger,
     workers: Object.fromEntries(
-      seats.map((seat) => [seat.name, dispatcher<TaskWorkerInput>({ name: `shift-lab-hand-${seat.name}`, action: ENTRY, session: "per-task" })]),
+      seats.map((seat) => [
+        seat.name,
+        dispatcher<TaskWorkerInput>({
+          name: `shift-lab-hand-${seat.name}`,
+          action: ENTRY,
+          session: "per-task",
+          state: (_task, ctx) => ({ [WORKER_ID_STATE_KEY]: (ctx.session.state as Record<string, unknown>)[WORKER_ID_STATE_KEY] }),
+        }),
+      ]),
     ),
   });
-  const leadKind = defineFlow({
-    kind: drainer.declared.flow as string,
-    cardinality: "collection",
-    configSchema: workerConfigSchema(),
-    resources: { [ledger.id]: ledger },
-    actions: { drain: { block: leadBoard.drain }, ...workerDoor },
-    task: { actions: { [ENTRY]: { block: scriptedRun } } },
-  } as never);
-  const seatKind = defineFlow({
-    kind: SEAT_KIND,
-    cardinality: "collection",
-    configSchema: workerConfigSchema().extend({ handoff: z.enum(["per-task", "per-worker"]).optional() }),
-    actions: { ...workerDoor, ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
-  } as never);
+  const leadFlow = drainer.declared.flow as string;
 
-  const hired = hireWorkforce(tree.workers, {
-    workerFlows: { [drainer.declared.flow as string]: leadKind as never, [SEAT_KIND]: seatKind as never },
-    mailboxBoards: mailboxBoardIds(tree.mailboxes),
-  });
+  // One copy of each flow, which every worker that names it runs on.
+  const { installation, copies } = installWorkers(
+    tree.workers,
+    (installation) => ({
+      [leadFlow]: defineFlow({
+        kind: leadFlow,
+        cardinality: "collection",
+        configSchema: workerConfigSchema(),
+        session: installation.session(),
+        resources: { [ledger.id]: ledger, ...installation.resources },
+        actions: { drain: { block: leadBoard.drain }, ...workerDoor },
+        task: { actions: { [ENTRY]: { block: scriptedRun } } },
+      } as never),
+      [SEAT_KIND]: defineFlow({
+        kind: SEAT_KIND,
+        cardinality: "collection",
+        configSchema: workerConfigSchema().extend({ handoff: z.enum(["per-task", "per-worker"]).optional() }),
+        session: installation.session(),
+        resources: { ...installation.resources },
+        actions: { ...workerDoor, ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
+      } as never),
+    }),
+    { mailboxBoards: mailboxBoardIds(tree.mailboxes) },
+  );
   const instances = mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: defineMailboxFlow({ inventory: true }) as never } });
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(instances.map((i) => [i.kind, i])),
-    ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
+    ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
   };
   const flowState = createFlowState({
     flows,
@@ -246,7 +269,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
   };
 
   const inventory = await openInventory(
-    { seats: [...hired, ORG_SEAT], mailboxes: tree.mailboxes },
+    { seats: [...inventorySeats(installation), ORG_SEAT], mailboxes: tree.mailboxes },
     {
       run: (request: InventoryActionRequest) => act(flows[request.flowKind]!, request.sessionId, request.action, request.input, request.source),
       seatWriter: { flowKind: MAILBOX_KIND },
@@ -262,14 +285,27 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
     act(mailboxInstance, mailbox.id, "fileTask", { board: boardName, goal, assignee: name, input: script });
   const states = (wanted: ShiftState) => Object.entries(spread).flatMap(([name, list]) => list.filter((s) => s === wanted).map(() => name));
 
+  /** A session on `flow` with `worker`, created naming it: a worker has no flow address of its own. */
+  const openWorkerSession = async (flow: string, worker: string, sessionId: string) => {
+    const opened = await call("POST", [flow, "sessions"], {
+      userId: SHIFT_LAB_USER_ID,
+      sessionId,
+      state: { [WORKER_ID_STATE_KEY]: worker },
+    });
+    if (opened.status !== 201) throw new Error(`a session with ${worker} on "${flow}": ${opened.status} ${JSON.stringify(opened.body)}`);
+  };
+
   for (const name of states("held")) await file(name, `${name}: hold until stopped`, {});
   for (const name of states("parked")) await file(name, `${name}: park for a person`, { park: true });
-  await act(hired.find((seat) => seat.id === drainer.id)! as FlowInstance, DRAIN_SESSION, "drain", {});
+  await openWorkerSession(leadFlow, drainer.id, DRAIN_SESSION);
+  await act(flows[leadFlow]!, DRAIN_SESSION, "drain", {});
   // Filed after the only drain, so nothing ever claims them.
   for (const name of states("queued")) await file(name, `${name}: filed after the drain`, {});
   for (const [i, name] of states("ask").entries()) {
     const seat = seats.find((s) => s.name === name)!;
-    const posted = await call("POST", [seat.id, `s_shift_lab_ask_${name}_${i}`, "actions", "ask"], {
+    const sessionId = `s_shift_lab_ask_${name}_${i}`;
+    await openWorkerSession(SEAT_KIND, seat.id, sessionId);
+    const posted = await call("POST", [SEAT_KIND, sessionId, "actions", "ask"], {
       userId: SHIFT_LAB_USER_ID,
       input: { what: `${name} wants to go ahead` },
     });
