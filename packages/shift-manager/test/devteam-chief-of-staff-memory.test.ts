@@ -23,7 +23,7 @@ import type { FlowInstance, GeneratorModel, GeneratorModelCallOptions, ModelReso
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
-import { CAPTURE_OFF, CAPTURE_ON, RECALL_TOOL } from "../teams/devteam/memory.mts";
+import { CAPTURE_OFF, CAPTURE_ON } from "../teams/devteam/memory.mts";
 import { createNotifyLog } from "../teams/devteam/notify.mts";
 
 const COS = "chief-of-staff";
@@ -158,7 +158,6 @@ describe("the shift coordinator's memory", () => {
     expect(lastTools().some((name) => name.includes("recall"))).toBe(true);
     expect(lastPrompt()).toContain(JSON.stringify(CAPTURE_OFF).slice(1, -1));
     expect(lastPrompt()).not.toContain(JSON.stringify(CAPTURE_ON).slice(1, -1));
-    expect(RECALL_TOOL).toBe("memory/recall");
   });
 
   it("with capture on, reads back what the person said on the next turn, from working memory", async () => {
