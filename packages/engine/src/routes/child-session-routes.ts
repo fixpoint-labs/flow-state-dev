@@ -301,6 +301,64 @@ export async function resolveDispatchRunStatus(
   return TERMINAL_WIRE_STATUS[mostRecent.status];
 }
 
+/** How many runs one batched read names: keeps an `IN (…)` list within SQL parameter limits. */
+const ACTIVE_RUNS_BATCH = 500;
+
+/**
+ * The statuses that are live only when most recent (`interrupted`), derived so
+ * the two sets above stay the one place the live statuses are written.
+ */
+const LIVE_ONLY_WHEN_MOST_RECENT = LIVE_WHEN_MOST_RECENT.filter(
+  (status) => !LIVE_STATUSES.includes(status)
+);
+
+/**
+ * Which of `childSessionIds` are `active`, by the same rule as
+ * {@link resolveDispatchRunStatus}, in reads that do not grow with the number
+ * of runs.
+ *
+ * One run at a time costs two reads per run, and on an adapter with no index
+ * (the filesystem store reads every request record for any list) that is
+ * quadratic: a session with a hundred runs took seconds to open its stream.
+ *
+ * A run is `active` when it has a live record, or when its most recent record
+ * is `interrupted`. So: one read for the live records of every run, then one
+ * for the `interrupted` records of the rest. Only a run with an `interrupted`
+ * record can be active without a live one, and only those few go through the
+ * per-run resolve, which decides whether that record is the most recent.
+ */
+export async function resolveActiveDispatchRuns(
+  store: RequestStore,
+  childSessionIds: readonly string[],
+  identity: ParentIdentity
+): Promise<Set<string>> {
+  const active = new Set<string>();
+  for (let start = 0; start < childSessionIds.length; start += ACTIVE_RUNS_BATCH) {
+    const batch = childSessionIds.slice(start, start + ACTIVE_RUNS_BATCH);
+    const live = await store.list({
+      sessionId: batch,
+      status: LIVE_STATUSES,
+      orderBy: "none",
+      ...identity
+    });
+    for (const record of live) if (record.sessionId !== undefined) active.add(record.sessionId);
+
+    const rest = batch.filter((id) => !active.has(id));
+    if (rest.length === 0) continue;
+    const interrupted = await store.list({
+      sessionId: rest,
+      status: LIVE_ONLY_WHEN_MOST_RECENT,
+      orderBy: "none",
+      ...identity
+    });
+    const candidates = new Set(interrupted.flatMap((record) => record.sessionId ?? []));
+    for (const id of candidates) {
+      if ((await resolveDispatchRunStatus(store, id, identity)) === "active") active.add(id);
+    }
+  }
+  return active;
+}
+
 /**
  * Project the two labels the dispatch seam stamps onto the row.
  *

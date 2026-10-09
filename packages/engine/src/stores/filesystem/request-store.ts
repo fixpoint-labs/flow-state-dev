@@ -17,6 +17,7 @@ import {
 } from "./shared";
 import { atomicWrite, ensureDirectory, toRecordPath } from "./shared";
 import {
+  matchesRequestSessionFilter,
   matchesRequestStatusFilter,
   mergeItemsById,
   withHeldItems,
@@ -259,10 +260,7 @@ export class FilesystemRequestStore implements RequestStore {
           return false;
         }
 
-        if (
-          listOptions?.sessionId !== undefined &&
-          record.sessionId !== listOptions.sessionId
-        ) {
+        if (!matchesRequestSessionFilter(listOptions?.sessionId, record.sessionId)) {
           return false;
         }
 

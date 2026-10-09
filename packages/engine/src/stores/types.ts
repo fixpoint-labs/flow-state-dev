@@ -460,7 +460,13 @@ export type RequestListOptions = {
   flowKind?: string;
   /** Exact-owner filter; see {@link SessionListOptions.flowId}. */
   flowId?: string;
-  sessionId?: string;
+  /**
+   * Session filter. A single id matches by equality; an array matches **set
+   * membership**, so a question asked of many sessions at once (which of a
+   * session's child runs are unfinished) is one read rather than one read per
+   * session. An empty array matches nothing.
+   */
+  sessionId?: string | readonly string[];
   userId?: string;
   /**
    * Tenant filter (FIX-682). Exact-match isolation with deliberate

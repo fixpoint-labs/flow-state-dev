@@ -25,6 +25,21 @@ export function matchesRequestStatusFilter(
   return recordStatus === filter;
 }
 
+/**
+ * Request-session list-filter predicate: a single id matches by equality, an
+ * array by set membership, absent passes everything and an empty array
+ * nothing. Same shape as {@link matchesRequestStatusFilter}, and the SQL
+ * adapters mirror it the same way (`session_id = ?` / `session_id IN (…)`).
+ */
+export function matchesRequestSessionFilter(
+  filter: string | readonly string[] | undefined,
+  recordSessionId: string | undefined
+): boolean {
+  if (filter === undefined) return true;
+  if (Array.isArray(filter)) return recordSessionId !== undefined && filter.includes(recordSessionId);
+  return recordSessionId === filter;
+}
+
 export function applyOffsetLimit<TValue>(
   values: TValue[],
   options: { offset?: number; limit?: number } | undefined
