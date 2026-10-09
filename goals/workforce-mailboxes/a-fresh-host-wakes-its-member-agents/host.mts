@@ -12,7 +12,9 @@
  * when asked and declare no delegated-post entry, so a post runs nothing on
  * them. Every other worker runs on the built-in `agent`, answered by a
  * scripted model so the check needs no key. Each flow is registered once; a
- * delegate's conversation is a session on its flow, naming it.
+ * delegate's conversation is a session on its flow, naming it. The app names
+ * its one user and org in `resolvePrincipal`, so every session it makes, the
+ * delegates' included, carries that org rather than the development default.
  *
  * `seams` is the goal check's, for its controls, and nothing else. An app
  * passes nothing.
@@ -57,6 +59,9 @@ const workerDoor = {
 /** The user who talks to the coordinator. */
 export const OWNER = "u_fresh_host";
 
+/** The organization the app runs as. Every session it makes carries it. */
+export const ORG = "org_fresh_host";
+
 /** What an agent delegate answers with, whatever it heard. */
 export const REPLY_MARKER = "[reply:fresh-host]";
 
@@ -84,6 +89,8 @@ export interface HostSeams {
   adaptWorkers?: (workers: WorkerManifest[]) => WorkerManifest[];
   /** The flows a delegate takes a post on, given the ones the app names. */
   adaptDelegateFlows?: (flows: { kind: string }[]) => { kind: string }[];
+  /** Leave the app's `resolvePrincipal` out, so nothing names its org. */
+  omitPrincipal?: boolean;
 }
 
 /** The app, booted: its router, and what it registered. */
@@ -122,6 +129,9 @@ export async function startFreshHost(tree: string, seams: HostSeams = {}): Promi
   const state = createFlowState({
     flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     stores: { default: { primary: inMemoryStores() } },
+    // Who every request is, and the org its sessions bind to. Ignores the
+    // request: one caller, and a body read would be caller-controlled identity.
+    ...(seams.omitPrincipal === true ? {} : { resolvePrincipal: () => ({ userId: OWNER, orgId: ORG }) }),
     modelResolver: createMockModelResolver({
       generators: {
         "agent-answer": mockGenerator({

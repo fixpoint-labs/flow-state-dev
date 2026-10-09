@@ -26,6 +26,11 @@
  *   fallback   a post the evaluation cannot place goes to the fallback alone.
  *   everyone   a post to the coordinator on `routing: everyone` reaches every
  *              agent once, and each answer lands there once.
+ *   org        both of the person's conversations and every delegate
+ *              conversation under them carry the host's named org, not the
+ *              development default (FIX-1792 BR-25). Read from the store, since
+ *              the router scopes what it lists to the caller's org and could not
+ *              show one that landed elsewhere.
  *
  * With GOAL_LIVE=1 a live leg runs after them, on real models: the route on
  * the host's own evaluation model string, the answers on a small chat model.
@@ -33,6 +38,7 @@
  * Run:      pnpm --dir goals exec tsx workforce-mailboxes/a-routed-post-gets-one-answer/run.mts
  * Controls: GOAL_CONTROL=no-route     (the best-fit coordinator read as `routing: everyone`)
  *           GOAL_CONTROL=no-landing   (the agent flow replaced by one that answers a delegated post and hands nothing back)
+ *           GOAL_CONTROL=no-org       (the host's resolvePrincipal left out)
  * Live:     GOAL_LIVE=1 (needs AI_GATEWAY_API_KEY)
  */
 import { randomUUID } from "node:crypto";
@@ -65,7 +71,9 @@ const EXPECTED: Record<string, string[]> = {
   "no-route": ["one", "lands", "held", "fallback"],
   // No answer ever lands, so the specialist on the first post holds every next
   // one: lands, every leg the hold then diverts, and the answers on everyone.
-  "no-landing": ["one", "lands", "fallback", "everyone"]
+  "no-landing": ["one", "lands", "fallback", "everyone"],
+  // No resolver names the org: every session lands in the development default.
+  "no-org": ["org"]
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -114,6 +122,8 @@ function controlSeams(): HostSeams {
       };
     case "no-landing":
       return { agent: (installation: WorkerInstallation) => quietAgentFlow(installation) };
+    case "no-org":
+      return { omitPrincipal: true };
     default:
       return {};
   }
@@ -211,7 +221,7 @@ async function scriptedLegs(fail: (leg: string, line: string) => void, evidence:
   const [s1, s2, s3] = delegates.filter((m) => m !== fallback);
   if (s3 === undefined) throw new Error(`the routed coordinator needs three specialists beside its fallback; read ${delegates.join(", ")}`);
 
-  const { startRoutedHost, OWNER, REPLY_MARKER } = await import("./host.mts");
+  const { startRoutedHost, OWNER, ORG, REPLY_MARKER } = await import("./host.mts");
   const app = await startRoutedHost(TREE, controlSeams());
   const io = reader(app, OWNER);
   const run = randomUUID().replace(/-/g, "").slice(0, 10);
@@ -302,6 +312,25 @@ async function scriptedLegs(fail: (leg: string, line: string) => void, evidence:
         }
       }
       if (ok) evidence.push(`${lounge.id}: ${agents.length} agents heard the post once, and each answer landed once`);
+    }
+
+    // ---- org: both conversations and each delegate's carry the named org -----
+    {
+      const runtime = await app.state.getRuntime();
+      const opened = [conversation, loungeConversation];
+      const made = (await runtime.stores.session.list({ parentage: "all" })).filter(
+        (s) => opened.includes(s.id) || (s.parentSessionId != null && opened.includes(s.parentSessionId))
+      );
+      const delegateSessions = made.filter((s) => !opened.includes(s.id));
+      // How many delegate sessions there should be is the other legs' to
+      // grade; this leg grades the org of the ones there are.
+      const missing = opened.filter((id) => !made.some((s) => s.id === id));
+      const off = made.filter((s) => s.orgId !== ORG);
+      for (const id of missing) fail("org", `the store holds no session ${id}`);
+      for (const s of off) fail("org", `${s.flowId ?? s.flowKind} session ${s.id} carries org ${String(s.orgId)} (want ${ORG})`);
+      if (missing.length === 0 && off.length === 0) {
+        evidence.push(`both conversations and their ${delegateSessions.length} delegate session(s) carry ${ORG}`);
+      }
     }
   } finally {
     await app.state.dispose();

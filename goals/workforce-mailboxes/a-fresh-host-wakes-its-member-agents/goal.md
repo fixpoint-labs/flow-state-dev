@@ -15,6 +15,7 @@
 - **answers**: the person's conversation holds exactly one answer line per post from each agent delegate, under its name, and none by anyone else.
 - **quiet**: no worker's conversation holds a delegate's answer as a turn it heard.
 - **other**: the `note` delegate holds no conversation.
+- **org**: the person's conversation and every delegate conversation under it carry the org the host names in `resolvePrincipal`, not the development default (FIX-1792 BR-25). Read from the host's session store, since the router scopes what it lists to the caller's org and could not show a session that landed in another.
 - **source**: `host.mts` imports only `@flow-state-dev/*`, calls `defineCoordinatorFlow`, and builds no `dispatcher`, `keyedRouter` or `router`; the tree's coordinator routes to `everyone`. Kitchen-sink's `workforce/hire.ts` calls `defineCoordinatorFlow` and builds none of the three, and its `SEAT_ASKS` has no `wake` column.
 
 **Anti-game:** no assertion on the router's output, a dispatch handle, a routing record, or a unit test. Only what each worker's own conversation kept and what the person's conversation holds count, read through the routes, and only this run's tokens. The wait before grading polls until every request has settled and then gives a wrongly woken worker 1.5s to run; none of it is graded. Kitchen-sink's runtime half is not re-proved here: `kitchen-sink-talk`'s goals are re-run on the converted app.
@@ -27,6 +28,8 @@
 
 - `GOAL_CONTROL=no-wake`: the coordinator flow is registered with no flow a delegate takes a post on. Must FAIL at **woken** and **answers**, and at nothing else.
 - `GOAL_CONTROL=answers-go-on`: the coordinator's file is read with `rounds: 1`, so each round's answers go back out to the other delegates. Must FAIL at **answers** (each delegate answers the other's answer too) and **quiet**, and at nothing else.
+
+- `GOAL_CONTROL=no-org`: the host's `resolvePrincipal` left out, so nothing names its org. Must FAIL at **org** (every session carries `__fsd_default_org__`), and at nothing else.
 
 The **import** and **source** legs have no control: a checkout without the export fails **import**, and kitchen-sink's pre-conversion `workforce/hire.ts` fails **source**. Both were produced and are logged below.
 
@@ -46,3 +49,6 @@ The **import** and **source** legs have no control: a checkout without the expor
 | 2026-10-09 | same | scripted | FAIL (expected) | `GOAL_CONTROL=no-wake`: **woken** and **answers** only — `desk.amy` and `desk.oz` hold 0 conversations, and 0 answer lines. |
 | 2026-10-09 | same | scripted | FAIL (expected) | `GOAL_CONTROL=answers-go-on`: **answers** and **quiet** only — 4 answer lines each, and each heard the other's answer (*desk.oz, through desk.front: [reply:fresh-host] noted.*). |
 | 2026-10-09 | same | scripted | FAIL (by hand) | `defineCoordinatorFlow` dropped from the package barrel: failed at **import** only. Restored. |
+| 2026-10-09 | `fix/FIX-1792-p1` on 343af0c77, uncommitted | scripted | FAIL | **The org leg added, the host not yet changed (FIX-1792 BR-25, from review).** **org** only: the conversation with `desk.front` and both delegate sessions carry `__fsd_default_org__`; the host had no `resolvePrincipal`, before the conversion and after it. Every other leg green. |
+| 2026-10-09 | same | scripted | **PASS** | The host names `u_fresh_host` and `org_fresh_host` in `resolvePrincipal`. Every leg green; the conversation and its 2 delegate sessions carry `org_fresh_host`. |
+| 2026-10-09 | same | scripted | FAIL (expected) | `GOAL_CONTROL=no-org`: **org** only — the conversation and both delegate sessions carry `__fsd_default_org__`. `no-wake` (**woken**, **answers**) and `answers-go-on` (**answers**, **quiet**) re-taken: each its own legs only, **org** green. |

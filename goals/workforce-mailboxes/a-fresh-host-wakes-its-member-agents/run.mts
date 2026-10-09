@@ -20,6 +20,11 @@
  *              each agent delegate, under its name.
  *   quiet      no delegate hears another's answer.
  *   other      the delegate whose flow takes no posts holds nothing.
+ *   org        the person's conversation and every delegate conversation under
+ *              it carry the host's named org, not the development default
+ *              (FIX-1792 BR-25). Read from the store, since the router scopes
+ *              what it lists to the caller's org and could not show one that
+ *              landed elsewhere.
  *   source     the host imports only `@flow-state-dev/*`, registers the
  *              coordinator flow and builds no dispatcher or router, and the
  *              tree's coordinator routes to everyone; kitchen-sink registers
@@ -32,6 +37,7 @@
  * Run:      pnpm --dir goals exec tsx workforce-mailboxes/a-fresh-host-wakes-its-member-agents/run.mts
  * Controls: GOAL_CONTROL=no-wake        (no flow takes a delegated post: must FAIL at woken and answers, and nothing else)
  *           GOAL_CONTROL=answers-go-on  (the coordinator read with `rounds: 1`: must FAIL at answers and quiet, and nothing else)
+ *           GOAL_CONTROL=no-org         (the host's resolvePrincipal left out: must FAIL at org, and nothing else)
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -51,6 +57,8 @@ const EXPECTED: Record<string, string[]> = {
   "no-wake": ["woken", "answers"],
   // Each round's answers go back out: each delegate hears the other's answer and answers it.
   "answers-go-on": ["answers", "quiet"],
+  // No resolver names the org: every session lands in the development default.
+  "no-org": ["org"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -66,6 +74,8 @@ function controlSeams(): HostSeams {
         adaptWorkers: (workers: WorkerManifest[]) =>
           workers.map((w) => (w.declared.flow === "coordinator" ? { ...w, declared: { ...w.declared, rounds: 1 } } : w)),
       };
+    case "no-org":
+      return { omitPrincipal: true };
     default:
       return {};
   }
@@ -142,7 +152,7 @@ await runGoal(async (failures) => {
     );
   }
 
-  const { startFreshHost, OWNER, REPLY_MARKER } = await import("./host.mts");
+  const { startFreshHost, OWNER, ORG, REPLY_MARKER } = await import("./host.mts");
   const app = await startFreshHost(TREE, controlSeams());
   const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
     const res = await app.router[method](
@@ -255,6 +265,23 @@ await runGoal(async (failures) => {
       const held = await conversationsOf(seat);
       if (held.length > 0) fail("other", `${seat} holds ${held.length} conversations (want 0)`);
       else evidence.push(`${seat}: no conversation`);
+    }
+
+    // ---- org: the conversation and each delegate's carry the named org ---------
+    {
+      const runtime = await app.state.getRuntime();
+      const made = (await runtime.stores.session.list({ parentage: "all" })).filter(
+        (s) => s.id === conversation || s.parentSessionId === conversation,
+      );
+      const delegateSessions = made.filter((s) => s.parentSessionId === conversation);
+      const off = made.filter((s) => s.orgId !== ORG);
+      // How many delegate sessions there should be is woken's to grade; this
+      // leg grades the org of the ones there are.
+      if (!made.some((s) => s.id === conversation)) fail("org", `the store holds no session ${conversation}`);
+      for (const s of off) fail("org", `${s.flowId ?? s.flowKind} session ${s.id} carries org ${String(s.orgId)} (want ${ORG})`);
+      if (!failures.some((f) => f.startsWith("[org]"))) {
+        evidence.push(`${conversation} and its ${delegateSessions.length} delegate session(s) carry ${ORG}`);
+      }
     }
   } finally {
     await app.state.dispose();

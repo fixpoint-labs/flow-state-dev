@@ -24,6 +24,7 @@ No goal proves either outcome on `main` after the conversion: the coordinator fl
 - **held**: a post sent while the device specialist has not answered its last post (its turn on that one replied with nothing, so no line) is heard by it alone, with no evaluation call.
 - **fallback**: a post the evaluation cannot place is heard by the fallback alone.
 - **everyone**: the post to the coordinator on `routing: everyone` is heard once by each of the four agents, and each one's answer lands in that conversation once.
+- **org**: both of the person's conversations and every delegate conversation under them carry the org the host names in `resolvePrincipal`, not the development default (FIX-1792 BR-25). Read from the host's session store, since the router scopes what it lists to the caller's org and could not show a session that landed in another.
 
 **Anti-game:** no assertion on a routing record, a dispatch handle, a router decision, or a unit test. Who ran is read from each delegate's own kept conversation; what landed is read from the person's conversation; "no evaluation" is read from the route model's own calls, a real side effect. The scripts answer only from what they are handed: the route from the post (`[route:<delegate>]`, else a failed call), the answer from its turn. Waiting is polling until every request in the host settles, ungraded.
 
@@ -37,6 +38,8 @@ No goal proves either outcome on `main` after the conversion: the coordinator fl
 
 - `GOAL_CONTROL=no-route`: the best-fit coordinator's file read as `routing: everyone`. Every delegate hears every post and each answers it. Must FAIL at **one**, **lands**, **held** and **fallback**, and at nothing else.
 - `GOAL_CONTROL=no-landing`: the `agent` flow replaced by one of the app's own that takes a delegated post, answers it in its own conversation, and hands nothing back. Must FAIL at **lands**; because no specialist ever answers, the hold keeps each next post on the first specialist, so at **one** and **fallback** too; and at **everyone**, whose answers never land. Nothing else.
+
+- `GOAL_CONTROL=no-org`: the host's `resolvePrincipal` left out, so nothing names its org. Must FAIL at **org** (every session carries `__fsd_default_org__`), and at nothing else.
 
 The **import** and **source** legs have no control; each was reddened by hand, logged below.
 
@@ -67,3 +70,6 @@ The **import** and **source** legs have no control; each was reddened by hand, l
 | 2026-10-09 | same | scripted | FAIL (by hand) | The host given its own `dispatcher(…)`: failed at **source** only. Restored. |
 | 2026-10-09 | same | route `vercel/typesafe-ai/jev`, answers `vercel/openai/gpt-5.4-mini` | FAIL (live, follow-up pinned) | `GOAL_LIVE=1` with the follow-up still pinned to the laptop's specialist: the follow-up went to `support.accounts`, not `support.devices`; *Where can I buy it?* went to `support.general`, which answered about something else. The same finding as the faithful port, on real models. |
 | 2026-10-09 | same | as above | **PASS** (live) | `GOAL_LIVE=1`, the follow-up unpinned: each of the seven posts reached one delegate and landed one line under its name; the follow-up reached `support.accounts` again. |
+| 2026-10-09 | `fix/FIX-1792-p1` on 343af0c77, uncommitted | scripted | FAIL | **The org leg added, the host not yet changed (FIX-1792 BR-25, from review).** **org** only: both conversations and all 8 delegate sessions carry `__fsd_default_org__`; the host had no `resolvePrincipal`, before the conversion and after it. Every other leg green. |
+| 2026-10-09 | same | scripted | **PASS** | The host names `u_routed_host` and `org_routed_host` in `resolvePrincipal`. Every leg green; both conversations and their 8 delegate sessions carry `org_routed_host`. The live leg was not re-taken. |
+| 2026-10-09 | same | scripted | FAIL (expected) | `GOAL_CONTROL=no-org`: **org** only — both conversations and all 8 delegate sessions carry `__fsd_default_org__`. `no-route` (**one**, **lands**, **held**, **fallback**) and `no-landing` (**one**, **lands**, **fallback**, **everyone**) re-taken: each its own legs only, **org** green. |

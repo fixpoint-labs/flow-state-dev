@@ -8,8 +8,10 @@
  * Workforce's `coordinator` flow once, with the built-in `agent` as the flow
  * its delegates take posts on, and names the model best fit's one evaluator
  * call runs on. Every worker flow is registered once, and a delegate's
- * conversation is a session on its flow, naming it. The goal check reads this
- * file's source to hold it to that.
+ * conversation is a session on its flow, naming it. The app names its one
+ * user and org in `resolvePrincipal`, so every session it makes, the
+ * delegates' included, carries that org rather than the development default.
+ * The goal check reads this file's source to hold it to that.
  *
  * Keyless by default: the delegates answer from a scripted model, and best
  * fit's one evaluation is scripted by its block name, `coordinator-route`.
@@ -47,6 +49,9 @@ import { readWorkforce } from "@flow-state-dev/workforce/loader";
 /** The user who talks to the coordinators. */
 export const OWNER = "u_routed_host";
 
+/** The organization the app runs as. Every session it makes carries it. */
+export const ORG = "org_routed_host";
+
 /** What every scripted answer carries. */
 export const REPLY_MARKER = "[reply:routed-host]";
 
@@ -61,6 +66,8 @@ export interface HostSeams {
   agent?: (installation: WorkerInstallation) => { kind: string };
   /** Real models: this resolver resolves the route's model and the delegates' answers. */
   live?: { modelResolver: ModelResolver };
+  /** Leave the app's `resolvePrincipal` out, so nothing names its org. */
+  omitPrincipal?: boolean;
 }
 
 /** The app, booted. */
@@ -134,6 +141,9 @@ export async function startRoutedHost(tree: string, seams: HostSeams = {}): Prom
   const state = createFlowState({
     flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     stores: { default: { primary: inMemoryStores() } },
+    // Who every request is, and the org its sessions bind to. Ignores the
+    // request: one caller, and a body read would be caller-controlled identity.
+    ...(seams.omitPrincipal === true ? {} : { resolvePrincipal: () => ({ userId: OWNER, orgId: ORG }) }),
     modelResolver:
       seams.live?.modelResolver ??
       createMockModelResolver({
