@@ -6,6 +6,8 @@
  * `suspension` item on the request record (`durability/stop-suspended.ts`).
  * So every request store must return, from `get`, the `suspension` item a park
  * wrote, and in order: after a second park, the second gate is the last one.
+ * The sweep finds parked requests with `list` (`withItems`), so the same holds
+ * there.
  *
  * Runs the real `runAction` against the adapter's registry, as a turn parks in
  * production.
@@ -30,6 +32,18 @@ export type CreateParkedGateConformanceTestsOptions = {
 async function gatesOnLog(stores: StoreRegistry, requestId: string): Promise<string[]> {
   const record = await stores.request.get(requestId);
   return (record?.items ?? [])
+    .filter((item) => (item as { type?: string }).type === "suspension")
+    .map((item) => (item as { suspensionId?: string }).suspensionId ?? "");
+}
+
+/** The same, read the way the sweep finds parked requests. */
+async function gatesOnParkedList(stores: StoreRegistry, requestId: string): Promise<string[]> {
+  const records = await stores.request.list({
+    status: ["suspended", "interrupted"],
+    orderBy: "startedAtMs",
+    withItems: true
+  });
+  return (records.find((record) => record.id === requestId)?.items ?? [])
     .filter((item) => (item as { type?: string }).type === "suspension")
     .map((item) => (item as { suspensionId?: string }).suspensionId ?? "");
 }
@@ -69,6 +83,7 @@ export function createParkedGateConformanceTests(options: CreateParkedGateConfor
       const requestId = first.requestId!;
       expect((await stores.request.get(requestId))?.status).toBe("suspended");
       expect(await gatesOnLog(stores, requestId)).toEqual(["gate_first"]);
+      expect(await gatesOnParkedList(stores, requestId)).toEqual(["gate_first"]);
 
       const firstGate = await provider.loadSuspension(requestId, "gate_first");
       await provider.suspend({ ...firstGate!, status: "approved", resolvedAt: Date.now() });
@@ -82,6 +97,7 @@ export function createParkedGateConformanceTests(options: CreateParkedGateConfor
       await resumed.finished;
       expect((await stores.request.get(requestId))?.status).toBe("suspended");
       expect((await gatesOnLog(stores, requestId)).at(-1)).toBe("gate_second");
+      expect((await gatesOnParkedList(stores, requestId)).at(-1)).toBe("gate_second");
     });
   });
 }

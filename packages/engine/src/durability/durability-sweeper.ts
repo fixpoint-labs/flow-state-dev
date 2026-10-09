@@ -57,7 +57,7 @@ import type { DurabilityProvider } from "./types";
 import { isAskGate } from "@flow-state-dev/core/types";
 import { resumeAskGate } from "./resume-ask-gate";
 import { onAskDeadline } from "./ask-deadlines";
-import { redriveResolvedGate } from "./stop-suspended";
+import { latestGateIdOf, PARKED, redriveResolvedGate } from "./stop-suspended";
 import type { ResumeDeps } from "./resume-under-lease";
 
 /**
@@ -265,6 +265,9 @@ export function createDurabilitySweeper(
 /** The soonest a tick runs after the last one, or after a deadline is noted. */
 const MIN_TICK_DELAY_MS = 1_000;
 
+/** How soon an overdue ask still pending after its tick is tried again. */
+const OVERDUE_ASK_RETRY_MS = 5_000;
+
 type RunTickArgs = {
   provider: DurabilityProvider;
   stores: StoreRegistry;
@@ -366,8 +369,14 @@ async function enforceSuspensionExpiry(
         // Never `expired`: nothing else may resume an ask gate, so that would
         // strand its turn. Without a way to continue a request, leave it
         // pending for a sweeper that has one.
-        if (args.continueRequest === undefined) askGatesSkipped += 1;
-        else await resumeOverdueAsk(args, record);
+        if (args.continueRequest === undefined) {
+          askGatesSkipped += 1;
+        } else if (await resumeOverdueAsk(args, record)) {
+          // Still pending (the turn was busy, or the resume failed): retry
+          // shortly rather than an interval late.
+          const retryAt = now + OVERDUE_ASK_RETRY_MS;
+          if (earliestAskDeadline === undefined || retryAt < earliestAskDeadline) earliestAskDeadline = retryAt;
+        }
         continue;
       }
       // Re-load immediately before writing: an operator may have approved or
@@ -407,23 +416,25 @@ async function enforceSuspensionExpiry(
  * moved on. It is driven on under its lease with the recorded outcome, never a
  * new one. A live resume holds that lease, so it is never raced.
  *
- * Pages through every resolved gate of each status, newest first, a batch
- * at a time, so a stranded request older than the newest batch is still
- * reached. One request is driven at most once a tick; a gate a newer one has
- * superseded does not count, since the request's latest gate may still be
- * owed. Bounded by {@link MAX_SCAN_PAGES} pages per status, and by retention:
- * resolved gates are pruned after `suspensionTerminalMaxAgeMs`.
+ * Read from the parked requests, not the resolved gates: each `suspended` or
+ * `interrupted` request is read with its item log, and the last gate it parked
+ * on is loaded by id. Only that gate can be owed, so an older gate of the
+ * request never stands in for it, and the work is bounded by how many
+ * requests are parked rather than by how many gates were resolved within
+ * retention. The parked set is read in full before any is driven, since a
+ * re-drive moves its request out of it; paged by start time, which a request
+ * never changes, up to {@link MAX_SCAN_PAGES} pages.
  */
 async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
   const { provider, stores, logger, continueRequest, batchLimit } = args;
   if (continueRequest === undefined) return;
-  const driven = new Set<string>();
-  const redriveOne = async (gate: SuspensionRecord): Promise<void> => {
-    if (driven.has(gate.requestId)) return;
+  const redriveOne = async (requestId: string, suspensionId: string): Promise<void> => {
     try {
+      const gate = await provider.loadSuspension(requestId, suspensionId);
+      // Owed a re-drive: an ask's answer or ending, or any gate stopped.
+      if (gate === null) return;
+      if (gate.status !== "stopped" && !(gate.status === "submitted" && isAskGate(gate))) return;
       const result = await redriveResolvedGate({ provider, stores, continueRequest }, gate);
-      // A superseded gate says nothing about the request's latest one.
-      if (result !== "superseded") driven.add(gate.requestId);
       if (result === "redriven") {
         logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: re-drove a parked request", {
           requestId: gate.requestId,
@@ -432,42 +443,30 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
         });
       }
     } catch (err) {
-      driven.add(gate.requestId);
       logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: re-drive failed", {
-        requestId: gate.requestId,
-        suspensionId: gate.suspensionId,
+        requestId,
+        suspensionId,
         error: err instanceof Error ? err.message : String(err)
       });
     }
   };
   try {
-    for (const status of ["submitted", "stopped"] as const) {
-      const visited = new Set<string>();
-      let createdBefore: number | undefined;
-      for (let page = 0; page < MAX_SCAN_PAGES; page++) {
-        const batch = await provider.listSuspended({
-          status,
-          limit: batchLimit,
-          ...(createdBefore !== undefined ? { createdBefore } : {})
-        });
-        let fresh = 0;
-        for (const gate of batch) {
-          const key = `${gate.requestId}/${gate.suspensionId}`;
-          if (visited.has(key)) continue;
-          visited.add(key);
-          fresh += 1;
-          // Only an ask's `submitted` is owed a re-drive; another gate's is not.
-          if (status === "submitted" && !isAskGate(gate)) continue;
-          await redriveOne(gate);
-        }
-        if (batch.length < batchLimit) break;
-        // The next page starts at the oldest millisecond seen, read again in
-        // case its gates straddle the page, and moves past it once a page
-        // brings nothing new.
-        const oldest = batch.reduce((min, gate) => Math.min(min, gate.createdAt), Number.POSITIVE_INFINITY);
-        createdBefore = fresh > 0 ? oldest + 1 : oldest;
+    const parked: { requestId: string; suspensionId: string }[] = [];
+    for (let page = 0; page < MAX_SCAN_PAGES; page++) {
+      const batch = await stores.request.list({
+        status: PARKED,
+        orderBy: "startedAtMs",
+        limit: batchLimit,
+        offset: page * batchLimit,
+        withItems: true
+      });
+      for (const record of batch) {
+        const suspensionId = latestGateIdOf(record);
+        if (suspensionId !== undefined) parked.push({ requestId: record.id, suspensionId });
       }
+      if (batch.length < batchLimit) break;
     }
+    for (const { requestId, suspensionId } of parked) await redriveOne(requestId, suspensionId);
   } catch (err) {
     logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: re-drive listing failed", {
       error: err instanceof Error ? err.message : String(err)
@@ -479,12 +478,14 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
  * The ask branch of step 2: resume an overdue ask gate with `wait_timed_out`,
  * through the same resume every ask takes (fenced on the gate still being
  * pending, under the request's lease). The resumed call ends the asked task.
- * Per-gate failures are logged and the sweep moves on; a refused resume (the
- * answer won the race, or another resume holds the lease) needs nothing more.
+ * Per-gate failures are logged and the sweep moves on. Returns whether the
+ * gate may still be pending and owed a timeout: another resume held the
+ * turn's lease, or the resume failed. An answer that won the race needs
+ * nothing more.
  */
-async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord): Promise<void> {
+async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord): Promise<boolean> {
   const { provider, stores, logger, continueRequest } = args;
-  if (continueRequest === undefined) return;
+  if (continueRequest === undefined) return false;
   try {
     const result = await resumeAskGate(
       { provider, stores, continueRequest },
@@ -498,7 +499,7 @@ async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord
       },
       "durability-sweeper"
     );
-    if (result.ok) return;
+    if (result.ok) return false;
     if (result.refused === "already-resolved") {
       // The gate was listed pending this tick, yet the resume found it (or its
       // turn) already past waiting: the answer won the race, or the record and
@@ -508,19 +509,21 @@ async function resumeOverdueAsk(args: ResolvedTickArgs, record: SuspensionRecord
         suspensionId: record.suspensionId,
         detail: result.detail
       });
-      return;
+      return false;
     }
     logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: overdue ask not resumed", {
       requestId: record.requestId,
       suspensionId: record.suspensionId,
       refused: result.refused
     });
+    return result.refused === "busy";
   } catch (err) {
     logRuntimeEvent(logger, "error", "[flow-state] durability sweeper: overdue ask resume failed", {
       requestId: record.requestId,
       suspensionId: record.suspensionId,
       error: err instanceof Error ? err.message : String(err)
     });
+    return true;
   }
 }
 

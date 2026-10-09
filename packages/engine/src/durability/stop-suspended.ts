@@ -54,7 +54,7 @@ export function createParkedStopDeps(deps: {
 export type SuspendedStopResult = "stopped" | "already-resolved";
 
 /** The request statuses a parked turn can be read in: parked, or a re-drive's crash. */
-const PARKED: readonly RequestRecord["status"][] = ["suspended", "interrupted"];
+export const PARKED: readonly RequestRecord["status"][] = ["suspended", "interrupted"];
 
 /** The pending gate(s) `record` is parked on, newest first. */
 async function pendingGatesOf(
@@ -144,8 +144,9 @@ async function stopAtNonAskGate(
     // The gate first: its resolved record is what a re-drive finishes from if
     // the process dies before the turn is written `aborted`.
     await deps.provider.suspend({ ...current, status: "stopped", resolvedAt: now, resolvedBy: "stop" });
-    await abortParked(deps, record);
-    return true;
+    // Fenced on the incarnation checked: if another request took the id in
+    // between, nothing was stopped, and the caller hears `already-resolved`.
+    return abortParked(deps, record);
   } finally {
     await deps.provider.releaseLease(record.id, lease.leaseId).catch(() => {});
   }
@@ -175,12 +176,6 @@ export async function redriveResolvedGate(
     return (await abortParked(deps, record)) ? "redriven" : "not-parked";
   }
 
-  // Read without the lease first: the sweep visits every resolved ask, and
-  // almost all of them belong to turns long since finished. The read under the
-  // lease below is the one that decides.
-  const unleased = await deps.stores.request.get(gate.requestId);
-  if (unleased === undefined || !PARKED.includes(unleased.status)) return "not-parked";
-
   const result = await continueUnderLease<RedriveRefusal>(deps, {
     requestId: gate.requestId,
     holder: "redrive",
@@ -203,13 +198,19 @@ export async function redriveResolvedGate(
   return "refusal" in result ? result.refusal : "busy";
 }
 
-/** Whether `suspensionId` is the last gate the request's item log parked on. */
-function isLatestGate(record: RequestRecord, suspensionId: string): boolean {
+/** The last gate the request's item log parked on, if it has one. */
+export function latestGateIdOf(record: Pick<RequestRecord, "items">): string | undefined {
   const items = record.items ?? [];
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i] as { type?: string; suspensionId?: string };
-    if (item.type === "suspension") return item.suspensionId === suspensionId;
+    if (item.type === "suspension") return item.suspensionId;
   }
+  return undefined;
+}
+
+/** Whether `suspensionId` is the last gate the request's item log parked on. */
+function isLatestGate(record: RequestRecord, suspensionId: string): boolean {
+  const latest = latestGateIdOf(record);
   // No log to read (a store that keeps none here): trust the gate.
-  return true;
+  return latest === undefined || latest === suspensionId;
 }

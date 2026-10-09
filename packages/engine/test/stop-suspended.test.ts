@@ -205,6 +205,22 @@ describe("stop a parked turn", () => {
     expect(seen).toEqual(["ended:AskStoppedError:The asking turn was stopped."]);
   });
 
+  it("a stop whose fenced abort finds another request under the id does not report it stopped", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId } = await park(h, flow, "approve");
+    // The id was taken by another request between the check and the write.
+    const setFieldsIfStatus = h.stores.request.setFieldsIfStatus.bind(h.stores.request);
+    vi.spyOn(h.stores.request, "setFieldsIfStatus").mockImplementation(async (id, fields, ...rest) =>
+      fields.status === "aborted" ? ({ applied: false } as never) : setFieldsIfStatus(id, fields, ...rest)
+    );
+
+    const res = await stop(h, requestId);
+    expect(res.status).toBe(409);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+  });
+
   it("OFF STATE: without durable execution a parked turn answers as finished, as before", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
@@ -252,7 +268,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await park(h, flow, "ask");
+    const { gate } = await park(h, flow, "ask");
     // An ask the turn asked and had answered before it parked again.
     await h.provider.suspend({
       ...gate,
@@ -339,6 +355,38 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect(seen).toEqual(["answer:renewed"]);
   });
 
+  it("a stranded request is reached though more gates than a batch share its gate's millisecond", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "ask");
+    // Stored after the tied gates, so a store breaking the tie by insertion
+    // order lists it past the first batch.
+    await h.stores.suspensions.deleteForRequest(requestId);
+    for (let i = 0; i < 5; i += 1) {
+      await h.provider.suspend({
+        ...gate,
+        requestId: `req_tied_${i}`,
+        suspensionId: `susp_tied_${i}`,
+        status: "submitted",
+        resolvedAt: Date.now(),
+        resumeData: { answered: true, answer: "done" }
+      });
+    }
+    await h.provider.suspend({
+      ...gate,
+      status: "submitted",
+      resolvedAt: Date.now(),
+      resumeData: { answered: true, answer: "renewed" }
+    });
+
+    await runTick({ ...tickArgs(h), batchLimit: 2 });
+    expect(h.finished).toHaveLength(1);
+    await h.finished[0];
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(seen).toEqual(["answer:renewed"]);
+  });
+
   it("a pending gate is not re-driven", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
@@ -407,6 +455,32 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
       await h.finished[0];
       expect(seen[0]).toContain("wait_timed_out");
       expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    } finally {
+      sweeper.dispose();
+    }
+  });
+
+  it("an overdue ask whose resume finds the turn busy is retried within seconds, not at the interval", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    const seen: string[] = [];
+    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
+    const h = harness(flow);
+    const sweeper = createDurabilitySweeper({
+      provider: h.provider,
+      stores: h.stores,
+      retention: { sweepIntervalMs: 600_000 },
+      continueRequest: h.cont
+    });
+    try {
+      const { requestId } = await park(h, flow, "ask");
+      // Another resume holds the turn's lease across the deadline.
+      await h.provider.acquireLease(requestId, { holder: "other", durationMs: 40_000 });
+      await vi.advanceTimersByTimeAsync(32_000);
+      expect(h.finished).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(20_000); // the lease lapses at 40 s
+      expect(h.finished).toHaveLength(1);
+      await h.finished[0];
+      expect(seen[0]).toContain("wait_timed_out");
     } finally {
       sweeper.dispose();
     }
