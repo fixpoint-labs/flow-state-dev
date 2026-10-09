@@ -9,7 +9,7 @@ import {
   defaultOwnStateResolver,
   delegationBoardSchema,
   DELEGATION_BOARD_FIELD,
-  type WorkerRoster,
+  type AssigneeRoster,
 } from "../../src/skills/task-tools-capability";
 import { buildDelegationCtx } from "./delegation-ctx";
 import type { GeneratorTool } from "@flow-state-dev/core";
@@ -215,7 +215,7 @@ describe("taskTools — unknown task ids", () => {
 /**
  * A two-worker roster standing in for a board's declared workers.
  */
-const testRoster: WorkerRoster = {
+const testRoster: AssigneeRoster = {
   has: (a) => a === "researcher" || a === "writer",
   describe: () => "researcher (Researches sources), writer (Drafts prose)",
 };

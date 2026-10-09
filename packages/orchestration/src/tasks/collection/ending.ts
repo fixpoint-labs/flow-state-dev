@@ -3,8 +3,7 @@
  * function every write that records one hands it to (FIX-1794 P2).
  *
  * A composing layer sometimes owes someone something because a task ended:
- * the conversation that filed it is to be told, a parked caller is to be
- * resumed. Recording that debt in a second write after the ending leaves a
+ * whoever filed it is to be told, a parked caller is to be resumed. Recording that debt in a second write after the ending leaves a
  * window where the ending is stored and the debt is not, and a crash in it
  * loses the debt for good. So a ledger declared with `recordEnding` hands every
  * ending write's row to it, inside the same atomic write, and keeps the
@@ -19,8 +18,8 @@
  * conflict re-runs the write against fresher state), so it must be a pure
  * function of what it is handed.
  *
- * Orchestration knows no conversation, notice or worker: what the metadata
- * means is the composing layer's.
+ * Orchestration never reads what the recorder adds: what the metadata means
+ * is the composing layer's.
  */
 import type { Task } from "../schema/task";
 

@@ -27,8 +27,8 @@ import {
   createTaskToolsCapability,
   taskToolActions,
   type TaskCollectionResolver,
-  type WorkerRoster,
-  type WorkerRosterSource
+  type AssigneeRoster,
+  type AssigneeRosterSource
 } from "@flow-state-dev/orchestration";
 import { currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
@@ -96,7 +96,7 @@ export function isTaskSession(ctx: { readonly session: { readonly state: unknown
 }
 
 /** A roster over the session's task-taking delegates, naming why each other one can't take a task. */
-function rosterOf(delegates: TaskDelegates): WorkerRoster {
+function rosterOf(delegates: TaskDelegates): AssigneeRoster {
   return {
     has: (name) => delegates.available.has(name),
     describe: () => {
@@ -184,7 +184,7 @@ async function replayNotices(ctx: BlockContext, rows: readonly Task[]): Promise<
  * the actions, and the ledger.
  */
 export function defineConversationBoard(options: ConversationBoardOptions) {
-  const roster: WorkerRosterSource = async (ctx) => rosterOf(await options.delegates(ctx));
+  const roster: AssigneeRosterSource = async (ctx) => rosterOf(await options.delegates(ctx));
 
   // The hand-over: every row to `work` on its delegate's flow, in a task
   // session keyed by the task and the worker. Built as an address rather than

@@ -104,8 +104,8 @@ export interface DefineTaskCollectionOptions<
    * that same atomic write, and keep the `metadata` it returns on the row: a
    * completion, a failure (for good, or with attempts left), a park, a cancel,
    * and the claim path settling a row whose worker died too often. Whatever it
-   * adds lands with the ending or not at all, so a debt the ending creates (a
-   * conversation to tell) can't be lost between the two. See `TaskEnding` for
+   * adds lands with the ending or not at all, so a debt the ending creates
+   * (someone to tell) can't be lost between the two. See `TaskEnding` for
    * what each ending carries.
    *
    * It must be a pure function of the row and the ending: a write that loses a

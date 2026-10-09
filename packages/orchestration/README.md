@@ -712,8 +712,8 @@ refused when it loads; give the work to workers on a task board instead.
 and `listTasks`. `createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse
 an assignee it does not name. The roster can be a function of the running block's
-context, read on each call that checks an assignee, for a set of workers that changes
-while a conversation runs. `taskToolActions` exposes the same eight as flow
+context, read on each call that checks an assignee, for a board whose team changes
+while it is in use. `taskToolActions` exposes the same eight as flow
 actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing.
 

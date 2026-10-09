@@ -114,9 +114,9 @@ export {
   type TaskCollectionResolver,
   // Part of `createTaskToolsCapability`'s signature, so a caller supplying a
   // roster can name its type.
-  type WorkerRoster,
+  type AssigneeRoster,
   // A roster fixed, or read per call from the running context (FIX-1794 T1).
-  type WorkerRosterSource,
+  type AssigneeRosterSource,
   // The eight tools as flow actions, and the board qualifier they are named by.
   taskToolActions,
   taskToolSuffix,

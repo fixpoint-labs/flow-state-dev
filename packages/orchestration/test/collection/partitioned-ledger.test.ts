@@ -252,7 +252,7 @@ describe("a partition function", () => {
     // A session deleted and created again under the same id gets a new
     // lineage id from the server, so `sessionId` plus it names one birth.
     // Without it a partition built from server-set data alone hands a
-    // recreated conversation its predecessor's rows (BR-14).
+    // recreated session its predecessor's rows.
     const birth = (lineageId: string) => ({
       ...ctxFor(),
       session: { identity: { type: "session", id: "s_1", userId: "alice" }, lineageId },

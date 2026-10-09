@@ -1,10 +1,9 @@
 /**
  * The task tools' roster, read per call (FIX-1794 T1).
  *
- * A board whose team changes while it is in use (a conversation's delegates)
- * cannot hand the tools a fixed roster: an action is fixed when its flow is
- * defined, and a delegate added mid-conversation would be refused until the
- * next deploy. So a roster may be a function of the running context, read on
+ * A board whose team changes while it is in use cannot hand the tools a fixed
+ * roster: an action is fixed when its flow is defined, and an assignee added
+ * while the board is in use would be refused until the next deploy. So a roster may be a function of the running context, read on
  * every call, and `taskToolActions` takes one too, so an app's filing is held
  * to the same check as the model's.
  *
@@ -21,7 +20,7 @@ import { z } from "zod";
 import {
   buildTaskToolsList,
   defaultOwnStateResolver,
-  type WorkerRoster,
+  type AssigneeRoster,
 } from "../../src/skills/task-tools-capability";
 import {
   defineTaskCollection,
@@ -34,7 +33,7 @@ import { taskBoard, taskToolActions } from "../../src/task-board";
 import { buildDelegationCtx } from "./delegation-ctx";
 
 /** A roster over a mutable set, so a test can change the team between calls. */
-function rosterOf(team: Set<string>): WorkerRoster {
+function rosterOf(team: Set<string>): AssigneeRoster {
   return { has: (name) => team.has(name), describe: () => [...team].join(", ") || "(nobody)" };
 }
 
