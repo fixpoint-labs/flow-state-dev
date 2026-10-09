@@ -12,15 +12,16 @@
  *   every package and relative import resolves as it does for the shipped
  *   install. The copy is deleted when the run ends.
  * - A **module patch** edits one source module as the served process loads
- *   it (`module-patch.mjs`), for a change inside a package the install imports.
+ *   it (`goals/lib/module-patch.mjs`), for a change inside a package the install imports.
  *
  * Each says exactly what it changes, as a diff printed in full in the report.
  */
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
+import { modulePatchEnv } from "../../../lib/module-patch.mts";
 
 /** The DevTeam profile inside a checkout. */
 export const profileOf = (root: string) => join(root, "packages", "shift-manager", "teams", "devteam");
@@ -94,8 +95,6 @@ export interface ModulePatch {
   diff: string;
 }
 
-const MODULE_PATCH = fileURLToPath(new URL("./module-patch.mjs", import.meta.url));
-
 /** Every `.ts` file under `dir`. */
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -130,10 +129,7 @@ export function orgScopedWorkers(root: string): ModulePatch {
   rmSync(scratch, { recursive: true, force: true });
   return {
     name: "org-scoped-workers",
-    env: {
-      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${pathToFileURL(MODULE_PATCH).href}`.trim(),
-      GOAL_MODULE_PATCH: JSON.stringify({ file, from, to }),
-    },
+    env: modulePatchEnv([{ module: relative(root, file), from, to }], root),
     diff,
   };
 }
@@ -146,7 +142,8 @@ export function orgScopedWorkers(root: string): ModulePatch {
  * not a control that "passed" on unpatched code.
  */
 export function probeOrgScopedWorkers(root: string, patch: ModulePatch, tsx: string, scratch: string): { scope: string | undefined; output: string } {
-  const { file } = JSON.parse(patch.env.GOAL_MODULE_PATCH!) as { file: string };
+  const { patches } = JSON.parse(patch.env.GOAL_MODULE_PATCH!) as { patches: Array<{ file: string }> };
+  const file = patches[0]!.file;
   const probe = join(scratch, "probe-org-scoped-workers.mts");
   writeFileSync(
     probe,

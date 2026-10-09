@@ -5,12 +5,11 @@
  *
  * Loaded through `NODE_OPTIONS=--import <this file>` by the process a control
  * starts. It reads `GOAL_MODULE_PATCH`, a JSON `{ patches: [{ file, from, to
- * }], mark }`, and registers the load hook in `module-patch-hooks.mjs`, which
- * rewrites each named module's source and appends the file to `mark` when it
- * does, so the run can show the patch reached the code it served.
+ * }], mark? }`, and registers the load hook in `module-patch-hooks.mjs`, which
+ * rewrites each named module's source and, when `mark` is set, appends the
+ * file to it, so the run can show the patch reached the code it served.
  *
- * `module-patch.mts` builds the environment and prints the patch. Two goals
- * keep a one-patch copy of this under their own `controls/`.
+ * `module-patch.mts` builds the environment and prints the patch.
  */
 import { register } from "node:module";
 

@@ -27,11 +27,11 @@ const HOOK = fileURLToPath(new URL("./module-patch.mjs", import.meta.url));
 
 /**
  * The environment that applies `patches` to a process serving the checkout at
- * `root`, appending each patched file to `mark` when it loads.
+ * `root`. When `mark` is set, each patched file is appended to it as it loads.
  *
  * @throws When a module at the checkout has nothing a patch's `from` matches.
  */
-export function modulePatchEnv(patches: readonly ModulePatch[], root: string, mark: string): Record<string, string> {
+export function modulePatchEnv(patches: readonly ModulePatch[], root: string, mark?: string): Record<string, string> {
   for (const patch of patches) {
     const source = readFileSync(join(root, patch.module), "utf8");
     if (!new RegExp(patch.from).test(source)) throw new Error(`${patch.module} has nothing matching /${patch.from}/ to patch`);
