@@ -95,10 +95,35 @@ the dispatch, so the receiving gate reads the row there (a `taskLedgers` resolve
 it as its third argument; pass it to `getOrCreateTaskCollection({ partition })`).
 Return a value no caller can set, and one minted per owner: a session id alone is
 reused when a session is deleted and created again. The function gets only the
-running session's server-set identity (`{ sessionId, userId, orgId?, tenantId? }`),
-nothing a caller supplies; it may be async, to look up a value the server keeps by
-that id. Task ids on a partitioned ledger are one
+running session's server-set identity (`{ sessionId, lineageId?, userId, orgId?,
+tenantId? }`), nothing a caller supplies. `lineageId` is minted when the session's
+record is created, so `sessionId` plus `lineageId` names one incarnation of the
+session. The function may be async, to look up a value the server keeps by that id.
+Task ids on a partitioned ledger are one
 path segment, and `maxInstances` is refused, since it would count every partition.
+A request loads a partition's rows on that partition's first read, never the whole
+ledger.
+
+**Recording how a task ended.** `recordEnding` is handed every write that records an
+ending (a completion, a failure with or without attempts left, a park, a cancel, and
+a claim settling a row whose worker died too often), inside that same write, and the
+row keeps the `metadata` it returns:
+
+```ts
+const work = defineTaskCollection({
+  id: "work",
+  scope: "user",
+  partitionBy: ({ sessionId, lineageId }) => `${sessionId}~${lineageId}`,
+  recordEnding: (row, ending) =>
+    ending.kind === "completed" ? { ...row, metadata: { ...row.metadata, toTell: ending.kind } } : row,
+});
+```
+
+Whatever it adds lands with the ending or not at all, so a follow-up the ending owes
+(someone to tell) can't be lost between two writes. Keep it a pure function of the row
+and the ending: a write that loses a version race runs it again on the fresher row.
+A park passed `awaitReview(..., { quiet: true })` reaches it as `{ kind: "parked",
+quiet: true }`, for a park nobody needs to hear about.
 
 **Server-only task fields.** A `task-change` item carries the whole post-mutation
 row, and that stream is client-visible. A few fields on `Task` are substrate
@@ -358,7 +383,8 @@ character outside `[a-zA-Z0-9_-]` into `_` (`cancelTask_todos`). Spread it into
 declare the collection; none claims or drains; a transition the task cannot make returns
 `{ ok: false, error }` and writes nothing. It throws unless the board is on a
 `defineTaskCollection` collection. `taskToolActions(collectionId, resolve)` takes a ledger
-you resolve yourself. These are **public** actions: anyone who can call the flow can settle
+you resolve yourself. Both take an optional roster last, the same one
+`createTaskToolsCapability` takes. These are **public** actions: anyone who can call the flow can settle
 or reassign its tasks. See the docs, "Changing tasks from outside a run".
 Omission reapplies the default on all three. They apply only when the board
 constructs its own collection — a supplied `collection` is left alone and passing
@@ -685,7 +711,9 @@ refused when it loads; give the work to workers on a task board instead.
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
 and `listTasks`. `createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse
-an assignee it does not name. `taskToolActions` exposes the same eight as flow
+an assignee it does not name. The roster can be a function of the running block's
+context, read on each call that checks an assignee, for a set of workers that changes
+while a conversation runs. `taskToolActions` exposes the same eight as flow
 actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing.
 
