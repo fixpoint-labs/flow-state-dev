@@ -369,7 +369,7 @@ async function inboxJourney(page: Page, api: LabApi, store: Store, tree: Tree, s
   // the ask's session has one as its parent, otherwise every mailbox the store lists the seat in.
   const session = await api.get(`/sessions/${encodeURIComponent(ask.sessionId)}`);
   const parent = (session.session ?? session).parentSessionId as string | null | undefined;
-  const memberOf = store.mailboxes.filter((c) => c.members.includes(ask.seat)).map((c) => c.id);
+  const memberOf = store.mailboxes.filter((c) => ask.seat !== null && c.members.includes(ask.seat)).map((c) => c.id);
   const streams = parent != null && store.mailboxes.some((c) => c.id === parent) ? [parent] : memberOf;
   const workstream = streams[0];
   await page.getByTestId("nav-inbox").click();
@@ -773,7 +773,7 @@ export async function legC(ctx: LegCtx): Promise<void> {
         await page.locator(`[data-testid=inbox-item][data-suspension-id="${ask.suspensionId}"]`).click();
         await page.locator("[data-testid=inbox-detail] [data-testid=ask-card]").waitFor();
         await sweep(page, { ask: `[data-testid=inbox-detail] ${SWEPT.ask}` }, tally);
-        const workstream = tree.mailboxes.find((c) => c.members.includes(ask.seat))!.id;
+        const workstream = tree.mailboxes.find((c) => ask.seat !== null && c.members.includes(ask.seat))!.id;
         await page.getByTestId(`nav-workstream-${workstream}`).click();
         await page.locator("[data-testid=feed-ask] [data-testid=ask-card]").waitFor().catch(() => undefined);
         await sweep(page, { ask: `[data-testid=feed-ask] ${SWEPT.ask}` }, tally);
