@@ -98,6 +98,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   const [jumping, setJumping] = useState(false);
   const panels = usePanels(clients.userId);
   const { toggleNav, togglePanel } = panels;
+  const hasPanel = PANEL_NAMES[route.level] !== undefined;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -106,14 +107,17 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
         setJumping((j) => !j);
         return;
       }
-      // `[` and `]` toggle the sidebar and the right panel, except while typing.
-      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      // `[` and `]` toggle the sidebar and the right panel, except while typing,
+      // and `]` only where there is a panel. AltGr, which types `[` on some
+      // layouts, reports Ctrl and Alt held.
+      const altGraph = typeof e.getModifierState === "function" && e.getModifierState("AltGraph");
+      if (e.repeat || e.metaKey || ((e.ctrlKey || e.altKey) && !altGraph) || isTyping(e.target)) return;
       if (e.key === "[") toggleNav();
-      else if (e.key === "]") togglePanel();
+      else if (e.key === "]" && hasPanel) togglePanel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleNav, togglePanel]);
+  }, [toggleNav, togglePanel, hasPanel]);
 
   if (snapshot === undefined) {
     return <p className="p-6 text-sm text-muted-foreground" data-testid="loading">Reading the Lab…</p>;
@@ -253,7 +257,7 @@ function Panel({
           {handle}
         </>
       ) : (
-        <div className="flex h-full flex-col items-center gap-3 border-l bg-inspector pt-2.5" data-testid="right-panel-rail" data-panel={route.level}>
+        <div className="absolute inset-y-0 right-0 flex w-7 flex-col items-center gap-3 border-l bg-inspector pt-2.5" data-testid="right-panel-rail" data-panel={route.level}>
           {handle}
           <span className="font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground [writing-mode:vertical-rl]" data-look="meta-label">
             {PANEL_NAMES[route.level]}

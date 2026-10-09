@@ -293,7 +293,7 @@ function SidebarRail({
   waiting: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center gap-1 py-3" data-testid="sidebar-rail">
+    <div className="flex w-12 flex-col items-center gap-1 py-3" data-testid="sidebar-rail">
       <SidebarToggle collapsed onToggle={onToggle} />
       <div className="mt-2 flex flex-col items-center gap-1">
         <RailItem label="Shift Coordinator" active={route.level === "cos"} onClick={() => navigate({ level: "cos" })} testId="rail-cos">
@@ -394,15 +394,15 @@ export function Sidebar({
   gaps,
   onJump,
   look,
-  collapsed = false,
-  onToggle = () => {},
+  collapsed,
+  onToggle,
 }: {
   route: Route;
   gaps: Gaps;
   onJump: () => void;
   look?: ThemeLook;
-  collapsed?: boolean;
-  onToggle?: () => void;
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
   const { snapshot, refresh, clients } = useLab();
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;

@@ -11,7 +11,7 @@
  * On a window narrower than 1180px the right panel doesn't push the centre:
  * it starts collapsed, opens over the centre, and opening it there isn't kept.
  */
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 
 /** The windows on which the right panel opens over the centre: narrower than v2's 1180px (v2:1121). */
 export const NARROW_QUERY = "(max-width: 1179px)";
@@ -79,11 +79,13 @@ const readNarrow = () => typeof window.matchMedia === "function" && window.match
 export function usePanels(userId: string) {
   const [collapsed, setCollapsed] = useState(() => readCollapsed(userId));
   const overlay = useSyncExternalStore(subscribeNarrow, readNarrow, () => false);
-  // Opened over the centre on a narrow window: not kept, and closed again once the window widens.
+  // Opened over the centre on a narrow window: not kept, and closed whenever the window crosses 1180px.
   const [overlayOpen, setOverlayOpen] = useState(false);
-  useEffect(() => {
-    if (!overlay) setOverlayOpen(false);
-  }, [overlay]);
+  const [seenOverlay, setSeenOverlay] = useState(overlay);
+  if (seenOverlay !== overlay) {
+    setSeenOverlay(overlay);
+    setOverlayOpen(false);
+  }
 
   const change = useCallback(
     (name: keyof Collapsed) =>

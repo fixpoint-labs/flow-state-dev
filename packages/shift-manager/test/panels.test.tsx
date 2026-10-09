@@ -124,6 +124,20 @@ describe("the shortcuts", () => {
     press("]");
     expect(sidebar.getAttribute("data-collapsed")).toBe("false");
     expect(screen.getByTestId("cos-panel")).toBeTruthy();
+
+    // A held key repeats; only the first press toggles.
+    act(() => void fireEvent.keyDown(document.body, { key: "[", repeat: true }));
+    expect(sidebar.getAttribute("data-collapsed")).toBe("false");
+  });
+});
+
+describe("a screen with no right panel", () => {
+  it("leaves the panel's state alone on ], so the next screen with a panel opens as it was", async () => {
+    await openApp("/inbox");
+    expect(screen.queryByTestId("right-panel-slot")).toBeNull();
+    press("]");
+    act(() => fireEvent.click(screen.getByTestId("nav-cos")));
+    expect(screen.getByTestId("cos-panel")).toBeTruthy();
   });
 });
 
