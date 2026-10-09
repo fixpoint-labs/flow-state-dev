@@ -312,23 +312,10 @@ async function getCollection(
 }
 
 /**
- * The ownership guard for an iteration's write-back.
+ * The ownership guard for an iteration's write-back: the claim's own ticket,
+ * or, for a checkpoint saved before tickets, one fenced on its stored attempt.
  *
- * Normally the ticket the record-iteration step minted from its own claim.
- * A run resumed from a checkpoint written before tickets existed carries only
- * the bare `currentAttempt` (BP-030); for that record the guard is rebuilt
- * from the stored attempt, so attempt 1's late result still cannot overwrite a
- * task a second attempt has claimed.
- *
- * The rebuilt ticket takes `createdAt` from the row it is about to write, so
- * its identity check is vacuous — the legacy record never stored which task
- * incarnation it claimed, and the old guard never asked. What it keeps is the
- * part that guard did enforce: the attempt and the status, checked inside the
- * atomic write. Like every ticket it also gets the lease fence, which the
- * current path has too.
- *
- * Returns no guard when neither field is present (a claim that lost, or a
- * legacy record with no attempt), matching the pre-ticket behaviour.
+ * @see routedSpecialistsControlSchema for the legacy `currentAttempt` field.
  */
 function writeBackGuard(
   state: Pick<RoutedSpecialistsControlState, "currentClaim" | "currentAttempt">,
@@ -341,12 +328,7 @@ function writeBackGuard(
   // A missing row has nothing to fence; the write itself reports it.
   if (task === undefined) return {};
   return {
-    claim: {
-      collectionId: collection.collectionId,
-      taskId,
-      attempt: state.currentAttempt,
-      createdAt: task.createdAt,
-    },
+    claim: { ...ticketForClaim(collection.collectionId, task), attempt: state.currentAttempt },
   };
 }
 

@@ -60,8 +60,10 @@ const tasksRecordSchema: ZodTypeAny = z
  * ticket and cannot rebuild one from its own state — the ticket also needs
  * the task's `createdAt` — so the write-back reads that one field off the
  * row and fences on the stored attempt instead (`writeBackGuard` in
- * `index.ts`). Declared so a parse through this schema keeps it rather than
- * stripping it; cleared by the next iteration, which writes a real ticket.
+ * `index.ts`). Its identity arm is vacuous, as the old guard never asked;
+ * the attempt, status and lease arms are enforced. Declared so a parse
+ * through this schema keeps it rather than stripping it; cleared by the
+ * next iteration, which writes a real ticket.
  */
 export const routedSpecialistsControlSchema: ZodTypeAny = z.object({
   iteration: z.number().default(0),
