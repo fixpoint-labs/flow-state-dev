@@ -178,7 +178,9 @@ export interface CoordinatorFlowOptions {
    * built-in `agent` flow (its tool catalog, capabilities, skills and model
    * choices). Judgment is the agent's own turn, so a coordinator worker's
    * `model`, `tools`, `skills` and `capabilities` read the way an `agent`
-   * worker's do, against the same catalog. Omitted, the agent's defaults.
+   * worker's do, against the same catalog. Its `isolateUserState` keys this
+   * flow's user-scoped storage by its copy, as it does the agent flow's.
+   * Omitted, the agent's defaults.
    */
   agent?: Omit<AgentWorkerFlowOptions, "installation" | "taskLists">;
   /**
@@ -1555,6 +1557,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     ...turn.bound,
     session: { ...installation.session(coordinatorStateShape), serverOwned: COORDINATOR_SERVER_OWNED },
     resources: { ...resources, ...(turn.bound.resources ?? {}) },
+    // The agent turn's own flag, read as the `agent` flow reads it: memory an
+    // app composes into the judgment turn is kept apart from the person's
+    // other flows when it asks.
+    isolateUserState: options.agent?.isolateUserState ?? false,
     actions: {
       // The session names its worker, so a turn whose input carries any other key is refused.
       run: { inputSchema: doorInputSchema.strict(), block: door, userMessage: (input: DoorInput) => input.message },

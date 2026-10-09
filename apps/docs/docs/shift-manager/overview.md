@@ -58,6 +58,8 @@ Its [chief of staff](../workforce/chief-of-staff.md) is a coordinator with the E
 
 Rows run on a scripted harness with no model. Set `DEVFORCE_LAB_HARNESS=claude-code` to run them on Claude Code instead. The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite`, or wherever `DEVTEAM_STORE` points. Delete the file to start fresh.
 
+The chief of staff has [memory](../workforce/chief-of-staff.md#giving-it-memory): working memory within a conversation, a rolling digest across conversations, and the `memory/recall` tool to search it. By default it records nothing, so that memory stays empty; ask it to remember something for later and it says it can't keep it. Start Shift Manager with `DEVTEAM_MEMORY_CAPTURE=1` to record each conversation into its memory after each answer, at the cost of extra model calls every turn. Its memory is kept per person, apart from your other flows. Workers it hires onto the built-in `agent` flow get none.
+
 ## What you see
 
 These are Shift Manager's own screens and words. Where one maps onto a Workforce concept, the link goes to the package docs.

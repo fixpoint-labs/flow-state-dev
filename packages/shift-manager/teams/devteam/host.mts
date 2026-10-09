@@ -120,6 +120,7 @@ import {
 } from "./workforce/flows/workers/em.mts";
 import type { HarnessStub } from "./harness-stub.mts";
 import { labNotify, type NotifyLog } from "./notify.mts";
+import { coordinatorMemory } from "./memory.mts";
 import { withWriteLatency } from "./write-latency.mts";
 import {
   openSeatSession,
@@ -513,6 +514,12 @@ export interface OpenLabOptions {
    */
   devtool?: boolean;
   /**
+   * Record each conversation with the shift coordinator into its memory after
+   * each answer (`memory.mts`). Absent, its memory is read-side only: it
+   * reads what is there and records nothing.
+   */
+  memoryCapture?: boolean;
+  /**
    * Projects to create at open, as the lab's owner, through the same
    * `createProject` action anything else creates a project with. A project
    * the store already holds for the owner is handed back unchanged, so a
@@ -898,7 +905,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   );
   // What the agent's turn is built with. The `agent` flow runs it behind its
   // door, and the `coordinator` flow, which the chief of staff runs on, runs
-  // the same turn for its judgment: one catalog, one set of capabilities.
+  // the same turn for its judgment, with memory added (below).
   const agentTurn = {
     // The project tools and the roster writes a worker names in `tools:`.
     // The kind carries them, and only the chief of staff's line names them.
@@ -920,6 +927,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ],
   };
   const agentKind = defineAgentWorkerFlow({ installation, ...agentTurn });
+  // The coordinator's judgment turn is the agent's turn plus the standard
+  // memory pack, composed here and not into `agent`, so a worker hired onto
+  // `agent` still remembers nothing of its own.
+  const memory = coordinatorMemory({ model: "openai/gpt-5.4-mini", capture: options.memoryCapture === true });
+  const coordinatorTurn = {
+    ...agentTurn,
+    ...memory,
+    catalog: { ...agentTurn.catalog, ...memory.catalog },
+    uses: [...agentTurn.uses, ...memory.uses],
+  };
   kinds = {
     [EM_KIND]: emKind as never,
     [CODER_KIND]: coderKind as never,
@@ -934,7 +951,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       installation,
       delegateFlows: [agentKind, emKind as never],
       routeModel: "openai/gpt-5.4-mini",
-      agent: agentTurn,
+      agent: coordinatorTurn,
     }) as never,
   };
 
