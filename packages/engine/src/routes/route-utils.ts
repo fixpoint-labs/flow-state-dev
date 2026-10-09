@@ -223,6 +223,27 @@ export function isCheckedSession(
   return checked !== null && isSameSession(checked, session);
 }
 
+/**
+ * A session-addressed handler's own read of its session, for a route that
+ * goes on to act under it: the session at `sessionId` in the caller's tenant
+ * ({@link loadTenantSession}), provided it is the one the owner check admitted
+ * the caller to ({@link isCheckedSession}). `undefined` when there is none, or
+ * when the id changed hands between the check and this read, and the caller
+ * answers both as an unknown session.
+ *
+ * @param checked The session the route guard checked (`RouteAuthResult.session`).
+ */
+export async function loadCheckedSession(
+  store: SessionStore,
+  sessionId: string,
+  tenantId: string | undefined,
+  checked: SessionRecord | null | undefined
+): Promise<SessionRecord | undefined> {
+  const session = await loadTenantSession(store, sessionId, tenantId);
+  if (session === undefined || !isCheckedSession(checked, session)) return undefined;
+  return session;
+}
+
 // `extractBareTopic` now lives in core alongside `getPatternPrefix` /
 // `resolveCollectionKey` (its inverse). Re-exported here so existing route
 // importers keep resolving it from this module.
