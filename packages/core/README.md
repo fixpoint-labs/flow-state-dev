@@ -765,7 +765,7 @@ The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `Sett
 
 **Request-scoped status slot.** `emit.status` writes to a single request-scoped slot — the latest message wins. Clients render one in-flight indicator line, falling back to "Working..." when the slot is empty. See `docs/architecture/items.md` for the full semantics.
 
-**Automatic resource collection.** Blocks declare their resource dependencies via a flat `resources` map of `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's `resources` map automatically — blocks bring their own resource requirements, just like partial state schemas. Flow-level declarations take priority.
+**Automatic resource collection.** Blocks declare their resource dependencies via a flat `resources` map of `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's `resources` map automatically — blocks bring their own resource requirements, just like partial state schemas. If the flow declares a resource under the same name as a block, it must pass the same `defineResource()` object, or `defineFlow` throws.
 
 **Resource content handles.** `ResourceRef.readContent()` returns rendered text or `null`; `readContentRaw()` returns raw text or `null`; `writeContent()` overwrites content when writable.
 

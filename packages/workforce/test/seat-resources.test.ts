@@ -415,8 +415,8 @@ describe("V6 · the kind's own machinery is never what a grant governs (BR-7, BR
     // Constructed rather than trusted absent, and constructed where the hazard
     // actually lives: the kind's BLOCK names the accessor and the kind itself
     // does NOT declare that document at flow level. Honouring the grant would
-    // install the document at flow level, where it wins the merge — a seat file
-    // repointing its kind's wiring.
+    // install the document at flow level over the block's own resource — a seat
+    // file repointing its kind's wiring.
     expect(() =>
       mintSeats(
         [
@@ -590,15 +590,16 @@ describe("V9 · the narrowing is checked on the seat that was BUILT", () => {
     expect(hireRestoring([{ [HANDBOOK]: SEAT_RESOURCE_MODE_WRITE }, PAYROLL, SEALED])).toHaveLength(1);
   });
 
-  it("a `ro` grant keeps the pen shut even though the block declares the same document writable", async () => {
+  it("a `ro` grant refuses the hire rather than leave the block a writable pen", () => {
     // The other half of the same kind, and the reason the check above only
     // looks at denials: a granted document is installed at flow level as the
-    // read-only copy, and a flow-level entry wins the merge over a block's.
-    const [lead] = hireRestoring([HANDBOOK, PAYROLL, SEALED]);
-    const ctx = await contextFor(lead!, "sess_restoring_ro");
-
-    await expect(handleFor(ctx, HANDBOOK).readContent()).resolves.toContain("Engineering handbook");
-    await expect(handleFor(ctx, HANDBOOK).writeContent("rewritten")).rejects.toThrow(/read-only/i);
+    // read-only copy, which is a different definition from the writable one the
+    // block declares. `defineFlow` refuses a flow-level entry that would swap a
+    // block's resource, so the seat is never minted — neither narrowed under
+    // the block's feet nor left writable. The `rw` control above hires.
+    expect(() => hireRestoring([HANDBOOK, PAYROLL, SEALED])).toThrow(
+      /eng\.lead[\s\S]*Resource conflict in flow "restoring-desk": "teams\/engineering\/handbook"/
+    );
   });
 
   it("an alias for a document is narrowed with it, not left behind as a second door", async () => {
