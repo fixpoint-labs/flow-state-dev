@@ -18,7 +18,7 @@
  * can never reach a deployed build. The published flow has no switch that
  * stops an answer landing, and must not.
  */
-import { defineFlow, generator, handler, sequencer, type BlockDefinition } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, type BlockDefinition } from "@flow-state-dev/core";
 import {
   AGENT_KIND,
   delegatedPostSchema,
@@ -40,7 +40,7 @@ const heard = (post: DelegatedPost) => `${post.from}, through ${post.coordinator
  * @param catalog The tool catalog the real flow carries. A worker reaches the
  *   entries its `tools:` names, as on the real flow.
  * @param installation The installation the real flow runs its workers on:
- *   this one does too, loading each turn's worker first, as the real flow does.
+ *   this one does too, loading the turn's worker before the answer reads it.
  */
 export function landingControl(catalog: Record<string, BlockDefinition<any, any>>, installation: WorkerInstallation) {
   if (goalControl() !== "no-landing") return undefined;
@@ -53,47 +53,34 @@ export function landingControl(catalog: Record<string, BlockDefinition<any, any>
     (_input: unknown, ctx: { session: object }) => config(ctx).teamInstructions,
     (_input: unknown, ctx: { session: object }) => config(ctx).instructions,
   ];
-  const answerPost = generator({
-    name: "agent-answer",
-    inputSchema: delegatedPostSchema,
-    model: "intent/chat",
-    itemVisibility: { client: true, history: true },
-    history: true,
+  const answer = {
+    name: "agent-answer" as const,
+    model: "intent/chat" as const,
+    itemVisibility: { client: true, history: true } as const,
+    history: true as const,
     prompt,
-    user: heard,
     tools,
-  });
-  const answerTurn = generator({
-    name: "agent-answer",
-    inputSchema: z.object({ message: z.string() }),
-    model: "intent/chat",
-    itemVisibility: { client: true, history: true },
-    history: true,
-    prompt,
-    user: (input: { message: string }) => input.message,
-    tools,
-  });
-  // The turn's worker, loaded before the answer reads its settings.
-  const resolve = <T extends z.ZodTypeAny>(inputSchema: T) =>
-    handler({
-      name: "agent-resolve-worker",
-      inputSchema,
-      resources: { ...installation.resources },
-      execute: async (_input, ctx) => {
-        await installation.resolveWorker(ctx, AGENT_KIND);
-      },
-    });
+  };
   const turnInput = z.object({ message: z.string() });
+  const loadWorker = handler({
+    name: "agent-resolve-worker",
+    inputSchema: z.unknown(),
+    resources: { ...installation.resources },
+    execute: async (_input, ctx) => {
+      await installation.resolveWorker(ctx, AGENT_KIND);
+    },
+  });
   return defineFlow({
     kind: AGENT_KIND,
     cardinality: "collection",
     configSchema: settings,
     session: installation.session(),
     resources: { ...installation.resources },
+    request: { onStarted: loadWorker },
     actions: {
       run: {
         inputSchema: turnInput.strict(),
-        block: sequencer({ name: "agent-run", inputSchema: turnInput }).tap(resolve(turnInput)).step(answerTurn),
+        block: generator({ ...answer, inputSchema: turnInput, user: (input: { message: string }) => input.message }),
         userMessage: (input: { message: string }) => input.message,
       },
     },
@@ -101,9 +88,7 @@ export function landingControl(catalog: Record<string, BlockDefinition<any, any>
       actions: {
         onDelegatedPost: {
           inputSchema: delegatedPostSchema,
-          block: sequencer({ name: "agent-heard-post", inputSchema: delegatedPostSchema })
-            .tap(resolve(delegatedPostSchema))
-            .step(answerPost),
+          block: generator({ ...answer, inputSchema: delegatedPostSchema, user: heard }),
           userMessage: heard,
         },
       },
