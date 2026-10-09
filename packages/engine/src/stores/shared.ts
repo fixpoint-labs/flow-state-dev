@@ -2,42 +2,25 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
-  RequestRecord,
-  RequestStatus
+  RequestRecord
 } from "./types";
 
 /**
- * Request-status list-filter predicate (FIX-1010). A single status matches by
- * equality; an array matches set membership, which is what lets "does any
- * non-terminal run exist" be one read instead of one per member. An absent
- * filter passes everything; an empty array passes nothing.
+ * Membership list filter (FIX-1010). One value matches by equality, an array
+ * by set membership; an absent filter passes everything and an empty array
+ * nothing. A missing value never matches a present filter.
  *
- * The in-memory and filesystem stores call this directly; the SQL adapters
- * mirror it as `status = ?` / `status IN (…)` because the filter has to be a
- * SQL clause there.
+ * In-memory and filesystem stores call this for `status` and `sessionId`.
+ * SQL adapters mirror it as `column = ?` / `column IN (…)` — the filter has
+ * to be a clause there.
  */
-export function matchesRequestStatusFilter(
-  filter: RequestStatus | readonly RequestStatus[] | undefined,
-  recordStatus: RequestStatus
+export function matchesMembership<T extends string>(
+  filter: T | readonly T[] | undefined,
+  value: T | undefined
 ): boolean {
   if (filter === undefined) return true;
-  if (Array.isArray(filter)) return filter.includes(recordStatus);
-  return recordStatus === filter;
-}
-
-/**
- * Request-session list-filter predicate: a single id matches by equality, an
- * array by set membership, absent passes everything and an empty array
- * nothing. Same shape as {@link matchesRequestStatusFilter}, and the SQL
- * adapters mirror it the same way (`session_id = ?` / `session_id IN (…)`).
- */
-export function matchesRequestSessionFilter(
-  filter: string | readonly string[] | undefined,
-  recordSessionId: string | undefined
-): boolean {
-  if (filter === undefined) return true;
-  if (Array.isArray(filter)) return recordSessionId !== undefined && filter.includes(recordSessionId);
-  return recordSessionId === filter;
+  if (Array.isArray(filter)) return value !== undefined && filter.includes(value);
+  return value === filter;
 }
 
 export function applyOffsetLimit<TValue>(
