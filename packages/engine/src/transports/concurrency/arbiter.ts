@@ -247,6 +247,24 @@ function throwIfWithdrawn(place: LeasePlace, signal: AbortSignal | undefined): v
 }
 
 /**
+ * Sleep `ms`, ending at once when `signal` aborts. The timer does not keep
+ * the event loop alive.
+ */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const wake = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", wake);
+      resolve();
+    };
+    const timer = setTimeout(wake, ms);
+    (timer as { unref?: () => void }).unref?.();
+    signal?.addEventListener("abort", wake, { once: true });
+    if (signal?.aborted) wake();
+  });
+}
+
+/**
  * Run `start`, then give the place back however it settles — including a
  * synchronous throw from `start`, so a failed kickoff never strands the key.
  * When the give-back is asynchronous (a shared backend) the run settles only
@@ -373,20 +391,7 @@ export function createConcurrencyArbiter(
           ? { kind: "wait" as const, delayMs: recheckDelayMs(attempt) }
           : planQueueWait({ key: place.key, waitedMs, attempt });
       if (step.kind === "timeout") throw step.error;
-      await new Promise<void>((resolve) => {
-        const wake = (): void => {
-          clearTimeout(timer);
-          signal?.removeEventListener("abort", wake);
-          resolve();
-        };
-        const timer = setTimeout(wake, step.delayMs);
-        // Don't keep the event loop alive solely for a queued wait.
-        (timer as { unref?: () => void }).unref?.();
-        signal?.addEventListener("abort", wake, { once: true });
-        // Re-read once the listener is in place, so a cancel that fired before
-        // it was added still ends the sleep rather than waiting it out.
-        if (signal?.aborted) wake();
-      });
+      await sleep(step.delayMs, signal);
     }
   };
 
@@ -559,38 +564,13 @@ export function createConcurrencyArbiter(
       const stop = signal === undefined ? patience.signal : AbortSignal.any([signal, patience.signal]);
       return inMemory.whenFree(key, stop).finally(() => clearTimeout(timer));
     }
-    return new Promise<void>((resolve) => {
-      const wake = (): void => {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", wake);
-        resolve();
-      };
-      const timer = setTimeout(wake, Math.max(0, Math.min(recheckDelayMs(attempt), patienceLeftMs)));
-      // Don't keep the event loop alive solely for a deferred wait.
-      (timer as { unref?: () => void }).unref?.();
-      signal?.addEventListener("abort", wake, { once: true });
-      if (signal?.aborted) wake();
-    });
+    return sleep(Math.max(0, Math.min(recheckDelayMs(attempt), patienceLeftMs)), signal);
   };
 
   /**
-   * A `defer` dispatch's admission. It holds nothing until it runs: `run`
-   * claims the key the way `reject` does, only when no place is held or
-   * waiting, and otherwise waits and tries again. Once claimed, the run holds
-   * the key like any other, so a later `defer` waits for it too, and a `hold`
-   * still starts at once beside it.
-   *
-   * Two bounds. At most `maxDeferredPerKey` defers wait on a key in this
-   * process; `admit` refuses the next one. And a defer yields to newer `hold`
-   * runs only for `deferPatienceMs`: then it takes a place at the back of the
-   * key's line and waits, with no budget, for the places ahead of it, so a
-   * stream of `hold` requests cannot keep it waiting forever.
-   *
-   * The wait has no time budget otherwise. A held place always ends: the run
-   * that holds it settles (its success, its error, or its abort gives the
-   * place back), and on a supplied backend a place whose process died stops
-   * being renewed and expires. That expiry is the crash path: nothing has to
-   * give the place back for a deferred run to start.
+   * Admission for `defer`. It holds nothing until `run`, which claims the key
+   * only when it is empty and, after `deferPatienceMs`, takes a place at the
+   * back with no wait budget. At most `maxDeferredPerKey` of these wait.
    */
   const deferredAdmission = (key: string, requestId: string): ConcurrencyAdmission => {
     const waitingNow = deferredWaiting.get(key) ?? 0;
@@ -606,7 +586,6 @@ export function createConcurrencyArbiter(
       else deferredWaiting.set(key, left);
     };
 
-    const lost = new AbortController();
     let claimed: ConcurrencyAdmission | undefined;
     let running = false;
     const claim = async (signal?: AbortSignal): Promise<ConcurrencyAdmission> => {
@@ -635,26 +614,21 @@ export function createConcurrencyArbiter(
       get place() {
         return claimed?.place;
       },
-      lost: lost.signal,
+      // The host reads this when the run starts, which is after the claim.
+      get lost() {
+        return claimed?.lost ?? NEVER_LOST;
+      },
       run(start, signal) {
         running = true;
-        return claim(signal).then(
-          (admission) => {
+        return claim(signal)
+          .then((admission) => {
             claimed = admission;
-            // The host reads `lost` when the run starts, which is after this.
-            const forward = (): void => lost.abort(admission.lost.reason);
-            if (admission.lost.aborted) forward();
-            else admission.lost.addEventListener("abort", forward, { once: true });
             return admission.run(() => {
               leaveWaiting();
               return start();
-            }, signal).finally(leaveWaiting);
-          },
-          (error: unknown) => {
-            leaveWaiting();
-            throw error;
-          }
-        );
+            }, signal);
+          })
+          .finally(leaveWaiting);
       },
       // Nothing is taken before `run`, and `run` gives back what it claims.
       // A dispatch that fails before running leaves the count here.
