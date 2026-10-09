@@ -1,5 +1,5 @@
 ---
-description: Coordinates the feature — files the work, never does it.
+description: Files each feature on the team's board; never does the work itself.
 flow: em
 document: engineering-handbook
 ---

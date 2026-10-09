@@ -753,10 +753,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         ...post,
         handOffs: [...post.handOffs, routed]
       })) as never);
+      // A refusal's reason is a sentence of its own, often with its period.
       const note =
         routed.outcome === "delivered"
           ? `Handed to ${routed.worker}. Its answer will land in this conversation under its name.`
-          : `Not handed to ${routed.worker}: ${routed.reason ?? routed.outcome}.`;
+          : `Not handed to ${routed.worker}: ${(routed.reason ?? routed.outcome).replace(/\.$/, "")}.`;
       return { worker: routed.worker, outcome: routed.outcome, note };
     }
   });

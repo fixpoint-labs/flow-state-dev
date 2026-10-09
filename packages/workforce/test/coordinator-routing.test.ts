@@ -318,6 +318,19 @@ describe("judgment (V7)", () => {
     await post(host, id, "anything");
     expect(host.heard).toEqual([]);
   });
+
+  it("tells the model why a hand-off was skipped in one sentence, ending once", async () => {
+    const judgment = mockGenerator({
+      script: [{ toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "notes" } }] }, { text: "ok" }]
+    });
+    // `notes` runs on `quiet`, which takes no post: a default the hand-off can't reach.
+    const host = bootHost({ judgment, standard: standardWorkers({ chief: { delegates: ["eng.em", "notes"] } }) });
+    const id = await host.conversation("alice", "chief");
+    await post(host, id, "take notes on the release");
+    expect(host.heard).toEqual([]);
+    const told = (await host.items(id)).all.find((item: any) => item.type === "tool_output" && item.blockName === "handOff");
+    expect(told.output.note).toBe('Not handed to notes: Worker "notes" runs on flow "quiet", which can\'t take a delegated post.');
+  });
 });
 
 describe("judgment is the agent's own turn (S8)", () => {
