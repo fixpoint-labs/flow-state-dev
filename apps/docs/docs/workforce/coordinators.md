@@ -135,7 +135,6 @@ So every post travels with the conversation's **recent lines**: your posts, the 
 ```text
 Recent lines in the conversation with support.help before this post, oldest first:
 - user_42: Hi, my laptop won't join the office wifi since this morning.
-- support.help: I've handed this to support.devices.
 - support.devices: Does the laptop see the office network when you pick it?
 ```
 
@@ -144,8 +143,10 @@ Each line starts with who wrote it:
 | Line by | Named as | Example |
 | --- | --- | --- |
 | You | Your user id | `user_42` |
-| The coordinator, in its own replies and in `Nobody took this post` | The coordinator's worker id | `support.help` |
 | A delegate, in an answer that landed | The delegate's worker id | `support.devices` |
+| The coordinator | The coordinator's worker id | `support.help` |
+
+A coordinator line appears only when the coordinator wrote something in the conversation itself: a reply from its own turn, which runs under `judgment` or when best fit hands it a post nobody else took, or a `Nobody took this post` message. The [routing record](#what-it-records) is never a line.
 
 What a delegate gets:
 
