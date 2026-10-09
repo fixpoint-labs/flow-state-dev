@@ -50,9 +50,10 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
-import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
+import { SHIFT_MANAGER_COMMAND, servedAddresses, workerOf } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -188,7 +189,7 @@ function labApi(origin: string, bearer: string | undefined) {
     return out;
   };
   /** The person's sessions, dispatch runs included. */
-  const sessions = async (userId: string): Promise<Array<{ id: string; flowId?: string; parentSessionId?: string | null; createdAt: number }>> =>
+  const sessions = async (userId: string): Promise<Array<{ id: string; state?: Record<string, unknown>; parentSessionId?: string | null; createdAt: number }>> =>
     (await get(`/sessions?userId=${enc(userId)}&include=dispatch-runs`)).sessions ?? [];
   /** The suspension ids still pending in `sessionIds`, asking a person. */
   const pendingAsks = async (sessionIds: string[]): Promise<string[]> => {
@@ -288,10 +289,15 @@ await runGoal(async () => {
       if (userId === undefined) throw new Error("the page was handed no userId");
       const api = labApi(served.desk.origin, config?.bearerToken);
 
-      // Two asks, raised by the person through the asker's own action route.
+      // Two asks, raised by the person through the asker's own action route: a
+      // worker has no flow address of its own, so each runs in a session of the
+      // flow its file names, created naming it.
+      const askerFlow = String(asker.declared.flow);
       const askSessions = [0, 1].map(() => `s_cos_goal_${randomBytes(3).toString("hex")}`);
       for (const [i, sessionId] of askSessions.entries()) {
-        const posted = await api.call("POST", `/${encodeURIComponent(asker.id)}/${encodeURIComponent(sessionId)}/actions/ask`, {
+        const opened = await api.call("POST", `/${encodeURIComponent(askerFlow)}/sessions`, { userId, sessionId, state: { [WORKER_ID_STATE_KEY]: asker.id } });
+        if (opened.status !== 201) throw new Error(`a session with ${asker.id} on "${askerFlow}": ${opened.status} ${JSON.stringify(opened.body)}`);
+        const posted = await api.call("POST", `/${encodeURIComponent(askerFlow)}/${encodeURIComponent(sessionId)}/actions/ask`, {
           userId,
           input: { what: `ship part ${i + 1}` },
         });
@@ -348,9 +354,9 @@ await runGoal(async () => {
       await input.waitFor();
       const token = `cos-${randomBytes(4).toString("hex")}`;
       await input.fill(`Please repeat this code back to me exactly: ${token}`);
-      /** The person's direct sessions on the seat, and the one holding the token's user item. */
+      /** The person's direct sessions with the seat (the ones naming it as their worker), and the one holding the token's user item. */
       const findLine = async () => {
-        for (const session of (await api.sessions(userId)).filter((s) => s.flowId === cosSeat.id && s.parentSessionId == null)) {
+        for (const session of (await api.sessions(userId)).filter((s) => workerOf(s) === cosSeat.id && s.parentSessionId == null)) {
           const messages = await api.items(session.id, "message");
           const at = messages.findIndex((m) => m.role === "user" && textOf(m).includes(token));
           if (at >= 0) return { sessionId: session.id, messages, at };
